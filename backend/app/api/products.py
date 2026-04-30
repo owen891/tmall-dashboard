@@ -32,7 +32,7 @@ def get_products(
     style: Optional[str] = None,
     scene: Optional[str] = None,
     sort_by: Optional[str] = None,
-    sort_order: str = Query("desc", regex="^(asc|desc)$"),
+    sort_order: str = Query("desc", pattern="^(asc|desc)$"),
     db: Session = Depends(get_db)
 ):
     service = ProductService(db)
