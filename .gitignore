@@ -1,11 +1,7 @@
 __pycache__/
 *.pyc
 *.pyo
-*.db
 data/backups/
-data/dashboard.db
-data/import_log.json
-dashboard.db
 .env
 .uploads/
 *.egg-info/
