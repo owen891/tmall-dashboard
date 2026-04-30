@@ -1,0 +1,236 @@
+    <!-- ========== 空状态占位 ========== -->
+    <div class="empty-state" id="emptyStateOps" style="display:none;">
+        <div class="empty-icon">&#128722;</div>
+        <h3>暂无数据</h3>
+        <p>请先上传天猫生意参谋的 Excel 数据文件</p>
+        <button class="empty-action-btn" onclick="switchTab('tab-market')">前往市场分析上传数据</button>
+    </div>
+
+    <!-- ========== 模块4: 商品分析 ========== -->
+    <div class="section-title">
+        <span>商品分析</span>
+        <div class="section-actions">
+            <button class="col-config-btn" onclick="toggleColConfig()">列设置</button>
+            <button class="export-btn" onclick="exportData('products')">导出商品数据</button>
+            <div class="col-config-panel" id="colConfigPanel">
+                <div class="col-config-header">
+                    <span>自定义列</span>
+                    <div>
+                        <button class="template-btn" onclick="saveTemplate()">&#128190; 保存模板</button>
+                        <button class="template-btn" onclick="loadTemplateMenu()">&#128203; 加载模板</button>
+                    </div>
+                </div>
+                <div class="col-config-list" id="colConfigList">
+                    <!-- Dynamically populated checkboxes -->
+                </div>
+                <div class="template-menu" id="templateMenu" style="display:none;">
+                    <!-- Saved templates list -->
+                </div>
+                <div class="template-save-form" id="templateSaveForm" style="display:none;">
+                    <input type="text" id="templateName" placeholder="模板名称..." class="template-input">
+                    <button onclick="confirmSaveTemplate()">保存</button>
+                    <button onclick="cancelSaveTemplate()">取消</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="product-toolbar">
+        <div style="position:relative;flex:1;max-width:320px;">
+            <input type="text" class="product-search" id="productSearch" placeholder="搜索商品名称/ID..." oninput="debounceSearch()" style="padding-right:28px;">
+            <span class="search-clear" id="searchClear" onclick="clearSearch()" style="display:none;">&times;</span>
+        </div>
+        <select class="product-filter tier-tooltip" id="productTierFilter" data-tip="利润款:高利润贡献 | 引流款:高流量低利润 | 新品:上架30天内" onchange="filterProducts()">
+            <option value="">全部分层</option>
+        </select>
+        <select class="product-filter style-tooltip" id="productStyleFilter" data-tip="商品设计风格分类，用于分析不同风格的运营表现" onchange="filterProducts()">
+            <option value="">全部风格</option>
+        </select>
+        <select class="product-filter" id="productStatusFilter" onchange="filterProducts()">
+            <option value="">全部状态</option>
+            <option value="active">在售</option>
+            <option value="inactive">下架</option>
+        </select>
+        <button class="filter-reset-btn" onclick="resetFilters()">重置</button>
+        <button class="star-filter-btn" id="starFilterBtn" onclick="toggleStarFilter()">&#9734; 只看收藏</button>
+    </div>
+    <!-- 筛选条件回显 -->
+    <div class="filter-chips" id="filterChips" style="display:none;"></div>
+    <!-- 批量操作栏 -->
+    <div class="batch-bar" id="batchBar" style="display:none;">
+        <span class="batch-count">已选 0 项</span>
+        <button class="batch-action-btn" onclick="batchStar()">&#9733; 批量收藏</button>
+        <button class="batch-action-btn" onclick="batchEditField('tier')">批量改分层</button>
+        <button class="batch-action-btn" onclick="batchEditField('style')">批量改风格</button>
+        <button class="batch-action-btn" onclick="openBatchTagPopover()">&#127991; 批量打标签</button>
+        <button class="batch-action-btn" onclick="document.querySelectorAll('.row-check').forEach(cb=>cb.checked=false);updateBatchBar()">取消选择</button>
+    </div>
+    <!-- 批量标签弹出框 -->
+    <div class="tag-popover" id="batchTagPopover" style="display:none;">
+        <div class="tag-popover-header">
+            <span style="font-size:0.85rem;font-weight:600;color:var(--text-primary);">批量打标签</span>
+            <button onclick="closeBatchTagPopover()" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:1rem;">&times;</button>
+        </div>
+        <div class="tag-popover-body">
+            <div class="tag-input-row">
+                <input type="text" class="tag-input" id="batchTagName" placeholder="输入标签名称">
+                <button class="tag-add-btn" onclick="batchAddTag()">添加</button>
+            </div>
+            <div class="tag-existing-section" id="batchTagExisting" style="display:none;">
+                <div style="font-size:0.78rem;color:var(--text-muted);margin-bottom:6px;">已有标签（点击移除）:</div>
+                <div class="tag-existing-list" id="batchTagList"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 操作日志按钮 & 面板 -->
+    <div style="margin-bottom:12px;">
+        <button onclick="toggleLogPanel()" style="padding:4px 12px;border-radius:6px;border:1px solid var(--border);background:transparent;color:var(--text-muted);cursor:pointer;font-size:0.78rem;transition:all 0.15s;">&#128203; 操作日志</button>
+        <div class="log-panel" id="logPanel" style="display:none;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+                <span style="font-size:0.85rem;font-weight:600;color:var(--text-primary);">最近操作记录</span>
+                <button onclick="toggleLogPanel()" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:1rem;">&times;</button>
+            </div>
+            <div id="logList"><div style="text-align:center;color:var(--text-muted);padding:20px;font-size:0.82rem;">加载中...</div></div>
+        </div>
+    </div>
+
+    <!-- 指标分组Tab -->
+    <div class="metric-tabs" id="metricTabs">
+        <button class="metric-tab active" data-view="basic" onclick="switchMetricView('basic')">基础信息</button>
+        <button class="metric-tab" data-view="selection" onclick="switchMetricView('selection')">选款指标</button>
+        <button class="metric-tab" data-view="transaction" onclick="switchMetricView('transaction')">成交与付费</button>
+    </div>
+
+    <div class="table-wrapper" style="position:relative;">
+        <div class="loading-mask" id="loading-table">
+            <div style="padding:20px;width:100%;">
+                <div class="skeleton skeleton-row" style="width:100%"></div>
+                <div class="skeleton skeleton-row" style="width:100%"></div>
+                <div class="skeleton skeleton-row" style="width:100%"></div>
+                <div class="skeleton skeleton-row" style="width:100%"></div>
+                <div class="skeleton skeleton-row" style="width:60%"></div>
+            </div>
+        </div>
+        <table class="data-table" id="productTable">
+            <thead id="productTableHead">
+                <!-- Dynamically rendered by renderProductTable() -->
+            </thead>
+            <tbody id="productTableBody"></tbody>
+        </table>
+        <div class="pagination" id="tablePagination"></div>
+        <span id="productTotal" class="product-total"></span>
+    </div>
+
+    <!-- ========== 模块5: 推广分析 ========== -->
+    <div class="section-title">推广分析</div>
+    <div class="chart-row half">
+        <div class="chart-panel" style="position:relative;">
+            <div class="loading-mask" id="loading-scatter"><div class="spinner"></div></div>
+            <div class="panel-title">推广花费 vs ROI（气泡=销售额）</div>
+            <div class="chart-box tall" id="chartAdScatter"></div>
+        </div>
+        <div class="chart-panel" style="position:relative;">
+            <div class="loading-mask" id="loading-adbar"><div class="spinner"></div></div>
+            <div class="panel-title">推广方式花费对比</div>
+            <div class="chart-box tall" id="chartAdCompare"></div>
+        </div>
+    </div>
+
+    <!-- ========== 联动②: 蓝海关键词推荐 ========== -->
+    <div class="chart-row full" id="marketOpportunityRow" style="display:none;">
+        <div class="chart-panel">
+            <div class="panel-title">🌊 蓝海关键词推荐 <span style="font-size:0.75rem;color:#64748B;font-weight:400;margin-left:8px;">来自市场分析</span></div>
+            <div id="opsOpportunityList" style="max-height:200px;overflow-y:auto;padding:8px 0;">
+                <div style="text-align:center;color:#64748B;padding:20px;">暂无市场分析数据</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========== 模块6: 退款售后 ========== -->
+    <div class="section-title" style="display:flex;align-items:center;justify-content:space-between;">
+        <span>退款售后</span>
+        <button class="export-btn" onclick="exportData('refund')">导出退款数据</button>
+    </div>
+    <div class="chart-row half">
+        <div class="chart-panel" style="position:relative;">
+            <div class="loading-mask" id="loading-refund-trend"><div class="spinner"></div></div>
+            <div class="panel-title">退款金额与退款率趋势</div>
+            <div class="chart-box tall" id="chartRefundTrend"></div>
+        </div>
+        <div class="chart-panel" style="position:relative;">
+            <div class="loading-mask" id="loading-refund-alert"><div class="spinner"></div></div>
+            <div class="panel-title">高退款率商品预警</div>
+            <div class="alert-list" id="refundAlertList">
+                <div style="text-align:center;color:#64748B;padding:40px;">暂无数据</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========== 商品详情弹窗 ========== -->
+    <div class="product-detail-popup" id="productDetailPopup" onclick="if(event.target===this)closeProductDetail()">
+        <div class="product-detail-card">
+            <button class="product-detail-close" onclick="closeProductDetail()">&times;</button>
+            <div class="product-detail-header">
+                <img class="product-detail-img" id="detailProductImg" src="" alt="">
+                <div class="product-detail-name" id="detailProductName">--</div>
+            </div>
+            <div class="product-detail-metrics" id="detailProductMetrics"></div>
+        </div>
+    </div>
+
+    <!-- ========== 运营动作表单弹窗 ========== -->
+    <div class="action-form-modal" id="actionFormModal" onclick="if(event.target===this)closeActionForm()">
+        <div class="action-form-card">
+            <button class="action-form-close" onclick="closeActionForm()">&times;</button>
+            <div class="action-form-title" id="actionFormTitle">添加运营动作</div>
+            <form id="actionForm" onsubmit="saveAction(event)">
+                <input type="hidden" id="actionFormId">
+                <div class="action-form-grid">
+                    <div class="action-form-group">
+                        <label class="action-form-label">商品ID</label>
+                        <input type="text" class="action-form-input" id="actionFormProductId" placeholder="输入商品ID" required>
+                    </div>
+                    <div class="action-form-group">
+                        <label class="action-form-label">动作日期</label>
+                        <input type="date" class="action-form-input" id="actionFormDate" required>
+                    </div>
+                    <div class="action-form-group">
+                        <label class="action-form-label">动作类型</label>
+                        <select class="action-form-input" id="actionFormType" required>
+                            <option value="">请选择</option>
+                            <option value="加价">加价</option>
+                            <option value="减价">减价</option>
+                            <option value="换图">换图</option>
+                            <option value="换标题">换标题</option>
+                            <option value="加SKU">加SKU</option>
+                            <option value="其他">其他</option>
+                        </select>
+                    </div>
+                    <div class="action-form-group">
+                        <label class="action-form-label">动作前支付金额</label>
+                        <input type="number" class="action-form-input" id="actionFormPayment" placeholder="可选" step="0.01">
+                    </div>
+                    <div class="action-form-group">
+                        <label class="action-form-label">动作前访客数</label>
+                        <input type="number" class="action-form-input" id="actionFormVisitors" placeholder="可选" step="1">
+                    </div>
+                    <div class="action-form-group">
+                        <label class="action-form-label">动作前转化率</label>
+                        <input type="number" class="action-form-input" id="actionFormConversion" placeholder="可选" step="0.0001">
+                    </div>
+                    <div class="action-form-group">
+                        <label class="action-form-label">动作前ROI</label>
+                        <input type="number" class="action-form-input" id="actionFormRoi" placeholder="可选" step="0.01">
+                    </div>
+                    <div class="action-form-group full">
+                        <label class="action-form-label">动作详情</label>
+                        <textarea class="action-form-input" id="actionFormDetail" rows="3" placeholder="描述具体动作内容..."></textarea>
+                    </div>
+                </div>
+                <div class="action-form-actions">
+                    <button type="button" class="action-form-btn secondary" onclick="closeActionForm()">取消</button>
+                    <button type="submit" class="action-form-btn primary">保存</button>
+                </div>
+            </form>
+        </div>
+    </div>

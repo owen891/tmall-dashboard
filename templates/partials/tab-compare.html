@@ -1,0 +1,59 @@
+<div class="compare-container">
+    <div class="compare-controls">
+        <div class="compare-period-selectors">
+            <div class="compare-period-group">
+                <label class="compare-label">周期 A</label>
+                <select class="compare-select" id="comparePeriodA"></select>
+            </div>
+            <span class="compare-vs">VS</span>
+            <div class="compare-period-group">
+                <label class="compare-label">周期 B</label>
+                <select class="compare-select" id="comparePeriodB"></select>
+            </div>
+            <button class="compare-run-btn" onclick="runComparison()">开始对比</button>
+        </div>
+    </div>
+    <div class="compare-results" id="compareResults" style="display:none;">
+        <div class="compare-section">
+            <h3 class="compare-section-title">KPI 对比</h3>
+            <div class="compare-table-wrap">
+                <table class="compare-table" id="compareKPITable">
+                    <thead><tr><th>指标</th><th>周期 A</th><th>周期 B</th><th>变化</th></tr></thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+        </div>
+        <div class="compare-section">
+            <h3 class="compare-section-title">商品排名变化</h3>
+            <div id="compareProductChanges"></div>
+        </div>
+        <div class="compare-section">
+            <h3 class="compare-section-title">趋势对比</h3>
+            <div class="chart-box" id="chartCompareTrend"></div>
+        </div>
+    </div>
+    <div class="empty-state" id="emptyCompare" style="display:none;">
+        <div class="empty-icon">&#128202;</div>
+        <h3>选择两个周期进行对比</h3>
+        <p>支持日/周/月维度，可对比任意两个时间段的数据差异</p>
+    </div>
+
+    <!-- ========== 多周期趋势叠加 ========== -->
+    <div class="multi-trend-section" style="margin-top:24px;">
+        <div class="compare-section-title" style="margin-bottom:12px;">多周期趋势叠加</div>
+        <div class="multi-trend-controls" style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:12px;">
+            <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
+                <span style="font-size:0.85rem;color:var(--text-muted);white-space:nowrap;">选择周期:</span>
+                <div id="multiTrendPeriods" style="display:flex;gap:6px;flex-wrap:wrap;"></div>
+            </div>
+            <select class="metric-selector" id="multiTrendMetric" style="padding:6px 12px;border-radius:6px;border:1px solid var(--border);background:var(--bg-elevated);color:var(--text-primary);font-size:0.85rem;">
+                <option value="payment_amount">GMV</option>
+                <option value="visitors">访客数</option>
+                <option value="conversion">转化率</option>
+                <option value="refund_rate">退款率</option>
+            </select>
+            <button class="compare-run-btn" onclick="loadMultiTrend()">查看趋势</button>
+        </div>
+        <div class="chart-box tall" id="chartMultiTrend"></div>
+    </div>
+</div>

@@ -1,0 +1,261 @@
+    <!-- ========== 空状态占位 ========== -->
+    <div class="empty-state" id="emptyStateOverview" style="display:none;">
+        <div class="empty-icon">&#128202;</div>
+        <h3>暂无数据</h3>
+        <p>请先上传天猫生意参谋的 Excel 数据文件</p>
+        <button class="empty-action-btn" onclick="switchTab('tab-market')">前往市场分析上传数据</button>
+    </div>
+
+    <!-- ========== 模块1: KPI 卡片区 ========== -->
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+        <div style="font-size:0.9rem;font-weight:600;color:var(--text-primary);">核心指标</div>
+        <div style="display:flex;gap:8px;">
+            <button class="report-btn" onclick="generateReport()">📊 生成报告</button>
+            <button onclick="toggleKPICustomize()" style="padding:4px 12px;border-radius:6px;border:1px solid var(--border);background:transparent;color:var(--text-muted);cursor:pointer;font-size:0.78rem;transition:all 0.15s;">&#9881; 自定义</button>
+        </div>
+    </div>
+    <div class="kpi-customize-panel" id="kpiCustomizePanel" style="display:none;"></div>
+    <div class="kpi-grid" id="kpiGrid">
+        <div class="loading-placeholder" id="kpiLoading" style="display:none;">加载中...</div>
+        <div id="kpiSkeleton" style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;">
+            <div class="skeleton skeleton-card"></div><div class="skeleton skeleton-card"></div><div class="skeleton skeleton-card"></div><div class="skeleton skeleton-card"></div>
+            <div class="skeleton skeleton-card"></div><div class="skeleton skeleton-card"></div><div class="skeleton skeleton-card"></div><div class="skeleton skeleton-card"></div>
+        </div>
+        <div class="kpi-card" id="kpi-gmv" data-metric="gmv">
+            <div class="kpi-label">总GMV</div>
+            <div class="kpi-value" id="kpi-gmv-val">--</div>
+            <div class="kpi-change" id="kpi-gmv-chg">--</div>
+        </div>
+        <div class="kpi-card" id="kpi-net_sales" data-metric="net_sales">
+            <div class="kpi-label">净销售额</div>
+            <div class="kpi-value" id="kpi-net_sales-val">--</div>
+            <div class="kpi-change" id="kpi-net_sales-chg">--</div>
+        </div>
+        <div class="kpi-card" id="kpi-visitors" data-metric="visitors">
+            <div class="kpi-label">总访客</div>
+            <div class="kpi-value" id="kpi-visitors-val">--</div>
+            <div class="kpi-change" id="kpi-visitors-chg">--</div>
+        </div>
+        <div class="kpi-card" id="kpi-conv_rate" data-metric="conv_rate">
+            <div class="kpi-label">整体转化率</div>
+            <div class="kpi-value" id="kpi-conv_rate-val">--</div>
+            <div class="kpi-change" id="kpi-conv_rate-chg">--</div>
+        </div>
+        <div class="kpi-card" id="kpi-ad_cost" data-metric="ad_cost">
+            <div class="kpi-label">推广花费</div>
+            <div class="kpi-value" id="kpi-ad_cost-val">--</div>
+            <div class="kpi-change" id="kpi-ad_cost-chg">--</div>
+        </div>
+        <div class="kpi-card" id="kpi-roi" data-metric="roi">
+            <div class="kpi-label">综合ROI</div>
+            <div class="kpi-value" id="kpi-roi-val">--</div>
+            <div class="kpi-change" id="kpi-roi-chg">--</div>
+        </div>
+        <div class="kpi-card" id="kpi-refund_rate" data-metric="refund_rate">
+            <div class="kpi-label">退款率</div>
+            <div class="kpi-value" id="kpi-refund_rate-val">--</div>
+            <div class="kpi-change" id="kpi-refund_rate-chg">--</div>
+        </div>
+        <div class="kpi-card" id="kpi-aov" data-metric="aov">
+            <div class="kpi-label">客单价</div>
+            <div class="kpi-value" id="kpi-aov-val">--</div>
+            <div class="kpi-change" id="kpi-aov-chg">--</div>
+        </div>
+    </div>
+
+    <!-- ========== 异常指标提醒横幅 ========== -->
+    <div class="anomaly-banner" id="anomalyBanner">
+        <div class="anomaly-banner-title">
+            <span>&#9888;&#65039;</span> 异常指标提醒
+        </div>
+        <div class="anomaly-banner-list" id="anomalyBannerList"></div>
+    </div>
+
+    <!-- ========== 模块: 目标完成进度 ========== -->
+    <div class="target-progress-section" id="targetProgressSection">
+        <div class="section-title">目标完成进度</div>
+        <div class="loading-placeholder" id="targetLoading">加载中...</div>
+        <!-- 无目标占位提示 -->
+        <div class="no-target-placeholder" id="noTargetPlaceholder" style="display:none;">
+            暂未设置目标，请在目标表格中导入或通过API设置
+        </div>
+        <!-- 进度卡片行 -->
+        <div class="progress-card-row" id="progressCardRow">
+            <div class="progress-card">
+                <div class="card-label">GSV完成进度</div>
+                <div class="gauge-box" id="gaugeGSV"></div>
+                <div class="card-detail" id="gsvDetail">--</div>
+            </div>
+            <div class="progress-card">
+                <div class="card-label">费用预算进度</div>
+                <div class="gauge-box" id="gaugeBudget"></div>
+                <div class="card-detail" id="budgetDetail">--</div>
+            </div>
+            <div class="progress-card">
+                <div class="card-label">实际费比 vs 目标费比</div>
+                <div class="gauge-box" id="gaugeFeeRatio"></div>
+                <div class="card-detail" id="feeRatioDetail">--</div>
+            </div>
+            <div class="progress-card time-progress-card">
+                <div class="card-label">时间进度</div>
+                <div class="time-bar-pct" id="timeProgressPct">--%</div>
+                <div class="time-bar-wrapper">
+                    <div class="time-bar-label">本月已过</div>
+                    <div class="time-bar-track">
+                        <div class="time-bar-fill" id="timeProgressBar" style="width:0%"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <!-- 智能预测 & 预警区域 -->
+        <div class="predict-alert-row">
+            <div class="predict-card" id="predictCard">
+                <div class="predict-title">智能预测</div>
+                <div class="predict-value" id="predictValue">--</div>
+                <div class="predict-gap" id="predictGap">--</div>
+            </div>
+            <div class="alert-panel" id="alertPanel">
+                <div class="panel-header">
+                    <span class="panel-header-title">预警通知</span>
+                    <span id="alertCount" style="font-size:0.78rem;color:#64748B;"></span>
+                </div>
+                <div class="alert-list-body" id="alertListBody">
+                    <div style="text-align:center;color:#64748B;padding:20px;">暂无预警</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========== 模块2: 销售趋势图 ========== -->
+    <div class="section-title" style="display:flex;align-items:center;justify-content:space-between;">
+        <span>销售趋势</span>
+        <button class="event-marker-btn" onclick="openEventFormModal()" title="添加事件标注">&#128204; 添加标注</button>
+    </div>
+    <div class="chart-row full">
+        <div class="chart-panel" style="position:relative;">
+            <div class="loading-mask" id="loading-trend"><div class="spinner"></div></div>
+            <div class="chart-box tall" id="chartSalesTrend"></div>
+        </div>
+    </div>
+
+    <!-- ========== 模块3: 流量与转化分析 ========== -->
+    <div class="section-title">流量与转化分析</div>
+    <div class="chart-row half">
+        <div class="chart-panel" style="position:relative;">
+            <div class="loading-mask" id="loading-uv"><div class="spinner"></div></div>
+            <div class="panel-title">访客数(UV)趋势</div>
+            <div class="chart-box" id="chartUVTrend"></div>
+        </div>
+        <div class="chart-panel" style="position:relative;">
+            <div class="loading-mask" id="loading-conv"><div class="spinner"></div></div>
+            <div class="panel-title">转化率趋势</div>
+            <div class="chart-box" id="chartConvTrend"></div>
+        </div>
+    </div>
+
+    <!-- ========== 模块: 新老客分析 ========== -->
+    <div class="section-title">新老客分析</div>
+    <div class="customer-section">
+        <div class="customer-stat-cards">
+            <div class="customer-stat-card" id="customerNewCard">
+                <div class="customer-stat-label">新客数</div>
+                <div class="customer-stat-value" id="customerNewVal">--</div>
+                <div class="customer-stat-sub" id="customerNewRatio">--</div>
+                <div class="customer-stat-change" id="customerNewChg">--</div>
+            </div>
+            <div class="customer-stat-card" id="customerReturnCard">
+                <div class="customer-stat-label">老客数</div>
+                <div class="customer-stat-value" id="customerReturnVal">--</div>
+                <div class="customer-stat-sub" id="customerReturnRatio">--</div>
+                <div class="customer-stat-change" id="customerReturnChg">--</div>
+            </div>
+        </div>
+        <div class="chart-panel" style="position:relative;">
+            <div class="panel-title">新老客趋势（近6期）</div>
+            <div class="chart-box" id="chartCustomerTrend"></div>
+        </div>
+    </div>
+
+    <!-- ========== 模块: 加购→支付漏斗分析 ========== -->
+    <div class="section-title">加购→支付漏斗分析</div>
+    <div class="funnel-section">
+        <div class="chart-panel" style="position:relative;">
+            <div class="panel-title">转化漏斗</div>
+            <div class="chart-box" id="chartFunnel"></div>
+        </div>
+        <div class="funnel-rates-panel" id="funnelRatesPanel">
+            <div class="panel-title">步骤转化率</div>
+            <div id="funnelRatesContent" style="padding:8px 0;">加载中...</div>
+        </div>
+    </div>
+
+    <!-- ========== 预警规则管理 ========== -->
+    <div class="section-title" style="cursor:pointer;" onclick="toggleAlertRulesPanel()">
+        <span>预警规则管理</span>
+        <span style="font-size:0.75rem;color:var(--text-muted);font-weight:400;margin-left:8px;">点击展开/折叠</span>
+    </div>
+    <div id="alertRulesPanel" style="display:none;margin-bottom:16px;">
+        <div class="alert-rules-container" style="background:var(--bg-card);border:1px solid var(--border);border-radius:8px;padding:16px;">
+            <!-- 添加规则表单 -->
+            <div class="alert-rule-form" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px;">
+                <select id="alertRuleMetric" style="padding:6px 10px;border-radius:4px;border:1px solid var(--border);background:var(--bg-elevated);color:var(--text-primary);font-size:0.85rem;">
+                    <option value="">选择指标</option>
+                    <option value="gmv">总GMV</option>
+                    <option value="net_sales">净销售额</option>
+                    <option value="visitors">总访客</option>
+                    <option value="conversion">转化率</option>
+                    <option value="refund_rate">退款率</option>
+                    <option value="roi">ROI</option>
+                    <option value="ad_spend">推广花费</option>
+                </select>
+                <select id="alertRuleOperator" style="padding:6px 10px;border-radius:4px;border:1px solid var(--border);background:var(--bg-elevated);color:var(--text-primary);font-size:0.85rem;">
+                    <option value="gt">&gt; 大于</option>
+                    <option value="lt">&lt; 小于</option>
+                    <option value="gte">&gt;= 大于等于</option>
+                    <option value="lte">&lt;= 小于等于</option>
+                </select>
+                <input type="number" id="alertRuleThreshold" placeholder="阈值" step="any" style="width:100px;padding:6px 10px;border-radius:4px;border:1px solid var(--border);background:var(--bg-elevated);color:var(--text-primary);font-size:0.85rem;">
+                <select id="alertRuleLevel" style="padding:6px 10px;border-radius:4px;border:1px solid var(--border);background:var(--bg-elevated);color:var(--text-primary);font-size:0.85rem;">
+                    <option value="warning">警告</option>
+                    <option value="danger">危险</option>
+                    <option value="info">提示</option>
+                </select>
+                <button onclick="addAlertRule()" style="padding:6px 16px;border-radius:4px;border:none;background:var(--accent);color:#fff;cursor:pointer;font-size:0.85rem;">添加规则</button>
+            </div>
+            <!-- 规则列表 -->
+            <div id="alertRulesList"></div>
+        </div>
+    </div>
+
+    <!-- ========== 事件标注表单弹窗 ========== -->
+    <div class="event-form-modal" id="eventFormModal" onclick="if(event.target===this)closeEventFormModal()">
+        <div class="event-form-card">
+            <div class="event-form-header">
+                <span style="font-size:0.95rem;font-weight:600;color:var(--text-primary);">&#128204; 添加事件标注</span>
+                <button onclick="closeEventFormModal()" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:1.2rem;">&times;</button>
+            </div>
+            <div class="event-form-body">
+                <div class="event-form-group">
+                    <label class="event-form-label">日期</label>
+                    <input type="date" class="event-form-input" id="eventDateInput" required>
+                </div>
+                <div class="event-form-group">
+                    <label class="event-form-label">标题</label>
+                    <input type="text" class="event-form-input" id="eventTitleInput" placeholder="例如：促销活动开始" required>
+                </div>
+                <div class="event-form-group">
+                    <label class="event-form-label">颜色</label>
+                    <input type="color" class="event-form-input" id="eventColorInput" value="#EF4444" style="height:36px;padding:2px;cursor:pointer;">
+                </div>
+                <div class="event-form-group">
+                    <label class="event-form-label">描述</label>
+                    <textarea class="event-form-input" id="eventDescInput" rows="3" placeholder="可选：补充说明..."></textarea>
+                </div>
+            </div>
+            <div class="event-form-actions">
+                <button class="event-form-btn secondary" onclick="closeEventFormModal()">取消</button>
+                <button class="event-form-btn primary" onclick="submitChartEvent()">添加标注</button>
+            </div>
+        </div>
+    </div>
+

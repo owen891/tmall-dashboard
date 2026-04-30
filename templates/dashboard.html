@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>海贝海 · 天猫数据仪表盘</title>
+    <link rel="preload" href="/static/css/dashboard.css" as="style">
+    <link rel="preload" href="/static/js/bundle.min.js" as="script">
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
+    <link rel="stylesheet" href="/static/css/dashboard.css">
+</head>
+<body>
+<div id="globalToast" style="position:fixed;top:20px;right:20px;z-index:300;display:none;padding:12px 20px;border-radius:8px;background:rgba(239,68,68,0.9);color:#fff;font-size:0.85rem;max-width:400px;box-shadow:0 4px 12px rgba(0,0,0,0.3);"></div>
+
+<!-- ==================== 首次访问引导 ==================== -->
+<div class="onboarding-overlay" id="onboardingOverlay">
+    <div class="onboarding-card">
+        <div class="onboarding-icon">&#127978;</div>
+        <h2>欢迎使用海贝海数据仪表盘</h2>
+        <p class="onboarding-desc">天猫全渠道数据分析工具，支持日/周/月多维度分析</p>
+        <div class="onboarding-steps">
+            <div class="onboarding-step">
+                <div class="step-num">1</div>
+                <div class="step-text">
+                    <strong>导入数据</strong>
+                    <span>上传天猫生意参谋导出的 Excel 数据文件</span>
+                </div>
+            </div>
+            <div class="onboarding-step">
+                <div class="step-num">2</div>
+                <div class="step-text">
+                    <strong>分析数据</strong>
+                    <span>KPI、趋势、商品、推广、退款等多维度分析</span>
+                </div>
+            </div>
+            <div class="onboarding-step">
+                <div class="step-num">3</div>
+                <div class="step-text">
+                    <strong>深度洞察</strong>
+                    <span>评价分析、市场分析、健康度预警</span>
+                </div>
+            </div>
+        </div>
+        <button class="onboarding-btn" onclick="closeOnboarding()">开始使用</button>
+        <label class="onboarding-skip">
+            <input type="checkbox" id="dontShowAgain"> 不再显示
+        </label>
+    </div>
+</div>
+
+<!-- ==================== 顶部控制栏 ==================== -->
+<div class="top-bar">
+    <div class="logo"><span>海贝海</span> · 天猫数据仪表盘</div>
+    <div class="top-bar-right">
+        <button class="refresh-btn" id="refreshBtn" onclick="manualRefresh()" title="手动刷新">刷新</button>
+        <span class="last-update" id="lastUpdate"></span>
+        <button class="auto-refresh-btn" id="autoRefreshBtn" onclick="toggleAutoRefresh()" title="自动刷新(5分钟)">AUTO</button>
+        <button class="theme-toggle-btn" id="themeToggle" onclick="toggleTheme()" title="切换主题">🌙</button>
+        <button class="fullscreen-btn" onclick="toggleFullscreen()" title="全屏模式">⛶</button>
+    </div>
+</div>
+
+<!-- ==================== Tab 导航 ==================== -->
+<nav class="tab-nav" role="tablist" aria-label="主导航">
+    <button class="tab-btn active" role="tab" data-tab="tab-overview" aria-selected="true" aria-controls="tab-overview" onclick="switchTab('tab-overview')">概览</button>
+    <button class="tab-btn" role="tab" data-tab="tab-ops" aria-selected="false" aria-controls="tab-ops" onclick="switchTab('tab-ops')">商品运营</button>
+    <button class="tab-btn" role="tab" data-tab="tab-health" aria-selected="false" aria-controls="tab-health" onclick="switchTab('tab-health')">健康度</button>
+    <button class="tab-btn" role="tab" data-tab="tab-review" aria-selected="false" aria-controls="tab-review" onclick="switchTab('tab-review')">评价</button>
+    <button class="tab-btn" role="tab" data-tab="tab-market" aria-selected="false" aria-controls="tab-market" onclick="switchTab('tab-market')">市场</button>
+    <button class="tab-btn" role="tab" data-tab="tab-lifecycle" aria-selected="false" aria-controls="tab-lifecycle" onclick="switchTab('tab-lifecycle')">生命周期</button>
+    <button class="tab-btn" role="tab" data-tab="tab-compare" aria-selected="false" aria-controls="tab-compare" onclick="switchTab('tab-compare')">对比分析</button>
+</nav>
+
+<!-- ==================== 时间维度栏 ==================== -->
+<div class="dim-bar">
+    <div class="dim-switcher" role="radiogroup" aria-label="时间维度">
+        <button class="dim-btn" role="radio" aria-checked="false" data-dim="daily" onclick="switchDimension('daily')">日</button>
+        <button class="dim-btn" role="radio" aria-checked="false" data-dim="weekly" onclick="switchDimension('weekly')">周</button>
+        <button class="dim-btn active" role="radio" aria-checked="true" data-dim="monthly" onclick="switchDimension('monthly')">月</button>
+    </div>
+    <select class="period-select" id="periodSelect" onchange="onPeriodChange()">
+        <option value="">加载中...</option>
+    </select>
+</div>
+
+<!-- ==================== 主容器 ==================== -->
+<div class="main-container">
+
+    <!-- Tab: 概览 -->
+    <div class="tab-content active" id="tab-overview">
+        {% include 'partials/tab-overview.html' %}
+    </div>
+
+    <!-- Tab: 商品运营 -->
+    <div class="tab-content" id="tab-ops">
+        {% include 'partials/tab-ops.html' %}
+    </div>
+
+    <!-- Tab: 健康度 -->
+    <div class="tab-content" id="tab-health">
+        {% include 'partials/tab-health.html' %}
+    </div>
+
+    <!-- Tab: 评价 -->
+    <div class="tab-content" id="tab-review">
+        {% include 'partials/tab-review.html' %}
+    </div>
+
+    <!-- Tab: 市场 -->
+    <div class="tab-content" id="tab-market">
+        {% include 'partials/tab-market.html' %}
+    </div>
+
+    <!-- Tab: 生命周期 -->
+    <div class="tab-content" id="tab-lifecycle">
+        {% include 'partials/tab-lifecycle.html' %}
+    </div>
+
+    <!-- Tab: 对比分析 -->
+    <div class="tab-content" id="tab-compare">
+        {% include 'partials/tab-compare.html' %}
+    </div>
+
+</div><!-- /main-container -->
+
+<!-- ==================== 工具箱 ==================== -->
+{% include 'partials/toolbox.html' %}
+
+<!-- ==================== Scripts ==================== -->
+<script src="/static/js/bundle.min.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    checkOnboarding();
+    restoreFromURL();
+    loadPeriods().then(() => {
+        restoreTab();
+    });
+    setupReviewUpload();
+    setupMarketUpload();
+    initToolbox();
+    restoreAutoRefresh();
+    loadLifecycleData();
+    if (typeof initCompareTab === 'function') initCompareTab();
+});
+</script>
+<!-- Toast容器 -->
+<div id="toastContainer" style="position:fixed;top:20px;right:20px;z-index:10000;display:flex;flex-direction:column;gap:8px;"></div>
+</body>
+</html>
