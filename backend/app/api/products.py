@@ -121,8 +121,7 @@ def build_product_query(dimension: str, period: str, db: Session):
         func.avg(Model.payment_conversion).label('conversion'),
         func.sum(Model.ad_spend).label('ad_spend'),
         func.avg(Model.ad_roi).label('roi'),
-        func.sum(Model.order_count).label('order_count'),
-        func.sum(Model.payment_count).label('payment_count'),
+        func.sum(Model.payment_qty).label('payment_count'),
     ]
     
     if dimension == 'monthly':
@@ -223,7 +222,7 @@ def get_products(
     elif sort_col == 'roi':
         query = query.order_by(sort_dir(func.avg(Model.ad_roi)))
     elif sort_col == 'title':
-        query = query.order_by(sort_dir(func.lower(Model.product_name)))
+        query = query.order_by(sort_dir(func.lower(func.max(Product.title))))
     else:
         if hasattr(Model, sort_col):
             query = query.order_by(sort_dir(func.sum(getattr(Model, sort_col))))
@@ -288,7 +287,7 @@ def get_products(
             'ad_spend': ad_spend,
             'roi': roi,
             'payment_count': int(p.payment_count or 0),
-            'order_count': int(p.order_count or 0),
+            'order_count': int(p.payment_count or 0),
         }
         
         if dim == 'monthly':
