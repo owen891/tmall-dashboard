@@ -1,32 +1,120 @@
 <template>
   <div class="column-selector">
-    <el-drawer
+    <el-dialog
       v-model="visible"
-      title="字段设置"
-      size="550px"
-      direction="rtl"
+      title="自定义数据字段"
+      width="900px"
+      :close-on-click-modal="false"
     >
-      <div class="drawer-content">
-        <div class="search-section">
-          <el-input
-            v-model="searchKeyword"
-            placeholder="搜索字段..."
-            clearable
-            size="default"
-          >
-            <template #prefix>
-              <el-icon><Search /></el-icon>
-            </template>
-          </el-input>
+      <div class="dialog-content">
+        <div class="dialog-header">
+          <div class="header-left">
+            <span class="title">自定义数据字段</span>
+            <span class="field-count">({{ selectedFields.length }}/{{ totalFieldCount }})</span>
+          </div>
+          <div class="header-right">
+            <el-input
+              v-model="searchKeyword"
+              placeholder="请输入关键字"
+              clearable
+              size="small"
+              class="search-input"
+            >
+              <template #prefix>
+                <el-icon><Search /></el-icon>
+              </template>
+            </el-input>
+            <el-button size="small" @click="restoreDefault">恢复默认</el-button>
+            <el-button size="small" type="danger" @click="clearAll">清空</el-button>
+          </div>
         </div>
 
-        <div class="template-section">
-          <div class="section-header">
-            <span>模板</span>
-            <el-button size="small" @click="showSaveTemplate = true">保存当前</el-button>
+        <div class="main-content">
+          <div class="left-panel">
+            <div class="panel-header">
+              <span>可用字段</span>
+            </div>
+            <div class="fields-tree">
+              <div v-for="category in fieldCategories" :key="category.key" class="category-item">
+                <div 
+                  class="category-title" 
+                  @click="toggleCategory(category.key)"
+                  :class="{ expanded: expandedCategories[category.key] }"
+                >
+                  <el-icon class="expand-icon">
+                    <ArrowDown v-if="expandedCategories[category.key]" />
+                    <ArrowRight v-else />
+                  </el-icon>
+                  <span>{{ category.label }}</span>
+                  <span class="category-count">({{ getFilteredFields(category).length }})</span>
+                  <el-button 
+                    v-if="expandedCategories[category.key] && getFilteredFields(category).length > 0"
+                    size="mini" 
+                    type="text"
+                    @click.stop="toggleCategoryAll(category, !isCategoryAllSelected(category))"
+                  >
+                    {{ isCategoryAllSelected(category) ? '取消' : '全选' }}
+                  </el-button>
+                </div>
+                <div v-show="expandedCategories[category.key]" class="category-content">
+                  <el-checkbox
+                    v-for="field in getFilteredFields(category)"
+                    :key="field.key"
+                    v-model="selectedFields"
+                    :value="field.key"
+                    :disabled="!expandedCategories[category.key]"
+                    class="field-checkbox"
+                  >
+                    {{ field.label }}
+                  </el-checkbox>
+                </div>
+              </div>
+            </div>
           </div>
-          <div class="template-list">
-            <el-select v-model="currentTemplate" placeholder="选择模板" size="default" @change="applyTemplate">
+
+          <div class="center-panel">
+            <el-button type="primary" :disabled="!hasUnselectedFields" @click="addToSelected" class="move-btn">
+              <el-icon><ArrowRight /></el-icon>
+            </el-button>
+            <el-button type="primary" :disabled="!selectedFields.length" @click="removeFromSelected" class="move-btn">
+              <el-icon><ArrowLeft /></el-icon>
+            </el-button>
+          </div>
+
+          <div class="right-panel">
+            <div class="panel-header">
+              <span>已选字段</span>
+              <span class="hint">拖动以下字段进行排序</span>
+            </div>
+            <div class="selected-fields">
+              <div 
+                v-for="(fieldKey, index) in selectedFields" 
+                :key="fieldKey"
+                class="selected-field-item"
+                draggable="true"
+                @dragstart="handleDragStart(index, $event)"
+                @dragover.prevent
+                @drop="handleDrop(index, $event)"
+              >
+                <span class="drag-handle">
+                  <el-icon><Menu /></el-icon>
+                </span>
+                <span class="field-label">{{ getFieldLabel(fieldKey) }}</span>
+                <el-button size="mini" type="text" @click="removeField(fieldKey)">
+                  <el-icon><Close /></el-icon>
+                </el-button>
+              </div>
+              <div v-if="!selectedFields.length" class="empty-state">
+                <el-icon class="empty-icon"><Document /></el-icon>
+                <span>暂无已选字段</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="dialog-footer">
+          <div class="footer-left">
+            <el-select v-model="currentTemplate" placeholder="选择模板" size="small" @change="applyTemplate">
               <el-option
                 v-for="tpl in templates"
                 :key="tpl.id"
@@ -34,82 +122,34 @@
                 :value="tpl.id"
               />
             </el-select>
+            <el-button size="small" @click="showSaveTemplate = true">保存到个人视窗</el-button>
             <el-button
               v-if="currentTemplate && !isDefaultTemplate"
               size="small"
               type="danger"
               @click="deleteTemplate"
             >
-              删除
+              删除模板
             </el-button>
           </div>
-        </div>
-
-        <el-divider />
-
-        <div class="fields-section">
-          <div class="section-header">
-            <span>字段列表 ({{ filteredFieldCount }} / {{ totalFieldCount }})</span>
-            <div class="header-actions">
-              <el-select v-model="sortMode" size="small" style="width: 120px">
-                <el-option label="默认顺序" value="default" />
-                <el-option label="按名称排序" value="name" />
-                <el-option label="按分类折叠" value="category" />
-              </el-select>
-              <el-button size="small" @click="checkAll">全选</el-button>
-              <el-button size="small" @click="uncheckAll">取消全选</el-button>
-            </div>
-          </div>
-
-          <div v-for="category in sortedCategories" :key="category.key" class="category-group">
-            <div class="category-header" @click="toggleCategory(category.key)">
-              <el-checkbox
-                :model-value="isCategoryAllSelected(category)"
-                :indeterminate="isCategoryPartiallySelected(category)"
-                @change="(val) => toggleCategoryAll(category, val)"
-                @click.stop
-              >
-                {{ category.label }} ({{ getFilteredFields(category).length }})
-              </el-checkbox>
-              <el-icon class="toggle-icon">
-                <ArrowDown v-if="expandedCategories[category.key]" />
-                <ArrowRight v-else />
-              </el-icon>
-            </div>
-
-            <div v-show="expandedCategories[category.key]" class="category-fields">
-              <el-checkbox
-                v-for="field in getFilteredFields(category)"
-                :key="field.key"
-                v-model="selectedFields"
-                :label="field.key"
-                :value="field.key"
-                @change="updateConfig"
-              >
-                {{ field.label }}
-                <span class="field-key">{{ field.key }}</span>
-              </el-checkbox>
-            </div>
+          <div class="footer-right">
+            <el-button @click="visible = false">取消</el-button>
+            <el-button type="primary" @click="confirmSelection">确定</el-button>
           </div>
         </div>
       </div>
 
-      <div class="drawer-footer">
-        <el-button @click="visible = false">取消</el-button>
-        <el-button type="primary" @click="confirmSelection">确定</el-button>
-      </div>
-    </el-drawer>
-
-    <el-dialog v-model="showSaveTemplate" title="保存模板" width="400px">
-      <el-form>
-        <el-form-item label="模板名称">
-          <el-input v-model="newTemplateName" placeholder="请输入模板名称" />
-        </el-form-item>
-      </el-form>
-      <template #footer>
-        <el-button @click="showSaveTemplate = false">取消</el-button>
-        <el-button type="primary" @click="saveTemplate">保存</el-button>
-      </template>
+      <el-dialog v-model="showSaveTemplate" title="保存模板" width="400px">
+        <el-form>
+          <el-form-item label="模板名称">
+            <el-input v-model="newTemplateName" placeholder="请输入模板名称" />
+          </el-form-item>
+        </el-form>
+        <template #footer>
+          <el-button @click="showSaveTemplate = false">取消</el-button>
+          <el-button type="primary" @click="saveTemplate">保存</el-button>
+        </template>
+      </el-dialog>
     </el-dialog>
   </div>
 </template>
@@ -117,7 +157,7 @@
 <script setup>
 import { ref, computed, watch } from 'vue'
 import { ElMessage } from 'element-plus'
-import { ArrowDown, ArrowRight, Search } from '@element-plus/icons-vue'
+import { Search, ArrowDown, ArrowRight, ArrowLeft, Menu, Close, Document } from '@element-plus/icons-vue'
 import {
   fieldCategories,
   defaultTemplates,
@@ -126,7 +166,8 @@ import {
   deleteCustomTemplate as deleteTemplateFromStorage,
   saveColumnConfig,
   loadColumnConfig,
-  getFieldConfig
+  getFieldConfig,
+  defaultVisibleFields
 } from '@/config/columns'
 
 const props = defineProps({
@@ -146,36 +187,19 @@ const currentTemplate = ref(null)
 const showSaveTemplate = ref(false)
 const newTemplateName = ref('')
 const searchKeyword = ref('')
-const sortMode = ref('default')
+const draggedIndex = ref(-1)
 
 const totalFieldCount = computed(() => {
   return fieldCategories.reduce((sum, cat) => sum + cat.fields.length, 0)
 })
 
-const filteredFieldCount = computed(() => {
-  return fieldCategories.reduce((sum, cat) => sum + getFilteredFields(cat).length, 0)
+const hasUnselectedFields = computed(() => {
+  const allFields = fieldCategories.flatMap(cat => cat.fields.map(f => f.key))
+  return allFields.some(f => !selectedFields.value.includes(f))
 })
 
 const isDefaultTemplate = computed(() => {
   return defaultTemplates.some(t => t.id === currentTemplate.value)
-})
-
-const sortedCategories = computed(() => {
-  let cats = [...fieldCategories]
-  
-  if (sortMode.value === 'name') {
-    cats = cats.sort((a, b) => a.label.localeCompare(b.label, 'zh-CN'))
-  } else if (sortMode.value === 'category') {
-    cats = cats.sort((a, b) => {
-      const aCount = getFilteredFields(a).length
-      const bCount = getFilteredFields(b).length
-      if (aCount === 0) return 1
-      if (bCount === 0) return -1
-      return bCount - aCount
-    })
-  }
-  
-  return cats
 })
 
 function getFilteredFields(category) {
@@ -187,6 +211,11 @@ function getFilteredFields(category) {
     f.label.toLowerCase().includes(keyword) || 
     f.key.toLowerCase().includes(keyword)
   )
+}
+
+function getFieldLabel(fieldKey) {
+  const config = getFieldConfig(fieldKey)
+  return config ? config.label : fieldKey
 }
 
 watch(() => props.modelValue, (newVal) => {
@@ -251,12 +280,48 @@ function toggleCategoryAll(category, checked) {
   }
 }
 
-function checkAll() {
-  selectedFields.value = fieldCategories.flatMap(cat => cat.fields.map(f => f.key))
+function restoreDefault() {
+  selectedFields.value = [...defaultVisibleFields]
+  currentTemplate.value = 'default'
+  ElMessage.info('已恢复默认字段')
 }
 
-function uncheckAll() {
+function clearAll() {
   selectedFields.value = []
+  currentTemplate.value = null
+  ElMessage.info('已清空所有字段')
+}
+
+function addToSelected() {
+  const allFields = fieldCategories.flatMap(cat => cat.fields.map(f => f.key))
+  allFields.forEach(f => {
+    if (!selectedFields.value.includes(f)) {
+      selectedFields.value.push(f)
+    }
+  })
+}
+
+function removeFromSelected() {
+  selectedFields.value = []
+}
+
+function removeField(fieldKey) {
+  selectedFields.value = selectedFields.value.filter(f => f !== fieldKey)
+}
+
+function handleDragStart(index, event) {
+  draggedIndex.value = index
+  event.dataTransfer.effectAllowed = 'move'
+}
+
+function handleDrop(targetIndex, event) {
+  if (draggedIndex.value === -1 || draggedIndex.value === targetIndex) {
+    return
+  }
+  const draggedField = selectedFields.value[draggedIndex.value]
+  selectedFields.value.splice(draggedIndex.value, 1)
+  selectedFields.value.splice(targetIndex, 0, draggedField)
+  draggedIndex.value = -1
 }
 
 function applyTemplate(templateId) {
@@ -299,10 +364,6 @@ function deleteTemplate() {
   }
 }
 
-function updateConfig() {
-  emit('update:modelValue', [...selectedFields.value])
-}
-
 function confirmSelection() {
   const config = {
     visibleFields: [...selectedFields.value],
@@ -323,96 +384,215 @@ defineExpose({ open })
 </script>
 
 <style scoped>
-.drawer-content {
-  padding: 0 20px;
-  height: calc(100vh - 140px);
-  overflow-y: auto;
+.dialog-content {
+  display: flex;
+  flex-direction: column;
+  height: 600px;
 }
 
-.search-section {
-  margin-bottom: 20px;
-}
-
-.template-section {
-  margin-bottom: 20px;
-}
-
-.section-header {
+.dialog-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 15px;
-  font-weight: 500;
+  padding: 15px 20px;
+  border-bottom: 1px solid #e4e7ed;
 }
 
-.header-actions {
+.header-left {
   display: flex;
-  gap: 10px;
   align-items: center;
+  gap: 8px;
 }
 
-.template-list {
+.title {
+  font-size: 16px;
+  font-weight: 600;
+  color: #303133;
+}
+
+.field-count {
+  color: #909399;
+  font-size: 14px;
+}
+
+.header-right {
   display: flex;
+  align-items: center;
   gap: 10px;
 }
 
-.template-list .el-select {
+.search-input {
+  width: 200px;
+}
+
+.main-content {
   flex: 1;
+  display: flex;
+  gap: 15px;
+  padding: 20px;
+  overflow: hidden;
 }
 
-.fields-section {
-  margin-top: 20px;
-}
-
-.category-group {
-  margin-bottom: 15px;
+.left-panel, .right-panel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
   border: 1px solid #e4e7ed;
   border-radius: 4px;
   overflow: hidden;
 }
 
-.category-header {
+.panel-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
   padding: 12px 15px;
   background: #f5f7fa;
-  cursor: pointer;
-  user-select: none;
+  border-bottom: 1px solid #e4e7ed;
 }
 
-.category-header:hover {
+.panel-header span:first-child {
+  font-weight: 500;
+  color: #303133;
+}
+
+.hint {
+  font-size: 12px;
+  color: #909399;
+}
+
+.fields-tree {
+  flex: 1;
+  overflow-y: auto;
+  padding: 10px;
+}
+
+.category-item {
+  margin-bottom: 4px;
+}
+
+.category-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  user-select: none;
+  transition: background-color 0.2s;
+}
+
+.category-title:hover {
+  background: #f5f7fa;
+}
+
+.category-title.expanded {
   background: #ecf5ff;
 }
 
-.toggle-icon {
-  font-size: 14px;
+.expand-icon {
+  font-size: 12px;
   color: #909399;
 }
 
-.category-fields {
-  padding: 15px;
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 10px;
-}
-
-.category-fields .el-checkbox {
-  margin-right: 0;
-}
-
-.field-key {
-  margin-left: 8px;
-  font-size: 11px;
+.category-count {
+  font-size: 12px;
   color: #909399;
-  font-family: monospace;
 }
 
-.drawer-footer {
+.category-content {
+  padding-left: 24px;
+  padding-bottom: 8px;
+}
+
+.field-checkbox {
+  display: block;
+  padding: 4px 0;
+  font-size: 13px;
+}
+
+.center-panel {
   display: flex;
-  justify-content: flex-end;
+  flex-direction: column;
+  justify-content: center;
   gap: 10px;
-  padding: 20px;
+  padding: 20px 0;
+}
+
+.move-btn {
+  width: 40px;
+  height: 36px;
+  padding: 0;
+}
+
+.selected-fields {
+  flex: 1;
+  overflow-y: auto;
+  padding: 10px;
+}
+
+.selected-field-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  margin-bottom: 4px;
+  background: #f5f7fa;
+  border-radius: 4px;
+  cursor: move;
+  transition: background-color 0.2s;
+}
+
+.selected-field-item:hover {
+  background: #ecf5ff;
+}
+
+.drag-handle {
+  color: #909399;
+  cursor: grab;
+}
+
+.drag-handle:active {
+  cursor: grabbing;
+}
+
+.field-label {
+  flex: 1;
+  font-size: 13px;
+  color: #303133;
+}
+
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 200px;
+  color: #909399;
+}
+
+.empty-icon {
+  font-size: 48px;
+  margin-bottom: 10px;
+  opacity: 0.5;
+}
+
+.dialog-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 15px 20px;
   border-top: 1px solid #e4e7ed;
+}
+
+.footer-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.footer-right {
+  display: flex;
+  gap: 10px;
 }
 </style>

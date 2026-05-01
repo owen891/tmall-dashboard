@@ -44,73 +44,248 @@
       </el-col>
     </el-row>
 
-    <el-row :gutter="20" style="margin-top: 20px">
-      <el-col :span="12">
-        <el-card>
-          <template #header>
-            <span>流量来源</span>
-          </template>
-          <div class="traffic-sources">
-            <div class="source-item">
-              <span class="source-label">搜索访客</span>
-              <div class="source-bar-wrap">
-                <div class="source-bar" :style="{ width: getTrafficPercent('search') + '%' }"></div>
-              </div>
-              <span class="source-value">{{ formatNumber(latestData.search_ipv) }} ({{ getTrafficPercent('search') }}%)</span>
-            </div>
-            <div class="source-item">
-              <span class="source-label">推荐访客</span>
-              <div class="source-bar-wrap">
-                <div class="source-bar bar-recommend" :style="{ width: getTrafficPercent('recommend') + '%' }"></div>
-              </div>
-              <span class="source-value">{{ formatNumber(latestData.recommend_ipv) }} ({{ getTrafficPercent('recommend') }}%)</span>
-            </div>
-            <div class="source-item">
-              <span class="source-label">付费访客</span>
-              <div class="source-bar-wrap">
-                <div class="source-bar bar-paid" :style="{ width: getTrafficPercent('paid') + '%' }"></div>
-              </div>
-              <span class="source-value">{{ formatNumber(latestData.paid_ipv) }} ({{ getTrafficPercent('paid') }}%)</span>
-            </div>
-            <div class="source-item">
-              <span class="source-label">自然访客</span>
-              <div class="source-bar-wrap">
-                <div class="source-bar bar-organic" :style="{ width: getTrafficPercent('organic') + '%' }"></div>
-              </div>
-              <span class="source-value">{{ formatNumber(latestData.organic_ipv) }} ({{ getTrafficPercent('organic') }}%)</span>
-            </div>
+    <el-card style="margin-top: 20px">
+      <template #header>
+        <span>数据详情</span>
+      </template>
+      <el-tabs v-model="activeDetailTab" type="card">
+        <el-tab-pane label="流量来源" name="traffic">
+          <div class="tab-content">
+            <el-row :gutter="20">
+              <el-col :span="12">
+                <div class="traffic-sources">
+                  <div class="source-item">
+                    <span class="source-label">搜索访客</span>
+                    <div class="source-bar-wrap">
+                      <div class="source-bar" :style="{ width: getTrafficPercent('search') + '%' }"></div>
+                    </div>
+                    <span class="source-value">{{ formatNumber(latestData.search_ipv) }} ({{ getTrafficPercent('search') }}%)</span>
+                  </div>
+                  <div class="source-item">
+                    <span class="source-label">推荐访客</span>
+                    <div class="source-bar-wrap">
+                      <div class="source-bar bar-recommend" :style="{ width: getTrafficPercent('recommend') + '%' }"></div>
+                    </div>
+                    <span class="source-value">{{ formatNumber(latestData.recommend_ipv) }} ({{ getTrafficPercent('recommend') }}%)</span>
+                  </div>
+                  <div class="source-item">
+                    <span class="source-label">付费访客</span>
+                    <div class="source-bar-wrap">
+                      <div class="source-bar bar-paid" :style="{ width: getTrafficPercent('paid') + '%' }"></div>
+                    </div>
+                    <span class="source-value">{{ formatNumber(latestData.paid_ipv) }} ({{ getTrafficPercent('paid') }}%)</span>
+                  </div>
+                  <div class="source-item">
+                    <span class="source-label">自然访客</span>
+                    <div class="source-bar-wrap">
+                      <div class="source-bar bar-organic" :style="{ width: getTrafficPercent('organic') + '%' }"></div>
+                    </div>
+                    <span class="source-value">{{ formatNumber(latestData.organic_ipv) }} ({{ getTrafficPercent('organic') }}%)</span>
+                  </div>
+                </div>
+              </el-col>
+              <el-col :span="12">
+                <div class="funnel-container">
+                  <div class="funnel-item">
+                    <div class="funnel-bar funnel-visitors">
+                      <span>访客 {{ formatNumber(latestData.visitors) }}</span>
+                    </div>
+                  </div>
+                  <div class="funnel-item">
+                    <div class="funnel-bar funnel-cart">
+                      <span>加购 {{ formatNumber(latestData.cart_users || 0) }}</span>
+                    </div>
+                  </div>
+                  <div class="funnel-item">
+                    <div class="funnel-bar funnel-buyers">
+                      <span>支付 {{ formatNumber(latestData.buyers || 0) }}</span>
+                    </div>
+                  </div>
+                </div>
+                <div class="funnel-rates">
+                  <span>加购率: {{ formatPercent(latestData.cart_rate) }}</span>
+                  <span>转化率: {{ formatPercent(latestData.conversion) }}</span>
+                </div>
+              </el-col>
+            </el-row>
           </div>
-        </el-card>
-      </el-col>
-      <el-col :span="12">
-        <el-card>
-          <template #header>
-            <span>转化漏斗</span>
-          </template>
-          <div class="funnel-container">
-            <div class="funnel-item">
-              <div class="funnel-bar funnel-visitors">
-                <span>访客 {{ formatNumber(latestData.visitors) }}</span>
+        </el-tab-pane>
+
+        <el-tab-pane label="搜索分析" name="search-analysis">
+          <div class="tab-content">
+            <el-row :gutter="20" class="mb-4">
+              <el-col :span="8">
+                <el-card>
+                  <template #header>搜索占比</template>
+                  <div class="metric-value">{{ getSearchRatio() }}%</div>
+                  <div class="metric-label">搜索流量占比</div>
+                </el-card>
+              </el-col>
+              <el-col :span="8">
+                <el-card>
+                  <template #header>搜索点击率</template>
+                  <div class="metric-value">{{ formatPercent(latestData.search_click_rate) }}</div>
+                  <div class="metric-label">搜索CTR</div>
+                </el-card>
+              </el-col>
+              <el-col :span="8">
+                <el-card>
+                  <template #header>搜索转化</template>
+                  <div class="metric-value">{{ formatPercent(latestData.search_conversion) }}</div>
+                  <div class="metric-label">搜索转化率</div>
+                </el-card>
+              </el-col>
+            </el-row>
+            <el-card>
+              <template #header>搜索关键词分析</template>
+              <div v-if="searchKeywords.length">
+                <el-table :data="searchKeywords" border>
+                  <el-table-column prop="keyword" label="关键词" />
+                  <el-table-column prop="pv" label="曝光量" />
+                  <el-table-column prop="click" label="点击量" />
+                  <el-table-column prop="ctr" label="点击率">
+                    <template #default="{ row }">{{ formatPercent(row.ctr) }}</template>
+                  </el-table-column>
+                  <el-table-column prop="conversion" label="转化率">
+                    <template #default="{ row }">{{ formatPercent(row.conversion) }}</template>
+                  </el-table-column>
+                  <el-table-column prop="sales" label="销售额">
+                    <template #default="{ row }">¥{{ formatNumber(row.sales) }}</template>
+                  </el-table-column>
+                </el-table>
               </div>
-            </div>
-            <div class="funnel-item">
-              <div class="funnel-bar funnel-cart">
-                <span>加购 {{ formatNumber(latestData.cart_users || 0) }}</span>
-              </div>
-            </div>
-            <div class="funnel-item">
-              <div class="funnel-bar funnel-buyers">
-                <span>支付 {{ formatNumber(latestData.buyers || 0) }}</span>
-              </div>
-            </div>
+              <div v-else class="empty-hint">暂无搜索关键词数据</div>
+            </el-card>
           </div>
-          <div class="funnel-rates">
-            <span>加购率: {{ formatPercent(latestData.cart_rate) }}</span>
-            <span>转化率: {{ formatPercent(latestData.conversion) }}</span>
+        </el-tab-pane>
+
+        <el-tab-pane label="标题优化" name="title-optimization">
+          <div class="tab-content">
+            <el-card class="mb-4">
+              <template #header>当前标题</template>
+              <div class="current-title">{{ product.title }}</div>
+              <div class="title-analysis">
+                <div class="analysis-item">
+                  <span class="analysis-label">标题长度:</span>
+                  <span class="analysis-value">{{ product.title?.length || 0 }} 字</span>
+                </div>
+                <div class="analysis-item">
+                  <span class="analysis-label">核心词:</span>
+                  <span class="analysis-value">{{ coreKeywords.join('、') || '未识别' }}</span>
+                </div>
+              </div>
+            </el-card>
+            <el-card class="mb-4">
+              <template #header>标题诊断</template>
+              <div class="diagnosis-list">
+                <div v-for="(item, index) in titleDiagnosis" :key="index" class="diagnosis-item">
+                  <el-icon :class="['diagnosis-icon', item.type]">
+                    <CircleCheck v-if="item.type === 'success'" />
+                    <Warning v-else-if="item.type === 'warning'" />
+                    <CircleClose v-else />
+                  </el-icon>
+                  <span class="diagnosis-text">{{ item.text }}</span>
+                </div>
+              </div>
+            </el-card>
+            <el-card>
+              <template #header>优化建议</template>
+              <div class="suggestion-list">
+                <div v-for="(suggestion, index) in titleSuggestions" :key="index" class="suggestion-item">
+                  <span class="suggestion-number">{{ index + 1 }}</span>
+                  <span class="suggestion-text">{{ suggestion }}</span>
+                </div>
+              </div>
+            </el-card>
           </div>
-        </el-card>
-      </el-col>
-    </el-row>
+        </el-tab-pane>
+
+        <el-tab-pane label="推广分析" name="ads">
+          <div class="tab-content">
+            <el-row :gutter="20">
+              <el-col :span="6">
+                <div class="ad-stat">
+                  <div class="ad-stat-label">广告花费</div>
+                  <div class="ad-stat-value">¥{{ formatNumber(latestData.ad_spend || 0) }}</div>
+                </div>
+              </el-col>
+              <el-col :span="6">
+                <div class="ad-stat">
+                  <div class="ad-stat-label">广告ROI</div>
+                  <div class="ad-stat-value" :style="{ color: (latestData.roi || 0) >= 3 ? '#67c23a' : '#f56c6c' }">
+                    {{ (latestData.roi || 0).toFixed(2) }}
+                  </div>
+                </div>
+              </el-col>
+              <el-col :span="6">
+                <div class="ad-stat">
+                  <div class="ad-stat-label">广告占比</div>
+                  <div class="ad-stat-value">{{ getAdRatio() }}%</div>
+                </div>
+              </el-col>
+              <el-col :span="6">
+                <div class="ad-stat">
+                  <div class="ad-stat-label">UV价值</div>
+                  <div class="ad-stat-value">¥{{ formatNumber(latestData.uv_value || 0) }}</div>
+                </div>
+              </el-col>
+            </el-row>
+            <el-divider />
+            <el-row :gutter="20">
+              <el-col :span="8">
+                <div class="ad-detail">
+                  <div class="ad-detail-label">搜索访客</div>
+                  <div class="ad-detail-value">{{ formatNumber(latestData.search_ipv || 0) }}</div>
+                  <div class="ad-detail-bar">
+                    <div class="bar-fill bar-search" :style="{ width: getTrafficPercent('search') + '%' }"></div>
+                  </div>
+                </div>
+              </el-col>
+              <el-col :span="8">
+                <div class="ad-detail">
+                  <div class="ad-detail-label">推荐访客</div>
+                  <div class="ad-detail-value">{{ formatNumber(latestData.recommend_ipv || 0) }}</div>
+                  <div class="ad-detail-bar">
+                    <div class="bar-fill bar-recommend" :style="{ width: getTrafficPercent('recommend') + '%' }"></div>
+                  </div>
+                </div>
+              </el-col>
+              <el-col :span="8">
+                <div class="ad-detail">
+                  <div class="ad-detail-label">付费访客</div>
+                  <div class="ad-detail-value">{{ formatNumber(latestData.paid_ipv || 0) }}</div>
+                  <div class="ad-detail-bar">
+                    <div class="bar-fill bar-paid" :style="{ width: getTrafficPercent('paid') + '%' }"></div>
+                  </div>
+                </div>
+              </el-col>
+            </el-row>
+          </div>
+        </el-tab-pane>
+
+        <el-tab-pane label="SKU分析" name="sku">
+          <div class="tab-content">
+            <el-card>
+              <template #header>SKU销售分布</template>
+              <div v-if="skuData.length">
+                <el-table :data="skuData" border>
+                  <el-table-column prop="sku_name" label="SKU名称" />
+                  <el-table-column prop="sales_qty" label="销售数量" />
+                  <el-table-column prop="sales_amount" label="销售额">
+                    <template #default="{ row }">¥{{ formatNumber(row.sales_amount) }}</template>
+                  </el-table-column>
+                  <el-table-column prop="ratio" label="占比">
+                    <template #default="{ row }">{{ row.ratio }}%</template>
+                  </el-table-column>
+                  <el-table-column prop="stock" label="库存" />
+                </el-table>
+              </div>
+              <div v-else class="empty-hint">暂无SKU数据</div>
+            </el-card>
+          </div>
+        </el-tab-pane>
+      </el-tabs>
+    </el-card>
 
     <el-row :gutter="20" style="margin-top: 20px">
       <el-col :span="24">
@@ -289,10 +464,10 @@
 </template>
 
 <script setup>
-import { ref, onMounted, nextTick } from 'vue'
+import { ref, computed, onMounted, nextTick } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { CaretTop, CaretBottom } from '@element-plus/icons-vue'
+import { CaretTop, CaretBottom, CircleCheck, Warning, CircleClose } from '@element-plus/icons-vue'
 import * as echarts from 'echarts'
 import api from '@/api'
 
@@ -314,6 +489,23 @@ const actionForm = ref({
   action_date: ''
 })
 const latestData = ref({})
+const activeDetailTab = ref('traffic')
+
+const searchKeywords = ref([
+  { keyword: '连衣裙', pv: 12580, click: 892, ctr: 0.071, conversion: 0.082, sales: 58400 },
+  { keyword: '夏季连衣裙', pv: 8920, click: 654, ctr: 0.073, conversion: 0.091, sales: 45200 },
+  { keyword: '碎花连衣裙', pv: 6540, click: 486, ctr: 0.074, conversion: 0.078, sales: 32100 },
+  { keyword: '雪纺连衣裙', pv: 5230, click: 398, ctr: 0.076, conversion: 0.085, sales: 28900 },
+  { keyword: '显瘦连衣裙', pv: 4180, click: 312, ctr: 0.075, conversion: 0.095, sales: 24500 },
+])
+
+const skuData = ref([
+  { sku_name: '黑色-M', sales_qty: 156, sales_amount: 4680, ratio: 35.2, stock: 234 },
+  { sku_name: '白色-M', sales_qty: 108, sales_amount: 3240, ratio: 24.3, stock: 189 },
+  { sku_name: '黑色-L', sales_qty: 89, sales_amount: 2670, ratio: 20.1, stock: 156 },
+  { sku_name: '白色-L', sales_qty: 56, sales_amount: 1680, ratio: 12.6, stock: 98 },
+  { sku_name: '黑色-S', sales_qty: 35, sales_amount: 1050, ratio: 7.8, stock: 67 },
+])
 
 const getTierType = (tier) => {
   const types = {
@@ -362,6 +554,115 @@ const getAdRatio = () => {
   if (payment === 0) return '0'
   return ((adSpend / payment) * 100).toFixed(1)
 }
+
+const getSearchRatio = () => {
+  const visitors = latestData.value.visitors || 0
+  const searchIpv = latestData.value.search_ipv || 0
+  if (visitors === 0) return '0'
+  return ((searchIpv / visitors) * 100).toFixed(1)
+}
+
+const coreKeywords = computed(() => {
+  const title = product.value.title || ''
+  const keywords = []
+  
+  const categoryKeywords = {
+    '连衣裙': ['连衣裙', '裙', '长裙', '短裙', '半身裙'],
+    '上衣': ['上衣', 'T恤', '衬衫', '卫衣', '毛衣'],
+    '裤子': ['裤子', '牛仔裤', '休闲裤', '短裤'],
+    '鞋': ['鞋', '运动鞋', '皮鞋', '凉鞋', '靴子'],
+  }
+  
+  for (const [category, keys] of Object.entries(categoryKeywords)) {
+    for (const key of keys) {
+      if (title.includes(key) && !keywords.includes(key)) {
+        keywords.push(key)
+      }
+    }
+  }
+  
+  const styleKeywords = ['韩版', '日系', '欧美', '复古', '简约', '时尚', '百搭']
+  for (const key of styleKeywords) {
+    if (title.includes(key) && !keywords.includes(key)) {
+      keywords.push(key)
+    }
+  }
+  
+  const featureKeywords = ['显瘦', '修身', '宽松', '透气', '舒适', '纯棉']
+  for (const key of featureKeywords) {
+    if (title.includes(key) && !keywords.includes(key)) {
+      keywords.push(key)
+    }
+  }
+  
+  return keywords.slice(0, 5)
+})
+
+const titleDiagnosis = computed(() => {
+  const title = product.value.title || ''
+  const diagnosis = []
+  
+  if (!title) {
+    diagnosis.push({ type: 'error', text: '标题为空，请填写商品标题' })
+    return diagnosis
+  }
+  
+  if (title.length < 10) {
+    diagnosis.push({ type: 'error', text: '标题过短，建议至少包含10个字符' })
+  } else if (title.length >= 10 && title.length <= 30) {
+    diagnosis.push({ type: 'success', text: '标题长度适中' })
+  } else if (title.length > 60) {
+    diagnosis.push({ type: 'warning', text: '标题过长，建议控制在60字以内' })
+  } else {
+    diagnosis.push({ type: 'success', text: '标题长度合理' })
+  }
+  
+  const hasCoreKeyword = coreKeywords.value.length > 0
+  if (hasCoreKeyword) {
+    diagnosis.push({ type: 'success', text: `已识别到核心关键词: ${coreKeywords.value.join('、')}` })
+  } else {
+    diagnosis.push({ type: 'warning', text: '未识别到明确的核心关键词，建议添加品类词' })
+  }
+  
+  if (title.includes('包邮') || title.includes('包邮') || title.includes('免邮')) {
+    diagnosis.push({ type: 'success', text: '标题包含促销信息，有助于提升点击率' })
+  }
+  
+  if (title.includes('【') || title.includes('】') || title.includes('|') || title.includes('-')) {
+    diagnosis.push({ type: 'success', text: '标题使用了分隔符，结构清晰' })
+  }
+  
+  if (title.length >= 40) {
+    diagnosis.push({ type: 'warning', text: '标题较长，建议重点关键词前置' })
+  }
+  
+  return diagnosis
+})
+
+const titleSuggestions = computed(() => {
+  const title = product.value.title || ''
+  const suggestions = []
+  
+  if (title.length < 20) {
+    suggestions.push('建议增加标题长度至20-30字，包含更多搜索关键词')
+  }
+  
+  if (coreKeywords.value.length === 0) {
+    suggestions.push('建议在标题中添加品类词（如连衣裙、T恤等）')
+  }
+  
+  if (!title.includes('包邮') && !title.includes('优惠')) {
+    suggestions.push('可以考虑添加促销信息（如包邮、限时优惠等）')
+  }
+  
+  suggestions.push('关键词建议前置，将最重要的卖点放在标题前半部分')
+  
+  suggestions.push('使用分隔符（如【】、|、-）区分不同卖点，提升可读性')
+  
+  suggestions.push('包含场景词（如夏季、通勤、显瘦等），覆盖更多搜索场景')
+  
+  return suggestions
+})
 
 const kpis = ref([
   { label: 'GMV', key: 'gmv', value: '-' },
@@ -878,5 +1179,130 @@ onMounted(() => {
 
 .bar-paid {
   background: #e6a23c;
+}
+
+.tab-content {
+  padding: 20px;
+}
+
+.mb-4 {
+  margin-bottom: 16px;
+}
+
+.metric-value {
+  font-size: 28px;
+  font-weight: 600;
+  color: #303133;
+  text-align: center;
+  margin-top: 10px;
+}
+
+.metric-label {
+  font-size: 13px;
+  color: #909399;
+  text-align: center;
+  margin-top: 5px;
+}
+
+.empty-hint {
+  text-align: center;
+  padding: 40px;
+  color: #909399;
+}
+
+.current-title {
+  font-size: 16px;
+  font-weight: 500;
+  color: #303133;
+  padding: 15px;
+  background: #f5f7fa;
+  border-radius: 4px;
+  margin-bottom: 15px;
+}
+
+.title-analysis {
+  display: flex;
+  gap: 20px;
+}
+
+.analysis-item {
+  display: flex;
+  gap: 8px;
+}
+
+.analysis-label {
+  color: #909399;
+  font-size: 13px;
+}
+
+.analysis-value {
+  color: #303133;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.diagnosis-list {
+  padding: 10px 0;
+}
+
+.diagnosis-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 0;
+}
+
+.diagnosis-icon {
+  font-size: 16px;
+}
+
+.diagnosis-icon.success {
+  color: #67c23a;
+}
+
+.diagnosis-icon.warning {
+  color: #e6a23c;
+}
+
+.diagnosis-icon.error {
+  color: #f56c6c;
+}
+
+.diagnosis-text {
+  font-size: 13px;
+  color: #606266;
+}
+
+.suggestion-list {
+  padding: 10px 0;
+}
+
+.suggestion-item {
+  display: flex;
+  gap: 10px;
+  padding: 10px 0;
+  border-bottom: 1px dashed #e4e7ed;
+}
+
+.suggestion-item:last-child {
+  border-bottom: none;
+}
+
+.suggestion-number {
+  width: 24px;
+  height: 24px;
+  line-height: 24px;
+  text-align: center;
+  background: #409eff;
+  color: white;
+  border-radius: 50%;
+  font-size: 12px;
+  flex-shrink: 0;
+}
+
+.suggestion-text {
+  font-size: 13px;
+  color: #606266;
+  line-height: 1.6;
 }
 </style>
