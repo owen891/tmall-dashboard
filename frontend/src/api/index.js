@@ -26,7 +26,16 @@ export default {
     return request.get('/dashboard/quadrant')
   },
   getProducts(params) {
-    return request.get('/products', { params })
+    const { page, page_size, ...rest } = params || {}
+    const limit = page_size || 20
+    const offset = page ? (page - 1) * limit : 0
+    return request.get('/products', { 
+      params: { 
+        limit, 
+        offset,
+        ...rest 
+      } 
+    })
   },
   getProduct(productId) {
     return request.get(`/products/${productId}`)
