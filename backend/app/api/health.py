@@ -208,18 +208,18 @@ def get_health_list(
     
     products_query = db.query(
         Model.product_id,
-        Model.product_name,
-        Model.category,
+        Product.title.label('product_name'),
+        Product.category,
         func.sum(Model.payment_amount).label('payment_amount'),
         func.sum(Model.refund_amount).label('refund_amount'),
         func.sum(getattr(Model, visitors_col)).label('visitors'),
         func.avg(Model.payment_conversion).label('conversion'),
         func.sum(Model.ad_spend).label('ad_spend'),
         func.avg(Model.ad_roi).label('roi'),
-    ).filter(*filter_conditions).group_by(
+    ).join(Product, Model.product_id == Product.product_id).filter(*filter_conditions).group_by(
         Model.product_id,
-        Model.product_name,
-        Model.category
+        Product.title,
+        Product.category
     )
     
     total = products_query.count()
@@ -392,7 +392,9 @@ def get_product_health(
     else:
         Model = WeeklyData
     
-    data_list = db.query(Model).filter(
+    data_list = db.query(Model, Product.title.label('product_name'), Product.category).join(
+        Product, Model.product_id == Product.product_id
+    ).filter(
         Model.product_id == product_id
     ).order_by(desc(getattr(Model, date_col))).limit(12).all()
     
@@ -402,7 +404,10 @@ def get_product_health(
     product_info = data_list[0]
     trend = []
     
-    for data in reversed(data_list):
+    for item in reversed(data_list):
+        data = item[0]
+        data_product_name = item[1]
+        data_category = item[2]
         period = None
         if date_col == 'month':
             period = data.month
@@ -439,8 +444,8 @@ def get_product_health(
     return ResponseModel(data={
         "product": {
             "product_id": product_id,
-            "product_name": product_info.product_name,
-            "category": product_info.category,
+            "product_name": data_product_name,
+            "category": data_category,
             "current_health": trend[-1] if trend else None,
             "trend": trend
         },
@@ -480,16 +485,16 @@ def get_health_alerts(
     
     products_data = db.query(
         Model.product_id,
-        Model.product_name,
+        Product.title.label('product_name'),
         func.sum(Model.payment_amount).label('payment_amount'),
         func.sum(Model.refund_amount).label('refund_amount'),
         func.sum(getattr(Model, visitors_col)).label('visitors'),
         func.avg(Model.payment_conversion).label('conversion'),
         func.sum(Model.ad_spend).label('ad_spend'),
         func.avg(Model.ad_roi).label('roi'),
-    ).filter(filter_cond).group_by(
+    ).join(Product, Model.product_id == Product.product_id).filter(filter_cond).group_by(
         Model.product_id,
-        Model.product_name
+        Product.title
     ).all()
     
     all_alerts = []
