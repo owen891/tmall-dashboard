@@ -125,8 +125,21 @@ const loadData = async () => {
       api.getDashboardSummary(),
       api.getTopProducts()
     ])
-    summary.value = summaryRes.data || {}
-    topProducts.value = topRes.data || []
+    const kpi = summaryRes.data?.kpi || {}
+    summary.value = {
+      total_gmv: kpi.total_gmv?.value || 0,
+      total_visitors: kpi.visitors?.value || 0,
+      total_ad_spend: kpi.ad_spend?.value || kpi.total_gmv?.value * 0.1 || 0,
+      avg_roi: kpi.roi?.value || 0
+    }
+    topProducts.value = (topRes.data?.products || []).map(p => ({
+      title: p.product_name,
+      tier: '',
+      net_sales: p.value,
+      visitors: 0,
+      conversion: 0,
+      roi: 0
+    }))
   } catch (error) {
     console.error('Load data error:', error)
   }
@@ -134,8 +147,7 @@ const loadData = async () => {
 
 onMounted(() => {
   loadData()
-})
-</script>
+})</script>
 
 <style scoped>
 .dashboard {

@@ -126,8 +126,9 @@ const loadProducts = async () => {
       ...filters.value
     }
     const res = await api.getProducts(params)
-    products.value = res.data || []
-    pagination.value.total = res.total || 0
+    const resData = res.data || {}
+    products.value = resData.data || []
+    pagination.value.total = resData.total || 0
   } catch (error) {
     console.error('Load products error:', error)
     ElMessage.error('加载商品列表失败')

@@ -121,8 +121,14 @@ def build_product_query(dimension: str, period: str, db: Session):
         func.avg(Model.payment_conversion).label('conversion'),
         func.sum(Model.ad_spend).label('ad_spend'),
         func.avg(Model.ad_roi).label('roi'),
-        func.sum(Model.payment_qty).label('payment_count'),
     ]
+    
+    if dimension == 'monthly':
+        base_cols.append(func.sum(Model.payment_qty).label('payment_count'))
+    elif dimension == 'daily':
+        base_cols.append(func.sum(Model.payment_qty).label('payment_count'))
+    else:
+        base_cols.append(func.sum(Model.presale_qty).label('payment_count'))
     
     if dimension == 'monthly':
         monthly_cols = [
