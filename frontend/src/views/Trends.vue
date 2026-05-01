@@ -9,7 +9,7 @@
           <el-option label="月" value="monthly" />
         </el-select>
         <el-select v-model="productId" @change="loadTrends" placeholder="选择商品" clearable>
-          <el-option v-for="p in products" :key="p.id" :label="p.name" :value="p.id" />
+          <el-option v-for="p in products" :key="p.product_id" :label="p.title" :value="p.product_id" />
         </el-select>
       </div>
     </div>
@@ -22,17 +22,16 @@
       <template #header>
         <div class="card-header">
           <span>事件标记</span>
-          <el-button type="primary" size="small" @click="showAddEvent = true">添加事件</el-button>
+          <el-button type="primary" size="small" @click="showEventDialog = true">添加事件</el-button>
         </div>
       </template>
-      <el-table :data="events" stripe>
+      <el-table :data="eventList" stripe>
         <el-table-column prop="event_date" label="日期" width="120" />
         <el-table-column prop="event_type" label="类型" width="100">
           <template #default="{ row }">
             <el-tag>{{ row.event_type }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="title" label="标题" />
         <el-table-column prop="description" label="描述" />
         <el-table-column label="操作" width="100">
           <template #default="{ row }">
@@ -42,10 +41,10 @@
       </el-table>
     </el-card>
 
-    <el-dialog v-model="showAddEvent" title="添加事件" width="400px">
+    <el-dialog v-model="showEventDialog" title="添加事件" width="400px">
       <el-form :model="eventForm" label-width="80px">
         <el-form-item label="日期">
-          <el-date-picker v-model="eventForm.event_date" type="date" placeholder="选择日期" />
+          <el-date-picker v-model="eventForm.event_date" type="date" placeholder="选择日期" value-format="YYYY-MM-DD" />
         </el-form-item>
         <el-form-item label="类型">
           <el-select v-model="eventForm.event_type" placeholder="选择类型">
@@ -55,16 +54,13 @@
             <el-option label="其他" value="other" />
           </el-select>
         </el-form-item>
-        <el-form-item label="标题">
-          <el-input v-model="eventForm.title" />
-        </el-form-item>
         <el-form-item label="描述">
           <el-input v-model="eventForm.description" type="textarea" />
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="showAddEvent = false">取消</el-button>
-        <el-button type="primary" @click="addEvent">确定</el-button>
+        <el-button @click="showEventDialog = false">取消</el-button>
+        <el-button type="primary" @click="submitEvent">确定</el-button>
       </template>
     </el-dialog>
   </div>
@@ -72,67 +68,70 @@
 
 <script setup>
 import { ref, onMounted, onUnmounted } from 'vue'
-import { ElMessage } from 'element-plus'
-import axios from 'axios'
 import * as echarts from 'echarts'
+import { ElMessage } from 'element-plus'
+import api from '@/api'
 
 const chartRef = ref(null)
-let chart = null
+let trendChart = null
 
 const dimension = ref('weekly')
 const productId = ref(null)
 const products = ref([])
-const trends = ref([])
-const events = ref([])
-const showAddEvent = ref(false)
+const trendData = ref([])
+const eventList = ref([])
+const showEventDialog = ref(false)
 const eventForm = ref({
   event_date: '',
   event_type: '',
-  title: '',
   description: ''
 })
 
 const loadProducts = async () => {
   try {
-    const res = await axios.get('/api/products')
-    if (res.data.code === 200) {
-      products.value = res.data.data
+    const res = await api.getProducts({ limit: 100 })
+    if (res.code === 200 || res.data) {
+      products.value = res.data?.data || []
     }
   } catch (error) {
-    console.error('加载商品失败:', error)
+    console.error('Load products error:', error)
   }
 }
 
 const loadTrends = async () => {
   try {
-    let url = productId.value
-      ? `/api/trends/product/${productId.value}?dimension=${dimension.value}`
-      : `/api/trends/shop?dimension=${dimension.value}`
-
-    const res = await axios.get(url)
-    if (res.data.code === 200) {
-      trends.value = res.data.data
+    const [trendRes, eventsRes] = await Promise.all([
+      api.getTrendsData(productId.value, dimension.value),
+      api.getTrendEvents()
+    ])
+    
+    if (trendRes.code === 200 || trendRes.data) {
+      trendData.value = trendRes.data?.trend || trendRes.data || []
       updateChart()
     }
-
-    const eventsRes = await axios.get('/api/trends/events')
-    if (eventsRes.data.code === 200) {
-      events.value = eventsRes.data.data
+    
+    if (eventsRes.code === 200 || eventsRes.data) {
+      eventList.value = eventsRes.data?.events || eventsRes.data || []
     }
   } catch (error) {
-    console.error('加载趋势失败:', error)
+    console.error('Load trends error:', error)
   }
 }
 
-const addEvent = async () => {
+const submitEvent = async () => {
+  if (!eventForm.value.event_type || !eventForm.value.description) {
+    ElMessage.warning('请填写完整信息')
+    return
+  }
   try {
-    await axios.post('/api/trends/events', {
+    await api.addTrendEvent({
       ...eventForm.value,
-      product_id: productId.value
+      product_id: productId.value,
+      date: eventForm.value.event_date || new Date().toISOString().split('T')[0]
     })
     ElMessage.success('添加成功')
-    showAddEvent.value = false
-    eventForm.value = { event_date: '', event_type: '', title: '', description: '' }
+    showEventDialog.value = false
+    eventForm.value = { event_date: '', event_type: '', description: '' }
     loadTrends()
   } catch (error) {
     ElMessage.error('添加失败')
@@ -141,7 +140,7 @@ const addEvent = async () => {
 
 const deleteEvent = async (id) => {
   try {
-    await axios.delete(`/api/trends/events/${id}`)
+    await api.deleteTrendEvent(id)
     ElMessage.success('删除成功')
     loadTrends()
   } catch (error) {
@@ -150,43 +149,98 @@ const deleteEvent = async (id) => {
 }
 
 const updateChart = () => {
-  if (!chart) return
-
-  const dates = trends.value.map(t => t.date)
+  if (!chartRef.value) return
+  
+  if (trendChart) {
+    trendChart.dispose()
+  }
+  
+  trendChart = echarts.init(chartRef.value)
+  
+  const dates = trendData.value.map(t => t.week_start || t.period || t.date)
   const series = [
-    { name: 'GMV', data: trends.value.map(t => t.gmv) },
-    { name: '访客', data: trends.value.map(t => t.visitors) },
-    { name: '转化率(%)', data: trends.value.map(t => t.conversion) },
-    { name: 'ROI', data: trends.value.map(t => t.roi) }
+    { name: 'GMV', data: trendData.value.map(t => t.net_sales || t.payment_amount) },
+    { name: '访客', data: trendData.value.map(t => t.visitors) },
+    { name: '转化率(%)', data: trendData.value.map(t => (t.conversion || 0) * 100) },
+    { name: 'ROI', data: trendData.value.map(t => t.roi || 0) }
   ]
-
-  chart.setOption({
-    tooltip: { trigger: 'axis' },
-    legend: { data: series.map(s => s.name) },
-    grid: { left: '3%', right: '4%', bottom: '3%', containLabel: true },
-    xAxis: { type: 'category', data: dates },
+  
+  const option = {
+    tooltip: {
+      trigger: 'axis',
+      axisPointer: { type: 'cross' }
+    },
+    legend: {
+      data: series.map(s => s.name),
+      bottom: 0
+    },
+    grid: {
+      left: '3%',
+      right: '4%',
+      bottom: '15%',
+      top: '10%',
+      containLabel: true
+    },
+    xAxis: {
+      type: 'category',
+      data: dates,
+      boundaryGap: false
+    },
     yAxis: [
-      { type: 'value', name: '金额/访客' },
-      { type: 'value', name: '比率(%)', min: 0, max: 10 }
+      {
+        type: 'value',
+        name: '金额/访客',
+        splitLine: { show: true }
+      },
+      {
+        type: 'value',
+        name: '百分比',
+        splitLine: { show: false }
+      }
     ],
-    series: series.map((s, i) => ({
-      name: s.name,
-      type: 'line',
-      data: s.data,
-      yAxisIndex: i >= 2 ? 1 : 0
-    }))
-  })
+    series: [
+      {
+        name: 'GMV',
+        type: 'line',
+        data: series[0].data,
+        smooth: true,
+        yAxisIndex: 0
+      },
+      {
+        name: '访客',
+        type: 'line',
+        data: series[1].data,
+        smooth: true,
+        yAxisIndex: 0
+      },
+      {
+        name: '转化率(%)',
+        type: 'line',
+        data: series[2].data,
+        smooth: true,
+        yAxisIndex: 1
+      },
+      {
+        name: 'ROI',
+        type: 'line',
+        data: series[3].data,
+        smooth: true,
+        yAxisIndex: 1
+      }
+    ]
+  }
+  
+  trendChart.setOption(option)
 }
 
-onMounted(() => {
-  chart = echarts.init(chartRef.value)
-  loadProducts()
-  loadTrends()
-  window.addEventListener('resize', () => chart?.resize())
+onMounted(async () => {
+  await loadProducts()
+  await loadTrends()
+  window.addEventListener('resize', () => trendChart?.resize())
 })
 
 onUnmounted(() => {
-  chart?.dispose()
+  trendChart?.dispose()
 })
 </script>
 

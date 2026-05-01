@@ -140,5 +140,29 @@ export default {
   },
   dismissAnomaly(alertId) {
     return request.post(`/kpi/anomalies/${alertId}/dismiss`)
+  },
+  getTrendsData(productId, dimension = 'weekly') {
+    if (productId) {
+      return request.get(`/trends/product/${productId}`, { params: { dimension } })
+    }
+    return request.get('/trends/shop', { params: { dimension } })
+  },
+  getTrendEvents() {
+    return request.get('/trends/events')
+  },
+  addTrendEvent(eventData) {
+    return request.post('/trends/events', eventData)
+  },
+  deleteTrendEvent(eventId) {
+    return request.delete(`/trends/events/${eventId}`)
+  },
+  getHealthList() {
+    return request.get('/health/list')
+  },
+  getHealthDistribution() {
+    return request.get('/health/distribution')
+  },
+  refreshHealthScore(productId) {
+    return request.post(`/health/refresh/${productId}`)
   }
 }

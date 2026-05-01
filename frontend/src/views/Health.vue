@@ -78,7 +78,7 @@
 <script setup>
 import { ref, onMounted, onUnmounted } from 'vue'
 import { ElMessage } from 'element-plus'
-import axios from 'axios'
+import api from '@/api'
 import * as echarts from 'echarts'
 
 const chartRef = ref(null)
@@ -90,17 +90,20 @@ const healthList = ref([])
 
 const loadHealth = async () => {
   try {
-    const listRes = await axios.get('/api/health/list')
-    if (listRes.data.code === 200) {
-      healthList.value = listRes.data.data
+    const [listRes, distRes] = await Promise.all([
+      api.getHealthList(),
+      api.getHealthDistribution()
+    ])
+    
+    if (listRes.code === 200 || listRes.data) {
+      healthList.value = listRes.data?.products || listRes.data || []
+    }
+    
+    if (distRes.code === 200 || distRes.data) {
+      distribution.value = distRes.data || {}
     }
 
-    const distRes = await axios.get('/api/health/distribution')
-    if (distRes.data.code === 200) {
-      distribution.value = distRes.data.data
-    }
-
-    const avgScore = healthList.value.reduce((sum, p) => sum + p.health_score, 0) / healthList.value.length || 0
+    const avgScore = healthList.value.reduce((sum, p) => sum + (p.health_score || 0), 0) / healthList.value.length || 0
     stats.value.avg_score = avgScore.toFixed(1)
 
     updateChart()
@@ -111,7 +114,7 @@ const loadHealth = async () => {
 
 const refreshScore = async (productId) => {
   try {
-    await axios.post(`/api/health/refresh/${productId}`)
+    await api.refreshHealthScore(productId)
     ElMessage.success('刷新成功')
     loadHealth()
   } catch (error) {
