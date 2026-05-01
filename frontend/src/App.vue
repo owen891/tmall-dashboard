@@ -16,13 +16,11 @@
           text-color="#9da3af"
           active-text-color="#ffffff"
         >
-          <!-- 数据概览 -->
           <el-menu-item index="/">
             <el-icon><Odometer /></el-icon>
             <template #title>数据概览</template>
           </el-menu-item>
 
-          <!-- 商品管理 -->
           <el-sub-menu index="product">
             <template #title>
               <el-icon><Goods /></el-icon>
@@ -36,13 +34,11 @@
             </el-menu-item>
           </el-sub-menu>
 
-          <!-- 数据导入 -->
           <el-menu-item index="/import">
             <el-icon><Upload /></el-icon>
             <template #title>数据导入</template>
           </el-menu-item>
 
-          <!-- 核心分析 -->
           <div class="menu-divider">
             <span v-if="!isCollapsed">核心分析</span>
           </div>
@@ -63,7 +59,6 @@
             </el-menu-item>
           </el-sub-menu>
 
-          <!-- 推广分析 -->
           <el-sub-menu index="ads">
             <template #title>
               <el-icon><Promotion /></el-icon>
@@ -80,7 +75,6 @@
             </el-menu-item>
           </el-sub-menu>
 
-          <!-- 运营监控 -->
           <div class="menu-divider">
             <span v-if="!isCollapsed">运营监控</span>
           </div>
@@ -101,7 +95,6 @@
             </el-menu-item>
           </el-sub-menu>
 
-          <!-- 评价市场 -->
           <el-sub-menu index="review-market">
             <template #title>
               <el-icon><ChatLineSquare /></el-icon>
@@ -115,20 +108,18 @@
             </el-menu-item>
           </el-sub-menu>
 
-          <!-- 目标管理 -->
           <el-menu-item index="/targets">
             <el-icon><Aim /></el-icon>
             <template #title>目标管理</template>
           </el-menu-item>
 
-          <!-- 分析工具 -->
           <div class="menu-divider">
             <span v-if="!isCollapsed">分析工具</span>
           </div>
           
           <el-sub-menu index="analysis-tools">
             <template #title>
-              <el-icon><BarChart3 /></el-icon>
+              <el-icon><TrendCharts /></el-icon>
               <span>分析工具</span>
             </template>
             <el-menu-item index="/lifecycle">
@@ -139,7 +130,6 @@
             </el-menu-item>
           </el-sub-menu>
 
-          <!-- 智能工具 -->
           <div class="menu-divider">
             <span v-if="!isCollapsed">智能工具</span>
           </div>
@@ -167,48 +157,34 @@
           </el-breadcrumb>
         </div>
 
-        <div class="header-center">
+        <div class="header-right">
           <div class="date-selector">
-            <el-radio-group v-model="dateRangeType" size="default" @change="handleDateRangeChange">
-              <el-radio-button label="day">今日</el-radio-button>
-              <el-radio-button label="week">本周</el-radio-button>
-              <el-radio-button label="month">本月</el-radio-button>
-              <el-radio-button label="custom">自定义</el-radio-button>
-            </el-radio-group>
+            <el-select v-model="dateRangeType" size="small" style="width: 90px;" @change="handleDateRangeChange">
+              <el-option label="今日" value="day" />
+              <el-option label="本周" value="week" />
+              <el-option label="本月" value="month" />
+              <el-option label="自定义" value="custom" />
+            </el-select>
             
             <el-date-picker
               v-if="dateRangeType === 'custom'"
               v-model="customDateRange"
               type="daterange"
-              range-separator="至"
-              start-placeholder="开始日期"
-              end-placeholder="结束日期"
-              size="default"
+              range-separator="-"
+              start-placeholder="开始"
+              end-placeholder="结束"
+              size="small"
+              style="width: 220px;"
               @change="handleCustomDateChange"
             />
-            
-            <div v-else-if="dateRangeType !== 'custom'" class="quick-date">
-              <el-date-picker
-                v-model="currentDate"
-                type="date"
-                placeholder="选择日期"
-                size="default"
-                :disabled-date="disabledDate"
-                @change="handleDateChange"
-              />
-            </div>
           </div>
-        </div>
-
-        <div class="header-right">
-          <el-button-group>
-            <el-button size="small" @click="handleRefresh">
-              <el-icon><Refresh /></el-icon>
-            </el-button>
-          </el-button-group>
+          
+          <el-button size="small" @click="handleRefresh">
+            <el-icon><Refresh /></el-icon>
+          </el-button>
           <el-button type="primary" size="small" @click="$router.push('/import')">
             <el-icon><Upload /></el-icon>
-            <span>导入数据</span>
+            <span>导入</span>
           </el-button>
         </div>
       </el-header>
@@ -266,28 +242,25 @@ const pageTitle = computed(() => {
   return titles[path] || '数据概览'
 })
 
-const handleDateChange = (date) => {
-  if (date) {
-    ElMessage.success(`已切换到 ${formatDate(date)}`)
+const handleDateRangeChange = (type) => {
+  if (type === 'day') {
+    currentDate.value = new Date()
+    ElMessage.success('已切换到今日数据')
+  } else if (type === 'week') {
+    const now = new Date()
+    const dayOfWeek = now.getDay() || 7
+    currentDate.value = new Date(now.setDate(now.getDate() - dayOfWeek + 1))
+    ElMessage.success('已切换到本周数据')
+  } else if (type === 'month') {
+    const now = new Date()
+    currentDate.value = new Date(now.getFullYear(), now.getMonth(), 1)
+    ElMessage.success('已切换到本月数据')
   }
 }
 
 const handleCustomDateChange = (range) => {
   if (range && range.length === 2) {
     ElMessage.success(`已切换到 ${formatDate(range[0])} 至 ${formatDate(range[1])}`)
-  }
-}
-
-const handleDateRangeChange = (type) => {
-  if (type === 'day') {
-    currentDate.value = new Date()
-  } else if (type === 'week') {
-    const now = new Date()
-    const dayOfWeek = now.getDay() || 7
-    currentDate.value = new Date(now.setDate(now.getDate() - dayOfWeek + 1))
-  } else if (type === 'month') {
-    const now = new Date()
-    currentDate.value = new Date(now.getFullYear(), now.getMonth(), 1)
   }
 }
 
@@ -299,10 +272,6 @@ const formatDate = (date) => {
   if (!date) return ''
   const d = new Date(date)
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-}
-
-const disabledDate = (time) => {
-  return time.getTime() > Date.now()
 }
 
 onMounted(() => {
@@ -419,7 +388,7 @@ onMounted(() => {
   font-size: 18px;
 }
 
-.header-center {
+.header-right {
   display: flex;
   align-items: center;
   gap: 12px;
@@ -428,17 +397,7 @@ onMounted(() => {
 .date-selector {
   display: flex;
   align-items: center;
-  gap: 12px;
-}
-
-.quick-date {
-  margin-left: 12px;
-}
-
-.header-right {
-  display: flex;
-  align-items: center;
-  gap: 12px;
+  gap: 8px;
 }
 
 .app-main {
