@@ -1,0 +1,39 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: tmall-backend
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend/data:/app/data
+      - ./backend/logs:/app/logs
+    environment:
+      - DATABASE_URL=sqlite:///./data/dashboard.db
+      - LOG_LEVEL=INFO
+      - CORS_ORIGINS=http://localhost:5173,http://frontend:5173
+    restart: unless-stopped
+    networks:
+      - tmall-network
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: tmall-frontend
+    ports:
+      - "5173:80"
+    depends_on:
+      - backend
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    restart: unless-stopped
+    networks:
+      - tmall-network
+
+networks:
+  tmall-network:
+    driver: bridge
