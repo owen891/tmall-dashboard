@@ -152,8 +152,8 @@ const loadData = async () => {
       kpis.value = [
         { label: 'GMV', value: `¥${formatNumber(latest.net_sales)}` },
         { label: '访客数', value: formatNumber(latest.visitors) },
-        { label: '转化率', value: `${(latest.payment_conversion * 100).toFixed(2)}%` },
-        { label: 'ROI', value: latest.total_roi?.toFixed(2) || '0' }
+        { label: '转化率', value: `${((latest.conversion || latest.payment_conversion || 0) * 100).toFixed(2)}%` },
+        { label: 'ROI', value: (latest.roi || latest.ad_roi || 0).toFixed(2) }
       ]
     }
     
@@ -175,9 +175,9 @@ const initChart = () => {
   
   chart = echarts.init(chartRef.value)
   
-  const dates = weeklyData.value.map(d => d.week_start)
+  const dates = weeklyData.value.map(d => d.period)
   const gmv = weeklyData.value.map(d => d.net_sales)
-  const roi = weeklyData.value.map(d => d.total_roi)
+  const roi = weeklyData.value.map(d => d.roi || d.ad_roi || 0)
   
   const option = {
     tooltip: {

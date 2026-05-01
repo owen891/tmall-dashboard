@@ -793,7 +793,7 @@ def get_product_weekly_data(product_id: str, db: Session = Depends(get_db)):
 def get_product_operations(product_id: str, db: Session = Depends(get_db)):
     actions = db.query(OperationAction).filter(
         OperationAction.product_id == product_id
-    ).order_by(desc(OperationAction.created_at)).limit(50).all()
+    ).order_by(desc(OperationAction.id)).limit(50).all()
     
     return ResponseModel(data={
         "actions": [{
@@ -802,7 +802,14 @@ def get_product_operations(product_id: str, db: Session = Depends(get_db)):
             "action_date": str(a.action_date),
             "action_type": a.action_type,
             "action_detail": a.action_detail,
-            "created_at": str(a.created_at) if a.created_at else None
+            "before_payment": a.before_payment,
+            "before_visitors": a.before_visitors,
+            "before_conversion": a.before_conversion,
+            "before_roi": a.before_roi,
+            "after_payment": a.after_payment,
+            "after_visitors": a.after_visitors,
+            "after_conversion": a.after_conversion,
+            "after_roi": a.after_roi,
         } for a in actions]
     })
 
@@ -818,3 +825,40 @@ def delete_product_note(
         db.delete(note)
         db.commit()
     return ResponseModel(data={"success": True})
+
+
+@router.post("/actions", response_model=ResponseModel)
+def create_action(
+    product_id: str = Body(..., embed=True),
+    action_date: str = Body(..., embed=True),
+    action_type: Optional[str] = Body(None, embed=True),
+    action_detail: Optional[str] = Body(None, embed=True),
+    before_payment: Optional[float] = Body(0, embed=True),
+    before_visitors: Optional[int] = Body(0, embed=True),
+    before_conversion: Optional[float] = Body(0, embed=True),
+    before_roi: Optional[float] = Body(0, embed=True),
+    after_payment: Optional[float] = Body(0, embed=True),
+    after_visitors: Optional[int] = Body(0, embed=True),
+    after_conversion: Optional[float] = Body(0, embed=True),
+    after_roi: Optional[float] = Body(0, embed=True),
+    db: Session = Depends(get_db)
+):
+    new_action = OperationAction(
+        product_id=product_id,
+        action_date=action_date,
+        action_type=action_type,
+        action_detail=action_detail,
+        before_payment=before_payment,
+        before_visitors=before_visitors,
+        before_conversion=before_conversion,
+        before_roi=before_roi,
+        after_payment=after_payment,
+        after_visitors=after_visitors,
+        after_conversion=after_conversion,
+        after_roi=after_roi,
+    )
+    db.add(new_action)
+    db.commit()
+    db.refresh(new_action)
+    
+    return ResponseModel(data={"success": True, "id": new_action.id})
