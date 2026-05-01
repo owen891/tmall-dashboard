@@ -69,6 +69,9 @@
               <el-icon><Promotion /></el-icon>
               <span>推广分析</span>
             </template>
+            <el-menu-item index="/promotion">
+              <span>多渠道推广</span>
+            </el-menu-item>
             <el-menu-item index="/ads">
               <span>广告投放</span>
             </el-menu-item>
@@ -117,6 +120,24 @@
             <el-icon><Aim /></el-icon>
             <template #title>目标管理</template>
           </el-menu-item>
+
+          <!-- 分析工具 -->
+          <div class="menu-divider">
+            <span v-if="!isCollapsed">分析工具</span>
+          </div>
+          
+          <el-sub-menu index="analysis-tools">
+            <template #title>
+              <el-icon><BarChart3 /></el-icon>
+              <span>分析工具</span>
+            </template>
+            <el-menu-item index="/lifecycle">
+              <span>生命周期</span>
+            </el-menu-item>
+            <el-menu-item index="/compare">
+              <span>周期对比</span>
+            </el-menu-item>
+          </el-sub-menu>
 
           <!-- 智能工具 -->
           <div class="menu-divider">
@@ -234,7 +255,10 @@ const pageTitle = computed(() => {
     '/alerts': '异常告警',
     '/reviews': '评价分析',
     '/market': '市场分析',
-    '/toolbox': '运营工具箱'
+    '/toolbox': '运营工具箱',
+    '/promotion': '多渠道推广',
+    '/lifecycle': '生命周期',
+    '/compare': '周期对比'
   }
   
   const path = route.path

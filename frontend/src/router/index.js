@@ -87,6 +87,21 @@ const routes = [
     component: () => import('@/views/ChannelDetail.vue')
   },
   {
+    path: '/promotion',
+    name: 'Promotion',
+    component: () => import('@/views/Promotion.vue')
+  },
+  {
+    path: '/lifecycle',
+    name: 'Lifecycle',
+    component: () => import('@/views/Lifecycle.vue')
+  },
+  {
+    path: '/compare',
+    name: 'Compare',
+    component: () => import('@/views/Compare.vue')
+  },
+  {
     path: '/:pathMatch(.*)*',
     redirect: '/'
   }
