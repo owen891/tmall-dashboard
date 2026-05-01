@@ -164,5 +164,32 @@ export default {
   },
   refreshHealthScore(productId) {
     return request.post(`/health/refresh/${productId}`)
+  },
+  getPromotionPlans(params) {
+    return request.get('/promotion/plans', { params })
+  },
+  getSearchEfficiency(params) {
+    return request.get('/promotion/search-efficiency', { params })
+  },
+  getPromotionProducts() {
+    return request.get('/promotion/products')
+  },
+  getLifecycleStats() {
+    return request.get('/lifecycle/stats')
+  },
+  getLifecycleDistribution() {
+    return request.get('/lifecycle/distribution')
+  },
+  getLifecycleProducts(stage) {
+    return request.get('/lifecycle/products', { params: { stage } })
+  },
+  getCompareSummary(params) {
+    return request.get('/compare/summary', { params })
+  },
+  getCompareDetail() {
+    return request.get('/compare/detail')
+  },
+  getCompareTrend(params) {
+    return request.get('/compare/trend', { params })
   }
 }
