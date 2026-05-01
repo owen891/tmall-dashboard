@@ -1,4 +1,4 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
@@ -51,16 +51,16 @@ async def health_check():
 # Mount frontend static files
 frontend_dist = pathlib.Path(__file__).parent.parent.parent / "frontend" / "dist"
 if frontend_dist.exists():
-    # Serve index.html at root
-    @app.get("/")
-    async def serve_root():
+    # Mount static files for assets (CSS, JS, etc.)
+    app.mount("/assets", StaticFiles(directory=str(frontend_dist / "assets")), name="assets")
+    
+    # Serve index.html for all other routes (SPA fallback)
+    @app.get("/{full_path:path}")
+    async def serve_spa(full_path: str, request: Request):
         index_path = frontend_dist / "index.html"
         if index_path.exists():
             return FileResponse(str(index_path))
         return {"detail": "Not Found"}
-    
-    # Mount static files
-    app.mount("/", StaticFiles(directory=str(frontend_dist), html=True), name="frontend")
 
 
 if __name__ == "__main__":
