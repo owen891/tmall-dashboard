@@ -29,7 +29,7 @@
     </el-card>
 
     <el-row :gutter="20" style="margin-top: 20px">
-      <el-col :span="6" v-for="kpi in kpis" :key="kpi.key">
+      <el-col :span="4" v-for="kpi in kpis" :key="kpi.key">
         <el-card class="kpi-card">
           <div class="kpi-label">{{ kpi.label }}</div>
           <div class="kpi-value-row">
@@ -39,6 +39,74 @@
               <el-icon v-else><CaretBottom /></el-icon>
               {{ Math.abs(kpi.trend).toFixed(1) }}%
             </span>
+          </div>
+        </el-card>
+      </el-col>
+    </el-row>
+
+    <el-row :gutter="20" style="margin-top: 20px">
+      <el-col :span="12">
+        <el-card>
+          <template #header>
+            <span>流量来源</span>
+          </template>
+          <div class="traffic-sources">
+            <div class="source-item">
+              <span class="source-label">搜索访客</span>
+              <div class="source-bar-wrap">
+                <div class="source-bar" :style="{ width: getTrafficPercent('search') + '%' }"></div>
+              </div>
+              <span class="source-value">{{ formatNumber(latestData.search_ipv) }} ({{ getTrafficPercent('search') }}%)</span>
+            </div>
+            <div class="source-item">
+              <span class="source-label">推荐访客</span>
+              <div class="source-bar-wrap">
+                <div class="source-bar bar-recommend" :style="{ width: getTrafficPercent('recommend') + '%' }"></div>
+              </div>
+              <span class="source-value">{{ formatNumber(latestData.recommend_ipv) }} ({{ getTrafficPercent('recommend') }}%)</span>
+            </div>
+            <div class="source-item">
+              <span class="source-label">付费访客</span>
+              <div class="source-bar-wrap">
+                <div class="source-bar bar-paid" :style="{ width: getTrafficPercent('paid') + '%' }"></div>
+              </div>
+              <span class="source-value">{{ formatNumber(latestData.paid_ipv) }} ({{ getTrafficPercent('paid') }}%)</span>
+            </div>
+            <div class="source-item">
+              <span class="source-label">自然访客</span>
+              <div class="source-bar-wrap">
+                <div class="source-bar bar-organic" :style="{ width: getTrafficPercent('organic') + '%' }"></div>
+              </div>
+              <span class="source-value">{{ formatNumber(latestData.organic_ipv) }} ({{ getTrafficPercent('organic') }}%)</span>
+            </div>
+          </div>
+        </el-card>
+      </el-col>
+      <el-col :span="12">
+        <el-card>
+          <template #header>
+            <span>转化漏斗</span>
+          </template>
+          <div class="funnel-container">
+            <div class="funnel-item">
+              <div class="funnel-bar funnel-visitors">
+                <span>访客 {{ formatNumber(latestData.visitors) }}</span>
+              </div>
+            </div>
+            <div class="funnel-item">
+              <div class="funnel-bar funnel-cart">
+                <span>加购 {{ formatNumber(latestData.cart_users || 0) }}</span>
+              </div>
+            </div>
+            <div class="funnel-item">
+              <div class="funnel-bar funnel-buyers">
+                <span>支付 {{ formatNumber(latestData.buyers || 0) }}</span>
+              </div>
+            </div>
+          </div>
+          <div class="funnel-rates">
+            <span>加购率: {{ formatPercent(latestData.cart_rate) }}</span>
+            <span>转化率: {{ formatPercent(latestData.conversion) }}</span>
           </div>
         </el-card>
       </el-col>
@@ -177,6 +245,7 @@ const actionForm = ref({
   action_detail: '',
   action_date: ''
 })
+const latestData = ref({})
 
 const getTierType = (tier) => {
   const types = {
@@ -207,11 +276,25 @@ const formatPercent = (value) => {
   return (value * 100).toFixed(2) + '%'
 }
 
+const getTrafficPercent = (type) => {
+  const total = (latestData.value.visitors || 0)
+  if (total === 0) return 0
+  const map = {
+    'search': latestData.value.search_ipv || 0,
+    'recommend': latestData.value.recommend_ipv || 0,
+    'paid': latestData.value.paid_ipv || 0,
+    'organic': latestData.value.organic_ipv || 0
+  }
+  return Math.round((map[type] || 0) / total * 100)
+}
+
 const kpis = ref([
   { label: 'GMV', key: 'gmv', value: '-' },
   { label: '访客数', key: 'visitors', value: '-' },
   { label: '转化率', key: 'conversion', value: '-' },
-  { label: 'ROI', key: 'roi', value: '-' }
+  { label: 'ROI', key: 'roi', value: '-' },
+  { label: '客单价', key: 'aov', value: '-' },
+  { label: '退款率', key: 'refund_rate', value: '-' }
 ])
 
 const formatNumber = (num) => {
@@ -238,6 +321,7 @@ const loadData = async () => {
     
     if (weeklyData.value.length > 0) {
       const latest = weeklyData.value[weeklyData.value.length - 1]
+      latestData.value = latest
       const prev = weeklyData.value.length > 1 ? weeklyData.value[weeklyData.value.length - 2] : null
       
       const calcTrend = (curr, prevVal) => {
@@ -265,6 +349,14 @@ const loadData = async () => {
           label: 'ROI', 
           value: (latest.roi || latest.ad_roi || 0).toFixed(2),
           trend: prev ? calcTrend((latest.roi || latest.ad_roi), (prev.roi || prev.ad_roi)) : null
+        },
+        {
+          label: '客单价',
+          value: `¥${formatNumber(latest.aov || 0)}`
+        },
+        {
+          label: '退款率',
+          value: `${((latest.refund_rate || 0) * 100).toFixed(2)}%`
         }
       ]
     }
@@ -553,6 +645,105 @@ onMounted(() => {
 }
 
 .effect-value {
+  color: #606266;
+}
+
+.traffic-sources {
+  padding: 10px 0;
+}
+
+.source-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.source-item:last-child {
+  margin-bottom: 0;
+}
+
+.source-label {
+  width: 70px;
+  font-size: 13px;
+  color: #606266;
+}
+
+.source-bar-wrap {
+  flex: 1;
+  height: 12px;
+  background: #f0f2f5;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.source-bar {
+  height: 100%;
+  background: #409eff;
+  border-radius: 6px;
+  transition: width 0.3s;
+}
+
+.bar-recommend {
+  background: #67c23a;
+}
+
+.bar-paid {
+  background: #e6a23c;
+}
+
+.bar-organic {
+  background: #909399;
+}
+
+.source-value {
+  width: 120px;
+  font-size: 12px;
+  color: #909399;
+  text-align: right;
+}
+
+.funnel-container {
+  padding: 20px;
+}
+
+.funnel-item {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 8px;
+}
+
+.funnel-bar {
+  background: #409eff;
+  color: white;
+  padding: 12px 20px;
+  border-radius: 4px;
+  text-align: center;
+  font-size: 14px;
+}
+
+.funnel-visitors {
+  width: 100%;
+  background: #409eff;
+}
+
+.funnel-cart {
+  width: 70%;
+  background: #67c23a;
+}
+
+.funnel-buyers {
+  width: 45%;
+  background: #e6a23c;
+}
+
+.funnel-rates {
+  display: flex;
+  justify-content: space-around;
+  padding: 10px;
+  background: #f5f7fa;
+  border-radius: 4px;
+  font-size: 13px;
   color: #606266;
 }
 </style>
