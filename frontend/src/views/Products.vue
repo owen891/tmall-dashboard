@@ -23,13 +23,14 @@
         <el-form-item>
           <el-button type="primary" @click="loadProducts">查询</el-button>
           <el-button @click="resetFilters">重置</el-button>
+          <el-button type="success" @click="openColumnSelector">字段设置</el-button>
         </el-form-item>
       </el-form>
     </el-card>
 
     <el-card class="table-card">
       <el-table :data="products" stripe v-loading="loading">
-        <el-table-column width="60">
+        <el-table-column width="60" fixed="left">
           <template #default="{ row }">
             <el-icon 
               :color="row.starred ? '#e6a23c' : '#c0c4cc'" 
@@ -40,7 +41,8 @@
             </el-icon>
           </template>
         </el-table-column>
-        <el-table-column label="商品信息" min-width="300">
+
+        <el-table-column label="商品信息" min-width="250" fixed="left">
           <template #default="{ row }">
             <div class="product-info">
               <div class="product-title">{{ row.title }}</div>
@@ -51,9 +53,37 @@
             </div>
           </template>
         </el-table-column>
-        <el-table-column prop="category" label="类目" width="150" />
-        <el-table-column prop="style" label="风格" width="100" />
-        <el-table-column prop="scene" label="场景" width="100" />
+
+        <el-table-column
+          v-for="field in visibleColumns"
+          :key="field.key"
+          :prop="field.key"
+          :label="field.label"
+          :width="field.width"
+          :min-width="field.minWidth"
+        >
+          <template #default="{ row }">
+            <span v-if="field.key === 'tier'">
+              <el-tag size="small" :type="getTierType(row[field.key])">{{ row[field.key] }}</el-tag>
+            </span>
+            <span v-else-if="['payment_amount', 'refund_amount', 'net_sales', 'ad_spend', 'avg_order_value', 'keyword_sales', 'crowd_sales', 'site_sales'].includes(field.key)">
+              {{ formatNumber(row[field.key], 2) }}
+            </span>
+            <span v-else-if="['payment_conversion', 'cart_rate', 'fav_rate', 'refund_rate', 'ad_ratio', 'search_conversion', 'click_rate', 'industry_ctr', 'search_click_rate', 'ad_roi', 'keyword_roi', 'crowd_roi', 'site_roi', 'guide_potential_ratio', 'cross_sell_rate', 'repurchase_rate', 'new_buyer_ratio'].includes(field.key)">
+              {{ formatPercent(row[field.key]) }}
+            </span>
+            <span v-else-if="['ipv', 'pv', 'search_ipv', 'recommend_ipv', 'paid_ipv', 'organic_ipv', 'buyers', 'cart_users', 'fav_users', 'payment_qty', 'cart_qty', 'cross_sell_qty', 'repurchase_users', 'new_buyers', 'keyword_visitors', 'guide_visits', 'guide_visitors', 'guide_potential'].includes(field.key)">
+              {{ formatNumber(row[field.key], 0) }}
+            </span>
+            <span v-else-if="['avg_stay_duration', 'uv_value'].includes(field.key)">
+              {{ formatNumber(row[field.key], 2) }}
+            </span>
+            <span v-else>
+              {{ row[field.key] || '-' }}
+            </span>
+          </template>
+        </el-table-column>
+
         <el-table-column label="操作" width="120" fixed="right">
           <template #default="{ row }">
             <el-button type="primary" link @click="goToDetail(row)">详情</el-button>
@@ -72,14 +102,18 @@
         style="margin-top: 20px; justify-content: flex-end"
       />
     </el-card>
+
+    <ColumnSelector ref="columnSelectorRef" v-model="selectedFields" @change="onColumnsChange" />
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import api from '@/api'
+import ColumnSelector from '@/components/ColumnSelector.vue'
+import { fieldCategories, loadColumnConfig, getFieldConfig, defaultVisibleFields } from '@/config/columns'
 
 const router = useRouter()
 
@@ -98,6 +132,12 @@ const pagination = ref({
   page_size: 20,
   total: 0
 })
+const selectedFields = ref([])
+const columnSelectorRef = ref(null)
+
+const visibleColumns = computed(() => {
+  return selectedFields.value.map(key => getFieldConfig(key)).filter(Boolean)
+})
 
 const getTierType = (tier) => {
   const types = {
@@ -106,6 +146,23 @@ const getTierType = (tier) => {
     '潜力款': 'warning'
   }
   return types[tier] || 'info'
+}
+
+const formatNumber = (value, decimals = 2) => {
+  if (value === null || value === undefined) return '-'
+  const num = Number(value)
+  if (isNaN(num)) return '-'
+  return num.toLocaleString('zh-CN', {
+    minimumFractionDigits: decimals,
+    maximumFractionDigits: decimals
+  })
+}
+
+const formatPercent = (value) => {
+  if (value === null || value === undefined) return '-'
+  const num = Number(value)
+  if (isNaN(num)) return '-'
+  return `${(num * 100).toFixed(2)}%`
 }
 
 const loadFilterOptions = async () => {
@@ -164,7 +221,17 @@ const goToDetail = (product) => {
   router.push(`/product/${product.product_id}`)
 }
 
+const openColumnSelector = () => {
+  columnSelectorRef.value?.open()
+}
+
+const onColumnsChange = (fields) => {
+  selectedFields.value = fields
+}
+
 onMounted(() => {
+  const config = loadColumnConfig()
+  selectedFields.value = config.visibleFields || defaultVisibleFields
   loadFilterOptions()
   loadProducts()
 })
