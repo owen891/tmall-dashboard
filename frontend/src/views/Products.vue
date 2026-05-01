@@ -102,10 +102,18 @@
           </template>
         </el-table-column>
 
-        <el-table-column label="操作" width="140" fixed="right">
+        <el-table-column label="操作" width="70" fixed="right" align="center">
           <template #default="{ row }">
-            <el-button type="primary" link @click="goToDetail(row)">详情</el-button>
-            <el-button type="success" link @click="openActionForProduct(row)">运营</el-button>
+            <el-tooltip content="详情" placement="top">
+              <el-button type="primary" link size="small" @click="goToDetail(row)" style="padding: 4px">
+                <el-icon size="14"><View /></el-icon>
+              </el-button>
+            </el-tooltip>
+            <el-tooltip content="运营动作" placement="top">
+              <el-button type="success" link size="small" @click="openActionForProduct(row)" style="padding: 4px">
+                <el-icon size="14"><Edit /></el-icon>
+              </el-button>
+            </el-tooltip>
           </template>
         </el-table-column>
       </el-table>
@@ -160,6 +168,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
+import { View, Edit } from '@element-plus/icons-vue'
 import api from '@/api'
 import ColumnSelector from '@/components/ColumnSelector.vue'
 import { fieldCategories, loadColumnConfig, getFieldConfig, defaultVisibleFields } from '@/config/columns'
