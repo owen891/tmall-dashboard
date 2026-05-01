@@ -24,7 +24,6 @@
           <el-button type="primary" @click="loadProducts" size="default">查询</el-button>
           <el-button @click="resetFilters" size="default">重置</el-button>
           <el-button type="success" @click="openColumnSelector" size="default">字段设置</el-button>
-          <el-button type="primary" @click="showActionDialog" size="default">运营动作</el-button>
         </el-form-item>
       </el-form>
     </el-card>
@@ -103,9 +102,10 @@
           </template>
         </el-table-column>
 
-        <el-table-column label="操作" width="80" fixed="right">
+        <el-table-column label="操作" width="140" fixed="right">
           <template #default="{ row }">
             <el-button type="primary" link @click="goToDetail(row)">详情</el-button>
+            <el-button type="success" link @click="openActionForProduct(row)">运营</el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -277,16 +277,17 @@ const goToDetail = (product) => {
   router.push(`/product/${product.product_id}`)
 }
 
+const openActionForProduct = (product) => {
+  actionForm.value.product_id = product.product_id
+  actionDialogVisible.value = true
+}
+
 const openColumnSelector = () => {
   columnSelectorRef.value?.open()
 }
 
 const onColumnsChange = (fields) => {
   selectedFields.value = fields
-}
-
-const showActionDialog = () => {
-  actionDialogVisible.value = true
 }
 
 const submitAction = async () => {
