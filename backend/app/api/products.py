@@ -1,10 +1,13 @@
-from fastapi import APIRouter, Depends, Query, HTTPException
+from fastapi import APIRouter, Depends, Query, HTTPException, Body
 from sqlalchemy.orm import Session
 from sqlalchemy import func, desc, asc, case, text
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 from app.core.database import get_db
-from app.models import DailyData, WeeklyData, MonthlyData, Product
+from app.models import DailyData, WeeklyData, MonthlyData, Product, ProductTag, ProductNote, OperationAction
 from app.schemas.common import ResponseModel
+import io
+import csv
+from datetime import datetime
 
 router = APIRouter(prefix="/products", tags=["商品运营"])
 
@@ -53,9 +56,13 @@ MONTHLY_ONLY_COLS = [
     'cart_users', 'new_buyers', 'new_buyer_ratio',
 ]
 
+ALL_COMMON_COLS = [
+    'page_views', 'cart_rate', 'fav_rate', 'bounce_rate', 'avg_stay_duration',
+    'ad_spend', 'ad_roi',
+]
+
 
 def get_latest_period(Model, date_col, db):
-    """获取最新周期"""
     latest = db.query(Model).order_by(desc(getattr(Model, date_col))).first()
     if latest:
         return getattr(latest, date_col)
@@ -63,7 +70,6 @@ def get_latest_period(Model, date_col, db):
 
 
 def calc_score(row_data: dict) -> float:
-    """计算商品综合评分（0-100分）- 兼容老版本算法"""
     score = 50.0
     conv = row_data.get('conversion', 0) or 0
     roi = row_data.get('overall_roi', 0) or row_data.get('roi', 0) or 0
@@ -81,7 +87,6 @@ def calc_score(row_data: dict) -> float:
 
 
 def get_prev_period(period: str, dim: str) -> str:
-    """获取上一个周期"""
     try:
         if dim == 'monthly':
             y, m = str(period).split('-')
@@ -99,7 +104,6 @@ def get_prev_period(period: str, dim: str) -> str:
 
 
 def build_product_query(dimension: str, period: str, db: Session):
-    """构建商品查询基础query"""
     dim_cfg = DIMENSION_MAP.get(dimension, DIMENSION_MAP['weekly'])
     visitors_col = dim_cfg['visitors_col']
     date_col = dim_cfg['date_col']
@@ -115,11 +119,16 @@ def build_product_query(dimension: str, period: str, db: Session):
         Model.product_id,
         func.max(Product.title).label('product_name'),
         func.max(Product.category).label('category'),
+        func.max(Product.tier).label('tier'),
+        func.max(Product.style).label('style'),
+        func.max(Product.scene).label('scene'),
+        func.max(Product.manager).label('manager'),
+        func.max(Product.list_date).label('list_date'),
+        func.max(Product.status).label('status'),
         func.sum(Model.payment_amount).label('payment_amount'),
         func.sum(Model.refund_amount).label('refund_amount'),
         func.sum(getattr(Model, visitors_col)).label('visitors'),
         func.avg(Model.payment_conversion).label('conversion'),
-        func.sum(Model.ad_spend).label('ad_spend'),
         func.avg(Model.ad_roi).label('roi'),
     ]
     
@@ -130,16 +139,21 @@ def build_product_query(dimension: str, period: str, db: Session):
     else:
         base_cols.append(func.sum(Model.presale_qty).label('payment_count'))
     
+    if hasattr(Model, 'order_count'):
+        base_cols.append(func.sum(Model.order_count).label('order_count'))
+    
+    for col_name in ALL_COMMON_COLS:
+        if hasattr(Model, col_name):
+            base_cols.append(func.sum(getattr(Model, col_name)).label(col_name))
+    
     if dimension == 'monthly':
-        monthly_cols = [
-            func.avg(Model.overall_roi).label('overall_roi'),
-            func.avg(Model.uv_value).label('uv_value'),
-            func.avg(Model.search_ratio).label('search_ratio'),
-            func.avg(Model.click_rate).label('click_rate'),
-            func.sum(Model.buyers).label('buyers'),
-            func.avg(Model.avg_order_value).label('avg_order_value'),
-            func.sum(Model.net_sales).label('net_sales'),
-        ]
+        monthly_cols = []
+        for col_name in MONTHLY_ONLY_COLS:
+            if hasattr(Model, col_name):
+                if col_name in ['overall_roi', 'uv_value', 'search_ratio', 'click_rate', 'avg_order_value', 'paid_ratio', 'refund_paid_ratio', 'keyword_roi', 'crowd_roi', 'site_roi', 'keyword_ppc', 'crowd_ppc', 'site_ppc', 'industry_ctr', 'search_conversion', 'repurchase_rate', 'cross_sell_rate', 'new_buyer_ratio', 'score']:
+                    monthly_cols.append(func.avg(getattr(Model, col_name)).label(col_name))
+                else:
+                    monthly_cols.append(func.sum(getattr(Model, col_name)).label(col_name))
         base_cols.extend(monthly_cols)
     
     query = db.query(*base_cols).join(Product, Model.product_id == Product.product_id)
@@ -153,16 +167,17 @@ def get_products(
     period: Optional[str] = Query(None, description="指定周期"),
     tier: Optional[str] = Query(None, description="分层筛选"),
     style: Optional[str] = Query(None, description="风格筛选"),
+    scene: Optional[str] = Query(None, description="场景筛选"),
     search: Optional[str] = Query(None, description="搜索关键词"),
+    manager: Optional[str] = Query(None, description="负责人筛选"),
     status: Optional[str] = Query(None, description="状态筛选"),
+    category: Optional[str] = Query(None, description="类目筛选"),
     sort_by: str = Query("payment_amount", description="排序字段"),
     order: str = Query("desc", description="排序方向: asc/desc"),
     limit: int = Query(20, description="每页数量"),
     offset: int = Query(0, description="偏移量"),
     db: Session = Depends(get_db)
 ):
-    """获取商品列表（兼容老版本API）"""
-    
     dim_cfg = DIMENSION_MAP.get(dim, DIMENSION_MAP['weekly'])
     visitors_col = dim_cfg['visitors_col']
     date_col = dim_cfg['date_col']
@@ -187,6 +202,12 @@ def get_products(
         filter_conditions.append(Product.tier == tier)
     if style:
         filter_conditions.append(Product.style == style)
+    if scene:
+        filter_conditions.append(Product.scene == scene)
+    if manager:
+        filter_conditions.append(Product.manager == manager)
+    if category:
+        filter_conditions.append(Product.category == category)
     if search:
         filter_conditions.append(
             Product.title.ilike(f"%{search}%") | Product.product_id.ilike(f"%{search}%")
@@ -197,9 +218,7 @@ def get_products(
         filter_conditions.append(Product.status == 'active')
     
     query = query.filter(*filter_conditions)
-    
     query = query.group_by(Model.product_id)
-    
     total = query.count()
     
     sort_col = sort_by if sort_by in SORT_WHITELIST else 'payment_amount'
@@ -225,6 +244,8 @@ def get_products(
         query = query.order_by(sort_dir(func.sum(getattr(Model, visitors_col))))
     elif sort_col == 'conversion':
         query = query.order_by(sort_dir(func.avg(Model.payment_conversion)))
+    elif sort_col == 'ad_spend':
+        query = query.order_by(sort_dir(func.sum(Model.ad_spend)))
     elif sort_col == 'roi':
         query = query.order_by(sort_dir(func.avg(Model.ad_roi)))
     elif sort_col == 'title':
@@ -241,30 +262,30 @@ def get_products(
     prev_period = get_prev_period(str(period), dim)
     prev_data_map = {}
     
-    if prev_period and product_ids and dim == 'monthly':
-        prev_query = db.query(
+    if prev_period and product_ids:
+        prev_query_cols = [
             Model.product_id,
             func.sum(Model.payment_amount).label('prev_payment'),
             func.sum(getattr(Model, visitors_col)).label('prev_visitors'),
             func.avg(Model.payment_conversion).label('prev_conversion'),
-            func.avg(Model.uv_value).label('prev_uv_value'),
-        ).filter(
+        ]
+        if hasattr(Model, 'uv_value'):
+            prev_query_cols.append(func.avg(Model.uv_value).label('prev_uv_value'))
+        
+        prev_query = db.query(*prev_query_cols).filter(
             getattr(Model, date_col) == prev_period,
             Model.product_id.in_(product_ids)
-        )
-        
-        if hasattr(Model, 'product_name'):
-            prev_query = prev_query.group_by(Model.product_id, Model.product_name, Model.category)
-        else:
-            prev_query = prev_query.group_by(Model.product_id)
+        ).group_by(Model.product_id)
         
         for p in prev_query.all():
-            prev_data_map[p.product_id] = {
+            pd = {
                 'payment_amount': float(p.prev_payment or 0),
                 'visitors': int(p.prev_visitors or 0),
                 'conversion': float(p.prev_conversion or 0),
-                'uv_value': float(p.prev_uv_value or 0),
             }
+            if hasattr(p, 'prev_uv_value'):
+                pd['uv_value'] = float(p.prev_uv_value or 0)
+            prev_data_map[p.product_id] = pd
     
     products = []
     for p in products_data:
@@ -283,6 +304,12 @@ def get_products(
             'product_id': p.product_id,
             'title': p.product_name,
             'category': p.category,
+            'tier': p.tier,
+            'style': p.style,
+            'scene': p.scene,
+            'manager': p.manager,
+            'list_date': str(p.list_date) if p.list_date else None,
+            'status': p.status,
             'payment_amount': payment,
             'net_sales': net_sales,
             'refund_amount': refund,
@@ -293,18 +320,22 @@ def get_products(
             'ad_spend': ad_spend,
             'roi': roi,
             'payment_count': int(p.payment_count or 0),
-            'order_count': int(p.payment_count or 0),
+            'order_count': int(getattr(p, 'order_count', 0) or 0),
+            'ad_ratio': (ad_spend / payment) if payment > 0 else 0,
         }
         
+        for col_name in ALL_COMMON_COLS:
+            if hasattr(p, col_name):
+                val = getattr(p, col_name)
+                if val is not None:
+                    row_data[col_name] = float(val) if isinstance(val, (int, float)) else val
+        
         if dim == 'monthly':
-            row_data.update({
-                'overall_roi': float(p.overall_roi or 0) if hasattr(p, 'overall_roi') else 0,
-                'uv_value': float(p.uv_value or 0) if hasattr(p, 'uv_value') else 0,
-                'search_ratio': float(p.search_ratio or 0) if hasattr(p, 'search_ratio') else 0,
-                'click_rate': float(p.click_rate or 0) if hasattr(p, 'click_rate') else 0,
-                'buyers': int(p.buyers or 0) if hasattr(p, 'buyers') else 0,
-                'avg_order_value': float(p.avg_order_value or 0) if hasattr(p, 'avg_order_value') else 0,
-            })
+            for col_name in MONTHLY_ONLY_COLS:
+                if hasattr(p, col_name):
+                    val = getattr(p, col_name)
+                    if val is not None:
+                        row_data[col_name] = float(val) if isinstance(val, (int, float)) else val
             row_data['score'] = calc_score(row_data)
             
             prev_data = prev_data_map.get(p.product_id, {})
@@ -321,9 +352,11 @@ def get_products(
                     changes['visitors'] = round((visitors - prev_visitors) / prev_visitors * 100, 1)
                 if prev_conversion > 0:
                     changes['conversion'] = round((conversion - prev_conversion) / prev_conversion * 100, 1)
-                if prev_uv > 0:
+                if prev_uv and row_data.get('uv_value'):
                     changes['uv_value'] = round((row_data['uv_value'] - prev_uv) / prev_uv * 100, 1)
-                changes['refund_rate'] = round((refund_rate - (prev_data.get('refund_amount', 0) / prev_payment if prev_payment > 0 else 0)) * 100, 1) if prev_payment > 0 else None
+                if prev_payment > 0:
+                    prev_refund_rate = prev_data.get('refund_amount', 0) / prev_payment
+                    changes['refund_rate'] = round((refund_rate - prev_refund_rate) * 100, 1)
                 
                 row_data['changes'] = changes
             else:
@@ -352,8 +385,6 @@ def get_product_ranking(
     limit: int = Query(10, description="返回数量"),
     db: Session = Depends(get_db)
 ):
-    """获取商品排名"""
-    
     dim_cfg = DIMENSION_MAP.get(dim, DIMENSION_MAP['weekly'])
     visitors_col = dim_cfg['visitors_col']
     date_col = dim_cfg['date_col']
@@ -425,8 +456,6 @@ def get_top_products(
     limit: int = Query(10, description="返回数量"),
     db: Session = Depends(get_db)
 ):
-    """获取TOP商品列表"""
-    
     dim_cfg = DIMENSION_MAP.get(dim, DIMENSION_MAP['weekly'])
     visitors_col = dim_cfg['visitors_col']
     date_col = dim_cfg['date_col']
@@ -474,6 +503,7 @@ def get_top_products(
             "product_name": p.product_name,
             "category": p.category,
             "payment_amount": round(payment, 2),
+            "value": round(payment, 2),
             "net_sales": round(payment - refund, 2),
             "refund_amount": round(refund, 2),
             "refund_rate": round((refund / payment), 4) if payment > 0 else 0,
@@ -494,10 +524,18 @@ def get_top_products(
 
 @router.get("/categories", response_model=ResponseModel)
 def get_categories(db: Session = Depends(get_db)):
-    """获取所有商品类目"""
     categories = db.query(Product.category).distinct().filter(Product.category.isnot(None)).all()
+    tiers = db.query(Product.tier).distinct().filter(Product.tier.isnot(None)).all()
+    styles = db.query(Product.style).distinct().filter(Product.style.isnot(None)).all()
+    scenes = db.query(Product.scene).distinct().filter(Product.scene.isnot(None)).all()
+    managers = db.query(Product.manager).distinct().filter(Product.manager.isnot(None)).all()
+    
     return ResponseModel(data={
-        "categories": [c[0] for c in categories if c[0]]
+        "categories": [c[0] for c in categories if c[0]],
+        "tiers": [t[0] for t in tiers if t[0]],
+        "styles": [s[0] for s in styles if s[0]],
+        "scenes": [s[0] for s in scenes if s[0]],
+        "managers": [m[0] for m in managers if m[0]],
     })
 
 
@@ -507,7 +545,9 @@ def get_product_detail(
     dim: str = Query("weekly", alias="dim", description="时间维度"),
     db: Session = Depends(get_db)
 ):
-    """获取商品详情"""
+    product = db.query(Product).filter(Product.product_id == product_id).first()
+    if not product:
+        return ResponseModel(data={"product": None, "trend": []})
     
     dim_cfg = DIMENSION_MAP.get(dim, DIMENSION_MAP['weekly'])
     visitors_col = dim_cfg['visitors_col']
@@ -520,21 +560,12 @@ def get_product_detail(
     else:
         Model = WeeklyData
     
-    data_list = db.query(Model, Product.title, Product.category).join(
-        Product, Model.product_id == Product.product_id
-    ).filter(
+    data_list = db.query(Model).filter(
         Model.product_id == product_id
     ).order_by(desc(getattr(Model, date_col))).limit(12).all()
     
-    if not data_list:
-        return ResponseModel(data={"product": None, "trend": []})
-    
-    product_info = data_list[0]
-    product_name = product_info[1]
-    product_category = product_info[2]
     trend = []
-    for data_record in reversed(data_list):
-        model_data = data_record[0]
+    for model_data in reversed(data_list):
         period_val = None
         if date_col == 'month':
             period_val = model_data.month
@@ -547,7 +578,7 @@ def get_product_detail(
         refund = model_data.refund_amount or 0
         visitors = getattr(model_data, visitors_col) or 0
         
-        trend.append({
+        item = {
             "period": period_val,
             "payment_amount": payment,
             "net_sales": payment - refund,
@@ -558,16 +589,136 @@ def get_product_detail(
             "conversion": model_data.payment_conversion,
             "ad_spend": model_data.ad_spend or 0,
             "roi": model_data.ad_roi,
-            "order_count": model_data.order_count or 0,
-            "payment_count": model_data.payment_count or 0,
-        })
+            "order_count": model_data.order_count or 0 if hasattr(model_data, 'order_count') else 0,
+            "payment_count": model_data.payment_count or 0 if hasattr(model_data, 'payment_count') else 0,
+        }
+        for col_name in ALL_COMMON_COLS + MONTHLY_ONLY_COLS:
+            if hasattr(model_data, col_name):
+                val = getattr(model_data, col_name)
+                if val is not None:
+                    item[col_name] = val
+        trend.append(item)
     
     return ResponseModel(data={
         "product": {
-            "product_id": product_id,
-            "product_name": product_name,
-            "category": product_category,
+            "product_id": product.product_id,
+            "product_name": product.title,
+            "category": product.category,
+            "tier": product.tier,
+            "style": product.style,
+            "scene": product.scene,
+            "manager": product.manager,
+            "list_date": str(product.list_date) if product.list_date else None,
+            "status": product.status,
             "trend": trend
         },
         "dimension": dim
     })
+
+
+@router.patch("/{product_id}", response_model=ResponseModel)
+def update_product_field(
+    product_id: str,
+    field: str = Body(..., embed=True),
+    value: Any = Body(..., embed=True),
+    db: Session = Depends(get_db)
+):
+    product = db.query(Product).filter(Product.product_id == product_id).first()
+    if not product:
+        raise HTTPException(status_code=404, detail="商品不存在")
+    
+    valid_fields = ['tier', 'style', 'scene', 'manager', 'status', 'title', 'category']
+    if field not in valid_fields:
+        raise HTTPException(status_code=400, detail=f"不支持更新该字段: {field}")
+    
+    setattr(product, field, value)
+    db.commit()
+    db.refresh(product)
+    
+    return ResponseModel(data={"success": True, "product_id": product_id, "field": field, "value": value})
+
+
+@router.post("/batch-update", response_model=ResponseModel)
+def batch_update_products(
+    product_ids: List[str] = Body(..., embed=True),
+    tier: Optional[str] = Body(None, embed=True),
+    style: Optional[str] = Body(None, embed=True),
+    manager: Optional[str] = Body(None, embed=True),
+    db: Session = Depends(get_db)
+):
+    products = db.query(Product).filter(Product.product_id.in_(product_ids)).all()
+    updated = 0
+    for product in products:
+        if tier is not None:
+            product.tier = tier
+        if style is not None:
+            product.style = style
+        if manager is not None:
+            product.manager = manager
+        updated += 1
+    
+    db.commit()
+    return ResponseModel(data={"success": True, "updated": updated, "total": len(product_ids)})
+
+
+@router.get("/{product_id}/tags", response_model=ResponseModel)
+def get_product_tags(product_id: str, db: Session = Depends(get_db)):
+    tags = db.query(ProductTag).filter(ProductTag.product_id == product_id).all()
+    return ResponseModel(data={"tags": [{"id": t.id, "tag": t.tag, "is_auto": t.is_auto} for t in tags]})
+
+
+@router.post("/{product_id}/tags", response_model=ResponseModel)
+def add_product_tag(
+    product_id: str,
+    tag: str = Body(..., embed=True),
+    db: Session = Depends(get_db)
+):
+    new_tag = ProductTag(product_id=product_id, tag=tag, is_auto=False)
+    db.add(new_tag)
+    db.commit()
+    return ResponseModel(data={"success": True, "tag_id": new_tag.id})
+
+
+@router.delete("/{product_id}/tags/{tag_id}", response_model=ResponseModel)
+def delete_product_tag(
+    product_id: str,
+    tag_id: int,
+    db: Session = Depends(get_db)
+):
+    tag = db.query(ProductTag).filter(ProductTag.id == tag_id, ProductTag.product_id == product_id).first()
+    if tag:
+        db.delete(tag)
+        db.commit()
+    return ResponseModel(data={"success": True})
+
+
+@router.get("/{product_id}/notes", response_model=ResponseModel)
+def get_product_notes(product_id: str, db: Session = Depends(get_db)):
+    notes = db.query(ProductNote).filter(ProductNote.product_id == product_id).order_by(desc(ProductNote.created_at)).all()
+    return ResponseModel(data={"notes": [{"id": n.id, "note": n.note, "created_by": n.created_by, "created_at": str(n.created_at)} for n in notes]})
+
+
+@router.post("/{product_id}/notes", response_model=ResponseModel)
+def add_product_note(
+    product_id: str,
+    note: str = Body(..., embed=True),
+    created_by: str = Body("admin", embed=True),
+    db: Session = Depends(get_db)
+):
+    new_note = ProductNote(product_id=product_id, note=note, created_by=created_by)
+    db.add(new_note)
+    db.commit()
+    return ResponseModel(data={"success": True, "note_id": new_note.id})
+
+
+@router.delete("/{product_id}/notes/{note_id}", response_model=ResponseModel)
+def delete_product_note(
+    product_id: str,
+    note_id: int,
+    db: Session = Depends(get_db)
+):
+    note = db.query(ProductNote).filter(ProductNote.id == note_id, ProductNote.product_id == product_id).first()
+    if note:
+        db.delete(note)
+        db.commit()
+    return ResponseModel(data={"success": True})
