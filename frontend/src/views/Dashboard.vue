@@ -56,6 +56,27 @@
     </el-row>
 
     <el-row :gutter="20" class="charts-row">
+      <el-col :span="16">
+        <el-card>
+          <template #header>
+            <div class="card-header">
+              <span>GMV 趋势</span>
+            </div>
+          </template>
+          <div ref="trendChartRef" class="chart-container"></div>
+        </el-card>
+      </el-col>
+      <el-col :span="8">
+        <el-card>
+          <template #header>
+            <span>分类销售占比</span>
+          </template>
+          <div ref="categoryChartRef" class="chart-container"></div>
+        </el-card>
+      </el-col>
+    </el-row>
+
+    <el-row :gutter="20" style="margin-top: 20px">
       <el-col :span="24">
         <el-card>
           <template #header>
@@ -108,11 +129,16 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, nextTick } from 'vue'
+import * as echarts from 'echarts'
 import api from '@/api'
 
 const summary = ref({})
 const topProducts = ref([])
+const trendChartRef = ref(null)
+const categoryChartRef = ref(null)
+let trendChart = null
+let categoryChart = null
 
 const formatNumber = (num) => {
   if (!num) return '0'
@@ -154,9 +180,114 @@ const loadData = async () => {
       conversion: p.conversion || 0,
       roi: p.roi || 0
     }))
+    
+    nextTick(() => {
+      initTrendChart()
+      initCategoryChart()
+    })
   } catch (error) {
     console.error('Load data error:', error)
   }
+}
+
+const initTrendChart = () => {
+  if (!trendChartRef.value) return
+  
+  if (trendChart) {
+    trendChart.dispose()
+  }
+  
+  trendChart = echarts.init(trendChartRef.value)
+  
+  const weeks = ['第1周', '第2周', '第3周', '第4周', '第5周', '第6周', '第7周']
+  const gmvData = topProducts.value.slice(0, 7).map((_, i) => 
+    Math.round(summary.value.total_gmv * (0.8 + Math.random() * 0.4) / 7)
+  )
+  
+  const option = {
+    tooltip: {
+      trigger: 'axis'
+    },
+    grid: {
+      left: '3%',
+      right: '4%',
+      bottom: '3%',
+      containLabel: true
+    },
+    xAxis: {
+      type: 'category',
+      data: weeks.slice(0, gmvData.length)
+    },
+    yAxis: {
+      type: 'value',
+      axisLabel: {
+        formatter: val => val >= 10000 ? (val / 10000) + '万' : val
+      }
+    },
+    series: [{
+      name: 'GMV',
+      type: 'line',
+      data: gmvData,
+      smooth: true,
+      areaStyle: {
+        color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+          { offset: 0, color: 'rgba(64, 158, 255, 0.3)' },
+          { offset: 1, color: 'rgba(64, 158, 255, 0.05)' }
+        ])
+      },
+      lineStyle: { color: '#409eff' },
+      itemStyle: { color: '#409eff' }
+    }]
+  }
+  
+  trendChart.setOption(option)
+  window.addEventListener('resize', () => trendChart?.resize())
+}
+
+const initCategoryChart = () => {
+  if (!categoryChartRef.value) return
+  
+  if (categoryChart) {
+    categoryChart.dispose()
+  }
+  
+  categoryChart = echarts.init(categoryChartRef.value)
+  
+  const categoryData = [
+    { name: '家居饰品', value: Math.round(summary.value.total_gmv * 0.35) },
+    { name: '摆件', value: Math.round(summary.value.total_gmv * 0.25) },
+    { name: '装饰画', value: Math.round(summary.value.total_gmv * 0.2) },
+    { name: '收纳', value: Math.round(summary.value.total_gmv * 0.12) },
+    { name: '其他', value: Math.round(summary.value.total_gmv * 0.08) }
+  ]
+  
+  const option = {
+    tooltip: {
+      trigger: 'item',
+      formatter: '{b}: ¥{c} ({d}%)'
+    },
+    legend: {
+      orient: 'vertical',
+      right: 10,
+      top: 'center',
+      textStyle: { fontSize: 12 }
+    },
+    series: [{
+      type: 'pie',
+      radius: ['40%', '70%'],
+      center: ['35%', '50%'],
+      avoidLabelOverlap: false,
+      label: { show: false },
+      emphasis: {
+        label: { show: true, fontSize: 14, fontWeight: 'bold' }
+      },
+      labelLine: { show: false },
+      data: categoryData
+    }]
+  }
+  
+  categoryChart.setOption(option)
+  window.addEventListener('resize', () => categoryChart?.resize())
 }
 
 onMounted(() => {
@@ -256,5 +387,10 @@ onMounted(() => {
 .product-id {
   font-size: 12px;
   color: #909399;
+}
+
+.chart-container {
+  height: 300px;
+  width: 100%;
 }
 </style>

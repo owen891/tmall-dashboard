@@ -115,7 +115,7 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
-import axios from 'axios'
+import api from '@/api'
 
 const dimension = ref('weekly')
 const summary = ref({
@@ -133,20 +133,32 @@ const productKPIs = ref([])
 
 const loadKPI = async () => {
   try {
-    const summaryRes = await axios.get(`/api/kpi/summary?dimension=${dimension.value}`)
-    if (summaryRes.data.code === 200) {
-      summary.value = summaryRes.data.data
+    const summaryRes = await api.getKPISummary(dimension.value)
+    const kpi = summaryRes.data?.kpi || {}
+    summary.value = {
+      gmv: kpi.total_gmv?.value || 0,
+      gmv_trend: kpi.total_gmv?.change?.percent || 0,
+      visitors: kpi.visitors?.value || 0,
+      visitors_trend: kpi.visitors?.change?.percent || 0,
+      conversion: kpi.avg_conversion?.value || 0,
+      conversion_trend: kpi.avg_conversion?.change?.percent || 0,
+      roi: kpi.avg_roi?.value || 0,
+      roi_trend: kpi.avg_roi?.change?.percent || 0
     }
-
-    const anomaliesRes = await axios.get('/api/kpi/anomalies')
-    if (anomaliesRes.data.code === 200) {
-      anomalies.value = anomaliesRes.data.data
-    }
-
-    const productRes = await axios.get(`/api/kpi/products?dimension=${dimension.value}`)
-    if (productRes.data.code === 200) {
-      productKPIs.value = productRes.data.data
-    }
+    
+    const anomaliesRes = await api.getKPIAnomalies()
+    anomalies.value = anomaliesRes.data?.alerts || []
+    
+    const productsRes = await api.getProducts({ dim: dimension.value, limit: 10 })
+    productKPIs.value = (productsRes.data?.data || []).map(p => ({
+      product_name: p.title,
+      gmv: p.payment_amount,
+      visitors: p.visitors,
+      conversion: (p.conversion * 100).toFixed(2),
+      roi: p.roi?.toFixed(2) || '0',
+      ad_spend: p.ad_spend,
+      refund_rate: (p.refund_rate * 100).toFixed(2)
+    }))
   } catch (error) {
     console.error('加载KPI失败:', error)
   }
@@ -154,7 +166,7 @@ const loadKPI = async () => {
 
 const dismissAnomaly = async (id) => {
   try {
-    await axios.post(`/api/kpi/anomalies/${id}/dismiss`)
+    await api.dismissAnomaly(id)
     ElMessage.success('已忽略')
     loadKPI()
   } catch (error) {
@@ -167,7 +179,7 @@ const formatNumber = (num) => {
   if (num >= 10000) {
     return (num / 10000).toFixed(2) + '万'
   }
-  return num.toFixed(2)
+  return num.toFixed ? num.toFixed(2) : num
 }
 
 onMounted(() => {
