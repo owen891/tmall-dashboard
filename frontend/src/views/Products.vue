@@ -24,11 +24,19 @@
           <el-button type="primary" @click="loadProducts" size="default">查询</el-button>
           <el-button @click="resetFilters" size="default">重置</el-button>
           <el-button type="success" @click="openColumnSelector" size="default">字段设置</el-button>
+          <el-button @click="loadProducts" size="default" :loading="loading">
+            <el-icon><Refresh /></el-icon>
+          </el-button>
         </el-form-item>
       </el-form>
     </el-card>
 
     <el-card class="table-card">
+      <div class="table-toolbar" v-if="selectedProducts.length > 0">
+        <span class="selected-count">已选择 {{ selectedProducts.length }} 项</span>
+        <el-button size="small" @click="showBatchUpdate = true">批量修改</el-button>
+        <el-button size="small" @click="selectedProducts = []">取消选择</el-button>
+      </div>
       <el-table 
         :data="products" 
         stripe 
@@ -36,7 +44,9 @@
         size="small"
         :cell-style="{ padding: '6px 4px' }"
         :header-cell-style="{ padding: '8px 4px' }"
+        @selection-change="handleSelectionChange"
       >
+        <el-table-column type="selection" width="40" fixed="left" />
         <el-table-column width="50" fixed="left">
           <template #default="{ row }">
             <el-icon 
@@ -161,6 +171,32 @@
         <el-button type="primary" @click="submitAction">提交</el-button>
       </template>
     </el-dialog>
+
+    <el-dialog v-model="showBatchUpdate" title="批量修改" width="500px">
+      <el-form :model="batchForm" label-width="100px">
+        <el-form-item label="分层">
+          <el-select v-model="batchForm.tier" placeholder="不修改" clearable style="width: 100%">
+            <el-option label="引流款" value="引流款" />
+            <el-option label="利润款" value="利润款" />
+            <el-option label="潜力款" value="潜力款" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="风格">
+          <el-select v-model="batchForm.style" placeholder="不修改" clearable style="width: 100%">
+            <el-option v-for="s in filterOptions.styles || []" :key="s" :label="s" :value="s" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="负责人">
+          <el-select v-model="batchForm.manager" placeholder="不修改" clearable style="width: 100%">
+            <el-option v-for="m in filterOptions.managers || []" :key="m" :label="m" :value="m" />
+          </el-select>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="showBatchUpdate = false">取消</el-button>
+        <el-button type="primary" @click="submitBatchUpdate">确定修改</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -168,7 +204,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { View, Edit } from '@element-plus/icons-vue'
+import { View, Edit, Refresh } from '@element-plus/icons-vue'
 import api from '@/api'
 import ColumnSelector from '@/components/ColumnSelector.vue'
 import { fieldCategories, loadColumnConfig, getFieldConfig, defaultVisibleFields } from '@/config/columns'
@@ -198,6 +234,13 @@ const actionForm = ref({
   action_type: '',
   action_detail: '',
   action_date: ''
+})
+const selectedProducts = ref([])
+const showBatchUpdate = ref(false)
+const batchForm = ref({
+  tier: '',
+  style: '',
+  manager: ''
 })
 
 const visibleColumns = computed(() => {
@@ -320,6 +363,33 @@ const submitAction = async () => {
   }
 }
 
+const handleSelectionChange = (selection) => {
+  selectedProducts.value = selection
+}
+
+const submitBatchUpdate = async () => {
+  if (!batchForm.value.tier && !batchForm.value.style && !batchForm.value.manager) {
+    ElMessage.warning('请至少选择一项要修改的内容')
+    return
+  }
+  try {
+    const productIds = selectedProducts.value.map(p => p.product_id)
+    await api.batchUpdateProducts(productIds, {
+      tier: batchForm.value.tier || undefined,
+      style: batchForm.value.style || undefined,
+      manager: batchForm.value.manager || undefined
+    })
+    ElMessage.success(`成功修改 ${productIds.length} 个商品`)
+    showBatchUpdate.value = false
+    selectedProducts.value = []
+    batchForm.value = { tier: '', style: '', manager: '' }
+    loadProducts()
+  } catch (error) {
+    console.error('Batch update error:', error)
+    ElMessage.error('批量修改失败')
+  }
+}
+
 onMounted(() => {
   const config = loadColumnConfig()
   selectedFields.value = config.visibleFields || defaultVisibleFields
@@ -343,6 +413,20 @@ onMounted(() => {
 
 .table-card {
   width: 100%;
+}
+
+.table-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid #ebeef5;
+  margin-bottom: 10px;
+}
+
+.selected-count {
+  color: #409eff;
+  font-weight: 500;
 }
 
 .product-info-compact {
