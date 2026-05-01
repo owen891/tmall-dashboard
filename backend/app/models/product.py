@@ -14,7 +14,7 @@ class Product(Base):
     tier = Column(String, nullable=True)
     style = Column(String, nullable=True)
     scene = Column(String, nullable=True)
-    list_date = Column(Date, nullable=True)
+    list_date = Column(String, nullable=True)
     status = Column(String, default="active")
     remark = Column(Text, nullable=True)
     image_url = Column(String, nullable=True)
@@ -29,7 +29,7 @@ class DailyData(Base):
     
     id = Column(Integer, primary_key=True, autoincrement=True)
     product_id = Column(String, nullable=False, index=True)
-    date = Column(Date, nullable=False, index=True)
+    date = Column(String, nullable=False, index=True)
     
     payment_amount = Column(Float, default=0)
     refund_amount = Column(Float, default=0)
@@ -52,6 +52,12 @@ class DailyData(Base):
     avg_order_value = Column(Float, default=0)
     data_source = Column(String, nullable=True)
     imported_at = Column(DateTime, default=func.now())
+    uv_value = Column(Float, default=0)
+    cart_qty = Column(Integer, default=0)
+    fav_users = Column(Integer, default=0)
+    search_conversion = Column(Float, default=0)
+    search_visitors = Column(Integer, default=0)
+    cart_users = Column(Integer, default=0)
 
 
 class WeeklyData(Base):
@@ -59,37 +65,38 @@ class WeeklyData(Base):
     
     id = Column(Integer, primary_key=True, autoincrement=True)
     product_id = Column(String, nullable=False, index=True)
-    week_start = Column(Date, nullable=False, index=True)
+    week_start = Column(String, nullable=False, index=True)
     
     payment_amount = Column(Float, default=0)
     refund_amount = Column(Float, default=0)
     net_sales = Column(Float, default=0)
-    gsv_change = Column(Float, default=0)
-    ad_spend = Column(Float, default=0)
-    ad_spend_change = Column(Float, default=0)
-    total_roi = Column(Float, default=0)
-    direct_roi = Column(Float, default=0)
-    direct_roi_change = Column(Float, default=0)
-    refund_ad_ratio = Column(Float, default=0)
-    visitors = Column(Integer, default=0)
-    uv_value = Column(Float, default=0)
+    presale_amount = Column(Float, default=0)
+    presale_qty = Column(Integer, default=0)
+    ipv = Column(Integer, default=0)
+    pv = Column(Integer, default=0)
+    search_ipv = Column(Integer, default=0)
+    recommend_ipv = Column(Integer, default=0)
+    paid_ipv = Column(Integer, default=0)
+    organic_ipv = Column(Integer, default=0)
     payment_conversion = Column(Float, default=0)
-    refund_rate = Column(Float, default=0)
     cart_rate = Column(Float, default=0)
-    cart_qty = Column(Integer, default=0)
-    payment_users = Column(Integer, default=0)
-    avg_order_value = Column(Float, default=0)
-    lead_potential_ratio = Column(Float, default=0)
-    new_customer_cost = Column(Float, default=0)
-    direct_cart_cost = Column(Float, default=0)
-    total_cart_cost = Column(Float, default=0)
+    fav_rate = Column(Float, default=0)
+    search_click_rate = Column(Float, default=0)
+    bounce_rate = Column(Float, default=0)
+    avg_stay_duration = Column(Float, default=0)
+    ad_spend = Column(Float, default=0)
+    ad_roi = Column(Float, default=0)
     repurchase_rate = Column(Float, default=0)
+    repurchase_users = Column(Integer, default=0)
+    cross_sell_qty = Column(Integer, default=0)
     cross_sell_rate = Column(Float, default=0)
+    avg_order_value = Column(Float, default=0)
     category_width = Column(Integer, default=0)
-    click_rate = Column(Float, default=0)
-    history_data = Column(Text, nullable=True)
+    action_1 = Column(Text, nullable=True)
+    action_2 = Column(Text, nullable=True)
     data_source = Column(String, nullable=True)
     imported_at = Column(DateTime, default=func.now())
+    industry_ctr = Column(Float, default=0)
 
 
 class MonthlyData(Base):
@@ -145,6 +152,21 @@ class MonthlyData(Base):
     score = Column(Integer, default=0)
     data_source = Column(String, nullable=True)
     imported_at = Column(DateTime, default=func.now())
+    paid_ipv = Column(Integer, default=0)
+    organic_ipv = Column(Integer, default=0)
+    search_ipv = Column(Integer, default=0)
+    recommend_ipv = Column(Integer, default=0)
+    cart_users = Column(Integer, default=0)
+    industry_ctr = Column(Float, default=0)
+    cross_sell_qty = Column(Integer, default=0)
+    cross_sell_categories = Column(Integer, default=0)
+    repurchase_users = Column(Integer, default=0)
+    guide_visits = Column(Integer, default=0)
+    guide_visitors = Column(Integer, default=0)
+    guide_potential = Column(Integer, default=0)
+    guide_potential_ratio = Column(Float, default=0)
+    new_buyers = Column(Integer, default=0)
+    new_buyer_ratio = Column(Float, default=0)
 
 
 class ProductTag(Base):
@@ -162,7 +184,7 @@ class OperationAction(Base):
     
     id = Column(Integer, primary_key=True, autoincrement=True)
     product_id = Column(String, nullable=False, index=True)
-    action_date = Column(Date, nullable=False)
+    action_date = Column(String, nullable=False)
     action_type = Column(String, nullable=True)
     action_detail = Column(Text, nullable=True)
     before_payment = Column(Float, default=0)
@@ -173,8 +195,11 @@ class OperationAction(Base):
     after_visitors = Column(Integer, default=0)
     after_conversion = Column(Float, default=0)
     after_roi = Column(Float, default=0)
+    payment_change = Column(Float, default=0)
+    conversion_change = Column(Float, default=0)
+    roi_change = Column(Float, default=0)
     effectiveness_score = Column(Float, default=0)
-    created_at = Column(DateTime, default=func.now())
+    imported_at = Column(DateTime, default=func.now())
 
 
 class ProductNote(Base):
@@ -226,7 +251,7 @@ class ProductHealth(Base):
     search_ctr_vs_industry_score = Column(Float, default=0)
     health_score = Column(Float, default=0)
     health_level = Column(String, nullable=True)
-    alert_dimensions = Column(JSON, default=list)
+    alert_dimensions = Column(Text, nullable=True)
     
     created_at = Column(DateTime, default=func.now())
 
@@ -256,25 +281,37 @@ class PaidDetail(Base):
     members_gmv = Column(Float, default=0)
     
     imported_at = Column(DateTime, default=func.now())
+    direct_orders = Column(Integer, default=0)
+    indirect_orders = Column(Integer, default=0)
+    click_conversion = Column(Float, default=0)
+    presale_roi = Column(Float, default=0)
+    total_cost = Column(Float, default=0)
+    direct_cart_adds = Column(Integer, default=0)
+    indirect_cart_adds = Column(Integer, default=0)
+    store_favs = Column(Integer, default=0)
+    store_fav_cost = Column(Float, default=0)
+    total_fav_cart = Column(Integer, default=0)
+    total_fav_cart_cost = Column(Float, default=0)
+    item_fav_cart = Column(Integer, default=0)
+    item_fav_cart_cost = Column(Float, default=0)
+    total_favs = Column(Integer, default=0)
+    item_fav_cost = Column(Float, default=0)
+    item_fav_rate = Column(Float, default=0)
+    cart_cost = Column(Float, default=0)
 
 
 class ShopTarget(Base):
     __tablename__ = "shop_targets"
     
     id = Column(Integer, primary_key=True, autoincrement=True)
-    target_month = Column(String, nullable=False, index=True)
+    period = Column(String, nullable=False, index=True)
     
-    gmv_target = Column(Float, default=0)
-    gmv_actual = Column(Float, default=0)
-    visitors_target = Column(Integer, default=0)
-    visitors_actual = Column(Integer, default=0)
-    conversion_target = Column(Float, default=0)
-    conversion_actual = Column(Float, default=0)
-    roi_target = Column(Float, default=0)
-    roi_actual = Column(Float, default=0)
-    ad_spend_target = Column(Float, default=0)
-    ad_spend_actual = Column(Float, default=0)
-    notes = Column(Text, nullable=True)
+    target_gsv = Column(Float, default=0)
+    target_ad_spend = Column(Float, default=0)
+    target_ad_ratio = Column(Float, default=0)
+    target_conversion = Column(Float, default=0)
+    target_refund_rate = Column(Float, default=0)
+    remark = Column(Text, nullable=True)
     
     created_at = Column(DateTime, default=func.now())
 
@@ -284,16 +321,13 @@ class ProductTarget(Base):
     
     id = Column(Integer, primary_key=True, autoincrement=True)
     product_id = Column(String, nullable=True, index=True)
-    product_name = Column(String, nullable=True)
-    target_month = Column(String, nullable=False, index=True)
+    tier = Column(String, nullable=True)
+    period = Column(String, nullable=False, index=True)
     
-    sales_target = Column(Float, default=0)
-    sales_actual = Column(Float, default=0)
-    gmv_target = Column(Float, default=0)
-    gmv_actual = Column(Float, default=0)
-    roi_target = Column(Float, default=0)
-    roi_actual = Column(Float, default=0)
-    notes = Column(Text, nullable=True)
+    target_gsv = Column(Float, default=0)
+    target_ad_spend = Column(Float, default=0)
+    target_ad_ratio = Column(Float, default=0)
+    remark = Column(Text, nullable=True)
     
     created_at = Column(DateTime, default=func.now())
 
@@ -302,17 +336,16 @@ class Alert(Base):
     __tablename__ = "alerts"
     
     id = Column(Integer, primary_key=True, autoincrement=True)
-    rule_id = Column(Integer, nullable=True)
-    product_id = Column(String, nullable=True, index=True)
-    product_name = Column(String, nullable=True)
+    alert_date = Column(String, nullable=True)
     alert_type = Column(String, nullable=False, index=True)
     severity = Column(String, default="warning")
-    metric = Column(String, nullable=True)
+    title = Column(String, nullable=True)
+    detail = Column(Text, nullable=True)
+    metric_name = Column(String, nullable=True)
     current_value = Column(Float, default=0)
-    threshold = Column(Float, default=0)
-    message = Column(Text, nullable=True)
-    status = Column(String, default="unresolved")
-    resolved_at = Column(DateTime, nullable=True)
+    target_value = Column(Float, default=0)
+    period = Column(String, nullable=True)
+    dismissed = Column(Boolean, default=False)
     
     created_at = Column(DateTime, default=func.now())
 
@@ -321,11 +354,10 @@ class AlertRule(Base):
     __tablename__ = "alert_rules"
     
     id = Column(Integer, primary_key=True, autoincrement=True)
-    name = Column(String, nullable=False)
     metric = Column(String, nullable=False)
-    condition = Column(String, nullable=False)
+    operator = Column(String, nullable=False)
     threshold = Column(Float, nullable=False)
-    severity = Column(String, default="warning")
+    level = Column(String, default="warning")
     enabled = Column(Boolean, default=True)
     
     created_at = Column(DateTime, default=func.now())
@@ -336,17 +368,15 @@ class Review(Base):
     
     id = Column(Integer, primary_key=True, autoincrement=True)
     product_id = Column(String, nullable=False, index=True)
-    product_name = Column(String, nullable=True)
     review_date = Column(String, nullable=True)
     content = Column(Text, nullable=False)
-    rating = Column(Float, default=5)
+    rating = Column(Integer, default=5)
+    reviewer = Column(String, nullable=True)
+    is_effective = Column(Boolean, default=False)
     sentiment = Column(String, default="neutral")
-    reviewer_type = Column(String, default="normal")
-    keywords = Column(Text, nullable=True)
-    is_anonymous = Column(Boolean, default=False)
-    positive_dims = Column(JSON, default=list)
-    negative_dims = Column(JSON, default=list)
-    scenes = Column(JSON, default=list)
+    positive_dims = Column(Text, nullable=True)
+    negative_dims = Column(Text, nullable=True)
+    scenes = Column(Text, nullable=True)
     has_image = Column(Boolean, default=False)
     source = Column(String, nullable=True)
     
@@ -364,22 +394,33 @@ class ReviewSummary(Base):
     positive_rate = Column(Float, default=0)
     negative_rate = Column(Float, default=0)
     effective_rate = Column(Float, default=0)
-    top_positive_dims = Column(JSON, default=list)
-    top_negative_dims = Column(JSON, default=list)
-    top_scenes = Column(JSON, default=list)
+    top_positive_dims = Column(Text, nullable=True)
+    top_negative_dims = Column(Text, nullable=True)
+    top_scenes = Column(Text, nullable=True)
     
-    updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
+    updated_at = Column(DateTime, default=func.now())
 
 
 class MarketAnalysis(Base):
     __tablename__ = "market_analysis"
     
     id = Column(Integer, primary_key=True, autoincrement=True)
-    analysis_type = Column(String, nullable=False)
-    product_id = Column(String, nullable=True, index=True)
-    category = Column(String, nullable=True)
-    keyword = Column(String, nullable=True)
-    data = Column(Text, nullable=True)
+    analysis_date = Column(String, nullable=True)
+    category_path = Column(String, nullable=True)
+    category_short = Column(String, nullable=True)
+    period_30d = Column(String, nullable=True)
+    period_7d = Column(String, nullable=True)
+    period_trend = Column(String, nullable=True)
+    total_keywords = Column(Integer, default=0)
+    avg_ctr_7d = Column(Float, default=0)
+    avg_cvr_30d = Column(Float, default=0)
+    top5_keywords = Column(Text, nullable=True)
+    summary_data = Column(Text, nullable=True)
+    keywords_data = Column(Text, nullable=True)
+    need_stats_data = Column(Text, nullable=True)
+    dimension_details = Column(Text, nullable=True)
+    histograms_data = Column(Text, nullable=True)
+    rankings_data = Column(Text, nullable=True)
     
     created_at = Column(DateTime, default=func.now())
 
@@ -388,15 +429,14 @@ class MarketKeywordOpportunity(Base):
     __tablename__ = "market_keyword_opportunities"
     
     id = Column(Integer, primary_key=True, autoincrement=True)
+    analysis_date = Column(String, nullable=True)
     keyword = Column(String, nullable=False)
-    category = Column(String, nullable=True)
-    search_volume = Column(Integer, default=0)
-    competition = Column(Float, default=0)
-    click_rate = Column(Float, default=0)
-    conversion_rate = Column(Float, default=0)
-    avg_price = Column(Float, default=0)
-    trend_30d = Column(Float, default=0)
+    pop_30d = Column(Float, default=0)
+    ctr_7d = Column(Float, default=0)
+    cvr_30d = Column(Float, default=0)
+    opportunity_category = Column(String, nullable=True)
     opportunity_score = Column(Float, default=0)
+    need_tags = Column(Text, nullable=True)
     
     created_at = Column(DateTime, default=func.now())
 
@@ -405,13 +445,11 @@ class ChartEvent(Base):
     __tablename__ = "chart_events"
     
     id = Column(Integer, primary_key=True, autoincrement=True)
-    product_id = Column(String, nullable=True, index=True)
-    chart_type = Column(String, nullable=False)
-    event_date = Column(Date, nullable=False)
-    event_type = Column(String, nullable=False)
+    event_date = Column(String, nullable=False)
     title = Column(String, nullable=True)
     description = Column(Text, nullable=True)
-    period = Column(String, nullable=True)
+    color = Column(String, default="#EF4444")
+    chart_type = Column(String, nullable=False)
     
     created_at = Column(DateTime, default=func.now())
 
@@ -428,5 +466,32 @@ class Refund(Base):
     refund_rate = Column(Float, default=0)
     refund_reason = Column(String, nullable=True)
     refund_days = Column(Integer, default=0)
+    
+    created_at = Column(DateTime, default=func.now())
+
+
+class OperationLog(Base):
+    __tablename__ = "operation_logs"
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    action = Column(Text, nullable=False)
+    detail = Column(Text, nullable=True)
+    operator = Column(String, nullable=True)
+    
+    created_at = Column(DateTime, default=func.now())
+
+
+class ScheduledTask(Base):
+    __tablename__ = "scheduled_tasks"
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    task_name = Column(String, nullable=False)
+    task_type = Column(String, nullable=True)
+    cron_expr = Column(String, nullable=True)
+    file_pattern = Column(String, nullable=True)
+    enabled = Column(Boolean, default=True)
+    last_run = Column(String, nullable=True)
+    next_run = Column(String, nullable=True)
+    status = Column(String, nullable=True)
     
     created_at = Column(DateTime, default=func.now())
