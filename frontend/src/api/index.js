@@ -49,20 +49,42 @@ export default {
   getProductNotes(productId) {
     return request.get(`/products/${productId}/notes`)
   },
+  addProductNote(productId, note, createdBy = 'admin') {
+    return request.post(`/products/${productId}/notes`, { 
+      note, created_by: createdBy 
+    })
+  },
+  deleteProductNote(productId, noteId) {
+    return request.delete(`/products/${productId}/notes/${noteId}`)
+  },
   getProductTags(productId) {
     return request.get(`/products/${productId}/tags`)
   },
   addProductTag(productId, tag) {
-    return request.post(`/products/${productId}/tags`, null, { params: { tag } })
+    return request.post(`/products/${productId}/tags`, { tag })
   },
-  removeProductTag(productId, tag) {
-    return request.delete(`/products/${productId}/tags/${tag}`)
+  removeProductTag(productId, tagId) {
+    return request.delete(`/products/${productId}/tags/${tagId}`)
   },
   toggleProductStar(productId) {
     return request.post(`/products/${productId}/star`)
   },
+  updateProductField(productId, field, value) {
+    return request.patch(`/products/${productId}`, { 
+      field, value 
+    })
+  },
+  batchUpdateProducts(productIds, updates) {
+    return request.post('/products/batch-update', { 
+      product_ids: productIds, 
+      ...updates 
+    })
+  },
   getFilterOptions() {
     return request.get('/products/filters/options')
+  },
+  getCategories() {
+    return request.get('/products/categories')
   },
   importExcel(file, weekStart) {
     const formData = new FormData()
@@ -72,6 +94,39 @@ export default {
     }
     return request.post('/import/excel', formData, {
       headers: { 'Content-Type': 'multipart/form-data' }
+    })
+  },
+  getPeriods(dim = 'weekly') {
+    return request.get('/periods', { params: { dim } })
+  },
+  getSystemStatus() {
+    return request.get('/status')
+  },
+  getCompareData(dim, period1, period2) {
+    return request.get('/compare', { 
+      params: { dim, period1, period2 } 
+    })
+  },
+  getActions(productId, limit, offset) {
+    return request.get('/actions', { 
+      params: { product_id: productId, limit, offset } 
+    })
+  },
+  addAction(productId, actionDate, actionType, actionDetail) {
+    return request.post('/actions', { 
+      product_id: productId, action_date: actionDate, action_type: actionType, action_detail: actionDetail 
+    })
+  },
+  deleteAction(actionId) {
+    return request.delete(`/actions/${actionId}`)
+  },
+  getActionStats(period) {
+    return request.get('/action-stats', { params: { period } })
+  },
+  exportProducts(params) {
+    return request.get('/export/products', { 
+      params, 
+      responseType: 'blob' 
     })
   }
 }
