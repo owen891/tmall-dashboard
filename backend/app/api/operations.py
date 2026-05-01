@@ -7,7 +7,7 @@ from app.models import OperationAction, Product, WeeklyData
 from app.schemas.common import ResponseModel
 from datetime import datetime, timedelta
 
-router = APIRouter(prefix="/api/operations", tags=["运营管理"])
+router = APIRouter(prefix="/operations", tags=["运营管理"])
 
 
 def calculate_effectiveness(action: OperationAction) -> dict:

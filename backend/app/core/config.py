@@ -1,6 +1,7 @@
 from pydantic_settings import BaseSettings
 from typing import List, Optional
 from functools import lru_cache
+import os
 
 
 class Settings(BaseSettings):
@@ -8,9 +9,9 @@ class Settings(BaseSettings):
     PROJECT_VERSION: str = "2.0.0"
     DEBUG: bool = True
     
-    DATABASE_URL: str = "sqlite:///./data/db/dashboard.db"
+    DATABASE_URL: str = f"sqlite:///{os.path.dirname(os.path.dirname(os.path.dirname(__file__)))}/data/dashboard.db"
     
-    BACKEND_CORS_ORIGINS: List[str] = ["http://localhost:5173", "http://127.0.0.1:5173"]
+    BACKEND_CORS_ORIGINS: List[str] = ["http://localhost:5173", "http://127.0.0.1:5173", "http://localhost:5174", "http://127.0.0.1:5174"]
     
     SECRET_KEY: str = "your-secret-key-change-this-in-production"
     ALGORITHM: str = "HS256"

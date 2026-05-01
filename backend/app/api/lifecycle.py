@@ -1,275 +1,555 @@
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
-from sqlalchemy import desc, func
+from sqlalchemy import func, desc
 from typing import Optional, List
+from datetime import datetime, timedelta
 from app.core.database import get_db
-from app.models import WeeklyData, Product
+from app.models import DailyData, WeeklyData, MonthlyData, Product
 from app.schemas.common import ResponseModel
 
-router = APIRouter(prefix="/api/lifecycle", tags=["生命周期分析"])
+router = APIRouter(prefix="/lifecycle", tags=["生命周期"])
+
+DIMENSION_MAP = {
+    'monthly': {'table': 'monthly_data', 'date_col': 'month', 'visitors_col': 'visitors'},
+    'weekly': {'table': 'weekly_data', 'date_col': 'week_start', 'visitors_col': 'ipv'},
+    'daily': {'table': 'daily_data', 'date_col': 'date', 'visitors_col': 'ipv'},
+}
 
 
-def determine_lifecycle_stage(product_id: str, db: Session) -> dict:
-    """判断商品生命周期阶段"""
+def get_prev_periods(period_str: str, dim: str, count: int) -> List[str]:
+    """获取多个历史周期"""
+    periods = []
+    current = period_str
+    for _ in range(count):
+        current = get_prev_period(current, dim)
+        periods.append(current)
+    periods.reverse()
+    return periods
+
+
+def get_prev_period(period_str: str, dim: str) -> str:
+    """获取上一个周期"""
+    try:
+        if dim == 'monthly':
+            y, m = period_str.split('-')
+            m = int(m) - 1
+            if m == 0:
+                m, y = 12, str(int(y) - 1)
+            return f"{y}-{m:02d}"
+        else:
+            d = datetime.strptime(period_str, '%Y-%m-%d')
+            if dim == 'weekly':
+                prev = d - timedelta(days=7)
+            else:
+                prev = d - timedelta(days=1)
+            return prev.strftime('%Y-%m-%d')
+    except (ValueError, IndexError, TypeError, AttributeError):
+        return period_str
+
+
+def get_latest_period(Model, date_col, db):
+    """获取最新周期"""
+    latest = db.query(Model).order_by(desc(getattr(Model, date_col))).first()
+    if latest:
+        return getattr(latest, date_col)
+    return None
+
+
+def determine_lifecycle_stage(data_points: List[dict]) -> tuple:
+    """
+    判断商品生命周期阶段
+    返回: (stage, reason, growth_rate)
+    """
+    if len(data_points) < 2:
+        return "new", "数据不足，无法判断", 0
     
-    weeks = db.query(WeeklyData).filter(
-        WeeklyData.product_id == product_id
-    ).order_by(desc(WeeklyData.week_start)).limit(8).all()
+    gmv_values = [d.get('payment_amount', 0) for d in data_points]
     
-    if len(weeks) < 4:
-        return {
-            "stage": "new",
-            "description": "新品期",
-            "confidence": 0.5
-        }
+    if gmv_values[-1] < 100:
+        return "new", "销售额较低，处于新品期", 0
     
-    weeks.reverse()
+    recent_avg = sum(gmv_values[-4:]) / min(4, len(gmv_values))
+    earlier_avg = sum(gmv_values[:4]) / min(4, len(gmv_values)) if len(gmv_values) >= 4 else gmv_values[0]
     
-    gmv_trend = []
-    for w in weeks:
-        if w.payment_amount:
-            gmv_trend.append(w.payment_amount)
-    
-    if len(gmv_trend) < 4:
-        return {
-            "stage": "new",
-            "description": "新品期",
-            "confidence": 0.5
-        }
-    
-    recent_4 = gmv_trend[-4:]
-    older_4 = gmv_trend[:4] if len(gmv_trend) >= 8 else gmv_trend[:len(gmv_trend)//2]
-    
-    if not older_4 or not recent_4:
-        return {
-            "stage": "unknown",
-            "description": "数据不足",
-            "confidence": 0
-        }
-    
-    recent_avg = sum(recent_4) / len(recent_4)
-    older_avg = sum(older_4) / len(older_4)
-    
-    if older_avg == 0:
+    if earlier_avg > 0:
+        growth_rate = ((recent_avg - earlier_avg) / earlier_avg) * 100
+    else:
         growth_rate = 0
-    else:
-        growth_rate = (recent_avg - older_avg) / older_avg * 100
     
-    recent_weeks = weeks[-4:]
-    visitors_trend = [w.ipv for w in recent_weeks if w.ipv]
+    if len(data_points) <= 2:
+        return "new", "新品上架不久，尚未稳定", growth_rate
     
-    if len(visitors_trend) >= 2:
-        visitor_change = (visitors_trend[-1] - visitors_trend[0]) / visitors_trend[0] * 100 if visitors_trend[0] > 0 else 0
-    else:
-        visitor_change = 0
+    if growth_rate > 30:
+        return "growth", f"销售额增长{abs(growth_rate):.1f}%，处于上升期", growth_rate
     
-    if len(gmv_trend) <= 4:
-        stage = "growth"
-        description = "成长期"
-        confidence = 0.7
-    elif growth_rate > 20 and visitor_change > 10:
-        stage = "growth"
-        description = "成长期"
-        confidence = 0.85
-    elif growth_rate > 5 and growth_rate <= 20:
-        stage = "stable"
-        description = "稳定期"
-        confidence = 0.8
-    elif growth_rate >= -5 and growth_rate <= 5:
-        stage = "stable"
-        description = "稳定期"
-        confidence = 0.75
-    elif growth_rate >= -20 and growth_rate < -5:
-        stage = "decline"
-        description = "衰退期预警"
-        confidence = 0.8
-    else:
-        stage = "serious_decline"
-        description = "严重衰退"
-        confidence = 0.85
+    if growth_rate > 10:
+        return "growth", f"销售额增长{abs(growth_rate):.1f}%，处于增长期", growth_rate
     
-    return {
-        "stage": stage,
-        "description": description,
-        "confidence": confidence,
-        "growth_rate": round(growth_rate, 2),
-        "visitor_change": round(visitor_change, 2),
-        "recent_avg_gmv": round(recent_avg, 2),
-        "older_avg_gmv": round(older_avg, 2)
+    if growth_rate >= -10:
+        if recent_avg > 5000:
+            return "stable", f"销售额稳定在较高水平，近{growth_rate:.1f}%", growth_rate
+        else:
+            return "stable", f"销售额基本稳定，波动{abs(growth_rate):.1f}%", growth_rate
+    
+    if growth_rate >= -30:
+        return "decline", f"销售额下降{abs(growth_rate):.1f}%，需关注", growth_rate
+    
+    return "serious_decline", f"销售额大幅下降{abs(growth_rate):.1f}%，需立即干预", growth_rate
+
+
+def generate_lifecycle_recommendations(stage: str, data: dict) -> List[dict]:
+    """根据生命周期阶段生成运营建议"""
+    recommendations = []
+    
+    stage_labels = {
+        "new": "新品期",
+        "growth": "增长期",
+        "stable": "稳定期",
+        "decline": "下滑期",
+        "serious_decline": "严重下滑"
     }
-
-
-@router.get("/product/{product_id}", response_model=ResponseModel)
-def get_product_lifecycle(product_id: str, db: Session = Depends(get_db)):
-    """获取商品生命周期阶段"""
     
-    product = db.query(Product).filter(Product.product_id == product_id).first()
-    
-    lifecycle = determine_lifecycle_stage(product_id, db)
-    
-    weeks = db.query(WeeklyData).filter(
-        WeeklyData.product_id == product_id
-    ).order_by(desc(WeeklyData.week_start)).limit(8).all()
-    
-    trend = []
-    for w in reversed(weeks):
-        trend.append({
-            "period": w.week_start.isoformat(),
-            "gmv": w.payment_amount,
-            "visitors": w.ipv,
-            "conversion": w.payment_conversion,
-            "roi": w.ad_roi
-        })
-    
-    return ResponseModel(data={
-        "product_id": product_id,
-        "title": product.title if product else None,
-        "lifecycle": lifecycle,
-        "trend": trend
+    recommendations.append({
+        "type": "stage",
+        "priority": "info",
+        "title": f"当前处于{stage_labels.get(stage, stage)}",
+        "action": "continue"
     })
+    
+    if stage == "new":
+        recommendations.extend([
+            {
+                "type": "traffic",
+                "priority": "high",
+                "title": "提升流量曝光",
+                "detail": "新品期需要更多曝光，建议加大推广力度",
+                "action": "increase_traffic"
+            },
+            {
+                "type": "review",
+                "priority": "high",
+                "title": "积累好评",
+                "detail": "积极引导买家好评，提升店铺评分",
+                "action": "encourage_review"
+            },
+            {
+                "type": "price",
+                "priority": "medium",
+                "title": "优化价格策略",
+                "detail": "考虑设置新用户优惠或首单优惠",
+                "action": "optimize_price"
+            }
+        ])
+    
+    elif stage == "growth":
+        recommendations.extend([
+            {
+                "type": "inventory",
+                "priority": "high",
+                "title": "保障库存充足",
+                "detail": "增长期注意备货，避免断货",
+                "action": "ensure_inventory"
+            },
+            {
+                "type": "conversion",
+                "priority": "high",
+                "title": "优化转化率",
+                "detail": "流量增长时同步优化详情页，提升转化",
+                "action": "optimize_conversion"
+            },
+            {
+                "type": "roi",
+                "priority": "medium",
+                "title": "关注ROI",
+                "detail": "增长期可适当增加广告投入但需监控ROI",
+                "action": "monitor_roi"
+            }
+        ])
+    
+    elif stage == "stable":
+        recommendations.extend([
+            {
+                "type": "upgrade",
+                "priority": "medium",
+                "title": "产品升级迭代",
+                "detail": "稳定期考虑产品升级或差异化",
+                "action": "product_upgrade"
+            },
+            {
+                "type": "bundle",
+                "priority": "medium",
+                "title": "捆绑销售",
+                "detail": "考虑关联销售，提升客单价",
+                "action": "bundle_sales"
+            },
+            {
+                "type": "cost",
+                "priority": "low",
+                "title": "控制成本",
+                "detail": "稳定期注重成本控制",
+                "action": "cost_control"
+            }
+        ])
+    
+    elif stage == "decline":
+        recommendations.extend([
+            {
+                "type": "analysis",
+                "priority": "high",
+                "title": "分析下滑原因",
+                "detail": "排查是市场因素、竞品冲击还是自身问题",
+                "action": "analyze_decline"
+            },
+            {
+                "type": "promotion",
+                "priority": "high",
+                "title": "促销激活",
+                "detail": "考虑限时优惠激活销售",
+                "action": "promotion"
+            },
+            {
+                "type": "market",
+                "priority": "medium",
+                "title": "市场调研",
+                "detail": "了解市场需求变化和竞品动态",
+                "action": "market_research"
+            }
+        ])
+    
+    elif stage == "serious_decline":
+        recommendations.extend([
+            {
+                "type": "urgent",
+                "priority": "urgent",
+                "title": "紧急干预",
+                "detail": "立即分析问题根源并制定复苏计划",
+                "action": "urgent_action"
+            },
+            {
+                "type": "review",
+                "priority": "urgent",
+                "title": "检查评价",
+                "detail": "排查是否有大量差评影响转化",
+                "action": "check_reviews"
+            },
+            {
+                "type": "reposition",
+                "priority": "high",
+                "title": "考虑重新定位",
+                "detail": "可能需要重新定位产品或调整目标人群",
+                "action": "reposition"
+            }
+        ])
+    
+    return recommendations
 
 
 @router.get("/list", response_model=ResponseModel)
 def get_lifecycle_list(
-    stage: Optional[str] = Query(None, description="生命周期阶段"),
-    limit: int = Query(50, description="返回数量"),
+    dimension: str = Query("weekly", description="时间维度"),
+    period: Optional[str] = Query(None, description="指定周期"),
+    stage: Optional[str] = Query(None, description="生命周期阶段筛选"),
+    page: int = Query(1, description="页码"),
+    page_size: int = Query(20, description="每页数量"),
     db: Session = Depends(get_db)
 ):
-    """获取各商品生命周期列表"""
+    """获取商品生命周期列表"""
     
-    products = db.query(Product).all()
+    dim_cfg = DIMENSION_MAP.get(dimension, DIMENSION_MAP['weekly'])
+    visitors_col = dim_cfg['visitors_col']
+    date_col = dim_cfg['date_col']
     
-    lifecycle_list = []
-    for product in products:
-        lifecycle = determine_lifecycle_stage(product.product_id, db)
-        lifecycle["product_id"] = product.product_id
-        lifecycle["title"] = product.title
-        lifecycle["tier"] = product.tier
+    if dimension == "monthly":
+        Model = MonthlyData
+    elif dimension == "daily":
+        Model = DailyData
+    else:
+        Model = WeeklyData
+    
+    if not period:
+        period = get_latest_period(Model, date_col, db)
+    
+    if not period:
+        return ResponseModel(data={"products": [], "total": 0, "summary": {}})
+    
+    products_query = db.query(
+        Model.product_id,
+        Model.product_name,
+        Model.category,
+        func.sum(Model.payment_amount).label('payment_amount'),
+        func.sum(Model.refund_amount).label('refund_amount'),
+        func.sum(getattr(Model, visitors_col)).label('visitors'),
+        func.avg(Model.payment_conversion).label('conversion'),
+        func.sum(Model.ad_spend).label('ad_spend'),
+        func.avg(Model.ad_roi).label('roi'),
+    ).filter(
+        getattr(Model, date_col) == period
+    ).group_by(
+        Model.product_id,
+        Model.product_name,
+        Model.category
+    )
+    
+    all_products = products_query.all()
+    
+    product_lifecycles = []
+    stage_counts = {"new": 0, "growth": 0, "stable": 0, "decline": 0, "serious_decline": 0}
+    
+    for p in all_products:
+        data_points = db.query(Model).filter(
+            Model.product_id == p.product_id
+        ).order_by(desc(getattr(Model, date_col))).limit(8).all()
         
-        if stage and lifecycle["stage"] != stage:
-            continue
+        data_list = []
+        for d in reversed(data_points):
+            period_val = getattr(d, date_col)
+            if hasattr(period_val, 'isoformat'):
+                period_str = period_val.isoformat()
+            else:
+                period_str = str(period_val)
+            
+            data_list.append({
+                "period": period_str,
+                "payment_amount": d.payment_amount or 0,
+                "visitors": getattr(d, visitors_col) or 0,
+                "conversion": d.payment_conversion or 0
+            })
         
-        lifecycle_list.append(lifecycle)
-    
-    lifecycle_list.sort(key=lambda x: x["growth_rate"], reverse=True)
-    
-    return ResponseModel(data={
-        "products": lifecycle_list[:limit],
-        "count": len(lifecycle_list),
-        "by_stage": {
-            "growth": len([l for l in lifecycle_list if l["stage"] == "growth"]),
-            "stable": len([l for l in lifecycle_list if l["stage"] == "stable"]),
-            "decline": len([l for l in lifecycle_list if l["stage"] == "decline"]),
-            "serious_decline": len([l for l in lifecycle_list if l["stage"] == "serious_decline"])
-        }
-    })
-
-
-@router.get("/statistics", response_model=ResponseModel)
-def get_lifecycle_statistics(db: Session = Depends(get_db)):
-    """获取生命周期分布统计"""
-    
-    products = db.query(Product).all()
-    
-    stages = {
-        "growth": [],
-        "stable": [],
-        "decline": [],
-        "serious_decline": [],
-        "new": [],
-        "unknown": []
-    }
-    
-    for product in products:
-        lifecycle = determine_lifecycle_stage(product.product_id, db)
-        stage = lifecycle["stage"]
+        stage, reason, growth_rate = determine_lifecycle_stage(data_list)
         
-        stages[stage].append({
-            "product_id": product.product_id,
-            "title": product.title,
-            "tier": product.tier,
-            "growth_rate": lifecycle["growth_rate"]
+        if stage not in stage_counts:
+            stage_counts[stage] = 0
+        stage_counts[stage] += 1
+        
+        payment = float(p.payment_amount or 0)
+        refund = float(p.refund_amount or 0)
+        visitors = int(p.visitors or 0)
+        
+        product_lifecycles.append({
+            "product_id": p.product_id,
+            "product_name": p.product_name,
+            "category": p.category,
+            "stage": stage,
+            "reason": reason,
+            "growth_rate": round(growth_rate, 1),
+            "payment_amount": round(payment, 2),
+            "net_sales": round(payment - refund, 2),
+            "visitors": visitors,
+            "conversion": round(float(p.conversion or 0) * 100, 2) if p.conversion else 0,
+            "ad_spend": round(float(p.ad_spend or 0), 2),
+            "roi": round(float(p.roi or 0), 2) if p.roi else 0,
+            "recent_data": data_list[-4:] if len(data_list) >= 4 else data_list
         })
     
-    total = len(products)
+    if stage:
+        product_lifecycles = [p for p in product_lifecycles if p['stage'] == stage]
     
-    distribution = {
-        stage: {
-            "count": len(products_list),
-            "percentage": round(len(products_list) / total * 100, 1) if total > 0 else 0
-        }
-        for stage, products_list in stages.items()
-    }
-    
-    avg_growth = {
-        "growth": 0,
-        "stable": 0,
-        "decline": 0
-    }
-    
-    for stage in ["growth", "stable", "decline"]:
-        if stages[stage]:
-            avg_growth[stage] = round(
-                sum(p["growth_rate"] for p in stages[stage]) / len(stages[stage]), 
-                2
-            )
+    total = len(product_lifecycles)
+    paginated = product_lifecycles[(page - 1) * page_size: page * page_size]
     
     return ResponseModel(data={
-        "total_products": total,
-        "distribution": distribution,
-        "average_growth": avg_growth,
-        "top_growth": stages["growth"][:5] if stages["growth"] else [],
-        "serious_decline": stages["serious_decline"][:5] if stages["serious_decline"] else []
+        "products": paginated,
+        "total": total,
+        "summary": {
+            "new": stage_counts["new"],
+            "growth": stage_counts["growth"],
+            "stable": stage_counts["stable"],
+            "decline": stage_counts["decline"],
+            "serious_decline": stage_counts["serious_decline"]
+        },
+        "period": str(period),
+        "dimension": dimension
     })
 
 
-@router.get("/recommendations", response_model=ResponseModel)
-def get_lifecycle_recommendations(
-    product_id: str,
+@router.get("/summary", response_model=ResponseModel)
+def get_lifecycle_summary(
+    dimension: str = Query("weekly", description="时间维度"),
+    period: Optional[str] = Query(None, description="指定周期"),
     db: Session = Depends(get_db)
 ):
-    """获取生命周期优化建议"""
+    """获取生命周期汇总"""
     
-    lifecycle = determine_lifecycle_stage(product_id, db)
+    dim_cfg = DIMENSION_MAP.get(dimension, DIMENSION_MAP['weekly'])
+    date_col = dim_cfg['date_col']
     
-    recommendations = []
-    
-    if lifecycle["stage"] == "new":
-        recommendations = [
-            {"type": "info", "message": "新品期：重点优化主图和详情页，提升点击率和转化率"},
-            {"type": "info", "message": "适当投入广告测款，关注收藏加购数据"},
-            {"type": "info", "message": "收集用户评价，了解用户需求和痛点"}
-        ]
-    elif lifecycle["stage"] == "growth":
-        recommendations = [
-            {"type": "success", "message": "成长期：加大广告投入，扩大流量来源"},
-            {"type": "success", "message": "关注转化率优化，提升UV价值"},
-            {"type": "info", "message": "做好库存管理，避免断货影响销售"},
-            {"type": "info", "message": "考虑老客户复购营销"}
-        ]
-    elif lifecycle["stage"] == "stable":
-        recommendations = [
-            {"type": "warning", "message": "稳定期：维持现有推广力度，控制广告成本"},
-            {"type": "info", "message": "优化评价管理，保持好评率"},
-            {"type": "info", "message": "关注竞品动态，适时调整价格策略"},
-            {"type": "info", "message": "开发关联产品，寻找新增长点"}
-        ]
-    elif lifecycle["stage"] == "decline":
-        recommendations = [
-            {"type": "danger", "message": "衰退预警：分析衰退原因（季节性/竞品/产品问题）"},
-            {"type": "warning", "message": "减少广告投入，避免无效消耗"},
-            {"type": "info", "message": "考虑清仓促销，回笼资金"},
-            {"type": "info", "message": "开发升级款或替代产品"}
-        ]
+    if dimension == "monthly":
+        Model = MonthlyData
+    elif dimension == "daily":
+        Model = DailyData
     else:
-        recommendations = [
-            {"type": "danger", "message": "严重衰退：立即停止广告投入"},
-            {"type": "danger", "message": "大幅降价清仓，清理库存"},
-            {"type": "info", "message": "总结失败原因，为新品开发积累经验"}
-        ]
+        Model = WeeklyData
+    
+    if not period:
+        period = get_latest_period(Model, date_col, db)
+    
+    if not period:
+        return ResponseModel(data={"summary": {}, "distribution": []})
+    
+    products = db.query(
+        Model.product_id
+    ).filter(
+        getattr(Model, date_col) == period
+    ).group_by(Model.product_id).all()
+    
+    product_ids = [p.product_id for p in products]
+    
+    stage_counts = {"new": 0, "growth": 0, "stable": 0, "decline": 0, "serious_decline": 0}
+    
+    for pid in product_ids:
+        data_points = db.query(Model).filter(
+            Model.product_id == pid
+        ).order_by(desc(getattr(Model, date_col))).limit(8).all()
+        
+        data_list = []
+        for d in reversed(data_points):
+            data_list.append({
+                "payment_amount": d.payment_amount or 0
+            })
+        
+        stage, _, _ = determine_lifecycle_stage(data_list)
+        if stage in stage_counts:
+            stage_counts[stage] += 1
+    
+    total = len(product_ids)
+    distribution = []
+    
+    stage_labels = {
+        "new": "新品期",
+        "growth": "增长期",
+        "stable": "稳定期",
+        "decline": "下滑期",
+        "serious_decline": "严重下滑"
+    }
+    
+    for stage, count in stage_counts.items():
+        distribution.append({
+            "stage": stage,
+            "label": stage_labels.get(stage, stage),
+            "count": count,
+            "percent": round(count / total * 100, 1) if total > 0 else 0
+        })
+    
+    return ResponseModel(data={
+        "summary": {
+            "total_products": total,
+            "stages": stage_counts
+        },
+        "distribution": distribution,
+        "period": str(period),
+        "dimension": dimension
+    })
+
+
+@router.get("/{product_id}", response_model=ResponseModel)
+def get_product_lifecycle(
+    product_id: str,
+    dimension: str = Query("weekly", description="时间维度"),
+    db: Session = Depends(get_db)
+):
+    """获取单个商品的生命周期详情"""
+    
+    dim_cfg = DIMENSION_MAP.get(dimension, DIMENSION_MAP['weekly'])
+    visitors_col = dim_cfg['visitors_col']
+    date_col = dim_cfg['date_col']
+    
+    if dimension == "monthly":
+        Model = MonthlyData
+    elif dimension == "daily":
+        Model = DailyData
+    else:
+        Model = WeeklyData
+    
+    data_points = db.query(Model).filter(
+        Model.product_id == product_id
+    ).order_by(desc(getattr(Model, date_col))).limit(12).all()
+    
+    if not data_points:
+        return ResponseModel(data={"product": None})
+    
+    product_info = data_points[0]
+    data_list = []
+    
+    for d in reversed(data_points):
+        period_val = getattr(d, date_col)
+        if hasattr(period_val, 'isoformat'):
+            period_str = period_val.isoformat()
+        else:
+            period_str = str(period_val)
+        
+        data_list.append({
+            "period": period_str,
+            "payment_amount": d.payment_amount or 0,
+            "refund_amount": d.refund_amount or 0,
+            "visitors": getattr(d, visitors_col) or 0,
+            "conversion": d.payment_conversion or 0,
+            "ad_spend": d.ad_spend or 0,
+            "roi": d.ad_roi or 0
+        })
+    
+    stage, reason, growth_rate = determine_lifecycle_stage(data_list)
+    recommendations = generate_lifecycle_recommendations(stage, {
+        "data": data_list,
+        "current_payment": data_list[-1]['payment_amount'] if data_list else 0
+    })
+    
+    return ResponseModel(data={
+        "product": {
+            "product_id": product_id,
+            "product_name": product_info.product_name,
+            "category": product_info.category,
+            "stage": stage,
+            "reason": reason,
+            "growth_rate": round(growth_rate, 1),
+            "data": data_list,
+            "recommendations": recommendations
+        },
+        "dimension": dimension
+    })
+
+
+@router.get("/trend/{product_id}", response_model=ResponseModel)
+def get_lifecycle_trend(
+    product_id: str,
+    dimension: str = Query("weekly", description="时间维度"),
+    db: Session = Depends(get_db)
+):
+    """获取商品生命周期趋势"""
+    
+    dim_cfg = DIMENSION_MAP.get(dimension, DIMENSION_MAP['weekly'])
+    visitors_col = dim_cfg['visitors_col']
+    date_col = dim_cfg['date_col']
+    
+    if dimension == "monthly":
+        Model = MonthlyData
+    elif dimension == "daily":
+        Model = DailyData
+    else:
+        Model = WeeklyData
+    
+    data_points = db.query(Model).filter(
+        Model.product_id == product_id
+    ).order_by(desc(getattr(Model, date_col))).limit(12).all()
+    
+    if not data_points:
+        return ResponseModel(data={"trend": []})
+    
+    trend = []
+    for d in reversed(data_points):
+        period_val = getattr(d, date_col)
+        if hasattr(period_val, 'isoformat'):
+            period_str = period_val.isoformat()
+        else:
+            period_str = str(period_val)
+        
+        trend.append({
+            "period": period_str,
+            "payment_amount": d.payment_amount or 0,
+            "visitors": getattr(d, visitors_col) or 0
+        })
     
     return ResponseModel(data={
         "product_id": product_id,
-        "lifecycle": lifecycle,
-        "recommendations": recommendations
+        "trend": trend,
+        "dimension": dimension
     })

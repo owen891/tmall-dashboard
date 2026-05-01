@@ -1,353 +1,536 @@
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
-from sqlalchemy import desc, func
+from sqlalchemy import func, desc
 from typing import Optional, List
 from app.core.database import get_db
-from app.models import ProductHealth, Product, WeeklyData
+from app.models import DailyData, WeeklyData, MonthlyData, ProductHealth, Product
 from app.schemas.common import ResponseModel
-from datetime import datetime, timedelta
 
-router = APIRouter(prefix="/api/health", tags=["健康度评分"])
+router = APIRouter(prefix="/health", tags=["健康度分析"])
+
+DIMENSION_MAP = {
+    'monthly': {'table': 'monthly_data', 'date_col': 'month', 'visitors_col': 'visitors'},
+    'weekly': {'table': 'weekly_data', 'date_col': 'week_start', 'visitors_col': 'ipv'},
+    'daily': {'table': 'daily_data', 'date_col': 'date', 'visitors_col': 'ipv'},
+}
 
 
-def calculate_health_score(product_id: str, period: str, db: Session) -> dict:
-    """计算商品健康度评分"""
-    
-    current_date = datetime.strptime(period, "%Y-%m-%d").date()
-    prev_date = current_date - timedelta(days=7)
-    
-    current = db.query(WeeklyData).filter(
-        WeeklyData.product_id == product_id,
-        WeeklyData.week_start == current_date
-    ).first()
-    
-    prev = db.query(WeeklyData).filter(
-        WeeklyData.product_id == product_id,
-        WeeklyData.week_start == prev_date
-    ).first()
-    
-    if not current:
-        return None
-    
+def calculate_health_score(row: dict) -> dict:
+    """计算健康度评分"""
     scores = {}
+    details = {}
+    alerts = []
+    health_level = "excellent"
     
-    if current.payment_amount and current.payment_amount > 0:
-        scores['sales_score'] = min(100, current.payment_amount / 10000 * 20)
+    gmv = row.get('payment_amount', 0)
+    refund = row.get('refund_amount', 0)
+    visitors = row.get('visitors', 0)
+    conversion = row.get('conversion', 0)
+    roi = row.get('roi', 0)
+    ad_spend = row.get('ad_spend', 0)
+    
+    if gmv > 0:
+        refund_rate = refund / gmv
     else:
-        scores['sales_score'] = 0
+        refund_rate = 0
     
-    scores['conversion_score'] = min(100, (current.payment_conversion or 0) * 20)
-    
-    scores['roi_score'] = min(100, (current.ad_roi or 0) * 10) if current.ad_roi and current.ad_roi > 0 else 50
-    
-    refund_rate = (current.refund_amount / current.payment_amount * 100) if current.payment_amount > 0 else 0
-    scores['refund_score'] = max(0, 100 - refund_rate * 10)
-    
-    if current and prev:
-        gmv_change = ((current.payment_amount - prev.payment_amount) / prev.payment_amount * 100) if prev.payment_amount > 0 else 0
-        scores['growth_score'] = max(0, min(100, 50 + gmv_change))
-        
-        ad_change = ((current.ad_spend - prev.ad_spend) / prev.ad_spend * 100) if prev.ad_spend > 0 else 0
-        scores['ad_spend_change_score'] = 100 - abs(ad_change) if ad_change < 0 else 100
-        
-        roi_change = ((current.ad_roi - prev.ad_roi) / prev.ad_roi * 100) if prev.ad_roi and prev.ad_roi > 0 else 0
-        scores['roi_change_score'] = max(0, min(100, 50 + roi_change))
+    if visitors > 0:
+        aov = gmv / visitors
     else:
-        scores['growth_score'] = 50
-        scores['ad_spend_change_score'] = 50
-        scores['roi_change_score'] = 50
+        aov = 0
     
-    scores['cart_rate_score'] = min(100, (current.cart_rate or 0) * 20)
-    
-    search_ratio = (current.search_ipv / current.ipv * 100) if current.ipv > 0 else 0
-    scores['search_ratio_score'] = min(100, search_ratio)
-    
-    scores['repurchase_rate_score'] = min(100, (current.repurchase_rate or 0) * 10)
-    
-    scores['cross_sell_rate_score'] = min(100, (current.cross_sell_rate or 0) * 20)
-    
-    if current.industry_ctr and current.industry_ctr > 0:
-        search_ctr = (current.search_click_rate or 0)
-        scores['search_ctr_vs_industry_score'] = min(100, (search_ctr / current.industry_ctr) * 50) if current.industry_ctr > 0 else 50
+    if ad_spend > 0:
+        ad_ratio = ad_spend / gmv
     else:
-        scores['search_ctr_vs_industry_score'] = 50
+        ad_ratio = 0
     
-    scores['review_score'] = 80
+    if gmv > 10000:
+        scores['gmv'] = 100
+        details['gmv'] = f"GMV {gmv:.0f}元，优秀"
+    elif gmv > 5000:
+        scores['gmv'] = 80
+        details['gmv'] = f"GMV {gmv:.0f}元，良好"
+    elif gmv > 1000:
+        scores['gmv'] = 60
+        details['gmv'] = f"GMV {gmv:.0f}元，一般"
+    else:
+        scores['gmv'] = 40
+        details['gmv'] = f"GMV {gmv:.0f}元，需提升"
+        alerts.append({"dimension": "gmv", "level": "warning", "message": "GMV偏低，需要提升销售额"})
     
-    total_score = (
-        scores['sales_score'] * 0.2 +
-        scores['conversion_score'] * 0.15 +
-        scores['roi_score'] * 0.15 +
-        scores['refund_score'] * 0.1 +
-        scores['growth_score'] * 0.15 +
-        scores['review_score'] * 0.05 +
-        scores['cart_rate_score'] * 0.05 +
-        scores['search_ratio_score'] * 0.05 +
-        scores['repurchase_rate_score'] * 0.05 +
-        scores['cross_sell_rate_score'] * 0.05
-    )
+    if refund_rate < 0.02:
+        scores['refund'] = 100
+        details['refund'] = f"退款率 {refund_rate*100:.2f}%，优秀"
+    elif refund_rate < 0.05:
+        scores['refund'] = 80
+        details['refund'] = f"退款率 {refund_rate*100:.2f}%，良好"
+    elif refund_rate < 0.10:
+        scores['refund'] = 60
+        details['refund'] = f"退款率 {refund_rate*100:.2f}%，需关注"
+        alerts.append({"dimension": "refund", "level": "warning", "message": f"退款率偏高 ({refund_rate*100:.2f}%)"})
+    else:
+        scores['refund'] = 30
+        details['refund'] = f"退款率 {refund_rate*100:.2f}%，严重"
+        alerts.append({"dimension": "refund", "level": "high", "message": f"退款率过高 ({refund_rate*100:.2f}%)，需立即处理"})
     
-    scores['health_score'] = round(total_score, 1)
+    if conversion > 0.05:
+        scores['conversion'] = 100
+        details['conversion'] = f"转化率 {conversion*100:.2f}%，优秀"
+    elif conversion > 0.02:
+        scores['conversion'] = 80
+        details['conversion'] = f"转化率 {conversion*100:.2f}%，良好"
+    elif conversion > 0.01:
+        scores['conversion'] = 60
+        details['conversion'] = f"转化率 {conversion*100:.2f}%，需优化"
+        alerts.append({"dimension": "conversion", "level": "warning", "message": "转化率偏低，需要优化"})
+    else:
+        scores['conversion'] = 40
+        details['conversion'] = f"转化率 {conversion*100:.2f}%，严重"
+        alerts.append({"dimension": "conversion", "level": "high", "message": "转化率过低，需要重点优化"})
     
-    if total_score >= 80:
-        scores['health_level'] = 'excellent'
+    if roi > 5:
+        scores['roi'] = 100
+        details['roi'] = f"ROI {roi:.2f}，优秀"
+    elif roi > 3:
+        scores['roi'] = 80
+        details['roi'] = f"ROI {roi:.2f}，良好"
+    elif roi > 1:
+        scores['roi'] = 60
+        details['roi'] = f"ROI {roi:.2f}，需优化"
+        alerts.append({"dimension": "roi", "level": "warning", "message": "ROI偏低，广告投放效率待提升"})
+    else:
+        scores['roi'] = 30
+        details['roi'] = f"ROI {roi:.2f}，亏损"
+        alerts.append({"dimension": "roi", "level": "high", "message": "ROI低于1，广告投放亏损"})
+    
+    if aov > 200:
+        scores['aov'] = 100
+        details['aov'] = f"客单价 {aov:.2f}元，优秀"
+    elif aov > 100:
+        scores['aov'] = 80
+        details['aov'] = f"客单价 {aov:.2f}元，良好"
+    elif aov > 50:
+        scores['aov'] = 60
+        details['aov'] = f"客单价 {aov:.2f}元，一般"
+    else:
+        scores['aov'] = 40
+        details['aov'] = f"客单价 {aov:.2f}元，需提升"
+    
+    if ad_ratio < 0.1:
+        scores['ad_ratio'] = 100
+        details['ad_ratio'] = f"广告占比 {ad_ratio*100:.2f}%，优秀"
+    elif ad_ratio < 0.2:
+        scores['ad_ratio'] = 80
+        details['ad_ratio'] = f"广告占比 {ad_ratio*100:.2f}%，良好"
+    elif ad_ratio < 0.3:
+        scores['ad_ratio'] = 60
+        details['ad_ratio'] = f"广告占比 {ad_ratio*100:.2f}%，需控制"
+        alerts.append({"dimension": "ad_ratio", "level": "warning", "message": "广告占比偏高"})
+    else:
+        scores['ad_ratio'] = 30
+        details['ad_ratio'] = f"广告占比 {ad_ratio*100:.2f}%，过高"
+        alerts.append({"dimension": "ad_ratio", "level": "high", "message": "广告占比过高，需控制成本"})
+    
+    total_score = sum(scores.values()) / len(scores)
+    
+    if total_score >= 90:
+        health_level = "excellent"
+    elif total_score >= 75:
+        health_level = "good"
     elif total_score >= 60:
-        scores['health_level'] = 'good'
-    elif total_score >= 40:
-        scores['health_level'] = 'warning'
+        health_level = "warning"
     else:
-        scores['health_level'] = 'danger'
+        health_level = "danger"
     
-    alert_dimensions = []
-    if scores['refund_score'] < 50:
-        alert_dimensions.append('退款率过高')
-    if scores['growth_score'] < 40:
-        alert_dimensions.append('增长放缓')
-    if scores['roi_score'] < 40:
-        alert_dimensions.append('ROI过低')
-    if scores['conversion_score'] < 30:
-        alert_dimensions.append('转化率低')
-    
-    scores['alert_dimensions'] = alert_dimensions
-    
-    return scores
+    return {
+        "total_score": round(total_score, 1),
+        "health_level": health_level,
+        "scores": scores,
+        "details": details,
+        "alerts": alerts
+    }
 
 
-@router.get("/product/{product_id}", response_model=ResponseModel)
-def get_product_health(
-    product_id: str,
-    period: Optional[str] = None,
-    db: Session = Depends(get_db)
-):
-    """获取商品健康度评分"""
+def get_prev_period(period_str: str, dim: str) -> str:
+    """获取上一个周期"""
+    from datetime import datetime, timedelta
     
-    if not period:
-        latest = db.query(WeeklyData).filter(
-            WeeklyData.product_id == product_id
-        ).order_by(desc(WeeklyData.week_start)).first()
-        period = latest.week_start.isoformat() if latest else None
-    
-    if not period:
-        return ResponseModel(data={"health": None, "message": "无数据"})
-    
-    health = db.query(ProductHealth).filter(
-        ProductHealth.product_id == product_id,
-        ProductHealth.period == period
-    ).first()
-    
-    if not health:
-        scores = calculate_health_score(product_id, period, db)
-        if not scores:
-            return ResponseModel(data={"health": None, "message": "无法计算"})
-        
-        health = ProductHealth(
-            product_id=product_id,
-            period=period,
-            **scores
-        )
-        db.add(health)
-        db.commit()
-        db.refresh(health)
-    
-    product = db.query(Product).filter(Product.product_id == product_id).first()
-    
-    return ResponseModel(data={
-        "product_id": product_id,
-        "title": product.title if product else None,
-        "period": period,
-        "health": {
-            "sales_score": health.sales_score,
-            "conversion_score": health.conversion_score,
-            "roi_score": health.roi_score,
-            "refund_score": health.refund_score,
-            "growth_score": health.growth_score,
-            "review_score": health.review_score,
-            "cart_rate_score": health.cart_rate_score,
-            "search_ratio_score": health.search_ratio_score,
-            "repurchase_rate_score": health.repurchase_rate_score,
-            "cross_sell_rate_score": health.cross_sell_rate_score,
-            "health_score": health.health_score,
-            "health_level": health.health_level,
-            "alert_dimensions": health.alert_dimensions or []
-        }
-    })
+    try:
+        if dim == 'monthly':
+            y, m = period_str.split('-')
+            m = int(m) - 1
+            if m == 0:
+                m, y = 12, str(int(y) - 1)
+            return f"{y}-{m:02d}"
+        else:
+            d = datetime.strptime(period_str, '%Y-%m-%d')
+            if dim == 'weekly':
+                prev = d - timedelta(days=7)
+            else:
+                prev = d - timedelta(days=1)
+            return prev.strftime('%Y-%m-%d')
+    except (ValueError, IndexError, TypeError, AttributeError):
+        return period_str
 
 
 @router.get("/list", response_model=ResponseModel)
-def get_health_ranking(
-    limit: int = Query(50, description="返回数量"),
-    sort_by: str = Query("health_score", description="排序字段"),
-    min_score: Optional[float] = None,
+def get_health_list(
+    dimension: str = Query("weekly", description="时间维度: daily/weekly/monthly"),
+    period: Optional[str] = Query(None, description="指定周期"),
+    health_level: Optional[str] = Query(None, description="健康等级筛选"),
+    page: int = Query(1, description="页码"),
+    page_size: int = Query(20, description="每页数量"),
     db: Session = Depends(get_db)
 ):
-    """获取健康度排名"""
+    """获取商品健康度列表"""
     
-    health_list = db.query(ProductHealth).filter(
-        ProductHealth.health_score > 0
-    ).order_by(desc(ProductHealth.health_score)).limit(limit).all()
+    dim_cfg = DIMENSION_MAP.get(dimension, DIMENSION_MAP['weekly'])
+    visitors_col = dim_cfg['visitors_col']
+    date_col = dim_cfg['date_col']
     
-    if not health_list:
-        return ResponseModel(data={"ranking": [], "count": 0})
+    if dimension == "monthly":
+        Model = MonthlyData
+    elif dimension == "daily":
+        Model = DailyData
+    else:
+        Model = WeeklyData
     
-    result = []
-    for h in health_list:
-        if min_score and h.health_score < min_score:
-            continue
+    if not period:
+        latest = db.query(Model).order_by(desc(getattr(Model, date_col))).first()
+        period = getattr(latest, date_col) if latest else None
+    
+    if not period:
+        return ResponseModel(data={"products": [], "total": 0, "page": page, "page_size": page_size})
+    
+    filter_conditions = [getattr(Model, date_col) == period]
+    if health_level:
+        filter_conditions.append(Model.health_level == health_level)
+    
+    products_query = db.query(
+        Model.product_id,
+        Model.product_name,
+        Model.category,
+        func.sum(Model.payment_amount).label('payment_amount'),
+        func.sum(Model.refund_amount).label('refund_amount'),
+        func.sum(getattr(Model, visitors_col)).label('visitors'),
+        func.avg(Model.payment_conversion).label('conversion'),
+        func.sum(Model.ad_spend).label('ad_spend'),
+        func.avg(Model.ad_roi).label('roi'),
+    ).filter(*filter_conditions).group_by(
+        Model.product_id,
+        Model.product_name,
+        Model.category
+    )
+    
+    total = products_query.count()
+    products_data = products_query.offset((page - 1) * page_size).limit(page_size).all()
+    
+    products = []
+    for p in products_data:
+        payment = float(p.payment_amount or 0)
+        refund = float(p.refund_amount or 0)
+        visitors = int(p.visitors or 0)
+        conversion = float(p.conversion or 0)
+        ad_spend = float(p.ad_spend or 0)
+        roi = float(p.roi or 0) if p.roi else 0
         
-        product = db.query(Product).filter(Product.product_id == h.product_id).first()
+        row_data = {
+            'product_id': p.product_id,
+            'product_name': p.product_name,
+            'category': p.category,
+            'payment_amount': payment,
+            'refund_amount': refund,
+            'visitors': visitors,
+            'conversion': conversion,
+            'ad_spend': ad_spend,
+            'roi': roi,
+        }
         
-        result.append({
-            "product_id": h.product_id,
-            "title": product.title if product else None,
-            "tier": product.tier if product else None,
-            "period": h.period,
-            "health_score": h.health_score,
-            "health_level": h.health_level,
-            "sales_score": h.sales_score,
-            "conversion_score": h.conversion_score,
-            "roi_score": h.roi_score,
-            "growth_score": h.growth_score,
-            "alert_dimensions": h.alert_dimensions or []
+        health = calculate_health_score(row_data)
+        
+        products.append({
+            **row_data,
+            'health_score': health['total_score'],
+            'health_level': health['health_level'],
+            'scores': health['scores'],
+            'details': health['details'],
+            'alerts': health['alerts']
         })
     
-    result.sort(key=lambda x: x["health_score"], reverse=True)
-    
     return ResponseModel(data={
-        "ranking": result[:limit],
-        "count": len(result)
+        "products": products,
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+        "period": str(period),
+        "dimension": dimension
     })
 
 
-@router.get("/distribution", response_model=ResponseModel)
-def get_health_distribution(db: Session = Depends(get_db)):
-    """获取健康度分布统计"""
+@router.get("/summary", response_model=ResponseModel)
+def get_health_summary(
+    dimension: str = Query("weekly", description="时间维度"),
+    period: Optional[str] = Query(None, description="指定周期"),
+    db: Session = Depends(get_db)
+):
+    """获取健康度汇总"""
     
-    all_health = db.query(ProductHealth).all()
+    dim_cfg = DIMENSION_MAP.get(dimension, DIMENSION_MAP['weekly'])
+    visitors_col = dim_cfg['visitors_col']
+    date_col = dim_cfg['date_col']
     
-    if not all_health:
-        return ResponseModel(data={"distribution": {}})
+    if dimension == "monthly":
+        Model = MonthlyData
+    elif dimension == "daily":
+        Model = DailyData
+    else:
+        Model = WeeklyData
     
-    distribution = {
-        "excellent": 0,
-        "good": 0,
-        "warning": 0,
-        "danger": 0
-    }
+    if not period:
+        latest = db.query(Model).order_by(desc(getattr(Model, date_col))).first()
+        period = getattr(latest, date_col) if latest else None
     
-    total = len(all_health)
+    if not period:
+        return ResponseModel(data={"summary": {}, "by_level": []})
     
-    for h in all_health:
-        level = h.health_level or "unknown"
-        if level in distribution:
-            distribution[level] += 1
+    filter_cond = getattr(Model, date_col) == period
     
-    distribution_pct = {
-        level: round(count / total * 100, 1)
-        for level, count in distribution.items()
-    }
+    products_data = db.query(
+        Model.product_id,
+        func.sum(Model.payment_amount).label('payment_amount'),
+        func.sum(Model.refund_amount).label('refund_amount'),
+        func.sum(getattr(Model, visitors_col)).label('visitors'),
+        func.avg(Model.payment_conversion).label('conversion'),
+        func.sum(Model.ad_spend).label('ad_spend'),
+        func.avg(Model.ad_roi).label('roi'),
+    ).filter(filter_cond).group_by(Model.product_id).all()
     
-    avg_scores = {
-        "sales": 0,
-        "conversion": 0,
-        "roi": 0,
-        "growth": 0,
-        "overall": 0
-    }
+    level_counts = {"excellent": 0, "good": 0, "warning": 0, "danger": 0}
+    total_score = 0
+    gmv_score = 0
+    refund_score = 0
+    conv_score = 0
+    roi_score = 0
+    product_count = len(products_data)
     
-    for h in all_health:
-        avg_scores["sales"] += h.sales_score or 0
-        avg_scores["conversion"] += h.conversion_score or 0
-        avg_scores["roi"] += h.roi_score or 0
-        avg_scores["growth"] += h.growth_score or 0
-        avg_scores["overall"] += h.health_score or 0
+    for p in products_data:
+        payment = float(p.payment_amount or 0)
+        refund = float(p.refund_amount or 0)
+        visitors = int(p.visitors or 0)
+        conversion = float(p.conversion or 0)
+        ad_spend = float(p.ad_spend or 0)
+        roi = float(p.roi or 0) if p.roi else 0
+        
+        row_data = {
+            'payment_amount': payment,
+            'refund_amount': refund,
+            'visitors': visitors,
+            'conversion': conversion,
+            'ad_spend': ad_spend,
+            'roi': roi,
+        }
+        
+        health = calculate_health_score(row_data)
+        level_counts[health['health_level']] += 1
+        total_score += health['total_score']
+        gmv_score += health['scores'].get('gmv', 0)
+        refund_score += health['scores'].get('refund', 0)
+        conv_score += health['scores'].get('conversion', 0)
+        roi_score += health['scores'].get('roi', 0)
     
-    avg_scores = {
-        key: round(value / total, 1)
-        for key, value in avg_scores.items()
-    }
+    if product_count > 0:
+        avg_total = total_score / product_count
+        avg_gmv = gmv_score / product_count
+        avg_refund = refund_score / product_count
+        avg_conv = conv_score / product_count
+        avg_roi = roi_score / product_count
+    else:
+        avg_total = avg_gmv = avg_refund = avg_conv = avg_roi = 0
+    
+    by_level = [
+        {"level": "excellent", "label": "优秀", "count": level_counts["excellent"], "percent": round(level_counts["excellent"] / product_count * 100, 1) if product_count > 0 else 0},
+        {"level": "good", "label": "良好", "count": level_counts["good"], "percent": round(level_counts["good"] / product_count * 100, 1) if product_count > 0 else 0},
+        {"level": "warning", "label": "预警", "count": level_counts["warning"], "percent": round(level_counts["warning"] / product_count * 100, 1) if product_count > 0 else 0},
+        {"level": "danger", "label": "危险", "count": level_counts["danger"], "percent": round(level_counts["danger"] / product_count * 100, 1) if product_count > 0 else 0},
+    ]
     
     return ResponseModel(data={
-        "total_products": total,
-        "distribution": distribution,
-        "distribution_pct": distribution_pct,
-        "average_scores": avg_scores
+        "summary": {
+            "total_score": round(avg_total, 1),
+            "gmv_score": round(avg_gmv, 1),
+            "refund_score": round(avg_refund, 1),
+            "conversion_score": round(avg_conv, 1),
+            "roi_score": round(avg_roi, 1),
+            "product_count": product_count,
+            "excellent_count": level_counts["excellent"],
+            "good_count": level_counts["good"],
+            "warning_count": level_counts["warning"],
+            "danger_count": level_counts["danger"],
+        },
+        "by_level": by_level,
+        "period": str(period),
+        "dimension": dimension
+    })
+
+
+@router.get("/{product_id}", response_model=ResponseModel)
+def get_product_health(
+    product_id: str,
+    dimension: str = Query("weekly", description="时间维度"),
+    db: Session = Depends(get_db)
+):
+    """获取单个商品健康度详情"""
+    
+    dim_cfg = DIMENSION_MAP.get(dimension, DIMENSION_MAP['weekly'])
+    visitors_col = dim_cfg['visitors_col']
+    date_col = dim_cfg['date_col']
+    
+    if dimension == "monthly":
+        Model = MonthlyData
+    elif dimension == "daily":
+        Model = DailyData
+    else:
+        Model = WeeklyData
+    
+    data_list = db.query(Model).filter(
+        Model.product_id == product_id
+    ).order_by(desc(getattr(Model, date_col))).limit(12).all()
+    
+    if not data_list:
+        return ResponseModel(data={"product": None, "trend": []})
+    
+    product_info = data_list[0]
+    trend = []
+    
+    for data in reversed(data_list):
+        period = None
+        if date_col == 'month':
+            period = data.month
+        elif date_col == 'week_start':
+            period = data.week_start.isoformat() if hasattr(data.week_start, 'isoformat') else str(data.week_start)
+        else:
+            period = data.date.isoformat() if hasattr(data.date, 'isoformat') else str(data.date)
+        
+        payment = data.payment_amount or 0
+        refund = data.refund_amount or 0
+        visitors = getattr(data, visitors_col) or 0
+        conversion = data.payment_conversion or 0
+        ad_spend = data.ad_spend or 0
+        roi = data.ad_roi or 0
+        
+        row_data = {
+            'payment_amount': payment,
+            'refund_amount': refund,
+            'visitors': visitors,
+            'conversion': conversion,
+            'ad_spend': ad_spend,
+            'roi': roi,
+        }
+        
+        health = calculate_health_score(row_data)
+        
+        trend.append({
+            "period": period,
+            **row_data,
+            'health_score': health['total_score'],
+            'health_level': health['health_level'],
+        })
+    
+    return ResponseModel(data={
+        "product": {
+            "product_id": product_id,
+            "product_name": product_info.product_name,
+            "category": product_info.category,
+            "current_health": trend[-1] if trend else None,
+            "trend": trend
+        },
+        "dimension": dimension
     })
 
 
 @router.get("/alerts", response_model=ResponseModel)
 def get_health_alerts(
-    level: Optional[str] = Query(None, description="告警级别: warning/danger"),
-    limit: int = Query(30, description="返回数量"),
+    dimension: str = Query("weekly", description="时间维度"),
+    period: Optional[str] = Query(None, description="指定周期"),
+    level: Optional[str] = Query(None, description="告警级别: high/warning"),
+    limit: int = Query(20, description="返回数量"),
     db: Session = Depends(get_db)
 ):
-    """获取健康度告警商品"""
+    """获取健康度告警列表"""
     
-    query = db.query(ProductHealth)
+    dim_cfg = DIMENSION_MAP.get(dimension, DIMENSION_MAP['weekly'])
+    visitors_col = dim_cfg['visitors_col']
+    date_col = dim_cfg['date_col']
     
-    if level == "danger":
-        query = query.filter(ProductHealth.health_level == "danger")
-    elif level == "warning":
-        query = query.filter(ProductHealth.health_level.in_(["warning", "danger"]))
+    if dimension == "monthly":
+        Model = MonthlyData
+    elif dimension == "daily":
+        Model = DailyData
     else:
-        query = query.filter(ProductHealth.health_level.in_(["warning", "danger"]))
+        Model = WeeklyData
     
-    alerts = query.order_by(ProductHealth.health_score.asc()).limit(limit).all()
+    if not period:
+        latest = db.query(Model).order_by(desc(getattr(Model, date_col))).first()
+        period = getattr(latest, date_col) if latest else None
     
-    result = []
-    for h in alerts:
-        product = db.query(Product).filter(Product.product_id == h.product_id).first()
+    if not period:
+        return ResponseModel(data={"alerts": []})
+    
+    filter_cond = getattr(Model, date_col) == period
+    
+    products_data = db.query(
+        Model.product_id,
+        Model.product_name,
+        func.sum(Model.payment_amount).label('payment_amount'),
+        func.sum(Model.refund_amount).label('refund_amount'),
+        func.sum(getattr(Model, visitors_col)).label('visitors'),
+        func.avg(Model.payment_conversion).label('conversion'),
+        func.sum(Model.ad_spend).label('ad_spend'),
+        func.avg(Model.ad_roi).label('roi'),
+    ).filter(filter_cond).group_by(
+        Model.product_id,
+        Model.product_name
+    ).all()
+    
+    all_alerts = []
+    for p in products_data:
+        payment = float(p.payment_amount or 0)
+        refund = float(p.refund_amount or 0)
+        visitors = int(p.visitors or 0)
+        conversion = float(p.conversion or 0)
+        ad_spend = float(p.ad_spend or 0)
+        roi = float(p.roi or 0) if p.roi else 0
         
-        result.append({
-            "product_id": h.product_id,
-            "title": product.title if product else None,
-            "tier": product.tier if product else None,
-            "health_score": h.health_score,
-            "health_level": h.health_level,
-            "period": h.period,
-            "alert_dimensions": h.alert_dimensions or []
-        })
+        row_data = {
+            'payment_amount': payment,
+            'refund_amount': refund,
+            'visitors': visitors,
+            'conversion': conversion,
+            'ad_spend': ad_spend,
+            'roi': roi,
+        }
+        
+        health = calculate_health_score(row_data)
+        
+        for alert in health['alerts']:
+            if level and alert['level'] != level:
+                continue
+            all_alerts.append({
+                "product_id": p.product_id,
+                "product_name": p.product_name,
+                "dimension": alert['dimension'],
+                "level": alert['level'],
+                "message": alert['message'],
+                "health_score": health['total_score'],
+                "period": str(period)
+            })
+    
+    all_alerts.sort(key=lambda x: (0 if x['level'] == 'high' else 1, -x['health_score']))
+    all_alerts = all_alerts[:limit]
     
     return ResponseModel(data={
-        "alerts": result,
-        "count": len(result)
-    })
-
-
-@router.post("/refresh/{product_id}", response_model=ResponseModel)
-def refresh_health_score(product_id: str, db: Session = Depends(get_db)):
-    """刷新商品健康度评分"""
-    
-    latest = db.query(WeeklyData).filter(
-        WeeklyData.product_id == product_id
-    ).order_by(desc(WeeklyData.week_start)).first()
-    
-    if not latest:
-        return ResponseModel(data={"message": "无数据"})
-    
-    period = latest.week_start.isoformat()
-    
-    existing = db.query(ProductHealth).filter(
-        ProductHealth.product_id == product_id,
-        ProductHealth.period == period
-    ).first()
-    
-    if existing:
-        db.delete(existing)
-        db.commit()
-    
-    scores = calculate_health_score(product_id, period, db)
-    
-    health = ProductHealth(
-        product_id=product_id,
-        period=period,
-        **scores
-    )
-    db.add(health)
-    db.commit()
-    db.refresh(health)
-    
-    return ResponseModel(data={
-        "message": "健康度评分已刷新",
-        "health_score": health.health_score,
-        "health_level": health.health_level
+        "alerts": all_alerts,
+        "total": len(all_alerts),
+        "period": str(period),
+        "dimension": dimension
     })

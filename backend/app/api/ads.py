@@ -6,7 +6,7 @@ from app.core.database import get_db
 from app.models import PaidDetail, Product
 from app.schemas.common import ResponseModel
 
-router = APIRouter(prefix="/api/ads", tags=["广告分析"])
+router = APIRouter(prefix="/ads", tags=["广告分析"])
 
 
 @router.get("/summary", response_model=ResponseModel)

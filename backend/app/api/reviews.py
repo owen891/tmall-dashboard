@@ -1,503 +1,368 @@
-from datetime import datetime
+from fastapi import APIRouter, Depends, Query
+from sqlalchemy.orm import Session
+from sqlalchemy import func, desc, and_, or_
 from typing import Optional, List
-from fastapi import APIRouter, Query
-from pydantic import BaseModel
-from sqlalchemy import func
+from collections import Counter
 from app.core.database import get_db
-from app.models.product import Review, ReviewSummary, Product
+from app.models import Review
+from app.schemas.common import ResponseModel
 
 router = APIRouter(prefix="/reviews", tags=["评价分析"])
 
 
-class ReviewDetail(BaseModel):
-    id: int
-    product_id: int
-    product_name: str
-    review_date: str
-    rating: float
-    sentiment: str
-    content: str
-    reviewer_type: str
-    keywords: Optional[str]
-    is_anonymous: bool
+def extract_keywords(text_list: List[str], top_n: int = 20) -> List[str]:
+    """提取关键词（简化版，不依赖jieba）"""
+    stopwords = set([
+        '的', '了', '是', '在', '我', '有', '和', '就', '不', '人', '都', '一', '一个',
+        '上', '也', '很', '到', '说', '要', '去', '你', '会', '着', '没有', '看', '好',
+        '自己', '这', '个', '吗', '啊', '吧', '呢', '哦', '嗯', '哈', '呀', '哪', '那个',
+        '这个', '什么', '怎么', '为什么', '可以', '没有', '还是', '但是', '所以', '因为',
+        '如果', '虽然', '然后', '而且', '或者', '以及', '已经', '比较', '非常', '特别',
+        '真的', '确实', '感觉', '觉得', '应该', '可能', '大概', '应该', '一样', '一直'
+    ])
+    
+    words = []
+    for text in text_list:
+        if not text:
+            continue
+        text = text.replace(' ', '').replace('\n', '')
+        i = 0
+        while i < len(text):
+            if i + 2 < len(text):
+                words.append(text[i:i+2])
+            i += 1
+    
+    word_counts = Counter(words)
+    for sw in stopwords:
+        del word_counts[sw]
+    
+    return [word for word, count in word_counts.most_common(top_n) if len(word) >= 2]
 
 
-class ReviewSummaryStat(BaseModel):
-    product_id: int
-    product_name: str
-    total_reviews: int
-    avg_rating: float
-    positive_count: int
-    negative_count: int
-    neutral_count: int
-    positive_rate: float
-    keywords: List[str]
+def analyze_sentiment(text: str) -> str:
+    """简单情感分析"""
+    positive_words = ['好', '棒', '优', '喜欢', '满意', '赞', '值', '推荐', '漂亮', '舒服', '不错', '超', '非常']
+    negative_words = ['差', '坏', '烂', '失望', '后悔', '糟', '坑', '假', '骗', '垃圾', '烂', '难用', '退货']
+    
+    text_lower = text.lower()
+    pos_count = sum(1 for w in positive_words if w in text)
+    neg_count = sum(1 for w in negative_words if w in text)
+    
+    if pos_count > neg_count:
+        return 'positive'
+    elif neg_count > pos_count:
+        return 'negative'
+    else:
+        return 'neutral'
 
 
-class SentimentTrend(BaseModel):
-    date: str
-    positive: int
-    negative: int
-    neutral: int
-    avg_rating: float
-
-
-class ReviewDimensionStat(BaseModel):
-    dimension: str
-    positive: int
-    negative: int
-    neutral: int
-    total: int
-
-
-class ReviewAnalysisResponse(BaseModel):
-    summary: ReviewSummaryStat
-    sentiment_trends: List[SentimentTrend]
-    dimension_stats: List[ReviewDimensionStat]
-
-
-@router.get("/summary", response_model=dict)
+@router.get("/summary", response_model=ResponseModel)
 def get_review_summary(
-    product_id: Optional[int] = None,
-    start_date: Optional[str] = None,
-    end_date: Optional[str] = None
+    dimension: Optional[str] = Query(None, description="时间维度"),
+    period: Optional[str] = Query(None, description="指定周期"),
+    db: Session = Depends(get_db)
 ):
-    db = next(get_db())
-    try:
-        query = db.query(Review)
-
-        if product_id:
-            query = query.filter(Review.product_id == product_id)
-        if start_date:
-            query = query.filter(Review.review_date >= start_date)
-        if end_date:
-            query = query.filter(Review.review_date <= end_date)
-
-        reviews = query.all()
-
-        total = len(reviews)
-        if total == 0:
-            return {"code": 200, "data": None}
-
-        avg_rating = sum(r.rating for r in reviews) / total
-        positive = sum(1 for r in reviews if r.sentiment == "positive")
-        negative = sum(1 for r in reviews if r.sentiment == "negative")
-        neutral = sum(1 for r in reviews if r.sentiment == "neutral")
-
-        all_keywords = []
-        for r in reviews:
-            if r.keywords:
-                all_keywords.extend(r.keywords.split(","))
-
-        keyword_freq = {}
-        for kw in all_keywords:
-            kw = kw.strip()
-            if kw:
-                keyword_freq[kw] = keyword_freq.get(kw, 0) + 1
-
-        top_keywords = sorted(keyword_freq.items(), key=lambda x: x[1], reverse=True)[:10]
-        top_keywords = [kw for kw, _ in top_keywords]
-
-        if product_id:
-            product = db.query(Product).filter(Product.id == product_id).first()
-            product_name = product.name if product else "未知商品"
-        else:
-            product_name = "全部商品"
-
-        summary = ReviewSummaryStat(
-            product_id=product_id or 0,
-            product_name=product_name,
-            total_reviews=total,
-            avg_rating=round(avg_rating, 2),
-            positive_count=positive,
-            negative_count=negative,
-            neutral_count=neutral,
-            positive_rate=round(positive / total * 100, 2) if total > 0 else 0,
-            keywords=top_keywords
-        )
-
-        return {"code": 200, "data": summary}
-
-    finally:
-        db.close()
+    """获取评价汇总数据"""
+    
+    query = db.query(Review)
+    
+    if period:
+        query = query.filter(Review.review_date.startswith(period))
+    
+    reviews = query.all()
+    
+    if not reviews:
+        return ResponseModel(data={
+            "total_reviews": 0,
+            "avg_rating": 0,
+            "positive_rate": 0,
+            "positive_count": 0,
+            "negative_count": 0,
+            "neutral_count": 0,
+            "keywords": []
+        })
+    
+    total = len(reviews)
+    ratings = [r.rating for r in reviews if r.rating]
+    avg_rating = sum(ratings) / len(ratings) if ratings else 0
+    
+    sentiments = [analyze_sentiment(r.content) if r.content else 'neutral' for r in reviews]
+    positive_count = sentiments.count('positive')
+    negative_count = sentiments.count('negative')
+    neutral_count = sentiments.count('neutral')
+    positive_rate = (positive_count / total * 100) if total > 0 else 0
+    
+    content_list = [r.content for r in reviews if r.content]
+    keywords = extract_keywords(content_list)
+    
+    return ResponseModel(data={
+        "total_reviews": total,
+        "avg_rating": round(avg_rating, 2),
+        "positive_rate": round(positive_rate, 1),
+        "positive_count": positive_count,
+        "negative_count": negative_count,
+        "neutral_count": neutral_count,
+        "keywords": keywords[:20],
+        "period": period,
+        "dimension": dimension
+    })
 
 
-@router.get("/trends", response_model=dict)
-def get_review_trends(
-    product_id: Optional[int] = None,
-    dimension: str = Query("daily", description="时间维度: daily/weekly/monthly"),
-    start_date: Optional[str] = None,
-    end_date: Optional[str] = None
-):
-    db = next(get_db())
-    try:
-        query = db.query(Review)
-
-        if product_id:
-            query = query.filter(Review.product_id == product_id)
-        if start_date:
-            query = query.filter(Review.review_date >= start_date)
-        if end_date:
-            query = query.filter(Review.review_date <= end_date)
-
-        reviews = query.order_by(Review.review_date).all()
-
-        if dimension == "monthly":
-            grouped = {}
-            for r in reviews:
-                month = r.review_date[:7] if r.review_date else ""
-                if month not in grouped:
-                    grouped[month] = {"positive": 0, "negative": 0, "neutral": 0, "total_rating": 0, "count": 0}
-                grouped[month]["count"] += 1
-                grouped[month]["total_rating"] += r.rating
-                if r.sentiment == "positive":
-                    grouped[month]["positive"] += 1
-                elif r.sentiment == "negative":
-                    grouped[month]["negative"] += 1
-                else:
-                    grouped[month]["neutral"] += 1
-
-            trends = []
-            for date in sorted(grouped.keys()):
-                data = grouped[date]
-                trends.append(SentimentTrend(
-                    date=date,
-                    positive=data["positive"],
-                    negative=data["negative"],
-                    neutral=data["neutral"],
-                    avg_rating=round(data["total_rating"] / data["count"], 2) if data["count"] > 0 else 0
-                ))
-        else:
-            grouped = {}
-            for r in reviews:
-                date = r.review_date[:10] if r.review_date else ""
-                if date not in grouped:
-                    grouped[date] = {"positive": 0, "negative": 0, "neutral": 0, "total_rating": 0, "count": 0}
-                grouped[date]["count"] += 1
-                grouped[date]["total_rating"] += r.rating
-                if r.sentiment == "positive":
-                    grouped[date]["positive"] += 1
-                elif r.sentiment == "negative":
-                    grouped[date]["negative"] += 1
-                else:
-                    grouped[date]["neutral"] += 1
-
-            trends = []
-            for date in sorted(grouped.keys()):
-                data = grouped[date]
-                trends.append(SentimentTrend(
-                    date=date,
-                    positive=data["positive"],
-                    negative=data["negative"],
-                    neutral=data["neutral"],
-                    avg_rating=round(data["total_rating"] / data["count"], 2) if data["count"] > 0 else 0
-                ))
-
-        return {"code": 200, "data": trends}
-
-    finally:
-        db.close()
-
-
-@router.get("/dimensions", response_model=dict)
-def get_review_dimensions(
-    product_id: Optional[int] = None,
-    start_date: Optional[str] = None,
-    end_date: Optional[str] = None
-):
-    db = next(get_db())
-    try:
-        query = db.query(Review)
-
-        if product_id:
-            query = query.filter(Review.product_id == product_id)
-        if start_date:
-            query = query.filter(Review.review_date >= start_date)
-        if end_date:
-            query = query.filter(Review.review_date <= end_date)
-
-        reviews = query.all()
-
-        dimension_map = {
-            "quality": ["质量", "品质", "材质", "做工", "面料"],
-            "service": ["服务", "态度", "客服", "回复", "售后"],
-            "logistics": ["物流", "快递", "发货", "配送", "速度"],
-            "price": ["价格", "性价比", "便宜", "划算", "实惠"],
-            "appearance": ["外观", "颜值", "包装", "设计", "好看"]
-        }
-
-        stats = {dim: {"positive": 0, "negative": 0, "neutral": 0, "total": 0} for dim in dimension_map.keys()}
-
-        for r in reviews:
-            content = r.content or ""
-            for dim, keywords in dimension_map.items():
-                if any(kw in content for kw in keywords):
-                    stats[dim]["total"] += 1
-                    if r.sentiment == "positive":
-                        stats[dim]["positive"] += 1
-                    elif r.sentiment == "negative":
-                        stats[dim]["negative"] += 1
-                    else:
-                        stats[dim]["neutral"] += 1
-
-        result = []
-        for dim, data in stats.items():
-            if data["total"] > 0:
-                result.append(ReviewDimensionStat(
-                    dimension=dim,
-                    positive=data["positive"],
-                    negative=data["negative"],
-                    neutral=data["neutral"],
-                    total=data["total"]
-                ))
-
-        return {"code": 200, "data": result}
-
-    finally:
-        db.close()
-
-
-@router.get("/list", response_model=dict)
-def get_review_list(
-    product_id: Optional[int] = None,
-    sentiment: Optional[str] = Query(None, description="情感: positive/negative/neutral"),
-    rating: Optional[int] = Query(None, description="评分 1-5"),
-    keyword: Optional[str] = Query(None, description="关键词搜索"),
-    start_date: Optional[str] = None,
-    end_date: Optional[str] = None,
-    page: int = Query(1, description="页码"),
-    page_size: int = Query(20, description="每页数量")
-):
-    db = next(get_db())
-    try:
-        query = db.query(Review)
-
-        if product_id:
-            query = query.filter(Review.product_id == product_id)
-        if sentiment:
-            query = query.filter(Review.sentiment == sentiment)
-        if rating:
-            query = query.filter(Review.rating == rating)
-        if keyword:
-            query = query.filter(Review.content.contains(keyword))
-        if start_date:
-            query = query.filter(Review.review_date >= start_date)
-        if end_date:
-            query = query.filter(Review.review_date <= end_date)
-
-        total = query.count()
-        offset = (page - 1) * page_size
-        reviews = query.order_by(Review.review_date.desc()).offset(offset).limit(page_size).all()
-
-        review_list = []
-        for r in reviews:
-            review_list.append(ReviewDetail(
-                id=r.id,
-                product_id=r.product_id,
-                product_name=r.product_name or "",
-                review_date=r.review_date or "",
-                rating=r.rating,
-                sentiment=r.sentiment,
-                content=r.content,
-                reviewer_type=r.reviewer_type or "normal",
-                keywords=r.keywords,
-                is_anonymous=r.is_anonymous
-            ))
-
-        return {
-            "code": 200,
-            "data": {
-                "reviews": review_list,
-                "total": total,
-                "page": page,
-                "page_size": page_size,
-                "total_pages": (total + page_size - 1) // page_size
-            }
-        }
-
-    finally:
-        db.close()
-
-
-@router.get("/product/{product_id}", response_model=dict)
-def get_product_review_analysis(product_id: int):
-    db = next(get_db())
-    try:
-        reviews = db.query(Review).filter(Review.product_id == product_id).all()
-
-        total = len(reviews)
-        if total == 0:
-            return {"code": 200, "data": None}
-
-        avg_rating = sum(r.rating for r in reviews) / total
-        positive = sum(1 for r in reviews if r.sentiment == "positive")
-        negative = sum(1 for r in reviews if r.sentiment == "negative")
-        neutral = sum(1 for r in reviews if r.sentiment == "neutral")
-
-        all_keywords = []
-        for r in reviews:
-            if r.keywords:
-                all_keywords.extend(r.keywords.split(","))
-
-        keyword_freq = {}
-        for kw in all_keywords:
-            kw = kw.strip()
-            if kw:
-                keyword_freq[kw] = keyword_freq.get(kw, 0) + 1
-
-        top_keywords = sorted(keyword_freq.items(), key=lambda x: x[1], reverse=True)[:10]
-        top_keywords = [kw for kw, _ in top_keywords]
-
-        product = db.query(Product).filter(Product.id == product_id).first()
-
-        summary = ReviewSummaryStat(
-            product_id=product_id,
-            product_name=product.name if product else "未知商品",
-            total_reviews=total,
-            avg_rating=round(avg_rating, 2),
-            positive_count=positive,
-            negative_count=negative,
-            neutral_count=neutral,
-            positive_rate=round(positive / total * 100, 2),
-            keywords=top_keywords
-        )
-
-        return {"code": 200, "data": summary}
-
-    finally:
-        db.close()
-
-
-@router.get("/sentiment-distribution", response_model=dict)
+@router.get("/sentiment-distribution", response_model=ResponseModel)
 def get_sentiment_distribution(
-    product_id: Optional[int] = None,
-    start_date: Optional[str] = None,
-    end_date: Optional[str] = None
+    dimension: Optional[str] = Query(None, description="时间维度"),
+    period: Optional[str] = Query(None, description="指定周期"),
+    db: Session = Depends(get_db)
 ):
-    db = next(get_db())
-    try:
-        query = db.query(Review)
-
-        if product_id:
-            query = query.filter(Review.product_id == product_id)
-        if start_date:
-            query = query.filter(Review.review_date >= start_date)
-        if end_date:
-            query = query.filter(Review.review_date <= end_date)
-
-        reviews = query.all()
-        total = len(reviews)
-
-        positive = sum(1 for r in reviews if r.sentiment == "positive")
-        negative = sum(1 for r in reviews if r.sentiment == "negative")
-        neutral = sum(1 for r in reviews if r.sentiment == "neutral")
-
-        distribution = {
-            "positive": {
-                "count": positive,
-                "percentage": round(positive / total * 100, 2) if total > 0 else 0
-            },
-            "negative": {
-                "count": negative,
-                "percentage": round(negative / total * 100, 2) if total > 0 else 0
-            },
-            "neutral": {
-                "count": neutral,
-                "percentage": round(neutral / total * 100, 2) if total > 0 else 0
-            }
+    """获取情感分布"""
+    
+    query = db.query(Review)
+    
+    if period:
+        query = query.filter(Review.review_date.startswith(period))
+    
+    reviews = query.all()
+    
+    if not reviews:
+        return ResponseModel(data={
+            "positive": {"count": 0, "percent": 0},
+            "negative": {"count": 0, "percent": 0},
+            "neutral": {"count": 0, "percent": 0}
+        })
+    
+    total = len(reviews)
+    sentiments = [analyze_sentiment(r.content) if r.content else 'neutral' for r in reviews]
+    
+    positive_count = sentiments.count('positive')
+    negative_count = sentiments.count('negative')
+    neutral_count = sentiments.count('neutral')
+    
+    return ResponseModel(data={
+        "positive": {
+            "count": positive_count,
+            "percent": round(positive_count / total * 100, 1)
+        },
+        "negative": {
+            "count": negative_count,
+            "percent": round(negative_count / total * 100, 1)
+        },
+        "neutral": {
+            "count": neutral_count,
+            "percent": round(neutral_count / total * 100, 1)
         }
-
-        return {"code": 200, "data": distribution}
-
-    finally:
-        db.close()
+    })
 
 
-@router.get("/rating-distribution", response_model=dict)
+@router.get("/rating-distribution", response_model=ResponseModel)
 def get_rating_distribution(
-    product_id: Optional[int] = None,
-    start_date: Optional[str] = None,
-    end_date: Optional[str] = None
+    dimension: Optional[str] = Query(None, description="时间维度"),
+    period: Optional[str] = Query(None, description="指定周期"),
+    db: Session = Depends(get_db)
 ):
-    db = next(get_db())
-    try:
-        query = db.query(Review)
-
-        if product_id:
-            query = query.filter(Review.product_id == product_id)
-        if start_date:
-            query = query.filter(Review.review_date >= start_date)
-        if end_date:
-            query = query.filter(Review.review_date <= end_date)
-
-        reviews = query.all()
-
-        distribution = {1: 0, 2: 0, 3: 0, 4: 0, 5: 0}
-        for r in reviews:
-            if r.rating in distribution:
-                distribution[r.rating] += 1
-
-        total = len(reviews)
-        result = []
-        for rating in [5, 4, 3, 2, 1]:
-            result.append({
-                "rating": rating,
-                "count": distribution[rating],
-                "percentage": round(distribution[rating] / total * 100, 2) if total > 0 else 0
-            })
-
-        return {"code": 200, "data": result}
-
-    finally:
-        db.close()
+    """获取评分分布"""
+    
+    query = db.query(Review).filter(Review.rating.isnot(None))
+    
+    if period:
+        query = query.filter(Review.review_date.startswith(period))
+    
+    reviews = query.all()
+    
+    distribution = {1: 0, 2: 0, 3: 0, 4: 0, 5: 0}
+    for r in reviews:
+        if r.rating in distribution:
+            distribution[r.rating] += 1
+    
+    result = [
+        {"rating": rating, "count": count}
+        for rating, count in sorted(distribution.items(), reverse=True)
+    ]
+    
+    return ResponseModel(data=result)
 
 
-@router.post("/", response_model=dict)
-def create_review(
-    product_id: int,
-    product_name: str,
-    review_date: str,
-    rating: float,
-    sentiment: str,
-    content: str,
-    reviewer_type: str = "normal",
-    keywords: Optional[str] = None,
-    is_anonymous: bool = False
+@router.get("/list", response_model=ResponseModel)
+def get_review_list(
+    sentiment: Optional[str] = Query(None, description="情感筛选: positive/negative/neutral"),
+    rating: Optional[int] = Query(None, description="评分筛选"),
+    product_id: Optional[str] = Query(None, description="商品ID"),
+    period: Optional[str] = Query(None, description="指定周期"),
+    page: int = Query(1, description="页码"),
+    page_size: int = Query(20, description="每页数量"),
+    db: Session = Depends(get_db)
 ):
-    db = next(get_db())
-    try:
-        review = Review(
-            product_id=product_id,
-            product_name=product_name,
-            review_date=review_date,
-            rating=rating,
-            sentiment=sentiment,
-            content=content,
-            reviewer_type=reviewer_type,
-            keywords=keywords,
-            is_anonymous=is_anonymous
-        )
-        db.add(review)
-        db.commit()
-        db.refresh(review)
+    """获取评价列表"""
+    
+    query = db.query(Review)
+    
+    if sentiment:
+        sentiment_filter = []
+        for r in db.query(Review).all():
+            if r.content:
+                analyzed = analyze_sentiment(r.content)
+                if analyzed == sentiment:
+                    sentiment_filter.append(r.id)
+        query = query.filter(Review.id.in_(sentiment_filter))
+    
+    if rating:
+        query = query.filter(Review.rating == rating)
+    
+    if product_id:
+        query = query.filter(Review.product_id == product_id)
+    
+    if period:
+        query = query.filter(Review.review_date.startswith(period))
+    
+    total = query.count()
+    reviews = query.order_by(desc(Review.review_date)).offset((page - 1) * page_size).limit(page_size).all()
+    
+    review_list = []
+    for r in reviews:
+        sentiment = analyze_sentiment(r.content) if r.content else 'neutral'
+        review_list.append({
+            "id": r.id,
+            "review_date": r.review_date,
+            "product_id": r.product_id,
+            "product_name": r.product_name or r.product_id,
+            "rating": r.rating,
+            "sentiment": sentiment,
+            "content": r.content,
+            "reviewer_type": r.reviewer_type or "普通买家"
+        })
+    
+    return ResponseModel(data={
+        "reviews": review_list,
+        "total": total,
+        "page": page,
+        "page_size": page_size
+    })
 
-        return {"code": 200, "message": "评价已添加", "data": {"id": review.id}}
 
-    finally:
-        db.close()
+@router.get("/keywords", response_model=ResponseModel)
+def get_review_keywords(
+    dimension: Optional[str] = Query(None, description="时间维度"),
+    period: Optional[str] = Query(None, description="指定周期"),
+    sentiment: Optional[str] = Query(None, description="情感筛选"),
+    top_n: int = Query(30, description="返回数量"),
+    db: Session = Depends(get_db)
+):
+    """获取评价关键词"""
+    
+    query = db.query(Review.content).filter(Review.content.isnot(None))
+    
+    if period:
+        reviews_in_period = db.query(Review).filter(Review.review_date.startswith(period)).all()
+        review_ids = [r.id for r in reviews_in_period]
+        query = db.query(Review.content).filter(Review.id.in_(review_ids), Review.content.isnot(None))
+    
+    contents = [c[0] for c in query.all() if c[0]]
+    
+    if sentiment:
+        filtered = []
+        for c in contents:
+            analyzed = analyze_sentiment(c)
+            if analyzed == sentiment:
+                filtered.append(c)
+        contents = filtered
+    
+    keywords = extract_keywords(contents, top_n)
+    
+    return ResponseModel(data={
+        "keywords": keywords,
+        "period": period,
+        "sentiment": sentiment
+    })
 
 
-@router.delete("/{review_id}", response_model=dict)
-def delete_review(review_id: int):
-    db = next(get_db())
-    try:
-        review = db.query(Review).filter(Review.id == review_id).first()
-        if not review:
-            return {"code": 404, "message": "评价不存在"}
+@router.get("/dimensions", response_model=ResponseModel)
+def get_review_dimensions(
+    dimension: Optional[str] = Query(None, description="时间维度"),
+    period: Optional[str] = Query(None, description="指定周期"),
+    db: Session = Depends(get_db)
+):
+    """获取评价维度分析（好评维度、差评维度、典型场景）"""
+    
+    query = db.query(Review)
+    
+    if period:
+        query = query.filter(Review.review_date.startswith(period))
+    
+    reviews = query.all()
+    
+    positive_dims = {
+        "质量": 0, "价格": 0, "服务": 0, "物流": 0, "外观": 0,
+        "口感": 0, "功效": 0, "包装": 0, "性价比": 0, "推荐": 0
+    }
+    
+    negative_dims = {
+        "质量": 0, "价格": 0, "服务": 0, "物流": 0, "外观": 0,
+        "口感": 0, "功效": 0, "包装": 0, "描述不符": 0, "退货": 0
+    }
+    
+    scenes = []
+    
+    for r in reviews:
+        content = r.content or ""
+        sentiment = analyze_sentiment(content)
+        
+        if sentiment == 'positive':
+            for dim in positive_dims:
+                if dim in content:
+                    positive_dims[dim] += 1
+        elif sentiment == 'negative':
+            for dim in negative_dims:
+                if dim in content:
+                    negative_dims[dim] += 1
+        
+        if '回购' in content or '再次' in content:
+            scenes.append('回购意愿')
+        if '送人' in content or '礼物' in content:
+            scenes.append('送礼场景')
+        if '囤货' in content or '囤' in content:
+            scenes.append('囤货场景')
+    
+    scene_counts = Counter(scenes)
+    top_scenes = [{"scene": s, "count": c} for s, c in scene_counts.most_common(5)]
+    
+    return ResponseModel(data={
+        "positive_dims": [{"dimension": k, "count": v} for k, v in sorted(positive_dims.items(), key=lambda x: x[1], reverse=True) if v > 0],
+        "negative_dims": [{"dimension": k, "count": v} for k, v in sorted(negative_dims.items(), key=lambda x: x[1], reverse=True) if v > 0],
+        "scenes": top_scenes,
+        "period": period
+    })
 
-        db.delete(review)
-        db.commit()
-        return {"code": 200, "message": "评价已删除"}
 
-    finally:
-        db.close()
+@router.get("/product/{product_id}", response_model=ResponseModel)
+def get_product_reviews(
+    product_id: str,
+    page: int = Query(1, description="页码"),
+    page_size: int = Query(20, description="每页数量"),
+    db: Session = Depends(get_db)
+):
+    """获取指定商品的评论"""
+    
+    query = db.query(Review).filter(Review.product_id == product_id)
+    
+    total = query.count()
+    reviews = query.order_by(desc(Review.review_date)).offset((page - 1) * page_size).limit(page_size).all()
+    
+    review_list = []
+    for r in reviews:
+        sentiment = analyze_sentiment(r.content) if r.content else 'neutral'
+        review_list.append({
+            "id": r.id,
+            "review_date": r.review_date,
+            "product_name": r.product_name or r.product_id,
+            "rating": r.rating,
+            "sentiment": sentiment,
+            "content": r.content,
+            "reviewer_type": r.reviewer_type or "普通买家"
+        })
+    
+    return ResponseModel(data={
+        "product_id": product_id,
+        "reviews": review_list,
+        "total": total,
+        "page": page,
+        "page_size": page_size
+    })

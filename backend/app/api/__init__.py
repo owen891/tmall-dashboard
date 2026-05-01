@@ -1,5 +1,5 @@
 from fastapi import APIRouter
-from app.api import products, imports, dashboard, custom_fields, kpi, trends, ads, health, operations, lifecycle, refunds, targets, alerts, reviews, market, toolbox
+from app.api import products, imports, dashboard, custom_fields, kpi, trends, ads, health, operations, lifecycle, refunds, targets, alerts, reviews, market, toolbox, compare
 
 api_router = APIRouter(prefix="/api")
 
@@ -19,3 +19,4 @@ api_router.include_router(alerts.router)
 api_router.include_router(reviews.router)
 api_router.include_router(market.router)
 api_router.include_router(toolbox.router)
+api_router.include_router(compare.router)
