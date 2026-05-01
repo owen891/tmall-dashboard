@@ -45,8 +45,13 @@
         <el-table-column label="商品信息" min-width="320" fixed="left">
           <template #default="{ row }">
             <div class="product-info">
-              <div class="product-image" v-if="row.image_url">
-                <img :src="row.image_url" :alt="row.title" loading="lazy" @error="$event.target.style.display='none'" />
+              <div class="product-image">
+                <img 
+                  :src="row.image_url || 'https://via.placeholder.com/60x60/f0f2f5/909399?text=商品'" 
+                  :alt="row.title" 
+                  loading="lazy" 
+                  @error="$event.target.src='https://via.placeholder.com/60x60/f0f2f5/909399?text=商品'" 
+                />
               </div>
               <div class="product-content">
                 <div class="product-title">{{ row.title }}</div>

@@ -117,7 +117,8 @@ def build_product_query(dimension: str, period: str, db: Session):
     
     base_cols = [
         Model.product_id,
-        func.max(Product.title).label('product_name'),
+        func.max(Product.title).label('title'),
+        func.max(Product.image_url).label('image_url'),
         func.max(Product.category).label('category'),
         func.max(Product.tier).label('tier'),
         func.max(Product.style).label('style'),
@@ -125,6 +126,7 @@ def build_product_query(dimension: str, period: str, db: Session):
         func.max(Product.manager).label('manager'),
         func.max(Product.list_date).label('list_date'),
         func.max(Product.status).label('status'),
+        func.max(Product.starred).label('starred'),
         func.sum(Model.payment_amount).label('payment_amount'),
         func.sum(Model.refund_amount).label('refund_amount'),
         func.sum(getattr(Model, visitors_col)).label('visitors'),
@@ -302,7 +304,8 @@ def get_products(
         
         row_data = {
             'product_id': p.product_id,
-            'title': p.product_name,
+            'title': p.title,
+            'image_url': p.image_url,
             'category': p.category,
             'tier': p.tier,
             'style': p.style,
@@ -310,6 +313,7 @@ def get_products(
             'manager': p.manager,
             'list_date': str(p.list_date) if p.list_date else None,
             'status': p.status,
+            'starred': bool(p.starred) if p.starred is not None else False,
             'payment_amount': payment,
             'net_sales': net_sales,
             'refund_amount': refund,
