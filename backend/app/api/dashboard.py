@@ -173,18 +173,19 @@ def get_dashboard(
     
     top_products_query = db.query(
         Model.product_id,
-        Model.product_name,
+        func.max(Product.title).label('product_name'),
         func.sum(Model.payment_amount).label('payment'),
         func.sum(Model.refund_amount).label('refund'),
         func.sum(getattr(Model, visitors_col)).label('visitors'),
         func.avg(Model.payment_conversion).label('conversion'),
         func.sum(Model.ad_spend).label('ad_spend'),
         func.avg(Model.ad_roi).label('roi'),
+    ).join(
+        Product, Model.product_id == Product.product_id
     ).filter(
         getattr(Model, date_col) == period
     ).group_by(
-        Model.product_id,
-        Model.product_name
+        Model.product_id
     ).order_by(desc(func.sum(Model.payment_amount))).limit(10).all()
     
     top_products = []
@@ -209,13 +210,15 @@ def get_dashboard(
         })
     
     category_query = db.query(
-        Model.category,
+        Product.category,
         func.sum(Model.payment_amount).label('payment'),
         func.sum(Model.payment_amount).label('value')
+    ).join(
+        Product, Model.product_id == Product.product_id
     ).filter(
         getattr(Model, date_col) == period,
-        Model.category.isnot(None)
-    ).group_by(Model.category).all()
+        Product.category.isnot(None)
+    ).group_by(Product.category).all()
     
     category_distribution = []
     total_category_payment = sum(float(c.payment or 0) for c in category_query)
@@ -442,13 +445,14 @@ def get_top_products(
     
     products_query = db.query(
         Model.product_id,
-        Model.product_name,
+        func.max(Product.title).label('product_name'),
         metric_func.label('metric_value')
+    ).join(
+        Product, Model.product_id == Product.product_id
     ).filter(
         getattr(Model, date_col) == period
     ).group_by(
-        Model.product_id,
-        Model.product_name
+        Model.product_id
     ).order_by(desc('metric_value')).limit(limit).all()
     
     products = []
