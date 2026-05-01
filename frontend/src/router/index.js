@@ -82,6 +82,11 @@ const routes = [
     component: () => import('@/views/Toolbox.vue')
   },
   {
+    path: '/channel/:id?',
+    name: 'ChannelDetail',
+    component: () => import('@/views/ChannelDetail.vue')
+  },
+  {
     path: '/:pathMatch(.*)*',
     redirect: '/'
   }
