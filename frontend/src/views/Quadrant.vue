@@ -89,11 +89,16 @@ const formatNumber = (num) => {
   return num.toLocaleString()
 }
 
+const gmvMid = ref(10000)
+const roiMid = ref(3)
+
 const loadData = async () => {
   try {
     const res = await api.getQuadrantData()
     quadrantData.value = res.data?.products || []
     quadrantGroups.value = res.data?.quadrants || {}
+    gmvMid.value = res.data?.gmv_mid || 10000
+    roiMid.value = res.data?.roi_mid || 3
     nextTick(() => {
       initChart()
     })
@@ -117,9 +122,6 @@ const initChart = () => {
     question: '#e6a23c',
     dog: '#909399'
   }
-  
-  const gmvMid = quadrantData.value[0]?.gmv_mid || 10000
-  const roiMid = quadrantData.value[0]?.roi_mid || 3
   
   const seriesData = Object.values(quadrantGroups.value).flatMap(group =>
     group.map(p => ({
@@ -168,8 +170,8 @@ const initChart = () => {
           silent: true,
           lineStyle: { color: '#999', type: 'dashed' },
           data: [
-            { xAxis: gmvMid },
-            { yAxis: roiMid }
+            { xAxis: gmvMid.value },
+            { yAxis: roiMid.value }
           ],
           label: { show: false }
         },
@@ -183,20 +185,20 @@ const initChart = () => {
           },
           data: [
             [
-              { name: '明星商品', xAxis: gmvMid, yAxis: roiMid, itemStyle: { color: 'rgba(103, 194, 58, 0.1)' } },
+              { name: '明星商品', xAxis: gmvMid.value, yAxis: roiMid.value, itemStyle: { color: 'rgba(103, 194, 58, 0.1)' } },
               {}
             ],
             [
-              { name: '问题商品', yAxis: roiMid, itemStyle: { color: 'rgba(230, 162, 60, 0.1)' } },
-              { xAxis: gmvMid }
+              { name: '问题商品', yAxis: roiMid.value, itemStyle: { color: 'rgba(230, 162, 60, 0.1)' } },
+              { xAxis: gmvMid.value }
             ],
             [
-              { name: '现金牛', xAxis: gmvMid, itemStyle: { color: 'rgba(64, 158, 255, 0.1)' } },
-              { yAxis: roiMid }
+              { name: '现金牛', xAxis: gmvMid.value, itemStyle: { color: 'rgba(64, 158, 255, 0.1)' } },
+              { yAxis: roiMid.value }
             ],
             [
               { name: '瘦狗商品', itemStyle: { color: 'rgba(144, 147, 153, 0.1)' } },
-              { xAxis: gmvMid, yAxis: roiMid }
+              { xAxis: gmvMid.value, yAxis: roiMid.value }
             ]
           ]
         }
