@@ -6,6 +6,7 @@ from .product import (
     ProductTag,
     OperationAction,
     ProductNote,
+    ProductCustomField,
     ProductHealth,
     PaidDetail,
     ShopTarget,
@@ -15,7 +16,8 @@ from .product import (
     Review,
     ReviewSummary,
     MarketAnalysis,
-    MarketKeywordOpportunity
+    MarketKeywordOpportunity,
+    ChartEvent
 )
 from .ad import (
     AdData,
@@ -32,6 +34,7 @@ __all__ = [
     "ProductTag",
     "OperationAction",
     "ProductNote",
+    "ProductCustomField",
     "ProductHealth",
     "PaidDetail",
     "ShopTarget",
@@ -42,6 +45,7 @@ __all__ = [
     "ReviewSummary",
     "MarketAnalysis",
     "MarketKeywordOpportunity",
+    "ChartEvent",
     "AdData",
     "KeywordAdData",
     "AudienceAdData",

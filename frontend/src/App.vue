@@ -27,6 +27,38 @@
           <el-icon><DataLine /></el-icon>
           <span>四象限分析</span>
         </el-menu-item>
+
+        <el-sub-menu index="analysis">
+          <template #title>
+            <el-icon><TrendCharts /></el-icon>
+            <span>数据分析</span>
+          </template>
+          <el-menu-item index="/kpi">KPI分析</el-menu-item>
+          <el-menu-item index="/trends">趋势分析</el-menu-item>
+          <el-menu-item index="/ads">广告分析</el-menu-item>
+          <el-menu-item index="/health">健康度</el-menu-item>
+          <el-menu-item index="/operations">操作统计</el-menu-item>
+        </el-sub-menu>
+
+        <el-sub-menu index="management">
+          <template #title>
+            <el-icon><Setting /></el-icon>
+            <span>运营管理</span>
+          </template>
+          <el-menu-item index="/refunds">退款分析</el-menu-item>
+          <el-menu-item index="/targets">目标管理</el-menu-item>
+          <el-menu-item index="/alerts">异常告警</el-menu-item>
+          <el-menu-item index="/reviews">评价分析</el-menu-item>
+        </el-sub-menu>
+
+        <el-sub-menu index="market-tools">
+          <template #title>
+            <el-icon><Shop /></el-icon>
+            <span>市场工具</span>
+          </template>
+          <el-menu-item index="/market">市场分析</el-menu-item>
+          <el-menu-item index="/toolbox">运营工具箱</el-menu-item>
+        </el-sub-menu>
       </el-menu>
     </el-aside>
     <el-container>
@@ -59,7 +91,18 @@ const pageTitle = computed(() => {
     '/': '仪表盘',
     '/products': '商品列表',
     '/import': '数据导入',
-    '/quadrant': '四象限分析'
+    '/quadrant': '四象限分析',
+    '/kpi': 'KPI分析',
+    '/trends': '趋势分析',
+    '/ads': '广告分析',
+    '/health': '健康度评分',
+    '/operations': '操作统计',
+    '/refunds': '退款分析',
+    '/targets': '目标管理',
+    '/alerts': '异常告警',
+    '/reviews': '评价分析',
+    '/market': '市场分析',
+    '/toolbox': '运营工具箱'
   }
   return titles[route.path] || '仪表盘'
 })
