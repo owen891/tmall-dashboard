@@ -64,7 +64,19 @@
             </div>
           </template>
           <el-table :data="topProducts" style="width: 100%">
-            <el-table-column prop="title" label="商品名称" />
+            <el-table-column label="商品" min-width="280">
+              <template #default="{ row }">
+                <div class="product-cell">
+                  <div class="product-thumb">
+                    <img :src="row.image_url || 'https://via.placeholder.com/40x40/f0f2f5/909399?text=商'" :alt="row.title" @error="$event.target.src='https://via.placeholder.com/40x40/f0f2f5/909399?text=商'" />
+                  </div>
+                  <div class="product-info">
+                    <div class="product-name">{{ row.title }}</div>
+                    <div class="product-id">{{ row.product_id }}</div>
+                  </div>
+                </div>
+              </template>
+            </el-table-column>
             <el-table-column prop="tier" label="分层" width="100">
               <template #default="{ row }">
                 <el-tag :type="getTierType(row.tier)">{{ row.tier }}</el-tag>
@@ -133,12 +145,14 @@ const loadData = async () => {
       avg_roi: kpi.roi?.value || 0
     }
     topProducts.value = (topRes.data?.products || []).map(p => ({
+      product_id: p.product_id,
       title: p.product_name,
-      tier: '',
-      net_sales: p.value,
-      visitors: 0,
-      conversion: 0,
-      roi: 0
+      image_url: p.image_url,
+      tier: p.tier || '',
+      net_sales: p.value || p.payment_amount,
+      visitors: p.visitors || 0,
+      conversion: p.conversion || 0,
+      roi: p.roi || 0
     }))
   } catch (error) {
     console.error('Load data error:', error)
@@ -203,5 +217,44 @@ onMounted(() => {
 
 .charts-row {
   margin-top: 20px;
+}
+
+.product-cell {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.product-thumb {
+  width: 40px;
+  height: 40px;
+  border-radius: 4px;
+  overflow: hidden;
+  background: #f5f7fa;
+  flex-shrink: 0;
+}
+
+.product-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.product-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.product-name {
+  font-size: 14px;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.product-id {
+  font-size: 12px;
+  color: #909399;
 }
 </style>
