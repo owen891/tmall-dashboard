@@ -42,20 +42,30 @@
           </template>
         </el-table-column>
 
-        <el-table-column label="商品信息" min-width="250" fixed="left">
+        <el-table-column label="商品信息" min-width="320" fixed="left">
           <template #default="{ row }">
             <div class="product-info">
-              <div class="product-title">{{ row.title }}</div>
-              <div class="product-meta">
-                <el-tag size="small" :type="getTierType(row.tier)">{{ row.tier }}</el-tag>
-                <span class="product-id">{{ row.product_id }}</span>
+              <div class="product-image" v-if="row.image_url">
+                <img :src="row.image_url" :alt="row.title" loading="lazy" @error="$event.target.style.display='none'" />
+              </div>
+              <div class="product-content">
+                <div class="product-title">{{ row.title }}</div>
+                <div class="product-meta">
+                  <span class="product-id">{{ row.product_id }}</span>
+                </div>
+                <div class="product-tags" v-if="row.category || row.tier || row.style || row.scene">
+                  <el-tag size="small" v-if="row.tier" :type="getTierType(row.tier)">{{ row.tier }}</el-tag>
+                  <el-tag size="small" v-if="row.category" type="info">{{ row.category }}</el-tag>
+                  <el-tag size="small" v-if="row.style" type="success">{{ row.style }}</el-tag>
+                  <el-tag size="small" v-if="row.scene" type="warning">{{ row.scene }}</el-tag>
+                </div>
               </div>
             </div>
           </template>
         </el-table-column>
 
         <el-table-column
-          v-for="field in visibleColumns"
+          v-for="field in visibleColumns.filter(f => !['title', 'tier', 'style', 'scene', 'category'].includes(f.key))"
           :key="field.key"
           :prop="field.key"
           :label="field.label"
@@ -63,10 +73,7 @@
           :min-width="field.minWidth"
         >
           <template #default="{ row }">
-            <span v-if="field.key === 'tier'">
-              <el-tag size="small" :type="getTierType(row[field.key])">{{ row[field.key] }}</el-tag>
-            </span>
-            <span v-else-if="['payment_amount', 'refund_amount', 'net_sales', 'ad_spend', 'avg_order_value', 'keyword_sales', 'crowd_sales', 'site_sales'].includes(field.key)">
+            <span v-if="['payment_amount', 'refund_amount', 'net_sales', 'ad_spend', 'avg_order_value', 'keyword_sales', 'crowd_sales', 'site_sales'].includes(field.key)">
               {{ formatNumber(row[field.key], 2) }}
             </span>
             <span v-else-if="['payment_conversion', 'cart_rate', 'fav_rate', 'refund_rate', 'ad_ratio', 'search_conversion', 'click_rate', 'industry_ctr', 'search_click_rate', 'ad_roi', 'keyword_roi', 'crowd_roi', 'site_roi', 'guide_potential_ratio', 'cross_sell_rate', 'repurchase_rate', 'new_buyer_ratio'].includes(field.key)">
@@ -256,22 +263,53 @@ onMounted(() => {
 
 .product-info {
   display: flex;
-  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+.product-image {
+  flex-shrink: 0;
+  width: 60px;
+  height: 60px;
+  border-radius: 4px;
+  overflow: hidden;
+  background: #f5f7fa;
+}
+
+.product-image img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.product-content {
+  flex: 1;
+  min-width: 0;
 }
 
 .product-title {
   font-weight: 500;
-  margin-bottom: 5px;
+  margin-bottom: 6px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .product-meta {
   display: flex;
   align-items: center;
   gap: 10px;
+  margin-bottom: 4px;
 }
 
 .product-id {
   color: #909399;
   font-size: 12px;
+}
+
+.product-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
 }
 </style>
