@@ -22,7 +22,7 @@ from app.services import ProductService, ExcelImportService
 router = APIRouter(prefix="/products", tags=["products"])
 
 
-@router.get("/", response_model=ListResponseModel[ProductResponse])
+@router.get("", response_model=ListResponseModel[ProductResponse])
 def get_products(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
