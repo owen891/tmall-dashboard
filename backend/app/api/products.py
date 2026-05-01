@@ -46,10 +46,9 @@ SORT_WHITELIST = [
 WEEKLY_ONLY_COLS = [
     'presale_amount', 'presale_qty', 'ipv', 'pv',
     'search_ipv', 'recommend_ipv', 'paid_ipv', 'organic_ipv',
-    'payment_conversion', 'cart_rate', 'fav_rate', 'search_click_rate',
-    'bounce_rate', 'avg_stay_duration', 'ad_spend', 'ad_roi',
-    'repurchase_rate', 'repurchase_users', 'cross_sell_qty', 'cross_sell_rate',
-    'avg_order_value', 'category_width', 'industry_ctr',
+    'search_click_rate',
+    'repurchase_users', 'cross_sell_qty', 
+    'category_width', 'industry_ctr',
     'buyers', 'cart_users', 'cart_qty', 'fav_users',
     'uv_value', 'search_conversion', 'search_visitors', 'click_rate',
 ]
@@ -60,10 +59,9 @@ MONTHLY_ONLY_COLS = [
     'crowd_spend', 'crowd_sales', 'crowd_roi', 'crowd_visitors', 'crowd_ppc',
     'site_spend', 'site_sales', 'site_roi', 'site_visitors', 'site_ppc',
     'paid_ipv', 'organic_ipv', 'search_ipv', 'recommend_ipv',
-    'industry_ctr', 'cross_sell_qty', 'cross_sell_categories',
-    'repurchase_rate', 'cross_sell_rate',
+    'cross_sell_qty', 'cross_sell_categories',
     'uv_value', 'search_visitors', 'search_ratio', 'search_conversion',
-    'cart_qty', 'fav_users', 'click_rate', 'score',
+    'cart_qty', 'click_rate', 
     'cart_users', 'new_buyers', 'new_buyer_ratio',
     'visitors', 'page_views', 'buyers', 'payment_qty',
     'guide_visits', 'guide_visitors', 'guide_potential', 'guide_potential_ratio',
@@ -76,12 +74,7 @@ MONTHLY_ONLY_COLS = [
     'item_fav_rate', 'cart_cost',
 ]
 
-ALL_COMMON_COLS = [
-    'payment_amount', 'refund_amount', 'net_sales',
-    'payment_conversion', 'cart_rate', 'fav_rate', 'bounce_rate',
-    'avg_stay_duration', 'ad_spend', 'ad_roi', 'repurchase_rate',
-    'cross_sell_rate', 'avg_order_value',
-]
+ALL_COMMON_COLS = []
 
 
 def get_latest_period(Model, date_col, db):
@@ -154,6 +147,7 @@ def build_product_query(dimension: str, period: str, db: Session):
         func.sum(getattr(Model, visitors_col)).label('visitors'),
         func.avg(Model.payment_conversion).label('conversion'),
         func.avg(Model.ad_roi).label('roi'),
+        func.sum(Model.ad_spend).label('ad_spend'),
     ]
     
     if dimension == 'monthly':
