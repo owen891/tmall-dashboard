@@ -1,11 +1,14 @@
 <template>
   <el-container class="app-container">
-    <el-aside width="240px" class="app-aside">
+    <el-aside :width="isCollapsed ? '64px' : '240px'" class="app-aside">
       <div class="logo">
-        <h2>海贝海数据</h2>
+        <h2 v-if="!isCollapsed">数据系统</h2>
+        <el-icon v-else size="24"><DataBoard /></el-icon>
       </div>
       <el-menu
         :default-active="activeMenu"
+        :collapse="isCollapsed"
+        :collapse-transition="false"
         router
         background-color="#304156"
         text-color="#bfcbd9"
@@ -64,6 +67,11 @@
     <el-container>
       <el-header class="app-header">
         <div class="header-left">
+          <el-button 
+            :icon="isCollapsed ? 'Expand' : 'Fold'" 
+            @click="isCollapsed = !isCollapsed"
+            text
+          />
           <span class="page-title">{{ pageTitle }}</span>
         </div>
         <div class="header-right">
@@ -81,10 +89,11 @@
 </template>
 
 <script setup>
-import { computed } from 'vue'
+import { ref, computed } from 'vue'
 import { useRoute } from 'vue-router'
 
 const route = useRoute()
+const isCollapsed = ref(false)
 const activeMenu = computed(() => route.path)
 const pageTitle = computed(() => {
   const titles = {
@@ -116,6 +125,7 @@ const pageTitle = computed(() => {
 .app-aside {
   background-color: #304156;
   overflow: hidden;
+  transition: width 0.3s;
 }
 
 .logo {
@@ -124,6 +134,9 @@ const pageTitle = computed(() => {
   text-align: center;
   color: white;
   background-color: #2b3a4a;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .logo h2 {
@@ -138,6 +151,12 @@ const pageTitle = computed(() => {
   justify-content: space-between;
   align-items: center;
   padding: 0 20px;
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 
 .page-title {
