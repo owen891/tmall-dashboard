@@ -445,22 +445,29 @@ def get_top_products(
     
     products_query = db.query(
         Model.product_id,
-        func.max(Product.title).label('product_name'),
+        Product.title,
+        Product.image_url,
+        Product.tier,
         metric_func.label('metric_value')
     ).join(
         Product, Model.product_id == Product.product_id
     ).filter(
         getattr(Model, date_col) == period
     ).group_by(
-        Model.product_id
+        Model.product_id,
+        Product.title,
+        Product.image_url,
+        Product.tier
     ).order_by(desc('metric_value')).limit(limit).all()
-    
+
     products = []
     for i, p in enumerate(products_query, 1):
         products.append({
             "rank": i,
             "product_id": p.product_id,
-            "product_name": p.product_name,
+            "product_name": p.title,
+            "image_url": p.image_url,
+            "tier": p.tier,
             "metric": metric,
             "value": round(float(p.metric_value or 0), 2)
         })

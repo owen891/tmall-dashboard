@@ -172,10 +172,10 @@ const loadData = async () => {
     }
     topProducts.value = (topRes.data?.products || []).map(p => ({
       product_id: p.product_id,
-      title: p.product_name,
+      title: p.product_name || p.title,
       image_url: p.image_url,
       tier: p.tier || '',
-      net_sales: p.value || p.payment_amount,
+      net_sales: p.value || p.payment_amount || 0,
       visitors: p.visitors || 0,
       conversion: p.conversion || 0,
       roi: p.roi || 0
