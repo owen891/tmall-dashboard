@@ -1,10 +1,21 @@
 from .product import (
     Product,
+    DailyData,
     WeeklyData,
+    MonthlyData,
     ProductTag,
     OperationAction,
     ProductNote,
-    ProductHealth
+    ProductHealth,
+    PaidDetail,
+    ShopTarget,
+    ProductTarget,
+    Alert,
+    AlertRule,
+    Review,
+    ReviewSummary,
+    MarketAnalysis,
+    MarketKeywordOpportunity
 )
 from .ad import (
     AdData,
@@ -15,11 +26,22 @@ from .ad import (
 
 __all__ = [
     "Product",
+    "DailyData",
     "WeeklyData",
+    "MonthlyData",
     "ProductTag",
     "OperationAction",
     "ProductNote",
     "ProductHealth",
+    "PaidDetail",
+    "ShopTarget",
+    "ProductTarget",
+    "Alert",
+    "AlertRule",
+    "Review",
+    "ReviewSummary",
+    "MarketAnalysis",
+    "MarketKeywordOpportunity",
     "AdData",
     "KeywordAdData",
     "AudienceAdData",

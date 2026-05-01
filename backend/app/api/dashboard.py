@@ -40,9 +40,9 @@ def get_top_products(db: Session = Depends(get_db)):
             "title": product.title if product else None,
             "tier": product.tier if product else None,
             "net_sales": w.net_sales,
-            "visitors": w.visitors,
+            "visitors": w.ipv,  # 用 ipv
             "conversion": w.payment_conversion,
-            "roi": w.total_roi,
+            "roi": w.ad_roi,  # 用 ad_roi
             "ad_spend": w.ad_spend
         })
     
@@ -73,7 +73,7 @@ def get_quadrant_data(db: Session = Depends(get_db)):
     }
     
     all_gmv = [w.net_sales for w in week_data if w.net_sales > 0]
-    all_roi = [w.total_roi for w in week_data if w.total_roi > 0]
+    all_roi = [w.ad_roi for w in week_data if w.ad_roi > 0]  # 用 ad_roi
     
     gmv_mid = sorted(all_gmv)[len(all_gmv) // 2] if all_gmv else 0
     roi_mid = sorted(all_roi)[len(all_roi) // 2] if all_roi else 0
@@ -84,7 +84,7 @@ def get_quadrant_data(db: Session = Depends(get_db)):
             continue
         
         gmv = w.net_sales or 0
-        roi = w.total_roi or 0
+        roi = w.ad_roi or 0  # 用 ad_roi
         
         quadrant = ""
         if gmv >= gmv_mid and roi >= roi_mid:

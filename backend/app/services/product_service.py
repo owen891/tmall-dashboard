@@ -204,9 +204,9 @@ class ProductService:
         ).all()
         
         total_gmv = sum(w.net_sales for w in week_data)
-        total_visitors = sum(w.visitors for w in week_data)
+        total_visitors = sum(w.ipv for w in week_data)  # 用 ipv 代替 visitors
         total_ad_spend = sum(w.ad_spend for w in week_data)
-        avg_roi = sum(w.total_roi for w in week_data) / len(week_data) if week_data else 0
+        avg_roi = sum(w.ad_roi for w in week_data) / len(week_data) if week_data else 0  # 用 ad_roi 代替 total_roi
         
         return {
             "total_products": self.db.query(Product).count(),
