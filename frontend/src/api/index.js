@@ -117,6 +117,9 @@ export default {
       product_id: productId, action_date: actionDate, action_type: actionType, action_detail: actionDetail 
     })
   },
+  createAction(actionData) {
+    return request.post('/actions', actionData)
+  },
   deleteAction(actionId) {
     return request.delete(`/actions/${actionId}`)
   },

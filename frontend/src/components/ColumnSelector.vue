@@ -3,10 +3,23 @@
     <el-drawer
       v-model="visible"
       title="字段设置"
-      size="500px"
+      size="550px"
       direction="rtl"
     >
       <div class="drawer-content">
+        <div class="search-section">
+          <el-input
+            v-model="searchKeyword"
+            placeholder="搜索字段..."
+            clearable
+            size="default"
+          >
+            <template #prefix>
+              <el-icon><Search /></el-icon>
+            </template>
+          </el-input>
+        </div>
+
         <div class="template-section">
           <div class="section-header">
             <span>模板</span>
@@ -36,12 +49,19 @@
 
         <div class="fields-section">
           <div class="section-header">
-            <span>字段列表</span>
-            <el-button size="small" @click="checkAll">全选</el-button>
-            <el-button size="small" @click="uncheckAll">取消全选</el-button>
+            <span>字段列表 ({{ filteredFieldCount }} / {{ totalFieldCount }})</span>
+            <div class="header-actions">
+              <el-select v-model="sortMode" size="small" style="width: 120px">
+                <el-option label="默认顺序" value="default" />
+                <el-option label="按名称排序" value="name" />
+                <el-option label="按分类折叠" value="category" />
+              </el-select>
+              <el-button size="small" @click="checkAll">全选</el-button>
+              <el-button size="small" @click="uncheckAll">取消全选</el-button>
+            </div>
           </div>
 
-          <div v-for="category in fieldCategories" :key="category.key" class="category-group">
+          <div v-for="category in sortedCategories" :key="category.key" class="category-group">
             <div class="category-header" @click="toggleCategory(category.key)">
               <el-checkbox
                 :model-value="isCategoryAllSelected(category)"
@@ -49,7 +69,7 @@
                 @change="(val) => toggleCategoryAll(category, val)"
                 @click.stop
               >
-                {{ category.label }}
+                {{ category.label }} ({{ getFilteredFields(category).length }})
               </el-checkbox>
               <el-icon class="toggle-icon">
                 <ArrowDown v-if="expandedCategories[category.key]" />
@@ -59,7 +79,7 @@
 
             <div v-show="expandedCategories[category.key]" class="category-fields">
               <el-checkbox
-                v-for="field in category.fields"
+                v-for="field in getFilteredFields(category)"
                 :key="field.key"
                 v-model="selectedFields"
                 :label="field.key"
@@ -67,6 +87,7 @@
                 @change="updateConfig"
               >
                 {{ field.label }}
+                <span class="field-key">{{ field.key }}</span>
               </el-checkbox>
             </div>
           </div>
@@ -96,7 +117,7 @@
 <script setup>
 import { ref, computed, watch } from 'vue'
 import { ElMessage } from 'element-plus'
-import { ArrowDown, ArrowRight } from '@element-plus/icons-vue'
+import { ArrowDown, ArrowRight, Search } from '@element-plus/icons-vue'
 import {
   fieldCategories,
   defaultTemplates,
@@ -124,10 +145,49 @@ const templates = ref([])
 const currentTemplate = ref(null)
 const showSaveTemplate = ref(false)
 const newTemplateName = ref('')
+const searchKeyword = ref('')
+const sortMode = ref('default')
+
+const totalFieldCount = computed(() => {
+  return fieldCategories.reduce((sum, cat) => sum + cat.fields.length, 0)
+})
+
+const filteredFieldCount = computed(() => {
+  return fieldCategories.reduce((sum, cat) => sum + getFilteredFields(cat).length, 0)
+})
 
 const isDefaultTemplate = computed(() => {
   return defaultTemplates.some(t => t.id === currentTemplate.value)
 })
+
+const sortedCategories = computed(() => {
+  let cats = [...fieldCategories]
+  
+  if (sortMode.value === 'name') {
+    cats = cats.sort((a, b) => a.label.localeCompare(b.label, 'zh-CN'))
+  } else if (sortMode.value === 'category') {
+    cats = cats.sort((a, b) => {
+      const aCount = getFilteredFields(a).length
+      const bCount = getFilteredFields(b).length
+      if (aCount === 0) return 1
+      if (bCount === 0) return -1
+      return bCount - aCount
+    })
+  }
+  
+  return cats
+})
+
+function getFilteredFields(category) {
+  if (!searchKeyword.value.trim()) {
+    return category.fields
+  }
+  const keyword = searchKeyword.value.toLowerCase()
+  return category.fields.filter(f => 
+    f.label.toLowerCase().includes(keyword) || 
+    f.key.toLowerCase().includes(keyword)
+  )
+}
 
 watch(() => props.modelValue, (newVal) => {
   selectedFields.value = [...newVal]
@@ -137,6 +197,15 @@ watch(visible, (val) => {
   if (val) {
     loadData()
   }
+})
+
+watch(searchKeyword, () => {
+  fieldCategories.forEach(cat => {
+    const filtered = getFilteredFields(cat)
+    if (filtered.length > 0 && !expandedCategories.value[cat.key]) {
+      expandedCategories.value[cat.key] = true
+    }
+  })
 })
 
 function loadData() {
@@ -157,24 +226,27 @@ function toggleCategory(key) {
 }
 
 function isCategoryAllSelected(category) {
-  return category.fields.every(f => selectedFields.value.includes(f.key))
+  const filteredFields = getFilteredFields(category)
+  return filteredFields.every(f => selectedFields.value.includes(f.key))
 }
 
 function isCategoryPartiallySelected(category) {
-  const selected = category.fields.filter(f => selectedFields.value.includes(f.key))
-  return selected.length > 0 && selected.length < category.fields.length
+  const filteredFields = getFilteredFields(category)
+  const selected = filteredFields.filter(f => selectedFields.value.includes(f.key))
+  return selected.length > 0 && selected.length < filteredFields.length
 }
 
 function toggleCategoryAll(category, checked) {
+  const filteredFields = getFilteredFields(category)
   if (checked) {
-    category.fields.forEach(f => {
+    filteredFields.forEach(f => {
       if (!selectedFields.value.includes(f.key)) {
         selectedFields.value.push(f.key)
       }
     })
   } else {
     selectedFields.value = selectedFields.value.filter(
-      key => !category.fields.some(f => f.key === key)
+      key => !filteredFields.some(f => f.key === key)
     )
   }
 }
@@ -257,6 +329,10 @@ defineExpose({ open })
   overflow-y: auto;
 }
 
+.search-section {
+  margin-bottom: 20px;
+}
+
 .template-section {
   margin-bottom: 20px;
 }
@@ -267,6 +343,12 @@ defineExpose({ open })
   align-items: center;
   margin-bottom: 15px;
   font-weight: 500;
+}
+
+.header-actions {
+  display: flex;
+  gap: 10px;
+  align-items: center;
 }
 
 .template-list {
@@ -317,6 +399,13 @@ defineExpose({ open })
 
 .category-fields .el-checkbox {
   margin-right: 0;
+}
+
+.field-key {
+  margin-left: 8px;
+  font-size: 11px;
+  color: #909399;
+  font-family: monospace;
 }
 
 .drawer-footer {

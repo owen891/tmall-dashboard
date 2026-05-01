@@ -3,38 +3,46 @@
     <el-card class="filter-card">
       <el-form :inline="true" :model="filters" class="filter-form">
         <el-form-item label="搜索">
-          <el-input v-model="filters.search" placeholder="商品名称/ID" clearable />
+          <el-input v-model="filters.search" placeholder="商品名称/ID" clearable size="default" />
         </el-form-item>
         <el-form-item label="分层">
-          <el-select v-model="filters.tier" placeholder="全部" clearable>
+          <el-select v-model="filters.tier" placeholder="全部" clearable size="default">
             <el-option v-for="t in filterOptions.tiers || []" :key="t" :label="t" :value="t" />
           </el-select>
         </el-form-item>
         <el-form-item label="风格">
-          <el-select v-model="filters.style" placeholder="全部" clearable>
+          <el-select v-model="filters.style" placeholder="全部" clearable size="default">
             <el-option v-for="s in filterOptions.styles || []" :key="s" :label="s" :value="s" />
           </el-select>
         </el-form-item>
         <el-form-item label="场景">
-          <el-select v-model="filters.scene" placeholder="全部" clearable>
+          <el-select v-model="filters.scene" placeholder="全部" clearable size="default">
             <el-option v-for="s in filterOptions.scenes || []" :key="s" :label="s" :value="s" />
           </el-select>
         </el-form-item>
         <el-form-item>
-          <el-button type="primary" @click="loadProducts">查询</el-button>
-          <el-button @click="resetFilters">重置</el-button>
-          <el-button type="success" @click="openColumnSelector">字段设置</el-button>
+          <el-button type="primary" @click="loadProducts" size="default">查询</el-button>
+          <el-button @click="resetFilters" size="default">重置</el-button>
+          <el-button type="success" @click="openColumnSelector" size="default">字段设置</el-button>
+          <el-button type="primary" @click="showActionDialog" size="default">运营动作</el-button>
         </el-form-item>
       </el-form>
     </el-card>
 
     <el-card class="table-card">
-      <el-table :data="products" stripe v-loading="loading">
-        <el-table-column width="60" fixed="left">
+      <el-table 
+        :data="products" 
+        stripe 
+        v-loading="loading"
+        size="small"
+        :cell-style="{ padding: '6px 4px' }"
+        :header-cell-style="{ padding: '8px 4px' }"
+      >
+        <el-table-column width="50" fixed="left">
           <template #default="{ row }">
             <el-icon 
               :color="row.starred ? '#e6a23c' : '#c0c4cc'" 
-              style="cursor: pointer; font-size: 20px"
+              style="cursor: pointer; font-size: 16px"
               @click="toggleStar(row)"
             >
               <Star />
@@ -42,28 +50,26 @@
           </template>
         </el-table-column>
 
-        <el-table-column label="商品信息" min-width="320" fixed="left">
+        <el-table-column label="商品信息" min-width="260" fixed="left">
           <template #default="{ row }">
-            <div class="product-info">
-              <div class="product-image">
+            <div class="product-info-compact">
+              <div class="product-image-compact">
                 <img 
-                  :src="row.image_url || 'https://via.placeholder.com/60x60/f0f2f5/909399?text=商品'" 
+                  :src="row.image_url || 'https://via.placeholder.com/50x50/f0f2f5/909399?text=商'" 
                   :alt="row.title" 
                   loading="lazy" 
-                  @error="$event.target.src='https://via.placeholder.com/60x60/f0f2f5/909399?text=商品'" 
+                  @error="$event.target.src='https://via.placeholder.com/50x50/f0f2f5/909399?text=商'" 
                 />
               </div>
-              <div class="product-content">
-                <div class="product-title">{{ row.title }}</div>
-                <div class="product-meta">
-                  <span class="product-id">{{ row.product_id }}</span>
-                </div>
-                <div class="product-tags" v-if="row.category || row.tier || row.style || row.scene">
-                  <el-tag size="small" v-if="row.tier" :type="getTierType(row.tier)">{{ row.tier }}</el-tag>
-                  <el-tag size="small" v-if="row.category" type="info">{{ row.category }}</el-tag>
-                  <el-tag size="small" v-if="row.style" type="success">{{ row.style }}</el-tag>
+              <div class="product-content-compact">
+                <div class="product-title-compact">{{ row.title }}</div>
+                <div class="product-tags-compact">
+                  <el-tag size="small" v-if="row.tier" :type="getTierType(row.tier)" style="margin-right: 4px">{{ row.tier }}</el-tag>
+                  <el-tag size="small" v-if="row.category" type="info" style="margin-right: 4px">{{ row.category }}</el-tag>
+                  <el-tag size="small" v-if="row.style" type="success" style="margin-right: 4px">{{ row.style }}</el-tag>
                   <el-tag size="small" v-if="row.scene" type="warning">{{ row.scene }}</el-tag>
                 </div>
+                <div class="product-id-compact">{{ row.product_id }}</div>
               </div>
             </div>
           </template>
@@ -74,8 +80,9 @@
           :key="field.key"
           :prop="field.key"
           :label="field.label"
-          :width="field.width"
-          :min-width="field.minWidth"
+          :width="field.width || 120"
+          :min-width="field.minWidth || 100"
+          sortable="custom"
         >
           <template #default="{ row }">
             <span v-if="['payment_amount', 'refund_amount', 'net_sales', 'ad_spend', 'avg_order_value', 'keyword_sales', 'crowd_sales', 'site_sales'].includes(field.key)">
@@ -96,7 +103,7 @@
           </template>
         </el-table-column>
 
-        <el-table-column label="操作" width="120" fixed="right">
+        <el-table-column label="操作" width="80" fixed="right">
           <template #default="{ row }">
             <el-button type="primary" link @click="goToDetail(row)">详情</el-button>
           </template>
@@ -111,11 +118,41 @@
         layout="total, sizes, prev, pager, next, jumper"
         @size-change="loadProducts"
         @current-change="loadProducts"
-        style="margin-top: 20px; justify-content: flex-end"
+        style="margin-top: 16px; justify-content: flex-end"
       />
     </el-card>
 
     <ColumnSelector ref="columnSelectorRef" v-model="selectedFields" @change="onColumnsChange" />
+
+    <el-dialog v-model="actionDialogVisible" title="添加运营动作" width="600px">
+      <el-form :model="actionForm" label-width="100px">
+        <el-form-item label="商品ID">
+          <el-input v-model="actionForm.product_id" placeholder="请输入商品ID" />
+        </el-form-item>
+        <el-form-item label="动作类型">
+          <el-select v-model="actionForm.action_type" placeholder="请选择">
+            <el-option label="标题优化" value="title" />
+            <el-option label="主图优化" value="image" />
+            <el-option label="价格调整" value="price" />
+            <el-option label="SKU调整" value="sku" />
+            <el-option label="详情优化" value="detail" />
+            <el-option label="营销活动" value="promotion" />
+            <el-option label="付费推广" value="ad" />
+            <el-option label="其他" value="other" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="动作描述">
+          <el-input v-model="actionForm.action_detail" type="textarea" :rows="3" placeholder="请描述具体动作" />
+        </el-form-item>
+        <el-form-item label="执行日期">
+          <el-date-picker v-model="actionForm.action_date" type="date" placeholder="选择日期" value-format="YYYY-MM-DD" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="actionDialogVisible = false">取消</el-button>
+        <el-button type="primary" @click="submitAction">提交</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -146,6 +183,13 @@ const pagination = ref({
 })
 const selectedFields = ref([])
 const columnSelectorRef = ref(null)
+const actionDialogVisible = ref(false)
+const actionForm = ref({
+  product_id: '',
+  action_type: '',
+  action_detail: '',
+  action_date: ''
+})
 
 const visibleColumns = computed(() => {
   return selectedFields.value.map(key => getFieldConfig(key)).filter(Boolean)
@@ -241,6 +285,31 @@ const onColumnsChange = (fields) => {
   selectedFields.value = fields
 }
 
+const showActionDialog = () => {
+  actionDialogVisible.value = true
+}
+
+const submitAction = async () => {
+  if (!actionForm.value.product_id || !actionForm.value.action_type || !actionForm.value.action_detail) {
+    ElMessage.warning('请填写完整信息')
+    return
+  }
+  try {
+    await api.createAction(actionForm.value)
+    ElMessage.success('运营动作添加成功')
+    actionDialogVisible.value = false
+    actionForm.value = {
+      product_id: '',
+      action_type: '',
+      action_detail: '',
+      action_date: ''
+    }
+  } catch (error) {
+    console.error('Submit action error:', error)
+    ElMessage.error('添加失败')
+  }
+}
+
 onMounted(() => {
   const config = loadColumnConfig()
   selectedFields.value = config.visibleFields || defaultVisibleFields
@@ -255,7 +324,7 @@ onMounted(() => {
 }
 
 .filter-card {
-  margin-bottom: 20px;
+  margin-bottom: 16px;
 }
 
 .filter-form {
@@ -266,55 +335,57 @@ onMounted(() => {
   width: 100%;
 }
 
-.product-info {
+.product-info-compact {
   display: flex;
-  align-items: center;
-  gap: 12px;
+  align-items: flex-start;
+  gap: 10px;
 }
 
-.product-image {
+.product-image-compact {
   flex-shrink: 0;
-  width: 60px;
-  height: 60px;
+  width: 50px;
+  height: 50px;
   border-radius: 4px;
   overflow: hidden;
   background: #f5f7fa;
 }
 
-.product-image img {
+.product-image-compact img {
   width: 100%;
   height: 100%;
   object-fit: cover;
 }
 
-.product-content {
+.product-content-compact {
   flex: 1;
   min-width: 0;
 }
 
-.product-title {
+.product-title-compact {
   font-weight: 500;
-  margin-bottom: 6px;
+  font-size: 13px;
+  margin-bottom: 4px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.product-meta {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-bottom: 4px;
-}
-
-.product-id {
-  color: #909399;
-  font-size: 12px;
-}
-
-.product-tags {
+.product-tags-compact {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px;
+  gap: 0;
+  margin-bottom: 2px;
+}
+
+.product-tags-compact :deep(.el-tag) {
+  margin-right: 4px;
+  height: 20px;
+  line-height: 18px;
+  font-size: 11px;
+}
+
+.product-id-compact {
+  color: #909399;
+  font-size: 11px;
 }
 </style>

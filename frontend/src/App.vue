@@ -2,7 +2,7 @@
   <el-container class="app-container">
     <el-aside :width="isCollapsed ? '64px' : '240px'" class="app-aside">
       <div class="logo">
-        <h2 v-if="!isCollapsed">数据系统</h2>
+        <h2 v-if="!isCollapsed">数据看板</h2>
         <el-icon v-else size="24"><DataBoard /></el-icon>
       </div>
       <el-menu
