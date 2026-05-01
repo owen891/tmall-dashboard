@@ -131,5 +131,14 @@ export default {
       params, 
       responseType: 'blob' 
     })
+  },
+  getKPISummary(dimension = 'weekly') {
+    return request.get('/kpi/summary', { params: { dimension } })
+  },
+  getKPIAnomalies(params) {
+    return request.get('/kpi/anomalies', { params })
+  },
+  dismissAnomaly(alertId) {
+    return request.post(`/kpi/anomalies/${alertId}/dismiss`)
   }
 }

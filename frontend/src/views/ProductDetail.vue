@@ -116,6 +116,74 @@
       <el-col :span="24">
         <el-card>
           <template #header>
+            <span>付费推广数据</span>
+          </template>
+          <el-row :gutter="20">
+            <el-col :span="6">
+              <div class="ad-stat">
+                <div class="ad-stat-label">广告花费</div>
+                <div class="ad-stat-value">¥{{ formatNumber(latestData.ad_spend || 0) }}</div>
+              </div>
+            </el-col>
+            <el-col :span="6">
+              <div class="ad-stat">
+                <div class="ad-stat-label">广告ROI</div>
+                <div class="ad-stat-value" :style="{ color: (latestData.roi || 0) >= 3 ? '#67c23a' : '#f56c6c' }">
+                  {{ (latestData.roi || 0).toFixed(2) }}
+                </div>
+              </div>
+            </el-col>
+            <el-col :span="6">
+              <div class="ad-stat">
+                <div class="ad-stat-label">广告占比</div>
+                <div class="ad-stat-value">{{ getAdRatio() }}%</div>
+              </div>
+            </el-col>
+            <el-col :span="6">
+              <div class="ad-stat">
+                <div class="ad-stat-label">UV价值</div>
+                <div class="ad-stat-value">¥{{ formatNumber(latestData.uv_value || 0) }}</div>
+              </div>
+            </el-col>
+          </el-row>
+          <el-divider />
+          <el-row :gutter="20">
+            <el-col :span="8">
+              <div class="ad-detail">
+                <div class="ad-detail-label">搜索访客</div>
+                <div class="ad-detail-value">{{ formatNumber(latestData.search_ipv || 0) }}</div>
+                <div class="ad-detail-bar">
+                  <div class="bar-fill bar-search" :style="{ width: getTrafficPercent('search') + '%' }"></div>
+                </div>
+              </div>
+            </el-col>
+            <el-col :span="8">
+              <div class="ad-detail">
+                <div class="ad-detail-label">推荐访客</div>
+                <div class="ad-detail-value">{{ formatNumber(latestData.recommend_ipv || 0) }}</div>
+                <div class="ad-detail-bar">
+                  <div class="bar-fill bar-recommend" :style="{ width: getTrafficPercent('recommend') + '%' }"></div>
+                </div>
+              </div>
+            </el-col>
+            <el-col :span="8">
+              <div class="ad-detail">
+                <div class="ad-detail-label">付费访客</div>
+                <div class="ad-detail-value">{{ formatNumber(latestData.paid_ipv || 0) }}</div>
+                <div class="ad-detail-bar">
+                  <div class="bar-fill bar-paid" :style="{ width: getTrafficPercent('paid') + '%' }"></div>
+                </div>
+              </div>
+            </el-col>
+          </el-row>
+        </el-card>
+      </el-col>
+    </el-row>
+
+    <el-row :gutter="20" style="margin-top: 20px">
+      <el-col :span="24">
+        <el-card>
+          <template #header>
             <span>历史数据</span>
           </template>
           <div ref="chartRef" class="chart-container"></div>
@@ -286,6 +354,13 @@ const getTrafficPercent = (type) => {
     'organic': latestData.value.organic_ipv || 0
   }
   return Math.round((map[type] || 0) / total * 100)
+}
+
+const getAdRatio = () => {
+  const payment = latestData.value.payment_amount || 0
+  const adSpend = latestData.value.ad_spend || 0
+  if (payment === 0) return '0'
+  return ((adSpend / payment) * 100).toFixed(1)
 }
 
 const kpis = ref([
@@ -745,5 +820,63 @@ onMounted(() => {
   border-radius: 4px;
   font-size: 13px;
   color: #606266;
+}
+
+.ad-stat {
+  text-align: center;
+  padding: 15px 0;
+}
+
+.ad-stat-label {
+  font-size: 13px;
+  color: #909399;
+  margin-bottom: 8px;
+}
+
+.ad-stat-value {
+  font-size: 24px;
+  font-weight: 600;
+  color: #303133;
+}
+
+.ad-detail {
+  padding: 10px 0;
+}
+
+.ad-detail-label {
+  font-size: 13px;
+  color: #909399;
+  margin-bottom: 6px;
+}
+
+.ad-detail-value {
+  font-size: 18px;
+  font-weight: 500;
+  margin-bottom: 8px;
+}
+
+.ad-detail-bar {
+  height: 6px;
+  background: #f0f2f5;
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.bar-fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.3s;
+}
+
+.bar-search {
+  background: #409eff;
+}
+
+.bar-recommend {
+  background: #67c23a;
+}
+
+.bar-paid {
+  background: #e6a23c;
 }
 </style>
