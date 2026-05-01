@@ -1,8 +1,10 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from contextlib import asynccontextmanager
 import os
+import pathlib
 
 from app.core import settings, engine, Base
 from app.api import api_router
@@ -33,6 +35,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# API routes first
 app.include_router(api_router)
 
 
@@ -43,6 +46,21 @@ async def health_check():
         "project": settings.PROJECT_NAME,
         "version": settings.PROJECT_VERSION
     }
+
+
+# Mount frontend static files
+frontend_dist = pathlib.Path(__file__).parent.parent.parent / "frontend" / "dist"
+if frontend_dist.exists():
+    # Serve index.html at root
+    @app.get("/")
+    async def serve_root():
+        index_path = frontend_dist / "index.html"
+        if index_path.exists():
+            return FileResponse(str(index_path))
+        return {"detail": "Not Found"}
+    
+    # Mount static files
+    app.mount("/", StaticFiles(directory=str(frontend_dist), html=True), name="frontend")
 
 
 if __name__ == "__main__":
