@@ -131,7 +131,7 @@
 
 <script setup>
 import { ref, onMounted, onUnmounted } from 'vue'
-import axios from 'axios'
+import api from '@/api'
 import * as echarts from 'echarts'
 
 const activeTab = ref('keywords')
@@ -151,9 +151,9 @@ const competitors = ref([])
 
 const loadOverview = async () => {
   try {
-    const res = await axios.get('/api/market/overview')
-    if (res.data.code === 200) {
-      overview.value = res.data.data
+    const res = await api.get('/market/overview')
+    if (res.code === 200 || res.data) {
+      overview.value = res.data || res
     }
   } catch (error) {
     console.error('加载市场概览失败:', error)
@@ -162,9 +162,9 @@ const loadOverview = async () => {
 
 const loadKeywords = async () => {
   try {
-    const res = await axios.get('/api/market/keywords?page_size=50')
-    if (res.data.code === 200) {
-      keywords.value = res.data.data.keywords || []
+    const res = await api.get('/market/keywords?page_size=50')
+    if (res.code === 200 || res.data) {
+      keywords.value = res.data?.keywords || res.data || []
     }
   } catch (error) {
     console.error('加载关键词失败:', error)
@@ -173,9 +173,9 @@ const loadKeywords = async () => {
 
 const loadOpportunities = async () => {
   try {
-    const res = await axios.get('/api/market/opportunities?limit=20')
-    if (res.data.code === 200) {
-      opportunities.value = res.data.data || []
+    const res = await api.get('/market/opportunities?limit=20')
+    if (res.code === 200 || res.data) {
+      opportunities.value = res.data || res
     }
   } catch (error) {
     console.error('加载市场机会失败:', error)
@@ -184,9 +184,9 @@ const loadOpportunities = async () => {
 
 const loadCategories = async () => {
   try {
-    const res = await axios.get('/api/market/categories')
-    if (res.data.code === 200) {
-      categories.value = res.data.data || []
+    const res = await api.get('/market/categories')
+    if (res.code === 200 || res.data) {
+      categories.value = res.data || res
       updateCategoryChart()
     }
   } catch (error) {
@@ -196,9 +196,9 @@ const loadCategories = async () => {
 
 const loadCompetitors = async () => {
   try {
-    const res = await axios.get('/api/market/competitors?limit=20')
-    if (res.data.code === 200) {
-      competitors.value = res.data.data || []
+    const res = await api.get('/market/competitors?limit=20')
+    if (res.code === 200 || res.data) {
+      competitors.value = res.data || res
     }
   } catch (error) {
     console.error('加载竞品分析失败:', error)

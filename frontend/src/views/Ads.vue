@@ -64,7 +64,7 @@
 
 <script setup>
 import { ref, onMounted, onUnmounted } from 'vue'
-import axios from 'axios'
+import api from '@/api'
 import * as echarts from 'echarts'
 
 const chartRef = ref(null)
@@ -81,20 +81,23 @@ const productAds = ref([])
 
 const loadAds = async () => {
   try {
-    const summaryRes = await axios.get('/api/ads/summary')
-    if (summaryRes.data.code === 200) {
-      summary.value = summaryRes.data.data
+    const [summaryRes, compRes, productsRes] = await Promise.all([
+      api.get('/ads/summary'),
+      api.get('/ads/comparison'),
+      api.get('/ads/products')
+    ])
+    
+    if (summaryRes.code === 200 || summaryRes.data) {
+      summary.value = summaryRes.data || summaryRes
     }
-
-    const compRes = await axios.get('/api/ads/comparison')
-    if (compRes.data.code === 200) {
-      channelComparison.value = compRes.data.data
+    
+    if (compRes.code === 200 || compRes.data) {
+      channelComparison.value = compRes.data || []
       updateChart()
     }
-
-    const productsRes = await axios.get('/api/ads/products')
-    if (productsRes.data.code === 200) {
-      productAds.value = productsRes.data.data
+    
+    if (productsRes.code === 200 || productsRes.data) {
+      productAds.value = productsRes.data || []
     }
   } catch (error) {
     console.error('加载广告数据失败:', error)

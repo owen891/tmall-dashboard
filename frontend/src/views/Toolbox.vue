@@ -197,7 +197,7 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
-import axios from 'axios'
+import api from '@/api'
 
 const activeTab = ref('analysis')
 const selectedProduct = ref(null)
@@ -211,9 +211,9 @@ const autoOptimization = ref(null)
 
 const loadProducts = async () => {
   try {
-    const res = await axios.get('/api/products')
-    if (res.data.code === 200) {
-      products.value = res.data.data
+    const res = await api.get('/products')
+    if (res.code === 200 || res.data) {
+      products.value = res.data || res
     }
   } catch (error) {
     console.error('加载商品失败:', error)
@@ -222,9 +222,9 @@ const loadProducts = async () => {
 
 const loadDailyTips = async () => {
   try {
-    const res = await axios.get('/api/toolbox/tips/daily')
-    if (res.data.code === 200) {
-      dailyTips.value = res.data.data || []
+    const res = await api.get('/toolbox/tips/daily')
+    if (res.code === 200 || res.data) {
+      dailyTips.value = res.data || []
     }
   } catch (error) {
     console.error('加载每日提示失败:', error)
@@ -237,9 +237,9 @@ const loadAnalysis = async () => {
     return
   }
   try {
-    const res = await axios.get(`/api/toolbox/analysis/product/${selectedProduct.value}`)
-    if (res.data.code === 200) {
-      analysis.value = res.data.data
+    const res = await api.get(`/toolbox/analysis/product/${selectedProduct.value}`)
+    if (res.code === 200 || res.data) {
+      analysis.value = res.data || res
     }
   } catch (error) {
     console.error('加载分析失败:', error)
@@ -252,9 +252,9 @@ const loadPriceRecommendation = async () => {
     return
   }
   try {
-    const res = await axios.get(`/api/toolbox/price/recommendation/${selectedProduct.value}`)
-    if (res.data.code === 200) {
-      priceRecommendation.value = res.data.data
+    const res = await api.get(`/toolbox/price/recommendation/${selectedProduct.value}`)
+    if (res.code === 200 || res.data) {
+      priceRecommendation.value = res.data || res
     }
   } catch (error) {
     console.error('加载价格建议失败:', error)
@@ -267,9 +267,9 @@ const loadCompetitorComparison = async () => {
     return
   }
   try {
-    const res = await axios.get(`/api/toolbox/competitor/compare/${selectedProduct.value}`)
-    if (res.data.code === 200) {
-      competitorComparison.value = res.data.data
+    const res = await api.get(`/toolbox/competitor/compare/${selectedProduct.value}`)
+    if (res.code === 200 || res.data) {
+      competitorComparison.value = res.data || res
     }
   } catch (error) {
     console.error('加载竞品对比失败:', error)
@@ -278,9 +278,9 @@ const loadCompetitorComparison = async () => {
 
 const loadInventoryAlerts = async () => {
   try {
-    const res = await axios.get('/api/toolbox/inventory/alerts')
-    if (res.data.code === 200) {
-      inventoryAlerts.value = res.data.data || []
+    const res = await api.get('/toolbox/inventory/alerts')
+    if (res.code === 200 || res.data) {
+      inventoryAlerts.value = res.data || []
     }
   } catch (error) {
     console.error('加载库存预警失败:', error)
@@ -293,9 +293,9 @@ const loadAutoOptimization = async () => {
     return
   }
   try {
-    const res = await axios.get(`/api/toolbox/auto-optimize/${selectedProduct.value}`)
-    if (res.data.code === 200) {
-      autoOptimization.value = res.data.data
+    const res = await api.get(`/toolbox/auto-optimize/${selectedProduct.value}`)
+    if (res.code === 200 || res.data) {
+      autoOptimization.value = res.data || res
     }
   } catch (error) {
     console.error('加载自动优化失败:', error)

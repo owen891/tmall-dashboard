@@ -134,7 +134,7 @@
 <script setup>
 import { ref, onMounted, onUnmounted } from 'vue'
 import { ElMessage } from 'element-plus'
-import axios from 'axios'
+import api from '@/api'
 import * as echarts from 'echarts'
 
 const activeTab = ref('shop')
@@ -166,9 +166,9 @@ const productTargetForm = ref({
 
 const loadShopTargets = async () => {
   try {
-    const res = await axios.get('/api/targets/shop')
-    if (res.data.code === 200) {
-      shopTargets.value = res.data.data
+    const res = await api.get('/targets/shop')
+    if (res.code === 200 || res.data) {
+      shopTargets.value = res.data || res
     }
   } catch (error) {
     console.error('加载店铺目标失败:', error)
@@ -177,9 +177,9 @@ const loadShopTargets = async () => {
 
 const loadProductTargets = async () => {
   try {
-    const res = await axios.get('/api/targets/product')
-    if (res.data.code === 200) {
-      productTargets.value = res.data.data
+    const res = await api.get('/targets/product')
+    if (res.code === 200 || res.data) {
+      productTargets.value = res.data || res
     }
   } catch (error) {
     console.error('加载商品目标失败:', error)
@@ -188,9 +188,9 @@ const loadProductTargets = async () => {
 
 const loadProducts = async () => {
   try {
-    const res = await axios.get('/api/products')
-    if (res.data.code === 200) {
-      products.value = res.data.data
+    const res = await api.get('/products')
+    if (res.code === 200 || res.data) {
+      products.value = res.data || res
     }
   } catch (error) {
     console.error('加载商品失败:', error)
@@ -199,9 +199,9 @@ const loadProducts = async () => {
 
 const loadComparison = async () => {
   try {
-    const res = await axios.get(`/api/targets/comparison?metric=${selectedMetric.value}`)
-    if (res.data.code === 200) {
-      comparison.value = res.data.data
+    const res = await api.get(`/targets/comparison?metric=${selectedMetric.value}`)
+    if (res.code === 200 || res.data) {
+      comparison.value = res.data || res
       updateShopChart()
     }
   } catch (error) {
@@ -211,7 +211,7 @@ const loadComparison = async () => {
 
 const saveShopTarget = async () => {
   try {
-    await axios.post('/api/targets/shop', shopTargetForm.value)
+    await api.post('/targets/shop', shopTargetForm.value)
     ElMessage.success('保存成功')
     showShopTarget.value = false
     loadShopTargets()
@@ -224,7 +224,7 @@ const saveShopTarget = async () => {
 const saveProductTarget = async () => {
   try {
     const product = products.value.find(p => p.id === productTargetForm.value.product_id)
-    await axios.post('/api/targets/product', {
+    await api.post('/targets/product', {
       ...productTargetForm.value,
       product_name: product?.name || ''
     })

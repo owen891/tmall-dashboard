@@ -89,7 +89,7 @@
 
 <script setup>
 import { ref, onMounted, onUnmounted } from 'vue'
-import axios from 'axios'
+import api from '@/api'
 import * as echarts from 'echarts'
 
 const sentimentChartRef = ref(null)
@@ -112,26 +112,26 @@ const reviews = ref([])
 
 const loadData = async () => {
   try {
-    const summaryRes = await axios.get('/api/reviews/summary')
-    if (summaryRes.data.code === 200 && summaryRes.data.data) {
-      summary.value = summaryRes.data.data
+    const summaryRes = await api.get('/reviews/summary')
+    if ((summaryRes.code === 200 || summaryRes.data) && summaryRes.data) {
+      summary.value = summaryRes.data || summaryRes
     }
 
-    const sentimentRes = await axios.get('/api/reviews/sentiment-distribution')
-    if (sentimentRes.data.code === 200) {
-      sentimentDistribution.value = sentimentRes.data.data
+    const sentimentRes = await api.get('/reviews/sentiment-distribution')
+    if (sentimentRes.code === 200 || sentimentRes.data) {
+      sentimentDistribution.value = sentimentRes.data || sentimentRes
       updateSentimentChart()
     }
 
-    const ratingRes = await axios.get('/api/reviews/rating-distribution')
-    if (ratingRes.data.code === 200) {
-      ratingDistribution.value = ratingRes.data.data
+    const ratingRes = await api.get('/reviews/rating-distribution')
+    if (ratingRes.code === 200 || ratingRes.data) {
+      ratingDistribution.value = ratingRes.data || ratingRes
       updateRatingChart()
     }
 
-    const listRes = await axios.get('/api/reviews/list?page_size=20')
-    if (listRes.data.code === 200) {
-      reviews.value = listRes.data.data.reviews || []
+    const listRes = await api.get('/reviews/list?page_size=20')
+    if (listRes.code === 200 || listRes.data) {
+      reviews.value = listRes.data?.reviews || listRes.data || []
     }
   } catch (error) {
     console.error('加载评价数据失败:', error)

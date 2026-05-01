@@ -100,7 +100,7 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
-import axios from 'axios'
+import api from '@/api'
 
 const showAddOp = ref(false)
 const products = ref([])
@@ -119,19 +119,19 @@ const opForm = ref({
 
 const loadData = async () => {
   try {
-    const productsRes = await axios.get('/api/products')
-    if (productsRes.data.code === 200) {
-      products.value = productsRes.data.data
+    const productsRes = await api.get('/products')
+    if (productsRes.code === 200 || productsRes.data) {
+      products.value = productsRes.data || productsRes
     }
 
-    const opsRes = await axios.get('/api/operations')
-    if (opsRes.data.code === 200) {
-      operations.value = opsRes.data.data
+    const opsRes = await api.get('/operations')
+    if (opsRes.code === 200 || opsRes.data) {
+      operations.value = opsRes.data || opsRes
     }
 
-    const statsRes = await axios.get('/api/operations/statistics')
-    if (statsRes.data.code === 200) {
-      stats.value = statsRes.data.data
+    const statsRes = await api.get('/operations/statistics')
+    if (statsRes.code === 200 || statsRes.data) {
+      stats.value = statsRes.data || statsRes
     }
   } catch (error) {
     console.error('加载数据失败:', error)
@@ -140,7 +140,7 @@ const loadData = async () => {
 
 const addOperation = async () => {
   try {
-    await axios.post('/api/operations', opForm.value)
+    await api.post('/operations', opForm.value)
     ElMessage.success('添加成功')
     showAddOp.value = false
     opForm.value = { product_id: null, action_type: '', action_detail: '' }

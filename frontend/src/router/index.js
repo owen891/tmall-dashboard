@@ -80,6 +80,10 @@ const routes = [
     path: '/toolbox',
     name: 'Toolbox',
     component: () => import('@/views/Toolbox.vue')
+  },
+  {
+    path: '/:pathMatch(.*)*',
+    redirect: '/'
   }
 ]
 

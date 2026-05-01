@@ -157,7 +157,7 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
-import axios from 'axios'
+import api from '@/api'
 
 const status = ref('all')
 const severity = ref('')
@@ -180,14 +180,14 @@ const loadAlerts = async () => {
     if (status.value !== 'all') params.append('status', status.value)
     if (severity.value) params.append('severity', severity.value)
 
-    const res = await axios.get(`/api/alerts?${params.toString()}`)
-    if (res.data.code === 200) {
-      alerts.value = res.data.data
+    const res = await api.get(`/alerts?${params.toString()}`)
+    if (res.code === 200 || res.data) {
+      alerts.value = res.data || res
     }
 
-    const statsRes = await axios.get('/api/alerts/statistics')
-    if (statsRes.data.code === 200) {
-      stats.value = statsRes.data.data
+    const statsRes = await api.get('/alerts/statistics')
+    if (statsRes.code === 200 || statsRes.data) {
+      stats.value = statsRes.data || statsRes
     }
   } catch (error) {
     console.error('加载告警失败:', error)
@@ -196,9 +196,9 @@ const loadAlerts = async () => {
 
 const loadRules = async () => {
   try {
-    const res = await axios.get('/api/alerts/rules')
-    if (res.data.code === 200) {
-      rules.value = res.data.data
+    const res = await api.get('/alerts/rules')
+    if (res.code === 200 || res.data) {
+      rules.value = res.data || res
     }
   } catch (error) {
     console.error('加载规则失败:', error)
@@ -207,7 +207,7 @@ const loadRules = async () => {
 
 const addRule = async () => {
   try {
-    await axios.post('/api/alerts/rules', ruleForm.value)
+    await api.post('/alerts/rules', ruleForm.value)
     ElMessage.success('添加成功')
     showAddRule.value = false
     ruleForm.value = { name: '', metric: 'gmv', condition: 'lt', threshold: 0, severity: 'warning' }
@@ -219,7 +219,7 @@ const addRule = async () => {
 
 const deleteRule = async (id) => {
   try {
-    await axios.delete(`/api/alerts/rules/${id}`)
+    await api.delete(`/alerts/rules/${id}`)
     ElMessage.success('删除成功')
     loadRules()
   } catch (error) {
@@ -229,7 +229,7 @@ const deleteRule = async (id) => {
 
 const toggleRule = async (rule) => {
   try {
-    await axios.put(`/api/alerts/rules/${rule.id}`, { enabled: rule.enabled })
+    await api.put(`/alerts/rules/${rule.id}`, { enabled: rule.enabled })
   } catch (error) {
     ElMessage.error('更新失败')
   }
@@ -237,7 +237,7 @@ const toggleRule = async (rule) => {
 
 const resolveAlert = async (id) => {
   try {
-    await axios.put(`/api/alerts/${id}/resolve`)
+    await api.put(`/alerts/${id}/resolve`)
     ElMessage.success('已处理')
     loadAlerts()
   } catch (error) {
@@ -247,7 +247,7 @@ const resolveAlert = async (id) => {
 
 const reopenAlert = async (id) => {
   try {
-    await axios.put(`/api/alerts/${id}/reopen`)
+    await api.put(`/alerts/${id}/reopen`)
     ElMessage.success('已重新打开')
     loadAlerts()
   } catch (error) {

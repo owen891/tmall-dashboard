@@ -98,7 +98,7 @@
 
 <script setup>
 import { ref, onMounted, onUnmounted } from 'vue'
-import axios from 'axios'
+import api from '@/api'
 import * as echarts from 'echarts'
 
 const chartRef = ref(null)
@@ -118,21 +118,24 @@ const reasons = ref([])
 
 const loadData = async () => {
   try {
-    const summaryRes = await axios.get(`/api/refunds/summary?dimension=${dimension.value}`)
-    if (summaryRes.data.code === 200) {
-      summary.value = summaryRes.data.data
-      alerts.value = summaryRes.data.data.top_risk_products || []
+    const [summaryRes, trendsRes, reasonsRes] = await Promise.all([
+      api.get('/refunds/summary', { params: { dimension: dimension.value } }),
+      api.get('/refunds/trends', { params: { dimension: dimension.value } }),
+      api.get('/refunds/reasons')
+    ])
+    
+    if (summaryRes.code === 200 || summaryRes.data) {
+      summary.value = summaryRes.data || summaryRes
+      alerts.value = summaryRes.data?.top_risk_products || []
     }
-
-    const trendsRes = await axios.get(`/api/refunds/trends?dimension=${dimension.value}`)
-    if (trendsRes.data.code === 200) {
-      trends.value = trendsRes.data.data.trends || []
+    
+    if (trendsRes.code === 200 || trendsRes.data) {
+      trends.value = trendsRes.data?.trends || trendsRes.data || []
       updateChart()
     }
-
-    const reasonsRes = await axios.get('/api/refunds/reasons')
-    if (reasonsRes.data.code === 200) {
-      reasons.value = reasonsRes.data.data || []
+    
+    if (reasonsRes.code === 200 || reasonsRes.data) {
+      reasons.value = reasonsRes.data || []
     }
   } catch (error) {
     console.error('加载退款数据失败:', error)
@@ -141,9 +144,9 @@ const loadData = async () => {
 
 const loadAlerts = async () => {
   try {
-    const res = await axios.get('/api/refunds/alerts?threshold=5')
-    if (res.data.code === 200) {
-      const alertData = res.data.data || []
+    const res = await api.get('/refunds/alerts', { params: { threshold: 5 } })
+    if (res.code === 200 || res.data) {
+      const alertData = res.data || []
       alerts.value = alertData.map(a => ({
         product_name: a.product_name,
         refund_rate: a.refund_rate,
