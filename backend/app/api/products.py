@@ -43,6 +43,17 @@ SORT_WHITELIST = [
     'manager', 'product_id', 'list_date',
 ]
 
+WEEKLY_ONLY_COLS = [
+    'presale_amount', 'presale_qty', 'ipv', 'pv',
+    'search_ipv', 'recommend_ipv', 'paid_ipv', 'organic_ipv',
+    'payment_conversion', 'cart_rate', 'fav_rate', 'search_click_rate',
+    'bounce_rate', 'avg_stay_duration', 'ad_spend', 'ad_roi',
+    'repurchase_rate', 'repurchase_users', 'cross_sell_qty', 'cross_sell_rate',
+    'avg_order_value', 'category_width', 'industry_ctr',
+    'buyers', 'cart_users', 'cart_qty', 'fav_users',
+    'uv_value', 'search_conversion', 'search_visitors', 'click_rate',
+]
+
 MONTHLY_ONLY_COLS = [
     'overall_roi', 'paid_ratio', 'refund_paid_ratio',
     'keyword_spend', 'keyword_sales', 'keyword_roi', 'keyword_visitors', 'keyword_ppc',
@@ -54,11 +65,22 @@ MONTHLY_ONLY_COLS = [
     'uv_value', 'search_visitors', 'search_ratio', 'search_conversion',
     'cart_qty', 'fav_users', 'click_rate', 'score',
     'cart_users', 'new_buyers', 'new_buyer_ratio',
+    'visitors', 'page_views', 'buyers', 'payment_qty',
+    'guide_visits', 'guide_visitors', 'guide_potential', 'guide_potential_ratio',
+    'impressions', 'clicks', 'cost', 'ctr', 'cpc', 'cpm',
+    'total_gmv', 'total_orders', 'direct_gmv', 'indirect_gmv',
+    'direct_orders', 'indirect_orders', 'click_conversion', 'presale_roi',
+    'total_cost', 'cart_adds', 'direct_cart_adds', 'indirect_cart_adds',
+    'favs', 'store_favs', 'store_fav_cost', 'total_fav_cart', 'total_fav_cart_cost',
+    'item_fav_cart', 'item_fav_cart_cost', 'total_favs', 'item_fav_cost',
+    'item_fav_rate', 'cart_cost',
 ]
 
 ALL_COMMON_COLS = [
-    'page_views', 'cart_rate', 'fav_rate', 'bounce_rate', 'avg_stay_duration',
-    'ad_spend', 'ad_roi',
+    'payment_amount', 'refund_amount', 'net_sales',
+    'payment_conversion', 'cart_rate', 'fav_rate', 'bounce_rate',
+    'avg_stay_duration', 'ad_spend', 'ad_roi', 'repurchase_rate',
+    'cross_sell_rate', 'avg_order_value',
 ]
 
 
@@ -146,13 +168,26 @@ def build_product_query(dimension: str, period: str, db: Session):
     
     for col_name in ALL_COMMON_COLS:
         if hasattr(Model, col_name):
-            base_cols.append(func.sum(getattr(Model, col_name)).label(col_name))
+            if col_name in ['payment_conversion', 'cart_rate', 'fav_rate', 'bounce_rate', 'avg_stay_duration', 'ad_roi', 'repurchase_rate', 'cross_sell_rate']:
+                base_cols.append(func.avg(getattr(Model, col_name)).label(col_name))
+            else:
+                base_cols.append(func.sum(getattr(Model, col_name)).label(col_name))
+    
+    if dimension == 'weekly':
+        weekly_cols = []
+        for col_name in WEEKLY_ONLY_COLS:
+            if hasattr(Model, col_name):
+                if col_name in ['payment_conversion', 'cart_rate', 'fav_rate', 'search_click_rate', 'bounce_rate', 'avg_stay_duration', 'ad_roi', 'repurchase_rate', 'cross_sell_rate', 'avg_order_value', 'industry_ctr', 'uv_value', 'search_conversion', 'click_rate']:
+                    weekly_cols.append(func.avg(getattr(Model, col_name)).label(col_name))
+                else:
+                    weekly_cols.append(func.sum(getattr(Model, col_name)).label(col_name))
+        base_cols.extend(weekly_cols)
     
     if dimension == 'monthly':
         monthly_cols = []
         for col_name in MONTHLY_ONLY_COLS:
             if hasattr(Model, col_name):
-                if col_name in ['overall_roi', 'uv_value', 'search_ratio', 'click_rate', 'avg_order_value', 'paid_ratio', 'refund_paid_ratio', 'keyword_roi', 'crowd_roi', 'site_roi', 'keyword_ppc', 'crowd_ppc', 'site_ppc', 'industry_ctr', 'search_conversion', 'repurchase_rate', 'cross_sell_rate', 'new_buyer_ratio', 'score']:
+                if col_name in ['overall_roi', 'uv_value', 'search_ratio', 'click_rate', 'avg_order_value', 'paid_ratio', 'refund_paid_ratio', 'keyword_roi', 'crowd_roi', 'site_roi', 'keyword_ppc', 'crowd_ppc', 'site_ppc', 'industry_ctr', 'search_conversion', 'repurchase_rate', 'cross_sell_rate', 'new_buyer_ratio', 'score', 'ctr', 'cpc', 'cpm', 'click_conversion', 'presale_roi', 'item_fav_rate']:
                     monthly_cols.append(func.avg(getattr(Model, col_name)).label(col_name))
                 else:
                     monthly_cols.append(func.sum(getattr(Model, col_name)).label(col_name))
@@ -333,6 +368,13 @@ def get_products(
                 val = getattr(p, col_name)
                 if val is not None:
                     row_data[col_name] = float(val) if isinstance(val, (int, float)) else val
+        
+        if dim == 'weekly':
+            for col_name in WEEKLY_ONLY_COLS:
+                if hasattr(p, col_name):
+                    val = getattr(p, col_name)
+                    if val is not None:
+                        row_data[col_name] = float(val) if isinstance(val, (int, float)) else val
         
         if dim == 'monthly':
             for col_name in MONTHLY_ONLY_COLS:
