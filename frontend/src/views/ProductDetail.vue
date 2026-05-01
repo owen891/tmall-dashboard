@@ -143,9 +143,9 @@ const loadData = async () => {
     ])
     
     product.value = productRes.data || {}
-    weeklyData.value = weeklyRes.data || []
-    actions.value = actionsRes.data || []
-    tags.value = tagsRes.data || []
+    weeklyData.value = productRes.data?.trend || []
+    actions.value = actionsRes.data?.actions || []
+    tags.value = tagsRes.data?.tags || []
     
     if (weeklyData.value.length > 0) {
       const latest = weeklyData.value[0]

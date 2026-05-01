@@ -604,19 +604,19 @@ def get_product_detail(
         trend.append(item)
     
     return ResponseModel(data={
-        "product": {
-            "product_id": product.product_id,
-            "product_name": product.title,
-            "category": product.category,
-            "tier": product.tier,
-            "style": product.style,
-            "scene": product.scene,
-            "manager": product.manager,
-            "list_date": str(product.list_date) if product.list_date else None,
-            "status": product.status,
-            "trend": trend
-        },
-        "dimension": dim
+        "product_id": product.product_id,
+        "product_name": product.title,
+        "title": product.title,
+        "image_url": product.image_url,
+        "category": product.category,
+        "tier": product.tier,
+        "style": product.style,
+        "scene": product.scene,
+        "manager": product.manager,
+        "list_date": str(product.list_date) if product.list_date else None,
+        "status": product.status,
+        "starred": bool(product.starred) if product.starred is not None else False,
+        "trend": trend
     })
 
 
@@ -713,6 +713,62 @@ def add_product_note(
     db.add(new_note)
     db.commit()
     return ResponseModel(data={"success": True, "note_id": new_note.id})
+
+
+@router.get("/{product_id}/weekly-data", response_model=ResponseModel)
+def get_product_weekly_data(product_id: str, db: Session = Depends(get_db)):
+    data_list = db.query(WeeklyData).filter(
+        WeeklyData.product_id == product_id
+    ).order_by(desc(WeeklyData.week_start)).limit(12).all()
+    
+    result = []
+    for model_data in data_list:
+        payment = model_data.payment_amount or 0
+        refund = model_data.refund_amount or 0
+        visitors = model_data.ipv or 0
+        
+        item = {
+            "week_start": model_data.week_start.isoformat() if hasattr(model_data.week_start, 'isoformat') else str(model_data.week_start),
+            "payment_amount": payment,
+            "net_sales": payment - refund,
+            "refund_amount": refund,
+            "refund_rate": round((refund / payment), 4) if payment > 0 else 0,
+            "visitors": visitors,
+            "ipv": visitors,
+            "aov": round((payment / visitors), 2) if visitors > 0 else 0,
+            "payment_conversion": model_data.payment_conversion,
+            "ad_spend": model_data.ad_spend or 0,
+            "ad_roi": model_data.ad_roi,
+            "total_roi": model_data.ad_roi,
+            "order_count": model_data.order_count or 0 if hasattr(model_data, 'order_count') else 0,
+            "presale_qty": model_data.presale_qty or 0,
+        }
+        for col_name in ALL_COMMON_COLS + MONTHLY_ONLY_COLS:
+            if hasattr(model_data, col_name):
+                val = getattr(model_data, col_name)
+                if val is not None:
+                    item[col_name] = val
+        result.append(item)
+    
+    return ResponseModel(data=result)
+
+
+@router.get("/{product_id}/operations", response_model=ResponseModel)
+def get_product_operations(product_id: str, db: Session = Depends(get_db)):
+    actions = db.query(OperationAction).filter(
+        OperationAction.product_id == product_id
+    ).order_by(desc(OperationAction.created_at)).limit(50).all()
+    
+    return ResponseModel(data={
+        "actions": [{
+            "id": a.id,
+            "product_id": a.product_id,
+            "action_date": str(a.action_date),
+            "action_type": a.action_type,
+            "action_detail": a.action_detail,
+            "created_at": str(a.created_at) if a.created_at else None
+        } for a in actions]
+    })
 
 
 @router.delete("/{product_id}/notes/{note_id}", response_model=ResponseModel)
