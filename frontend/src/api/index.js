@@ -117,6 +117,29 @@ export default {
     return request.get('/operations', { params })
   },
 
+  getProfitSummary(params) {
+    return request.get('/profit/summary', { params })
+  },
+  getProductProfits(params) {
+    return request.get('/profit/products', { params })
+  },
+  getProfitTrends(params) {
+    return request.get('/profit/trends', { params })
+  },
+  getProfitByTier(params) {
+    return request.get('/profit/by-tier', { params })
+  },
+
+  getCompareSummary(params) {
+    return request.get('/compare/summary', { params })
+  },
+  getCompareProducts(params) {
+    return request.get('/compare/products', { params })
+  },
+  getCompareTrends(params) {
+    return request.get('/compare/trends', { params })
+  },
+
   clearCache(url = null) {
     apiCache.clear(url)
   },

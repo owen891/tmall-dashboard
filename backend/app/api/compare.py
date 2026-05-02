@@ -1,78 +1,276 @@
-from fastapi import APIRouter, Query
-from datetime import datetime, timedelta
+from fastapi import APIRouter, Depends, Query
+from sqlalchemy.orm import Session
+from sqlalchemy import func, desc
 from typing import Optional
+from app.core.database import get_db
+from app.core.utils import get_data_model, get_latest_period, safe_float, calculate_change
+from app.models import DailyData, WeeklyData, MonthlyData, Product
+from app.schemas.common import ResponseModel
 
-router = APIRouter(prefix="/api/compare", tags=["周期对比"])
+router = APIRouter(prefix="/compare", tags=["数据对比"])
 
-@router.get("/summary")
-async def get_compare_summary(
-    compare_type: Optional[str] = Query("week"),
-    base_date: Optional[str] = Query(None),
-    compare_date: Optional[str] = Query(None)
-):
+
+def get_same_period_last_year(period: str, dimension: str) -> str:
+    """获取去年同周期"""
+    from datetime import datetime
+
+    try:
+        if dimension == 'monthly':
+            y, m = str(period).split('-')
+            return f"{int(y) - 1}-{m}"
+        elif dimension == 'weekly':
+            y, mm, dd = str(period).split('-')
+            return f"{int(y) - 1}-{mm}-{dd}"
+        else:
+            dt = datetime.strptime(str(period), '%Y-%m-%d')
+            prev_year = dt.replace(year=dt.year - 1)
+            return prev_year.strftime('%Y-%m-%d')
+    except (ValueError, IndexError, AttributeError):
+        return period
+
+
+def calculate_comparison(current: float, previous: float) -> dict:
+    """计算对比结果"""
+    change = current - previous
+    percent = ((current - previous) / previous * 100) if previous != 0 else 0
+
+    if abs(percent) > 5:
+        status = "up" if percent > 0 else "down"
+    else:
+        status = "stable"
+
     return {
-        "base": {
-            "gmv": 2856000,
-            "orders": 12580,
-            "visitors": 156800,
-            "conversion": 8.02
+        "current": round(current, 2),
+        "previous": round(previous, 2),
+        "change": round(change, 2),
+        "change_percent": round(percent, 1),
+        "status": status
+    }
+
+
+@router.get("/summary", response_model=ResponseModel)
+def get_compare_summary(
+    dimension: str = Query("weekly", description="时间维度"),
+    period: Optional[str] = Query(None, description="指定周期"),
+    db: Session = Depends(get_db)
+):
+    """获取同比汇总对比"""
+    Model, date_col, visitors_col = get_data_model(dimension)
+
+    if not period:
+        period = get_latest_period(Model, date_col, db)
+
+    if not period:
+        return ResponseModel(data={"current": {}, "yoy": {}})
+
+    current_period = str(period)
+    previous_period = get_same_period_last_year(current_period, dimension)
+
+    current_data = db.query(
+        func.sum(Model.payment_amount).label('payment'),
+        func.sum(Model.refund_amount).label('refund'),
+        func.sum(getattr(Model, visitors_col)).label('visitors'),
+        func.avg(Model.payment_conversion).label('conversion'),
+        func.sum(Model.ad_spend).label('ad_spend'),
+    ).filter(getattr(Model, date_col) == current_period).first()
+
+    previous_data = db.query(
+        func.sum(Model.payment_amount).label('payment'),
+        func.sum(Model.refund_amount).label('refund'),
+        func.sum(getattr(Model, visitors_col)).label('visitors'),
+        func.avg(Model.payment_conversion).label('conversion'),
+        func.sum(Model.ad_spend).label('ad_spend'),
+    ).filter(getattr(Model, date_col) == previous_period).first()
+
+    current_payment = safe_float(current_data.payment) if current_data else 0
+    previous_payment = safe_float(previous_data.payment) if previous_data else 0
+
+    current_refund = safe_float(current_data.refund) if current_data else 0
+    previous_refund = safe_float(previous_data.refund) if previous_data else 0
+
+    current_visitors = int(safe_float(current_data.visitors)) if current_data else 0
+    previous_visitors = int(safe_float(previous_data.visitors)) if previous_data else 0
+
+    current_conversion = safe_float(current_data.conversion) if current_data else 0
+    previous_conversion = safe_float(previous_data.conversion) if previous_data else 0
+
+    current_ad_spend = safe_float(current_data.ad_spend) if current_data else 0
+    previous_ad_spend = safe_float(previous_data.ad_spend) if previous_data else 0
+
+    return ResponseModel(data={
+        "dimension": dimension,
+        "current_period": {
+            "period": current_period,
+            "payment": round(current_payment, 2),
+            "refund": round(current_refund, 2),
+            "visitors": current_visitors,
+            "conversion": round(current_conversion * 100, 2),
+            "ad_spend": round(current_ad_spend, 2)
         },
-        "compare": {
-            "gmv": 3189000,
-            "orders": 14250,
-            "visitors": 175200,
-            "conversion": 8.13
+        "previous_period": {
+            "period": previous_period,
+            "payment": round(previous_payment, 2),
+            "refund": round(previous_refund, 2),
+            "visitors": previous_visitors,
+            "conversion": round(previous_conversion * 100, 2),
+            "ad_spend": round(previous_ad_spend, 2)
         },
-        "change": {
-            "gmv": 11.66,
-            "orders": 13.28,
-            "visitors": 11.73,
-            "conversion": 1.37
+        "comparison": {
+            "payment": calculate_comparison(current_payment, previous_payment),
+            "refund": calculate_comparison(current_refund, previous_refund),
+            "visitors": calculate_comparison(current_visitors, previous_visitors),
+            "conversion": calculate_comparison(current_conversion * 100, previous_conversion * 100),
+            "ad_spend": calculate_comparison(current_ad_spend, previous_ad_spend)
         }
-    }
+    })
 
-@router.get("/detail")
-async def get_compare_detail():
-    return {
-        "data": [
-            {"index": 1, "name": "GMV", "baseValue": "¥2,856,000", "compareValue": "¥3,189,000", "change": 11.66},
-            {"index": 2, "name": "订单数", "baseValue": "12,580", "compareValue": "14,250", "change": 13.28},
-            {"index": 3, "name": "访客数", "baseValue": "156,800", "compareValue": "175,200", "change": 11.73},
-            {"index": 4, "name": "转化率", "baseValue": "8.02%", "compareValue": "8.13%", "change": 1.37},
-            {"index": 5, "name": "客单价", "baseValue": "¥227", "compareValue": "¥224", "change": -1.32},
-            {"index": 6, "name": "退款率", "baseValue": "2.35%", "compareValue": "2.18%", "change": -7.23},
-            {"index": 7, "name": "好评率", "baseValue": "96.8%", "compareValue": "97.2%", "change": 0.41},
-            {"index": 8, "name": "广告花费", "baseValue": "¥156,000", "compareValue": "¥178,000", "change": 14.10},
-            {"index": 9, "name": "ROI", "baseValue": "3.25", "compareValue": "3.42", "change": 5.23},
-            {"index": 10, "name": "库存周转", "baseValue": "15.6天", "compareValue": "14.2天", "change": -9.0}
-        ]
-    }
 
-@router.get("/trend")
-async def get_compare_trend(
-    compare_type: Optional[str] = Query("week"),
-    metric: Optional[str] = Query("gmv")
+@router.get("/products", response_model=ResponseModel)
+def get_compare_products(
+    dimension: str = Query("weekly", description="时间维度"),
+    period: Optional[str] = Query(None, description="指定周期"),
+    metric: str = Query("payment", description="对比指标"),
+    limit: int = Query(20, description="返回数量"),
+    db: Session = Depends(get_db)
 ):
-    labels = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"] if compare_type == "day" else \
-             ["第1周", "第2周", "第3周", "第4周"] if compare_type == "week" else \
-             ["1月", "2月", "3月"]
-    
-    base_data = {
-        "gmv": [220, 280, 250, 310, 290, 350, 320],
-        "orders": [150, 180, 165, 200, 185, 220, 205],
-        "visitors": [1800, 2200, 2000, 2400, 2250, 2600, 2450],
-        "conversion": [7.2, 7.8, 7.5, 8.2, 8.0, 8.5, 8.3]
-    }
-    
-    compare_data = {
-        "gmv": [245, 310, 280, 345, 320, 385, 355],
-        "orders": [168, 200, 182, 225, 208, 248, 230],
-        "visitors": [2000, 2450, 2220, 2680, 2500, 2900, 2720],
-        "conversion": [7.5, 8.2, 7.8, 8.6, 8.4, 8.8, 8.5]
-    }
-    
-    return {
-        "labels": labels,
-        "base": base_data.get(metric, base_data["gmv"]),
-        "compare": compare_data.get(metric, compare_data["gmv"])
-    }
+    """获取商品同比对比"""
+    Model, date_col, visitors_col = get_data_model(dimension)
+
+    if not period:
+        period = get_latest_period(Model, date_col, db)
+
+    if not period:
+        return ResponseModel(data={"products": []})
+
+    current_period = str(period)
+    previous_period = get_same_period_last_year(current_period, dimension)
+
+    current_data = db.query(
+        Model.product_id,
+        func.sum(Model.payment_amount).label('payment'),
+        func.sum(Model.refund_amount).label('refund'),
+        func.sum(getattr(Model, visitors_col)).label('visitors'),
+        func.avg(Model.payment_conversion).label('conversion'),
+    ).filter(getattr(Model, date_col) == current_period).group_by(Model.product_id).all()
+
+    previous_data_map = {}
+    previous_data = db.query(
+        Model.product_id,
+        func.sum(Model.payment_amount).label('payment'),
+        func.sum(Model.refund_amount).label('refund'),
+        func.sum(getattr(Model, visitors_col)).label('visitors'),
+        func.avg(Model.payment_conversion).label('conversion'),
+    ).filter(getattr(Model, date_col) == previous_period).group_by(Model.product_id).all()
+
+    for p in previous_data:
+        previous_data_map[p.product_id] = p
+
+    products = []
+    for c in current_data:
+        p = previous_data_map.get(c.product_id)
+        if not p:
+            continue
+
+        product = db.query(Product).filter(Product.product_id == c.product_id).first()
+
+        current_value = safe_float(getattr(c, metric)) if metric != 'conversion' else safe_float(c.conversion)
+        previous_value = safe_float(getattr(p, metric)) if metric != 'conversion' else safe_float(p.conversion)
+
+        if metric == 'conversion':
+            current_value *= 100
+            previous_value *= 100
+
+        comparison = calculate_comparison(current_value, previous_value)
+
+        products.append({
+            "product_id": c.product_id,
+            "title": product.title if product else "",
+            "tier": product.tier if product else "",
+            "current_value": round(current_value, 2),
+            "previous_value": round(previous_value, 2),
+            "comparison": comparison
+        })
+
+    products.sort(key=lambda x: x['comparison']['change_percent'], reverse=True)
+
+    return ResponseModel(data={
+        "dimension": dimension,
+        "current_period": current_period,
+        "previous_period": previous_period,
+        "metric": metric,
+        "products": products[:limit]
+    })
+
+
+@router.get("/trends", response_model=ResponseModel)
+def get_compare_trends(
+    dimension: str = Query("monthly", description="时间维度(建议用monthly)"),
+    period: Optional[str] = Query(None, description="指定周期"),
+    periods: int = Query(12, description="周期数量"),
+    db: Session = Depends(get_db)
+):
+    """获取同比趋势对比"""
+    from app.core.utils import get_prev_period
+
+    Model, date_col, visitors_col = get_data_model(dimension)
+
+    if not period:
+        period = get_latest_period(Model, date_col, db)
+
+    if not period:
+        return ResponseModel(data={"trends": []})
+
+    trends = []
+    current = str(period)
+
+    for _ in range(periods):
+        previous = get_same_period_last_year(current, dimension)
+
+        current_data = db.query(
+            func.sum(Model.payment_amount).label('payment'),
+            func.sum(Model.refund_amount).label('refund'),
+            func.sum(getattr(Model, visitors_col)).label('visitors'),
+        ).filter(getattr(Model, date_col) == current).first()
+
+        previous_data = db.query(
+            func.sum(Model.payment_amount).label('payment'),
+            func.sum(Model.refund_amount).label('refund'),
+            func.sum(getattr(Model, visitors_col)).label('visitors'),
+        ).filter(getattr(Model, date_col) == previous).first()
+
+        current_payment = safe_float(current_data.payment) if current_data else 0
+        previous_payment = safe_float(previous_data.payment) if previous_data else 0
+
+        current_visitors = int(safe_float(current_data.visitors)) if current_data else 0
+        previous_visitors = int(safe_float(previous_data.visitors)) if previous_data else 0
+
+        trends.append({
+            "period": current,
+            "current": {
+                "payment": round(current_payment, 2),
+                "visitors": current_visitors
+            },
+            "previous": {
+                "period": previous,
+                "payment": round(previous_payment, 2),
+                "visitors": previous_visitors
+            },
+            "payment_comparison": calculate_comparison(current_payment, previous_payment),
+            "visitors_comparison": calculate_comparison(current_visitors, previous_visitors)
+        })
+
+        if dimension == 'monthly':
+            y, m = current.split('-')
+            m = int(m) - 1
+            if m == 0:
+                m, y = 12, str(int(y) - 1)
+            current = f"{y}-{m:02d}"
+        else:
+            current = get_prev_period(current, dimension)
+
+    trends.reverse()
+
+    return ResponseModel(data={
+        "dimension": dimension,
+        "trends": trends
+    })
