@@ -18,9 +18,39 @@ DIMENSION_MAP = {
     'daily': {'table': 'daily_data', 'date_col': 'date', 'visitors_col': 'ipv'},
 }
 
+HEADER_MAP = {
+    'product_id': '商品ID',
+    'product_name': '商品名称',
+    'category': '类目',
+    'tier': '分层',
+    'style': '风格',
+    'scene': '场景',
+    'manager': '负责人',
+    'payment_amount': 'GMV',
+    'net_sales': '净销售额',
+    'refund_amount': '退款额',
+    'refund_rate': '退款率',
+    'visitors': '访客数',
+    'aov': '客单价',
+    'conversion': '转化率',
+    'ad_spend': '广告花费',
+    'roi': 'ROI',
+    'payment_count': '支付订单数',
+    'order_count': '订单数',
+    'ad_ratio': '广告占比',
+    'score': '综合评分'
+}
+
+DEFAULT_FIELDS = [
+    'product_id', 'product_name', 'category', 'tier', 'style', 'scene',
+    'manager', 'payment_amount', 'net_sales', 'refund_amount', 'refund_rate',
+    'visitors', 'aov', 'conversion', 'ad_spend', 'roi', 'payment_count'
+]
+
 @router.get("/products")
 def export_products(
     dim: str = Query("weekly", alias="dim", description="时间维度: daily/weekly/monthly"),
+    format: str = Query("csv", description="导出格式: csv/json"),
     period: Optional[str] = Query(None, description="指定周期"),
     tier: Optional[str] = Query(None, description="分层筛选"),
     style: Optional[str] = Query(None, description="风格筛选"),
@@ -33,7 +63,7 @@ def export_products(
     db: Session = Depends(get_db)
 ):
     """
-    导出商品数据为CSV文件
+    导出商品数据为多种格式
     """
     dim_cfg = DIMENSION_MAP.get(dim, DIMENSION_MAP['weekly'])
     visitors_col = dim_cfg['visitors_col']
@@ -128,49 +158,14 @@ def export_products(
     
     products_data = query.all()
     
-    # 准备CSV文件
-    output = io.StringIO()
-    writer = csv.writer(output)
-    
-    # 默认导出字段
-    default_fields = [
-        'product_id', 'product_name', 'category', 'tier', 'style', 'scene',
-        'manager', 'payment_amount', 'net_sales', 'refund_amount', 'refund_rate',
-        'visitors', 'aov', 'conversion', 'ad_spend', 'roi', 'payment_count'
-    ]
-    
     # 解析用户指定的字段
-    selected_fields = default_fields
+    selected_fields = DEFAULT_FIELDS
     if columns:
         custom_fields = [f.strip() for f in columns.split(',')]
-        selected_fields = [f for f in custom_fields if f in default_fields] or default_fields
+        selected_fields = [f for f in custom_fields if f in DEFAULT_FIELDS] or DEFAULT_FIELDS
     
-    # 写入表头
-    header_map = {
-        'product_id': '商品ID',
-        'product_name': '商品名称',
-        'category': '类目',
-        'tier': '分层',
-        'style': '风格',
-        'scene': '场景',
-        'manager': '负责人',
-        'payment_amount': 'GMV',
-        'net_sales': '净销售额',
-        'refund_amount': '退款额',
-        'refund_rate': '退款率',
-        'visitors': '访客数',
-        'aov': '客单价',
-        'conversion': '转化率',
-        'ad_spend': '广告花费',
-        'roi': 'ROI',
-        'payment_count': '支付订单数',
-        'order_count': '订单数',
-        'ad_ratio': '广告占比',
-        'score': '综合评分'
-    }
-    writer.writerow([header_map.get(f, f) for f in selected_fields])
-    
-    # 写入数据
+    # 处理数据
+    processed_data = []
     for row in products_data:
         payment = row.payment_amount or 0
         refund = row.refund_amount or 0
@@ -209,22 +204,63 @@ def export_products(
                     value = getattr(row, field)
                     row_dict[field] = round(value, 4) if isinstance(value, (int, float)) else value
         
-        # 按选择的字段写入
-        writer.writerow([row_dict.get(f, '') for f in selected_fields])
+        processed_data.append(row_dict)
     
-    output.seek(0)
-    
-    # 生成文件名
-    filename = f"products_{dim}_{period}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
-    
-    return StreamingResponse(
-        output,
-        media_type='text/csv',
-        headers={
-            'Content-Disposition': f'attachment; filename="{filename}"',
-            'Access-Control-Expose-Headers': 'Content-Disposition'
-        }
-    )
+    if format == 'json':
+        filename = f"products_{dim}_{period}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+        output = io.BytesIO()
+        import json
+        output.write(json.dumps({
+            'meta': {
+                'dim': dim,
+                'period': period,
+                'generated_at': datetime.now().isoformat(),
+                'count': len(processed_data)
+            },
+            'data': processed_data
+        }, ensure_ascii=False, indent=2).encode('utf-8'))
+        output.seek(0)
+        return StreamingResponse(
+            output,
+            media_type='application/json',
+            headers={
+                'Content-Disposition': f'attachment; filename="{filename}"',
+                'Access-Control-Expose-Headers': 'Content-Disposition'
+            }
+        )
+    else:
+        # 导出CSV
+        output = io.StringIO()
+        writer = csv.writer(output)
+        
+        # 写入表头
+        writer.writerow([HEADER_MAP.get(f, f) for f in selected_fields])
+        
+        # 写入数据
+        for row_dict in processed_data:
+            writer.writerow([row_dict.get(f, '') for f in selected_fields])
+        
+        output.seek(0)
+        
+        # 生成文件名
+        filename = f"products_{dim}_{period}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+        
+        return StreamingResponse(
+            output,
+            media_type='text/csv',
+            headers={
+                'Content-Disposition': f'attachment; filename="{filename}"',
+                'Access-Control-Expose-Headers': 'Content-Disposition'
+            }
+        )
+
+@router.get("/products/fields")
+def get_export_fields():
+    """获取可导出的字段列表"""
+    return ResponseModel(data={
+        'fields': DEFAULT_FIELDS,
+        'field_labels': {k: HEADER_MAP.get(k, k) for k in DEFAULT_FIELDS}
+    })
 
 def get_latest_period(Model, date_col, db):
     """获取最新周期"""

@@ -155,6 +155,15 @@
               <span>自动报告</span>
             </el-menu-item>
           </el-sub-menu>
+          
+          <div class="menu-divider">
+            <span v-if="!isCollapsed">其他</span>
+          </div>
+          
+          <el-menu-item index="/settings">
+            <el-icon><Setting /></el-icon>
+            <template #title>系统设置</template>
+          </el-menu-item>
         </el-menu>
       </el-scrollbar>
     </el-aside>
@@ -249,10 +258,14 @@ const pageTitle = computed(() => {
     '/reviews': '评价分析',
     '/market': '市场分析',
     '/toolbox': '运营工具箱',
-    '/promotion': '多渠道推广',
-    '/lifecycle': '生命周期',
-    '/compare': '周期对比'
-  }
+  '/promotion': '多渠道推广',
+  '/lifecycle': '生命周期',
+  '/compare': '周期对比',
+  '/recommendation': '智能选品',
+  '/report': '自动报告',
+  '/prediction': '预测分析',
+  '/data-quality': '数据质量'
+}
   
   const path = route.path
   if (path.startsWith('/product/')) return '商品详情'
@@ -432,5 +445,65 @@ onMounted(() => {
 .fade-enter-from,
 .fade-leave-to {
   opacity: 0;
+}
+
+/* 移动端响应式 */
+@media (max-width: 768px) {
+  .app-aside {
+    position: fixed;
+    left: 0;
+    top: 0;
+    height: 100vh;
+    z-index: 1000;
+    transform: translateX(-100%);
+    transition: transform 0.3s;
+  }
+  
+  .app-aside.mobile-open {
+    transform: translateX(0);
+  }
+  
+  .app-aside:not(.el-menu--collapse) {
+    width: 240px;
+  }
+  
+  .app-header {
+    padding: 0 12px;
+  }
+  
+  .header-right .el-button span {
+    display: none;
+  }
+  
+  .date-selector .el-select {
+    width: 70px !important;
+  }
+  
+  .date-selector .el-date-picker {
+    width: 160px !important;
+  }
+  
+  .app-main {
+    padding: 12px;
+  }
+  
+  .el-breadcrumb {
+    display: none;
+  }
+}
+
+.mobile-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 999;
+  display: none;
+}
+
+.mobile-overlay.active {
+  display: block;
 }
 </style>
