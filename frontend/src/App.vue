@@ -107,6 +107,9 @@
             <el-menu-item index="/targets">
               <span>目标管理</span>
             </el-menu-item>
+            <el-menu-item index="/pace">
+              <span>Pace 监控</span>
+            </el-menu-item>
           </el-sub-menu>
 
           <el-sub-menu index="smart">
