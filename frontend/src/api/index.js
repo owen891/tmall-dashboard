@@ -1,27 +1,47 @@
 import axios from 'axios'
 import apiCache from '@/utils/cache'
+import { ApiError, handleError } from '@/utils/errorHandler'
 
 const request = axios.create({
   baseURL: '/api',
-  timeout: 30000
+  timeout: 30000,
 })
 
-request.interceptors.response.use(
-  response => {
-    return response.data
+request.interceptors.request.use(
+  (config) => {
+    const token = localStorage.getItem('token')
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`
+    }
+    return config
   },
-  error => {
-    console.error('API Error:', error)
+  (error) => {
     return Promise.reject(error)
   }
 )
 
-const CACHE_DURATION = 5 * 60 * 1000 // 5 分钟缓存
+request.interceptors.response.use(
+  (response) => {
+    return response.data
+  },
+  (error) => {
+    if (error.response) {
+      const { status, data } = error.response
+      const message = data?.message || data?.detail || '请求失败'
+      return Promise.reject(new ApiError(message, status, data))
+    }
+    if (error.request) {
+      return Promise.reject(new ApiError('网络错误，请检查网络连接', 0))
+    }
+    return Promise.reject(new ApiError(error.message || '未知错误', -1))
+  }
+)
+
+const CACHE_DURATION = 5 * 60 * 1000
 
 const cachedRequest = async (method, url, options = {}) => {
   const { useCache = false, cacheDuration = CACHE_DURATION, ...requestOptions } = options
 
-  // GET 请求使用缓存
   if (useCache && method === 'get') {
     const cached = apiCache.get(url, requestOptions.params || {})
     if (cached) {
@@ -32,12 +52,10 @@ const cachedRequest = async (method, url, options = {}) => {
     return response
   }
 
-  // 其他请求直接发送
   return request[method](url, requestOptions)
 }
 
 export default {
-  // Dashboard APIs (使用缓存)
   getDashboardSummary() {
     return cachedRequest('get', '/dashboard/summary', { useCache: true })
   },
@@ -48,7 +66,6 @@ export default {
     return cachedRequest('get', '/dashboard/quadrant', { useCache: true })
   },
 
-  // Product APIs
   getProducts(params) {
     const { page, page_size, ...rest } = params || {}
     const limit = page_size || 20
@@ -74,7 +91,32 @@ export default {
     return request.get(`/products/${productId}/notes`)
   },
 
-  // Cache management
+  getKPI(params) {
+    return request.get('/kpi', { params })
+  },
+  getKPISummary(params) {
+    return request.get('/kpi/summary', { params })
+  },
+
+  getHealthList(params) {
+    return request.get('/health/list', { params })
+  },
+  getHealthSummary(params) {
+    return request.get('/health/summary', { params })
+  },
+
+  getTrends(params) {
+    return request.get('/trends', { params })
+  },
+
+  getAlerts(params) {
+    return request.get('/alerts', { params })
+  },
+
+  getOperations(params) {
+    return request.get('/operations', { params })
+  },
+
   clearCache(url = null) {
     apiCache.clear(url)
   },

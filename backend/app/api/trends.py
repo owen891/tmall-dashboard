@@ -2,46 +2,12 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import func, desc
 from typing import Optional, List
-from datetime import datetime, timedelta
 from app.core.database import get_db
+from app.core.utils import get_data_model, get_prev_period, get_latest_period
 from app.models import DailyData, WeeklyData, MonthlyData, Product
 from app.schemas.common import ResponseModel
 
 router = APIRouter(prefix="/trends", tags=["趋势分析"])
-
-DIMENSION_MAP = {
-    'monthly': {'table': 'monthly_data', 'date_col': 'month', 'visitors_col': 'visitors'},
-    'weekly': {'table': 'weekly_data', 'date_col': 'week_start', 'visitors_col': 'ipv'},
-    'daily': {'table': 'daily_data', 'date_col': 'date', 'visitors_col': 'ipv'},
-}
-
-
-def get_prev_period(period_str: str, dim: str) -> str:
-    """获取上一个周期"""
-    try:
-        if dim == 'monthly':
-            y, m = period_str.split('-')
-            m = int(m) - 1
-            if m == 0:
-                m, y = 12, str(int(y) - 1)
-            return f"{y}-{m:02d}"
-        else:
-            d = datetime.strptime(period_str, '%Y-%m-%d')
-            if dim == 'weekly':
-                prev = d - timedelta(days=7)
-            else:
-                prev = d - timedelta(days=1)
-            return prev.strftime('%Y-%m-%d')
-    except (ValueError, IndexError, TypeError, AttributeError):
-        return period_str
-
-
-def get_latest_period(Model, date_col, db):
-    """获取最新周期"""
-    latest = db.query(Model).order_by(desc(getattr(Model, date_col))).first()
-    if latest:
-        return getattr(latest, date_col)
-    return None
 
 
 def calculate_trend(values: List[float]) -> dict:
@@ -71,25 +37,27 @@ def calculate_trend(values: List[float]) -> dict:
     }
 
 
-@router.get("/overview", response_model=ResponseModel)
-def get_trends_overview(
+def get_period_list(period: str, dimension: str, count: int) -> List[str]:
+    """获取周期列表"""
+    period_list = []
+    current = str(period)
+    for _ in range(count):
+        period_list.append(current)
+        current = get_prev_period(current, dimension)
+    period_list.reverse()
+    return period_list
+
+
+@router.get("", response_model=ResponseModel)
+def get_trends(
     dimension: str = Query("weekly", description="时间维度"),
     period: Optional[str] = Query(None, description="指定周期"),
     periods: int = Query(12, description="周期数量"),
     db: Session = Depends(get_db)
 ):
-    """获取趋势概览"""
+    """获取趋势数据"""
     
-    dim_cfg = DIMENSION_MAP.get(dimension, DIMENSION_MAP['weekly'])
-    visitors_col = dim_cfg['visitors_col']
-    date_col = dim_cfg['date_col']
-    
-    if dimension == "monthly":
-        Model = MonthlyData
-    elif dimension == "daily":
-        Model = DailyData
-    else:
-        Model = WeeklyData
+    Model, date_col, visitors_col = get_data_model(dimension)
     
     if not period:
         period = get_latest_period(Model, date_col, db)
@@ -97,12 +65,7 @@ def get_trends_overview(
     if not period:
         return ResponseModel(data={"trends": {}, "summary": {}})
     
-    period_list = []
-    current = str(period)
-    for _ in range(periods):
-        period_list.append(current)
-        current = get_prev_period(current, dimension)
-    period_list.reverse()
+    period_list = get_period_list(str(period), dimension, periods)
     
     trend_data = {}
     
@@ -146,6 +109,17 @@ def get_trends_overview(
     })
 
 
+@router.get("/overview", response_model=ResponseModel)
+def get_trends_overview(
+    dimension: str = Query("weekly", description="时间维度"),
+    period: Optional[str] = Query(None, description="指定周期"),
+    periods: int = Query(12, description="周期数量"),
+    db: Session = Depends(get_db)
+):
+    """获取趋势概览"""
+    return get_trends(dimension, period, periods, db)
+
+
 @router.get("/payment", response_model=ResponseModel)
 def get_payment_trend(
     dimension: str = Query("weekly", description="时间维度"),
@@ -155,16 +129,7 @@ def get_payment_trend(
 ):
     """获取支付金额趋势"""
     
-    dim_cfg = DIMENSION_MAP.get(dimension, DIMENSION_MAP['weekly'])
-    visitors_col = dim_cfg['visitors_col']
-    date_col = dim_cfg['date_col']
-    
-    if dimension == "monthly":
-        Model = MonthlyData
-    elif dimension == "daily":
-        Model = DailyData
-    else:
-        Model = WeeklyData
+    Model, date_col, visitors_col = get_data_model(dimension)
     
     if not period:
         period = get_latest_period(Model, date_col, db)
@@ -172,12 +137,7 @@ def get_payment_trend(
     if not period:
         return ResponseModel(data={"trend": []})
     
-    period_list = []
-    current = str(period)
-    for _ in range(periods):
-        period_list.append(current)
-        current = get_prev_period(current, dimension)
-    period_list.reverse()
+    period_list = get_period_list(str(period), dimension, periods)
     
     trend = []
     for p in period_list:
@@ -212,16 +172,7 @@ def get_visitors_trend(
 ):
     """获取访客趋势"""
     
-    dim_cfg = DIMENSION_MAP.get(dimension, DIMENSION_MAP['weekly'])
-    visitors_col = dim_cfg['visitors_col']
-    date_col = dim_cfg['date_col']
-    
-    if dimension == "monthly":
-        Model = MonthlyData
-    elif dimension == "daily":
-        Model = DailyData
-    else:
-        Model = WeeklyData
+    Model, date_col, visitors_col = get_data_model(dimension)
     
     if not period:
         period = get_latest_period(Model, date_col, db)
@@ -229,12 +180,7 @@ def get_visitors_trend(
     if not period:
         return ResponseModel(data={"trend": []})
     
-    period_list = []
-    current = str(period)
-    for _ in range(periods):
-        period_list.append(current)
-        current = get_prev_period(current, dimension)
-    period_list.reverse()
+    period_list = get_period_list(str(period), dimension, periods)
     
     trend = []
     for p in period_list:
@@ -268,16 +214,7 @@ def get_conversion_trend(
 ):
     """获取转化率趋势"""
     
-    dim_cfg = DIMENSION_MAP.get(dimension, DIMENSION_MAP['weekly'])
-    visitors_col = dim_cfg['visitors_col']
-    date_col = dim_cfg['date_col']
-    
-    if dimension == "monthly":
-        Model = MonthlyData
-    elif dimension == "daily":
-        Model = DailyData
-    else:
-        Model = WeeklyData
+    Model, date_col, visitors_col = get_data_model(dimension)
     
     if not period:
         period = get_latest_period(Model, date_col, db)
@@ -285,12 +222,7 @@ def get_conversion_trend(
     if not period:
         return ResponseModel(data={"trend": []})
     
-    period_list = []
-    current = str(period)
-    for _ in range(periods):
-        period_list.append(current)
-        current = get_prev_period(current, dimension)
-    period_list.reverse()
+    period_list = get_period_list(str(period), dimension, periods)
     
     trend = []
     for p in period_list:
@@ -312,74 +244,6 @@ def get_conversion_trend(
     })
 
 
-@router.get("/category", response_model=ResponseModel)
-def get_category_trend(
-    dimension: str = Query("weekly", description="时间维度"),
-    period: Optional[str] = Query(None, description="指定周期"),
-    periods: int = Query(12, description="周期数量"),
-    db: Session = Depends(get_db)
-):
-    """获取类目趋势"""
-    
-    dim_cfg = DIMENSION_MAP.get(dimension, DIMENSION_MAP['weekly'])
-    visitors_col = dim_cfg['visitors_col']
-    date_col = dim_cfg['date_col']
-    
-    if dimension == "monthly":
-        Model = MonthlyData
-    elif dimension == "daily":
-        Model = DailyData
-    else:
-        Model = WeeklyData
-    
-    if not period:
-        period = get_latest_period(Model, date_col, db)
-    
-    if not period:
-        return ResponseModel(data={"trends": {}})
-    
-    categories = db.query(Model.category).filter(
-        getattr(Model, date_col) == period,
-        Model.category.isnot(None)
-    ).distinct().all()
-    
-    category_list = [c[0] for c in categories if c[0]]
-    
-    period_list = []
-    current = str(period)
-    for _ in range(periods):
-        period_list.append(current)
-        current = get_prev_period(current, dimension)
-    period_list.reverse()
-    
-    trends = {}
-    
-    for cat in category_list:
-        cat_trend = []
-        for p in period_list:
-            data = db.query(
-                func.sum(Model.payment_amount).label('payment'),
-            ).filter(
-                getattr(Model, date_col) == p,
-                Model.category == cat
-            ).first()
-            
-            payment = float(data.payment or 0) if data else 0
-            cat_trend.append({
-                "period": p,
-                "payment_amount": round(payment, 2)
-            })
-        
-        trends[cat] = cat_trend
-    
-    return ResponseModel(data={
-        "trends": trends,
-        "categories": category_list,
-        "periods": period_list,
-        "dimension": dimension
-    })
-
-
 @router.get("/product/{product_id}", response_model=ResponseModel)
 def get_product_trend(
     product_id: str,
@@ -389,16 +253,7 @@ def get_product_trend(
 ):
     """获取单个商品的趋势"""
     
-    dim_cfg = DIMENSION_MAP.get(dimension, DIMENSION_MAP['weekly'])
-    visitors_col = dim_cfg['visitors_col']
-    date_col = dim_cfg['date_col']
-    
-    if dimension == "monthly":
-        Model = MonthlyData
-    elif dimension == "daily":
-        Model = DailyData
-    else:
-        Model = WeeklyData
+    Model, date_col, visitors_col = get_data_model(dimension)
     
     data_points = db.query(Model).filter(
         Model.product_id == product_id
