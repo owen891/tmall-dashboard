@@ -140,6 +140,16 @@ export default {
     return request.get('/compare/trends', { params })
   },
 
+  getInventoryWarnings(params) {
+    return request.get('/inventory/warnings', { params })
+  },
+  getInventorySummary(params) {
+    return request.get('/inventory/summary', { params })
+  },
+  getInventoryVelocity(params) {
+    return request.get('/inventory/velocity', { params })
+  },
+
   clearCache(url = null) {
     apiCache.clear(url)
   },

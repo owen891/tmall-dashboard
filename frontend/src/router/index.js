@@ -107,6 +107,16 @@ const routes = [
     component: () => import('@/views/Compare.vue')
   },
   {
+    path: '/profit',
+    name: 'Profit',
+    component: () => import('@/views/Profit.vue')
+  },
+  {
+    path: '/inventory',
+    name: 'Inventory',
+    component: () => import('@/views/Inventory.vue')
+  },
+  {
     path: '/recommendation',
     name: 'Recommendation',
     component: () => import('@/views/Recommendation.vue')

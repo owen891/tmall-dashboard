@@ -42,8 +42,14 @@
             <el-menu-item index="/kpi">
               <span>KPI分析</span>
             </el-menu-item>
+            <el-menu-item index="/profit">
+              <span>利润分析</span>
+            </el-menu-item>
             <el-menu-item index="/trends">
               <span>趋势分析</span>
+            </el-menu-item>
+            <el-menu-item index="/compare">
+              <span>同比对比</span>
             </el-menu-item>
             <el-menu-item index="/quadrant">
               <span>四象限分析</span>
@@ -64,6 +70,9 @@
             <el-menu-item index="/health">
               <span>健康度评分</span>
             </el-menu-item>
+            <el-menu-item index="/inventory">
+              <span>库存预警</span>
+            </el-menu-item>
             <el-menu-item index="/operations">
               <span>操作统计</span>
             </el-menu-item>
@@ -82,9 +91,6 @@
             </template>
             <el-menu-item index="/lifecycle">
               <span>生命周期</span>
-            </el-menu-item>
-            <el-menu-item index="/compare">
-              <span>周期对比</span>
             </el-menu-item>
             <el-menu-item index="/prediction">
               <span>预测分析</span>
