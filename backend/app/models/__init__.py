@@ -21,7 +21,8 @@ from .product import (
     Refund,
     OperationLog,
     ScheduledTask,
-    ImportHistory
+    ImportHistory,
+    FileStorage
 )
 from .ad import (
     AdData,
@@ -54,6 +55,7 @@ __all__ = [
     "OperationLog",
     "ScheduledTask",
     "ImportHistory",
+    "FileStorage",
     "AdData",
     "KeywordAdData",
     "AudienceAdData",

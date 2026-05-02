@@ -103,7 +103,50 @@ export default {
     })
   },
   getImportHistory(params) {
-    return request.get('/import/history', { params })
+    return request.get("/import/history", { params })
+  },
+  // 通用上传API
+  uploadFile(file, usageType = "default", usageId = null, createdBy = null) {
+    const formData = new FormData()
+    formData.append("file", file)
+    const params = {}
+    if (usageType) params.usage_type = usageType
+    if (usageId) params.usage_id = usageId
+    if (createdBy) params.created_by = createdBy
+    return request.post("/upload", formData, {
+      headers: { "Content-Type": "multipart/form-data" },
+      params
+    })
+  },
+  uploadMultipleFiles(files, usageType = "default", usageId = null, createdBy = null) {
+    const formData = new FormData()
+    files.forEach(file => formData.append("files", file))
+    const params = {}
+    if (usageType) params.usage_type = usageType
+    if (usageId) params.usage_id = usageId
+    if (createdBy) params.created_by = createdBy
+    return request.post("/upload/multiple", formData, {
+      headers: { "Content-Type": "multipart/form-data" },
+      params
+    })
+  },
+  getFileInfo(fileId) {
+    return request.get(`/upload/${fileId}`)
+  },
+  downloadFile(fileId) {
+    return request.get(`/upload/download/${fileId}`, {
+      responseType: "blob"
+    })
+  },
+  listFiles(usageType, usageId = null, limit = 100, offset = 0) {
+    return request.get(`/upload/list/${usageType}`, {
+      params: { usage_id: usageId, limit, offset }
+    })
+  },
+  deleteFile(fileId, deletePhysical = true) {
+    return request.delete(`/upload/${fileId}`, {
+      params: { delete_physical: deletePhysical }
+    })
   },
   getPeriods(dim = 'weekly') {
     return request.get('/periods', { params: { dim } })

@@ -509,3 +509,22 @@ class ImportHistory(Base):
     error_message = Column(Text, nullable=True)
     
     created_at = Column(DateTime, default=func.now())
+
+
+class FileStorage(Base):
+    """通用文件存储模型"""
+    __tablename__ = "file_storage"
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    file_name = Column(String, nullable=False)  # 原始文件名
+    storage_name = Column(String, nullable=False)  # 存储文件名（UUID）
+    file_path = Column(String, nullable=False)  # 存储路径
+    file_size = Column(Integer, default=0)  # 文件大小（字节）
+    mime_type = Column(String, nullable=True)  # MIME类型
+    file_extension = Column(String, nullable=True)  # 文件扩展名
+    usage_type = Column(String, nullable=True)  # 用途类型（import, avatar, etc.）
+    usage_id = Column(Integer, nullable=True)  # 关联ID
+    created_by = Column(String, nullable=True)  # 创建者
+    
+    created_at = Column(DateTime, default=func.now())
+    updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
