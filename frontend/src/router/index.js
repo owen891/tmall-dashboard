@@ -22,6 +22,11 @@ const routes = [
     component: () => import('@/views/Import.vue')
   },
   {
+    path: '/smart-import',
+    name: 'SmartImport',
+    component: () => import('@/views/SmartImport.vue')
+  },
+  {
     path: '/quadrant',
     name: 'Quadrant',
     component: () => import('@/views/Quadrant.vue')
