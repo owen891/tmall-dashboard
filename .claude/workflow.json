@@ -1,0 +1,115 @@
+{
+  "version": "2.0",
+  "project": "project-scaffold",
+  "description": "Agent-First 工程化配置脚手架",
+  "currentPhase": "idle",
+  "currentTier": "standard",
+  "phaseHistory": [],
+  "gates": {
+    "G1_explore": {
+      "status": "pending",
+      "description": "探索完成：已读≥3文件，识别主要矛盾",
+      "verification": "bash scripts/gates/G1-verify.sh",
+      "autoCheck": false,
+      "verifiedAt": null
+    },
+    "G2_plan": {
+      "status": "pending",
+      "description": "规划完成：plan.md含边界+异常+回滚",
+      "verification": "bash scripts/gates/G2-verify.sh",
+      "autoCheck": false,
+      "verifiedAt": null
+    },
+    "G3_tdd": {
+      "status": "pending",
+      "description": "TDD合规：测试先于实现",
+      "verification": "bash scripts/gates/G3-verify.sh",
+      "autoCheck": true,
+      "verifiedAt": null
+    },
+    "G4_lint": {
+      "status": "pending",
+      "description": "代码规范：lint通过",
+      "verification": "bash scripts/gates/G4-verify.sh",
+      "autoCheck": true,
+      "verifiedAt": null
+    },
+    "G5_test": {
+      "status": "pending",
+      "description": "功能正确：所有测试通过",
+      "verification": "bash scripts/gates/G5-verify.sh",
+      "autoCheck": true,
+      "verifiedAt": null
+    },
+    "G6_coverage": {
+      "status": "pending",
+      "description": "覆盖率：≥80%",
+      "verification": "bash scripts/gates/G6-verify.sh",
+      "autoCheck": true,
+      "verifiedAt": null
+    },
+    "G7_security": {
+      "status": "pending",
+      "description": "安全检查：无高危漏洞",
+      "verification": "bash scripts/gates/G7-verify.sh",
+      "autoCheck": false,
+      "verifiedAt": null
+    }
+  },
+  "metrics": {
+    "tasksCompleted": 0,
+    "gatesPassed": 0,
+    "gatesFailed": 0,
+    "avgPhaseDuration": {}
+  },
+  "tierConfig": {
+    "sandbox": {
+      "flow": ["execute", "verify"],
+      "gates": ["G4", "G5"],
+      "description": "原型验证"
+    },
+    "standard": {
+      "flow": ["explore", "plan", "execute", "verify", "consolidate"],
+      "gates": ["G1", "G2", "G3", "G4", "G5", "G6"],
+      "description": "标准开发"
+    },
+    "critical": {
+      "flow": ["explore", "plan", "review", "execute", "verify", "security", "consolidate"],
+      "gates": ["G1", "G2", "G3", "G4", "G5", "G6", "G7"],
+      "description": "关键变更"
+    }
+  },
+  "autoEscalation": {
+    "enabled": true,
+    "rules": [
+      {
+        "pattern": "auth|security|password|credential|token|jwt|oauth",
+        "escalateTo": "critical",
+        "reason": "安全敏感"
+      },
+      {
+        "pattern": "migration|schema|database|table|DROP|ALTER",
+        "escalateTo": "critical",
+        "reason": "数据变更"
+      }
+    ]
+  },
+  "skills": {
+    "required": [
+      {
+        "name": "superpowers",
+        "version": "2.1.0",
+        "install": "git clone --depth 1 --branch v2.1.0 https://github.com/obra/superpowers ~/.claude/skills/superpowers && touch ~/.claude/skills/superpowers/installed.flag",
+        "verify": "test -f ~/.claude/skills/superpowers/installed.flag"
+      },
+      {
+        "name": "graphify",
+        "version": "latest",
+        "install": "pip install graphifyy && graphify install",
+        "verify": "command -v graphify"
+      }
+    ],
+    "optional": []
+  },
+  "lastUpdated": "2026-04-28T00:00:00Z"
+}

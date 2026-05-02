@@ -1,0 +1,211 @@
+{
+  "permissions": {
+    "allow": [
+      "Read",
+      "Grep",
+      "Glob",
+      "WebSearch",
+      "WebFetch",
+      "Agent",
+      "Skill",
+      "Bash(make dev: *)",
+      "Bash(make build: *)",
+      "Bash(make test: *)",
+      "Bash(make lint: *)",
+      "Bash(make fmt: *)",
+      "Bash(make gate: *)",
+      "Bash(make plan: NAME=*)",
+      "Bash(make checkpoint: *)",
+      "Bash(make resume: *)",
+      "Bash(make validate: *)",
+      "Bash(make preflight: *)",
+      "Bash(make graphify: *)",
+      "Bash(make install-tools: *)",
+      "Bash(go test ./...: *)",
+      "Bash(go build -o bin/*: *)",
+      "Bash(go run *: *)",
+      "Bash(golangci-lint run: *)",
+      "Bash(go vet ./...: *)",
+      "Bash(go fmt ./...: *)",
+      "Bash(go mod tidy: *)",
+      "Bash(go mod download: *)",
+      "Bash(git diff: *)",
+      "Bash(git status: *)",
+      "Bash(git log: *)",
+      "Bash(git add: *)",
+      "Bash(git commit: *)",
+      "Bash(git push: *)",
+      "Bash(git pull: *)",
+      "Bash(git fetch: *)",
+      "Bash(git branch: *)",
+      "Bash(git checkout: *)",
+      "Bash(git merge: *)",
+      "Bash(git rebase: *)",
+      "Bash(gh pr create: *)",
+      "Bash(gh pr view: *)",
+      "Bash(gh pr merge: *)",
+      "Bash(gosec ./...: *)",
+      "Bash(graphify: *)",
+      "Bash(graphify query: *)",
+      "Bash(pip install: *)",
+      "Bash(npm install: *)",
+      "Bash(jq: *)",
+      "Bash(scripts/*: *)",
+      "Bash(bash scripts/*: *)",
+      "Write(.claude/**)",
+      "Write(.agent/**)",
+      "Write(docs/**)",
+      "Write(scripts/**)",
+      "Write(templates/**)",
+      "Write(README.md)",
+      "Write(CHANGELOG.md)",
+      "Write(CONTRIBUTING.md)",
+      "Write(LICENSE)",
+      "Write(Makefile)",
+      "Write(.gitignore)",
+      "Edit(.claude/**)",
+      "Edit(.agent/**)",
+      "Edit(docs/**)",
+      "Edit(scripts/**)",
+      "Edit(templates/**)",
+      "Edit(README.md)",
+      "MultiEdit(docs/**)",
+      "MultiEdit(scripts/**)"
+    ],
+    "deny": [
+      "Bash(rm -rf /*)",
+      "Bash(rm -rf /: *)",
+      "Bash(curl | bash: *)",
+      "Bash(curl | sh: *)",
+      "Bash(wget | bash: *)",
+      "Bash(DROP TABLE *: *)",
+      "Bash(DROP DATABASE *: *)",
+      "Bash(TRUNCATE TABLE *: *)",
+      "Bash(DELETE FROM * WHERE: *)",
+      "Bash(ALTER TABLE * DROP: *)",
+      "Write(.env*)",
+      "Write(*.key)",
+      "Write(*.pem)",
+      "Write(*.p12)",
+      "Write(*.crt)",
+      "Write(*.der)",
+      "Write(*private*)",
+      "Write(*secret*)",
+      "Write(*credential*)",
+      "Write(*token*)",
+      "Write(*password*)",
+      "Edit(.env*)",
+      "Edit(*.key)",
+      "Edit(*.pem)",
+      "Edit(*secret*)",
+      "Edit(*credential*)",
+      "Edit(*token*)",
+      "Edit(*password*)",
+      "Edit(*private*)",
+      "MultiEdit(.env*)"
+    ]
+  },
+  "mcpServers": {
+    "memory": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-memory"],
+      "verify": "test -S /tmp/mcp-memory.sock || true"
+    },
+    "filesystem": {
+      "command": "npx",
+      "args": ["-y", "@anthropic/mcp-filesystem", "."],
+      "verify": "true"
+    },
+    "context7": {
+      "command": "npx",
+      "args": ["-y", "@upstash/context7-mcp"],
+      "verify": "curl -s http://localhost:3000/health 2>/dev/null | grep -q ok || true"
+    },
+    "fetch": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-fetch"],
+      "verify": "true"
+    },
+    "sequential-thinking": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-sequential-thinking"],
+      "verify": "true"
+    }
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "command": "bash scripts/hooks/check-dangerous-file.sh",
+        "timeout": 5000,
+        "description": "拦截危险文件修改"
+      },
+      {
+        "matcher": "Write *.go",
+        "command": "bash scripts/hooks/check-tdd.sh",
+        "timeout": 3000,
+        "description": "TDD合规提醒"
+      },
+      {
+        "matcher": "Write *.go",
+        "command": "bash scripts/hooks/check-context.sh",
+        "timeout": 3000,
+        "description": "外部调用context检查"
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit *.go",
+        "command": "gofmt -w \"${CLAUDE_FILE_PATH}\" 2>/dev/null || true",
+        "timeout": 3000,
+        "description": "Go自动格式化"
+      },
+      {
+        "matcher": "Write|Edit *.md",
+        "command": "prettier --write \"${CLAUDE_FILE_PATH}\" 2>/dev/null || true",
+        "timeout": 5000,
+        "description": "Markdown格式化"
+      }
+    ],
+    "Stop": [
+      {
+        "matcher": "",
+        "command": "bash scripts/gates/all.sh 2>&1 || { echo \"[STOP] 门控未完全通过，不可声称完成\"; exit 1; }",
+        "timeout": 120000,
+        "description": "会话结束运行门控"
+      }
+    ]
+  },
+  "commands": {
+    "dev": {
+      "cmd": "make dev",
+      "verify": "curl -s http://localhost:8080/health",
+      "timeout": "30s"
+    },
+    "build": {
+      "cmd": "make build",
+      "verify": "test -x bin/app",
+      "timeout": "120s"
+    },
+    "test": {
+      "cmd": "make test",
+      "verify": "grep -q PASS .agent/logs/test.json",
+      "timeout": "300s"
+    },
+    "lint": {
+      "cmd": "make lint",
+      "verify": "jq -e '.Issues | length == 0' .agent/logs/lint.json",
+      "timeout": "60s"
+    },
+    "gate": {
+      "cmd": "make gate",
+      "verify": "test $? -eq 0",
+      "timeout": "600s"
+    },
+    "graphify": {
+      "cmd": "make graphify",
+      "verify": "test -d graphify-out/",
+      "timeout": "300s"
+    }
+  }
+}

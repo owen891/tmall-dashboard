@@ -1,0 +1,96 @@
+{
+  "name": "嗨贝海数据仪表盘",
+  "version": "2.0.0",
+  "stack": "python-vue",
+  "description": "前后端分离的电商数据分析系统",
+  "technologies": {
+    "frontend": {
+      "framework": "Vue 3",
+      "ui": "Element Plus",
+      "build": "Vite",
+      "charts": "ECharts"
+    },
+    "backend": {
+      "framework": "FastAPI",
+      "orm": "SQLAlchemy",
+      "database": "SQLite"
+    }
+  },
+  "commands": {
+    "install": "cd frontend && npm install",
+    "dev": "cd frontend && npm run dev",
+    "build": "cd frontend && npm run build",
+    "lint": "cd frontend && npm run lint || true",
+    "test": "echo 'No test configured'",
+    "backend": "cd backend && python run.py"
+  },
+  "coverage_threshold": 0,
+  "lint_commands": {
+    "frontend": "cd frontend && npm run lint || true",
+    "backend": "cd backend && python -m py_compile app/**/*.py || true"
+  },
+  "quality_gates": {
+    "G1": {
+      "name": "探索",
+      "description": "必须阅读相关代码和文档",
+      "verify": "bash scripts/gates/G1-verify.sh"
+    },
+    "G2": {
+      "name": "规划",
+      "description": "必须完成 spec/plan/tasks 文档",
+      "verify": "bash scripts/gates/G2-verify.sh"
+    },
+    "G3": {
+      "name": "TDD",
+      "description": "必须先写测试再写实现",
+      "verify": "bash scripts/gates/G3-verify.sh"
+    },
+    "G4": {
+      "name": "Lint",
+      "description": "必须通过代码规范检查",
+      "verify": "bash scripts/gates/G4-verify.sh"
+    },
+    "G5": {
+      "name": "Test",
+      "description": "必须运行测试",
+      "verify": "bash scripts/gates/G5-verify.sh"
+    },
+    "G6": {
+      "name": "Coverage",
+      "description": "覆盖率必须 ≥80%",
+      "verify": "bash scripts/gates/G6-verify.sh"
+    },
+    "G7": {
+      "name": "Security",
+      "description": "必须通过安全扫描",
+      "verify": "bash scripts/gates/G7-verify.sh"
+    }
+  },
+  "redlines": {
+    "R1": {
+      "name": "数据安全",
+      "description": "禁止硬编码密钥和密码",
+      "check": "bash scripts/redlines/R1-check.sh"
+    },
+    "R2": {
+      "name": "错误处理",
+      "description": "禁止空 catch 块",
+      "check": "bash scripts/redlines/R2-check.sh"
+    },
+    "R3": {
+      "name": "密钥安全",
+      "description": "禁止提交密钥到 Git",
+      "check": "bash scripts/redlines/R3-check.sh"
+    }
+  },
+  "entry_points": {
+    "frontend": "frontend/src/main.js",
+    "backend": "backend/app/main.py",
+    "tests": "tests/"
+  },
+  "documentation": {
+    "standards": "docs/standards/",
+    "guides": "docs/guides/",
+    "architecture": "docs/architecture/"
+  }
+}
