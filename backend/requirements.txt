@@ -11,3 +11,4 @@ aiofiles>=23.0
 httpx>=0.24
 pytest>=7.0
 pytest-asyncio>=0.21
+psutil>=5.9

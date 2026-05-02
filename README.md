@@ -1,8 +1,8 @@
-# 天猫数据管理系统 2.0
+# 嗨贝海数据仪表盘 2.0
 
-现代化的电商数据管理平台，采用 FastAPI + Vue3 前后端分离架构。
+现代化的电商数据管理平台，采用 FastAPI + Vue3 前后端分离架构，集成 SCALE OS 认知脚手架。
 
-## 项目特性
+## ✨ 项目特性
 
 - ✅ **数据持久化**：使用 SQLite + SQLAlchemy ORM
 - ✅ **Excel 导入**：支持批量导入商品和周数据
@@ -16,18 +16,55 @@
 - ✅ **市场分析**：关键词机会发现
 - ✅ **目标管理**：设置和追踪销售目标
 - ✅ **告警系统**：异常数据实时告警
+- ✅ **智能导入**：AI 自动识别和导入数据
+- ✅ **系统监控**：实时系统指标和健康检查
 - ✅ **现代 UI**：Vue 3 + Element Plus
 - ✅ **快速部署**：支持 Docker 一键部署
+- ✅ **SCALE OS 集成**：认知工作流、质量门控、安全红线
 
-## 快速开始
+## 🛠️ SCALE OS 集成特性
 
-### 1. 本地运行
+### 认知工作流
+- 📋 **S-探索**：先理解需求，再写代码
+- 📋 **C-创建计划**：Spec + Plan + Tasks，不遗漏
+- 📋 **A-实现**：按计划执行，TDD 模式
+- 📋 **L-验证**：Gate 机制，全链路质量保证
+- 📋 **E-进化**：每次都比上次更好
+
+### 质量门控
+- 🔴 **Gate 1**：工具使用规范
+- 🔴 **Gate 2**：代码规范检查
+- 🔴 **Gate 3**：单元测试覆盖
+- 🔴 **Gate 4**：集成测试覆盖
+- 🔴 **Gate 5**：性能指标检查
+- 🔴 **Gate 6**：安全检查
+
+### 安全红线
+- 🔴 **R-1**：不能有 hardcoded secrets
+- 🔴 **R-2**：不能忽略 Exception，要有合理处理
+- 🔴 **R-3**：关键路径上的每个输入都要有校验
+
+## 🚀 快速开始
+
+### 1. 一键设置（推荐）
+
+```bash
+make setup
+```
+
+### 2. 开发模式
+
+```bash
+make dev
+```
+
+### 3. 手动启动
 
 #### 后端
 ```bash
 cd backend
 pip install -r requirements.txt
-python run.py
+python main.py
 ```
 
 后端服务运行在 http://localhost:8000
@@ -41,36 +78,125 @@ npm run dev
 
 访问 http://localhost:5173 查看应用。
 
-### 2. Docker 部署
+### 4. Docker 部署
+
 ```bash
-docker-compose up -d
+# 构建镜像
+make docker-build
+
+# 启动服务
+make docker-up
+
+# 查看日志
+make docker-logs
+
+# 停止服务
+make docker-down
 ```
 
-## 项目结构
+## 📖 SCALE OS 工作流
+
+### 开发新功能
+```bash
+# 1. 创建计划
+make plan NAME=your-feature-name
+
+# 2. 编辑文档
+# - docs/plans/YYYY-MM-DD-your-feature-name/spec.md
+# - docs/plans/YYYY-MM-DD-your-feature-name/plan.md
+# - docs/plans/YYYY-MM-DD-your-feature-name/tasks.md
+
+# 3. 保存 checkpoint
+make checkpoint
+
+# 4. 开发功能
+# ...
+
+# 5. 质量检查
+make gate
+
+# 6. 验证
+make test
+```
+
+### 常用命令
+
+```bash
+# 开发
+make dev                          # 同时启动前后端
+make frontend                     # 仅启动前端
+make backend                      # 仅启动后端
+make build                        # 构建前端
+
+# 质量保障
+make test                         # 运行测试
+make lint                         # 代码检查
+make gate                         # 质量门控
+make redlines                     # 安全红线检查
+
+# 状态管理
+make checkpoint                   # 保存检查点
+make resume                       # 恢复工作
+make status                       # 查看状态
+
+# 部署和运维
+make backup                       # 完整备份
+make db-backup                    # 数据库备份
+make metrics                      # 系统指标
+make clean                        # 清理构建
+```
+
+## 📊 监控接口
+
+### 系统状态
+```
+GET /api/system/status
+GET /api/system/health
+GET /api/system/metrics
+```
+
+### 健康检查
+```
+GET /health
+```
+
+## 📁 项目结构
 
 ```
 .
-├── backend/          # 后端服务 (FastAPI)
+├── backend/               # 后端服务 (FastAPI)
 │   ├── app/
-│   │   ├── api/      # API 路由
-│   │   ├── core/     # 配置和数据库
-│   │   ├── models/   # 数据模型
-│   │   ├── schemas/  # Pydantic 模式
-│   │   └── services/ # 业务逻辑
-│   ├── data/         # 数据目录
+│   │   ├── api/          # API 路由
+│   │   ├── core/         # 配置和数据库
+│   │   ├── models/       # 数据模型
+│   │   ├── schemas/      # Pydantic 模式
+│   │   └── services/     # 业务逻辑
+│   ├── data/             # 数据目录
+│   ├── tests/            # 测试文件
+│   ├── scripts/          # 工具脚本
 │   ├── requirements.txt
-│   └── run.py
-├── frontend/         # 前端应用 (Vue 3)
+│   └── main.py
+├── frontend/             # 前端应用 (Vue 3)
 │   ├── src/
-│   │   ├── views/    # 页面组件
-│   │   ├── api/      # API 调用
-│   │   ├── router/   # 路由配置
-│   │   └── stores/   # 状态管理
+│   │   ├── views/       # 页面组件
+│   │   ├── components/  # 复用组件
+│   │   ├── api/        # API 调用
+│   │   ├── router/     # 路由配置
+│   │   └── stores/     # 状态管理
 │   └── package.json
-└── docs/             # 设计文档
+├── docs/                # 设计文档和计划
+│   └── plans/          # SCALE OS 计划
+├── .agent/             # SCALE OS 状态
+│   ├── state/         # 当前状态
+│   └── checkpoints/   # 检查点
+├── scripts/            # SCALE OS 脚本
+├── Makefile           # 统一命令入口
+├── CLAUDE.md          # AI 指导文档
+├── docker-compose.yml
+└── README.md
 ```
 
-## 页面功能
+## 📱 页面功能
 
 | 页面 | 路径 | 功能描述 |
 |------|------|---------|
@@ -91,8 +217,18 @@ docker-compose up -d
 | 生命周期 | `/lifecycle` | 商品生命周期分析 |
 | 付费推广 | `/ads` | 广告投放数据分析 |
 | 导入 | `/import` | Excel数据导入 |
+| 智能导入 | `/smart-import` | AI 智能导入 |
+| 系统设置 | `/settings` | 系统配置 |
 
-## API 接口文档
+## 🔌 API 接口文档
+
+### 系统监控
+
+| 方法 | 端点 | 描述 |
+|------|------|------|
+| GET | `/api/system/status` | 系统状态概览 |
+| GET | `/api/system/health` | 健康检查详情 |
+| GET | `/api/system/metrics` | 完整指标数据 |
 
 ### 商品管理
 
@@ -109,17 +245,13 @@ docker-compose up -d
 | GET | `/api/products/{product_id}/operations` | 获取运营动作 |
 | GET | `/api/products/{product_id}/notes` | 获取商品备注 |
 | POST | `/api/products/{product_id}/notes` | 添加商品备注 |
-| GET | `/api/products/{product_id}/tags` | 获取商品标签 |
-| POST | `/api/products/{product_id}/tags` | 添加商品标签 |
-| DELETE | `/api/products/{product_id}/tags/{tag_id}` | 删除商品标签 |
-| GET | `/api/products/filters/options` | 获取筛选选项 |
-| GET | `/api/products/categories` | 获取分类列表 |
 
 ### 数据导入导出
 
 | 方法 | 端点 | 描述 |
 |------|------|------|
 | POST | `/api/import/excel` | 导入 Excel 文件 |
+| POST | `/api/smart-import/scan` | 智能扫描文件夹 |
 | GET | `/api/export/products` | 导出商品数据 |
 | GET | `/api/export/data` | 导出分析数据 |
 
@@ -127,228 +259,91 @@ docker-compose up -d
 
 | 方法 | 端点 | 描述 |
 |------|------|------|
-| GET | `/api/dashboard` | 获取仪表盘数据（兼容旧版） |
 | GET | `/api/dashboard/summary` | 获取仪表盘汇总 |
 | GET | `/api/dashboard/top-products` | 获取热门商品 |
 | GET | `/api/dashboard/quadrant` | 获取四象限分析 |
 
-### KPI 指标
+### 完整 API 文档
 
-| 方法 | 端点 | 描述 |
-|------|------|------|
-| GET | `/api/kpi/summary` | 获取 KPI 汇总 |
-| GET | `/api/kpi/anomalies` | 获取 KPI 异常列表 |
-| POST | `/api/kpi/anomalies/{alert_id}/dismiss` | 忽略异常 |
+启动后端服务后，访问：
+- Swagger UI: http://localhost:8000/docs
+- ReDoc: http://localhost:8000/redoc
 
-### 趋势分析
+## 💾 数据备份
 
-| 方法 | 端点 | 描述 |
-|------|------|------|
-| GET | `/api/trends/shop` | 获取店铺趋势 |
-| GET | `/api/trends/product/{product_id}` | 获取商品趋势 |
-| GET | `/api/trends/events` | 获取趋势事件 |
-| POST | `/api/trends/events` | 添加趋势事件 |
-| DELETE | `/api/trends/events/{event_id}` | 删除趋势事件 |
-
-### 健康度分析
-
-| 方法 | 端点 | 描述 |
-|------|------|------|
-| GET | `/api/health/list` | 获取商品健康度列表 |
-| GET | `/api/health/summary` | 获取健康度汇总 |
-| GET | `/api/health/{product_id}` | 获取商品健康度详情 |
-| GET | `/api/health/alerts` | 获取健康度告警 |
-| POST | `/api/health/refresh/{product_id}` | 刷新健康度评分 |
-
-### 对比分析
-
-| 方法 | 端点 | 描述 |
-|------|------|------|
-| GET | `/api/compare` | 对比两个周期数据 |
-
-### 运营动作
-
-| 方法 | 端点 | 描述 |
-|------|------|------|
-| GET | `/api/actions` | 获取运营动作列表 |
-| POST | `/api/actions` | 创建运营动作 |
-| DELETE | `/api/actions/{action_id}` | 删除运营动作 |
-| GET | `/api/action-stats` | 获取运营统计 |
-
-### 退款分析
-
-| 方法 | 端点 | 描述 |
-|------|------|------|
-| GET | `/api/refunds` | 获取退款列表 |
-| GET | `/api/refunds/summary` | 获取退款汇总 |
-
-### 评价分析
-
-| 方法 | 端点 | 描述 |
-|------|------|------|
-| GET | `/api/reviews` | 获取评价列表 |
-| GET | `/api/reviews/summary` | 获取评价汇总 |
-| GET | `/api/reviews/sentiment` | 获取情感分析 |
-
-### 市场分析
-
-| 方法 | 端点 | 描述 |
-|------|------|------|
-| GET | `/api/market/keywords` | 获取关键词分析 |
-| GET | `/api/market/opportunities` | 获取市场机会 |
-| GET | `/api/market/analysis` | 获取市场分析 |
-
-### 目标管理
-
-| 方法 | 端点 | 描述 |
-|------|------|------|
-| GET | `/api/targets` | 获取目标列表 |
-| GET | `/api/targets/shop` | 获取店铺目标 |
-| GET | `/api/targets/products` | 获取商品目标 |
-| POST | `/api/targets` | 创建目标 |
-| PUT | `/api/targets/{target_id}` | 更新目标 |
-| DELETE | `/api/targets/{target_id}` | 删除目标 |
-
-### 告警系统
-
-| 方法 | 端点 | 描述 |
-|------|------|------|
-| GET | `/api/alerts` | 获取告警列表 |
-| POST | `/api/alerts/{alert_id}/dismiss` | 忽略告警 |
-| GET | `/api/alerts/rules` | 获取告警规则 |
-| PUT | `/api/alerts/rules/{rule_id}` | 更新告警规则 |
-
-### 商品生命周期
-
-| 方法 | 端点 | 描述 |
-|------|------|------|
-| GET | `/api/lifecycle/products` | 获取生命周期分析 |
-| GET | `/api/lifecycle/stages` | 获取生命周期阶段分布 |
-
-### 付费推广
-
-| 方法 | 端点 | 描述 |
-|------|------|------|
-| GET | `/api/ads/summary` | 获取广告投放汇总 |
-| GET | `/api/ads/products` | 获取商品广告数据 |
-| GET | `/api/ads/detail` | 获取广告详细数据 |
-
-### 工具箱
-
-| 方法 | 端点 | 描述 |
-|------|------|------|
-| GET | `/api/toolbox/templates` | 获取导入模板 |
-| GET | `/api/toolbox/backup` | 备份数据 |
-| POST | `/api/toolbox/restore` | 恢复数据 |
-
-### 自定义字段
-
-| 方法 | 端点 | 描述 |
-|------|------|------|
-| GET | `/api/custom-fields` | 获取自定义字段 |
-| POST | `/api/custom-fields` | 创建自定义字段 |
-| PUT | `/api/custom-fields/{field_id}` | 更新自定义字段 |
-| DELETE | `/api/custom-fields/{field_id}` | 删除自定义字段 |
-
-### 周期数据
-
-| 方法 | 端点 | 描述 |
-|------|------|------|
-| GET | `/api/periods` | 获取可用周期列表 |
-
-### 系统状态
-
-| 方法 | 端点 | 描述 |
-|------|------|------|
-| GET | `/api/status` | 获取系统状态 |
-| GET | `/api/health` | 健康检查 |
-
-## 数据导入
-
-### 使用现有的真实数据
 ```bash
-cd backend
-python simple_import.py
+# 数据库备份
+make db-backup
+
+# 完整备份
+make backup
+
+# 恢复（需要手动选择文件）
+make db-restore
+make restore
 ```
 
-### 导入 Excel 文件
-通过前端页面 `/import` 导入 Excel 文件。
+## 🛡️ 安全配置
 
-## 数据库表结构
+### 环境变量示例
 
-### 核心表
+复制 `.env.example` 为 `.env` 并编辑：
 
-| 表名 | 描述 |
-|------|------|
-| `products` | 商品基础信息 |
-| `daily_data` | 日数据 |
-| `weekly_data` | 周数据 |
-| `monthly_data` | 月数据 |
-| `product_tags` | 商品标签 |
-| `product_notes` | 商品备注 |
-| `product_custom_fields` | 自定义字段 |
-| `operation_actions` | 运营动作 |
-| `paid_detail` | 付费推广详情 |
+```bash
+cp backend/.env.example backend/.env
+```
 
-### 分析表
+### 安全建议
+- ✅ 从不提交 `.env` 文件到 Git
+- ✅ 密钥自动生成，无需硬编码
+- ✅ 使用环境变量管理配置
+- ✅ 定期执行 `make redlines` 检查
 
-| 表名 | 描述 |
-|------|------|
-| `product_health` | 商品健康度 |
-| `refunds` | 退款记录 |
-| `reviews` | 评价记录 |
-| `review_summary` | 评价汇总 |
-| `market_analysis` | 市场分析 |
-| `market_keyword_opportunities` | 关键词机会 |
-| `chart_events` | 趋势事件 |
-| `alerts` | 告警记录 |
-| `alert_rules` | 告警规则 |
+## 🧪 测试
 
-### 目标表
+```bash
+# 运行所有测试
+make test
 
-| 表名 | 描述 |
-|------|------|
-| `shop_targets` | 店铺目标 |
-| `product_targets` | 商品目标 |
+# 或直接运行
+cd backend
+python -m pytest tests/ -v
+```
 
-### 辅助表
+## 📈 性能优化
 
-| 表名 | 描述 |
-|------|------|
-| `scheduled_tasks` | 定时任务 |
-| `operation_logs` | 操作日志 |
+- 数据库索引优化
+- 前端组件懒加载
+- API 响应缓存
+- ECharts 按需加载
+- 分块构建策略
 
-## 技术栈
+## 🔧 技术栈
 
-- **后端**：FastAPI 0.115+, SQLAlchemy 2.0+, Pandas, Pydantic
+- **后端**：FastAPI 0.115+, SQLAlchemy 2.0+, Pandas, Pydantic, psutil
 - **前端**：Vue 3 + Vite + Element Plus + ECharts 5
 - **数据库**：SQLite（轻量、易部署，可迁移到 PostgreSQL）
+- **测试**：pytest, pytest-asyncio
+- **部署**：Docker, docker-compose
+- **AI 开发**：SCALE OS 认知脚手架
 
-## 常用命令
+## 📚 相关资源
 
-```bash
-# 后端
-cd backend
-python run.py                    # 启动后端服务
-python simple_import.py          # 导入示例数据
+- [SCALE OS 配置网站](https://scale-os.hongmaple.top)
+- [项目脚手架 GitHub](https://github.com/hongmaple0820/project-scaffold)
+- [FastAPI 文档](https://fastapi.tiangolo.com)
+- [Vue 3 文档](https://cn.vuejs.org)
 
-# 前端
-cd frontend
-npm install                      # 安装依赖
-npm run dev                      # 开发模式
-npm run build                    # 生产构建
-```
+## 📄 许可证
 
-## 环境变量
+内部使用，请勿外传。
 
-### 后端 (.env)
-```
-DATABASE_URL=sqlite:///./data/dashboard.db
-LOG_LEVEL=INFO
-CORS_ORIGINS=http://localhost:5173
-```
+---
 
-### 前端 (.env)
-```
-VITE_API_BASE=/api
-```
+## 📞 支持
+
+如遇问题，查看：
+1. `docs/plans/` 下的项目文档
+2. [CLAUDE.md](file:///workspace/CLAUDE.md) AI 指导
+3. `/api/system/health` 系统状态
+4. `make status` 当前状态检查
