@@ -203,5 +203,32 @@ export default {
   },
   getCompetitionAnalysis(category) {
     return request.get('/market/competition', { params: { category } })
+  },
+  getProductRecommendations(params) {
+    return request.get('/recommendation/products', { params })
+  },
+  getPriceOptimizations(params) {
+    return request.get('/recommendation/price-optimization', { params })
+  },
+  getCrossSellOpportunities(productId, limit = 5) {
+    return request.get('/recommendation/cross-sell', { params: { product_id: productId, limit } })
+  },
+  getKeywordRecommendations(params) {
+    return request.get('/recommendation/keywords', { params })
+  },
+  getWeeklyReport(period) {
+    return request.get('/reports/weekly-summary', { params: { period } })
+  },
+  getMonthlyReport(month) {
+    return request.get('/reports/monthly-summary', { params: { month } })
+  },
+  getHealthReport(period) {
+    return request.get('/reports/health-report', { params: { period } })
+  },
+  getAlertSummary(days) {
+    return request.get('/reports/alert-summary', { params: { days } })
+  },
+  exportReportJson(type, period) {
+    return request.get('/reports/export/json', { params: { report_type: type, period } })
   }
 }

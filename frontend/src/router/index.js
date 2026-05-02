@@ -102,6 +102,16 @@ const routes = [
     component: () => import('@/views/Compare.vue')
   },
   {
+    path: '/recommendation',
+    name: 'Recommendation',
+    component: () => import('@/views/Recommendation.vue')
+  },
+  {
+    path: '/report',
+    name: 'Report',
+    component: () => import('@/views/Report.vue')
+  },
+  {
     path: '/:pathMatch(.*)*',
     redirect: '/'
   }

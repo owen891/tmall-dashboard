@@ -134,10 +134,21 @@
             <span v-if="!isCollapsed">智能工具</span>
           </div>
 
-          <el-menu-item index="/toolbox">
-            <el-icon><Tools /></el-icon>
-            <template #title>运营工具箱</template>
-          </el-menu-item>
+          <el-sub-menu index="smart-tools">
+            <template #title>
+              <el-icon><MagicStick /></el-icon>
+              <span>智能工具</span>
+            </template>
+            <el-menu-item index="/recommendation">
+              <span>智能选品</span>
+            </el-menu-item>
+            <el-menu-item index="/toolbox">
+              <span>运营工具箱</span>
+            </el-menu-item>
+            <el-menu-item index="/report">
+              <span>自动报告</span>
+            </el-menu-item>
+          </el-sub-menu>
         </el-menu>
       </el-scrollbar>
     </el-aside>

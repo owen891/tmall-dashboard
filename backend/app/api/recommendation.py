@@ -1,11 +1,10 @@
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
-from sqlalchemy import func, desc, and_, or_
-from typing import Optional, List
+from sqlalchemy import func, desc
+from typing import Optional
 from app.core.database import get_db
 from app.schemas.common import ResponseModel
-from app.models import Product, WeeklyData, MonthlyData, DailyData
-from datetime import datetime, timedelta
+from app.models import Product, WeeklyData
 import random
 
 router = APIRouter(prefix="/recommendation", tags=["智能推荐"])
@@ -19,7 +18,7 @@ def get_product_recommendations(
 ):
     """
     获取商品推荐列表
-    基于销量、ROI、增长率等指标综合评分
+    基于销量、ROI、转化率等指标综合评分
     """
     query = db.query(Product, WeeklyData).join(
         WeeklyData, Product.product_id == WeeklyData.product_id
@@ -39,10 +38,10 @@ def get_product_recommendations(
             
         sales_score = min(weekly.payment_amount / 10000, 100) if weekly.payment_amount else 0
         roi_score = min(weekly.ad_roi * 10, 100) if weekly.ad_roi else 0
-        growth_score = min(abs(weekly.gsv_change or 0) * 5, 100) if weekly.gsv_change else 0
         conversion_score = min((weekly.payment_conversion or 0) * 100, 100)
+        avg_order_score = min((weekly.avg_order_value or 0) / 100, 100)
         
-        total_score = (sales_score * 0.3 + roi_score * 0.3 + growth_score * 0.2 + conversion_score * 0.2)
+        total_score = (sales_score * 0.35 + roi_score * 0.30 + conversion_score * 0.20 + avg_order_score * 0.15)
         
         recommendations.append({
             "product_id": product.product_id,
@@ -52,7 +51,7 @@ def get_product_recommendations(
             "payment_amount": weekly.payment_amount or 0,
             "ad_roi": weekly.ad_roi or 0,
             "conversion": weekly.payment_conversion or 0,
-            "growth": weekly.gsv_change or 0,
+            "avg_order_value": weekly.avg_order_value or 0,
             "score": round(total_score, 2),
             "recommendation_type": _get_recommendation_type(total_score, weekly),
             "reasons": _get_recommendation_reasons(product, weekly)
@@ -69,11 +68,12 @@ def get_product_recommendations(
 @router.get("/price-optimization", response_model=ResponseModel)
 def get_price_optimization(
     product_id: Optional[str] = Query(None, description="商品ID"),
+    limit: int = Query(20, ge=1, le=50),
     db: Session = Depends(get_db)
 ):
     """
     获取价格优化建议
-    基于竞品分析、转化率、利润空间
+    基于转化率、ROI等指标分析
     """
     query = db.query(Product, WeeklyData).join(
         WeeklyData, Product.product_id == WeeklyData.product_id
@@ -84,7 +84,7 @@ def get_price_optimization(
     if product_id:
         query = query.filter(Product.product_id == product_id)
     
-    results = query.limit(20).all()
+    results = query.limit(limit).all()
     
     optimizations = []
     for product, weekly in results:
@@ -92,36 +92,36 @@ def get_price_optimization(
             continue
         
         current_price = weekly.avg_order_value or 50
-        target_roi = 3.0
-        
-        refund_rate = weekly.refund_rate or 0
         conversion = weekly.payment_conversion or 0
+        roi = weekly.ad_roi or 0
         
-        if conversion > 0.05 and refund_rate < 0.1:
+        if conversion > 0.05 and roi > 2:
             suggested_price = current_price * 1.1
             action = "提价"
-            reason = "转化率高、退款率低，可以适当提价"
-        elif conversion < 0.02 and refund_rate < 0.15:
+            reason = "转化率高、ROI良好，可以适当提价"
+        elif conversion < 0.02:
             suggested_price = current_price * 0.9
             action = "降价"
             reason = "转化率低，通过降价提升竞争力"
-        elif refund_rate > 0.2:
-            suggested_price = current_price * 0.95
-            action = "小幅降价"
-            reason = "退款率高，适当降价改善"
+        elif roi > 3:
+            suggested_price = current_price * 1.05
+            action = "小幅提价"
+            reason = "ROI优秀，可以小幅提价增加利润"
         else:
             suggested_price = current_price
             action = "维持"
             reason = "当前价格合理"
         
-        roi_change = (suggested_price - current_price) / current_price * 100
+        price_change = ((suggested_price - current_price) / current_price * 100) if current_price else 0
+        
+        refund_rate = (weekly.refund_amount / weekly.payment_amount) if weekly.payment_amount and weekly.payment_amount > 0 else 0
         
         optimizations.append({
             "product_id": product.product_id,
             "title": product.title,
             "current_price": round(current_price, 2),
             "suggested_price": round(suggested_price, 2),
-            "price_change": round(roi_change, 2),
+            "price_change": round(price_change, 2),
             "action": action,
             "reason": reason,
             "current_conversion": round(conversion * 100, 2),
@@ -143,7 +143,7 @@ def get_cross_sell_opportunities(
 ):
     """
     获取跨类目销售机会
-    基于购买行为分析推荐搭配商品
+    基于类目分析推荐搭配商品
     """
     base_product = db.query(Product).filter(
         Product.product_id == product_id
@@ -200,9 +200,6 @@ def get_keyword_recommendations(
         {"keyword": "轻奢", "search_volume": 3800, "competition": 0.52, "bid": 3.5},
     ]
     
-    if category:
-        keywords_data = [k for k in keywords_data]
-    
     for kw in keywords_data:
         kw["opportunity_score"] = round(
             (kw["search_volume"] / 15000 * 0.4 + 
@@ -238,14 +235,14 @@ def _get_recommendation_reasons(product, weekly):
     if weekly.ad_roi and weekly.ad_roi > 3:
         reasons.append("ROI高于行业平均")
     
-    if weekly.gsv_change and weekly.gsv_change > 10:
-        reasons.append("环比增长强劲")
-    
     if weekly.payment_conversion and weekly.payment_conversion > 0.05:
         reasons.append("转化率优秀")
     
-    if weekly.refund_rate and weekly.refund_rate > 0.15:
-        reasons.append("退款率偏高需关注")
+    if weekly.avg_order_value and weekly.avg_order_value > 100:
+        reasons.append("客单价较高")
+    
+    if weekly.ad_spend and weekly.ad_spend > 1000:
+        reasons.append("推广投入较大")
     
     if not reasons:
         reasons.append("综合表现一般")
