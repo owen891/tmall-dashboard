@@ -230,5 +230,38 @@ export default {
   },
   exportReportJson(type, period) {
     return request.get('/reports/export/json', { params: { report_type: type, period } })
+  },
+  getRealtimeSummary() {
+    return request.get('/realtime/summary')
+  },
+  getRealtimeTopProducts(limit) {
+    return request.get('/realtime/top-products', { params: { limit } })
+  },
+  getPrediction(params) {
+    return request.get('/prediction/gmv', { params })
+  },
+  getSalesPrediction(params) {
+    return request.get('/prediction/sales', { params })
+  },
+  getStockPrediction(productId, leadTime) {
+    return request.get('/prediction/stock', { params: { product_id: productId, lead_time: leadTime } })
+  },
+  getTeamMembers() {
+    return request.get('/collaboration/team')
+  },
+  getActivityLog(limit) {
+    return request.get('/collaboration/activity-log', { params: { limit } })
+  },
+  createActivityLog(action, detail, operator) {
+    return request.post('/collaboration/activity-log', { action, detail, operator })
+  },
+  getDataQualityOverview() {
+    return request.get('/data-quality/overview')
+  },
+  getMissingValues(period) {
+    return request.get('/data-quality/missing-values', { params: { period } })
+  },
+  getDataAnomalies(period) {
+    return request.get('/data-quality/anomalies', { params: { period } })
   }
 }

@@ -128,6 +128,12 @@
             <el-menu-item index="/compare">
               <span>周期对比</span>
             </el-menu-item>
+            <el-menu-item index="/prediction">
+              <span>预测分析</span>
+            </el-menu-item>
+            <el-menu-item index="/data-quality">
+              <span>数据质量</span>
+            </el-menu-item>
           </el-sub-menu>
 
           <div class="menu-divider">

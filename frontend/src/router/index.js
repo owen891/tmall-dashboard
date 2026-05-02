@@ -112,6 +112,16 @@ const routes = [
     component: () => import('@/views/Report.vue')
   },
   {
+    path: '/prediction',
+    name: 'Prediction',
+    component: () => import('@/views/Prediction.vue')
+  },
+  {
+    path: '/data-quality',
+    name: 'DataQuality',
+    component: () => import('@/views/DataQuality.vue')
+  },
+  {
     path: '/:pathMatch(.*)*',
     redirect: '/'
   }
