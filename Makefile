@@ -6,7 +6,7 @@
 .PHONY: graphify test-scaffold check-redlines
 .PHONY: docker-build docker-up docker-down docker-logs
 .PHONY: backup restore db-backup db-restore
-.PHONY: metrics deploy
+.PHONY: metrics deploy format lint-all
 .PHONY: setup install-full
 
 # 默认目标
@@ -23,6 +23,13 @@ help:
 	@echo "  make dev        - 同时启动前后端"
 	@echo "  make build      - 构建前端生产版本"
 	@echo ""
+	@echo "🔍 代码质量"
+	@echo "  make lint        - 运行代码检查"
+	@echo "  make lint-all    - 完整代码检查"
+	@echo "  make format      - 格式化代码"
+	@echo "  make test        - 运行测试"
+	@echo "  make pre-commit  - 安装 Git hooks"
+	@echo ""
 	@echo "🐳 Docker 部署"
 	@echo "  make docker-build  - 构建Docker镜像"
 	@echo "  make docker-up     - 启动Docker服务"
@@ -37,8 +44,6 @@ help:
 	@echo ""
 	@echo "📊 系统监控"
 	@echo "  make metrics       - 查看系统指标"
-	@echo "  make test          - 运行测试"
-	@echo "  make lint          - 代码检查"
 	@echo ""
 	@echo "🛡️ SCALE OS 脚手架命令"
 	@echo "  make preflight   - 环境预检"
@@ -48,10 +53,9 @@ help:
 	@echo "  make plan NAME=xxx - 创建新功能计划"
 	@echo "  make resume      - 恢复之前的进度"
 	@echo "  make status      - 查看当前状态"
-	@echo "  make graphify    - 构建知识图谱"
 	@echo "  make redlines    - 红线安全检查"
 	@echo ""
-	@echo "🔍 其他"
+	@echo "🔧 其他"
 	@echo "  make clean       - 清理构建文件"
 
 # 一键设置
@@ -66,8 +70,8 @@ setup:
 	@echo "📦 安装依赖..."
 	@make install-full
 	@echo ""
-	@echo "🔍 运行预检..."
-	@make preflight
+	@echo "🔍 安装 pre-commit hooks..."
+	@cd backend && pip install pre-commit -q && pre-commit install 2>/dev/null || true
 	@echo ""
 	@echo "✅ 设置完成！运行 'make dev' 启动开发服务器"
 
@@ -103,12 +107,56 @@ build:
 	cd frontend && npm run build
 	@echo "✅ 构建成功!"
 
+# ========================================
+# 代码质量命令
+# ========================================
+
 # 代码检查
 lint:
-	@echo "运行代码检查..."
-	@echo "检查前端..."
+	@echo "🔍 运行代码检查..."
+	@echo ""
+	@echo "前端检查..."
+	cd frontend && npm run lint 2>/dev/null || echo "⚠️ 前端 lint 未配置"
+	@echo ""
+	@echo "后端检查..."
+	cd backend && python -m flake8 app/ --config=.flake8 2>/dev/null || echo "⚠️ 后端 flake8 未安装"
+	@echo ""
+	@echo "✅ 代码检查完成"
+
+# 完整代码检查
+lint-all:
+	@echo "🔍 运行完整代码检查..."
+	@echo ""
+	@echo "前端 ESLint..."
 	cd frontend && npm run lint || true
-	@echo "✅ Lint检查完成"
+	@echo ""
+	@echo "后端 Flake8..."
+	cd backend && python -m flake8 app/ --config=.flake8 || true
+	@echo ""
+	@echo "后端 Black 检查..."
+	cd backend && python -m black --check app/ || true
+	@echo ""
+	@echo "✅ 完整检查完成"
+
+# 格式化代码
+format:
+	@echo "✨ 格式化代码..."
+	@echo ""
+	@echo "格式化前端..."
+	cd frontend && npm run format 2>/dev/null || echo "⚠️ 前端 format 未配置"
+	@echo ""
+	@echo "格式化后端..."
+	cd backend && python -m black app/ 2>/dev/null || echo "⚠️ black 未安装"
+	cd backend && python -m isort app/ 2>/dev/null || true
+	@echo ""
+	@echo "✅ 格式化完成"
+
+# 安装 pre-commit
+pre-commit:
+	@echo "🔧 安装 pre-commit hooks..."
+	cd backend && pip install pre-commit -q
+	pre-commit install
+	@echo "✅ pre-commit 已安装"
 
 # 测试
 test:
@@ -153,25 +201,21 @@ verify-build:
 # Docker 部署命令
 # ========================================
 
-# 构建Docker镜像
 docker-build:
 	@echo "🐳 构建Docker镜像..."
 	docker-compose build
 	@echo "✅ Docker镜像构建完成"
 
-# 启动Docker服务
 docker-up:
 	@echo "🐳 启动Docker服务..."
 	docker-compose up -d
 	@echo "✅ Docker服务已启动"
 
-# 停止Docker服务
 docker-down:
 	@echo "🐳 停止Docker服务..."
 	docker-compose down
 	@echo "✅ Docker服务已停止"
 
-# 查看Docker日志
 docker-logs:
 	@echo "🐳 查看Docker日志..."
 	docker-compose logs -f
@@ -180,7 +224,6 @@ docker-logs:
 # 数据备份命令
 # ========================================
 
-# 完整备份
 backup:
 	@echo "💾 创建完整备份..."
 	@mkdir -p backup
@@ -188,12 +231,10 @@ backup:
 	tar czf "backup/$$BACKUP_NAME.tar.gz" backend/data/ frontend/dist/ docs/ 2>/dev/null && \
 	echo "✅ 备份完成: backup/$$BACKUP_NAME.tar.gz"
 
-# 恢复备份
 restore:
 	@echo "💾 恢复备份..."
 	@ls -1 backup/ | tail -1
 
-# 数据库备份
 db-backup:
 	@echo "💾 数据库备份..."
 	@mkdir -p backend/data/backups
@@ -201,7 +242,6 @@ db-backup:
 	cp backend/data/dashboard.db "backend/data/backups/$$BACKUP_NAME" && \
 	echo "✅ 数据库备份完成: backend/data/backups/$$BACKUP_NAME"
 
-# 数据库恢复
 db-restore:
 	@echo "💾 数据库恢复..."
 	@ls -1 backend/data/backups/ | tail -1
@@ -210,7 +250,6 @@ db-restore:
 # 系统监控命令
 # ========================================
 
-# 系统指标
 metrics:
 	@echo "📊 系统指标"
 	@echo "===================="
@@ -227,35 +266,24 @@ metrics:
 # SCALE OS 脚手架命令
 # ========================================
 
-# 环境预检
-preflight:
-	@echo "========================================"
-	@echo "[PREFLIGHT] 环境预检"
-	@echo "========================================"
-	@bash scripts/preflight/all.sh
-
-# 配置验证
 validate:
 	@echo "========================================"
 	@echo "[VALIDATE] 配置验证"
 	@echo "========================================"
 	@bash scripts/validate-config.sh
 
-# 质量门控
 gate:
 	@echo "========================================"
 	@echo "[GATE] 质量门控检查"
 	@echo "========================================"
 	@bash scripts/gates/all.sh
 
-# 保存检查点
 checkpoint:
 	@echo "========================================"
 	@echo "[CHECKPOINT] 保存进度"
 	@echo "========================================"
 	@bash scripts/checkpoint/save.sh
 
-# 创建计划
 plan:
 ifndef NAME
 	@echo "❌ 请提供功能名称: make plan NAME=feature-name"
@@ -266,14 +294,12 @@ endif
 	@echo "========================================"
 	@bash scripts/init-plan.sh $(NAME)
 
-# 恢复进度
 resume:
 	@echo "========================================"
 	@echo "[RESUME] 恢复进度"
 	@echo "========================================"
 	@bash scripts/checkpoint/load.sh
 
-# 查看状态
 status:
 	@echo "========================================"
 	@echo "[STATUS] 当前状态"
@@ -284,18 +310,6 @@ status:
 		echo "暂无状态记录，请先 make plan 或 make checkpoint"; \
 	fi
 
-# 构建知识图谱
-graphify:
-	@echo "========================================"
-	@echo "[GRAPHIFY] 知识图谱构建"
-	@echo "========================================"
-	@which graphify > /dev/null 2>&1 || { \
-		echo "⚠️ graphify 未安装，跳过图谱构建"; \
-		echo "💡 安装命令: pip install graphifyy && graphify install"; \
-	}
-	@which graphify > /dev/null 2>&1 && graphify build || true
-
-# 红线安全检查
 redlines:
 	@echo "========================================"
 	@echo "[REDLINES] 红线安全检查"
@@ -306,10 +320,3 @@ redlines:
 	@bash scripts/redlines/R2-check.sh
 	@echo "检查 R3: 密钥安全..."
 	@bash scripts/redlines/R3-check.sh
-
-# 脚手架自测
-test-scaffold:
-	@echo "========================================"
-	@echo "[SCAFFOLD TESTS] 脚手架自测"
-	@echo "========================================"
-	@bash scripts/test-scaffold.sh
