@@ -182,6 +182,11 @@ const routes = [
     component: () => import('@/views/SmartAlert.vue')
   },
   {
+    path: '/import-center',
+    name: 'ImportCenter',
+    component: () => import('@/views/ImportCenter.vue')
+  },
+  {
     path: '/:pathMatch(.*)*',
     redirect: '/'
   }

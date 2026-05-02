@@ -191,31 +191,12 @@
         </div>
 
         <div class="header-right">
-          <div class="date-selector">
-            <el-select v-model="dateRangeType" size="small" style="width: 90px;" @change="handleDateRangeChange">
-              <el-option label="今日" value="day" />
-              <el-option label="本周" value="week" />
-              <el-option label="本月" value="month" />
-              <el-option label="自定义" value="custom" />
-            </el-select>
-            
-            <el-date-picker
-              v-if="dateRangeType === 'custom'"
-              v-model="customDateRange"
-              type="daterange"
-              range-separator="-"
-              start-placeholder="开始"
-              end-placeholder="结束"
-              size="small"
-              style="width: 220px;"
-              @change="handleCustomDateChange"
-            />
-          </div>
+          <GlobalTimeFilter />
           
           <el-button size="small" @click="handleRefresh">
             <el-icon><Refresh /></el-icon>
           </el-button>
-          <el-button type="primary" size="small" @click="$router.push('/import')">
+          <el-button type="primary" size="small" @click="$router.push('/import-center')">
             <el-icon><Upload /></el-icon>
             <span>导入</span>
           </el-button>
@@ -237,12 +218,10 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
+import GlobalTimeFilter from '@/components/GlobalTimeFilter.vue'
 
 const route = useRoute()
 const isCollapsed = ref(false)
-const dateRangeType = ref('month')
-const currentDate = ref(new Date())
-const customDateRange = ref([])
 
 const activeMenu = computed(() => route.path)
 
@@ -253,6 +232,7 @@ const pageTitle = computed(() => {
     '/product': '商品详情',
     '/channel': '渠道分析',
     '/import': '数据导入',
+    '/import-center': '数据导入中心',
     '/quadrant': '四象限分析',
     '/kpi': 'KPI分析',
     '/trends': '趋势分析',
@@ -288,40 +268,12 @@ const pageTitle = computed(() => {
   return titles[path] || '数据概览'
 })
 
-const handleDateRangeChange = (type) => {
-  if (type === 'day') {
-    currentDate.value = new Date()
-    ElMessage.success('已切换到今日数据')
-  } else if (type === 'week') {
-    const now = new Date()
-    const dayOfWeek = now.getDay() || 7
-    currentDate.value = new Date(now.setDate(now.getDate() - dayOfWeek + 1))
-    ElMessage.success('已切换到本周数据')
-  } else if (type === 'month') {
-    const now = new Date()
-    currentDate.value = new Date(now.getFullYear(), now.getMonth(), 1)
-    ElMessage.success('已切换到本月数据')
-  }
-}
-
-const handleCustomDateChange = (range) => {
-  if (range && range.length === 2) {
-    ElMessage.success(`已切换到 ${formatDate(range[0])} 至 ${formatDate(range[1])}`)
-  }
-}
-
 const handleRefresh = () => {
   window.location.reload()
 }
 
-const formatDate = (date) => {
-  if (!date) return ''
-  const d = new Date(date)
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-}
-
 onMounted(() => {
-  handleDateRangeChange('month')
+  // 初始化
 })
 </script>
 
