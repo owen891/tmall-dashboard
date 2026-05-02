@@ -34,11 +34,6 @@
             </el-menu-item>
           </el-sub-menu>
 
-          <el-menu-item index="/import">
-            <el-icon><Upload /></el-icon>
-            <template #title>数据导入</template>
-          </el-menu-item>
-
           <el-sub-menu index="analysis">
             <template #title>
               <el-icon><DataAnalysis /></el-icon>
@@ -124,15 +119,24 @@
             </el-menu-item>
           </el-sub-menu>
 
-          <el-menu-item index="/settings">
-            <el-icon><Setting /></el-icon>
-            <template #title>系统设置</template>
-          </el-menu-item>
-
-          <el-menu-item index="/backup">
-            <el-icon><FolderOpened /></el-icon>
-            <template #title>数据备份</template>
-          </el-menu-item>
+          <el-sub-menu index="system">
+            <template #title>
+              <el-icon><Setting /></el-icon>
+              <span>系统管理</span>
+            </template>
+            <el-menu-item index="/import">
+              <el-icon><Upload /></el-icon>
+              <span>数据导入</span>
+            </el-menu-item>
+            <el-menu-item index="/backup">
+              <el-icon><FolderOpened /></el-icon>
+              <span>数据备份</span>
+            </el-menu-item>
+            <el-menu-item index="/settings">
+              <el-icon><Tools /></el-icon>
+              <span>系统设置</span>
+            </el-menu-item>
+          </el-sub-menu>
         </el-menu>
       </el-scrollbar>
     </el-aside>
@@ -227,17 +231,20 @@ const pageTitle = computed(() => {
     '/reviews': '评价分析',
     '/market': '市场分析',
     '/toolbox': '运营工具箱',
-  '/promotion': '多渠道推广',
-  '/lifecycle': '生命周期',
-  '/compare': '周期对比',
-  '/recommendation': '智能选品',
-  '/report': '自动报告',
-  '/prediction': '预测分析',
-  '/data-quality': '数据质量'
-}
+    '/promotion': '多渠道推广',
+    '/lifecycle': '生命周期',
+    '/compare': '周期对比',
+    '/recommendation': '智能选品',
+    '/report': '自动报告',
+    '/prediction': '预测分析',
+    '/data-quality': '数据质量',
+    '/settings': '系统设置',
+    '/backup': '数据备份'
+  }
   
   const path = route.path
   if (path.startsWith('/product/')) return '商品详情'
+  if (path.startsWith('/channel/')) return '渠道分析'
   return titles[path] || '数据概览'
 })
 
