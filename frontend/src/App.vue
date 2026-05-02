@@ -24,7 +24,7 @@
           <el-sub-menu index="product">
             <template #title>
               <el-icon><Goods /></el-icon>
-              <span>商品管理</span>
+              <span>商品中心</span>
             </template>
             <el-menu-item index="/products">
               <span>商品列表</span>
@@ -39,51 +39,36 @@
             <template #title>数据导入</template>
           </el-menu-item>
 
-          <div class="menu-divider">
-            <span v-if="!isCollapsed">核心分析</span>
-          </div>
-          
           <el-sub-menu index="analysis">
             <template #title>
               <el-icon><DataAnalysis /></el-icon>
-              <span>核心分析</span>
+              <span>数据分析</span>
             </template>
-            <el-menu-item index="/quadrant">
-              <span>四象限分析</span>
-            </el-menu-item>
             <el-menu-item index="/kpi">
               <span>KPI分析</span>
             </el-menu-item>
             <el-menu-item index="/trends">
               <span>趋势分析</span>
             </el-menu-item>
-          </el-sub-menu>
-
-          <el-sub-menu index="ads">
-            <template #title>
-              <el-icon><Promotion /></el-icon>
-              <span>推广分析</span>
-            </template>
-            <el-menu-item index="/promotion">
-              <span>多渠道推广</span>
+            <el-menu-item index="/quadrant">
+              <span>四象限分析</span>
             </el-menu-item>
             <el-menu-item index="/ads">
               <span>广告投放</span>
             </el-menu-item>
-            <el-menu-item index="/health">
-              <span>健康度评分</span>
+            <el-menu-item index="/promotion">
+              <span>多渠道推广</span>
             </el-menu-item>
           </el-sub-menu>
-
-          <div class="menu-divider">
-            <span v-if="!isCollapsed">运营监控</span>
-          </div>
 
           <el-sub-menu index="operations">
             <template #title>
               <el-icon><Monitor /></el-icon>
               <span>运营监控</span>
             </template>
+            <el-menu-item index="/health">
+              <span>健康度评分</span>
+            </el-menu-item>
             <el-menu-item index="/operations">
               <span>操作统计</span>
             </el-menu-item>
@@ -95,32 +80,10 @@
             </el-menu-item>
           </el-sub-menu>
 
-          <el-sub-menu index="review-market">
-            <template #title>
-              <el-icon><ChatLineSquare /></el-icon>
-              <span>评价与市场</span>
-            </template>
-            <el-menu-item index="/reviews">
-              <span>评价分析</span>
-            </el-menu-item>
-            <el-menu-item index="/market">
-              <span>市场分析</span>
-            </el-menu-item>
-          </el-sub-menu>
-
-          <el-menu-item index="/targets">
-            <el-icon><Aim /></el-icon>
-            <template #title>目标管理</template>
-          </el-menu-item>
-
-          <div class="menu-divider">
-            <span v-if="!isCollapsed">分析工具</span>
-          </div>
-          
-          <el-sub-menu index="analysis-tools">
+          <el-sub-menu index="tools">
             <template #title>
               <el-icon><TrendCharts /></el-icon>
-              <span>分析工具</span>
+              <span>运营工具</span>
             </template>
             <el-menu-item index="/lifecycle">
               <span>生命周期</span>
@@ -134,13 +97,18 @@
             <el-menu-item index="/data-quality">
               <span>数据质量</span>
             </el-menu-item>
+            <el-menu-item index="/reviews">
+              <span>评价分析</span>
+            </el-menu-item>
+            <el-menu-item index="/market">
+              <span>市场分析</span>
+            </el-menu-item>
+            <el-menu-item index="/targets">
+              <span>目标管理</span>
+            </el-menu-item>
           </el-sub-menu>
 
-          <div class="menu-divider">
-            <span v-if="!isCollapsed">智能工具</span>
-          </div>
-
-          <el-sub-menu index="smart-tools">
+          <el-sub-menu index="smart">
             <template #title>
               <el-icon><MagicStick /></el-icon>
               <span>智能工具</span>
@@ -148,23 +116,19 @@
             <el-menu-item index="/recommendation">
               <span>智能选品</span>
             </el-menu-item>
-            <el-menu-item index="/toolbox">
-              <span>运营工具箱</span>
-            </el-menu-item>
             <el-menu-item index="/report">
               <span>自动报告</span>
             </el-menu-item>
+            <el-menu-item index="/toolbox">
+              <span>运营工具箱</span>
+            </el-menu-item>
           </el-sub-menu>
-          
-          <div class="menu-divider">
-            <span v-if="!isCollapsed">其他</span>
-          </div>
-          
+
           <el-menu-item index="/settings">
             <el-icon><Setting /></el-icon>
             <template #title>系统设置</template>
           </el-menu-item>
-          
+
           <el-menu-item index="/backup">
             <el-icon><FolderOpened /></el-icon>
             <template #title>数据备份</template>
@@ -353,14 +317,6 @@ onMounted(() => {
 
 .menu-scrollbar :deep(.el-scrollbar__wrap) {
   overflow-x: hidden;
-}
-
-.menu-divider {
-  padding: 16px 20px 8px;
-  font-size: 12px;
-  color: #5a5e6a;
-  text-transform: uppercase;
-  letter-spacing: 1px;
 }
 
 .el-menu {
