@@ -138,7 +138,7 @@
 <script setup>
 import { ref, onMounted, watch } from 'vue'
 import { ElMessage } from 'element-plus'
-import { Refresh, Plus from '@element-plus/icons-vue'
+import { Refresh, Plus } from '@element-plus/icons-vue'
 
 const activeTab = ref('abtest')
 const loading = ref(false)
