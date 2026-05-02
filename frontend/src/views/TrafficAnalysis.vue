@@ -2,6 +2,14 @@
   <div class="traffic-analysis">
     <div class="page-header">
       <h1>流量分析</h1>
+      <ExportButton 
+        :table-data="channelData" 
+        :chart-instance="trendChart"
+        :file-name="`流量分析_${new Date().toISOString().split('T')[0]}`"
+        button-text="导出数据"
+        type="primary"
+        size="small"
+      />
     </div>
 
     <div v-loading="loading">
@@ -151,6 +159,7 @@ import { ref, onMounted, onBeforeUnmount } from 'vue'
 import { ElMessage } from 'element-plus'
 import { User, View, TrendCharts, Coin } from '@element-plus/icons-vue'
 import * as echarts from 'echarts'
+import ExportButton from '@/components/ExportButton.vue'
 
 const loading = ref(false)
 const trendChartRef = ref(null)

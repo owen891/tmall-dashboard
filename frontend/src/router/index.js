@@ -197,6 +197,16 @@ const routes = [
     component: () => import('@/views/TrafficAnalysis.vue')
   },
   {
+    path: '/promotion-analysis',
+    name: 'PromotionAnalysis',
+    component: () => import('@/views/PromotionAnalysis.vue')
+  },
+  {
+    path: '/backup-management',
+    name: 'BackupManagement',
+    component: () => import('@/views/BackupManagement.vue')
+  },
+  {
     path: '/:pathMatch(.*)*',
     redirect: '/'
   }

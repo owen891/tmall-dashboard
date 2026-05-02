@@ -2,6 +2,13 @@
   <div class="product-ranking">
     <div class="page-header">
       <h1>商品排行榜</h1>
+      <ExportButton 
+        :table-data="products" 
+        :file-name="`商品排行榜_${activeTab}_${new Date().toISOString().split('T')[0]}`"
+        button-text="导出数据"
+        type="primary"
+        size="small"
+      />
     </div>
 
     <el-tabs v-model="activeTab" type="card" @tab-change="handleTabChange">
@@ -109,6 +116,7 @@
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
+import ExportButton from '@/components/ExportButton.vue'
 
 const router = useRouter()
 const loading = ref(false)

@@ -82,6 +82,9 @@
             <el-menu-item index="/alerts">
               <span>异常告警</span>
             </el-menu-item>
+            <el-menu-item index="/backup-management">
+              <span>数据备份</span>
+            </el-menu-item>
           </el-sub-menu>
 
           <el-sub-menu index="analysis">
@@ -94,6 +97,9 @@
             </el-menu-item>
             <el-menu-item index="/traffic-analysis">
               <span>流量分析</span>
+            </el-menu-item>
+            <el-menu-item index="/promotion-analysis">
+              <span>推广效果分析</span>
             </el-menu-item>
           </el-sub-menu>
 
@@ -275,7 +281,9 @@ const pageTitle = computed(() => {
     '/smart-alert': '智能告警中心',
     '/import-center': '数据导入中心',
     '/product-ranking': '商品排行榜',
-    '/traffic-analysis': '流量分析'
+    '/traffic-analysis': '流量分析',
+    '/promotion-analysis': '推广效果分析',
+    '/backup-management': '数据备份与恢复'
   }
   
   const path = route.path
