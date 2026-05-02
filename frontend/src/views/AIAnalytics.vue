@@ -256,7 +256,7 @@ const depthMarks = {
   3: '标准',
   4: '详细',
   5: '深度'
-})
+}
 
 const currentReport = ref({
   title: '2026年5月1日运营日报',
