@@ -162,6 +162,26 @@ const routes = [
     component: () => import('@/views/Backup.vue')
   },
   {
+    path: '/crowd-asset',
+    name: 'CrowdAsset',
+    component: () => import('@/views/CrowdAsset.vue')
+  },
+  {
+    path: '/abtest-sop',
+    name: 'ABTestSop',
+    component: () => import('@/views/ABTestSop.vue')
+  },
+  {
+    path: '/efficiency',
+    name: 'Efficiency',
+    component: () => import('@/views/Efficiency.vue')
+  },
+  {
+    path: '/smart-alert',
+    name: 'SmartAlert',
+    component: () => import('@/views/SmartAlert.vue')
+  },
+  {
     path: '/:pathMatch(.*)*',
     redirect: '/'
   }

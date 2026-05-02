@@ -84,6 +84,25 @@
             </el-menu-item>
           </el-sub-menu>
 
+          <el-sub-menu index="command">
+            <template #title>
+              <el-icon><Trophy /></el-icon>
+              <span>六边形指挥塔</span>
+            </template>
+            <el-menu-item index="/crowd-asset">
+              <span>人群资产归因</span>
+            </el-menu-item>
+            <el-menu-item index="/abtest-sop">
+              <span>策略实验与SOP</span>
+            </el-menu-item>
+            <el-menu-item index="/efficiency">
+              <span>人效精准度量</span>
+            </el-menu-item>
+            <el-menu-item index="/smart-alert">
+              <span>智能告警中心</span>
+            </el-menu-item>
+          </el-sub-menu>
+
           <el-sub-menu index="tools">
             <template #title>
               <el-icon><TrendCharts /></el-icon>
@@ -256,7 +275,11 @@ const pageTitle = computed(() => {
     '/prediction': '预测分析',
     '/data-quality': '数据质量',
     '/settings': '系统设置',
-    '/backup': '数据备份'
+    '/backup': '数据备份',
+    '/crowd-asset': '人群资产归因',
+    '/abtest-sop': '策略实验与SOP',
+    '/efficiency': '人效精准度量',
+    '/smart-alert': '智能告警中心'
   }
   
   const path = route.path

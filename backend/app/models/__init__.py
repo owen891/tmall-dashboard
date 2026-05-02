@@ -31,6 +31,27 @@ from .ad import (
     AudienceAdData,
     SmartAdData
 )
+from .command_tower import (
+    WxtCampaign,
+    WxtDailyMetrics,
+    DmpCrowd,
+    DmpCampaignLink,
+    CrowdAssetStats,
+    ABTest,
+    ABTestVariant,
+    ABTestMetrics,
+    ABTestAnalysis,
+    SOPTemplate,
+    CampaignProject,
+    TaskItem,
+    UserKPI,
+    SmartAlertRule,
+    SmartAlert,
+    SupplyChainData,
+    InventoryAlert,
+    CampaignProjectSOPLink,
+    UserDailyPerformance
+)
 
 __all__ = [
     "Product",
@@ -61,5 +82,24 @@ __all__ = [
     "AdData",
     "KeywordAdData",
     "AudienceAdData",
-    "SmartAdData"
+    "SmartAdData",
+    "WxtCampaign",
+    "WxtDailyMetrics",
+    "DmpCrowd",
+    "DmpCampaignLink",
+    "CrowdAssetStats",
+    "ABTest",
+    "ABTestVariant",
+    "ABTestMetrics",
+    "ABTestAnalysis",
+    "SOPTemplate",
+    "CampaignProject",
+    "TaskItem",
+    "UserKPI",
+    "SmartAlertRule",
+    "SmartAlert",
+    "SupplyChainData",
+    "InventoryAlert",
+    "CampaignProjectSOPLink",
+    "UserDailyPerformance"
 ]
