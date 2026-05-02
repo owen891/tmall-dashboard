@@ -84,6 +84,19 @@
             </el-menu-item>
           </el-sub-menu>
 
+          <el-sub-menu index="analysis">
+            <template #title>
+              <el-icon><DataAnalysis /></el-icon>
+              <span>数据分析</span>
+            </template>
+            <el-menu-item index="/product-ranking">
+              <span>商品排行榜</span>
+            </el-menu-item>
+            <el-menu-item index="/traffic-analysis">
+              <span>流量分析</span>
+            </el-menu-item>
+          </el-sub-menu>
+
           <el-sub-menu index="command">
             <template #title>
               <el-icon><Trophy /></el-icon>
@@ -259,7 +272,10 @@ const pageTitle = computed(() => {
     '/crowd-asset': '人群资产归因',
     '/abtest-sop': '策略实验与SOP',
     '/efficiency': '人效精准度量',
-    '/smart-alert': '智能告警中心'
+    '/smart-alert': '智能告警中心',
+    '/import-center': '数据导入中心',
+    '/product-ranking': '商品排行榜',
+    '/traffic-analysis': '流量分析'
   }
   
   const path = route.path

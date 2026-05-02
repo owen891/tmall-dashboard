@@ -187,6 +187,16 @@ const routes = [
     component: () => import('@/views/ImportCenter.vue')
   },
   {
+    path: '/product-ranking',
+    name: 'ProductRanking',
+    component: () => import('@/views/ProductRanking.vue')
+  },
+  {
+    path: '/traffic-analysis',
+    name: 'TrafficAnalysis',
+    component: () => import('@/views/TrafficAnalysis.vue')
+  },
+  {
     path: '/:pathMatch(.*)*',
     redirect: '/'
   }

@@ -254,7 +254,7 @@ def analyze_drop_points(
     
     data = db.query(
         func.sum(getattr(Model, visitors_col)).label('visitors'),
-        func.sum(Model.payment_qty).label('orders'),
+        func.sum(getattr(Model, 'payment_amount' if hasattr(Model, 'payment_amount') else 'ipv')).label('orders'),
     ).filter(getattr(Model, date_col) == period).first()
     
     visitors = safe_float(data.visitors) or 1000
