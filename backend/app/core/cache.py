@@ -1,4 +1,5 @@
 import asyncio
+import inspect
 import time
 from functools import wraps
 from typing import Any, Callable, Dict, Optional
@@ -54,11 +55,13 @@ cache = TTLCache(default_ttl=300)
 
 
 def cached(ttl: int = 300, key_prefix: str = ""):
-    """缓存装饰器"""
+    """缓存装饰器 - 支持同步和异步函数"""
 
     def decorator(func: Callable):
+        is_async = inspect.iscoroutinefunction(func)
+
         @wraps(func)
-        async def wrapper(*args, **kwargs):
+        async def async_wrapper(*args, **kwargs):
             cache_key = f"{key_prefix}:{func.__name__}:{str(args)}:{str(kwargs)}"
             cached_result = await cache.get(cache_key)
             if cached_result is not None:
@@ -68,20 +71,56 @@ def cached(ttl: int = 300, key_prefix: str = ""):
             await cache.set(cache_key, result, ttl)
             return result
 
-        return wrapper
+        @wraps(func)
+        def sync_wrapper(*args, **kwargs):
+            cache_key = f"{key_prefix}:{func.__name__}:{str(args)}:{str(kwargs)}"
+            try:
+                loop = asyncio.get_running_loop()
+            except RuntimeError:
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+
+            async def get_cached():
+                cached_result = await cache.get(cache_key)
+                if cached_result is not None:
+                    logger.debug(f"Cache hit: {cache_key}")
+                    return cached_result
+                result = func(*args, **kwargs)
+                await cache.set(cache_key, result, ttl)
+                return result
+
+            return loop.run_until_complete(get_cached())
+
+        return async_wrapper if is_async else sync_wrapper
 
     return decorator
 
 
 def invalidate_cache(pattern: str):
-    """失效缓存装饰器"""
+    """失效缓存装饰器 - 支持同步和异步函数"""
 
     def decorator(func: Callable):
+        is_async = inspect.iscoroutinefunction(func)
+
         @wraps(func)
-        async def wrapper(*args, **kwargs):
+        async def async_wrapper(*args, **kwargs):
             await cache.delete_pattern(pattern)
             return await func(*args, **kwargs)
 
-        return wrapper
+        @wraps(func)
+        def sync_wrapper(*args, **kwargs):
+            try:
+                loop = asyncio.get_running_loop()
+            except RuntimeError:
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+
+            async def invalidate_and_call():
+                await cache.delete_pattern(pattern)
+                return func(*args, **kwargs)
+
+            return loop.run_until_complete(invalidate_and_call())
+
+        return async_wrapper if is_async else sync_wrapper
 
     return decorator

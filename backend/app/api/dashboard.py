@@ -1,8 +1,9 @@
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import func, desc
-from typing import Optional
+from typing import Optional, Tuple, Dict, Any
 from app.core.database import get_db
+from app.core.cache import cached
 from app.models import DailyData, WeeklyData, MonthlyData, Product
 from app.schemas.common import ResponseModel
 
@@ -31,6 +32,22 @@ def get_prev_period(period_str: str, dim: str) -> str:
         return period_str
 
 
+def get_data_model(dimension: str) -> Tuple[Any, str, str]:
+    """根据维度获取数据模型、日期字段、访客字段"""
+    if dimension == "monthly":
+        return MonthlyData, 'month', 'visitors'
+    elif dimension == "daily":
+        return DailyData, 'date', 'ipv'
+    else:
+        return WeeklyData, 'week_start', 'ipv'
+
+
+def get_latest_period(Model, date_col, db) -> Optional[str]:
+    """获取最新周期"""
+    latest = db.query(Model).order_by(desc(getattr(Model, date_col))).first()
+    return getattr(latest, date_col) if latest else None
+
+
 @router.get("", response_model=ResponseModel)
 def get_dashboard(
     dimension: str = Query("weekly", description="时间维度: daily/weekly/monthly"),
@@ -39,22 +56,10 @@ def get_dashboard(
 ):
     """获取仪表盘汇总数据（兼容老版本）"""
     
-    if dimension == "monthly":
-        Model = MonthlyData
-        date_col = 'month'
-        visitors_col = 'visitors'
-    elif dimension == "daily":
-        Model = DailyData
-        date_col = 'date'
-        visitors_col = 'ipv'
-    else:
-        Model = WeeklyData
-        date_col = 'week_start'
-        visitors_col = 'ipv'
+    Model, date_col, visitors_col = get_data_model(dimension)
     
     if not period:
-        latest = db.query(Model).order_by(desc(getattr(Model, date_col))).first()
-        period = getattr(latest, date_col) if latest else None
+        period = get_latest_period(Model, date_col, db)
     
     if not period:
         return ResponseModel(data={
@@ -278,22 +283,10 @@ def get_dashboard_summary(
 ):
     """获取仪表盘汇总数据（新版前端用）"""
     
-    if dimension == "monthly":
-        Model = MonthlyData
-        date_col = 'month'
-        visitors_col = 'visitors'
-    elif dimension == "daily":
-        Model = DailyData
-        date_col = 'date'
-        visitors_col = 'ipv'
-    else:
-        Model = WeeklyData
-        date_col = 'week_start'
-        visitors_col = 'ipv'
+    Model, date_col, visitors_col = get_data_model(dimension)
     
     if not period:
-        latest = db.query(Model).order_by(desc(getattr(Model, date_col))).first()
-        period = getattr(latest, date_col) if latest else None
+        period = get_latest_period(Model, date_col, db)
     
     if not period:
         return ResponseModel(data={"kpi": {}, "trends": []})
@@ -412,22 +405,10 @@ def get_top_products(
 ):
     """获取TOP商品列表"""
     
-    if dimension == "monthly":
-        Model = MonthlyData
-        date_col = 'month'
-        visitors_col = 'visitors'
-    elif dimension == "daily":
-        Model = DailyData
-        date_col = 'date'
-        visitors_col = 'ipv'
-    else:
-        Model = WeeklyData
-        date_col = 'week_start'
-        visitors_col = 'ipv'
+    Model, date_col, visitors_col = get_data_model(dimension)
     
     if not period:
-        latest = db.query(Model).order_by(desc(getattr(Model, date_col))).first()
-        period = getattr(latest, date_col) if latest else None
+        period = get_latest_period(Model, date_col, db)
     
     if not period:
         return ResponseModel(data={"products": []})

@@ -2,7 +2,7 @@
   <div class="dashboard">
     <el-row :gutter="20" class="kpi-cards">
       <el-col :span="6">
-        <el-card class="kpi-card">
+        <el-card class="kpi-card" v-loading="loading">
           <div class="kpi-content">
             <div class="kpi-icon" style="background: #409eff">
               <el-icon><TrendCharts /></el-icon>
@@ -15,7 +15,7 @@
         </el-card>
       </el-col>
       <el-col :span="6">
-        <el-card class="kpi-card">
+        <el-card class="kpi-card" v-loading="loading">
           <div class="kpi-content">
             <div class="kpi-icon" style="background: #67c23a">
               <el-icon><User /></el-icon>
@@ -28,7 +28,7 @@
         </el-card>
       </el-col>
       <el-col :span="6">
-        <el-card class="kpi-card">
+        <el-card class="kpi-card" v-loading="loading">
           <div class="kpi-content">
             <div class="kpi-icon" style="background: #e6a23c">
               <el-icon><Money /></el-icon>
@@ -41,7 +41,7 @@
         </el-card>
       </el-col>
       <el-col :span="6">
-        <el-card class="kpi-card">
+        <el-card class="kpi-card" v-loading="loading">
           <div class="kpi-content">
             <div class="kpi-icon" style="background: #f56c6c">
               <el-icon><DataAnalysis /></el-icon>
@@ -57,7 +57,7 @@
 
     <el-row :gutter="20" class="charts-row">
       <el-col :span="16">
-        <el-card>
+        <el-card v-loading="loading">
           <template #header>
             <div class="card-header">
               <span>GMV 趋势</span>
@@ -67,7 +67,7 @@
         </el-card>
       </el-col>
       <el-col :span="8">
-        <el-card>
+        <el-card v-loading="loading">
           <template #header>
             <span>分类销售占比</span>
           </template>
@@ -78,7 +78,7 @@
 
     <el-row :gutter="20" style="margin-top: 20px">
       <el-col :span="24">
-        <el-card>
+        <el-card v-loading="loading">
           <template #header>
             <div class="card-header">
               <span>热销商品 TOP10</span>
@@ -129,7 +129,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, nextTick } from 'vue'
+import { ref, onMounted, nextTick, onUnmounted } from 'vue'
 import * as echarts from 'echarts'
 import api from '@/api'
 
@@ -137,6 +137,7 @@ const summary = ref({})
 const topProducts = ref([])
 const trendChartRef = ref(null)
 const categoryChartRef = ref(null)
+const loading = ref(true)
 let trendChart = null
 let categoryChart = null
 
@@ -158,6 +159,7 @@ const getTierType = (tier) => {
 }
 
 const loadData = async () => {
+  loading.value = true
   try {
     const [summaryRes, topRes] = await Promise.all([
       api.getDashboardSummary(),
@@ -187,8 +189,19 @@ const loadData = async () => {
     })
   } catch (error) {
     console.error('Load data error:', error)
+  } finally {
+    loading.value = false
   }
 }
+
+onUnmounted(() => {
+  if (trendChart) {
+    trendChart.dispose()
+  }
+  if (categoryChart) {
+    categoryChart.dispose()
+  }
+})
 
 const initTrendChart = () => {
   if (!trendChartRef.value) return

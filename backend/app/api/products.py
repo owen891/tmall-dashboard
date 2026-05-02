@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func, desc, asc, case, text
 from typing import Optional, List, Dict, Any
 from app.core.database import get_db
+from app.core.cache import cached
 from app.models import DailyData, WeeklyData, MonthlyData, Product, ProductTag, ProductNote, OperationAction
 from app.schemas.common import ResponseModel
 import io
