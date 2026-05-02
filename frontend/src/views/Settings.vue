@@ -1,183 +1,141 @@
 <template>
   <div class="settings-page">
-    <el-card class="header-card">
+    <el-card class="settings-card">
       <template #header>
         <div class="card-header">
-          <div class="header-left">
-            <el-icon><Setting /></el-icon>
-            <span>系统设置</span>
-          </div>
+          <el-icon><Tools /></el-icon>
+          <span>系统设置</span>
         </div>
       </template>
 
-      <el-tabs v-model="activeTab">
-        <el-tab-pane label="基本设置" name="basic">
-          <el-form label-position="right" label-width="120px">
+      <el-tabs v-model="activeTab" class="settings-tabs">
+        <el-tab-pane label="主题设置" name="theme">
+          <div class="theme-preview">
+            <div 
+              v-for="t in themes" 
+              :key="t.id"
+              class="theme-card"
+              :class="{ active: settings.theme === t.id }"
+              @click="selectTheme(t.id)"
+            >
+              <div class="theme-preview-box" :class="`preview-${t.id}`">
+                <div class="preview-sidebar"></div>
+                <div class="preview-content"></div>
+              </div>
+              <span class="theme-label">{{ t.label }}</span>
+            </div>
+          </div>
+        </el-tab-pane>
+
+        <el-tab-pane label="通用设置" name="general">
+          <el-form label-width="160px">
             <el-form-item label="系统名称">
-              <el-input v-model="settings.systemName" placeholder="数据仪表盘" />
+              <el-input v-model="settings.system_name" placeholder="输入系统名称" />
             </el-form-item>
             <el-form-item label="显示语言">
-              <el-select v-model="settings.language" style="width: 200px;">
+              <el-select v-model="settings.language" style="width: 100%">
                 <el-option label="简体中文" value="zh-CN" />
                 <el-option label="English" value="en-US" />
               </el-select>
             </el-form-item>
             <el-form-item label="默认时间范围">
-              <el-select v-model="settings.defaultDateRange" style="width: 200px;">
-                <el-option label="今日" value="day" />
+              <el-select v-model="settings.default_date_range" style="width: 100%">
+                <el-option label="今日" value="today" />
                 <el-option label="本周" value="week" />
                 <el-option label="本月" value="month" />
+                <el-option label="最近30天" value="30days" />
+                <el-option label="最近90天" value="90days" />
               </el-select>
             </el-form-item>
             <el-form-item label="自动刷新">
-              <el-switch v-model="settings.autoRefresh" />
-              <span style="margin-left: 12px; color: #909399;">
-                每 {{ settings.refreshInterval }} 分钟自动刷新数据
-              </span>
+              <el-switch v-model="settings.auto_refresh" />
             </el-form-item>
-            <el-form-item v-if="settings.autoRefresh" label="刷新间隔">
-              <el-slider v-model="settings.refreshInterval" :min="1" :max="60" style="width: 250px;" />
+            <el-form-item label="刷新间隔（分钟）" v-if="settings.auto_refresh">
+              <el-input-number v-model="settings.refresh_interval" :min="1" :max="60" />
             </el-form-item>
           </el-form>
         </el-tab-pane>
 
-        <el-tab-pane label="主题设置" name="theme">
-          <el-form label-position="right" label-width="120px">
-            <el-form-item label="主题模式">
-              <el-radio-group v-model="settings.theme" @change="handleThemeChange">
-                <el-radio label="light">亮色模式</el-radio>
-                <el-radio label="dark">暗色模式</el-radio>
-              </el-radio-group>
+        <el-tab-pane label="KPI阈值设置" name="kpi">
+          <el-form label-width="180px">
+            <el-form-item label="GMV下降阈值（%）">
+              <el-input-number v-model="settings.gmv_drop_threshold" :min="1" :max="100" />
             </el-form-item>
-            <el-form-item label="主题预览">
-              <div class="theme-preview">
-                <div class="preview-card light" :class="{ active: settings.theme === 'light' }">
-                  <div class="preview-header"></div>
-                  <div class="preview-content"></div>
-                </div>
-                <div class="preview-card dark" :class="{ active: settings.theme === 'dark' }">
-                  <div class="preview-header"></div>
-                  <div class="preview-content"></div>
-                </div>
-              </div>
+            <el-form-item label="最低GMV金额">
+              <el-input-number v-model="settings.min_gmv_amount" :min="0" style="width: 100%" />
             </el-form-item>
-            <el-form-item>
-              <el-button type="primary" @click="applyTheme">应用主题</el-button>
-              <el-button @click="resetTheme">重置</el-button>
+            <el-form-item label="最低转化率（%）">
+              <el-input-number v-model="settings.min_conversion_rate" :min="0" :max="100" :step="0.1" />
             </el-form-item>
-          </el-form>
-        </el-tab-pane>
-
-        <el-tab-pane label="告警设置" name="alerts">
-          <el-form label-position="right" label-width="160px">
-            <el-divider content-position="left">GMV 告警</el-divider>
-            <el-form-item label="GMV 下降阈值">
-              <el-input-number v-model="settings.gmvDropThreshold" :min="0" :max="100" :precision="1" suffix="%" />
+            <el-form-item label="最低ROI">
+              <el-input-number v-model="settings.min_roi" :min="0" :step="0.1" />
             </el-form-item>
-            <el-form-item label="最低 GMV 金额">
-              <el-input-number v-model="settings.minGmvAmount" :min="0" :precision="0" style="width: 200px;" />
-            </el-form-item>
-            
-            <el-divider content-position="left">转化率告警</el-divider>
-            <el-form-item label="最低转化率">
-              <el-input-number v-model="settings.minConversionRate" :min="0" :max="100" :precision="2" suffix="%" />
-            </el-form-item>
-            <el-form-item label="最低 ROI">
-              <el-input-number v-model="settings.minROI" :min="0" :precision="2" />
-            </el-form-item>
-            
-            <el-divider content-position="left">退款告警</el-divider>
-            <el-form-item label="退款率阈值">
-              <el-input-number v-model="settings.refundRateThreshold" :min="0" :max="100" :precision="1" suffix="%" />
-            </el-form-item>
-            
-            <el-form-item>
-              <el-button type="primary" @click="testAlerts">测试告警</el-button>
+            <el-form-item label="退款率阈值（%）">
+              <el-input-number v-model="settings.refund_rate_threshold" :min="0" :max="100" :step="0.1" />
             </el-form-item>
           </el-form>
         </el-tab-pane>
 
         <el-tab-pane label="通知设置" name="notifications">
-          <el-form label-position="right" label-width="160px">
+          <el-form label-width="180px">
             <el-form-item label="弹窗通知">
-              <el-switch v-model="settings.popupNotifications" />
+              <el-switch v-model="settings.popup_notifications" />
             </el-form-item>
             <el-form-item label="浏览器通知">
-              <el-switch v-model="settings.browserNotifications" />
+              <el-switch v-model="settings.browser_notifications" />
             </el-form-item>
             <el-form-item label="告警邮件">
-              <el-switch v-model="settings.emailAlerts" />
+              <el-switch v-model="settings.email_alerts" />
             </el-form-item>
-            <el-form-item v-if="settings.emailAlerts" label="收件邮箱">
-              <el-input v-model="settings.emailRecipient" placeholder="admin@example.com" style="width: 300px;" />
+            <el-form-item label="收件邮箱" v-if="settings.email_alerts">
+              <el-input v-model="settings.email_recipient" placeholder="example@company.com" />
             </el-form-item>
             <el-form-item label="告警频率">
-              <el-select v-model="settings.alertFrequency" style="width: 200px;">
+              <el-select v-model="settings.alert_frequency" style="width: 100%">
                 <el-option label="实时" value="real-time" />
                 <el-option label="每小时" value="hourly" />
                 <el-option label="每天" value="daily" />
+                <el-option label="每周" value="weekly" />
               </el-select>
             </el-form-item>
           </el-form>
         </el-tab-pane>
 
-        <el-tab-pane label="导出设置" name="export">
-          <el-form label-position="right" label-width="160px">
+        <el-tab-pane label="数据导出设置" name="export">
+          <el-form label-width="180px">
             <el-form-item label="默认导出格式">
-              <el-select v-model="settings.exportFormat" style="width: 200px;">
-                <el-option label="Excel (.xlsx)" value="xlsx" />
+              <el-select v-model="settings.export_format" style="width: 100%">
                 <el-option label="CSV" value="csv" />
-                <el-option label="PDF" value="pdf" />
+                <el-option label="Excel" value="xlsx" />
+                <el-option label="JSON" value="json" />
               </el-select>
             </el-form-item>
             <el-form-item label="导出日期格式">
-              <el-select v-model="settings.exportDateFormat" style="width: 200px;">
+              <el-select v-model="settings.export_date_format" style="width: 100%">
                 <el-option label="YYYY-MM-DD" value="YYYY-MM-DD" />
                 <el-option label="MM/DD/YYYY" value="MM/DD/YYYY" />
+                <el-option label="DD/MM/YYYY" value="DD/MM/YYYY" />
               </el-select>
             </el-form-item>
             <el-form-item label="导出编码">
-              <el-select v-model="settings.exportEncoding" style="width: 200px;">
+              <el-select v-model="settings.export_encoding" style="width: 100%">
                 <el-option label="UTF-8" value="utf-8" />
                 <el-option label="GBK" value="gbk" />
+                <el-option label="UTF-16" value="utf-16" />
               </el-select>
             </el-form-item>
             <el-form-item label="包含图表">
-              <el-switch v-model="settings.exportWithCharts" />
+              <el-switch v-model="settings.export_with_charts" />
             </el-form-item>
           </el-form>
         </el-tab-pane>
-
-        <el-tab-pane label="关于系统" name="about">
-          <el-descriptions :column="2" border style="margin-bottom: 20px;">
-            <el-descriptions-item label="系统名称">数据仪表盘</el-descriptions-item>
-            <el-descriptions-item label="版本号">2.0.0</el-descriptions-item>
-            <el-descriptions-item label="前端框架">Vue 3 + Element Plus</el-descriptions-item>
-            <el-descriptions-item label="后端框架">FastAPI</el-descriptions-item>
-            <el-descriptions-item label="数据存储">SQLite</el-descriptions-item>
-            <el-descriptions-item label="图表库">ECharts</el-descriptions-item>
-          </el-descriptions>
-          
-          <el-card>
-            <template #header>
-              <span>功能模块</span>
-            </template>
-            <el-tag 
-              v-for="feature in features" 
-              :key="feature"
-              style="margin: 4px;"
-              size="small"
-              type="success"
-            >
-              {{ feature }}
-            </el-tag>
-          </el-card>
-        </el-tab-pane>
       </el-tabs>
 
-      <div class="settings-actions">
-        <el-button @click="resetSettings">重置默认</el-button>
-        <el-button type="primary" @click="saveSettings" :loading="saving">保存设置</el-button>
+      <div class="actions">
+        <el-button @click="handleReset">重置</el-button>
+        <el-button type="primary" @click="handleSave" :loading="loading">
+          保存设置
+        </el-button>
       </div>
     </el-card>
   </div>
@@ -186,116 +144,96 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
+import { Upload, Tools } from '@element-plus/icons-vue'
+import api from '@/api'
 
-const activeTab = ref('basic')
-const saving = ref(false)
+const activeTab = ref('theme')
+const loading = ref(false)
+const initialized = ref(false)
 
-const features = [
-  '数据概览', '商品管理', '数据导入', 'KPI分析', '趋势分析', '广告投放',
-  '健康度评分', '退款分析', '异常告警', '评价分析', '市场分析',
-  '四象限分析', '目标管理', '智能选品', '自动报告', '预测分析',
-  '数据质量', '操作统计'
+const themes = [
+  { id: 'light', label: '明亮' },
+  { id: 'dark', label: '暗黑' }
 ]
 
-const settings = ref({
-  systemName: '数据仪表盘',
+const defaultSettings = {
+  system_name: '数据仪表盘',
   language: 'zh-CN',
-  theme: localStorage.getItem('dashboardTheme') || 'light',
-  defaultDateRange: 'month',
-  autoRefresh: false,
-  refreshInterval: 10,
-  gmvDropThreshold: 20,
-  minGmvAmount: 10000,
-  minConversionRate: 2,
-  minROI: 1.5,
-  refundRateThreshold: 15,
-  popupNotifications: true,
-  browserNotifications: true,
-  emailAlerts: false,
-  emailRecipient: '',
-  alertFrequency: 'real-time',
-  exportFormat: 'csv',
-  exportDateFormat: 'YYYY-MM-DD',
-  exportEncoding: 'utf-8',
-  exportWithCharts: false
-})
-
-const loadSettings = () => {
-  const saved = localStorage.getItem('dashboardSettings')
-  if (saved) {
-    try {
-      settings.value = { ...settings.value, ...JSON.parse(saved) }
-    } catch (e) {
-      console.error('Load settings error:', e)
-    }
-  }
+  theme: 'light',
+  default_date_range: 'month',
+  auto_refresh: false,
+  refresh_interval: 10,
+  gmv_drop_threshold: 20,
+  min_gmv_amount: 10000,
+  min_conversion_rate: 2,
+  min_roi: 1.5,
+  refund_rate_threshold: 15,
+  popup_notifications: true,
+  browser_notifications: true,
+  email_alerts: false,
+  email_recipient: '',
+  alert_frequency: 'real-time',
+  export_format: 'csv',
+  export_date_format: 'YYYY-MM-DD',
+  export_encoding: 'utf-8',
+  export_with_charts: false
 }
 
-const saveSettings = async () => {
-  saving.value = true
-  try {
-    localStorage.setItem('dashboardSettings', JSON.stringify(settings.value))
-    ElMessage.success('设置已保存')
-  } catch (e) {
-    ElMessage.error('保存设置失败')
-  } finally {
-    saving.value = false
-  }
-}
+const settings = ref({ ...defaultSettings })
 
-const resetSettings = () => {
-  settings.value = {
-    systemName: '数据仪表盘',
-    language: 'zh-CN',
-    defaultDateRange: 'month',
-    autoRefresh: false,
-    refreshInterval: 10,
-    gmvDropThreshold: 20,
-    minGmvAmount: 10000,
-    minConversionRate: 2,
-    minROI: 1.5,
-    refundRateThreshold: 15,
-    popupNotifications: true,
-    browserNotifications: true,
-    emailAlerts: false,
-    emailRecipient: '',
-    alertFrequency: 'real-time',
-    exportFormat: 'csv',
-    exportDateFormat: 'YYYY-MM-DD',
-    exportEncoding: 'utf-8',
-    exportWithCharts: false
-  }
-  ElMessage.info('已重置为默认设置')
-}
-
-const testAlerts = () => {
-  ElMessage.warning('测试告警：GMV 下降超过阈值！')
-}
-
-const handleThemeChange = (value) => {
-  applyThemeImmediate(value)
-}
-
-const applyTheme = () => {
-  applyThemeImmediate(settings.value.theme)
-  ElMessage.success('主题已应用')
-}
-
-const applyThemeImmediate = (theme) => {
-  if (theme === 'dark') {
-    document.documentElement.classList.add('dark')
+const selectTheme = (themeId) => {
+  settings.value.theme = themeId
+  document.body.className = ''
+  if (themeId === 'dark') {
     document.body.classList.add('dark-theme')
-  } else {
-    document.documentElement.classList.remove('dark')
-    document.body.classList.remove('dark-theme')
   }
-  localStorage.setItem('dashboardTheme', theme)
+  localStorage.setItem('theme', themeId)
 }
 
-const resetTheme = () => {
-  settings.value.theme = 'light'
-  applyThemeImmediate('light')
-  ElMessage.info('已重置为亮色主题')
+const loadSettings = async () => {
+  try {
+    const response = await api.getSettings()
+    if (response.data && Object.keys(response.data).length > 0) {
+      settings.value = { ...defaultSettings, ...response.data }
+    } else {
+      await initializeDefaultSettings()
+    }
+  } catch (error) {
+    console.error('加载设置失败:', error)
+    await initializeDefaultSettings()
+  }
+  
+  // 应用主题
+  if (settings.value.theme === 'dark') {
+    document.body.classList.add('dark-theme')
+  }
+}
+
+const initializeDefaultSettings = async () => {
+  try {
+    await api.initializeSettings()
+    settings.value = { ...defaultSettings }
+  } catch (error) {
+    console.error('初始化默认设置失败:', error)
+  }
+}
+
+const handleSave = async () => {
+  loading.value = true
+  try {
+    await api.updateSettings(settings.value)
+    ElMessage.success('设置已保存')
+  } catch (error) {
+    ElMessage.error('保存失败: ' + (error.message || '未知错误'))
+  } finally {
+    loading.value = false
+  }
+}
+
+const handleReset = () => {
+  settings.value = { ...defaultSettings }
+  selectTheme('light')
+  ElMessage.info('已重置为默认设置')
 }
 
 onMounted(() => {
@@ -305,38 +243,14 @@ onMounted(() => {
 
 <style scoped>
 .settings-page {
-  padding: 0;
+  padding: 20px;
 }
 
 .card-header {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.header-left {
-  display: flex;
   align-items: center;
   gap: 8px;
   font-size: 16px;
-  font-weight: 500;
-}
-
-.settings-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 12px;
-  margin-top: 24px;
-  padding-top: 20px;
-  border-top: 1px solid #ebeef5;
-}
-
-:deep(.el-divider) {
-  margin: 16px 0;
-}
-
-:deep(.el-divider__text) {
-  font-size: 14px;
   font-weight: 500;
 }
 
@@ -345,62 +259,103 @@ onMounted(() => {
   gap: 20px;
 }
 
-.preview-card {
-  width: 120px;
-  height: 80px;
+.theme-card {
+  cursor: pointer;
+  text-align: center;
+  transition: transform 0.2s;
+}
+
+.theme-card:hover {
+  transform: translateY(-2px);
+}
+
+.theme-card.active .theme-label {
+  color: var(--el-color-primary);
+  font-weight: 600;
+}
+
+.theme-preview-box {
+  width: 200px;
+  height: 140px;
   border-radius: 8px;
   overflow: hidden;
+  display: flex;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.1);
   border: 2px solid transparent;
-  transition: all 0.3s;
+  transition: border-color 0.2s;
 }
 
-.preview-card.active {
-  border-color: #409eff;
-  box-shadow: 0 0 10px rgba(64, 158, 255, 0.3);
+.theme-card.active .theme-preview-box {
+  border-color: var(--el-color-primary);
 }
 
-.preview-card.light {
-  background: #fff;
-  border-color: #dcdfe6;
+.preview-light {
+  background-color: #f5f7fa;
 }
 
-.preview-card.light .preview-header {
-  background: #fff;
-  border-bottom: 1px solid #eee;
-  height: 24px;
+.preview-light .preview-sidebar {
+  width: 60px;
+  background-color: #303133;
 }
 
-.preview-card.light .preview-content {
-  background: #f5f7fa;
-  height: calc(100% - 24px);
+.preview-light .preview-content {
+  flex: 1;
+  padding: 10px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
 }
 
-.preview-card.dark {
-  background: #1a1a2e;
+.preview-light .preview-content::before,
+.preview-light .preview-content::after {
+  content: '';
+  width: 38px;
+  height: 26px;
+  background-color: white;
+  border-radius: 4px;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.05);
 }
 
-.preview-card.dark .preview-header {
-  background: #16213e;
-  height: 24px;
+.preview-dark {
+  background-color: #1f1f1f;
 }
 
-.preview-card.dark .preview-content {
-  background: #0f3460;
-  height: calc(100% - 24px);
+.preview-dark .preview-sidebar {
+  width: 60px;
+  background-color: #0f0f0f;
 }
 
-/* 移动端适配 */
-@media (max-width: 768px) {
-  .settings-actions {
-    justify-content: center;
-  }
-  
-  :deep(.el-form-item__label) {
-    width: auto !important;
-  }
-  
-  :deep(.el-form-item__content) {
-    margin-left: 0 !important;
-  }
+.preview-dark .preview-content {
+  flex: 1;
+  padding: 10px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.preview-dark .preview-content::before,
+.preview-dark .preview-content::after {
+  content: '';
+  width: 38px;
+  height: 26px;
+  background-color: #2d2d2d;
+  border-radius: 4px;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.1);
+}
+
+.theme-label {
+  display: block;
+  margin-top: 12px;
+  font-size: 14px;
+  color: var(--el-text-color-primary);
+}
+
+.actions {
+  margin-top: 30px;
+  padding-top: 20px;
+  border-top: 1px solid var(--el-border-color-lighter);
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
 }
 </style>

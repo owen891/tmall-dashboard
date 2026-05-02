@@ -528,3 +528,17 @@ class FileStorage(Base):
     
     created_at = Column(DateTime, default=func.now())
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
+
+
+class SystemSetting(Base):
+    """系统设置模型"""
+    __tablename__ = "system_settings"
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    setting_key = Column(String, unique=True, nullable=False, index=True)  # 设置键
+    setting_value = Column(Text, nullable=True)  # 设置值（JSON格式）
+    setting_type = Column(String, default='string')  # 设置类型：string, number, boolean, json
+    description = Column(String, nullable=True)  # 描述
+    
+    created_at = Column(DateTime, default=func.now())
+    updated_at = Column(DateTime, default=func.now(), onupdate=func.now())

@@ -148,6 +148,15 @@ export default {
       params: { delete_physical: deletePhysical }
     })
   },
+  getSettings() {
+    return request.get('/settings')
+  },
+  updateSettings(settings) {
+    return request.put('/settings', { settings })
+  },
+  initializeSettings() {
+    return request.post('/settings/initialize')
+  },
   getPeriods(dim = 'weekly') {
     return request.get('/periods', { params: { dim } })
   },
