@@ -132,6 +132,16 @@ const routes = [
     component: () => import('@/views/Report.vue')
   },
   {
+    path: '/attribution',
+    name: 'Attribution',
+    component: () => import('@/views/Attribution.vue')
+  },
+  {
+    path: '/funnel',
+    name: 'Funnel',
+    component: () => import('@/views/Funnel.vue')
+  },
+  {
     path: '/prediction',
     name: 'Prediction',
     component: () => import('@/views/Prediction.vue')

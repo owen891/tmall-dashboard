@@ -110,6 +110,12 @@
             <el-menu-item index="/pace">
               <span>Pace 监控</span>
             </el-menu-item>
+            <el-menu-item index="/attribution">
+              <span>异动归因</span>
+            </el-menu-item>
+            <el-menu-item index="/funnel">
+              <span>漏斗转化</span>
+            </el-menu-item>
           </el-sub-menu>
 
           <el-sub-menu index="smart">
@@ -245,6 +251,8 @@ const pageTitle = computed(() => {
     '/compare': '周期对比',
     '/recommendation': '智能选品',
     '/report': '自动报告',
+    '/attribution': '异动归因',
+    '/funnel': '漏斗转化',
     '/prediction': '预测分析',
     '/data-quality': '数据质量',
     '/settings': '系统设置',
