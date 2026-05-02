@@ -155,7 +155,7 @@ class UploadService:
         if delete_physical and os.path.exists(file_storage.file_path):
             try:
                 os.remove(file_storage.file_path)
-            except:
+            except OSError:
                 pass
         
         # 删除数据库记录

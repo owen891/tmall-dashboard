@@ -231,9 +231,9 @@ def get_operation_statistics(
                 OperationAction.action_date >= start_date,
                 OperationAction.action_date <= period_date
             )
-        except:
+        except ValueError:
             pass
-    
+
     operations = query.all()
     
     if not operations:

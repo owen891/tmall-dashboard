@@ -109,7 +109,7 @@ async def preview_excel(
         if os.path.exists(temp_path):
             try:
                 os.remove(temp_path)
-            except:
+            except OSError:
                 pass
 
 
@@ -186,14 +186,14 @@ async def import_excel(
             )
             db.add(history)
             db.commit()
-        except:
+        except Exception:
             pass
         raise HTTPException(status_code=500, detail=f"导入失败: {str(e)}")
     finally:
         if os.path.exists(temp_path):
             try:
                 os.remove(temp_path)
-            except:
+            except OSError:
                 pass
 
 

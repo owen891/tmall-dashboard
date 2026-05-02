@@ -123,14 +123,14 @@ class SettingService:
         if setting.setting_type == 'json':
             try:
                 return json.loads(value) if value else None
-            except:
+            except (json.JSONDecodeError, TypeError, ValueError):
                 return None
         elif setting.setting_type == 'number':
             try:
                 if '.' in value:
                     return float(value)
                 return int(value)
-            except:
+            except (ValueError, TypeError):
                 return 0
         elif setting.setting_type == 'boolean':
             return value.lower() in ('true', '1', 'yes', 'on')

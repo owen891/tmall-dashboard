@@ -106,7 +106,7 @@ class ExcelImportService:
                 else:
                     try:
                         product_data["list_date"] = pd.to_datetime(list_date).date()
-                    except:
+                    except (ValueError, TypeError):
                         pass
             
             products.append(product_data)

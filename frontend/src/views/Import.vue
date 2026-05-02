@@ -15,7 +15,7 @@
       </template>
 
       <div class="import-content">
-        <el-steps :active="currentStep" finish-status="success" align-center">
+        <el-steps :active="currentStep" finish-status="success" :align-center="true">
           <el-step title="上传文件" />
           <el-step title="数据预览" />
           <el-step title="导入完成" />
