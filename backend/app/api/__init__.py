@@ -1,5 +1,5 @@
 from fastapi import APIRouter
-from app.api import products, imports, dashboard, custom_fields, kpi, trends, ads, health, operations, lifecycle, refunds, targets, alerts, reviews, market, toolbox, compare, misc, data_export, promotion, recommendation, reports, realtime, prediction, collaboration, data_quality
+from app.api import products, imports, dashboard, custom_fields, kpi, trends, ads, health, operations, lifecycle, refunds, targets, alerts, reviews, market, toolbox, compare, misc, data_export, promotion, recommendation, reports, realtime, prediction, collaboration, data_quality, backup
 
 api_router = APIRouter(prefix="/api")
 
@@ -29,3 +29,4 @@ api_router.include_router(realtime.router)
 api_router.include_router(prediction.router)
 api_router.include_router(collaboration.router)
 api_router.include_router(data_quality.router)
+api_router.include_router(backup.router)

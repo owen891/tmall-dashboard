@@ -127,6 +127,11 @@ const routes = [
     component: () => import('@/views/Settings.vue')
   },
   {
+    path: '/backup',
+    name: 'Backup',
+    component: () => import('@/views/Backup.vue')
+  },
+  {
     path: '/:pathMatch(.*)*',
     redirect: '/'
   }

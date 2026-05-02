@@ -164,6 +164,11 @@
             <el-icon><Setting /></el-icon>
             <template #title>系统设置</template>
           </el-menu-item>
+          
+          <el-menu-item index="/backup">
+            <el-icon><FolderOpened /></el-icon>
+            <template #title>数据备份</template>
+          </el-menu-item>
         </el-menu>
       </el-scrollbar>
     </el-aside>
@@ -447,8 +452,8 @@ onMounted(() => {
   opacity: 0;
 }
 
-/* 移动端响应式 */
-@media (max-width: 768px) {
+/* 移动端响应式 - 仅在屏幕宽度 <= 768px 时生效 */
+@media screen and (max-width: 768px) {
   .app-aside {
     position: fixed;
     left: 0;
@@ -456,7 +461,7 @@ onMounted(() => {
     height: 100vh;
     z-index: 1000;
     transform: translateX(-100%);
-    transition: transform 0.3s;
+    transition: transform 0.3s ease;
   }
   
   .app-aside.mobile-open {

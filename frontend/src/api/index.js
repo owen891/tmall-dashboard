@@ -263,5 +263,14 @@ export default {
   },
   getDataAnomalies(period) {
     return request.get('/data-quality/anomalies', { params: { period } })
+  },
+  getBackupStatus() {
+    return request.get('/backup/status')
+  },
+  createBackup() {
+    return request.post('/backup/create')
+  },
+  deleteBackup(filename) {
+    return request.delete(`/backup/delete/${filename}`)
   }
 }
