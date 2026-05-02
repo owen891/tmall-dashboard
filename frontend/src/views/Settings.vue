@@ -41,6 +41,33 @@
           </el-form>
         </el-tab-pane>
 
+        <el-tab-pane label="主题设置" name="theme">
+          <el-form label-position="right" label-width="120px">
+            <el-form-item label="主题模式">
+              <el-radio-group v-model="settings.theme" @change="handleThemeChange">
+                <el-radio label="light">亮色模式</el-radio>
+                <el-radio label="dark">暗色模式</el-radio>
+              </el-radio-group>
+            </el-form-item>
+            <el-form-item label="主题预览">
+              <div class="theme-preview">
+                <div class="preview-card light" :class="{ active: settings.theme === 'light' }">
+                  <div class="preview-header"></div>
+                  <div class="preview-content"></div>
+                </div>
+                <div class="preview-card dark" :class="{ active: settings.theme === 'dark' }">
+                  <div class="preview-header"></div>
+                  <div class="preview-content"></div>
+                </div>
+              </div>
+            </el-form-item>
+            <el-form-item>
+              <el-button type="primary" @click="applyTheme">应用主题</el-button>
+              <el-button @click="resetTheme">重置</el-button>
+            </el-form-item>
+          </el-form>
+        </el-tab-pane>
+
         <el-tab-pane label="告警设置" name="alerts">
           <el-form label-position="right" label-width="160px">
             <el-divider content-position="left">GMV 告警</el-divider>
@@ -173,6 +200,7 @@ const features = [
 const settings = ref({
   systemName: '数据仪表盘',
   language: 'zh-CN',
+  theme: localStorage.getItem('dashboardTheme') || 'light',
   defaultDateRange: 'month',
   autoRefresh: false,
   refreshInterval: 10,
@@ -244,6 +272,32 @@ const testAlerts = () => {
   ElMessage.warning('测试告警：GMV 下降超过阈值！')
 }
 
+const handleThemeChange = (value) => {
+  applyThemeImmediate(value)
+}
+
+const applyTheme = () => {
+  applyThemeImmediate(settings.value.theme)
+  ElMessage.success('主题已应用')
+}
+
+const applyThemeImmediate = (theme) => {
+  if (theme === 'dark') {
+    document.documentElement.classList.add('dark')
+    document.body.classList.add('dark-theme')
+  } else {
+    document.documentElement.classList.remove('dark')
+    document.body.classList.remove('dark-theme')
+  }
+  localStorage.setItem('dashboardTheme', theme)
+}
+
+const resetTheme = () => {
+  settings.value.theme = 'light'
+  applyThemeImmediate('light')
+  ElMessage.info('已重置为亮色主题')
+}
+
 onMounted(() => {
   loadSettings()
 })
@@ -284,6 +338,55 @@ onMounted(() => {
 :deep(.el-divider__text) {
   font-size: 14px;
   font-weight: 500;
+}
+
+.theme-preview {
+  display: flex;
+  gap: 20px;
+}
+
+.preview-card {
+  width: 120px;
+  height: 80px;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 2px solid transparent;
+  transition: all 0.3s;
+}
+
+.preview-card.active {
+  border-color: #409eff;
+  box-shadow: 0 0 10px rgba(64, 158, 255, 0.3);
+}
+
+.preview-card.light {
+  background: #fff;
+  border-color: #dcdfe6;
+}
+
+.preview-card.light .preview-header {
+  background: #fff;
+  border-bottom: 1px solid #eee;
+  height: 24px;
+}
+
+.preview-card.light .preview-content {
+  background: #f5f7fa;
+  height: calc(100% - 24px);
+}
+
+.preview-card.dark {
+  background: #1a1a2e;
+}
+
+.preview-card.dark .preview-header {
+  background: #16213e;
+  height: 24px;
+}
+
+.preview-card.dark .preview-content {
+  background: #0f3460;
+  height: calc(100% - 24px);
 }
 
 /* 移动端适配 */
