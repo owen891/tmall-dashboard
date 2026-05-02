@@ -17,7 +17,11 @@ from .product import (
     ReviewSummary,
     MarketAnalysis,
     MarketKeywordOpportunity,
-    ChartEvent
+    ChartEvent,
+    Refund,
+    OperationLog,
+    ScheduledTask,
+    ImportHistory
 )
 from .ad import (
     AdData,
@@ -46,6 +50,10 @@ __all__ = [
     "MarketAnalysis",
     "MarketKeywordOpportunity",
     "ChartEvent",
+    "Refund",
+    "OperationLog",
+    "ScheduledTask",
+    "ImportHistory",
     "AdData",
     "KeywordAdData",
     "AudienceAdData",

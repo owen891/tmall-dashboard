@@ -10,8 +10,44 @@ class ExcelImportService:
     def __init__(self, db: Session):
         self.db = db
     
+    def _read_file(self, file_path: str) -> Dict[str, pd.DataFrame]:
+        """读取文件，支持Excel和CSV"""
+        file_ext = os.path.splitext(file_path)[1].lower()
+        
+        if file_ext in ['.xlsx', '.xls']:
+            xl = pd.ExcelFile(file_path)
+            return {sheet: pd.read_excel(file_path, sheet_name=sheet) for sheet in xl.sheet_names}
+        elif file_ext == '.csv':
+            return {'csv_data': pd.read_csv(file_path)}
+        else:
+            raise ValueError(f"不支持的文件格式: {file_ext}")
+    
+    def preview_data(self, file_path: str) -> Dict[str, Any]:
+        """预览数据"""
+        sheets = self._read_file(file_path)
+        
+        total_rows = 0
+        preview = {
+            "sheets": list(sheets.keys()),
+            "data": {}
+        }
+        
+        for sheet_name, df in sheets.items():
+            # 获取前10行数据进行预览
+            preview_rows = min(10, len(df))
+            total_rows += len(df)
+            preview["data"][sheet_name] = {
+                "columns": list(df.columns),
+                "rows": preview_rows,
+                "totalRows": len(df),
+                "sampleData": df.head(preview_rows).fillna('').to_dict(orient='records')
+            }
+        
+        preview["totalRows"] = total_rows
+        return preview
+    
     def parse_weekly_data(self, file_path: str, week_start: Optional[date] = None) -> Dict[str, Any]:
-        xl = pd.ExcelFile(file_path)
+        sheets = self._read_file(file_path)
         
         results = {
             "products": [],
@@ -20,15 +56,26 @@ class ExcelImportService:
             "errors": []
         }
         
-        if "单品-新" in xl.sheet_names:
+        # 尝试多个可能的sheet名称
+        possible_sheets = ["单品-新", "csv_data", "Sheet1", "sheet1"]
+        target_sheet = None
+        
+        for sheet in possible_sheets:
+            if sheet in sheets:
+                target_sheet = sheet
+                break
+        
+        if target_sheet:
             try:
-                df = pd.read_excel(file_path, sheet_name="单品-新")
+                df = sheets[target_sheet]
                 product_data = self._parse_product_sheet(df, week_start)
                 results["products"].extend(product_data["products"])
                 results["weekly_data"].extend(product_data["weekly_data"])
                 results["actions"].extend(product_data["actions"])
             except Exception as e:
-                results["errors"].append(f"解析单品-新失败: {str(e)}")
+                results["errors"].append(f"解析{target_sheet}失败: {str(e)}")
+        else:
+            results["errors"].append(f"未找到有效的数据sheet，可用的sheet: {list(sheets.keys())}")
         
         return results
     

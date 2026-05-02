@@ -495,3 +495,17 @@ class ScheduledTask(Base):
     status = Column(String, nullable=True)
     
     created_at = Column(DateTime, default=func.now())
+
+
+class ImportHistory(Base):
+    __tablename__ = "import_history"
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    file_name = Column(String, nullable=False)
+    import_type = Column(String, default="weekly")
+    status = Column(String, nullable=False)  # success, failed
+    product_count = Column(Integer, default=0)
+    data_count = Column(Integer, default=0)
+    error_message = Column(Text, nullable=True)
+    
+    created_at = Column(DateTime, default=func.now())

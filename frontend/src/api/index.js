@@ -93,8 +93,17 @@ export default {
       formData.append('week_start', weekStart)
     }
     return request.post('/import/excel', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+      params: weekStart ? { week_start: weekStart } : {}
+    })
+  },
+  previewImport(formData) {
+    return request.post('/import/preview', formData, {
       headers: { 'Content-Type': 'multipart/form-data' }
     })
+  },
+  getImportHistory(params) {
+    return request.get('/import/history', { params })
   },
   getPeriods(dim = 'weekly') {
     return request.get('/periods', { params: { dim } })
