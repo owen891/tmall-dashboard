@@ -207,6 +207,21 @@ const routes = [
     component: () => import('@/views/BackupManagement.vue')
   },
   {
+    path: '/advanced-import',
+    name: 'AdvancedImport',
+    component: () => import('@/views/AdvancedImportCenter.vue')
+  },
+  {
+    path: '/data-visualization',
+    name: 'DataVisualization',
+    component: () => import('@/views/DataVisualization.vue')
+  },
+  {
+    path: '/ai-analytics',
+    name: 'AIAnalytics',
+    component: () => import('@/views/AIAnalytics.vue')
+  },
+  {
     path: '/:pathMatch(.*)*',
     redirect: '/'
   }

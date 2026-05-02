@@ -85,6 +85,22 @@
             <el-menu-item index="/backup-management">
               <span>数据备份</span>
             </el-menu-item>
+            <el-menu-item index="/advanced-import">
+              <span>批量导入</span>
+            </el-menu-item>
+          </el-sub-menu>
+
+          <el-sub-menu index="visual">
+            <template #title>
+              <el-icon><DataBoard /></el-icon>
+              <span>可视化工具</span>
+            </template>
+            <el-menu-item index="/data-visualization">
+              <span>高级图表</span>
+            </el-menu-item>
+            <el-menu-item index="/ai-analytics">
+              <span>AI智能分析</span>
+            </el-menu-item>
           </el-sub-menu>
 
           <el-sub-menu index="analysis">
@@ -283,7 +299,10 @@ const pageTitle = computed(() => {
     '/product-ranking': '商品排行榜',
     '/traffic-analysis': '流量分析',
     '/promotion-analysis': '推广效果分析',
-    '/backup-management': '数据备份与恢复'
+    '/backup-management': '数据备份与恢复',
+    '/advanced-import': '批量导入中心',
+    '/data-visualization': '高级数据可视化',
+    '/ai-analytics': 'AI智能分析'
   }
   
   const path = route.path
