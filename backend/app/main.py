@@ -1,5 +1,6 @@
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from fastapi.responses import JSONResponse
@@ -10,7 +11,9 @@ import traceback
 
 from app.core import settings, engine, Base
 from app.core.logger import get_logger, setup_logging
+from app.core.scheduler import scheduler
 from app.api import api_router
+from app.api import realtime
 
 # 初始化日志
 setup_logging(log_level="DEBUG" if settings.DEBUG else "INFO")
@@ -24,7 +27,11 @@ async def lifespan(app: FastAPI):
     os.makedirs("data/backups", exist_ok=True)
     os.makedirs("data/snapshots", exist_ok=True)
     Base.metadata.create_all(bind=engine)
+    scheduler.start()
+    logger.info("Application startup complete")
     yield
+    scheduler.shutdown()
+    logger.info("Application shutdown complete")
 
 
 app = FastAPI(
@@ -63,6 +70,7 @@ app = FastAPI(
     redoc_url="/redoc"
 )
 
+app.add_middleware(GZipMiddleware, minimum_size=1000)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.BACKEND_CORS_ORIGINS,
@@ -73,6 +81,7 @@ app.add_middleware(
 
 # API routes first
 app.include_router(api_router)
+app.include_router(realtime.router)
 
 
 @app.exception_handler(Exception)

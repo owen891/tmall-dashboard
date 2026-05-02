@@ -16,3 +16,6 @@ black>=24.0
 flake8>=7.0
 isort>=5.13
 pre-commit>=3.6
+websockets>=12.0
+aiosqlite>=0.19
+apscheduler>=3.10

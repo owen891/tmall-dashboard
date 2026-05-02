@@ -8,6 +8,7 @@ import './styles/dark-theme.css'
 
 import App from './App.vue'
 import router from './router'
+import { wsClient } from './utils/websocket'
 
 const app = createApp(App)
 
@@ -26,3 +27,5 @@ if (savedTheme === 'dark') {
 }
 
 app.mount('#app')
+
+wsClient.connect()
