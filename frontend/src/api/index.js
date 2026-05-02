@@ -191,5 +191,17 @@ export default {
   },
   getCompareTrend(params) {
     return request.get('/compare/trend', { params })
+  },
+  getMarketTrends(category) {
+    return request.get('/market/trends', { params: { category } })
+  },
+  getPriceDistribution(category) {
+    return request.get('/market/price-distribution', { params: { category } })
+  },
+  getTopBrands(category) {
+    return request.get('/market/top-brands', { params: { category } })
+  },
+  getCompetitionAnalysis(category) {
+    return request.get('/market/competition', { params: { category } })
   }
 }

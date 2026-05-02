@@ -3,13 +3,6 @@
     <el-card class="filter-card">
       <div class="filter-row">
         <div class="filter-group">
-          <el-button-group size="small">
-            <el-button :type="dataSource === 'cloud' ? 'primary' : 'default'" @click="dataSource = 'cloud'">云端</el-button>
-            <el-button :type="dataSource === 'local' ? 'primary' : 'default'" @click="dataSource = 'local'">本地</el-button>
-          </el-button-group>
-        </div>
-        
-        <div class="filter-group">
           <span class="filter-label">渠道:</span>
           <el-select v-model="selectedChannel" size="small" style="width: 120px;" @change="loadPlans">
             <el-option label="全部" value="all" />
@@ -218,13 +211,12 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, nextTick, watch } from 'vue'
+import { ref, computed, onMounted, nextTick } from 'vue'
 import { Refresh, Search, Mouse, Download, TrendCharts } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import * as echarts from 'echarts'
 import api from '@/api'
 
-const dataSource = ref('cloud')
 const selectedChannel = ref('all')
 const selectedStatus = ref('all')
 const loading = ref(false)
