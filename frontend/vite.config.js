@@ -17,5 +17,17 @@ export default defineConfig({
         changeOrigin: true
       }
     }
+  },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'element-plus': ['element-plus'],
+          'echarts': ['echarts'],
+          'vue-core': ['vue', 'vue-router', 'pinia']
+        },
+        chunkSizeWarningLimit: 600
+      }
+    }
   }
 })
