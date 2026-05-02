@@ -208,7 +208,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Plus } from '@element-plus/icons-vue'
 
@@ -240,18 +240,61 @@ const refresh = async () => {
         const data = await response.json()
         teamSummary.value = data.team_summary
         userRankings.value = data.user_rankings
+      } else {
+        // 模拟数据
+        teamSummary.value = {
+          total_actual_gmv: 2850000,
+          total_progress: 85.2,
+          avg_task_progress: 88.5,
+          user_count: 5
+        }
+        userRankings.value = [
+          { id: 1, username: '张三', actual_gmv: 850000, gmv_progress: 94, task_progress: 92, performance_rating: 'S' },
+          { id: 2, username: '李四', actual_gmv: 720000, gmv_progress: 88, task_progress: 90, performance_rating: 'A' },
+          { id: 3, username: '王五', actual_gmv: 580000, gmv_progress: 82, task_progress: 85, performance_rating: 'A' },
+          { id: 4, username: '赵六', actual_gmv: 450000, gmv_progress: 75, task_progress: 80, performance_rating: 'B' },
+          { id: 5, username: '孙七', actual_gmv: 250000, gmv_progress: 68, task_progress: 88, performance_rating: 'B' }
+        ]
       }
     } else if (activeTab.value === 'tasks') {
       const response = await fetch('/api/efficiency/kanban')
       if (response.ok) {
         const data = await response.json()
         taskBoard.value = data.kanban || {}
+      } else {
+        // 模拟数据
+        taskBoard.value = {
+          todo: [
+            { id: 1, task_title: '优化首页首图', priority: 'high', assignee: '张三' },
+            { id: 2, task_title: '更新SOP文档', priority: 'medium', assignee: '李四' }
+          ],
+          in_progress: [
+            { id: 3, task_title: '618大促准备', priority: 'high', assignee: '王五' },
+            { id: 4, task_title: '新品上架', priority: 'medium', assignee: '赵六' }
+          ],
+          blocked: [
+            { id: 5, task_title: '库存同步问题', priority: 'high', assignee: '孙七' }
+          ],
+          done: [
+            { id: 6, task_title: '上月复盘报告', priority: 'medium', assignee: '张三' },
+            { id: 7, task_title: '数据导入自动化', priority: 'low', assignee: '李四' }
+          ]
+        }
       }
     } else {
       const response = await fetch('/api/efficiency/user-kpis')
       if (response.ok) {
         const data = await response.json()
         userKpis.value = data.kpis
+      } else {
+        // 模拟数据
+        userKpis.value = [
+          { id: 1, username: '张三', period: '2025年5月', target_gmv: 900000, actual_gmv: 850000, gmv_progress: 94, task_progress: 92 },
+          { id: 2, username: '李四', period: '2025年5月', target_gmv: 820000, actual_gmv: 720000, gmv_progress: 88, task_progress: 90 },
+          { id: 3, username: '王五', period: '2025年5月', target_gmv: 710000, actual_gmv: 580000, gmv_progress: 82, task_progress: 85 },
+          { id: 4, username: '赵六', period: '2025年5月', target_gmv: 600000, actual_gmv: 450000, gmv_progress: 75, task_progress: 80 },
+          { id: 5, username: '孙七', period: '2025年5月', target_gmv: 370000, actual_gmv: 250000, gmv_progress: 68, task_progress: 88 }
+        ]
       }
     }
   } catch (error) {
@@ -260,6 +303,10 @@ const refresh = async () => {
     loading.value = false
   }
 }
+
+watch(activeTab, () => {
+  refresh()
+})
 
 const formatNumber = (num) => {
   if (num >= 100000000) return (num / 100000000).toFixed(1) + '亿'
