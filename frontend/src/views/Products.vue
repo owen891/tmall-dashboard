@@ -24,6 +24,9 @@
           <el-button type="primary" @click="loadProducts" size="default">查询</el-button>
           <el-button @click="resetFilters" size="default">重置</el-button>
           <el-button type="success" @click="openColumnSelector" size="default">字段设置</el-button>
+          <el-button type="warning" @click="handleExport" size="default" :loading="exporting">
+            <el-icon><Download /></el-icon> 导出
+          </el-button>
           <el-button @click="loadProducts" size="default" :loading="loading">
             <el-icon><Refresh /></el-icon>
           </el-button>
@@ -201,10 +204,10 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { View, Edit, Refresh } from '@element-plus/icons-vue'
+import { View, Edit, Refresh, Download } from '@element-plus/icons-vue'
 import api from '@/api'
 import ColumnSelector from '@/components/ColumnSelector.vue'
 import { fieldCategories, loadColumnConfig, getFieldConfig, defaultVisibleFields } from '@/config/columns'
@@ -212,6 +215,7 @@ import { fieldCategories, loadColumnConfig, getFieldConfig, defaultVisibleFields
 const router = useRouter()
 
 const loading = ref(false)
+const exporting = ref(false)
 const products = ref([])
 const filterOptions = ref({})
 const filters = ref({
@@ -338,6 +342,32 @@ const openColumnSelector = () => {
   columnSelectorRef.value?.open()
 }
 
+const handleExport = async () => {
+  exporting.value = true
+  try {
+    const params = {
+      ...filters.value,
+      columns: selectedFields.value.join(',')
+    }
+    const response = await api.exportProducts(params)
+    const blob = new Blob([response], { type: 'text/csv;charset=utf-8' })
+    const url = window.URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `products_export_${new Date().toISOString().slice(0, 10)}.csv`
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    window.URL.revokeObjectURL(url)
+    ElMessage.success('导出成功')
+  } catch (error) {
+    console.error('Export error:', error)
+    ElMessage.error('导出失败')
+  } finally {
+    exporting.value = false
+  }
+}
+
 const onColumnsChange = (fields) => {
   selectedFields.value = fields
 }
@@ -395,7 +425,21 @@ onMounted(() => {
   selectedFields.value = config.visibleFields || defaultVisibleFields
   loadFilterOptions()
   loadProducts()
+  
+  document.addEventListener('keydown', handleKeyDown)
+  onUnmounted(() => {
+    document.removeEventListener('keydown', handleKeyDown)
+  })
 })
+
+const handleKeyDown = (e) => {
+  if (e.key === 'Enter' && !e.ctrlKey && !e.metaKey) {
+    const activeTag = document.activeElement?.tagName
+    if (activeTag !== 'INPUT' && activeTag !== 'TEXTAREA') {
+      loadProducts()
+    }
+  }
+}
 </script>
 
 <style scoped>
