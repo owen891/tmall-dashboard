@@ -3,16 +3,11 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func, desc
 from typing import Optional, List
 from app.core.database import get_db
+from app.core.utils import get_data_model, get_prev_period, get_latest_period, safe_float
 from app.models import DailyData, WeeklyData, MonthlyData, ProductHealth, Product
 from app.schemas.common import ResponseModel
 
 router = APIRouter(prefix="/health", tags=["健康度分析"])
-
-DIMENSION_MAP = {
-    'monthly': {'table': 'monthly_data', 'date_col': 'month', 'visitors_col': 'visitors'},
-    'weekly': {'table': 'weekly_data', 'date_col': 'week_start', 'visitors_col': 'ipv'},
-    'daily': {'table': 'daily_data', 'date_col': 'date', 'visitors_col': 'ipv'},
-}
 
 
 def calculate_health_score(row: dict) -> dict:
@@ -151,28 +146,6 @@ def calculate_health_score(row: dict) -> dict:
     }
 
 
-def get_prev_period(period_str: str, dim: str) -> str:
-    """获取上一个周期"""
-    from datetime import datetime, timedelta
-    
-    try:
-        if dim == 'monthly':
-            y, m = period_str.split('-')
-            m = int(m) - 1
-            if m == 0:
-                m, y = 12, str(int(y) - 1)
-            return f"{y}-{m:02d}"
-        else:
-            d = datetime.strptime(period_str, '%Y-%m-%d')
-            if dim == 'weekly':
-                prev = d - timedelta(days=7)
-            else:
-                prev = d - timedelta(days=1)
-            return prev.strftime('%Y-%m-%d')
-    except (ValueError, IndexError, TypeError, AttributeError):
-        return period_str
-
-
 @router.get("/list", response_model=ResponseModel)
 def get_health_list(
     dimension: str = Query("weekly", description="时间维度: daily/weekly/monthly"),
@@ -184,20 +157,10 @@ def get_health_list(
 ):
     """获取商品健康度列表"""
     
-    dim_cfg = DIMENSION_MAP.get(dimension, DIMENSION_MAP['weekly'])
-    visitors_col = dim_cfg['visitors_col']
-    date_col = dim_cfg['date_col']
-    
-    if dimension == "monthly":
-        Model = MonthlyData
-    elif dimension == "daily":
-        Model = DailyData
-    else:
-        Model = WeeklyData
+    Model, date_col, visitors_col = get_data_model(dimension)
     
     if not period:
-        latest = db.query(Model).order_by(desc(getattr(Model, date_col))).first()
-        period = getattr(latest, date_col) if latest else None
+        period = get_latest_period(Model, date_col, db)
     
     if not period:
         return ResponseModel(data={"products": [], "total": 0, "page": page, "page_size": page_size})
@@ -227,12 +190,12 @@ def get_health_list(
     
     products = []
     for p in products_data:
-        payment = float(p.payment_amount or 0)
-        refund = float(p.refund_amount or 0)
-        visitors = int(p.visitors or 0)
-        conversion = float(p.conversion or 0)
-        ad_spend = float(p.ad_spend or 0)
-        roi = float(p.roi or 0) if p.roi else 0
+        payment = safe_float(p.payment_amount)
+        refund = safe_float(p.refund_amount)
+        visitors = int(safe_float(p.visitors))
+        conversion = safe_float(p.conversion)
+        ad_spend = safe_float(p.ad_spend)
+        roi = safe_float(p.roi) if p.roi else 0
         
         row_data = {
             'product_id': p.product_id,
@@ -275,20 +238,10 @@ def get_health_summary(
 ):
     """获取健康度汇总"""
     
-    dim_cfg = DIMENSION_MAP.get(dimension, DIMENSION_MAP['weekly'])
-    visitors_col = dim_cfg['visitors_col']
-    date_col = dim_cfg['date_col']
-    
-    if dimension == "monthly":
-        Model = MonthlyData
-    elif dimension == "daily":
-        Model = DailyData
-    else:
-        Model = WeeklyData
+    Model, date_col, visitors_col = get_data_model(dimension)
     
     if not period:
-        latest = db.query(Model).order_by(desc(getattr(Model, date_col))).first()
-        period = getattr(latest, date_col) if latest else None
+        period = get_latest_period(Model, date_col, db)
     
     if not period:
         return ResponseModel(data={"summary": {}, "by_level": []})
@@ -314,12 +267,12 @@ def get_health_summary(
     product_count = len(products_data)
     
     for p in products_data:
-        payment = float(p.payment_amount or 0)
-        refund = float(p.refund_amount or 0)
-        visitors = int(p.visitors or 0)
-        conversion = float(p.conversion or 0)
-        ad_spend = float(p.ad_spend or 0)
-        roi = float(p.roi or 0) if p.roi else 0
+        payment = safe_float(p.payment_amount)
+        refund = safe_float(p.refund_amount)
+        visitors = int(safe_float(p.visitors))
+        conversion = safe_float(p.conversion)
+        ad_spend = safe_float(p.ad_spend)
+        roi = safe_float(p.roi) if p.roi else 0
         
         row_data = {
             'payment_amount': payment,
@@ -381,16 +334,7 @@ def get_product_health(
 ):
     """获取单个商品健康度详情"""
     
-    dim_cfg = DIMENSION_MAP.get(dimension, DIMENSION_MAP['weekly'])
-    visitors_col = dim_cfg['visitors_col']
-    date_col = dim_cfg['date_col']
-    
-    if dimension == "monthly":
-        Model = MonthlyData
-    elif dimension == "daily":
-        Model = DailyData
-    else:
-        Model = WeeklyData
+    Model, date_col, visitors_col = get_data_model(dimension)
     
     data_list = db.query(Model, Product.title.label('product_name'), Product.category).join(
         Product, Model.product_id == Product.product_id
@@ -463,20 +407,10 @@ def get_health_alerts(
 ):
     """获取健康度告警列表"""
     
-    dim_cfg = DIMENSION_MAP.get(dimension, DIMENSION_MAP['weekly'])
-    visitors_col = dim_cfg['visitors_col']
-    date_col = dim_cfg['date_col']
-    
-    if dimension == "monthly":
-        Model = MonthlyData
-    elif dimension == "daily":
-        Model = DailyData
-    else:
-        Model = WeeklyData
+    Model, date_col, visitors_col = get_data_model(dimension)
     
     if not period:
-        latest = db.query(Model).order_by(desc(getattr(Model, date_col))).first()
-        period = getattr(latest, date_col) if latest else None
+        period = get_latest_period(Model, date_col, db)
     
     if not period:
         return ResponseModel(data={"alerts": []})
@@ -499,12 +433,12 @@ def get_health_alerts(
     
     all_alerts = []
     for p in products_data:
-        payment = float(p.payment_amount or 0)
-        refund = float(p.refund_amount or 0)
-        visitors = int(p.visitors or 0)
-        conversion = float(p.conversion or 0)
-        ad_spend = float(p.ad_spend or 0)
-        roi = float(p.roi or 0) if p.roi else 0
+        payment = safe_float(p.payment_amount)
+        refund = safe_float(p.refund_amount)
+        visitors = int(safe_float(p.visitors))
+        conversion = safe_float(p.conversion)
+        ad_spend = safe_float(p.ad_spend)
+        roi = safe_float(p.roi) if p.roi else 0
         
         row_data = {
             'payment_amount': payment,

@@ -1,50 +1,85 @@
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
+from sqlalchemy import text
 from app.core.database import get_db
+from app.core.logger import get_logger
 from app.schemas.common import ResponseModel
 import os
 import shutil
 import sqlite3
+import re
 from datetime import datetime
 import json
 import io
 
+logger = get_logger(__name__)
 router = APIRouter(prefix="/backup", tags=["数据备份"])
 
 BACKUP_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "backups")
 
+ALLOWED_TABLES = {'products', 'daily_data', 'weekly_data', 'monthly_data', 'alerts', 'product_health'}
+
+
+def validate_table_name(table_name: str) -> bool:
+    """验证表名是否安全"""
+    if not table_name or not isinstance(table_name, str):
+        return False
+    if len(table_name) > 64:
+        return False
+    if not re.match(r'^[a-zA-Z_][a-zA-Z0-9_]*$', table_name):
+        return False
+    return True
+
+
+def safe_get_table_count(db: Session, table_name: str) -> int:
+    """安全获取表记录数"""
+    if not validate_table_name(table_name):
+        logger.warning(f"Invalid table name attempted: {table_name}")
+        return 0
+    try:
+        result = db.execute(text(f"SELECT COUNT(*) FROM {table_name}")).scalar()
+        return result or 0
+    except Exception as e:
+        logger.error(f"Error getting count for table {table_name}: {e}")
+        return 0
+
+
 @router.get("/status", response_model=ResponseModel)
 def get_backup_status():
     """获取备份状态"""
-    if not os.path.exists(BACKUP_DIR):
-        os.makedirs(BACKUP_DIR, exist_ok=True)
+    try:
+        if not os.path.exists(BACKUP_DIR):
+            os.makedirs(BACKUP_DIR, exist_ok=True)
+            return ResponseModel(data={
+                "backup_dir": BACKUP_DIR,
+                "backups": [],
+                "total_count": 0
+            })
+
+        backups = []
+        for filename in os.listdir(BACKUP_DIR):
+            filepath = os.path.join(BACKUP_DIR, filename)
+            if os.path.isfile(filepath):
+                stat = os.stat(filepath)
+                backups.append({
+                    "filename": filename,
+                    "size": stat.st_size,
+                    "size_formatted": format_size(stat.st_size),
+                    "created_at": datetime.fromtimestamp(stat.st_ctime).isoformat(),
+                    "modified_at": datetime.fromtimestamp(stat.st_mtime).isoformat()
+                })
+
+        backups.sort(key=lambda x: x["modified_at"], reverse=True)
+
         return ResponseModel(data={
             "backup_dir": BACKUP_DIR,
-            "backups": [],
-            "total_count": 0
+            "backups": backups,
+            "total_count": len(backups)
         })
-    
-    backups = []
-    for filename in os.listdir(BACKUP_DIR):
-        filepath = os.path.join(BACKUP_DIR, filename)
-        if os.path.isfile(filepath):
-            stat = os.stat(filepath)
-            backups.append({
-                "filename": filename,
-                "size": stat.st_size,
-                "size_formatted": format_size(stat.st_size),
-                "created_at": datetime.fromtimestamp(stat.st_ctime).isoformat(),
-                "modified_at": datetime.fromtimestamp(stat.st_mtime).isoformat()
-            })
-    
-    backups.sort(key=lambda x: x["modified_at"], reverse=True)
-    
-    return ResponseModel(data={
-        "backup_dir": BACKUP_DIR,
-        "backups": backups,
-        "total_count": len(backups)
-    })
+    except Exception as e:
+        logger.error(f"Error getting backup status: {e}")
+        raise HTTPException(status_code=500, detail=f"获取备份状态失败: {str(e)}")
 
 
 @router.post("/create", response_model=ResponseModel)
@@ -53,37 +88,40 @@ def create_backup(db: Session = Depends(get_db)):
     try:
         if not os.path.exists(BACKUP_DIR):
             os.makedirs(BACKUP_DIR, exist_ok=True)
-        
+
         db_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "data", "products.db")
-        
+
         if not os.path.exists(db_path):
             raise HTTPException(status_code=404, detail="数据库文件不存在")
-        
+
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         backup_filename = f"backup_{timestamp}.db"
         backup_path = os.path.join(BACKUP_DIR, backup_filename)
-        
+
         shutil.copy2(db_path, backup_path)
-        
+
         table_counts = {}
-        tables = db.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
-        for table in tables:
-            table_name = table[0]
-            count = db.execute(f"SELECT COUNT(*) FROM {table_name}").scalar()
-            table_counts[table_name] = count
-        
+        try:
+            tables = db.execute(text("SELECT name FROM sqlite_master WHERE type='table'")).fetchall()
+            for table in tables:
+                table_name = table[0]
+                if validate_table_name(table_name):
+                    table_counts[table_name] = safe_get_table_count(db, table_name)
+        except Exception as e:
+            logger.warning(f"Error getting table list: {e}")
+
         metadata = {
             "created_at": datetime.now().isoformat(),
             "db_path": db_path,
             "tables": table_counts,
             "version": "2.0.0"
         }
-        
+
         meta_filename = backup_filename.replace(".db", "_meta.json")
         meta_path = os.path.join(BACKUP_DIR, meta_filename)
         with open(meta_path, 'w', encoding='utf-8') as f:
             json.dump(metadata, f, ensure_ascii=False, indent=2)
-        
+
         return ResponseModel(data={
             "message": "备份创建成功",
             "backup_file": backup_filename,
@@ -92,27 +130,33 @@ def create_backup(db: Session = Depends(get_db)):
             "size_formatted": format_size(os.path.getsize(backup_path)),
             "tables": table_counts
         })
-        
+
+    except HTTPException:
+        raise
     except Exception as e:
+        logger.error(f"Backup creation failed: {e}")
         raise HTTPException(status_code=500, detail=f"备份失败: {str(e)}")
 
 
 @router.get("/download/{filename}", response_model=ResponseModel)
 def download_backup(filename: str):
     """下载备份文件"""
-    if ".." in filename or "/" in filename:
+    if ".." in filename or "/" in filename or "\\" in filename:
         raise HTTPException(status_code=400, detail="无效的文件名")
-    
+
+    if not filename.endswith('.db') and not filename.endswith('.json'):
+        raise HTTPException(status_code=400, detail="无效的文件类型")
+
     backup_path = os.path.join(BACKUP_DIR, filename)
-    
+
     if not os.path.exists(backup_path):
         raise HTTPException(status_code=404, detail="备份文件不存在")
-    
+
     def iterfile():
         with open(backup_path, 'rb') as f:
             while chunk := f.read(8192):
                 yield chunk
-    
+
     return StreamingResponse(
         iterfile(),
         media_type='application/octet-stream',
@@ -126,62 +170,78 @@ def download_backup(filename: str):
 @router.delete("/delete/{filename}", response_model=ResponseModel)
 def delete_backup(filename: str):
     """删除备份文件"""
-    if ".." in filename or "/" in filename:
+    if ".." in filename or "/" in filename or "\\" in filename:
         raise HTTPException(status_code=400, detail="无效的文件名")
-    
+
+    if not filename.endswith('.db'):
+        raise HTTPException(status_code=400, detail="只能删除 .db 备份文件")
+
     backup_path = os.path.join(BACKUP_DIR, filename)
     meta_path = backup_path.replace(".db", "_meta.json")
-    
+
     deleted = []
-    if os.path.exists(backup_path):
-        os.remove(backup_path)
-        deleted.append(filename)
-    
-    if os.path.exists(meta_path):
-        os.remove(meta_path)
-        deleted.append(os.path.basename(meta_path))
-    
-    if not deleted:
-        raise HTTPException(status_code=404, detail="备份文件不存在")
-    
-    return ResponseModel(data={
-        "message": "删除成功",
-        "deleted_files": deleted
-    })
+    try:
+        if os.path.exists(backup_path):
+            os.remove(backup_path)
+            deleted.append(filename)
+
+        if os.path.exists(meta_path):
+            os.remove(meta_path)
+            deleted.append(os.path.basename(meta_path))
+
+        if not deleted:
+            raise HTTPException(status_code=404, detail="备份文件不存在")
+
+        return ResponseModel(data={
+            "message": "删除成功",
+            "deleted_files": deleted
+        })
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error deleting backup: {e}")
+        raise HTTPException(status_code=500, detail=f"删除失败: {str(e)}")
 
 
 @router.post("/restore/{filename}", response_model=ResponseModel)
 def restore_backup(filename: str, db: Session = Depends(get_db)):
     """恢复备份"""
-    if ".." in filename or "/" in filename:
+    if ".." in filename or "/" in filename or "\\" in filename:
         raise HTTPException(status_code=400, detail="无效的文件名")
-    
+
+    if not filename.endswith('.db'):
+        raise HTTPException(status_code=400, detail="无效的备份文件")
+
     backup_path = os.path.join(BACKUP_DIR, filename)
-    
+
     if not os.path.exists(backup_path):
         raise HTTPException(status_code=404, detail="备份文件不存在")
-    
+
     try:
         conn = sqlite3.connect(backup_path)
         cursor = conn.cursor()
-        
+
         tables = cursor.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
         table_info = {}
         for table in tables:
             table_name = table[0]
-            count = cursor.execute(f"SELECT COUNT(*) FROM {table_name}").scalar()
-            table_info[table_name] = count
-        
+            if validate_table_name(table_name):
+                count = cursor.execute(f"SELECT COUNT(*) FROM {table_name}").scalar()
+                table_info[table_name] = count
+
         conn.close()
-        
+
         return ResponseModel(data={
             "message": "备份文件验证成功",
             "filename": filename,
             "tables": table_info,
             "note": "实际恢复功能需要在服务器上手动执行"
         })
-        
+
+    except HTTPException:
+        raise
     except Exception as e:
+        logger.error(f"Backup validation failed: {e}")
         raise HTTPException(status_code=500, detail=f"验证备份失败: {str(e)}")
 
 
@@ -205,13 +265,13 @@ def export_config():
             ]
         }
     }
-    
+
     output = io.BytesIO()
     output.write(json.dumps(config_data, ensure_ascii=False, indent=2).encode('utf-8'))
     output.seek(0)
-    
+
     filename = f"config_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
-    
+
     return StreamingResponse(
         output,
         media_type='application/json',

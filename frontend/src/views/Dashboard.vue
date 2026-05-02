@@ -1,54 +1,20 @@
 <template>
   <div class="dashboard">
     <el-row :gutter="20" class="kpi-cards">
-      <el-col :span="6">
+      <el-col :span="6" v-for="(kpi, index) in kpiCards" :key="index">
         <el-card class="kpi-card" v-loading="loading">
           <div class="kpi-content">
-            <div class="kpi-icon" style="background: #409eff">
-              <el-icon><TrendCharts /></el-icon>
+            <div class="kpi-icon" :style="{ background: kpi.color }">
+              <el-icon><component :is="kpi.icon" /></el-icon>
             </div>
             <div class="kpi-info">
-              <div class="kpi-value">¥{{ formatNumber(summary.total_gmv) }}</div>
-              <div class="kpi-label">总 GMV</div>
-            </div>
-          </div>
-        </el-card>
-      </el-col>
-      <el-col :span="6">
-        <el-card class="kpi-card" v-loading="loading">
-          <div class="kpi-content">
-            <div class="kpi-icon" style="background: #67c23a">
-              <el-icon><User /></el-icon>
-            </div>
-            <div class="kpi-info">
-              <div class="kpi-value">{{ formatNumber(summary.total_visitors) }}</div>
-              <div class="kpi-label">总访客数</div>
-            </div>
-          </div>
-        </el-card>
-      </el-col>
-      <el-col :span="6">
-        <el-card class="kpi-card" v-loading="loading">
-          <div class="kpi-content">
-            <div class="kpi-icon" style="background: #e6a23c">
-              <el-icon><Money /></el-icon>
-            </div>
-            <div class="kpi-info">
-              <div class="kpi-value">¥{{ formatNumber(summary.total_ad_spend) }}</div>
-              <div class="kpi-label">广告支出</div>
-            </div>
-          </div>
-        </el-card>
-      </el-col>
-      <el-col :span="6">
-        <el-card class="kpi-card" v-loading="loading">
-          <div class="kpi-content">
-            <div class="kpi-icon" style="background: #f56c6c">
-              <el-icon><DataAnalysis /></el-icon>
-            </div>
-            <div class="kpi-info">
-              <div class="kpi-value">{{ summary.avg_roi?.toFixed(2) || 0 }}</div>
-              <div class="kpi-label">平均 ROI</div>
+              <div class="kpi-value">{{ kpi.value }}</div>
+              <div class="kpi-label">{{ kpi.label }}</div>
+              <div class="kpi-change" v-if="kpi.change" :class="kpi.changeClass">
+                <span v-if="kpi.change > 0">↑</span>
+                <span v-else-if="kpi.change < 0">↓</span>
+                {{ Math.abs(kpi.change) }}%
+              </div>
             </div>
           </div>
         </el-card>
@@ -82,43 +48,38 @@
           <template #header>
             <div class="card-header">
               <span>热销商品 TOP10</span>
+              <el-button type="primary" text @click="$router.push('/products')">
+                查看更多 <el-icon><ArrowRight /></el-icon>
+              </el-button>
             </div>
           </template>
-          <el-table :data="topProducts" style="width: 100%">
-            <el-table-column label="商品" min-width="280">
-              <template #default="{ row }">
-                <div class="product-cell">
-                  <div class="product-thumb">
-                    <img :src="row.image_url || 'https://via.placeholder.com/40x40/f0f2f5/909399?text=商'" :alt="row.title" @error="$event.target.src='https://via.placeholder.com/40x40/f0f2f5/909399?text=商'" />
-                  </div>
-                  <div class="product-info">
-                    <div class="product-name">{{ row.title }}</div>
-                    <div class="product-id">{{ row.product_id }}</div>
-                  </div>
-                </div>
-              </template>
-            </el-table-column>
+          <el-table :data="topProducts" stripe v-loading="loading">
+            <el-table-column type="index" label="排名" width="60" />
+            <el-table-column prop="product_id" label="商品ID" width="120" />
+            <el-table-column prop="title" label="商品名称" min-width="200" />
             <el-table-column prop="tier" label="分层" width="100">
               <template #default="{ row }">
-                <el-tag :type="getTierType(row.tier)">{{ row.tier }}</el-tag>
+                <el-tag :type="getTierType(row.tier)">{{ row.tier || '未分类' }}</el-tag>
               </template>
             </el-table-column>
-            <el-table-column prop="net_sales" label="GMV" width="120">
+            <el-table-column prop="net_sales" label="销售额" width="120" align="right">
               <template #default="{ row }">
                 ¥{{ formatNumber(row.net_sales) }}
               </template>
             </el-table-column>
-            <el-table-column prop="visitors" label="访客数" width="100" />
-            <el-table-column prop="conversion" label="转化率" width="100">
+            <el-table-column prop="visitors" label="访客数" width="100" align="right">
               <template #default="{ row }">
-                {{ (row.conversion * 100).toFixed(2) }}%
+                {{ formatNumber(row.visitors) }}
               </template>
             </el-table-column>
-            <el-table-column prop="roi" label="ROI" width="100">
+            <el-table-column prop="conversion" label="转化率" width="100" align="right">
               <template #default="{ row }">
-                <span :style="{ color: row.roi >= 3 ? '#67c23a' : '#f56c6c' }">
-                  {{ row.roi?.toFixed(2) }}
-                </span>
+                {{ row.conversion ? (row.conversion * 100).toFixed(2) : 0 }}%
+              </template>
+            </el-table-column>
+            <el-table-column prop="roi" label="ROI" width="80" align="right">
+              <template #default="{ row }">
+                {{ row.roi || 0 }}
               </template>
             </el-table-column>
           </el-table>
@@ -129,20 +90,30 @@
 </template>
 
 <script setup>
-import { ref, onMounted, nextTick, onUnmounted } from 'vue'
+import { ref, reactive, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import * as echarts from 'echarts'
+import { TrendCharts, User, Money, DataAnalysis, ArrowRight } from '@element-plus/icons-vue'
 import api from '@/api'
 
+const loading = ref(true)
+const error = ref(null)
 const summary = ref({})
 const topProducts = ref([])
+
+const kpiCards = reactive([
+  { key: 'gmv', label: '总 GMV', icon: 'TrendCharts', color: '#409eff', value: '0', change: 0, changeClass: '' },
+  { key: 'visitors', label: '总访客数', icon: 'User', color: '#67c23a', value: '0', change: 0, changeClass: '' },
+  { key: 'ad_spend', label: '广告支出', icon: 'Money', color: '#e6a23c', value: '0', change: 0, changeClass: '' },
+  { key: 'roi', label: '平均 ROI', icon: 'DataAnalysis', color: '#f56c6c', value: '0', change: 0, changeClass: '' },
+])
+
 const trendChartRef = ref(null)
 const categoryChartRef = ref(null)
-const loading = ref(true)
-let trendChart = null
-let categoryChart = null
+const charts = reactive({ trend: null, category: null })
 
 const formatNumber = (num) => {
-  if (!num) return '0'
+  if (!num && num !== 0) return '0'
+  num = Number(num)
   if (num >= 10000) {
     return (num / 10000).toFixed(2) + '万'
   }
@@ -150,28 +121,102 @@ const formatNumber = (num) => {
 }
 
 const getTierType = (tier) => {
-  const types = {
-    '引流款': 'success',
-    '利润款': 'primary',
-    '潜力款': 'warning'
-  }
+  const types = { '引流款': 'success', '利润款': 'primary', '潜力款': 'warning' }
   return types[tier] || 'info'
+}
+
+const updateKPICards = () => {
+  const kpi = summary.value.kpi || {}
+  
+  kpiCards[0].value = '¥' + formatNumber(kpi.total_gmv?.value)
+  kpiCards[0].change = kpi.total_gmv?.change_percent || 0
+  kpiCards[0].changeClass = getChangeClass(kpi.total_gmv?.change_percent)
+  
+  kpiCards[1].value = formatNumber(kpi.visitors?.value)
+  kpiCards[1].change = kpi.visitors?.change_percent || 0
+  kpiCards[1].changeClass = getChangeClass(kpi.visitors?.change_percent)
+  
+  kpiCards[2].value = '¥' + formatNumber(kpi.ad_spend?.value)
+  kpiCards[2].change = kpi.ad_spend?.change_percent || 0
+  kpiCards[2].changeClass = getChangeClass(kpi.ad_spend?.change_percent)
+  
+  kpiCards[3].value = (kpi.roi?.value || 0).toFixed(2)
+  kpiCards[3].change = kpi.roi?.change_percent || 0
+  kpiCards[3].changeClass = getChangeClass(kpi.roi?.change_percent)
+}
+
+const getChangeClass = (change) => {
+  if (!change) return ''
+  return change > 0 ? 'text-success' : change < 0 ? 'text-danger' : ''
+}
+
+const initCharts = () => {
+  if (charts.trend) {
+    charts.trend.dispose()
+    charts.trend = null
+  }
+  if (charts.category) {
+    charts.category.dispose()
+    charts.category = null
+  }
+
+  if (trendChartRef.value) {
+    charts.trend = echarts.init(trendChartRef.value)
+  }
+  if (categoryChartRef.value) {
+    charts.category = echarts.init(categoryChartRef.value)
+  }
+}
+
+const updateCharts = () => {
+  if (charts.trend) {
+    const trends = summary.value.trends || []
+    const periods = trends.map(t => t.period || t.date)
+    const payments = trends.map(t => t.payment_amount || t.net_sales || 0)
+    
+    charts.trend.setOption({
+      tooltip: { trigger: 'axis' },
+      grid: { left: '3%', right: '4%', bottom: '3%', containLabel: true },
+      xAxis: { type: 'category', data: periods },
+      yAxis: { type: 'value', name: '金额' },
+      series: [{
+        name: '销售额',
+        type: 'line',
+        data: payments,
+        smooth: true,
+        areaStyle: { opacity: 0.3 },
+        itemStyle: { color: '#409eff' }
+      }]
+    })
+  }
+
+  if (charts.category) {
+    const categoryData = summary.value.category_distribution || []
+    
+    charts.category.setOption({
+      tooltip: { trigger: 'item', formatter: '{b}: ¥{c} ({d}%)' },
+      legend: { bottom: 0 },
+      series: [{
+        type: 'pie',
+        radius: ['40%', '70%'],
+        label: { show: true, formatter: '{b}\n{d}%' },
+        data: categoryData
+      }]
+    })
+  }
 }
 
 const loadData = async () => {
   loading.value = true
+  error.value = null
+  
   try {
     const [summaryRes, topRes] = await Promise.all([
-      api.getDashboardSummary(),
-      api.getTopProducts()
+      api.getKPI({ dim: 'weekly' }),
+      api.getTopProducts({ dimension: 'weekly', limit: 10 })
     ])
-    const kpi = summaryRes.data?.kpi || {}
-    summary.value = {
-      total_gmv: kpi.total_gmv?.value || 0,
-      total_visitors: kpi.visitors?.value || 0,
-      total_ad_spend: kpi.ad_spend?.value || kpi.total_gmv?.value * 0.1 || 0,
-      avg_roi: kpi.roi?.value || 0
-    }
+    
+    summary.value = summaryRes.data || {}
     topProducts.value = (topRes.data?.products || []).map(p => ({
       product_id: p.product_id,
       title: p.product_name || p.title,
@@ -183,133 +228,45 @@ const loadData = async () => {
       roi: p.roi || 0
     }))
     
-    nextTick(() => {
-      initTrendChart()
-      initCategoryChart()
-    })
-  } catch (error) {
-    console.error('Load data error:', error)
+    updateKPICards()
+    
+    await nextTick()
+    initCharts()
+    updateCharts()
+  } catch (err) {
+    console.error('Load data error:', err)
+    error.value = err.message || '加载数据失败'
   } finally {
     loading.value = false
   }
 }
 
-onUnmounted(() => {
-  if (trendChart) {
-    trendChart.dispose()
-  }
-  if (categoryChart) {
-    categoryChart.dispose()
-  }
-})
-
-const initTrendChart = () => {
-  if (!trendChartRef.value) return
-  
-  if (trendChart) {
-    trendChart.dispose()
-  }
-  
-  trendChart = echarts.init(trendChartRef.value)
-  
-  const weeks = ['第1周', '第2周', '第3周', '第4周', '第5周', '第6周', '第7周']
-  const gmvData = topProducts.value.slice(0, 7).map((_, i) => 
-    Math.round(summary.value.total_gmv * (0.8 + Math.random() * 0.4) / 7)
-  )
-  
-  const option = {
-    tooltip: {
-      trigger: 'axis'
-    },
-    grid: {
-      left: '3%',
-      right: '4%',
-      bottom: '3%',
-      containLabel: true
-    },
-    xAxis: {
-      type: 'category',
-      data: weeks.slice(0, gmvData.length)
-    },
-    yAxis: {
-      type: 'value',
-      axisLabel: {
-        formatter: val => val >= 10000 ? (val / 10000) + '万' : val
-      }
-    },
-    series: [{
-      name: 'GMV',
-      type: 'line',
-      data: gmvData,
-      smooth: true,
-      areaStyle: {
-        color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-          { offset: 0, color: 'rgba(64, 158, 255, 0.3)' },
-          { offset: 1, color: 'rgba(64, 158, 255, 0.05)' }
-        ])
-      },
-      lineStyle: { color: '#409eff' },
-      itemStyle: { color: '#409eff' }
-    }]
-  }
-  
-  trendChart.setOption(option)
-  window.addEventListener('resize', () => trendChart?.resize())
-}
-
-const initCategoryChart = () => {
-  if (!categoryChartRef.value) return
-  
-  if (categoryChart) {
-    categoryChart.dispose()
-  }
-  
-  categoryChart = echarts.init(categoryChartRef.value)
-  
-  const categoryData = [
-    { name: '家居饰品', value: Math.round(summary.value.total_gmv * 0.35) },
-    { name: '摆件', value: Math.round(summary.value.total_gmv * 0.25) },
-    { name: '装饰画', value: Math.round(summary.value.total_gmv * 0.2) },
-    { name: '收纳', value: Math.round(summary.value.total_gmv * 0.12) },
-    { name: '其他', value: Math.round(summary.value.total_gmv * 0.08) }
-  ]
-  
-  const option = {
-    tooltip: {
-      trigger: 'item',
-      formatter: '{b}: ¥{c} ({d}%)'
-    },
-    legend: {
-      orient: 'vertical',
-      right: 10,
-      top: 'center',
-      textStyle: { fontSize: 12 }
-    },
-    series: [{
-      type: 'pie',
-      radius: ['40%', '70%'],
-      center: ['35%', '50%'],
-      avoidLabelOverlap: false,
-      label: { show: false },
-      emphasis: {
-        label: { show: true, fontSize: 14, fontWeight: 'bold' }
-      },
-      labelLine: { show: false },
-      data: categoryData
-    }]
-  }
-  
-  categoryChart.setOption(option)
-  window.addEventListener('resize', () => categoryChart?.resize())
+const handleResize = () => {
+  if (charts.trend) charts.trend.resize()
+  if (charts.category) charts.category.resize()
 }
 
 onMounted(() => {
   loadData()
-})</script>
+  window.addEventListener('resize', handleResize)
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('resize', handleResize)
+  if (charts.trend) {
+    charts.trend.dispose()
+    charts.trend = null
+  }
+  if (charts.category) {
+    charts.category.dispose()
+    charts.category = null
+  }
+})
+</script>
 
 <style scoped>
 .dashboard {
-  width: 100%;
+  padding: 20px;
 }
 
 .kpi-cards {
@@ -317,25 +274,24 @@ onMounted(() => {
 }
 
 .kpi-card {
-  height: 120px;
+  cursor: default;
 }
 
 .kpi-content {
   display: flex;
   align-items: center;
-  height: 100%;
+  gap: 15px;
 }
 
 .kpi-icon {
-  width: 60px;
-  height: 60px;
+  width: 50px;
+  height: 50px;
   border-radius: 10px;
   display: flex;
   align-items: center;
   justify-content: center;
   color: white;
-  font-size: 30px;
-  margin-right: 20px;
+  font-size: 24px;
 }
 
 .kpi-info {
@@ -343,67 +299,41 @@ onMounted(() => {
 }
 
 .kpi-value {
-  font-size: 28px;
-  font-weight: 600;
-  margin-bottom: 5px;
+  font-size: 20px;
+  font-weight: bold;
+  color: #303133;
 }
 
 .kpi-label {
   font-size: 14px;
   color: #909399;
+  margin-top: 4px;
+}
+
+.kpi-change {
+  font-size: 12px;
+  margin-top: 4px;
+}
+
+.text-success {
+  color: #67c23a;
+}
+
+.text-danger {
+  color: #f56c6c;
+}
+
+.charts-row {
+  margin-bottom: 20px;
+}
+
+.chart-container {
+  height: 300px;
 }
 
 .card-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-}
-
-.charts-row {
-  margin-top: 20px;
-}
-
-.product-cell {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.product-thumb {
-  width: 40px;
-  height: 40px;
-  border-radius: 4px;
-  overflow: hidden;
-  background: #f5f7fa;
-  flex-shrink: 0;
-}
-
-.product-thumb img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-
-.product-info {
-  flex: 1;
-  min-width: 0;
-}
-
-.product-name {
-  font-size: 14px;
-  font-weight: 500;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.product-id {
-  font-size: 12px;
-  color: #909399;
-}
-
-.chart-container {
-  height: 300px;
-  width: 100%;
 }
 </style>
