@@ -1,15 +1,14 @@
-from fastapi import APIRouter, Query, HTTPException
+from fastapi import APIRouter, Query, HTTPException, Depends
 from sqlalchemy.orm import Session
 from sqlalchemy import func, desc
 from datetime import datetime, timedelta
 from typing import Optional, List, Dict
 from pydantic import BaseModel
 from app.core.database import get_db
-from app.models.dashboard_models import (
-    AlertRule, AlertRecord, TaskItem, UserKPI
-)
+from app.models.product import AlertRule
+from app.models.dashboard_models import AlertRecord
 
-router = APIRouter(prefix="/api/alerts", tags=["告警任务"])
+router = APIRouter(prefix="/api/alerts", tags=["告警规则"])
 
 
 class AlertRuleCreate(BaseModel):
@@ -30,7 +29,7 @@ class AlertRecordUpdate(BaseModel):
 async def get_alert_rules(
     enabled: Optional[bool] = Query(None, description="是否启用"),
     level: Optional[str] = Query(None, description="级别"),
-    db: Session = None
+    db: Session = Depends(get_db)
 ):
     """告警规则列表"""
     query = db.query(AlertRule)
@@ -63,7 +62,7 @@ async def get_alert_rules(
 @router.post("/rules")
 async def create_alert_rule(
     rule: AlertRuleCreate,
-    db: Session = None
+    db: Session = Depends(get_db)
 ):
     """创建告警规则"""
     db_rule = AlertRule(
@@ -85,7 +84,7 @@ async def create_alert_rule(
 async def update_alert_rule(
     rule_id: int,
     rule: AlertRuleCreate,
-    db: Session = None
+    db: Session = Depends(get_db)
 ):
     """更新告警规则"""
     db_rule = db.query(AlertRule).filter(AlertRule.id == rule_id).first()
@@ -107,7 +106,7 @@ async def update_alert_rule(
 @router.delete("/rules/{rule_id}")
 async def delete_alert_rule(
     rule_id: int,
-    db: Session = None
+    db: Session = Depends(get_db)
 ):
     """删除告警规则"""
     db_rule = db.query(AlertRule).filter(AlertRule.id == rule_id).first()
@@ -125,7 +124,7 @@ async def get_alert_records(
     status: Optional[str] = Query(None, description="状态"),
     level: Optional[str] = Query(None, description="级别"),
     limit: int = Query(50, ge=1, le=200),
-    db: Session = None
+    db: Session = Depends(get_db)
 ):
     """告警记录"""
     query = db.query(AlertRecord)
@@ -161,7 +160,7 @@ async def get_alert_records(
 async def update_alert_record(
     record_id: int,
     update: AlertRecordUpdate,
-    db: Session = None
+    db: Session = Depends(get_db)
 ):
     """更新告警记录"""
     db_record = db.query(AlertRecord).filter(AlertRecord.id == record_id).first()
@@ -180,7 +179,7 @@ async def update_alert_record(
 
 @router.get("/stats")
 async def get_alert_stats(
-    db: Session = None
+    db: Session = Depends(get_db)
 ):
     """告警统计"""
     total = db.query(func.count(AlertRecord.id)).scalar() or 0

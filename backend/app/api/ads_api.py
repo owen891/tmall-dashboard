@@ -1,12 +1,13 @@
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Query, Depends
 from sqlalchemy.orm import Session
 from sqlalchemy import func, desc
 from datetime import datetime, timedelta
 from typing import Optional, List, Dict
 from app.core.database import get_db
 from app.models.dashboard_models import (
-    CampaignMetrics, AIPLStats, DmpCrowd, WxtCampaign, WxtDailyMetrics
+    CampaignMetrics, AIPLStats
 )
+from app.models.command_tower import DmpCrowd
 
 router = APIRouter(prefix="/api/ads", tags=["投放效果"])
 
@@ -16,7 +17,7 @@ async def get_campaigns(
     campaign_type: Optional[str] = Query(None, description="类型"),
     status: Optional[str] = Query(None, description="状态"),
     limit: int = Query(50, ge=1, le=200),
-    db: Session = None
+    db: Session = Depends(get_db)
 ):
     """推广排行"""
     query = db.query(CampaignMetrics)
@@ -54,7 +55,7 @@ async def get_campaigns(
 @router.get("/aipl")
 async def get_aipl(
     date: Optional[str] = Query(None, description="日期"),
-    db: Session = None
+    db: Session = Depends(get_db)
 ):
     """AIPL流转"""
     if not date:
@@ -92,7 +93,7 @@ async def get_aipl(
 @router.get("/aipl/trend")
 async def get_aipl_trend(
     days: int = Query(30, ge=1, le=90),
-    db: Session = None
+    db: Session = Depends(get_db)
 ):
     """AIPL趋势"""
     end_date = datetime.now()
@@ -124,7 +125,7 @@ async def get_aipl_trend(
 async def get_dmp_crowds(
     level: Optional[str] = Query(None, description="层级"),
     limit: int = Query(50, ge=1, le=200),
-    db: Session = None
+    db: Session = Depends(get_db)
 ):
     """达摩盘人群"""
     query = db.query(DmpCrowd)
@@ -153,7 +154,7 @@ async def get_dmp_crowds(
 
 @router.get("/summary")
 async def get_ads_summary(
-    db: Session = None
+    db: Session = Depends(get_db)
 ):
     """投放汇总"""
     total_cost = db.query(func.sum(CampaignMetrics.cost)).scalar() or 0

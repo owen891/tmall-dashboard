@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Query, Depends
 from sqlalchemy.orm import Session
 from sqlalchemy import func, desc
 from datetime import datetime, timedelta
@@ -16,7 +16,7 @@ async def get_product_ranking(
     tier: Optional[str] = Query(None, description="分层"),
     product_type: Optional[str] = Query(None, description="类型"),
     limit: int = Query(50, ge=1, le=200),
-    db: Session = None
+    db: Session = Depends(get_db)
 ):
     """商品排行(A款跑量)"""
     query = db.query(ProductRanking)
@@ -53,7 +53,7 @@ async def get_product_ranking(
 @router.get("/profit")
 async def get_product_profit(
     limit: int = Query(50, ge=1, le=200),
-    db: Session = None
+    db: Session = Depends(get_db)
 ):
     """商品利润排行(B款利润)"""
     products = db.query(ProductProfit).order_by(
@@ -86,7 +86,7 @@ async def get_product_profit(
 async def get_review_analysis(
     limit: int = Query(50, ge=1, le=200),
     sort_by: str = Query("negative_rate", description="排序字段"),
-    db: Session = None
+    db: Session = Depends(get_db)
 ):
     """评价分析"""
     query = db.query(ReviewAnalysis)
@@ -122,7 +122,7 @@ async def get_review_analysis(
 
 @router.get("/matrix")
 async def get_product_matrix(
-    db: Session = None
+    db: Session = Depends(get_db)
 ):
     """商品矩阵(四象限)"""
     products = db.query(ProductRanking).all()
@@ -162,7 +162,7 @@ async def get_product_matrix(
 
 @router.get("/summary")
 async def get_product_summary(
-    db: Session = None
+    db: Session = Depends(get_db)
 ):
     """商品汇总"""
     total_products = db.query(func.count(ProductRanking.id)).scalar() or 0

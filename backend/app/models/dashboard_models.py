@@ -202,6 +202,30 @@ class ProductProfit(Base):
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
 
 
+class ReviewAnalysis(Base):
+    """评价分析"""
+    __tablename__ = "review_analysis"
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    product_id = Column(String, nullable=False, unique=True, index=True)
+    title = Column(String, nullable=True)
+    
+    total_reviews = Column(Integer, default=0)
+    star1 = Column(Integer, default=0)
+    star2 = Column(Integer, default=0)
+    star3 = Column(Integer, default=0)
+    star4 = Column(Integer, default=0)
+    star5 = Column(Integer, default=0)
+    
+    negative_rate = Column(Float, default=0)
+    positive_rate = Column(Float, default=0)
+    
+    defect_words = Column(Text, default='[]')
+    positive_words = Column(Text, default='[]')
+    
+    updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
+
+
 class InventoryStatus(Base):
     """库存状态"""
     __tablename__ = "inventory_status"
@@ -228,6 +252,26 @@ class InventoryStatus(Base):
     turnover_days = Column(Float, default=0)
     
     alert_level = Column(String, default='green')
+    
+    updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
+
+
+class SlowMoving(Base):
+    """滞销清理"""
+    __tablename__ = "slow_moving"
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    sku_id = Column(String, nullable=False, unique=True, index=True)
+    product_id = Column(String, nullable=True, index=True)
+    sku_name = Column(String, nullable=True)
+    
+    inbound_date = Column(String, nullable=True)
+    age_days = Column(Integer, default=0)
+    sales_30d = Column(Integer, default=0)
+    current_stock = Column(Integer, default=0)
+    
+    status = Column(String, default='normal')
+    suggestion = Column(Text, default='')
     
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
 
@@ -291,6 +335,7 @@ class AlertRecord(Base):
     
     status = Column(String, default='pending')
     handler = Column(String, default='')
+    level = Column(String, default='warning')
     
     created_at = Column(DateTime, default=func.now())
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now())

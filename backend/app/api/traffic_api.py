@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Query, Depends
 from sqlalchemy.orm import Session
 from sqlalchemy import func, desc
 from datetime import datetime, timedelta
@@ -16,7 +16,7 @@ async def get_keywords(
     date: Optional[str] = Query(None, description="日期"),
     category: Optional[str] = Query(None, description="分类筛选"),
     limit: int = Query(100, ge=1, le=500),
-    db: Session = None
+    db: Session = Depends(get_db)
 ):
     """搜索词效能矩阵"""
     if not date:
@@ -56,7 +56,7 @@ async def get_keywords(
 @router.get("/keywords/stats")
 async def get_keywords_stats(
     date: Optional[str] = Query(None, description="日期"),
-    db: Session = None
+    db: Session = Depends(get_db)
 ):
     """搜索词统计"""
     if not date:
@@ -93,7 +93,7 @@ async def get_keywords_stats(
 @router.get("/funnel")
 async def get_funnel(
     date: Optional[str] = Query(None, description="日期"),
-    db: Session = None
+    db: Session = Depends(get_db)
 ):
     """转化漏斗"""
     if not date:
@@ -135,7 +135,7 @@ async def get_funnel(
 @router.get("/funnel/trend")
 async def get_funnel_trend(
     days: int = Query(7, ge=1, le=30),
-    db: Session = None
+    db: Session = Depends(get_db)
 ):
     """漏斗趋势"""
     end_date = datetime.now()
@@ -166,7 +166,7 @@ async def get_funnel_trend(
 async def get_competitor_share(
     date: Optional[str] = Query(None, description="日期"),
     limit: int = Query(20, ge=1, le=100),
-    db: Session = None
+    db: Session = Depends(get_db)
 ):
     """竞品份额"""
     if not date:
@@ -194,7 +194,7 @@ async def get_competitor_share(
 @router.post("/keywords/categorize")
 async def categorize_keywords(
     date: Optional[str] = Query(None, description="日期"),
-    db: Session = None
+    db: Session = Depends(get_db)
 ):
     """关键词分类"""
     if not date:

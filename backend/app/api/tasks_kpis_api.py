@@ -1,11 +1,11 @@
-from fastapi import APIRouter, Query, HTTPException
+from fastapi import APIRouter, Query, HTTPException, Depends
 from sqlalchemy.orm import Session
 from sqlalchemy import func, desc
 from datetime import datetime
 from typing import Optional, List, Dict
 from pydantic import BaseModel
 from app.core.database import get_db
-from app.models.dashboard_models import TaskItem, UserKPI
+from app.models.command_tower import TaskItem, UserKPI
 
 router = APIRouter(prefix="/api/tasks", tags=["任务管理"])
 
@@ -35,7 +35,7 @@ async def get_tasks(
     priority: Optional[str] = Query(None, description="优先级"),
     assignee: Optional[str] = Query(None, description="负责人"),
     limit: int = Query(50, ge=1, le=200),
-    db: Session = None
+    db: Session = Depends(get_db)
 ):
     """任务列表"""
     query = db.query(TaskItem)
@@ -75,7 +75,7 @@ async def get_tasks(
 @router.post("")
 async def create_task(
     task: TaskCreate,
-    db: Session = None
+    db: Session = Depends(get_db)
 ):
     """创建任务"""
     db_task = TaskItem(
@@ -98,7 +98,7 @@ async def create_task(
 async def update_task(
     task_id: int,
     update: TaskUpdate,
-    db: Session = None
+    db: Session = Depends(get_db)
 ):
     """更新任务"""
     db_task = db.query(TaskItem).filter(TaskItem.id == task_id).first()
@@ -116,7 +116,7 @@ async def update_task(
 @router.delete("/{task_id}")
 async def delete_task(
     task_id: int,
-    db: Session = None
+    db: Session = Depends(get_db)
 ):
     """删除任务"""
     db_task = db.query(TaskItem).filter(TaskItem.id == task_id).first()
@@ -131,7 +131,7 @@ async def delete_task(
 
 @router.get("/stats")
 async def get_task_stats(
-    db: Session = None
+    db: Session = Depends(get_db)
 ):
     """任务统计"""
     total = db.query(func.count(TaskItem.id)).scalar() or 0
@@ -159,7 +159,7 @@ router_kpi = APIRouter(prefix="/api/kpis", tags=["KPI管理"])
 @router_kpi.get("")
 async def get_kpis(
     period: Optional[str] = Query(None, description="周期"),
-    db: Session = None
+    db: Session = Depends(get_db)
 ):
     """KPI列表"""
     query = db.query(UserKPI)
@@ -179,8 +179,6 @@ async def get_kpis(
                 "actual_gmv": k.actual_gmv,
                 "achievement_rate": k.achievement_rate,
                 "rating": k.rating,
-                "target_roi": k.target_roi,
-                "actual_roi": k.actual_roi,
                 "target_task_count": k.target_task_count,
                 "actual_task_count": k.actual_task_count
             }
@@ -192,7 +190,7 @@ async def get_kpis(
 
 @router_kpi.get("/stats")
 async def get_kpi_stats(
-    db: Session = None
+    db: Session = Depends(get_db)
 ):
     """KPI统计"""
     total_users = db.query(func.count(func.distinct(UserKPI.username))).scalar() or 0

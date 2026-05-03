@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Query, Depends
 from sqlalchemy.orm import Session
 from sqlalchemy import func, desc
 from datetime import datetime, timedelta
@@ -14,7 +14,7 @@ router = APIRouter(prefix="/api/dashboard", tags=["驾驶舱"])
 @router.get("/metrics")
 async def get_core_metrics(
     date: Optional[str] = Query(None, description="日期，默认为今日"),
-    db: Session = None
+    db: Session = Depends(get_db)
 ):
     """核心指标卡片"""
     if not date:
@@ -51,7 +51,7 @@ async def get_core_metrics(
 @router.get("/target")
 async def get_target_progress(
     month: Optional[str] = Query(None, description="月份，默认为当前月"),
-    db: Session = None
+    db: Session = Depends(get_db)
 ):
     """目标进度"""
     if not month:
@@ -93,7 +93,7 @@ async def get_target_progress(
 @router.get("/traffic")
 async def get_traffic_structure(
     date: Optional[str] = Query(None, description="日期，默认为今日"),
-    db: Session = None
+    db: Session = Depends(get_db)
 ):
     """流量结构"""
     if not date:
@@ -130,7 +130,7 @@ async def get_traffic_structure(
 @router.get("/kpi-cards")
 async def get_kpi_cards(
     date: Optional[str] = Query(None, description="日期，默认为今日"),
-    db: Session = None
+    db: Session = Depends(get_db)
 ):
     """KPI指标卡片"""
     if not date:
@@ -201,7 +201,7 @@ async def get_kpi_cards(
 @router.get("/trend")
 async def get_gmv_trend(
     days: int = Query(7, ge=1, le=30, description="天数"),
-    db: Session = None
+    db: Session = Depends(get_db)
 ):
     """GMV趋势"""
     end_date = datetime.now()
@@ -229,7 +229,7 @@ async def get_gmv_trend(
 @router.get("/top-products")
 async def get_top_products(
     limit: int = Query(10, ge=1, le=50, description="数量"),
-    db: Session = None
+    db: Session = Depends(get_db)
 ):
     """热销商品TOP"""
     from app.models.dashboard_models import ProductRanking

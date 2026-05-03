@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Query, Depends
 from sqlalchemy.orm import Session
 from sqlalchemy import func, desc
 from datetime import datetime, timedelta
@@ -15,7 +15,7 @@ router = APIRouter(prefix="/api/supply", tags=["供应链"])
 async def get_inventory_alerts(
     level: Optional[str] = Query(None, description="预警级别"),
     limit: int = Query(100, ge=1, le=500),
-    db: Session = None
+    db: Session = Depends(get_db)
 ):
     """库存预警"""
     query = db.query(InventoryStatus)
@@ -52,7 +52,7 @@ async def get_inventory_alerts(
 
 @router.get("/inventory/stats")
 async def get_inventory_stats(
-    db: Session = None
+    db: Session = Depends(get_db)
 ):
     """库存统计"""
     total_skus = db.query(func.count(InventoryStatus.id)).scalar() or 0
@@ -86,7 +86,7 @@ async def get_inventory_stats(
 async def get_slow_moving(
     status: Optional[str] = Query(None, description="状态"),
     limit: int = Query(50, ge=1, le=200),
-    db: Session = None
+    db: Session = Depends(get_db)
 ):
     """滞销清理"""
     query = db.query(SlowMoving)
@@ -117,7 +117,7 @@ async def get_slow_moving(
 
 @router.get("/slow-moving/stats")
 async def get_slow_moving_stats(
-    db: Session = None
+    db: Session = Depends(get_db)
 ):
     """滞销统计"""
     total = db.query(func.count(SlowMoving.id)).scalar() or 0
@@ -147,7 +147,7 @@ async def get_slow_moving_stats(
 
 @router.post("/inventory/calculate")
 async def calculate_inventory(
-    db: Session = None
+    db: Session = Depends(get_db)
 ):
     """计算库存预警"""
     items = db.query(InventoryStatus).all()
