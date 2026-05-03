@@ -3,7 +3,7 @@
     <el-aside :width="isCollapsed ? '64px' : '220px'" class="app-aside">
       <div class="logo">
         <el-icon size="24" color="#fff"><DataBoard /></el-icon>
-        <span v-if="!isCollapsed" class="logo-text">运营指挥塔</span>
+        <span v-if="!isCollapsed" class="logo-text">运营系统</span>
       </div>
       
       <el-scrollbar class="menu-scrollbar">
@@ -17,44 +17,44 @@
           active-text-color="#ffffff"
         >
           <el-menu-item index="/">
-            <el-icon><DataLine /></el-icon>
-            <template #title>核心驾驶舱</template>
-          </el-menu-item>
-          
-          <el-menu-item index="/dashboard">
             <el-icon><Odometer /></el-icon>
             <template #title>数据概览</template>
           </el-menu-item>
           
-          <el-sub-menu index="product">
-            <template #title>
-              <el-icon><Goods /></el-icon>
-              <span>商品管理</span>
-            </template>
-            <el-menu-item index="/products">商品列表</el-menu-item>
-            <el-menu-item index="/product-ranking">商品排行</el-menu-item>
-            <el-menu-item index="/inventory">库存预警</el-menu-item>
-            <el-menu-item index="/reviews">评价分析</el-menu-item>
-          </el-sub-menu>
+          <el-menu-item index="/products">
+            <el-icon><Goods /></el-icon>
+            <template #title>商品列表</template>
+          </el-menu-item>
           
-          <el-sub-menu index="traffic">
-            <template #title>
-              <el-icon><TrendCharts /></el-icon>
-              <span>流量分析</span>
-            </template>
-            <el-menu-item index="/traffic">流量投放</el-menu-item>
-            <el-menu-item index="/traffic-analysis">流量详情</el-menu-item>
-            <el-menu-item index="/funnel">转化漏斗</el-menu-item>
-          </el-sub-menu>
+          <el-menu-item index="/product-ranking">
+            <el-icon><DataLine /></el-icon>
+            <template #title>商品排行</template>
+          </el-menu-item>
           
-          <el-sub-menu index="ads">
-            <template #title>
-              <el-icon><DataAnalysis /></el-icon>
-              <span>推广管理</span>
-            </template>
-            <el-menu-item index="/ads">广告投放</el-menu-item>
-            <el-menu-item index="/profit">利润分析</el-menu-item>
-          </el-sub-menu>
+          <el-menu-item index="/inventory">
+            <el-icon><Monitor /></el-icon>
+            <template #title>库存预警</template>
+          </el-menu-item>
+          
+          <el-menu-item index="/traffic-analysis">
+            <el-icon><TrendCharts /></el-icon>
+            <template #title>流量分析</template>
+          </el-menu-item>
+          
+          <el-menu-item index="/funnel">
+            <el-icon><DataAnalysis /></el-icon>
+            <template #title>转化漏斗</template>
+          </el-menu-item>
+          
+          <el-menu-item index="/ads">
+            <el-icon><Tools /></el-icon>
+            <template #title>广告投放</template>
+          </el-menu-item>
+          
+          <el-menu-item index="/profit">
+            <el-icon><Money /></el-icon>
+            <template #title>利润分析</template>
+          </el-menu-item>
           
           <el-menu-item index="/kpi">
             <el-icon><Trophy /></el-icon>
@@ -66,9 +66,19 @@
             <template #title>生命周期</template>
           </el-menu-item>
           
+          <el-menu-item index="/reviews">
+            <el-icon><User /></el-icon>
+            <template #title>评价分析</template>
+          </el-menu-item>
+          
           <el-menu-item index="/trends">
             <el-icon><TrendCharts /></el-icon>
             <template #title>趋势分析</template>
+          </el-menu-item>
+          
+          <el-menu-item index="/command-tower">
+            <el-icon><DataBoard /></el-icon>
+            <template #title>指挥塔</template>
           </el-menu-item>
         </el-menu>
       </el-scrollbar>
@@ -87,7 +97,6 @@
           <h2 class="page-title">{{ pageTitle }}</h2>
         </div>
         <div class="header-right">
-          <GlobalTimeFilter />
           <el-button 
             link 
             @click="toggleTheme"
@@ -117,12 +126,12 @@
 </template>
 
 <script setup>
-import { ref, computed, watch, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { 
-  DataBoard, DataLine, Odometer, Goods, Monitor, Setting,
+  DataBoard, DataLine, Odometer, Goods, Monitor,
   TrendCharts, Trophy, Expand, Fold, Sunny, Moon,
-  FullScreen, Tools, DataAnalysis, User
+  FullScreen, Tools, DataAnalysis, User, Money
 } from '@element-plus/icons-vue'
 
 const route = useRoute()
@@ -133,15 +142,14 @@ const activeMenu = computed(() => route.path)
 
 const pageTitle = computed(() => {
   const titles = {
-    '/': '核心驾驶舱',
-    '/dashboard': '数据概览',
+    '/': '数据概览',
+    '/command-tower': '指挥塔',
     '/products': '商品列表',
     '/product': '商品详情',
     '/product-ranking': '商品排行',
     '/inventory': '库存预警',
     '/reviews': '评价分析',
-    '/traffic': '流量投放',
-    '/traffic-analysis': '流量详情',
+    '/traffic-analysis': '流量分析',
     '/funnel': '转化漏斗',
     '/ads': '广告投放',
     '/profit': '利润分析',
@@ -149,7 +157,7 @@ const pageTitle = computed(() => {
     '/lifecycle': '生命周期',
     '/trends': '趋势分析'
   }
-  return titles[route.path] || '运营指挥塔'
+  return titles[route.path] || '运营系统'
 })
 
 const toggleSidebar = () => {

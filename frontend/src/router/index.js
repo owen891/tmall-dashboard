@@ -3,13 +3,13 @@ import { createRouter, createWebHistory } from 'vue-router'
 const routes = [
   {
     path: '/',
-    name: 'CommandTower',
-    component: () => import('@/views/CommandTower.vue')
-  },
-  {
-    path: '/dashboard',
     name: 'Dashboard',
     component: () => import('@/views/Dashboard.vue')
+  },
+  {
+    path: '/command-tower',
+    name: 'CommandTower',
+    component: () => import('@/views/CommandTower.vue')
   },
   {
     path: '/products',
@@ -25,11 +25,6 @@ const routes = [
     path: '/product-ranking',
     name: 'ProductRanking',
     component: () => import('@/views/ProductRanking.vue')
-  },
-  {
-    path: '/traffic',
-    name: 'Traffic',
-    component: () => import('@/views/TrafficSimplified.vue')
   },
   {
     path: '/traffic-analysis',
