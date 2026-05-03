@@ -3,7 +3,7 @@
     <el-aside :width="isCollapsed ? '64px' : '220px'" class="app-aside">
       <div class="logo">
         <el-icon size="24" color="#fff"><DataBoard /></el-icon>
-        <span v-if="!isCollapsed" class="logo-text">数据仪表盘</span>
+        <span v-if="!isCollapsed" class="logo-text">六边形指挥塔</span>
       </div>
       
       <el-scrollbar class="menu-scrollbar">
@@ -17,6 +17,11 @@
           active-text-color="#ffffff"
         >
           <el-menu-item index="/">
+            <el-icon><DataLine /></el-icon>
+            <template #title>指挥驾驶舱</template>
+          </el-menu-item>
+          
+          <el-menu-item index="/dashboard">
             <el-icon><Odometer /></el-icon>
             <template #title>数据概览</template>
           </el-menu-item>
@@ -60,6 +65,15 @@
             <el-menu-item index="/promotion">
               <span>多渠道推广</span>
             </el-menu-item>
+            <el-menu-item index="/product-ranking">
+              <span>商品排行榜</span>
+            </el-menu-item>
+            <el-menu-item index="/traffic-analysis">
+              <span>流量分析</span>
+            </el-menu-item>
+            <el-menu-item index="/promotion-analysis">
+              <span>推广效果分析</span>
+            </el-menu-item>
           </el-sub-menu>
 
           <el-sub-menu index="operations">
@@ -100,22 +114,6 @@
             </el-menu-item>
             <el-menu-item index="/ai-analytics">
               <span>AI智能分析</span>
-            </el-menu-item>
-          </el-sub-menu>
-
-          <el-sub-menu index="analysis">
-            <template #title>
-              <el-icon><DataAnalysis /></el-icon>
-              <span>数据分析</span>
-            </template>
-            <el-menu-item index="/product-ranking">
-              <span>商品排行榜</span>
-            </el-menu-item>
-            <el-menu-item index="/traffic-analysis">
-              <span>流量分析</span>
-            </el-menu-item>
-            <el-menu-item index="/promotion-analysis">
-              <span>推广效果分析</span>
             </el-menu-item>
           </el-sub-menu>
 
@@ -262,7 +260,8 @@ const activeMenu = computed(() => route.path)
 
 const pageTitle = computed(() => {
   const titles = {
-    '/': '数据概览',
+    '/': '指挥驾驶舱',
+    '/dashboard': '数据概览',
     '/products': '商品列表',
     '/product': '商品详情',
     '/channel': '渠道分析',
