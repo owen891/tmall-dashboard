@@ -3,7 +3,7 @@
     <el-aside :width="isCollapsed ? '64px' : '220px'" class="app-aside">
       <div class="logo">
         <el-icon size="24" color="#fff"><DataBoard /></el-icon>
-        <span v-if="!isCollapsed" class="logo-text">六边形指挥塔</span>
+        <span v-if="!isCollapsed" class="logo-text">运营指挥塔</span>
       </div>
       
       <el-scrollbar class="menu-scrollbar">
@@ -18,39 +18,22 @@
         >
           <el-menu-item index="/">
             <el-icon><DataLine /></el-icon>
-            <template #title>指挥驾驶舱</template>
+            <template #title>核心驾驶舱</template>
           </el-menu-item>
-          
-          <el-menu-item index="/data-goals">
-            <el-icon><TrendCharts /></el-icon>
-            <template #title>数据与目标</template>
-          </el-menu-item>
-          
-          <el-menu-item index="/experiment-asset">
-            <el-icon><Trophy /></el-icon>
-            <template #title>实验与资产</template>
-          </el-menu-item>
-          
-          <el-menu-item index="/execute-monitor">
-            <el-icon><Monitor /></el-icon>
-            <template #title>执行与监控</template>
-          </el-menu-item>
-          
-          <el-menu-item index="/tools-system">
-            <el-icon><Setting /></el-icon>
-            <template #title>工具与系统</template>
-          </el-menu-item>
-          
-          <el-divider></el-divider>
           
           <el-menu-item index="/products">
             <el-icon><Goods /></el-icon>
-            <template #title>商品列表</template>
+            <template #title>商品矩阵</template>
           </el-menu-item>
           
-          <el-menu-item index="/settings">
-            <el-icon><Tools /></el-icon>
-            <template #title>系统设置</template>
+          <el-menu-item index="/traffic">
+            <el-icon><TrendCharts /></el-icon>
+            <template #title>流量投放</template>
+          </el-menu-item>
+          
+          <el-menu-item index="/lifecycle">
+            <el-icon><Odometer /></el-icon>
+            <template #title>生命周期</template>
           </el-menu-item>
         </el-menu>
       </el-scrollbar>
@@ -105,7 +88,7 @@ import {
   DataBoard, DataLine, Odometer, Goods, Monitor, Setting,
   TrendCharts, Trophy, Expand, Fold, Sunny, Moon,
   FullScreen, Tools, DataAnalysis, User, ShoppingCart, 
-  Coin, WarningFilled, Refresh, Upload, TrendCharts as TrendChartsIcon
+  Coin, WarningFilled, Refresh, Upload
 } from '@element-plus/icons-vue'
 
 const route = useRoute()
@@ -116,55 +99,14 @@ const activeMenu = computed(() => route.path)
 
 const pageTitle = computed(() => {
   const titles = {
-    '/': '指挥驾驶舱',
-    '/data-goals': '数据与目标',
-    '/experiment-asset': '实验与资产',
-    '/execute-monitor': '执行与监控',
-    '/tools-system': '工具与系统',
-    '/dashboard': '数据概览',
-    '/products': '商品列表',
-    '/product': '商品详情',
-    '/channel': '渠道分析',
-    '/import': '数据导入',
-    '/import-center': '数据导入中心',
-    '/quadrant': '四象限分析',
-    '/kpi': 'KPI分析',
-    '/trends': '趋势分析',
-    '/ads': '广告投放',
-    '/health': '健康度评分',
-    '/operations': '操作统计',
-    '/refunds': '退款分析',
-    '/targets': '目标管理',
-    '/alerts': '异常告警',
-    '/reviews': '评价分析',
-    '/market': '市场分析',
-    '/toolbox': '运营工具箱',
-    '/promotion': '多渠道推广',
+    '/': '核心驾驶舱',
+    '/products': '商品矩阵',
+    '/traffic': '流量投放',
     '/lifecycle': '生命周期',
-    '/compare': '周期对比',
-    '/recommendation': '智能选品',
-    '/report': '自动报告',
-    '/attribution': '异动归因',
-    '/funnel': '漏斗转化',
-    '/prediction': '预测分析',
-    '/data-quality': '数据质量',
-    '/settings': '系统设置',
-    '/backup': '数据备份',
-    '/crowd-asset': '人群资产归因',
-    '/abtest-sop': '策略实验与SOP',
-    '/efficiency': '人效精准度量',
-    '/smart-alert': '智能告警中心',
-    '/product-ranking': '商品排行榜',
-    '/traffic-analysis': '流量分析',
-    '/promotion-analysis': '推广效果分析',
-    '/backup-management': '数据备份与恢复',
-    '/advanced-import': '批量导入中心',
-    '/data-visualization': '高级数据可视化',
-    '/ai-analytics': 'AI智能分析',
-    '/profit': '利润分析',
-    '/inventory': '库存预警'
+    '/product': '商品详情',
+    '/dashboard': '数据概览'
   }
-  return titles[route.path] || '电商运营系统'
+  return titles[route.path] || '运营指挥塔'
 })
 
 const toggleSidebar = () => {
@@ -245,11 +187,6 @@ onMounted(() => {
 
 .el-menu-item.is-active {
   background: linear-gradient(135deg, rgba(102, 126, 234, 0.3) 0%, rgba(118, 75, 162, 0.3) 100%) !important;
-}
-
-.el-divider {
-  margin: 16px 16px;
-  background-color: rgba(255, 255, 255, 0.1);
 }
 
 .app-header {

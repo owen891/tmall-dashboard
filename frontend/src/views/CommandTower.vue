@@ -2,18 +2,14 @@
   <div class="command-tower">
     <div class="tower-header">
       <div class="header-left">
-        <h1>🎯 六边形指挥塔</h1>
-        <span class="subtitle">一站式电商运营作战系统</span>
+        <h1>🎯 运营指挥塔</h1>
+        <span class="subtitle">电商运营核心工作台</span>
       </div>
       <div class="header-right">
         <GlobalTimeFilter />
         <el-button type="primary" @click="refresh">
           <el-icon><Refresh /></el-icon>
           刷新数据
-        </el-button>
-        <el-button @click="$router.push('/advanced-import')">
-          <el-icon><Upload /></el-icon>
-          快速导入
         </el-button>
       </div>
     </div>
@@ -25,89 +21,24 @@
     <div class="hexagon-area">
       <div class="hexagon-grid">
         <HexagonCard
-          :title="'数据与目标'"
-          :icon="'TrendCharts'"
+          :title="'核心驾驶舱'"
+          :icon="'DataLine'"
           color="#409eff"
           :stats="[
-            { label: 'GMV目标', value: '87%', change: 3.2 },
+            { label: 'GMV', value: '¥456,789', change: 12.3 },
             { label: '访客数', value: '123,456', change: 8.9 },
             { label: '转化率', value: '3.2%', change: 1.2 }
           ]"
           :actions="[
-            { label: '数据概览', type: 'primary' },
-            { label: '商品分析', type: '' }
+            { label: '查看详情', type: 'primary' }
           ]"
-          to="/data-goals"
+          to="/"
         />
 
         <HexagonCard
-          :title="'实验与资产'"
-          :icon="'DataAnalysis'"
-          color="#67c23a"
-          :stats="[
-            { label: '进行中实验', value: '3个', change: 0 },
-            { label: 'SOP模板', value: '12个', change: 20 },
-            { label: '人群ROI', value: '4.2', change: 3.1 }
-          ]"
-          :actions="[
-            { label: '策略实验', type: 'primary' },
-            { label: '人群资产', type: '' }
-          ]"
-          to="/experiment-asset"
-        />
-
-        <HexagonCard
-          :title="'执行与监控'"
-          :icon="'Monitor'"
-          color="#e6a23c"
-          :stats="[
-            { label: '待处理预警', value: '3个', change: -40 },
-            { label: '任务完成率', value: '89%', change: 5.6 },
-            { label: '库存健康', value: '89%', change: 3.1 }
-          ]"
-          :actions="[
-            { label: '智能预警', type: 'primary' },
-            { label: '人效监控', type: '' }
-          ]"
-          to="/execute-monitor"
-        />
-
-        <HexagonCard
-          :title="'工具与系统'"
-          :icon="'Setting'"
-          color="#f56c6c"
-          :stats="[
-            { label: '今日导入', value: '12个', change: 15 },
-            { label: '备份次数', value: '3次', change: 0 },
-            { label: '数据质量', value: '94%', change: 2.5 }
-          ]"
-          :actions="[
-            { label: '数据管理', type: 'primary' },
-            { label: '分析工具', type: '' }
-          ]"
-          to="/tools-system"
-        />
-
-        <HexagonCard
-          :title="'数据概览'"
-          :icon="'Odometer'"
-          color="#909399"
-          :stats="[
-            { label: 'GMV', value: '¥456,789', change: 12.3 },
-            { label: '访客数', value: '123,456', change: 8.9 },
-            { label: 'ROI', value: '3.87', change: 3.1 }
-          ]"
-          :actions="[
-            { label: '查看详情', type: 'primary' },
-            { label: '数据导出', type: '' }
-          ]"
-          to="/dashboard"
-        />
-
-        <HexagonCard
-          :title="'商品中心'"
+          :title="'商品矩阵'"
           :icon="'Goods'"
-          color="#00bcd4"
+          color="#67c23a"
           :stats="[
             { label: '热销TOP', value: '87,654元', change: 12.3 },
             { label: '滞销警告', value: '5个', change: -2 },
@@ -115,9 +46,40 @@
           ]"
           :actions="[
             { label: '商品列表', type: 'primary' },
-            { label: '商品排行', type: '' }
+            { label: '库存预警', type: '' }
           ]"
           to="/products"
+        />
+
+        <HexagonCard
+          :title="'流量投放'"
+          :icon="'TrendCharts'"
+          color="#e6a23c"
+          :stats="[
+            { label: '总消耗', value: '¥12,345', change: 8.9 },
+            { label: 'ROI', value: '3.87', change: 3.1 },
+            { label: '访客数', value: '45,678', change: 12.3 }
+          ]"
+          :actions="[
+            { label: '流量分析', type: 'primary' },
+            { label: '推广效果', type: '' }
+          ]"
+          to="/traffic"
+        />
+
+        <HexagonCard
+          :title="'生命周期'"
+          :icon="'Odometer'"
+          color="#f56c6c"
+          :stats="[
+            { label: '新品导入', value: '12个', change: 15 },
+            { label: '活跃商品', value: '156个', change: 3 },
+            { label: '滞销清理', value: '5个', change: -2 }
+          ]"
+          :actions="[
+            { label: '生命周期', type: 'primary' }
+          ]"
+          to="/lifecycle"
         />
       </div>
     </div>
@@ -196,10 +158,7 @@ import { ref, reactive, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import * as echarts from 'echarts'
-import {
-  Refresh, Upload, TrendCharts, DataAnalysis,
-  Monitor, Setting, Odometer, Goods
-} from '@element-plus/icons-vue'
+import { Refresh, DataLine, Goods, TrendCharts, Odometer } from '@element-plus/icons-vue'
 import GlobalTimeFilter from '@/components/GlobalTimeFilter.vue'
 import CoreIndicators from '@/components/tower/CoreIndicators.vue'
 import AlertBar from '@/components/tower/AlertBar.vue'
@@ -219,34 +178,9 @@ const coreIndicators = ref([
 ])
 
 const alerts = ref([
-  {
-    id: 1,
-    level: 'urgent',
-    title: '万相台ROI下降预警',
-    desc: '万相台某个计划ROI低于2.0，已连续3天下降',
-    time: '10分钟前'
-  },
-  {
-    id: 2,
-    level: 'urgent',
-    title: '热销商品库存告急',
-    desc: 'TOP1热销商品库存仅剩86件，预计明天断货',
-    time: '32分钟前'
-  },
-  {
-    id: 3,
-    level: 'warning',
-    title: '首页跳出率过高',
-    desc: '首页跳出率68%，超过正常水平20%',
-    time: '1小时前'
-  },
-  {
-    id: 4,
-    level: 'warning',
-    title: '新访客占比下降',
-    desc: '新访客占比从45%下降到38%',
-    time: '2小时前'
-  }
+  { id: 1, level: 'urgent', title: '热销商品库存告急', desc: 'TOP1热销商品库存仅剩86件，预计明天断货', time: '10分钟前' },
+  { id: 2, level: 'urgent', title: '万相台ROI下降预警', desc: '万相台某个计划ROI低于2.0，已连续3天下降', time: '32分钟前' },
+  { id: 3, level: 'warning', title: '首页跳出率过高', desc: '首页跳出率68%，超过正常水平20%', time: '1小时前' }
 ])
 
 const topProducts = ref([
@@ -260,9 +194,7 @@ const topProducts = ref([
 const formatNumber = (num) => {
   if (!num && num !== 0) return '0'
   num = Number(num)
-  if (num >= 10000) {
-    return (num / 10000).toFixed(2) + '万'
-  }
+  if (num >= 10000) return (num / 10000).toFixed(2) + '万'
   return num.toLocaleString()
 }
 
@@ -271,12 +203,10 @@ const getTierType = (tier) => {
   return types[tier] || 'info'
 }
 
-const refresh = () => {
-  ElMessage.success('数据已刷新')
-}
+const refresh = () => ElMessage.success('数据已刷新')
 
 const viewProduct = (product) => {
-  ElMessage.info(`查看商品: ${product.title}`)
+  router.push(`/product/${product.id}`)
 }
 
 const initCharts = () => {
@@ -288,22 +218,15 @@ const initCharts = () => {
     charts.gauge.dispose()
     charts.gauge = null
   }
-
-  if (trendChartRef.value) {
-    charts.trend = echarts.init(trendChartRef.value)
-  }
-  if (gaugeChartRef.value) {
-    charts.gauge = echarts.init(gaugeChartRef.value)
-  }
+  if (trendChartRef.value) charts.trend = echarts.init(trendChartRef.value)
+  if (gaugeChartRef.value) charts.gauge = echarts.init(gaugeChartRef.value)
 }
 
 const updateTrendChart = () => {
   if (!charts.trend) return
-
   const dates = ['1号', '2号', '3号', '4号', '5号', '6号', '7号']
   const data1 = [32000, 38000, 45000, 42000, 52000, 48000, 56000]
   const data2 = [28000, 32000, 38000, 36000, 42000, 40000, 45000]
-
   charts.trend.setOption({
     tooltip: { trigger: 'axis' },
     legend: { data: ['GMV', '访客数'], bottom: 0 },
@@ -314,44 +237,27 @@ const updateTrendChart = () => {
       { type: 'value', name: '访客数', position: 'right' }
     ],
     series: [
-      {
-        name: 'GMV',
-        type: 'line',
-        data: data1,
-        smooth: true,
-        itemStyle: { color: '#409eff' },
-        areaStyle: { opacity: 0.3 }
-      },
-      {
-        name: '访客数',
-        type: 'line',
-        yAxisIndex: 1,
-        data: data2,
-        smooth: true,
-        itemStyle: { color: '#67c23a' }
-      }
+      { name: 'GMV', type: 'line', data: data1, smooth: true, itemStyle: { color: '#409eff' }, areaStyle: { opacity: 0.3 } },
+      { name: '访客数', type: 'line', yAxisIndex: 1, data: data2, smooth: true, itemStyle: { color: '#67c23a' } }
     ]
   })
 }
 
 const updateGaugeChart = () => {
   if (!charts.gauge) return
-
   charts.gauge.setOption({
     tooltip: { formatter: '{a} <br/>{b} : {c}%' },
-    series: [
-      {
-        type: 'gauge',
-        progress: { show: true, width: 18 },
-        axisLine: { lineStyle: { width: 18 } },
-        axisTick: { show: false },
-        splitLine: { length: 15, lineStyle: { width: 2, color: '#999' } },
-        axisLabel: { distance: 25, fontSize: 12 },
-        anchor: { show: true, showAbove: true, size: 25, itemStyle: { borderWidth: 10 } },
-        detail: { valueAnimation: true, fontSize: 32, offsetCenter: [0, '70%'] },
-        data: [{ value: 87, name: '目标完成率' }]
-      }
-    ]
+    series: [{
+      type: 'gauge',
+      progress: { show: true, width: 18 },
+      axisLine: { lineStyle: { width: 18 } },
+      axisTick: { show: false },
+      splitLine: { length: 15, lineStyle: { width: 2, color: '#999' } },
+      axisLabel: { distance: 25, fontSize: 12 },
+      anchor: { show: true, showAbove: true, size: 25, itemStyle: { borderWidth: 10 } },
+      detail: { valueAnimation: true, fontSize: 32, offsetCenter: [0, '70%'] },
+      data: [{ value: 87, name: '目标完成率' }]
+    }]
   })
 }
 
@@ -427,7 +333,7 @@ onBeforeUnmount(() => {
 
 .hexagon-grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   gap: 24px;
 }
 
