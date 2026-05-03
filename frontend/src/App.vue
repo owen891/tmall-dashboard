@@ -21,19 +21,54 @@
             <template #title>核心驾驶舱</template>
           </el-menu-item>
           
-          <el-menu-item index="/products">
-            <el-icon><Goods /></el-icon>
-            <template #title>商品矩阵</template>
+          <el-menu-item index="/dashboard">
+            <el-icon><Odometer /></el-icon>
+            <template #title>数据概览</template>
           </el-menu-item>
           
-          <el-menu-item index="/traffic">
-            <el-icon><TrendCharts /></el-icon>
-            <template #title>流量投放</template>
+          <el-sub-menu index="product">
+            <template #title>
+              <el-icon><Goods /></el-icon>
+              <span>商品管理</span>
+            </template>
+            <el-menu-item index="/products">商品列表</el-menu-item>
+            <el-menu-item index="/product-ranking">商品排行</el-menu-item>
+            <el-menu-item index="/inventory">库存预警</el-menu-item>
+            <el-menu-item index="/reviews">评价分析</el-menu-item>
+          </el-sub-menu>
+          
+          <el-sub-menu index="traffic">
+            <template #title>
+              <el-icon><TrendCharts /></el-icon>
+              <span>流量分析</span>
+            </template>
+            <el-menu-item index="/traffic">流量投放</el-menu-item>
+            <el-menu-item index="/traffic-analysis">流量详情</el-menu-item>
+            <el-menu-item index="/funnel">转化漏斗</el-menu-item>
+          </el-sub-menu>
+          
+          <el-sub-menu index="ads">
+            <template #title>
+              <el-icon><DataAnalysis /></el-icon>
+              <span>推广管理</span>
+            </template>
+            <el-menu-item index="/ads">广告投放</el-menu-item>
+            <el-menu-item index="/profit">利润分析</el-menu-item>
+          </el-sub-menu>
+          
+          <el-menu-item index="/kpi">
+            <el-icon><Trophy /></el-icon>
+            <template #title>KPI管理</template>
           </el-menu-item>
           
           <el-menu-item index="/lifecycle">
             <el-icon><Odometer /></el-icon>
             <template #title>生命周期</template>
+          </el-menu-item>
+          
+          <el-menu-item index="/trends">
+            <el-icon><TrendCharts /></el-icon>
+            <template #title>趋势分析</template>
           </el-menu-item>
         </el-menu>
       </el-scrollbar>
@@ -87,8 +122,7 @@ import { useRoute } from 'vue-router'
 import { 
   DataBoard, DataLine, Odometer, Goods, Monitor, Setting,
   TrendCharts, Trophy, Expand, Fold, Sunny, Moon,
-  FullScreen, Tools, DataAnalysis, User, ShoppingCart, 
-  Coin, WarningFilled, Refresh, Upload
+  FullScreen, Tools, DataAnalysis, User
 } from '@element-plus/icons-vue'
 
 const route = useRoute()
@@ -100,11 +134,20 @@ const activeMenu = computed(() => route.path)
 const pageTitle = computed(() => {
   const titles = {
     '/': '核心驾驶舱',
-    '/products': '商品矩阵',
-    '/traffic': '流量投放',
-    '/lifecycle': '生命周期',
+    '/dashboard': '数据概览',
+    '/products': '商品列表',
     '/product': '商品详情',
-    '/dashboard': '数据概览'
+    '/product-ranking': '商品排行',
+    '/inventory': '库存预警',
+    '/reviews': '评价分析',
+    '/traffic': '流量投放',
+    '/traffic-analysis': '流量详情',
+    '/funnel': '转化漏斗',
+    '/ads': '广告投放',
+    '/profit': '利润分析',
+    '/kpi': 'KPI管理',
+    '/lifecycle': '生命周期',
+    '/trends': '趋势分析'
   }
   return titles[route.path] || '运营指挥塔'
 })
