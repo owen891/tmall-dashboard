@@ -1,5 +1,6 @@
 from fastapi import APIRouter
 from app.api import products, imports, dashboard, custom_fields, kpi, trends, ads, health, operations, lifecycle, refunds, targets, alerts, reviews, market, toolbox, compare, profit, inventory, pace, events, attribution, funnel, reports_api, misc, data_export, promotion, recommendation, reports, realtime, prediction, collaboration, data_quality, backup, upload, settings, smart_import, system, crowd_asset, abtest_sop, efficiency, smart_alert, backup_management
+from app.api import dashboard_api, traffic_api, products_api, supply_api, ads_api, alerts_tasks_api, tasks_kpis_api
 
 api_router = APIRouter(prefix="/api")
 
@@ -46,3 +47,11 @@ api_router.include_router(abtest_sop.router)
 api_router.include_router(efficiency.router)
 api_router.include_router(smart_alert.router)
 api_router.include_router(backup_management.router)
+
+api_router.include_router(dashboard_api.router)
+api_router.include_router(traffic_api.router)
+api_router.include_router(products_api.router)
+api_router.include_router(supply_api.router)
+api_router.include_router(ads_api.router)
+api_router.include_router(alerts_tasks_api.router)
+api_router.include_router(tasks_kpis_api.router)
