@@ -29,7 +29,7 @@ const routes = [
   {
     path: '/traffic',
     name: 'Traffic',
-    component: () => import('@/views/TrafficSimplified.vue')
+    component: () => import('@/views/Traffic.vue')
   },
   {
     path: '/traffic-analysis',
