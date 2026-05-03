@@ -7,6 +7,26 @@ const routes = [
     component: () => import('@/views/CommandTower.vue')
   },
   {
+    path: '/data-goals',
+    name: 'DataGoalsCenter',
+    component: () => import('@/views/DataGoalsCenter.vue')
+  },
+  {
+    path: '/experiment-asset',
+    name: 'ExperimentAssetCenter',
+    component: () => import('@/views/ExperimentAssetCenter.vue')
+  },
+  {
+    path: '/execute-monitor',
+    name: 'ExecuteMonitorCenter',
+    component: () => import('@/views/ExecuteMonitorCenter.vue')
+  },
+  {
+    path: '/tools-system',
+    name: 'ToolsSystemCenter',
+    component: () => import('@/views/ToolsSystemCenter.vue')
+  },
+  {
     path: '/dashboard',
     name: 'Dashboard',
     component: () => import('@/views/Dashboard.vue')

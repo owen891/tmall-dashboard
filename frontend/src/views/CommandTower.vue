@@ -25,99 +25,99 @@
     <div class="hexagon-area">
       <div class="hexagon-grid">
         <HexagonCard
-          :title="'人群资产'"
-          :icon="'UserFilled'"
+          :title="'数据与目标'"
+          :icon="'TrendCharts'"
           color="#409eff"
-          :stats="[
-            { label: 'A人群增量', value: '+2,340', change: 15.2 },
-            { label: 'I人群增量', value: '+1,567', change: 8.4 },
-            { label: 'ROI', value: '4.2', change: 3.1 }
-          ]"
-          :actions="[
-            { label: '查看详情', type: 'primary' },
-            { label: '分析效率', type: '' }
-          ]"
-          to="/crowd-asset"
-        />
-
-        <HexagonCard
-          :title="'策略实验'"
-          :icon="'DataAnalysis'"
-          color="#67c23a"
-          :stats="[
-            { label: '进行中', value: '3个', change: 0 },
-            { label: 'SOP模板', value: '12个', change: 20 },
-            { label: '转化率提升', value: '+8.2%', change: 8.2 }
-          ]"
-          :actions="[
-            { label: '查看实验', type: 'primary' },
-            { label: 'SOP库', type: '' }
-          ]"
-          to="/abtest-sop"
-        />
-
-        <HexagonCard
-          :title="'人效度量'"
-          :icon="'Trophy'"
-          color="#e6a23c"
-          :stats="[
-            { label: '任务完成率', value: '89%', change: 5.6 },
-            { label: '今日KPI', value: '7/10', change: 2.3 },
-            { label: '团队人均', value: '¥45,230', change: 12.1 }
-          ]"
-          :actions="[
-            { label: '任务看板', type: 'primary' },
-            { label: '人效排名', type: '' }
-          ]"
-          to="/efficiency"
-        />
-
-        <HexagonCard
-          :title="'智能预警'"
-          :icon="'WarningFilled'"
-          color="#f56c6c"
-          :stats="[
-            { label: '待处理', value: '3个', change: -40 },
-            { label: '今日处理', value: '12个', change: 15 },
-            { label: '预警准确率', value: '94%', change: 2.5 }
-          ]"
-          :actions="[
-            { label: '查看告警', type: 'primary' },
-            { label: '配置规则', type: '' }
-          ]"
-          to="/smart-alert"
-        />
-
-        <HexagonCard
-          :title="'数据概览'"
-          :icon="'DataLine'"
-          color="#909399"
           :stats="[
             { label: 'GMV目标', value: '87%', change: 3.2 },
             { label: '访客数', value: '123,456', change: 8.9 },
             { label: '转化率', value: '3.2%', change: 1.2 }
           ]"
           :actions="[
-            { label: '查看详情', type: 'primary' },
-            { label: '数据导出', type: '' }
+            { label: '数据概览', type: 'primary' },
+            { label: '商品分析', type: '' }
           ]"
-          to="/"
+          to="/data-goals"
         />
 
         <HexagonCard
-          :title="'商品分析'"
+          :title="'实验与资产'"
+          :icon="'DataAnalysis'"
+          color="#67c23a"
+          :stats="[
+            { label: '进行中实验', value: '3个', change: 0 },
+            { label: 'SOP模板', value: '12个', change: 20 },
+            { label: '人群ROI', value: '4.2', change: 3.1 }
+          ]"
+          :actions="[
+            { label: '策略实验', type: 'primary' },
+            { label: '人群资产', type: '' }
+          ]"
+          to="/experiment-asset"
+        />
+
+        <HexagonCard
+          :title="'执行与监控'"
+          :icon="'Monitor'"
+          color="#e6a23c"
+          :stats="[
+            { label: '待处理预警', value: '3个', change: -40 },
+            { label: '任务完成率', value: '89%', change: 5.6 },
+            { label: '库存健康', value: '89%', change: 3.1 }
+          ]"
+          :actions="[
+            { label: '智能预警', type: 'primary' },
+            { label: '人效监控', type: '' }
+          ]"
+          to="/execute-monitor"
+        />
+
+        <HexagonCard
+          :title="'工具与系统'"
+          :icon="'Setting'"
+          color="#f56c6c"
+          :stats="[
+            { label: '今日导入', value: '12个', change: 15 },
+            { label: '备份次数', value: '3次', change: 0 },
+            { label: '数据质量', value: '94%', change: 2.5 }
+          ]"
+          :actions="[
+            { label: '数据管理', type: 'primary' },
+            { label: '分析工具', type: '' }
+          ]"
+          to="/tools-system"
+        />
+
+        <HexagonCard
+          :title="'数据概览'"
+          :icon="'Odometer'"
+          color="#909399"
+          :stats="[
+            { label: 'GMV', value: '¥456,789', change: 12.3 },
+            { label: '访客数', value: '123,456', change: 8.9 },
+            { label: 'ROI', value: '3.87', change: 3.1 }
+          ]"
+          :actions="[
+            { label: '查看详情', type: 'primary' },
+            { label: '数据导出', type: '' }
+          ]"
+          to="/dashboard"
+        />
+
+        <HexagonCard
+          :title="'商品中心'"
           :icon="'Goods'"
           color="#00bcd4"
           :stats="[
             { label: '热销TOP', value: '87,654元', change: 12.3 },
             { label: '滞销警告', value: '5个', change: -2 },
-            { label: '库存健康', value: '89%', change: 3.1 }
+            { label: '转化率', value: '3.2%', change: 1.2 }
           ]"
           :actions="[
-            { label: '排行榜', type: 'primary' },
-            { label: '商品列表', type: '' }
+            { label: '商品列表', type: 'primary' },
+            { label: '商品排行', type: '' }
           ]"
-          to="/product-ranking"
+          to="/products"
         />
       </div>
     </div>
@@ -197,8 +197,8 @@ import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import * as echarts from 'echarts'
 import {
-  Refresh, Upload, UserFilled, DataAnalysis,
-  Trophy, WarningFilled, DataLine, Goods
+  Refresh, Upload, TrendCharts, DataAnalysis,
+  Monitor, Setting, Odometer, Goods
 } from '@element-plus/icons-vue'
 import GlobalTimeFilter from '@/components/GlobalTimeFilter.vue'
 import CoreIndicators from '@/components/tower/CoreIndicators.vue'

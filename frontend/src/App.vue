@@ -21,6 +21,26 @@
             <template #title>指挥驾驶舱</template>
           </el-menu-item>
           
+          <el-menu-item index="/data-goals">
+            <el-icon><TrendCharts /></el-icon>
+            <template #title>数据与目标</template>
+          </el-menu-item>
+          
+          <el-menu-item index="/experiment-asset">
+            <el-icon><DataLine /></el-icon>
+            <template #title>实验与资产</template>
+          </el-menu-item>
+          
+          <el-menu-item index="/execute-monitor">
+            <el-icon><Monitor /></el-icon>
+            <template #title>执行与监控</template>
+          </el-menu-item>
+          
+          <el-menu-item index="/tools-system">
+            <el-icon><Setting /></el-icon>
+            <template #title>工具与系统</template>
+          </el-menu-item>
+          
           <el-menu-item index="/dashboard">
             <el-icon><Odometer /></el-icon>
             <template #title>数据概览</template>
@@ -261,6 +281,10 @@ const activeMenu = computed(() => route.path)
 const pageTitle = computed(() => {
   const titles = {
     '/': '指挥驾驶舱',
+    '/data-goals': '数据与目标',
+    '/experiment-asset': '实验与资产',
+    '/execute-monitor': '执行与监控',
+    '/tools-system': '工具与系统',
     '/dashboard': '数据概览',
     '/products': '商品列表',
     '/product': '商品详情',
