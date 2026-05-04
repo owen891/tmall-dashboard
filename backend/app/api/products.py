@@ -863,3 +863,96 @@ def create_action(
     db.refresh(new_action)
     
     return ResponseModel(data={"success": True, "id": new_action.id})
+
+
+@router.get("/export")
+def export_products(
+    dim: str = Query("weekly", alias="dim", description="时间维度"),
+    period: Optional[str] = Query(None, description="指定周期"),
+    tier: Optional[str] = Query(None),
+    style: Optional[str] = Query(None),
+    scene: Optional[str] = Query(None),
+    search: Optional[str] = Query(None),
+    manager: Optional[str] = Query(None),
+    db: Session = Depends(get_db)
+):
+    from fastapi.responses import StreamingResponse
+    
+    dim_cfg = DIMENSION_MAP.get(dim, DIMENSION_MAP['weekly'])
+    date_col = dim_cfg['date_col']
+    
+    if not period:
+        if dim == "monthly":
+            Model = MonthlyData
+        elif dim == "daily":
+            Model = DailyData
+        else:
+            Model = WeeklyData
+        period = get_latest_period(Model, date_col, db)
+    
+    if dim == "monthly":
+        Model = MonthlyData
+    elif dim == "daily":
+        Model = DailyData
+    else:
+        Model = WeeklyData
+    
+    query, _, _, _ = build_product_query(dim, period, db)
+    filter_conditions = [getattr(Model, date_col) == period]
+    
+    if tier:
+        filter_conditions.append(Product.tier == tier)
+    if style:
+        filter_conditions.append(Product.style == style)
+    if scene:
+        filter_conditions.append(Product.scene == scene)
+    if search:
+        filter_conditions.append(
+            Product.title.ilike(f"%{search}%") | Product.product_id.ilike(f"%{search}%")
+        )
+    
+    query = query.filter(*filter_conditions).group_by(Model.product_id)
+    products_data = query.all()
+    
+    output = io.StringIO()
+    writer = csv.writer(output, quoting=csv.QUOTE_NONNUMERIC)
+    
+    writer.writerow([
+        "商品ID", "商品标题", "商品类目", "分层", "风格", "场景",
+        "支付金额", "净销售额", "退款金额", "退款率", "访客数", "转化率",
+        "广告费用", "ROI", "单均价"
+    ])
+    
+    for p in products_data:
+        payment = float(p.payment_amount or 0)
+        refund = float(p.refund_amount or 0)
+        visitors = int(p.visitors or 0)
+        aov = (payment / visitors) if visitors > 0 else 0
+        refund_rate = (refund / payment) if payment > 0 else 0
+        
+        writer.writerow([
+            p.product_id or "",
+            p.title or "",
+            p.category or "",
+            p.tier or "",
+            p.style or "",
+            p.scene or "",
+            round(payment, 2),
+            round(payment - refund, 2),
+            round(refund, 2),
+            round(refund_rate * 100, 2) if refund_rate else 0,
+            visitors,
+            round(float(p.conversion or 0), 4),
+            round(float(p.ad_spend or 0), 2),
+            round(float(p.roi or 0), 2) if p.roi else 0,
+            round(aov, 2)
+        ])
+    
+    output.seek(0)
+    return StreamingResponse(
+        io.BytesIO(output.getvalue().encode('utf-8-sig')),
+        media_type="text/csv",
+        headers={
+            "Content-Disposition": f"attachment; filename=products_export_{datetime.now().strftime('%Y%m%d')}.csv"
+        }
+    )

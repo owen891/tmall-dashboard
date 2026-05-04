@@ -65,19 +65,35 @@ const toggleStar = async () => {
 
 const loadData = async () => {
   try {
-    const res = await api.getProduct(productId)
-    product.value = res.data || {}
+    const res = await api.getProductDetail(productId)
+    const productData = res.data || {}
+    product.value = {
+      product_id: productData.product_id,
+      title: productData.title,
+      image_url: productData.image_url,
+      category: productData.category,
+      tier: productData.tier,
+      style: productData.style,
+      scene: productData.scene,
+      manager: productData.manager,
+      list_date: productData.list_date,
+      status: productData.status,
+      starred: productData.starred
+    }
 
-    const detailRes = await api.getProductDetail(productId)
-    latestData.value = detailRes.data || {}
+    const trendList = productData.trend || []
+    if (trendList.length > 0) {
+      const latest = trendList[trendList.length - 1]
+      latestData.value = latest
 
-    // 生成 KPI 数据
-    kpis.value = [
-      { key: 'ipv', label: '访客数', value: latestData.value.visitors || 0 },
-      { key: 'gmv', label: '销售额', value: formatCurrency(latestData.value.gmv) },
-      { key: 'roi', label: 'ROI', value: latestData.value.roi || '-' },
-      { key: 'conversion', label: '转化率', value: (latestData.value.conversion_rate || 0) + '%' }
-    ]
+      // 生成 KPI 数据
+      kpis.value = [
+        { key: 'visitors', label: '访客数', value: latest.visitors || 0 },
+        { key: 'gmv', label: '销售额', value: formatCurrency(latest.payment_amount || 0) },
+        { key: 'roi', label: 'ROI', value: latest.roi || '-' },
+        { key: 'conversion', label: '转化率', value: (latest.conversion || 0) + '%' }
+      ]
+    }
   } catch (error) {
     ElMessage.error('加载失败')
   }

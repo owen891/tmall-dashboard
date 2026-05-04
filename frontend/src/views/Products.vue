@@ -320,8 +320,9 @@ const resetFilters = () => {
 
 const toggleStar = async (product) => {
   try {
-    await api.toggleProductStar(product.product_id)
-    product.starred = !product.starred
+    const newStarred = !product.starred
+    await api.updateProduct(product.product_id, { starred: newStarred })
+    product.starred = newStarred
     ElMessage.success(product.starred ? '已收藏' : '已取消收藏')
   } catch (error) {
     console.error('Toggle star error:', error)

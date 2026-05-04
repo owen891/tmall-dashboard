@@ -90,6 +90,49 @@ export default {
   getProductNotes(productId) {
     return request.get(`/products/${productId}/notes`)
   },
+  getProductDetail(productId, params) {
+    return request.get(`/products/${productId}`, { params })
+  },
+  getFilterOptions() {
+    return request.get('/products/categories')
+  },
+  toggleProductStar(productId) {
+    return request.patch(`/products/${productId}`, {
+      field: 'starred',
+      value: null
+    })
+  },
+  updateProduct(productId, data) {
+    if (data.starred !== undefined) {
+      return request.patch(`/products/${productId}`, {
+        field: 'starred',
+        value: data.starred
+      })
+    }
+    const entries = Object.entries(data)
+    if (entries.length === 1) {
+      return request.patch(`/products/${productId}`, {
+        field: entries[0][0],
+        value: entries[0][1]
+      })
+    }
+    return request.patch(`/products/${productId}`, data)
+  },
+  batchUpdateProducts(productIds, data) {
+    return request.post('/products/batch-update', {
+      product_ids: productIds,
+      ...data
+    })
+  },
+  exportProducts(params) {
+    return request.get('/products/export', {
+      params,
+      responseType: 'blob'
+    })
+  },
+  createAction(data) {
+    return request.post('/products/actions', data)
+  },
 
   getKPI(params) {
     return request.get('/kpi', { params })
