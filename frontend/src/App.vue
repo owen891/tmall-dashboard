@@ -35,20 +35,12 @@
               <el-icon><TrendCharts /></el-icon>
               <span>数据分析</span>
             </template>
+            <el-menu-item index="/products">商品列表</el-menu-item>
+            <el-menu-item index="/lifecycle">生命周期</el-menu-item>
             <el-menu-item index="/trends">趋势分析</el-menu-item>
             <el-menu-item index="/ads">广告投放</el-menu-item>
             <el-menu-item index="/kpi">KPI管理</el-menu-item>
             <el-menu-item index="/reviews">评价分析</el-menu-item>
-          </el-sub-menu>
-          
-          <el-sub-menu index="operation-group">
-            <template #title>
-              <el-icon><Monitor /></el-icon>
-              <span>运营管理</span>
-            </template>
-            <el-menu-item index="/inventory">库存预警</el-menu-item>
-            <el-menu-item index="/health">健康分析</el-menu-item>
-            <el-menu-item index="/refunds">退款分析</el-menu-item>
           </el-sub-menu>
         </el-menu>
       </el-scrollbar>
@@ -121,7 +113,6 @@ const pageTitle = computed(() => {
     '/kpi': 'KPI管理',
     '/reviews': '评价分析',
     '/inventory': '库存预警',
-    '/health': '健康分析',
     '/refunds': '退款分析'
   }
   return titles[route.path] || '运营系统'
