@@ -260,6 +260,71 @@ const getTierType = (tier) => {
   return types[tier] || 'info'
 }
 
+const mapApiData = (productsList) => {
+  return productsList.map(product => ({
+    ...product,
+    ipv: product.ipv || product.visitors || 0,
+    payment_conversion: product.payment_conversion || product.conversion || 0,
+    cart_users: product.cart_users || 0,
+    cart_qty: product.cart_qty || 0,
+    fav_users: product.fav_users || 0,
+    buyers: product.buyers || 0,
+    search_buyers: product.search_buyers || 0,
+    payment_qty: product.payment_qty || 0,
+    avg_order_value: product.avg_order_value || product.aov || 0,
+    uv_value: product.uv_value || 0,
+    marketing_ipv: product.marketing_ipv || product.paid_ipv || 0,
+    marketing_cost: product.marketing_cost || product.ad_spend || 0,
+    marketing_roi: product.marketing_roi || product.roi || 0,
+    collect_add_rate: product.collect_add_rate || 0,
+    non_marketing_ipv: product.non_marketing_ipv || 0,
+    free_search_ctr: product.free_search_ctr || 0,
+    industry_ctr: product.industry_ctr || 0,
+    bundle_qty: product.bundle_qty || 0,
+    bundle_rate: product.bundle_rate || 0,
+    bundle_category_width: product.bundle_category_width || 0,
+    impressions: product.impressions || 0,
+    clicks: product.clicks || 0,
+    cost: product.cost || product.ad_spend || 0,
+    ctr: product.ctr || 0,
+    avg_cpc: product.avg_cpc || 0,
+    cpm: product.cpm || 0,
+    direct_amount: product.direct_amount || 0,
+    indirect_amount: product.indirect_amount || 0,
+    total_amount: product.total_amount || 0,
+    total_orders: product.total_orders || 0,
+    direct_orders: product.direct_orders || 0,
+    indirect_orders: product.indirect_orders || 0,
+    click_conversion: product.click_conversion || 0,
+    roi: product.roi || 0,
+    pre_sale_roi: product.pre_sale_roi || 0,
+    total_cost: product.total_cost || 0,
+    total_cart: product.total_cart || 0,
+    direct_cart: product.direct_cart || 0,
+    indirect_cart: product.indirect_cart || 0,
+    collect_item: product.collect_item || 0,
+    collect_shop: product.collect_shop || 0,
+    shop_collect_cost: product.shop_collect_cost || 0,
+    total_collect_add: product.total_collect_add || 0,
+    total_collect_add_cost: product.total_collect_add_cost || 0,
+    item_collect_add: product.item_collect_add || 0,
+    item_collect_add_cost: product.item_collect_add_cost || 0,
+    total_collect: product.total_collect || 0,
+    item_collect_cost: product.item_collect_cost || 0,
+    item_collect_rate: product.item_collect_rate || 0,
+    cart_cost: product.cart_cost || 0,
+    guide_visits: product.guide_visits || 0,
+    guide_visitors: product.guide_visitors || 0,
+    guide_potential: product.guide_potential || 0,
+    guide_potential_ratio: product.guide_potential_ratio || 0,
+    new_customer_count: product.new_customer_count || 0,
+    new_customer_ratio: product.new_customer_ratio || 0,
+    total_payers: product.total_payers || 0,
+    repurchase_rate: product.repurchase_rate || 0,
+    repurchase_users: product.repurchase_users || 0
+  }))
+}
+
 const formatNumber = (value, decimals = 2) => {
   if (value === null || value === undefined) return '-'
   const num = Number(value)
@@ -306,142 +371,13 @@ const loadProducts = async () => {
     }
     const res = await api.getProducts(params)
     const resData = res.data || {}
-    products.value = resData.data || []
+    products.value = mapApiData(resData.data || [])
     pagination.value.total = resData.total || 0
-    
-    if (products.value.length === 0) {
-      products.value = generateMockProducts()
-      pagination.value.total = 50
-    }
   } catch (error) {
     console.error('Load products error:', error)
-    products.value = generateMockProducts()
-    pagination.value.total = 50
   } finally {
     loading.value = false
   }
-}
-
-const generateMockProducts = () => {
-  const mockProducts = []
-  const productNames = [
-    '韩版潮流卫衣', '时尚运动裤', '休闲夹克外套', '简约T恤', '保暖羽绒服',
-    '复古牛仔裤', '百搭衬衫', '商务西装', '运动套装', '连衣裙'
-  ]
-  const categories = ['女装', '男装', '鞋靴', '箱包', '配饰']
-  const tiers = ['引流款', '利润款', '潜力款']
-  const styles = ['韩版', '欧美', '日系', '休闲', '商务']
-  const scenes = ['日常', '办公', '运动', '约会', '派对']
-  const managers = ['张三', '李四', '王五', '赵六', '孙七']
-  
-  for (let i = 0; i < 20; i++) {
-    const product = {
-      product_id: `P${String(10001 + i).padStart(6, '0')}`,
-      title: productNames[i % productNames.length] + ` - ${i + 1}号商品`,
-      category: categories[i % categories.length],
-      tier: tiers[i % tiers.length],
-      style: styles[i % styles.length],
-      scene: scenes[i % scenes.length],
-      manager: managers[i % managers.length],
-      list_date: `2025-${String(Math.floor(i / 4) + 1).padStart(2, '0')}-15`,
-      status: '在售',
-      ipv: Math.floor(Math.random() * 10000) + 1000,
-      pv: Math.floor(Math.random() * 50000) + 5000,
-      search_ipv: Math.floor(Math.random() * 3000) + 500,
-      recommend_ipv: Math.floor(Math.random() * 2000) + 300,
-      paid_ipv: Math.floor(Math.random() * 1500) + 200,
-      organic_ipv: Math.floor(Math.random() * 3000) + 500,
-      bounce_rate: Math.random() * 0.5,
-      avg_stay_duration: Math.random() * 300 + 30,
-      payment_conversion: Math.random() * 0.15,
-      search_conversion: Math.random() * 0.1,
-      cart_rate: Math.random() * 0.3,
-      fav_rate: Math.random() * 0.2,
-      cart_users: Math.floor(Math.random() * 500) + 50,
-      cart_qty: Math.floor(Math.random() * 800) + 100,
-      fav_users: Math.floor(Math.random() * 300) + 30,
-      buyers: Math.floor(Math.random() * 200) + 20,
-      search_buyers: Math.floor(Math.random() * 100) + 10,
-      payment_amount: Math.floor(Math.random() * 100000) + 10000,
-      payment_qty: Math.floor(Math.random() * 500) + 50,
-      refund_amount: Math.floor(Math.random() * 5000) + 500,
-      net_sales: Math.floor(Math.random() * 95000) + 5000,
-      avg_order_value: Math.random() * 200 + 50,
-      uv_value: Math.random() * 5,
-      refund_rate: Math.random() * 0.1,
-      marketing_ipv: Math.floor(Math.random() * 3000) + 500,
-      marketing_cost: Math.floor(Math.random() * 5000) + 500,
-      marketing_roi: Math.random() * 5 + 1,
-      collect_add_rate: Math.random() * 0.5,
-      non_marketing_ipv: Math.floor(Math.random() * 2000) + 300,
-      free_search_ctr: Math.random() * 0.1,
-      industry_ctr: Math.random() * 0.08,
-      bundle_qty: Math.floor(Math.random() * 100) + 10,
-      bundle_rate: Math.random() * 0.3,
-      bundle_category_width: Math.floor(Math.random() * 10) + 1,
-      impressions: Math.floor(Math.random() * 100000) + 10000,
-      clicks: Math.floor(Math.random() * 5000) + 500,
-      cost: Math.floor(Math.random() * 3000) + 300,
-      ctr: Math.random() * 0.1,
-      avg_cpc: Math.random() * 2 + 0.5,
-      cpm: Math.random() * 50 + 10,
-      direct_amount: Math.floor(Math.random() * 30000) + 3000,
-      indirect_amount: Math.floor(Math.random() * 20000) + 2000,
-      total_amount: Math.floor(Math.random() * 50000) + 5000,
-      total_orders: Math.floor(Math.random() * 300) + 30,
-      direct_orders: Math.floor(Math.random() * 150) + 15,
-      indirect_orders: Math.floor(Math.random() * 150) + 15,
-      click_conversion: Math.random() * 0.15,
-      roi: Math.random() * 5 + 1,
-      pre_sale_roi: Math.random() * 5 + 1,
-      total_cost: Math.floor(Math.random() * 2000) + 200,
-      total_cart: Math.floor(Math.random() * 800) + 80,
-      direct_cart: Math.floor(Math.random() * 400) + 40,
-      indirect_cart: Math.floor(Math.random() * 400) + 40,
-      collect_item: Math.floor(Math.random() * 200) + 20,
-      collect_shop: Math.floor(Math.random() * 100) + 10,
-      shop_collect_cost: Math.random() * 20 + 2,
-      total_collect_add: Math.floor(Math.random() * 500) + 50,
-      total_collect_add_cost: Math.random() * 30 + 3,
-      item_collect_add: Math.floor(Math.random() * 300) + 30,
-      item_collect_add_cost: Math.random() * 20 + 2,
-      total_collect: Math.floor(Math.random() * 400) + 40,
-      item_collect_cost: Math.random() * 15 + 1.5,
-      item_collect_rate: Math.random() * 0.1,
-      cart_cost: Math.random() * 15 + 1.5,
-      guide_visits: Math.floor(Math.random() * 2000) + 200,
-      guide_visitors: Math.floor(Math.random() * 1500) + 150,
-      guide_potential: Math.floor(Math.random() * 800) + 80,
-      guide_potential_ratio: Math.random() * 0.5,
-      new_customer_count: Math.floor(Math.random() * 100) + 10,
-      new_customer_ratio: Math.random() * 0.7,
-      total_payers: Math.floor(Math.random() * 200) + 20,
-      repurchase_rate: Math.random() * 0.3,
-      repurchase_users: Math.floor(Math.random() * 80) + 8,
-      gsv_2025_01: Math.floor(Math.random() * 30000) + 3000,
-      gsv_2025_02: Math.floor(Math.random() * 35000) + 3500,
-      gsv_2025_03: Math.floor(Math.random() * 40000) + 4000,
-      gsv_2025_04: Math.floor(Math.random() * 45000) + 4500,
-      gsv_2025_05: Math.floor(Math.random() * 50000) + 5000,
-      gsv_2025_06: Math.floor(Math.random() * 55000) + 5500,
-      gsv_2025_07: Math.floor(Math.random() * 60000) + 6000,
-      gsv_2025_08: Math.floor(Math.random() * 65000) + 6500,
-      gsv_2025_09: Math.floor(Math.random() * 70000) + 7000,
-      gsv_2025_10: Math.floor(Math.random() * 75000) + 7500,
-      gsv_2025_11: Math.floor(Math.random() * 80000) + 8000,
-      gsv_2025_12: Math.floor(Math.random() * 85000) + 8500,
-      gsv_2026_01: Math.floor(Math.random() * 50000) + 5000,
-      gsv_2026_02: Math.floor(Math.random() * 55000) + 5500,
-      gsv_2026_03: Math.floor(Math.random() * 60000) + 6000,
-      gsv_total_2025: Math.floor(Math.random() * 700000) + 70000,
-      gsv_total_2026: Math.floor(Math.random() * 500000) + 50000,
-      starred: Math.random() > 0.8,
-      score: Math.floor(Math.random() * 30) + 70
-    }
-    mockProducts.push(product)
-  }
-  
-  return mockProducts
 }
 
 const resetFilters = () => {
