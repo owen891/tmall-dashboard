@@ -17,11 +17,6 @@
           active-text-color="#ffffff"
         >
           <el-menu-item index="/">
-            <el-icon><Odometer /></el-icon>
-            <template #title>数据概览</template>
-          </el-menu-item>
-          
-          <el-menu-item index="/command-tower">
             <el-icon><DataBoard /></el-icon>
             <template #title>指挥塔</template>
           </el-menu-item>
@@ -167,7 +162,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { 
-  DataBoard, DataLine, Odometer, Goods, Monitor,
+  DataBoard, DataLine, Goods, Monitor,
   TrendCharts, Trophy, Expand, Fold, Sunny, Moon,
   FullScreen, Tools, DataAnalysis, User, Money
 } from '@element-plus/icons-vue'
@@ -180,8 +175,7 @@ const activeMenu = computed(() => route.path)
 
 const pageTitle = computed(() => {
   const titles = {
-    '/': '数据概览',
-    '/command-tower': '指挥塔',
+    '/': '指挥塔',
     '/products': '商品列表',
     '/product': '商品详情',
     '/product-ranking': '商品排行',
