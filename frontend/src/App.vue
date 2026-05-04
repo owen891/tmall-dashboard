@@ -111,9 +111,7 @@ const pageTitle = computed(() => {
     '/trends': '趋势分析',
     '/ads': '广告投放',
     '/kpi': 'KPI管理',
-    '/reviews': '评价分析',
-    '/inventory': '库存预警',
-    '/refunds': '退款分析'
+    '/reviews': '评价分析'
   }
   return titles[route.path] || '运营系统'
 })
