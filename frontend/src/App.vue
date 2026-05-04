@@ -1,9 +1,9 @@
 <template>
   <el-container class="app-container">
-    <el-aside :width="isCollapsed ? '64px' : '220px'" class="app-aside">
+    <el-aside :width="isCollapsed ? '64px' : '240px'" class="app-aside">
       <div class="logo">
-        <el-icon size="24" color="#fff"><DataBoard /></el-icon>
-        <span v-if="!isCollapsed" class="logo-text">运营系统</span>
+        <el-icon size="28" color="#fff"><DataBoard /></el-icon>
+        <span v-if="!isCollapsed" class="logo-text">海贝海</span>
       </div>
       
       <el-scrollbar class="menu-scrollbar">
@@ -21,64 +21,102 @@
             <template #title>数据概览</template>
           </el-menu-item>
           
-          <el-menu-item index="/products">
-            <el-icon><Goods /></el-icon>
-            <template #title>商品列表</template>
-          </el-menu-item>
-          
-          <el-menu-item index="/product-ranking">
-            <el-icon><DataLine /></el-icon>
-            <template #title>商品排行</template>
-          </el-menu-item>
-          
-          <el-menu-item index="/inventory">
-            <el-icon><Monitor /></el-icon>
-            <template #title>库存预警</template>
-          </el-menu-item>
-          
-          <el-menu-item index="/traffic-analysis">
-            <el-icon><TrendCharts /></el-icon>
-            <template #title>流量分析</template>
-          </el-menu-item>
-          
-          <el-menu-item index="/funnel">
-            <el-icon><DataAnalysis /></el-icon>
-            <template #title>转化漏斗</template>
-          </el-menu-item>
-          
-          <el-menu-item index="/ads">
-            <el-icon><Tools /></el-icon>
-            <template #title>广告投放</template>
-          </el-menu-item>
-          
-          <el-menu-item index="/profit">
-            <el-icon><Money /></el-icon>
-            <template #title>利润分析</template>
-          </el-menu-item>
-          
-          <el-menu-item index="/kpi">
-            <el-icon><Trophy /></el-icon>
-            <template #title>KPI管理</template>
-          </el-menu-item>
-          
-          <el-menu-item index="/lifecycle">
-            <el-icon><Odometer /></el-icon>
-            <template #title>生命周期</template>
-          </el-menu-item>
-          
-          <el-menu-item index="/reviews">
-            <el-icon><User /></el-icon>
-            <template #title>评价分析</template>
-          </el-menu-item>
-          
-          <el-menu-item index="/trends">
-            <el-icon><TrendCharts /></el-icon>
-            <template #title>趋势分析</template>
-          </el-menu-item>
-          
           <el-menu-item index="/command-tower">
             <el-icon><DataBoard /></el-icon>
             <template #title>指挥塔</template>
+          </el-menu-item>
+          
+          <el-sub-menu index="products-group">
+            <template #title>
+              <el-icon><Goods /></el-icon>
+              <span>商品运营</span>
+            </template>
+            <el-menu-item index="/products">商品列表</el-menu-item>
+            <el-menu-item index="/product-ranking">商品排行</el-menu-item>
+            <el-menu-item index="/quadrant">四象限分析</el-menu-item>
+            <el-menu-item index="/lifecycle">生命周期</el-menu-item>
+            <el-menu-item index="/compare">商品对比</el-menu-item>
+          </el-sub-menu>
+          
+          <el-sub-menu index="analysis-group">
+            <template #title>
+              <el-icon><TrendCharts /></el-icon>
+              <span>数据分析</span>
+            </template>
+            <el-menu-item index="/trends">趋势分析</el-menu-item>
+            <el-menu-item index="/traffic-analysis">流量分析</el-menu-item>
+            <el-menu-item index="/funnel">转化漏斗</el-menu-item>
+            <el-menu-item index="/ads">广告投放</el-menu-item>
+            <el-menu-item index="/profit">利润分析</el-menu-item>
+            <el-menu-item index="/kpi">KPI管理</el-menu-item>
+            <el-menu-item index="/reviews">评价分析</el-menu-item>
+            <el-menu-item index="/data-visualization">数据可视化</el-menu-item>
+          </el-sub-menu>
+          
+          <el-sub-menu index="operation-group">
+            <template #title>
+              <el-icon><Monitor /></el-icon>
+              <span>运营管理</span>
+            </template>
+            <el-menu-item index="/inventory">库存预警</el-menu-item>
+            <el-menu-item index="/targets">目标管理</el-menu-item>
+            <el-menu-item index="/promotion">促销活动</el-menu-item>
+            <el-menu-item index="/promotion-analysis">促销分析</el-menu-item>
+            <el-menu-item index="/operations">运营动作</el-menu-item>
+            <el-menu-item index="/health">健康分析</el-menu-item>
+            <el-menu-item index="/efficiency">效率分析</el-menu-item>
+            <el-menu-item index="/attribution">归因分析</el-menu-item>
+            <el-menu-item index="/refunds">退款分析</el-menu-item>
+            <el-menu-item index="/crowd-asset">人群资产</el-menu-item>
+            <el-menu-item index="/market">市场分析</el-menu-item>
+            <el-menu-item index="/channel-detail">渠道详情</el-menu-item>
+          </el-sub-menu>
+          
+          <el-sub-menu index="smart-group">
+            <template #title>
+              <el-icon><Tools /></el-icon>
+              <span>智能工具</span>
+            </template>
+            <el-menu-item index="/ai-analytics">AI智能分析</el-menu-item>
+            <el-menu-item index="/prediction">预测分析</el-menu-item>
+            <el-menu-item index="/recommendation">智能推荐</el-menu-item>
+            <el-menu-item index="/smart-alert">智能预警</el-menu-item>
+          </el-sub-menu>
+          
+          <el-sub-menu index="tool-group">
+            <template #title>
+              <el-icon><DataAnalysis /></el-icon>
+              <span>系统工具</span>
+            </template>
+            <el-menu-item index="/import-center">数据导入</el-menu-item>
+            <el-menu-item index="/smart-import">智能导入</el-menu-item>
+            <el-menu-item index="/advanced-import-center">高级导入</el-menu-item>
+            <el-menu-item index="/import">简易导入</el-menu-item>
+            <el-menu-item index="/toolbox">工具箱</el-menu-item>
+            <el-menu-item index="/data-quality">数据质量</el-menu-item>
+            <el-menu-item index="/backup-management">备份管理</el-menu-item>
+            <el-menu-item index="/backup">备份</el-menu-item>
+            <el-menu-item index="/settings">系统设置</el-menu-item>
+          </el-sub-menu>
+          
+          <el-menu-item index="/report">
+            <el-icon><DataLine /></el-icon>
+            <template #title>报告生成</template>
+          </el-menu-item>
+          
+          <el-menu-item index="/pace">
+            <el-icon><Trophy /></el-icon>
+            <template #title>目标进度</template>
+          </el-menu-item>
+          
+          <el-menu-item index="/abtest-sop">
+            <el-icon><User /></el-icon>
+            <template #title>AB测试</template>
+          </el-menu-item>
+          
+          <el-menu-item index="/collaboration">
+            <el-icon><Money /></el-icon>
+            <template #title>协作管理</template>
           </el-menu-item>
         </el-menu>
       </el-scrollbar>
@@ -147,6 +185,9 @@ const pageTitle = computed(() => {
     '/products': '商品列表',
     '/product': '商品详情',
     '/product-ranking': '商品排行',
+    '/quadrant': '四象限分析',
+    '/lifecycle': '生命周期',
+    '/compare': '商品对比',
     '/inventory': '库存预警',
     '/reviews': '评价分析',
     '/traffic-analysis': '流量分析',
@@ -154,8 +195,36 @@ const pageTitle = computed(() => {
     '/ads': '广告投放',
     '/profit': '利润分析',
     '/kpi': 'KPI管理',
-    '/lifecycle': '生命周期',
-    '/trends': '趋势分析'
+    '/trends': '趋势分析',
+    '/data-visualization': '数据可视化',
+    '/targets': '目标管理',
+    '/promotion': '促销活动',
+    '/promotion-analysis': '促销分析',
+    '/operations': '运营动作',
+    '/health': '健康分析',
+    '/efficiency': '效率分析',
+    '/attribution': '归因分析',
+    '/refunds': '退款分析',
+    '/crowd-asset': '人群资产',
+    '/market': '市场分析',
+    '/channel-detail': '渠道详情',
+    '/ai-analytics': 'AI智能分析',
+    '/prediction': '预测分析',
+    '/recommendation': '智能推荐',
+    '/smart-alert': '智能预警',
+    '/import-center': '数据导入',
+    '/smart-import': '智能导入',
+    '/advanced-import-center': '高级导入',
+    '/import': '简易导入',
+    '/toolbox': '工具箱',
+    '/data-quality': '数据质量',
+    '/backup-management': '备份管理',
+    '/backup': '备份',
+    '/settings': '系统设置',
+    '/report': '报告生成',
+    '/pace': '目标进度',
+    '/abtest-sop': 'AB测试',
+    '/collaboration': '协作管理'
   }
   return titles[route.path] || '运营系统'
 })
@@ -197,7 +266,7 @@ onMounted(() => {
 }
 
 .logo {
-  height: 60px;
+  height: 64px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -205,7 +274,7 @@ onMounted(() => {
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   color: white;
   font-weight: bold;
-  font-size: 16px;
+  font-size: 18px;
 }
 
 .logo-text {
@@ -214,7 +283,7 @@ onMounted(() => {
 }
 
 .menu-scrollbar {
-  height: calc(100vh - 60px);
+  height: calc(100vh - 64px);
 }
 
 .menu-scrollbar :deep(.el-scrollbar__view) {
@@ -225,14 +294,16 @@ onMounted(() => {
   border-right: none;
 }
 
-.el-menu-item {
-  height: 50px;
-  line-height: 50px;
-  margin: 4px 8px;
+.el-menu-item,
+.el-sub-menu__title {
+  height: 48px;
+  line-height: 48px;
+  margin: 2px 8px;
   border-radius: 8px;
 }
 
-.el-menu-item:hover {
+.el-menu-item:hover,
+.el-sub-menu__title:hover {
   background-color: rgba(255, 255, 255, 0.08) !important;
 }
 
@@ -246,8 +317,8 @@ onMounted(() => {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 0 20px;
-  height: 60px;
+  padding: 0 24px;
+  height: 64px;
 }
 
 .header-left {
@@ -270,7 +341,7 @@ onMounted(() => {
 
 .page-title {
   margin: 0;
-  font-size: 18px;
+  font-size: 20px;
   font-weight: 600;
   color: #303133;
 }
@@ -283,7 +354,7 @@ onMounted(() => {
 
 .app-main {
   background-color: #f5f7fa;
-  padding: 16px;
+  padding: 20px;
   overflow-y: auto;
 }
 
