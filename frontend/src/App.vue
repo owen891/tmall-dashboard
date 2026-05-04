@@ -27,10 +27,7 @@
               <span>商品运营</span>
             </template>
             <el-menu-item index="/products">商品列表</el-menu-item>
-            <el-menu-item index="/product-ranking">商品排行</el-menu-item>
-            <el-menu-item index="/quadrant">四象限分析</el-menu-item>
             <el-menu-item index="/lifecycle">生命周期</el-menu-item>
-            <el-menu-item index="/compare">商品对比</el-menu-item>
           </el-sub-menu>
           
           <el-sub-menu index="analysis-group">
@@ -39,13 +36,9 @@
               <span>数据分析</span>
             </template>
             <el-menu-item index="/trends">趋势分析</el-menu-item>
-            <el-menu-item index="/traffic-analysis">流量分析</el-menu-item>
-            <el-menu-item index="/funnel">转化漏斗</el-menu-item>
             <el-menu-item index="/ads">广告投放</el-menu-item>
-            <el-menu-item index="/profit">利润分析</el-menu-item>
             <el-menu-item index="/kpi">KPI管理</el-menu-item>
             <el-menu-item index="/reviews">评价分析</el-menu-item>
-            <el-menu-item index="/data-visualization">数据可视化</el-menu-item>
           </el-sub-menu>
           
           <el-sub-menu index="operation-group">
@@ -54,65 +47,9 @@
               <span>运营管理</span>
             </template>
             <el-menu-item index="/inventory">库存预警</el-menu-item>
-            <el-menu-item index="/targets">目标管理</el-menu-item>
-            <el-menu-item index="/promotion">促销活动</el-menu-item>
-            <el-menu-item index="/promotion-analysis">促销分析</el-menu-item>
-            <el-menu-item index="/operations">运营动作</el-menu-item>
             <el-menu-item index="/health">健康分析</el-menu-item>
-            <el-menu-item index="/efficiency">效率分析</el-menu-item>
-            <el-menu-item index="/attribution">归因分析</el-menu-item>
             <el-menu-item index="/refunds">退款分析</el-menu-item>
-            <el-menu-item index="/crowd-asset">人群资产</el-menu-item>
-            <el-menu-item index="/market">市场分析</el-menu-item>
-            <el-menu-item index="/channel-detail">渠道详情</el-menu-item>
           </el-sub-menu>
-          
-          <el-sub-menu index="smart-group">
-            <template #title>
-              <el-icon><Tools /></el-icon>
-              <span>智能工具</span>
-            </template>
-            <el-menu-item index="/ai-analytics">AI智能分析</el-menu-item>
-            <el-menu-item index="/prediction">预测分析</el-menu-item>
-            <el-menu-item index="/recommendation">智能推荐</el-menu-item>
-            <el-menu-item index="/smart-alert">智能预警</el-menu-item>
-          </el-sub-menu>
-          
-          <el-sub-menu index="tool-group">
-            <template #title>
-              <el-icon><DataAnalysis /></el-icon>
-              <span>系统工具</span>
-            </template>
-            <el-menu-item index="/import-center">数据导入</el-menu-item>
-            <el-menu-item index="/smart-import">智能导入</el-menu-item>
-            <el-menu-item index="/advanced-import-center">高级导入</el-menu-item>
-            <el-menu-item index="/import">简易导入</el-menu-item>
-            <el-menu-item index="/toolbox">工具箱</el-menu-item>
-            <el-menu-item index="/data-quality">数据质量</el-menu-item>
-            <el-menu-item index="/backup-management">备份管理</el-menu-item>
-            <el-menu-item index="/backup">备份</el-menu-item>
-            <el-menu-item index="/settings">系统设置</el-menu-item>
-          </el-sub-menu>
-          
-          <el-menu-item index="/report">
-            <el-icon><DataLine /></el-icon>
-            <template #title>报告生成</template>
-          </el-menu-item>
-          
-          <el-menu-item index="/pace">
-            <el-icon><Trophy /></el-icon>
-            <template #title>目标进度</template>
-          </el-menu-item>
-          
-          <el-menu-item index="/abtest-sop">
-            <el-icon><User /></el-icon>
-            <template #title>AB测试</template>
-          </el-menu-item>
-          
-          <el-menu-item index="/collaboration">
-            <el-icon><Money /></el-icon>
-            <template #title>协作管理</template>
-          </el-menu-item>
         </el-menu>
       </el-scrollbar>
     </el-aside>
@@ -178,47 +115,14 @@ const pageTitle = computed(() => {
     '/': '指挥塔',
     '/products': '商品列表',
     '/product': '商品详情',
-    '/product-ranking': '商品排行',
-    '/quadrant': '四象限分析',
     '/lifecycle': '生命周期',
-    '/compare': '商品对比',
-    '/inventory': '库存预警',
-    '/reviews': '评价分析',
-    '/traffic-analysis': '流量分析',
-    '/funnel': '转化漏斗',
-    '/ads': '广告投放',
-    '/profit': '利润分析',
-    '/kpi': 'KPI管理',
     '/trends': '趋势分析',
-    '/data-visualization': '数据可视化',
-    '/targets': '目标管理',
-    '/promotion': '促销活动',
-    '/promotion-analysis': '促销分析',
-    '/operations': '运营动作',
+    '/ads': '广告投放',
+    '/kpi': 'KPI管理',
+    '/reviews': '评价分析',
+    '/inventory': '库存预警',
     '/health': '健康分析',
-    '/efficiency': '效率分析',
-    '/attribution': '归因分析',
-    '/refunds': '退款分析',
-    '/crowd-asset': '人群资产',
-    '/market': '市场分析',
-    '/channel-detail': '渠道详情',
-    '/ai-analytics': 'AI智能分析',
-    '/prediction': '预测分析',
-    '/recommendation': '智能推荐',
-    '/smart-alert': '智能预警',
-    '/import-center': '数据导入',
-    '/smart-import': '智能导入',
-    '/advanced-import-center': '高级导入',
-    '/import': '简易导入',
-    '/toolbox': '工具箱',
-    '/data-quality': '数据质量',
-    '/backup-management': '备份管理',
-    '/backup': '备份',
-    '/settings': '系统设置',
-    '/report': '报告生成',
-    '/pace': '目标进度',
-    '/abtest-sop': 'AB测试',
-    '/collaboration': '协作管理'
+    '/refunds': '退款分析'
   }
   return titles[route.path] || '运营系统'
 })
