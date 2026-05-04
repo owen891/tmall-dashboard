@@ -97,17 +97,20 @@
           sortable="custom"
         >
           <template #default="{ row }">
-            <span v-if="['payment_amount', 'refund_amount', 'net_sales', 'ad_spend', 'avg_order_value', 'keyword_sales', 'crowd_sales', 'site_sales', 'marketing_cost', 'direct_amount', 'indirect_amount', 'total_amount', 'total_cost', 'shop_collect_cost', 'total_collect_add_cost', 'item_collect_add_cost', 'item_collect_cost', 'cart_cost', 'avg_cpc', 'cpm', 'gsv_2025_01', 'gsv_2025_02', 'gsv_2025_03', 'gsv_2025_04', 'gsv_2025_05', 'gsv_2025_06', 'gsv_2025_07', 'gsv_2025_08', 'gsv_2025_09', 'gsv_2025_10', 'gsv_2025_11', 'gsv_2025_12', 'gsv_2026_01', 'gsv_2026_02', 'gsv_2026_03', 'gsv_total_2025', 'gsv_total_2026'].includes(field.key)">
+            <span v-if="['payment_amount', 'refund_amount', 'net_sales', 'ad_spend', 'avg_order_value', 'keyword_sales', 'crowd_sales', 'site_sales', 'marketing_cost', 'direct_amount', 'indirect_amount', 'total_amount', 'total_cost', 'shop_collect_cost', 'total_collect_add_cost', 'item_collect_add_cost', 'item_collect_cost', 'cart_cost', 'avg_cpc', 'cpm', 'gsv_2025_01', 'gsv_2025_02', 'gsv_2025_03', 'gsv_2025_04', 'gsv_2025_05', 'gsv_2025_06', 'gsv_2025_07', 'gsv_2025_08', 'gsv_2025_09', 'gsv_2025_10', 'gsv_2025_11', 'gsv_2025_12', 'gsv_2026_01', 'gsv_2026_02', 'gsv_2026_03', 'gsv_total_2025', 'gsv_total_2026', 'presale_amount', 'aov'].includes(field.key)">
               {{ formatCurrency(row[field.key]) }}
             </span>
-            <span v-else-if="['payment_conversion', 'cart_rate', 'fav_rate', 'refund_rate', 'ad_ratio', 'search_conversion', 'click_rate', 'industry_ctr', 'search_click_rate', 'ad_roi', 'keyword_roi', 'crowd_roi', 'site_roi', 'guide_potential_ratio', 'cross_sell_rate', 'repurchase_rate', 'new_buyer_ratio', 'marketing_roi', 'roi', 'pre_sale_roi', 'ctr', 'click_conversion', 'item_collect_rate', 'collect_add_rate', 'free_search_ctr', 'bundle_rate', 'new_customer_ratio', 'bounce_rate'].includes(field.key)">
+            <span v-else-if="['payment_conversion', 'cart_rate', 'fav_rate', 'refund_rate', 'ad_ratio', 'search_conversion', 'click_rate', 'industry_ctr', 'search_click_rate', 'ad_roi', 'keyword_roi', 'crowd_roi', 'site_roi', 'guide_potential_ratio', 'cross_sell_rate', 'repurchase_rate', 'new_buyer_ratio', 'marketing_roi', 'roi', 'pre_sale_roi', 'ctr', 'click_conversion', 'item_collect_rate', 'collect_add_rate', 'free_search_ctr', 'bundle_rate', 'new_customer_ratio', 'bounce_rate', 'conversion'].includes(field.key)">
               {{ formatPercent(row[field.key]) }}
             </span>
-            <span v-else-if="['ipv', 'pv', 'search_ipv', 'recommend_ipv', 'paid_ipv', 'organic_ipv', 'buyers', 'cart_users', 'fav_users', 'payment_qty', 'cart_qty', 'cross_sell_qty', 'repurchase_users', 'new_buyers', 'keyword_visitors', 'guide_visits', 'guide_visitors', 'guide_potential', 'marketing_ipv', 'non_marketing_ipv', 'impressions', 'clicks', 'total_orders', 'direct_orders', 'indirect_orders', 'total_cart', 'direct_cart', 'indirect_cart', 'collect_item', 'collect_shop', 'total_collect_add', 'item_collect_add', 'total_collect', 'new_customer_count', 'total_payers', 'search_buyers', 'bundle_qty', 'bundle_category_width'].includes(field.key)">
+            <span v-else-if="['ipv', 'pv', 'search_ipv', 'recommend_ipv', 'paid_ipv', 'organic_ipv', 'buyers', 'cart_users', 'fav_users', 'payment_qty', 'cart_qty', 'cross_sell_qty', 'repurchase_users', 'new_buyers', 'keyword_visitors', 'guide_visits', 'guide_visitors', 'guide_potential', 'marketing_ipv', 'non_marketing_ipv', 'impressions', 'clicks', 'total_orders', 'direct_orders', 'indirect_orders', 'total_cart', 'direct_cart', 'indirect_cart', 'collect_item', 'collect_shop', 'total_collect_add', 'item_collect_add', 'total_collect', 'new_customer_count', 'total_payers', 'search_buyers', 'bundle_qty', 'bundle_category_width', 'visitors', 'presale_qty', 'payment_count', 'order_count'].includes(field.key)">
               {{ formatNumber(row[field.key], 0) }}
             </span>
             <span v-else-if="['avg_stay_duration', 'uv_value'].includes(field.key)">
               {{ formatNumber(row[field.key], 2) }}
+            </span>
+            <span v-else-if="['score', 'category_width'].includes(field.key)">
+              {{ row[field.key] !== null && row[field.key] !== undefined ? row[field.key] : '-' }}
             </span>
             <span v-else>
               {{ row[field.key] || '-' }}

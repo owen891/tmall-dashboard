@@ -20,6 +20,7 @@ export const fieldCategories = [
     key: 'traffic',
     fields: [
       { key: 'ipv', label: '商品访客数', width: 100 },
+      { key: 'visitors', label: '访客数', width: 100 },
       { key: 'pv', label: '商品浏览量', width: 100 },
       { key: 'search_ipv', label: '搜索访客', width: 100 },
       { key: 'recommend_ipv', label: '推荐访客', width: 100 },
@@ -34,6 +35,7 @@ export const fieldCategories = [
     key: 'conversion',
     fields: [
       { key: 'payment_conversion', label: '商品支付转化率', width: 120 },
+      { key: 'conversion', label: '转化率', width: 100 },
       { key: 'search_conversion', label: '搜索引导转化率', width: 120 },
       { key: 'cart_rate', label: '加购率', width: 80 },
       { key: 'fav_rate', label: '收藏率', width: 80 },
@@ -53,6 +55,7 @@ export const fieldCategories = [
       { key: 'refund_amount', label: '成功退款金额', width: 120 },
       { key: 'net_sales', label: '净销售额', width: 120 },
       { key: 'avg_order_value', label: '笔单价', width: 100 },
+      { key: 'aov', label: '笔单价', width: 100 },
       { key: 'uv_value', label: 'UV价值', width: 80 },
       { key: 'refund_rate', label: '退款率', width: 80 }
     ]
@@ -64,13 +67,15 @@ export const fieldCategories = [
       { key: 'marketing_ipv', label: '营销推广IPV', width: 120 },
       { key: 'marketing_cost', label: '营销推广消耗', width: 120 },
       { key: 'marketing_roi', label: '营销推广ROI', width: 100 },
+      { key: 'roi', label: 'ROI', width: 80 },
       { key: 'collect_add_rate', label: '收加率', width: 80 },
       { key: 'non_marketing_ipv', label: '非推广IPV', width: 120 },
       { key: 'free_search_ctr', label: '免费搜索点击率', width: 120 },
       { key: 'industry_ctr', label: '行业点击率', width: 100 },
       { key: 'bundle_qty', label: '连带购买量', width: 100 },
       { key: 'bundle_rate', label: '连带购买率', width: 100 },
-      { key: 'bundle_category_width', label: '连带叶子类目宽度', width: 150 }
+      { key: 'bundle_category_width', label: '连带叶子类目宽度', width: 150 },
+      { key: 'category_width', label: '品类宽度', width: 100 }
     ]
   },
   {
@@ -80,6 +85,7 @@ export const fieldCategories = [
       { key: 'impressions', label: '展现量', width: 100 },
       { key: 'clicks', label: '点击量', width: 100 },
       { key: 'cost', label: '花费', width: 100 },
+      { key: 'ad_spend', label: '广告花费', width: 100 },
       { key: 'ctr', label: '点击率', width: 80 },
       { key: 'avg_cpc', label: '平均点击花费', width: 120 },
       { key: 'cpm', label: '千次展现花费', width: 120 },
@@ -90,13 +96,11 @@ export const fieldCategories = [
       { key: 'direct_orders', label: '直接成交笔数', width: 120 },
       { key: 'indirect_orders', label: '间接成交笔数', width: 120 },
       { key: 'click_conversion', label: '点击转化率', width: 100 },
-      { key: 'roi', label: '投入产出比', width: 100 },
       { key: 'pre_sale_roi', label: '含预售投产比', width: 120 },
       { key: 'total_cost', label: '总成交成本', width: 120 },
       { key: 'total_cart', label: '总购物车数', width: 100 },
       { key: 'direct_cart', label: '直接购物车数', width: 120 },
       { key: 'indirect_cart', label: '间接购物车数', width: 120 },
-      { key: 'cart_rate', label: '加购率', width: 80 },
       { key: 'collect_item', label: '收藏宝贝数', width: 120 },
       { key: 'collect_shop', label: '收藏店铺数', width: 120 },
       { key: 'shop_collect_cost', label: '店铺收藏成本', width: 120 },
@@ -155,16 +159,9 @@ export const fieldCategories = [
       { key: 'click_rate', label: '点击率', width: 80 },
       { key: 'search_click_rate', label: '搜索点击率', width: 100 },
       { key: 'score', label: '评分', width: 80 },
-      { key: 'category_width', label: '品类宽度', width: 100 }
-    ]
-  },
-  {
-    label: '自定义字段',
-    key: 'custom',
-    fields: [
-      { key: 'custom_field_1', label: '自定义字段1', width: 120 },
-      { key: 'custom_field_2', label: '自定义字段2', width: 120 },
-      { key: 'custom_field_3', label: '自定义字段3', width: 120 }
+      { key: 'ad_ratio', label: '付费占比', width: 80 },
+      { key: 'presale_amount', label: '预售金额', width: 120 },
+      { key: 'presale_qty', label: '预售数量', width: 100 }
     ]
   }
 ]
