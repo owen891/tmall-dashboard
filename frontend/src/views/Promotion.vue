@@ -211,11 +211,12 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, nextTick } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import { Refresh, Search, Mouse, Download, TrendCharts } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import * as echarts from 'echarts'
 import api from '@/api'
+import { formatNumber } from '@/utils/format'
 
 const selectedChannel = ref('all')
 const selectedStatus = ref('all')
@@ -234,6 +235,7 @@ const efficiencyStats = ref({
 
 const searchChartRef = ref(null)
 let searchChart = null
+let handleResize = null
 
 const totalCost = computed(() => plans.value.reduce((sum, p) => sum + (p.cost || 0), 0))
 const totalRevenue = computed(() => plans.value.reduce((sum, p) => sum + (p.revenue || 0), 0))
@@ -243,11 +245,6 @@ const avgROI = computed(() => {
   if (totalCost.value === 0) return 0
   return totalRevenue.value / totalCost.value
 })
-
-const formatNumber = (num) => {
-  if (!num && num !== 0) return '0'
-  return Number(num).toLocaleString()
-}
 
 const getTypeTagType = (type) => {
   const types = { '标准计划': 'primary', '智能计划': 'success', '品牌计划': 'warning' }
@@ -322,11 +319,17 @@ const initSearchChart = () => {
   }
   
   searchChart.setOption(option)
-  window.addEventListener('resize', () => searchChart?.resize())
+  handleResize = () => searchChart?.resize()
+  window.addEventListener('resize', handleResize)
 }
 
 onMounted(() => {
   loadPlans()
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('resize', handleResize)
+  searchChart?.dispose()
 })
 </script>
 

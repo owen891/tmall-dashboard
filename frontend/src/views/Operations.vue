@@ -101,6 +101,7 @@
 import { ref, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import api from '@/api'
+import { formatNumber } from '@/utils/format'
 
 const showAddOp = ref(false)
 const products = ref([])
@@ -148,11 +149,6 @@ const addOperation = async () => {
   } catch (error) {
     ElMessage.error('添加失败')
   }
-}
-
-const formatNumber = (num) => {
-  if (!num) return '0'
-  return num.toFixed(2)
 }
 
 onMounted(() => {

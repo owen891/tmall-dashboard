@@ -1,59 +1,112 @@
-from fastapi import APIRouter, Query
-from datetime import datetime, timedelta
+from fastapi import APIRouter, Query, Depends
+from sqlalchemy import func
+from app.models import Product, ProductLifecycle, WeeklyData, DailyData, MonthlyData
+from app.core.database import get_db
 from typing import Optional
 
 router = APIRouter(prefix="/api/lifecycle", tags=["生命周期分析"])
 
 @router.get("/stats")
-async def get_lifecycle_stats():
+async def get_lifecycle_stats(db=Depends(get_db)):
+    """获取生命周期统计数据"""
+    total_products = db.query(Product).count()
+
+    products_with_lifecycle = db.query(ProductLifecycle).filter(
+        ProductLifecycle.gsv_25_total > 0
+    ).count()
+
+    new_products = db.query(Product).filter(
+        Product.list_date.isnot(None)
+    ).count()
+
     return {
-        "new": 28,
-        "growing": 45,
-        "mature": 32,
-        "declining": 15
+        "new": new_products,
+        "growing": products_with_lifecycle,
+        "mature": 0,
+        "declining": 0,
+        "total": total_products
     }
 
 @router.get("/distribution")
-async def get_lifecycle_distribution():
+async def get_lifecycle_distribution(db=Depends(get_db)):
+    """获取生命周期分布数据 - 按月统计"""
+    lifecycle_data = db.query(ProductLifecycle).filter(
+        ProductLifecycle.gsv_25_total > 0
+    ).all()
+
+    months = ['01', '02', '03', '04', '05', '06', '07', '08', '09', '10', '11', '12']
+    new_series = []
+    growing_series = []
+    mature_series = []
+    declining_series = []
+
+    for month in months:
+        gsv_field_25 = getattr(ProductLifecycle, f'gsv_25_{month}', None)
+        gsv_field_26 = getattr(ProductLifecycle, f'gsv_26_{month}', None)
+
+        if gsv_field_25 is not None:
+            month_data = db.query(ProductLifecycle).filter(
+                getattr(ProductLifecycle, f'gsv_25_{month}') > 0
+            ).count()
+        else:
+            month_data = 0
+
+        new_series.append(month_data)
+        growing_series.append(month_data)
+        mature_series.append(0)
+        declining_series.append(0)
+
     return {
-        "labels": ["1月", "2月", "3月", "4月", "5月"],
+        "labels": [f"{m}月" for m in months],
         "series": {
-            "new": [15, 20, 18, 22, 28],
-            "growing": [35, 38, 40, 42, 45],
-            "mature": [45, 42, 38, 35, 32],
-            "declining": [12, 15, 18, 16, 15]
+            "new": new_series,
+            "growing": growing_series,
+            "mature": mature_series,
+            "declining": declining_series
         }
     }
 
 @router.get("/products")
-async def get_lifecycle_products(stage: Optional[str] = Query(None)):
-    products = {
-        "new": [
-            {"id": 1, "name": "2024夏季新款连衣裙", "category": "女装", "days": 7, "sales": 156, "growth": 25.3, "status": "新品"},
-            {"id": 2, "name": "纯棉印花短袖T恤", "category": "男装", "days": 12, "sales": 234, "growth": 18.7, "status": "新品"},
-            {"id": 3, "name": "韩版宽松休闲裤", "category": "女装", "days": 5, "sales": 89, "growth": 32.1, "status": "新品"},
-            {"id": 4, "name": "透气网面运动鞋", "category": "鞋靴", "days": 15, "sales": 312, "growth": 15.4, "status": "新品"}
-        ],
-        "growing": [
-            {"id": 5, "name": "高腰阔腿牛仔裤", "category": "女装", "days": 35, "sales": 856, "growth": 12.5, "status": "成长中"},
-            {"id": 6, "name": "百搭小白鞋", "category": "鞋靴", "days": 42, "sales": 1234, "growth": 8.3, "status": "成长中"},
-            {"id": 7, "name": "简约双肩包", "category": "箱包", "days": 28, "sales": 567, "growth": 15.8, "status": "成长中"},
-            {"id": 8, "name": "防晒冰袖套装", "category": "配饰", "days": 38, "sales": 987, "growth": 9.6, "status": "成长中"}
-        ],
-        "mature": [
-            {"id": 9, "name": "经典POLO衫", "category": "男装", "days": 120, "sales": 2580, "growth": 2.1, "status": "成熟期"},
-            {"id": 10, "name": "商务休闲皮鞋", "category": "鞋靴", "days": 156, "sales": 1890, "growth": -1.2, "status": "成熟期"},
-            {"id": 11, "name": "纯棉四件套", "category": "家纺", "days": 98, "sales": 1560, "growth": 1.8, "status": "成熟期"},
-            {"id": 12, "name": "智能手表", "category": "数码", "days": 142, "sales": 3250, "growth": 0.5, "status": "成熟期"}
-        ],
-        "declining": [
-            {"id": 13, "name": "冬季保暖羽绒服", "category": "女装", "days": 280, "sales": 320, "growth": -15.3, "status": "衰退期"},
-            {"id": 14, "name": "加绒保暖内衣", "category": "内衣", "days": 312, "sales": 180, "growth": -18.7, "status": "衰退期"},
-            {"id": 15, "name": "雪地靴", "category": "鞋靴", "days": 265, "sales": 450, "growth": -12.4, "status": "衰退期"},
-            {"id": 16, "name": "羊毛围巾", "category": "配饰", "days": 298, "sales": 230, "growth": -20.1, "status": "衰退期"}
-        ]
-    }
-    
-    if stage and stage in products:
-        return {"products": products[stage]}
-    return products
+async def get_lifecycle_products(
+    stage: Optional[str] = Query(None),
+    db=Depends(get_db)
+):
+    """获取各生命周期阶段的产品列表"""
+    query = db.query(
+        Product.product_id,
+        Product.title,
+        Product.category,
+        Product.tier,
+        Product.image_url,
+        ProductLifecycle.gsv_25_total,
+        ProductLifecycle.gsv_26_total,
+        ProductLifecycle.lifecycle_stage
+    ).outerjoin(
+        ProductLifecycle, Product.product_id == ProductLifecycle.product_id
+    )
+
+    if stage == 'new':
+        query = query.filter(Product.list_date.isnot(None))
+    elif stage == 'growing':
+        query = query.filter(ProductLifecycle.gsv_25_total > 0)
+    elif stage == 'mature':
+        query = query.filter(ProductLifecycle.gsv_25_total > 10000)
+    elif stage == 'declining':
+        query = query.filter(ProductLifecycle.gsv_26_total < ProductLifecycle.gsv_25_total * 0.5)
+
+    products = query.limit(50).all()
+
+    result = []
+    for p in products:
+        result.append({
+            "product_id": p.product_id,
+            "name": p.title or "未命名",
+            "category": p.category or "",
+            "tier": p.tier or "",
+            "image_url": p.image_url,
+            "gsv_25_total": p.gsv_25_total or 0,
+            "gsv_26_total": p.gsv_26_total or 0,
+            "lifecycle_stage": p.lifecycle_stage or "新品"
+        })
+
+    return {"products": result}

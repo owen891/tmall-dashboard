@@ -117,7 +117,7 @@ const props = defineProps({
   },
   accept: {
     type: String,
-    default: '' // 默认支持所有类型
+    default: '.xlsx,.xls,.csv'
   },
   usageType: {
     type: String,
@@ -245,7 +245,9 @@ const handleDownload = (fileInfo) => {
   const link = document.createElement('a')
   link.href = url
   link.download = fileInfo.file_name
+  document.body.appendChild(link)
   link.click()
+  document.body.removeChild(link)
 }
 
 const handleDelete = async (fileInfo) => {

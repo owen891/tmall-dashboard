@@ -91,12 +91,15 @@ import { ref, onMounted, onBeforeUnmount } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Refresh } from '@element-plus/icons-vue'
 import * as echarts from 'echarts'
+import api from '@/api'
+import { formatNumber } from '@/utils/format'
 
 const loading = ref(false)
 const aiplChartRef = ref(null)
 const matrixChartRef = ref(null)
 let aiplChart = null
 let matrixChart = null
+let handleResize = null
 
 const summary = ref({
   total_cost: 0,
@@ -111,43 +114,16 @@ const efficiencyMatrix = ref([])
 const refresh = async () => {
   loading.value = true
   try {
-    const response = await fetch('/api/crowd-asset/dashboard')
-    if (response.ok) {
-      const data = await response.json()
-      Object.assign(summary, data.summary)
+    const data = await api.request.get('/crowd-asset/dashboard')
+    if (data?.summary) {
+      Object.assign(summary.value, data.summary)
       topCrowds.value = data.top_crowds || []
     } else {
-      // 使用模拟数据
-      summary.value = {
-        total_cost: 250000,
-        total_gmv: 850000,
-        asset_roi: 3.4,
-        aipl_increase: 15600
-      }
-      topCrowds.value = [
-        { id: 1, crowd_name: '高潜女性用户', tier: 'S', asset_roi: 4.2 },
-        { id: 2, crowd_name: '运动爱好者', tier: 'A', asset_roi: 3.8 },
-        { id: 3, crowd_name: '新客试用人群', tier: 'A', asset_roi: 3.2 },
-        { id: 4, crowd_name: '复购老客', tier: 'S', asset_roi: 4.5 },
-        { id: 5, crowd_name: '泛兴趣人群', tier: 'B', asset_roi: 2.1 }
-      ]
+      loadMockData()
     }
     renderCharts()
   } catch (error) {
-    // 出错时也使用模拟数据
-    summary.value = {
-      total_cost: 250000,
-      total_gmv: 850000,
-      asset_roi: 3.4,
-      aipl_increase: 15600
-    }
-    topCrowds.value = [
-      { id: 1, crowd_name: '高潜女性用户', tier: 'S', asset_roi: 4.2 },
-      { id: 2, crowd_name: '运动爱好者', tier: 'A', asset_roi: 3.8 },
-      { id: 3, crowd_name: '新客试用人群', tier: 'A', asset_roi: 3.2 },
-      { id: 4, crowd_name: '复购老客', tier: 'S', asset_roi: 4.5 },
-      { id: 5, crowd_name: '泛兴趣人群', tier: 'B', asset_roi: 2.1 }
-    ]
+    loadMockData()
     renderCharts()
     ElMessage.error('加载数据失败，使用模拟数据')
   } finally {
@@ -155,10 +131,20 @@ const refresh = async () => {
   }
 }
 
-const formatNumber = (num) => {
-  if (num >= 100000000) return (num / 100000000).toFixed(1) + '亿'
-  if (num >= 10000) return (num / 10000).toFixed(1) + '万'
-  return num?.toLocaleString() || '0'
+const loadMockData = () => {
+  summary.value = {
+    total_cost: 250000,
+    total_gmv: 850000,
+    asset_roi: 3.4,
+    aipl_increase: 15600
+  }
+  topCrowds.value = [
+    { id: 1, crowd_name: '高潜女性用户', tier: 'S', asset_roi: 4.2 },
+    { id: 2, crowd_name: '运动爱好者', tier: 'A', asset_roi: 3.8 },
+    { id: 3, crowd_name: '新客试用人群', tier: 'A', asset_roi: 3.2 },
+    { id: 4, crowd_name: '复购老客', tier: 'S', asset_roi: 4.5 },
+    { id: 5, crowd_name: '泛兴趣人群', tier: 'B', asset_roi: 2.1 }
+  ]
 }
 
 const getCrowdType = (tier) => {
@@ -224,9 +210,15 @@ const renderMatrixChart = () => {
 
 onMounted(() => {
   refresh()
+  handleResize = () => {
+    aiplChart?.resize()
+    matrixChart?.resize()
+  }
+  window.addEventListener('resize', handleResize)
 })
 
 onBeforeUnmount(() => {
+  window.removeEventListener('resize', handleResize)
   aiplChart?.dispose()
   matrixChart?.dispose()
 })

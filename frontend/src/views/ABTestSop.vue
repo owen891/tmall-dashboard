@@ -139,6 +139,7 @@
 import { ref, onMounted, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Refresh, Plus } from '@element-plus/icons-vue'
+import { formatNumber } from '@/utils/format'
 
 const activeTab = ref('abtest')
 const loading = ref(false)
@@ -198,11 +199,6 @@ const refresh = async () => {
 const getStatusType = (status) => {
   const types = { 'draft': 'info', 'running': 'primary', 'finished': 'success', 'planned': 'info', 'paused': 'warning' }
   return types[status] || ''
-}
-
-const formatNumber = (num) => {
-  if (!num) return '0'
-  return num.toLocaleString()
 }
 
 const viewTest = (row) => {

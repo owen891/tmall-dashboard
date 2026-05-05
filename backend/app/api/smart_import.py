@@ -9,6 +9,22 @@ from app.services import SmartImportService
 
 router = APIRouter(prefix="/smart-import", tags=["smart-import"])
 
+ALLOWED_BASE_DIRS = [
+    os.path.abspath("data/raw"),
+    os.path.abspath("data"),
+]
+
+
+def validate_path(path: str) -> str:
+    abs_path = os.path.abspath(path)
+    for base_dir in ALLOWED_BASE_DIRS:
+        if abs_path.startswith(base_dir):
+            return abs_path
+    raise HTTPException(
+        status_code=403,
+        detail="Access denied: path outside allowed directories"
+    )
+
 
 @router.post("/scan", response_model=ResponseModel)
 async def scan_folder(
@@ -16,11 +32,12 @@ async def scan_folder(
     db: Session = Depends(get_db)
 ):
     """扫描文件夹，识别可导入的文件"""
-    if not os.path.exists(folder_path):
+    safe_path = validate_path(folder_path)
+    if not os.path.exists(safe_path):
         raise HTTPException(status_code=400, detail="文件夹不存在")
     
     service = SmartImportService(db)
-    files = service.scan_folder(folder_path)
+    files = service.scan_folder(safe_path)
     
     return ResponseModel(data={
         "folder": folder_path,
@@ -36,15 +53,16 @@ async def analyze_file(
     db: Session = Depends(get_db)
 ):
     """深度分析文件"""
-    if not os.path.exists(filepath):
+    safe_path = validate_path(filepath)
+    if not os.path.exists(safe_path):
         raise HTTPException(status_code=404, detail="文件不存在")
     
     service = SmartImportService(db)
     
-    result = service._analyze_file(filepath)
+    result = service._analyze_file(safe_path)
     
     if use_ai:
-        ai_result = service.ai_analyze_file(filepath)
+        ai_result = service.ai_analyze_file(safe_path)
         result["ai_analysis"] = ai_result
     
     return ResponseModel(data=result)
@@ -58,7 +76,8 @@ async def smart_import_file(
     db: Session = Depends(get_db)
 ):
     """智能导入单个文件"""
-    if not os.path.exists(filepath):
+    safe_path = validate_path(filepath)
+    if not os.path.exists(safe_path):
         raise HTTPException(status_code=404, detail="文件不存在")
     
     service = SmartImportService(db)
@@ -67,7 +86,7 @@ async def smart_import_file(
     if week_start:
         options["week_start"] = week_start
     
-    result = service.smart_import(filepath, file_type, options)
+    result = service.smart_import(safe_path, file_type, options)
     
     if result["success"]:
         return ResponseModel(data=result, message=result["message"])
@@ -82,11 +101,12 @@ async def batch_import_files(
     db: Session = Depends(get_db)
 ):
     """批量导入文件夹中的所有文件"""
-    if not os.path.exists(folder_path):
+    safe_path = validate_path(folder_path)
+    if not os.path.exists(safe_path):
         raise HTTPException(status_code=400, detail="文件夹不存在")
     
     service = SmartImportService(db)
-    results = service.batch_import(folder_path, auto_confirm)
+    results = service.batch_import(safe_path, auto_confirm)
     
     success_count = sum(1 for r in results if r.get("success"))
     failed_count = len(results) - success_count

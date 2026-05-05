@@ -113,11 +113,46 @@ async def preview_excel(
                 pass
 
 
+@router.post("/validate", response_model=ResponseModel)
+async def validate_excel(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db)
+):
+    """验证Excel数据格式和内容"""
+    if not file.filename.endswith(('.xlsx', '.xls', '.csv')):
+        raise HTTPException(status_code=400, detail="只支持Excel或CSV文件")
+    
+    os.makedirs("data/raw", exist_ok=True)
+    file_extension = os.path.splitext(file.filename)[1]
+    temp_filename = f"{uuid4()}{file_extension}"
+    temp_path = os.path.join("data/raw", temp_filename)
+    
+    try:
+        content = await file.read()
+        with open(temp_path, "wb") as f:
+            f.write(content)
+        
+        service = ExcelImportService(db)
+        validation_result = service.validate_data(temp_path)
+        
+        return ResponseModel(data=validation_result)
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"验证失败: {str(e)}")
+    finally:
+        if os.path.exists(temp_path):
+            try:
+                os.remove(temp_path)
+            except OSError:
+                pass
+
+
 @router.post("/excel", response_model=ResponseModel)
 async def import_excel(
     file: UploadFile = File(...),
     week_start: date = Query(None, description="周开始日期"),
     import_type: str = Query("weekly", description="导入类型"),
+    force: bool = Query(False, description="强制覆盖已存在数据"),
     db: Session = Depends(get_db)
 ):
     if not file.filename.endswith(('.xlsx', '.xls', '.csv')):
@@ -149,7 +184,7 @@ async def import_excel(
             db.commit()
             return ResponseModel(code=400, message="解析出错", data={"errors": parsed_data["errors"]})
         
-        saved = service.save_to_db(parsed_data)
+        saved = service.save_to_db(parsed_data, force=force)
         
         # 保存成功记录
         history = ImportHistory(

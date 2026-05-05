@@ -136,11 +136,13 @@ import { ref, onMounted, onUnmounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import api from '@/api'
 import * as echarts from 'echarts'
+import { formatNumber } from '@/utils/format'
 
 const activeTab = ref('shop')
 const selectedMetric = ref('gmv')
 const shopChartRef = ref(null)
 let shopChart = null
+let handleResize = null
 
 const shopTargets = ref([])
 const productTargets = ref([])
@@ -262,22 +264,18 @@ const getProgressColor = (percentage) => {
   return '#f56c6c'
 }
 
-const formatNumber = (num) => {
-  if (!num) return '0'
-  if (num >= 10000) return (num / 10000).toFixed(2) + '万'
-  return num.toFixed(2)
-}
-
 onMounted(() => {
   shopChart = echarts.init(shopChartRef.value)
   loadShopTargets()
   loadProductTargets()
   loadProducts()
   loadComparison()
-  window.addEventListener('resize', () => shopChart?.resize())
+  handleResize = () => shopChart?.resize()
+  window.addEventListener('resize', handleResize)
 })
 
 onUnmounted(() => {
+  window.removeEventListener('resize', handleResize)
   shopChart?.dispose()
 })
 </script>

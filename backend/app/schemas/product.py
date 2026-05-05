@@ -1,20 +1,20 @@
-from pydantic import BaseModel, Field
-from typing import Optional, List, Dict, Any
+from pydantic import BaseModel, Field, field_validator
+from typing import Optional, List, Dict, Any, Literal
 from datetime import date, datetime
 
 
 class ProductBase(BaseModel):
-    product_id: str
-    title: Optional[str] = None
-    category: Optional[str] = None
+    product_id: str = Field(..., min_length=1, max_length=64)
+    title: Optional[str] = Field(None, max_length=500)
+    category: Optional[str] = Field(None, max_length=100)
     tier: Optional[str] = None
-    style: Optional[str] = None
-    scene: Optional[str] = None
+    style: Optional[str] = Field(None, max_length=100)
+    scene: Optional[str] = Field(None, max_length=100)
     list_date: Optional[date] = None
     status: Optional[str] = "active"
-    remark: Optional[str] = None
-    image_url: Optional[str] = None
-    manager: Optional[str] = None
+    remark: Optional[str] = Field(None, max_length=2000)
+    image_url: Optional[str] = Field(None, max_length=500)
+    manager: Optional[str] = Field(None, max_length=50)
     starred: Optional[bool] = False
 
 
@@ -38,32 +38,32 @@ class ProductResponse(ProductBase):
 class WeeklyDataBase(BaseModel):
     product_id: str
     week_start: date
-    payment_amount: Optional[float] = 0
-    refund_amount: Optional[float] = 0
+    payment_amount: Optional[float] = Field(0, ge=0)
+    refund_amount: Optional[float] = Field(0, ge=0)
     net_sales: Optional[float] = 0
     gsv_change: Optional[float] = 0
-    ad_spend: Optional[float] = 0
+    ad_spend: Optional[float] = Field(0, ge=0)
     ad_spend_change: Optional[float] = 0
     total_roi: Optional[float] = 0
     direct_roi: Optional[float] = 0
     direct_roi_change: Optional[float] = 0
     refund_ad_ratio: Optional[float] = 0
-    visitors: Optional[int] = 0
+    visitors: Optional[int] = Field(0, ge=0)
     uv_value: Optional[float] = 0
-    payment_conversion: Optional[float] = 0
-    refund_rate: Optional[float] = 0
-    cart_rate: Optional[float] = 0
-    cart_qty: Optional[int] = 0
-    payment_users: Optional[int] = 0
-    avg_order_value: Optional[float] = 0
+    payment_conversion: Optional[float] = Field(0, ge=0, le=100)
+    refund_rate: Optional[float] = Field(0, ge=0, le=100)
+    cart_rate: Optional[float] = Field(0, ge=0, le=100)
+    cart_qty: Optional[int] = Field(0, ge=0)
+    payment_users: Optional[int] = Field(0, ge=0)
+    avg_order_value: Optional[float] = Field(0, ge=0)
     lead_potential_ratio: Optional[float] = 0
     new_customer_cost: Optional[float] = 0
     direct_cart_cost: Optional[float] = 0
     total_cart_cost: Optional[float] = 0
-    repurchase_rate: Optional[float] = 0
-    cross_sell_rate: Optional[float] = 0
-    category_width: Optional[int] = 0
-    click_rate: Optional[float] = 0
+    repurchase_rate: Optional[float] = Field(0, ge=0, le=100)
+    cross_sell_rate: Optional[float] = Field(0, ge=0, le=100)
+    category_width: Optional[int] = Field(0, ge=0)
+    click_rate: Optional[float] = Field(0, ge=0, le=100)
     history_data: Optional[Dict[str, Any]] = None
     data_source: Optional[str] = None
 
@@ -116,8 +116,8 @@ class OperationActionResponse(OperationActionBase):
 
 class ProductNoteBase(BaseModel):
     product_id: str
-    note: str
-    created_by: Optional[str] = "admin"
+    note: str = Field(..., min_length=1, max_length=5000)
+    created_by: Optional[str] = Field("admin", max_length=50)
 
 
 class ProductNoteCreate(ProductNoteBase):
@@ -134,7 +134,7 @@ class ProductNoteResponse(ProductNoteBase):
 
 class ProductTagBase(BaseModel):
     product_id: str
-    tag: str
+    tag: str = Field(..., min_length=1, max_length=50)
     is_auto: Optional[bool] = False
 
 

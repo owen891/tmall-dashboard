@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 from typing import Optional, List, Dict
 from pydantic import BaseModel
 from app.core.database import get_db
-from app.models.product import AlertRule
+from app.models.alerts import AlertRule
 from app.models.dashboard_models import AlertRecord
 
 router = APIRouter(prefix="/api/alerts", tags=["告警规则"])

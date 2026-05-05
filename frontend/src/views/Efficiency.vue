@@ -211,6 +211,7 @@
 import { ref, onMounted, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Plus } from '@element-plus/icons-vue'
+import { formatNumber } from '@/utils/format'
 
 const activeTab = ref('dashboard')
 const loading = ref(false)
@@ -307,12 +308,6 @@ const refresh = async () => {
 watch(activeTab, () => {
   refresh()
 })
-
-const formatNumber = (num) => {
-  if (num >= 100000000) return (num / 100000000).toFixed(1) + '亿'
-  if (num >= 10000) return (num / 10000).toFixed(1) + '万'
-  return num?.toLocaleString() || '0'
-}
 
 const getProgressColor = (percentage) => {
   if (percentage >= 90) return '#67C23A'

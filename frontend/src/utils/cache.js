@@ -1,30 +1,26 @@
-/**
- * 简单的 API 缓存工具
- * 用于减少重复的 API 请求
- */
 class APICache {
-  constructor() {
+  constructor(maxSize = 500) {
     this.cache = new Map()
-    this.ttl = 5 * 60 * 1000 // 默认 5 分钟缓存
+    this.ttl = 5 * 60 * 1000
+    this.maxSize = maxSize
   }
 
-  /**
-   * 生成缓存键
-   */
   generateKey(url, params = {}) {
-    return `${url}:${JSON.stringify(params)}`
+    const sortedParams = Object.keys(params)
+      .sort()
+      .reduce((obj, key) => {
+        obj[key] = params[key]
+        return obj
+      }, {})
+    return `${url}:${JSON.stringify(sortedParams)}`
   }
 
-  /**
-   * 获取缓存
-   */
   get(url, params = {}) {
     const key = this.generateKey(url, params)
     const cached = this.cache.get(key)
 
     if (!cached) return null
 
-    // 检查是否过期
     if (Date.now() > cached.expireAt) {
       this.cache.delete(key)
       return null
@@ -33,45 +29,65 @@ class APICache {
     return cached.data
   }
 
-  /**
-   * 设置缓存
-   */
   set(url, params = {}, data, ttl = this.ttl) {
+    if (this.cache.size >= this.maxSize) {
+      this.evictOldest()
+    }
+
     const key = this.generateKey(url, params)
     this.cache.set(key, {
       data,
-      expireAt: Date.now() + ttl
+      expireAt: Date.now() + ttl,
+      createdAt: Date.now()
     })
   }
 
-  /**
-   * 清除指定缓存
-   */
+  evictOldest() {
+    let oldestKey = null
+    let oldestTime = Infinity
+    for (const [key, value] of this.cache.entries()) {
+      if (value.createdAt < oldestTime) {
+        oldestTime = value.createdAt
+        oldestKey = key
+      }
+    }
+    if (oldestKey) {
+      this.cache.delete(oldestKey)
+    }
+  }
+
   clear(url = null, params = null) {
     if (!url) {
       this.cache.clear()
       return
     }
 
-    const key = this.generateKey(url, params || {})
+    if (!params) {
+      for (const key of this.cache.keys()) {
+        if (key.startsWith(`${url}:`)) {
+          this.cache.delete(key)
+        }
+      }
+      return
+    }
+
+    const key = this.generateKey(url, params)
     this.cache.delete(key)
   }
 
-  /**
-   * 清除过期缓存
-   */
   cleanExpired() {
     const now = Date.now()
+    const keysToDelete = []
     for (const [key, value] of this.cache.entries()) {
       if (now > value.expireAt) {
-        this.cache.delete(key)
+        keysToDelete.push(key)
       }
+    }
+    for (const key of keysToDelete) {
+      this.cache.delete(key)
     }
   }
 
-  /**
-   * 获取缓存统计
-   */
   getStats() {
     let valid = 0
     let expired = 0
@@ -88,16 +104,33 @@ class APICache {
     return {
       total: this.cache.size,
       valid,
-      expired
+      expired,
+      maxSize: this.maxSize
     }
+  }
+
+  destroy() {
+    this.cache.clear()
   }
 }
 
-// 创建全局缓存实例
-const apiCache = new APICache()
+const apiCache = new APICache(500)
 
-// 定期清理过期缓存
-setInterval(() => apiCache.cleanExpired(), 60000)
+let cleanupTimer = null
+
+export function startCleanup() {
+  if (cleanupTimer) return
+  cleanupTimer = setInterval(() => apiCache.cleanExpired(), 60000)
+}
+
+export function stopCleanup() {
+  if (cleanupTimer) {
+    clearInterval(cleanupTimer)
+    cleanupTimer = null
+  }
+}
+
+startCleanup()
 
 export default apiCache
 export { APICache }

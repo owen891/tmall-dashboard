@@ -109,6 +109,7 @@ import { exportChartToPNG } from '@/utils/export'
 
 const mainChartRef = ref(null)
 let mainChart = null
+let handleResize = null
 
 const selectedChartType = ref('line')
 
@@ -587,13 +588,14 @@ watch(chartConfig, () => {
 
 onMounted(() => {
   renderChart()
-  
-  window.addEventListener('resize', () => {
+  handleResize = () => {
     mainChart?.resize()
-  })
+  }
+  window.addEventListener('resize', handleResize)
 })
 
 onBeforeUnmount(() => {
+  window.removeEventListener('resize', handleResize)
   mainChart?.dispose()
 })
 </script>

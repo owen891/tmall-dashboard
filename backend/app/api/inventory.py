@@ -3,63 +3,87 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func, desc
 from typing import Optional, List
 from app.core.database import get_db
-from app.models import Product, DailyData, WeeklyData, MonthlyData, Alert
+from app.core.utils import get_data_model, get_latest_period
+from app.models import Product, DailyData, WeeklyData, MonthlyData
+from app.models.alerts import Alert
 from app.schemas.common import ResponseModel
 from datetime import datetime, timedelta
 
 router = APIRouter(prefix="/inventory", tags=["库存预警"])
 
 
-def get_data_model(dimension: str):
-    if dimension == "monthly":
-        return MonthlyData, 'month'
-    elif dimension == "daily":
-        return DailyData, 'date'
-    else:
-        return WeeklyData, 'week_start'
-
-
-def get_latest_period(Model, date_col: str, db: Session) -> Optional[str]:
-    latest = db.query(Model).order_by(desc(getattr(Model, date_col))).first()
-    if latest:
-        period = getattr(latest, date_col)
-        if hasattr(period, 'isoformat'):
-            return period.date().isoformat() if hasattr(period, 'date') else period.isoformat()
-        return str(period)
-    return None
-
-
 def calculate_sales_velocity(product_id: str, Model, date_col: str, db: Session, days: int = 7) -> float:
     """计算日均销售速度"""
     from app.core.utils import get_prev_period
+    latest = db.query(Model).filter(
+        Model.product_id == product_id
+    ).order_by(desc(getattr(Model, date_col))).first()
 
-    periods = []
-    current = get_latest_period(Model, date_col, db)
-    if not current:
+    if not latest:
         return 0
 
+    current = getattr(latest, date_col)
+    if current is None:
+        return 0
+
+    periods = []
     for _ in range(days):
-        periods.append(str(current))
-        if date_col == 'month':
-            y, m = current.split('-')
-            m = int(m) - 1
-            if m == 0:
-                m, y = 12, str(int(y) - 1)
-            current = f"{y}-{m:02d}"
-        else:
-            dt = datetime.strptime(str(current), '%Y-%m-%d')
-            prev = dt - timedelta(days=1)
-            current = prev.strftime('%Y-%m-%d')
+        current = get_prev_period(current, 'daily' if date_col == 'date' else 'weekly')
+        if current:
+            periods.append(current)
 
-    total_qty = 0
-    for p in periods:
-        data = db.query(func.sum(Model.payment_qty)).filter(
-            Model.product_id == product_id,
-            getattr(Model, date_col) == p
-        ).scalar() or 0
-        total_qty += float(data)
+    if not periods:
+        return 0
 
-    return total_qty / days if days > 0 else 0
+    total_qty = db.query(func.sum(Model.payment_qty)).filter(
+        Model.product_id == product_id,
+        getattr(Model, date_col).in_(periods)
+    ).scalar() or 0
+
+    return float(total_qty) / days if days > 0 else 0
+
+
+def batch_calculate_sales_velocity(product_ids: list, Model, date_col: str, db: Session, days: int = 7) -> dict:
+    """批量计算日均销售速度，避免N+1查询"""
+    from app.core.utils import get_prev_period
+
+    latest_per_product = db.query(
+        Model.product_id,
+        getattr(Model, date_col).label('latest_period')
+    ).filter(
+        Model.product_id.in_(product_ids)
+    ).distinct(Model.product_id).order_by(
+        Model.product_id,
+        desc(getattr(Model, date_col))
+    ).all()
+
+    period_map = {}
+    all_periods = []
+    for row in latest_per_product:
+        period_map[row.product_id] = row.latest_period
+        current = row.latest_period
+        for _ in range(days):
+            current = get_prev_period(str(current), 'daily' if date_col == 'date' else 'weekly')
+            if current:
+                all_periods.append((row.product_id, current))
+
+    if not all_periods:
+        return {pid: 0 for pid in product_ids}
+
+    sales_data = db.query(
+        Model.product_id,
+        func.sum(Model.payment_qty).label('total_qty')
+    ).filter(
+        Model.product_id.in_(product_ids),
+        getattr(Model, date_col).in_([p[1] for p in all_periods])
+    ).group_by(Model.product_id).all()
+
+    result = {}
+    for pid in product_ids:
+        match = next((s for s in sales_data if s.product_id == pid), None)
+        result[pid] = float(match.total_qty or 0) / days if days > 0 else 0
+
+    return result
 
 
 @router.get("/warnings", response_model=ResponseModel)
@@ -74,14 +98,29 @@ def get_inventory_warnings(
     Model, date_col = get_data_model(dimension)
 
     all_products = db.query(Product).filter(Product.status == 'active').all()
+    product_ids = [p.product_id for p in all_products]
+    product_map = {p.product_id: p for p in all_products}
+
+    velocity_map = batch_calculate_sales_velocity(product_ids, Model, date_col, db, days)
+
+    latest_data_rows = db.query(Model).filter(
+        Model.product_id.in_(product_ids)
+    ).order_by(
+        Model.product_id,
+        desc(getattr(Model, date_col))
+    ).all()
+
+    latest_data_map = {}
+    for row in latest_data_rows:
+        pid = row.product_id
+        if pid not in latest_data_map:
+            latest_data_map[pid] = row
 
     warnings = []
     products_without_data = []
 
-    for product in all_products:
-        data = db.query(Model).filter(
-            Model.product_id == product.product_id
-        ).order_by(desc(getattr(Model, date_col))).first()
+    for product_id, product in product_map.items():
+        data = latest_data_map.get(product_id)
 
         if not data:
             products_without_data.append({
@@ -96,9 +135,7 @@ def get_inventory_warnings(
         inventory = getattr(data, 'cart_qty', 0) or 0
         sales_qty = getattr(data, 'payment_qty', 0) or 0
 
-        sales_velocity = calculate_sales_velocity(
-            product.product_id, Model, date_col, db, days
-        )
+        sales_velocity = velocity_map.get(product.product_id, 0)
 
         if sales_velocity > 0:
             days_until_stockout = inventory / sales_velocity
@@ -200,7 +237,12 @@ def create_inventory_rule(
     enabled: bool = Body(True, description="是否启用"),
     db: Session = Depends(get_db)
 ):
-    """创库存预警规则"""
+    """创建库存预警规则"""
+    product = db.query(Product).filter(Product.product_id == product_id).first()
+    if not product:
+        raise HTTPException(status_code=404, detail="商品不存在")
+    if low_threshold >= high_threshold:
+        raise HTTPException(status_code=400, detail="库存下限必须小于上限")
     return ResponseModel(data={
         "product_id": product_id,
         "low_threshold": low_threshold,

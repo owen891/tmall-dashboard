@@ -1,5 +1,6 @@
 import asyncio
 import json
+from datetime import datetime, timezone
 from typing import Dict, Set
 
 from fastapi import WebSocket, WebSocketDisconnect
@@ -59,7 +60,7 @@ class ConnectionManager:
             "title": title,
             "message": message,
             "level": level,
-            "timestamp": asyncio.get_event_loop().time(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
         }
         await self.broadcast(notification, channel)
 

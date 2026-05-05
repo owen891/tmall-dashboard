@@ -1,10 +1,12 @@
+from sqlalchemy.orm import Session
 from datetime import datetime
 from typing import Optional, List
-from fastapi import APIRouter, Query
+from fastapi import Depends, APIRouter, Query
 from pydantic import BaseModel
 from sqlalchemy import func
 from app.core.database import get_db
-from app.models.product import ShopTarget, ProductTarget, Product
+from app.models.targets import ShopTarget, ProductTarget
+from app.models import Product
 
 router = APIRouter(prefix="/targets", tags=["目标管理"])
 
@@ -70,8 +72,6 @@ def get_shop_targets(
     year: Optional[int] = None,
     month: Optional[str] = None
 ):
-    db = next(get_db())
-    try:
         query = db.query(ShopTarget)
 
         if year:
@@ -113,18 +113,12 @@ def get_shop_targets(
 
         return {"code": 200, "data": target_list}
 
-    finally:
-        db.close()
-
-
 @router.get("/product", response_model=dict)
 def get_product_targets(
     year: Optional[int] = None,
     month: Optional[str] = None,
     product_id: Optional[int] = None
 ):
-    db = next(get_db())
-    try:
         query = db.query(ProductTarget)
 
         if year:
@@ -162,10 +156,6 @@ def get_product_targets(
 
         return {"code": 200, "data": target_list}
 
-    finally:
-        db.close()
-
-
 @router.post("/shop", response_model=dict)
 def create_shop_target(
     target_month: str,
@@ -176,8 +166,6 @@ def create_shop_target(
     ad_spend_target: float = 0,
     notes: Optional[str] = None
 ):
-    db = next(get_db())
-    try:
         existing = db.query(ShopTarget).filter(
             ShopTarget.target_month == target_month
         ).first()
@@ -205,10 +193,6 @@ def create_shop_target(
             db.commit()
             return {"code": 200, "message": "目标已创建", "data": {"id": target.id}}
 
-    finally:
-        db.close()
-
-
 @router.post("/product", response_model=dict)
 def create_product_target(
     product_id: int,
@@ -219,8 +203,6 @@ def create_product_target(
     roi_target: float = 0,
     notes: Optional[str] = None
 ):
-    db = next(get_db())
-    try:
         existing = db.query(ProductTarget).filter(
             ProductTarget.product_id == product_id,
             ProductTarget.target_month == target_month
@@ -247,10 +229,6 @@ def create_product_target(
             db.commit()
             return {"code": 200, "message": "目标已创建", "data": {"id": target.id}}
 
-    finally:
-        db.close()
-
-
 @router.put("/shop/{target_id}", response_model=dict)
 def update_shop_target(
     target_id: int,
@@ -260,8 +238,6 @@ def update_shop_target(
     roi_actual: Optional[float] = None,
     ad_spend_actual: Optional[float] = None
 ):
-    db = next(get_db())
-    try:
         target = db.query(ShopTarget).filter(ShopTarget.id == target_id).first()
         if not target:
             return {"code": 404, "message": "目标不存在"}
@@ -280,10 +256,6 @@ def update_shop_target(
         db.commit()
         return {"code": 200, "message": "目标已更新"}
 
-    finally:
-        db.close()
-
-
 @router.put("/product/{target_id}", response_model=dict)
 def update_product_target(
     target_id: int,
@@ -291,8 +263,6 @@ def update_product_target(
     gmv_actual: Optional[float] = None,
     roi_actual: Optional[float] = None
 ):
-    db = next(get_db())
-    try:
         target = db.query(ProductTarget).filter(ProductTarget.id == target_id).first()
         if not target:
             return {"code": 404, "message": "目标不存在"}
@@ -307,14 +277,8 @@ def update_product_target(
         db.commit()
         return {"code": 200, "message": "目标已更新"}
 
-    finally:
-        db.close()
-
-
 @router.delete("/shop/{target_id}", response_model=dict)
-def delete_shop_target(target_id: int):
-    db = next(get_db())
-    try:
+def delete_shop_target(target_id: int, db: Session = Depends(get_db)):
         target = db.query(ShopTarget).filter(ShopTarget.id == target_id).first()
         if not target:
             return {"code": 404, "message": "目标不存在"}
@@ -323,14 +287,8 @@ def delete_shop_target(target_id: int):
         db.commit()
         return {"code": 200, "message": "目标已删除"}
 
-    finally:
-        db.close()
-
-
 @router.delete("/product/{target_id}", response_model=dict)
-def delete_product_target(target_id: int):
-    db = next(get_db())
-    try:
+def delete_product_target(target_id: int, db: Session = Depends(get_db)):
         target = db.query(ProductTarget).filter(ProductTarget.id == target_id).first()
         if not target:
             return {"code": 404, "message": "目标不存在"}
@@ -339,17 +297,11 @@ def delete_product_target(target_id: int):
         db.commit()
         return {"code": 200, "message": "目标已删除"}
 
-    finally:
-        db.close()
-
-
 @router.get("/comparison", response_model=dict)
 def get_target_comparison(
     metric: str = Query("gmv", description="指标: gmv/visitors/conversion/roi"),
     months: int = Query(6, description="对比月份数")
 ):
-    db = next(get_db())
-    try:
         targets = db.query(ShopTarget).order_by(ShopTarget.target_month.desc()).limit(months).all()
 
         comparisons = []
@@ -383,14 +335,8 @@ def get_target_comparison(
 
         return {"code": 200, "data": comparisons}
 
-    finally:
-        db.close()
-
-
 @router.get("/summary", response_model=dict)
-def get_target_summary(year: Optional[int] = None):
-    db = next(get_db())
-    try:
+def get_target_summary(year: Optional[int] = None, db: Session = Depends(get_db)):
         shop_query = db.query(ShopTarget)
         product_query = db.query(ProductTarget)
 
@@ -430,5 +376,3 @@ def get_target_summary(year: Optional[int] = None):
 
         return {"code": 200, "data": summary}
 
-    finally:
-        db.close()

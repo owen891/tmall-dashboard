@@ -7,7 +7,6 @@ from app.core.database import get_db
 from app.models.dashboard_models import (
     CampaignMetrics, AIPLStats
 )
-from app.models.command_tower import DmpCrowd
 
 router = APIRouter(prefix="/api/ads", tags=["投放效果"])
 

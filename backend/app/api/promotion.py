@@ -1,145 +1,115 @@
-from fastapi import APIRouter, Query
-from datetime import datetime, timedelta
+from fastapi import APIRouter, Query, Depends
+from sqlalchemy import func
+from app.models import Product, WeeklyData, DailyData, MonthlyData, PaidDetail
+from app.core.database import get_db
 from typing import Optional
-import random
 
 router = APIRouter(prefix="/api/promotion", tags=["推广分析"])
 
-@router.get("/plans")
-async def get_promotion_plans(
-    channel: Optional[str] = Query(None, description="渠道筛选"),
-    status: Optional[str] = Query(None, description="状态筛选"),
-    start_date: Optional[str] = Query(None, description="开始日期"),
-    end_date: Optional[str] = Query(None, description="结束日期")
+@router.get("/summary")
+async def get_promotion_summary(
+    dimension: str = Query("weekly", description="时间维度: daily, weekly, monthly"),
+    db=Depends(get_db)
 ):
-    plans = [
-        {
-            "id": 1,
-            "name": "夏季新品推广计划",
-            "channel": "直通车",
-            "status": "运行中",
-            "planId": "P202405001",
-            "type": "标准计划",
-            "cost": 12580,
-            "revenue": 38650,
-            "roi": 3.08,
-            "avgCpc": 2.85,
-            "clicks": 4414,
-            "impressions": 89520,
-            "conversionRate": 0.085,
-            "createTime": "2024-05-01"
-        },
-        {
-            "id": 2,
-            "name": "爆款打造计划",
-            "channel": "超级推荐",
-            "status": "运行中",
-            "planId": "P202405002",
-            "type": "智能计划",
-            "cost": 8920,
-            "revenue": 25680,
-            "roi": 2.88,
-            "avgCpc": 1.95,
-            "clicks": 4574,
-            "impressions": 125680,
-            "conversionRate": 0.072,
-            "createTime": "2024-05-05"
-        },
-        {
-            "id": 3,
-            "name": "品牌推广计划",
-            "channel": "钻展",
-            "status": "暂停",
-            "planId": "P202405003",
-            "type": "品牌计划",
-            "cost": 15600,
-            "revenue": 42500,
-            "roi": 2.72,
-            "avgCpc": 4.20,
-            "clicks": 3714,
-            "impressions": 45800,
-            "conversionRate": 0.091,
-            "createTime": "2024-04-28"
-        },
-        {
-            "id": 4,
-            "name": "清仓促销计划",
-            "channel": "直通车",
-            "status": "运行中",
-            "planId": "P202405004",
-            "type": "标准计划",
-            "cost": 4580,
-            "revenue": 11200,
-            "roi": 2.44,
-            "avgCpc": 1.65,
-            "clicks": 2776,
-            "impressions": 58450,
-            "conversionRate": 0.068,
-            "createTime": "2024-05-10"
-        },
-        {
-            "id": 5,
-            "name": "新品测款计划",
-            "channel": "超级推荐",
-            "status": "运行中",
-            "planId": "P202405005",
-            "type": "智能计划",
-            "cost": 6780,
-            "revenue": 18950,
-            "roi": 2.80,
-            "avgCpc": 2.15,
-            "clicks": 3153,
-            "impressions": 78920,
-            "conversionRate": 0.075,
-            "createTime": "2024-05-12"
-        }
-    ]
-    
-    if channel and channel != "all":
-        channel_map = {"taobao": "直通车", "tmall": "超级推荐", "jd": "钻展"}
-        plans = [p for p in plans if p["channel"] == channel_map.get(channel, "")]
-    
-    if status and status != "all":
-        plans = [p for p in plans if p["status"] == status]
-    
-    return {"plans": plans, "total": len(plans)}
+    """获取推广汇总数据"""
+    Model = WeeklyData if dimension == "weekly" else (DailyData if dimension == "daily" else MonthlyData)
 
-@router.get("/search-efficiency")
-async def get_search_efficiency(
-    start_date: Optional[str] = Query(None),
-    end_date: Optional[str] = Query(None)
-):
+    total_ad_spend = db.query(func.sum(Model.ad_spend)).filter(Model.ad_spend.isnot(None)).scalar() or 0
+    total_payment = db.query(func.sum(Model.payment_amount)).filter(Model.payment_amount.isnot(None)).scalar() or 0
+    total_clicks = db.query(func.sum(Model.clicks)).filter(Model.clicks.isnot(None)).scalar() or 0
+    total_impressions = db.query(func.sum(Model.impressions)).filter(Model.impressions.isnot(None)).scalar() or 0
+
+    roi = total_ad_spend / total_payment * 100 if total_payment > 0 else 0
+    ctr = total_clicks / total_impressions * 100 if total_impressions > 0 else 0
+
     return {
-        "summary": {
-            "totalSearches": 125680,
-            "clickRate": 4.25,
-            "conversionRate": 3.82,
-            "growthRate": 12.5
-        },
-        "trend": [
-            {"date": "5/1", "searches": 18500, "clicks": 820, "conversions": 32},
-            {"date": "5/2", "searches": 21200, "clicks": 950, "conversions": 38},
-            {"date": "5/3", "searches": 19800, "clicks": 880, "conversions": 35},
-            {"date": "5/4", "searches": 23500, "clicks": 1050, "conversions": 42},
-            {"date": "5/5", "searches": 22800, "clicks": 990, "conversions": 39},
-            {"date": "5/6", "searches": 25600, "clicks": 1150, "conversions": 45},
-            {"date": "5/7", "searches": 24200, "clicks": 1080, "conversions": 42}
-        ],
-        "keywordRanking": [
-            {"rank": 1, "keyword": "夏季连衣裙", "searches": 25680, "clickRate": 5.82, "conversionRate": 4.25, "trend": 5.2},
-            {"rank": 2, "keyword": "纯棉T恤", "searches": 18950, "clickRate": 4.56, "conversionRate": 3.88, "trend": 3.1},
-            {"rank": 3, "keyword": "休闲短裤男", "searches": 15680, "clickRate": 3.95, "conversionRate": 3.25, "trend": -1.2},
-            {"rank": 4, "keyword": "韩版女装", "searches": 12350, "clickRate": 4.12, "conversionRate": 3.65, "trend": 2.8},
-            {"rank": 5, "keyword": "修身显瘦", "searches": 9850, "clickRate": 3.58, "conversionRate": 3.12, "trend": 1.5}
-        ]
+        "total_ad_spend": round(float(total_ad_spend), 2),
+        "total_payment": round(float(total_payment), 2),
+        "total_clicks": int(total_clicks) if total_clicks else 0,
+        "total_impressions": int(total_impressions) if total_impressions else 0,
+        "roi": round(float(roi), 2),
+        "ctr": round(float(ctr), 2)
     }
 
 @router.get("/products")
-async def get_promotion_products():
-    return {
-        "products": [
-            {"id": 1, "name": "夏季新款连衣裙", "sku": "SKU001"},
-            {"id": 2, "name": "纯棉T恤短袖", "sku": "SKU002"},
-            {"id": 3, "name": "休闲短裤男", "sku": "SKU003"}
-        ]
-    }
+async def get_promotion_products(
+    dimension: str = Query("weekly"),
+    limit: int = Query(20),
+    db=Depends(get_db)
+):
+    """获取推广产品列表"""
+    Model = WeeklyData if dimension == "weekly" else (DailyData if dimension == "daily" else MonthlyData)
+
+    results = db.query(
+        Product.product_id,
+        Product.title,
+        Product.category,
+        func.sum(Model.ad_spend).label('ad_spend'),
+        func.sum(Model.payment_amount).label('payment'),
+        func.sum(Model.clicks).label('clicks'),
+        func.sum(Model.impressions).label('impressions'),
+        func.avg(Model.ad_roi).label('roi')
+    ).join(
+        Model, Product.product_id == Model.product_id
+    ).group_by(
+        Product.product_id
+    ).order_by(
+        func.sum(Model.ad_spend).desc()
+    ).limit(limit).all()
+
+    products = []
+    for r in results:
+        payment = float(r.payment or 0)
+        ad_spend = float(r.ad_spend or 0)
+        roi = payment / ad_spend * 100 if ad_spend > 0 else 0
+        products.append({
+            "product_id": r.product_id,
+            "name": r.title or "未命名",
+            "category": r.category or "",
+            "ad_spend": round(ad_spend, 2),
+            "payment": round(payment, 2),
+            "clicks": int(r.clicks) if r.clicks else 0,
+            "impressions": int(r.impressions) if r.impressions else 0,
+            "roi": round(float(roi), 2)
+        })
+
+    return {"products": products}
+
+@router.get("/trends")
+async def get_promotion_trends(
+    dimension: str = Query("weekly"),
+    limit: int = Query(12),
+    db=Depends(get_db)
+):
+    """获取推广趋势数据"""
+    Model = WeeklyData if dimension == "weekly" else (DailyData if dimension == "daily" else MonthlyData)
+
+    date_col = Model.week_start if dimension == "weekly" else (Model.date if dimension == "daily" else Model.month)
+
+    results = db.query(
+        date_col,
+        func.sum(Model.ad_spend).label('ad_spend'),
+        func.sum(Model.payment_amount).label('payment'),
+        func.sum(Model.clicks).label('clicks'),
+        func.sum(Model.impressions).label('impressions')
+    ).group_by(
+        date_col
+    ).order_by(
+        date_col.desc()
+    ).limit(limit).all()
+
+    trend = []
+    for r in results:
+        payment = float(r.payment or 0)
+        ad_spend = float(r.ad_spend or 0)
+        trend.append({
+            "date": str(r.week_start if dimension == "weekly" else (r.date if dimension == "daily" else r.month)),
+            "ad_spend": round(ad_spend, 2),
+            "payment": round(payment, 2),
+            "clicks": int(r.clicks) if r.clicks else 0,
+            "impressions": int(r.impressions) if r.impressions else 0,
+            "roi": round(payment / ad_spend * 100 if ad_spend > 0 else 0, 2)
+        })
+
+    trend.reverse()
+    return {"trend": trend}

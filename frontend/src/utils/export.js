@@ -77,7 +77,7 @@ export function exportToCSV(data, fileName = 'export') {
   const worksheet = xlsx.utils.json_to_sheet(data)
   const csv = xlsx.utils.sheet_to_csv(worksheet)
   
-  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+  const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' })
   saveAs(blob, `${fileName}.csv`)
 }
 

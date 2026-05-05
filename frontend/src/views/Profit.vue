@@ -163,6 +163,7 @@ import * as echarts from 'echarts'
 import api from '@/api'
 import ExportButton from '@/components/ExportButton.vue'
 import { TrendCharts, Money, Wallet, DataLine } from '@element-plus/icons-vue'
+import { formatNumber, getTierType } from '@/utils/format'
 
 const dimension = ref('weekly')
 const loading = ref(true)
@@ -174,6 +175,7 @@ const trendChartRef = ref(null)
 const tierChartRef = ref(null)
 let trendChart = null
 let tierChart = null
+let handleResize = null
 
 const costRate = ref(0.5)
 const commissionRate = ref(0.06)
@@ -190,26 +192,9 @@ const exportColumns = [
   { key: 'net_margin', label: '净利率' },
 ]
 
-const formatNumber = (num) => {
-  if (!num) return '0'
-  if (num >= 10000) {
-    return (num / 10000).toFixed(2) + '万'
-  }
-  return num.toLocaleString()
-}
-
 const getProfitClass = (value) => {
   if (!value) return ''
   return value >= 0 ? 'text-success' : 'text-danger'
-}
-
-const getTierType = (tier) => {
-  const types = {
-    '引流款': 'success',
-    '利润款': 'primary',
-    '潜力款': 'warning'
-  }
-  return types[tier] || 'info'
 }
 
 const loadData = async () => {
@@ -291,13 +276,15 @@ const initTierChart = () => {
 
 onMounted(() => {
   loadData()
-  window.addEventListener('resize', () => {
+  handleResize = () => {
     trendChart?.resize()
     tierChart?.resize()
-  })
+  }
+  window.addEventListener('resize', handleResize)
 })
 
 onUnmounted(() => {
+  window.removeEventListener('resize', handleResize)
   trendChart?.dispose()
   tierChart?.dispose()
 })

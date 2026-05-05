@@ -40,15 +40,8 @@ class UploadService:
     
     def _validate_file(self, file: UploadFile, usage_type: str = "default") -> None:
         """验证文件"""
-        # 检查文件大小
         max_size = self.MAX_FILE_SIZE.get(usage_type, self.MAX_FILE_SIZE["default"])
-        if file.size and file.size > max_size:
-            raise HTTPException(
-                status_code=400,
-                detail=f"文件大小超过限制（最大{max_size / 1024 / 1024:.1f}MB）"
-            )
         
-        # 检查文件扩展名
         file_ext = os.path.splitext(file.filename)[1].lower() if file.filename else ""
         allowed_extensions = self.ALLOWED_EXTENSIONS.get(usage_type, self.ALLOWED_EXTENSIONS["default"])
         
@@ -57,6 +50,39 @@ class UploadService:
                 status_code=400,
                 detail=f"不支持的文件格式，仅支持：{', '.join(allowed_extensions)}"
             )
+        
+        MAGIC_BYTES = {
+            '.xlsx': [b'PK\x03\x04'],
+            '.xls': [b'\xd0\xcf\x11\xe0'],
+            '.csv': [],
+            '.pdf': [b'%PDF'],
+            '.png': [b'\x89PNG'],
+            '.jpg': [b'\xff\xd8\xff'],
+            '.jpeg': [b'\xff\xd8\xff'],
+        }
+        
+        if file_ext in MAGIC_BYTES and MAGIC_BYTES[file_ext]:
+            self._pending_magic_check = (file_ext, MAGIC_BYTES[file_ext])
+        else:
+            self._pending_magic_check = None
+    
+    def _validate_magic_bytes(self, content: bytes, file_ext: str) -> None:
+        MAGIC_BYTES = {
+            '.xlsx': [b'PK\x03\x04'],
+            '.xls': [b'\xd0\xcf\x11\xe0'],
+            '.pdf': [b'%PDF'],
+            '.png': [b'\x89PNG'],
+            '.jpg': [b'\xff\xd8\xff'],
+            '.jpeg': [b'\xff\xd8\xff'],
+        }
+        
+        if file_ext in MAGIC_BYTES and MAGIC_BYTES[file_ext]:
+            valid = any(content.startswith(sig) for sig in MAGIC_BYTES[file_ext])
+            if not valid:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"文件内容与扩展名不匹配，可能存在安全风险"
+                )
     
     async def upload_file(
         self,
@@ -92,6 +118,18 @@ class UploadService:
         
         # 保存文件
         content = await file.read()
+        
+        # 验证文件大小
+        max_size = self.MAX_FILE_SIZE.get(usage_type, self.MAX_FILE_SIZE["default"])
+        if len(content) > max_size:
+            raise HTTPException(
+                status_code=400,
+                detail=f"文件大小超过限制（最大{max_size / 1024 / 1024:.1f}MB）"
+            )
+        
+        # 验证文件内容（magic bytes）
+        self._validate_magic_bytes(content, file_ext)
+        
         with open(file_path, "wb") as f:
             f.write(content)
         

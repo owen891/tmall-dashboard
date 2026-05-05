@@ -171,6 +171,7 @@
 import { ref, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import api from '@/api'
+import { formatNumber, getTierType } from '@/utils/format'
 
 const activeTab = ref('products')
 const loading = ref(false)
@@ -219,15 +220,6 @@ const getBadgeClass = (type) => {
   return classes[type] || 'badge-default'
 }
 
-const getTierType = (tier) => {
-  const types = {
-    '引流款': 'success',
-    '利润款': 'primary',
-    '潜力款': 'warning'
-  }
-  return types[tier] || 'info'
-}
-
 const getActionType = (action) => {
   const types = {
     '提价': 'success',
@@ -248,11 +240,6 @@ const getCompetitionColor = (competition) => {
   if (competition < 0.5) return '#67c23a'
   if (competition < 0.7) return '#409eff'
   return '#f56c6c'
-}
-
-const formatNumber = (value) => {
-  if (!value && value !== 0) return '-'
-  return Number(value).toLocaleString('zh-CN', { maximumFractionDigits: 0 })
 }
 
 onMounted(() => {

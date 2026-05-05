@@ -17,60 +17,66 @@ def get_ad_summary(
 ):
     """获取广告汇总数据"""
     
-    if dimension == "all":
-        query = db.query(PaidDetail)
-    else:
-        query = db.query(PaidDetail).filter(PaidDetail.product_id.like(f"%{dimension}%"))
-    
-    if product_id:
-        query = query.filter(PaidDetail.product_id == product_id)
-    
-    ads = query.all()
-    
-    if not ads:
-        return ResponseModel(data={"summary": {}, "top_keywords": []})
-    
-    total_impressions = sum(a.impressions or 0 for a in ads)
-    total_clicks = sum(a.clicks or 0 for a in ads)
-    total_cost = sum(a.cost or 0 for a in ads)
-    total_gmv = sum(a.total_gmv or 0 for a in ads)
-    total_orders = sum(a.total_orders or 0 for a in ads)
-    total_direct = sum(a.direct_gmv or 0 for a in ads)
-    total_indirect = sum(a.indirect_gmv or 0 for a in ads)
-    total_cart_adds = sum(a.cart_adds or 0 for a in ads)
-    total_favs = sum(a.favs or 0 for a in ads)
-    total_new_buyers = sum(a.new_buyers or 0 for a in ads)
-    
-    ctr = (total_clicks / total_impressions * 100) if total_impressions > 0 else 0
-    cpc = (total_cost / total_clicks) if total_clicks > 0 else 0
-    cpm = (total_cost / total_impressions * 1000) if total_impressions > 0 else 0
-    overall_roi = (total_gmv / total_cost) if total_cost > 0 else 0
-    cart_rate = (total_cart_adds / total_clicks * 100) if total_clicks > 0 else 0
-    conv_rate = (total_orders / total_clicks * 100) if total_clicks > 0 else 0
-    direct_ratio = (total_direct / total_gmv * 100) if total_gmv > 0 else 0
-    
-    summary = {
-        "impressions": total_impressions,
-        "clicks": total_clicks,
-        "cost": round(total_cost, 2),
-        "gmv": round(total_gmv, 2),
-        "orders": total_orders,
-        "direct_gmv": round(total_direct, 2),
-        "indirect_gmv": round(total_indirect, 2),
-        "roi": round(overall_roi, 2),
-        "ctr": round(ctr, 2),
-        "cpc": round(cpc, 2),
-        "cpm": round(cpm, 2),
-        "conv_rate": round(conv_rate, 2),
-        "cart_rate": round(cart_rate, 2),
-        "cart_adds": total_cart_adds,
-        "favs": total_favs,
-        "new_buyers": total_new_buyers,
-        "direct_ratio": round(direct_ratio, 2),
-        "ad_count": len(ads)
-    }
-    
-    return ResponseModel(data={"summary": summary})
+    try:
+        if dimension == "all":
+            query = db.query(PaidDetail)
+        else:
+            query = db.query(PaidDetail).filter(PaidDetail.product_id.like(f"%{dimension}%"))
+        
+        if product_id:
+            query = query.filter(PaidDetail.product_id == product_id)
+        
+        ads = query.all()
+        
+        if not ads:
+            return ResponseModel(data={"summary": {}, "top_keywords": []})
+        
+        total_impressions = sum(a.impressions or 0 for a in ads)
+        total_clicks = sum(a.clicks or 0 for a in ads)
+        total_cost = sum(a.cost or 0 for a in ads)
+        total_gmv = sum(a.total_gmv or 0 for a in ads)
+        total_orders = sum(a.total_orders or 0 for a in ads)
+        total_direct = sum(a.direct_gmv or 0 for a in ads)
+        total_indirect = sum(a.indirect_gmv or 0 for a in ads)
+        total_cart_adds = sum(a.cart_adds or 0 for a in ads)
+        total_favs = sum(a.favs or 0 for a in ads)
+        total_new_buyers = sum(a.new_buyers or 0 for a in ads)
+        
+        ctr = (total_clicks / total_impressions * 100) if total_impressions > 0 else 0
+        cpc = (total_cost / total_clicks) if total_clicks > 0 else 0
+        cpm = (total_cost / total_impressions * 1000) if total_impressions > 0 else 0
+        overall_roi = (total_gmv / total_cost) if total_cost > 0 else 0
+        cart_rate = (total_cart_adds / total_clicks * 100) if total_clicks > 0 else 0
+        conv_rate = (total_orders / total_clicks * 100) if total_clicks > 0 else 0
+        direct_ratio = (total_direct / total_gmv * 100) if total_gmv > 0 else 0
+        
+        summary = {
+            "impressions": total_impressions,
+            "clicks": total_clicks,
+            "cost": round(total_cost, 2),
+            "gmv": round(total_gmv, 2),
+            "orders": total_orders,
+            "direct_gmv": round(total_direct, 2),
+            "indirect_gmv": round(total_indirect, 2),
+            "roi": round(overall_roi, 2),
+            "ctr": round(ctr, 2),
+            "cpc": round(cpc, 2),
+            "cpm": round(cpm, 2),
+            "conv_rate": round(conv_rate, 2),
+            "cart_rate": round(cart_rate, 2),
+            "cart_adds": total_cart_adds,
+            "favs": total_favs,
+            "new_buyers": total_new_buyers,
+            "direct_ratio": round(direct_ratio, 2),
+            "ad_count": len(ads)
+        }
+        
+        return ResponseModel(data={"summary": summary})
+    except Exception as e:
+        from app.core.logger import get_logger
+        logger = get_logger(__name__)
+        logger.error(f"广告汇总查询失败: {e}")
+        return ResponseModel(data={"summary": {}, "error": str(e)})
 
 
 @router.get("/products", response_model=ResponseModel)

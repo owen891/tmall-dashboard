@@ -149,6 +149,7 @@ import * as echarts from 'echarts'
 import api from '@/api'
 import ExportButton from '@/components/ExportButton.vue'
 import { Right } from '@element-plus/icons-vue'
+import { formatNumber, getTierType } from '@/utils/format'
 
 const dimension = ref('monthly')
 const loading = ref(true)
@@ -159,6 +160,7 @@ const trendChartRef = ref(null)
 const changeChartRef = ref(null)
 let trendChart = null
 let changeChart = null
+let handleResize = null
 
 const exportColumns = [
   { key: 'product_id', label: '商品ID' },
@@ -168,23 +170,6 @@ const exportColumns = [
   { key: 'previous_value', label: '去年同期' },
   { key: 'change_percent', label: '同比变化' },
 ]
-
-const formatNumber = (num) => {
-  if (!num) return '0'
-  if (num >= 10000) {
-    return (num / 10000).toFixed(2) + '万'
-  }
-  return num.toLocaleString()
-}
-
-const getTierType = (tier) => {
-  const types = {
-    '引流款': 'success',
-    '利润款': 'primary',
-    '潜力款': 'warning'
-  }
-  return types[tier] || 'info'
-}
 
 const getChangeType = (percent) => {
   if (!percent) return 'info'
@@ -268,13 +253,15 @@ const initChangeChart = () => {
 
 onMounted(() => {
   loadData()
-  window.addEventListener('resize', () => {
+  handleResize = () => {
     trendChart?.resize()
     changeChart?.resize()
-  })
+  }
+  window.addEventListener('resize', handleResize)
 })
 
 onUnmounted(() => {
+  window.removeEventListener('resize', handleResize)
   trendChart?.dispose()
   changeChart?.dispose()
 })

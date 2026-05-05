@@ -108,16 +108,20 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, onBeforeUnmount } from 'vue'
 import { ElMessage } from 'element-plus'
 import api from '@/api'
 import * as echarts from 'echarts'
+import { formatNumber } from '@/utils/format'
 
 const activeTab = ref('gmv')
 const gmvPrediction = ref(null)
 const roiPrediction = ref(null)
 const gmvChartRef = ref(null)
 const salesChartRef = ref(null)
+let gmvChart = null
+let renderTimer = null
+let handleResize = null
 
 const loadData = async () => {
   try {
@@ -128,7 +132,7 @@ const loadData = async () => {
     gmvPrediction.value = gmvRes.data
     roiPrediction.value = roiRes.data
     
-    setTimeout(() => {
+    renderTimer = setTimeout(() => {
       if (gmvChartRef.value && gmvRes.data?.predictions) {
         renderGmvChart(gmvRes.data.predictions)
       }
@@ -142,13 +146,14 @@ const loadData = async () => {
 const renderGmvChart = (predictions) => {
   if (!gmvChartRef.value) return
   
-  const chart = echarts.init(gmvChartRef.value)
+  if (gmvChart) gmvChart.dispose()
+  gmvChart = echarts.init(gmvChartRef.value)
   const dates = predictions.map(p => p.date)
   const values = predictions.map(p => p.predicted_gmv)
   const lower = predictions.map(p => p.lower_bound)
   const upper = predictions.map(p => p.upper_bound)
   
-  chart.setOption({
+  gmvChart.setOption({
     tooltip: {
       trigger: 'axis',
       formatter: (params) => {
@@ -185,15 +190,18 @@ const renderGmvChart = (predictions) => {
       }
     ]
   })
-}
-
-const formatNumber = (value) => {
-  if (!value && value !== 0) return '-'
-  return Number(value).toLocaleString('zh-CN', { maximumFractionDigits: 0 })
+  handleResize = () => gmvChart?.resize()
+  window.addEventListener('resize', handleResize)
 }
 
 onMounted(() => {
   loadData()
+})
+
+onBeforeUnmount(() => {
+  if (renderTimer) clearTimeout(renderTimer)
+  window.removeEventListener('resize', handleResize)
+  gmvChart?.dispose()
 })
 </script>
 

@@ -100,9 +100,11 @@
 import { ref, onMounted, onUnmounted } from 'vue'
 import api from '@/api'
 import * as echarts from 'echarts'
+import { formatNumber } from '@/utils/format'
 
 const chartRef = ref(null)
 let chart = null
+let handleResize = null
 
 const dimension = ref('weekly')
 const summary = ref({
@@ -180,19 +182,15 @@ const updateChart = () => {
   })
 }
 
-const formatNumber = (num) => {
-  if (!num) return '0'
-  if (num >= 10000) return (num / 10000).toFixed(2) + '万'
-  return num.toFixed(2)
-}
-
 onMounted(() => {
   chart = echarts.init(chartRef.value)
   loadData()
-  window.addEventListener('resize', () => chart?.resize())
+  handleResize = () => chart?.resize()
+  window.addEventListener('resize', handleResize)
 })
 
 onUnmounted(() => {
+  window.removeEventListener('resize', handleResize)
   chart?.dispose()
 })
 </script>

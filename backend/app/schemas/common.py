@@ -1,7 +1,9 @@
-from pydantic import BaseModel
-from typing import Generic, TypeVar, List, Optional, Dict, Any
+from pydantic import BaseModel, Field, field_validator
+from typing import Generic, TypeVar, List, Optional, Dict, Any, Literal
 
 T = TypeVar('T')
+
+DimensionType = Literal["daily", "weekly", "monthly"]
 
 
 class ResponseModel(BaseModel, Generic[T]):
@@ -20,8 +22,8 @@ class ListResponseModel(BaseModel, Generic[T]):
 
 
 class PaginatedQuery(BaseModel):
-    page: int = 1
-    page_size: int = 20
+    page: int = Field(1, ge=1)
+    page_size: int = Field(20, ge=1, le=200)
     sort_by: Optional[str] = None
     sort_order: str = "desc"
     search: Optional[str] = None

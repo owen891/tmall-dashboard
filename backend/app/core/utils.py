@@ -3,12 +3,14 @@
 提取重复代码，提高可维护性
 """
 from datetime import datetime, timedelta
-from typing import Tuple, Any, Optional
+from typing import Tuple, Any, Optional, Literal
 from sqlalchemy import func, desc
 from sqlalchemy.orm import Session
+from fastapi import HTTPException
 
 from app.models import DailyData, WeeklyData, MonthlyData
 
+VALID_DIMENSIONS = ("daily", "weekly", "monthly")
 
 DIMENSION_MAP = {
     'monthly': {'table': 'monthly_data', 'date_col': 'month', 'visitors_col': 'visitors'},
@@ -17,8 +19,18 @@ DIMENSION_MAP = {
 }
 
 
+def validate_dimension(dimension: str) -> str:
+    if dimension not in VALID_DIMENSIONS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid dimension: '{dimension}', must be one of {VALID_DIMENSIONS}"
+        )
+    return dimension
+
+
 def get_data_model(dimension: str) -> Tuple[Any, str, str]:
     """根据维度获取数据模型、日期字段、访客字段"""
+    validate_dimension(dimension)
     if dimension == "monthly":
         return MonthlyData, 'month', 'visitors'
     elif dimension == "daily":
@@ -98,3 +110,21 @@ def safe_int(value, default=0) -> int:
         return int(value)
     except (ValueError, TypeError):
         return default
+
+
+def calc_score(row_data: dict) -> float:
+    """计算商品综合评分"""
+    score = 50.0
+    conv = row_data.get('conversion', 0) or 0
+    roi = row_data.get('overall_roi', 0) or row_data.get('roi', 0) or 0
+    refund = row_data.get('refund_rate', 0) or 0
+    uv = row_data.get('uv_value', 0) or 0
+    search = row_data.get('search_ratio', 0) or 0
+
+    score += min(conv * 5, 20)
+    score += min(roi * 1.5, 15)
+    score -= min(refund * 1.5, 20)
+    score += min(uv * 0.5, 10)
+    score += min(search * 5, 5)
+
+    return round(max(0, min(100, score)), 1)

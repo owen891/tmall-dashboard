@@ -47,7 +47,7 @@ defineProps({
   }
 }
 
-.dark .skeleton {
+:global(.dark) .skeleton {
   background: linear-gradient(90deg, #2d2d2d 25%, #3a3a3a 37%, #2d2d2d 63%);
   background-size: 400% 100%;
 }

@@ -208,15 +208,17 @@
 </template>
 
 <script setup>
-import { ref, onMounted, nextTick } from 'vue'
+import { ref, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { More, Download } from '@element-plus/icons-vue'
 import * as echarts from 'echarts'
+import { formatNumber, formatPercent } from '@/utils/format'
 
 const router = useRouter()
 const chartRef = ref(null)
 let chart = null
+let handleResize = null
 
 const selectedChannel = ref('taobao')
 const activeTab = ref('business')
@@ -257,19 +259,6 @@ const hotProducts = ref([
   { rank: 4, title: '时尚百搭斜挎包', category: '箱包', sales: 128000, visitors: 4200, conversion: 0.058, roi: 5.2 },
   { rank: 5, title: '精致珍珠项链', category: '配饰', sales: 115000, visitors: 3800, conversion: 0.065, roi: 7.1 },
 ])
-
-const formatNumber = (num) => {
-  if (!num) return '0'
-  if (num >= 10000) {
-    return (num / 10000).toFixed(1) + '万'
-  }
-  return num.toLocaleString()
-}
-
-const formatPercent = (value) => {
-  if (!value) return '0%'
-  return (value * 100).toFixed(2) + '%'
-}
 
 const initChart = () => {
   if (!chartRef.value) return
@@ -333,7 +322,8 @@ const initChart = () => {
   }
 
   chart.setOption(option)
-  window.addEventListener('resize', () => chart.resize())
+  handleResize = () => chart?.resize()
+  window.addEventListener('resize', handleResize)
 }
 
 const exportData = () => {
@@ -348,6 +338,11 @@ onMounted(() => {
   nextTick(() => {
     initChart()
   })
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('resize', handleResize)
+  chart?.dispose()
 })
 </script>
 

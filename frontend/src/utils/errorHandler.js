@@ -63,15 +63,25 @@ export const withErrorHandling = async (fn, options = {}) => {
 }
 
 export const retryWithBackoff = async (fn, maxRetries = 3, delay = 1000) => {
+  const isRetryable = (error) => {
+    if (!error) return false
+    if (error.code === 'ERR_NETWORK' || error.code === 'ECONNABORTED') return true
+    const status = error?.response?.status
+    if (!status) return true
+    return status >= 500
+  }
+
   let lastError
   for (let i = 0; i < maxRetries; i++) {
     try {
       return await fn()
     } catch (error) {
       lastError = error
-      if (i < maxRetries - 1) {
-        await new Promise((resolve) => setTimeout(resolve, delay * Math.pow(2, i)))
+      if (!isRetryable(error) || i >= maxRetries - 1) {
+        throw error
       }
+      const jitter = delay * Math.pow(2, i) * (0.5 + Math.random() * 0.5)
+      await new Promise((resolve) => setTimeout(resolve, jitter))
     }
   }
   throw lastError

@@ -1,10 +1,11 @@
 from datetime import datetime, timedelta
 from typing import Optional, List
-from fastapi import APIRouter, Query
+from fastapi import Depends, APIRouter, Query
 from pydantic import BaseModel
 from sqlalchemy import func, and_, or_
 from app.core.database import get_db
-from app.models.product import Refund, Product
+from app.models.review import Refund
+from app.models import Product
 
 router = APIRouter(prefix="/refunds", tags=["退款分析"])
 
@@ -62,8 +63,6 @@ def get_refund_summary(
     start_date: Optional[str] = None,
     end_date: Optional[str] = None
 ):
-    db = next(get_db())
-    try:
         query = db.query(
             func.count(Refund.id).label("total_refund_count"),
             func.coalesce(func.sum(Refund.refund_amount), 0).label("total_refund_amount"),
@@ -121,18 +120,12 @@ def get_refund_summary(
 
         return {"code": 200, "data": summary}
 
-    finally:
-        db.close()
-
-
 @router.get("/trends", response_model=dict)
 def get_refund_trends(
     dimension: str = Query("weekly", description="时间维度"),
     start_date: Optional[str] = None,
     end_date: Optional[str] = None
 ):
-    db = next(get_db())
-    try:
         if dimension == "daily":
             date_format = "%Y-%m-%d"
             date_trunc = func.date(Refund.refund_date)
@@ -223,18 +216,12 @@ def get_refund_trends(
             summary=summary
         )}
 
-    finally:
-        db.close()
-
-
 @router.get("/reasons", response_model=dict)
 def get_refund_reasons(
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
     product_id: Optional[int] = None
 ):
-    db = next(get_db())
-    try:
         query = db.query(
             Refund.refund_reason,
             func.count(Refund.id).label("count"),
@@ -265,16 +252,10 @@ def get_refund_reasons(
 
         return {"code": 200, "data": reasons}
 
-    finally:
-        db.close()
-
-
 @router.get("/alerts", response_model=dict)
 def get_refund_alerts(
     threshold: float = Query(5.0, description="退款率预警阈值(%)")
 ):
-    db = next(get_db())
-    try:
         latest_refunds = db.query(
             Refund.product_id,
             Refund.product_name,
@@ -304,18 +285,12 @@ def get_refund_alerts(
 
         return {"code": 200, "data": alerts}
 
-    finally:
-        db.close()
-
-
 @router.get("/product/{product_id}", response_model=dict)
 def get_product_refunds(
     product_id: int,
     start_date: Optional[str] = None,
     end_date: Optional[str] = None
 ):
-    db = next(get_db())
-    try:
         query = db.query(Refund).filter(Refund.product_id == product_id)
 
         if start_date:
@@ -364,5 +339,3 @@ def get_product_refunds(
             }
         }
 
-    finally:
-        db.close()

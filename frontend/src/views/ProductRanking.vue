@@ -117,6 +117,7 @@ import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import ExportButton from '@/components/ExportButton.vue'
+import { formatNumber } from '@/utils/format'
 
 const router = useRouter()
 const loading = ref(false)
@@ -172,14 +173,6 @@ const generateMockProducts = () => {
     refund_rate: Math.random() * 0.2,
     roi: Math.random() * 10 + 1
   }))
-}
-
-const formatNumber = (num) => {
-  if (!num) return '0'
-  if (num >= 10000) {
-    return (num / 10000).toFixed(1) + '万'
-  }
-  return num.toLocaleString()
 }
 
 const getRankClass = (index) => {

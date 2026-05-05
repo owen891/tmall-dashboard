@@ -4,6 +4,8 @@ from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from fastapi.responses import JSONResponse
+from fastapi.exceptions import RequestValidationError
+from starlette.exceptions import HTTPException as StarletteHTTPException
 from contextlib import asynccontextmanager
 import os
 import pathlib
@@ -12,6 +14,14 @@ import traceback
 from app.core import settings, engine, Base
 from app.core.logger import get_logger, setup_logging
 from app.core.scheduler import scheduler
+from app.core.response import (
+    AppException,
+    app_exception_handler,
+    http_exception_handler,
+    validation_exception_handler,
+    generic_exception_handler,
+)
+from app.core.middleware import RequestLoggingMiddleware, RateLimitMiddleware
 from app.api import api_router
 from app.api import realtime
 
@@ -53,7 +63,12 @@ app = FastAPI(
 
 ### 认证方式
 
-当前版本暂不需要认证，直接调用API即可。
+使用 JWT Bearer Token 认证。在请求头中添加：
+```
+Authorization: Bearer <token>
+```
+
+通过 `/api/auth/login` 获取 token。
 
 ### 数据格式
 
@@ -71,6 +86,8 @@ app = FastAPI(
 )
 
 app.add_middleware(GZipMiddleware, minimum_size=1000)
+app.add_middleware(RateLimitMiddleware, max_requests=100, window_seconds=60)
+app.add_middleware(RequestLoggingMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.BACKEND_CORS_ORIGINS,
@@ -79,22 +96,14 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.add_exception_handler(AppException, app_exception_handler)
+app.add_exception_handler(StarletteHTTPException, http_exception_handler)
+app.add_exception_handler(RequestValidationError, validation_exception_handler)
+app.add_exception_handler(Exception, generic_exception_handler)
+
 # API routes first
 app.include_router(api_router)
 app.include_router(realtime.router)
-
-
-@app.exception_handler(Exception)
-async def global_exception_handler(request: Request, exc: Exception):
-    """全局异常处理器"""
-    logger.error(f"Unhandled exception: {str(exc)}\n{traceback.format_exc()}")
-    return JSONResponse(
-        status_code=500,
-        content={
-            "detail": "Internal server error",
-            "message": str(exc) if settings.DEBUG else "An error occurred"
-        }
-    )
 
 
 @app.get("/health")

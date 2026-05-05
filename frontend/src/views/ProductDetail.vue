@@ -23,6 +23,9 @@
         <el-tab-pane label="销售趋势" name="sales">
           <SalesChart :product-id="productId" />
         </el-tab-pane>
+        <el-tab-pane label="生命周期" name="lifecycle">
+          <LifecycleChart :product-id="productId" />
+        </el-tab-pane>
         <el-tab-pane label="运营动作" name="operations">
           <OperationsLog :product-id="productId" />
         </el-tab-pane>
@@ -41,6 +44,8 @@ import KPICards from '@/components/product/KPICards.vue'
 import TrafficSources from '@/components/product/TrafficSources.vue'
 import SalesChart from '@/components/product/SalesChart.vue'
 import OperationsLog from '@/components/product/OperationsLog.vue'
+import LifecycleChart from '@/components/product/LifecycleChart.vue'
+import { formatCurrency, getTierType } from '@/utils/format'
 
 const route = useRoute()
 const router = useRouter()
@@ -65,13 +70,13 @@ const toggleStar = async () => {
 
 const loadData = async () => {
   try {
-    const res = await api.getProduct(productId)
+    const [res, detailRes] = await Promise.all([
+      api.getProduct(productId),
+      api.getProductDetail(productId)
+    ])
     product.value = res.data || {}
-
-    const detailRes = await api.getProductDetail(productId)
     latestData.value = detailRes.data || {}
 
-    // 生成 KPI 数据
     kpis.value = [
       { key: 'ipv', label: '访客数', value: latestData.value.visitors || 0 },
       { key: 'gmv', label: '销售额', value: formatCurrency(latestData.value.gmv) },
@@ -81,16 +86,6 @@ const loadData = async () => {
   } catch (error) {
     ElMessage.error('加载失败')
   }
-}
-
-const formatCurrency = (val) => {
-  if (!val) return '¥0'
-  return '¥' + Number(val).toLocaleString()
-}
-
-const getTierType = (tier) => {
-  const types = { 'A': 'success', 'B': 'warning', 'C': 'danger' }
-  return types[tier] || 'info'
 }
 
 onMounted(() => loadData())

@@ -1,337 +1,178 @@
-from fastapi import APIRouter, Depends, Query, BackgroundTasks
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
-from sqlalchemy import desc, func, and_, or_
+from sqlalchemy import func, desc
 from typing import Optional, List
+from datetime import datetime
 from app.core.database import get_db
-from app.models.command_tower import (
-    SmartAlertRule, SmartAlert, SupplyChainData, InventoryAlert
-)
-from app.models.product import Product, DailyData
+from app.models import ProductTrafficDetail, MonthlyPlanning, Product, TrafficSource
 from app.schemas.common import ResponseModel
-from datetime import datetime, timedelta
+from app.models.alerts import Alert
 
-router = APIRouter(prefix="/smart-alert", tags=["智能告警"])
-
-
-@router.get("/rules", response_model=ResponseModel)
-def get_alert_rules(
-    metric: Optional[str] = None,
-    level: Optional[str] = None,
-    only_enabled: bool = True,
-    limit: int = Query(50, description="返回数量"),
-    offset: int = Query(0, description="偏移量"),
-    db: Session = Depends(get_db)
-):
-    """获取告警规则列表"""
-    query = db.query(SmartAlertRule)
-    if only_enabled:
-        query = query.filter(SmartAlertRule.enabled == True)
-    if metric:
-        query = query.filter(SmartAlertRule.metric == metric)
-    if level:
-        query = query.filter(SmartAlertRule.level == level)
-    
-    total = query.count()
-    rules = query.order_by(desc(SmartAlertRule.created_at)).offset(offset).limit(limit).all()
-    
-    return ResponseModel(data={
-        "rules": [{
-            "id": r.id,
-            "rule_name": r.rule_name,
-            "rule_type": r.rule_type,
-            "metric": r.metric,
-            "metric_label": r.metric_label,
-            "condition_type": r.condition_type,
-            "operator": r.operator,
-            "threshold": r.threshold,
-            "window_type": r.window_type,
-            "window_size": r.window_size,
-            "level": r.level,
-            "enabled": r.enabled,
-            "created_by": r.created_by
-        } for r in rules],
-        "total": total
-    })
+router = APIRouter(prefix="/smart-alerts", tags=["智能预警"])
 
 
-@router.post("/rules", response_model=ResponseModel)
-def create_alert_rule(
-    rule_name: str,
-    metric: str,
-    condition_type: str = "threshold",
-    operator: str = ">",
-    threshold: float = 0,
-    level: str = "warning",
-    window_type: str = "consecutive",
-    window_size: int = 2,
-    product_id: Optional[str] = None,
-    db: Session = Depends(get_db)
-):
-    """创建告警规则"""
-    rule = SmartAlertRule(
-        rule_name=rule_name,
+def check_and_create_alert(db: Session, product_id: str, product_name: str, alert_type: str, severity: str, metric: str, current_value: float, threshold: float, message: str) -> bool:
+    """Check if alert already exists and create if not"""
+    existing = db.query(Alert).filter(
+        Alert.product_id == int(product_id) if product_id.isdigit() else None,
+        Alert.status == "unresolved",
+        Alert.metric == metric,
+        Alert.alert_type == alert_type,
+    ).first()
+    if existing:
+        return False
+    new_alert = Alert(
+        product_id=int(product_id) if product_id.isdigit() else None,
+        product_name=product_name,
+        alert_type=alert_type,
+        severity=severity,
         metric=metric,
-        condition_type=condition_type,
-        operator=operator,
+        current_value=current_value,
         threshold=threshold,
-        level=level,
-        window_type=window_type,
-        window_size=window_size,
-        product_id=product_id,
-        enabled=True,
-        is_active=True
+        message=message,
+        status="unresolved",
     )
-    db.add(rule)
-    db.commit()
-    db.refresh(rule)
-    
-    return ResponseModel(data={"id": rule.id, "message": "告警规则创建成功"})
+    db.add(new_alert)
+    return True
 
 
-@router.post("/rules/{rule_id}", response_model=ResponseModel)
-def toggle_rule(
-    rule_id: int,
-    enabled: bool = True,
+@router.post("/auto-generate", response_model=ResponseModel)
+def auto_generate_alerts(
+    start_date: Optional[str] = Query(None, description="开始日期"),
+    end_date: Optional[str] = Query(None, description="结束日期"),
     db: Session = Depends(get_db)
 ):
-    """启用/禁用告警规则"""
-    rule = db.query(SmartAlertRule).filter(SmartAlertRule.id == rule_id).first()
-    if not rule:
-        return ResponseModel(code=404, message="规则不存在")
-    
-    rule.enabled = enabled
-    db.commit()
-    
-    return ResponseModel(data={"message": f"规则已{'启用' if enabled else '禁用'}"})
-
-
-@router.get("/alerts", response_model=ResponseModel)
-def get_alerts(
-    level: Optional[str] = None,
-    status: Optional[str] = None,
-    product_id: Optional[str] = None,
-    only_unresolved: bool = False,
-    limit: int = Query(50, description="返回数量"),
-    offset: int = Query(0, description="偏移量"),
-    db: Session = Depends(get_db)
-):
-    """获取告警列表"""
-    query = db.query(SmartAlert)
-    if level:
-        query = query.filter(SmartAlert.level == level)
-    if product_id:
-        query = query.filter(SmartAlert.product_id == product_id)
-    if only_unresolved:
-        query = query.filter(SmartAlert.resolved == False)
-    if status == "unread":
-        query = query.filter(SmartAlert.dismissed == False)
-    
-    total = query.count()
-    alerts = query.order_by(desc(SmartAlert.created_at)).offset(offset).limit(limit).all()
-    
-    return ResponseModel(data={
-        "alerts": [{
-            "id": a.id,
-            "rule_id": a.rule_id,
-            "alert_type": a.alert_type,
-            "title": a.title,
-            "detail": a.detail,
-            "product_id": a.product_id,
-            "product_title": a.product_title,
-            "metric": a.metric,
-            "current_value": a.current_value,
-            "threshold_value": a.threshold_value,
-            "change_percent": a.change_percent,
-            "level": a.level,
-            "severity": a.severity,
-            "dismissed": a.dismissed,
-            "resolved": a.resolved,
-            "recommendations": a.recommendations,
-            "created_at": a.created_at.isoformat() if a.created_at else None
-        } for a in alerts],
-        "total": total
-    })
-
-
-@router.post("/alerts/{alert_id}/dismiss", response_model=ResponseModel)
-def dismiss_alert(
-    alert_id: int,
-    dismiss_note: str = "",
-    db: Session = Depends(get_db)
-):
-    """忽略告警"""
-    alert = db.query(SmartAlert).filter(SmartAlert.id == alert_id).first()
-    if not alert:
-        return ResponseModel(code=404, message="告警不存在")
-    
-    alert.dismissed = True
-    alert.dismiss_note = dismiss_note
-    alert.dismissed_at = datetime.now()
-    db.commit()
-    
-    return ResponseModel(data={"message": "告警已忽略"})
-
-
-@router.post("/alerts/{alert_id}/resolve", response_model=ResponseModel)
-def resolve_alert(
-    alert_id: int,
-    action_taken: str = "",
-    db: Session = Depends(get_db)
-):
-    """解决告警"""
-    alert = db.query(SmartAlert).filter(SmartAlert.id == alert_id).first()
-    if not alert:
-        return ResponseModel(code=404, message="告警不存在")
-    
-    alert.resolved = True
-    alert.action_taken = action_taken
-    alert.resolved_at = datetime.now()
-    db.commit()
-    
-    return ResponseModel(data={"message": "告警已解决"})
-
-
-def check_threshold_condition(value, operator, threshold):
-    """检查阈值条件"""
-    if operator == ">":
-        return value > threshold
-    elif operator == ">=":
-        return value >= threshold
-    elif operator == "<":
-        return value < threshold
-    elif operator == "<=":
-        return value <= threshold
-    elif operator == "==":
-        return value == threshold
-    return False
-
-
-@router.post("/check", response_model=ResponseModel)
-def check_and_generate_alerts(
-    background_tasks: BackgroundTasks,
-    db: Session = Depends(get_db)
-):
-    """检查并生成告警（可异步执行）"""
-    rules = db.query(SmartAlertRule).filter(SmartAlertRule.enabled == True).all()
+    """自动扫描数据并生成智能预警"""
+    products_data = db.query(
+        ProductTrafficDetail.product_id,
+        func.count().label('days'),
+        func.sum(ProductTrafficDetail.visitors).label('visitors'),
+        func.sum(ProductTrafficDetail.payment_amount).label('payment'),
+        func.sum(ProductTrafficDetail.ad_spend).label('ad_spend'),
+        func.avg(ProductTrafficDetail.conversion_rate).label('conversion'),
+        func.avg(ProductTrafficDetail.ad_roi).label('ad_roi'),
+        func.avg(ProductTrafficDetail.cart_rate).label('cart_rate'),
+        func.avg(ProductTrafficDetail.fav_rate).label('fav_rate'),
+        func.avg(ProductTrafficDetail.refund_rate).label('refund_rate'),
+        func.avg(ProductTrafficDetail.bounce_rate).label('bounce_rate'),
+        func.sum(ProductTrafficDetail.search_visitors).label('search_visitors'),
+        func.sum(ProductTrafficDetail.recommend_visitors).label('recommend_visitors'),
+    ).filter(
+        ProductTrafficDetail.date >= (start_date or "2000-01-01"),
+        ProductTrafficDetail.date <= (end_date or "2099-12-31"),
+    ).group_by(ProductTrafficDetail.product_id).all()
     
     new_alerts = []
-    for rule in rules:
-        product_ids = []
-        if rule.product_id:
-            product_ids = [rule.product_id]
-        elif rule.product_ids:
-            product_ids = rule.product_ids if isinstance(rule.product_ids, list) else []
-        else:
-            products = db.query(Product.product_id).all()
-            product_ids = [p[0] for p in products]
+    total_products = len(products_data)
+    
+    for p in products_data:
+        product = db.query(Product).filter(Product.product_id == p.product_id).first()
+        product_name = product.title if product else p.product_id
+        plan = db.query(MonthlyPlanning).filter(
+            MonthlyPlanning.product_id == p.product_id
+        ).order_by(MonthlyPlanning.plan_month.desc()).first()
         
-        for product_id in product_ids:
-            product = db.query(Product).filter(Product.product_id == product_id).first()
-            
-            # 获取最近数据
-            recent_data = db.query(DailyData).filter(
-                DailyData.product_id == product_id
-            ).order_by(desc(DailyData.date)).limit(rule.window_size).all()
-            
-            if len(recent_data) < rule.window_size:
-                continue
-            
-            # 检查是否触发
-            triggered = False
-            values = []
-            metric_name = ""
-            
-            for data in recent_data:
-                # 获取指标值
-                value = 0
-                if rule.metric == "payment_amount":
-                    value = data.payment_amount
-                    metric_name = "销售额"
-                elif rule.metric == "payment_conversion":
-                    value = data.payment_conversion
-                    metric_name = "转化率"
-                elif rule.metric == "ctr":
-                    value = getattr(data, "ctr", 0)
-                    metric_name = "点击率"
-                elif rule.metric == "uv_value":
-                    value = data.uv_value
-                    metric_name = "UV价值"
-                elif rule.metric == "refund_amount":
-                    value = data.refund_amount
-                    metric_name = "退款金额"
-                values.append(value)
-            
-            # 连续触发
-            if rule.window_type == "consecutive":
-                all_triggered = all(
-                    check_threshold_condition(v, rule.operator, rule.threshold)
-                    for v in values
-                )
-                if all_triggered:
-                    triggered = True
-            
-            # 检查是否重复报警
-            if triggered:
-                recent_alert = db.query(SmartAlert).filter(
-                    and_(
-                        SmartAlert.rule_id == rule.id,
-                        SmartAlert.product_id == product_id,
-                        SmartAlert.created_at >= datetime.now() - timedelta(hours=24)
-                    )
-                ).first()
-                
-                if not recent_alert:
-                    # 创建新告警
-                    alert = SmartAlert(
-                        rule_id=rule.id,
-                        product_id=product_id,
-                        product_title=product.title if product else "",
-                        metric=rule.metric,
-                        metric_label=metric_name,
-                        current_value=values[0],
-                        threshold_value=rule.threshold,
-                        level=rule.level,
-                        severity=rule.severity or "medium",
-                        title=f"{metric_name}异常",
-                        detail=f"{metric_name}连续{rule.window_size}天触发阈值条件",
-                        alert_type=rule.rule_type or "threshold",
-                        recommendations=["检查数据异常原因", "评估运营策略", "制定优化方案"],
-                        created_at=datetime.now()
-                    )
-                    db.add(alert)
-                    new_alerts.append(alert)
+        total_visitors = p.visitors or 0
+        total_payment = p.payment or 0
+        total_ad_spend = p.ad_spend or 0
+        avg_conversion = p.conversion or 0
+        avg_ad_roi = p.ad_roi or 0
+        avg_cart_rate = p.cart_rate or 0
+        avg_fav_rate = p.fav_rate or 0
+        avg_refund_rate = p.refund_rate or 0
+        avg_bounce_rate = p.bounce_rate or 0
+        
+        total_search = p.search_visitors or 0
+        total_recommend = p.recommend_visitors or 0
+        search_ratio = total_search / max(total_visitors, 1)
+        
+        target_achievement = 0
+        if plan and plan.gsv_target and plan.gsv_target > 0:
+            target_achievement = (total_payment / plan.gsv_target * 100)
+        
+        ad_ratio = (total_ad_spend / total_payment * 100) if total_payment > 0 else 0
+        
+        if check_and_create_alert(db, p.product_id, product_name, "conversion", "critical", "低转化率", 
+                                   avg_conversion, 0.02, f"{product_name} 转化率仅 {round(avg_conversion*100, 2)}%，低于2%警戒线"):
+            new_alerts.append({"product_id": p.product_id, "type": "低转化率"})
+        
+        if avg_refund_rate and avg_refund_rate > 0.20:
+            if check_and_create_alert(db, p.product_id, product_name, "refund", "critical", "高退款率",
+                                       avg_refund_rate, 0.20, f"{product_name} 退款率高达 {round(avg_refund_rate*100, 1)}%，超过20%"):
+                new_alerts.append({"product_id": p.product_id, "type": "高退款率"})
+        
+        if avg_bounce_rate and avg_bounce_rate > 0.65:
+            if check_and_create_alert(db, p.product_id, product_name, "traffic", "warning", "高跳失率",
+                                       avg_bounce_rate, 0.65, f"{product_name} 跳失率 {round(avg_bounce_rate*100, 1)}%，超过65%"):
+                new_alerts.append({"product_id": p.product_id, "type": "高跳失率"})
+        
+        if avg_ad_roi and avg_ad_roi < 1.0 and total_ad_spend > 0:
+            if check_and_create_alert(db, p.product_id, product_name, "ad", "critical", "广告亏损",
+                                       avg_ad_roi, 1.0, f"{product_name} 广告ROI仅 {round(avg_ad_roi, 2)}，投放亏损"):
+                new_alerts.append({"product_id": p.product_id, "type": "广告亏损"})
+        
+        if ad_ratio > 40 and total_ad_spend > 0:
+            if check_and_create_alert(db, p.product_id, product_name, "ad", "warning", "付费占比过高",
+                                       ad_ratio, 40, f"{product_name} 付费占比 {round(ad_ratio, 1)}%，超过40%"):
+                new_alerts.append({"product_id": p.product_id, "type": "付费占比过高"})
+        
+        if target_achievement and target_achievement < 80 and plan:
+            if check_and_create_alert(db, p.product_id, product_name, "target", "warning", "目标未达成",
+                                       target_achievement, 80, f"{product_name} 目标达成率 {round(target_achievement, 1)}%，低于80%"):
+                new_alerts.append({"product_id": p.product_id, "type": "目标未达成"})
+        
+        if search_ratio < 0.25 and total_visitors > 100:
+            if check_and_create_alert(db, p.product_id, product_name, "traffic", "warning", "搜索流量不足",
+                                       search_ratio * 100, 25, f"{product_name} 搜索流量占比 {round(search_ratio*100, 1)}%，低于25%"):
+                new_alerts.append({"product_id": p.product_id, "type": "搜索流量不足"})
+        
+        if avg_cart_rate and avg_cart_rate < 0.03 and total_visitors > 100:
+            if check_and_create_alert(db, p.product_id, product_name, "engagement", "warning", "加购率偏低",
+                                       avg_cart_rate, 0.03, f"{product_name} 加购率仅 {round(avg_cart_rate*100, 1)}%"):
+                new_alerts.append({"product_id": p.product_id, "type": "加购率偏低"})
     
     db.commit()
     
     return ResponseModel(data={
-        "message": "检查完成",
         "new_alerts": len(new_alerts),
-        "alerts": [{
-            "id": a.id,
-            "product_id": a.product_id,
-            "title": a.title
-        } for a in new_alerts]
+        "products_scanned": total_products,
+        "alerts": new_alerts[:20],
+        "message": f"扫描 {total_products} 个商品，发现 {len(new_alerts)} 个新问题",
     })
 
 
-@router.get("/supply-chain", response_model=ResponseModel)
-def get_supply_chain_alerts(
+@router.get("/summary", response_model=ResponseModel)
+def get_alert_summary(
+    days: int = Query(30, description="统计天数"),
     db: Session = Depends(get_db)
 ):
-    """获取供应链告警"""
-    alerts = db.query(InventoryAlert).order_by(desc(InventoryAlert.created_at)).all()
+    """获取智能预警汇总"""
+    total = db.query(func.count(Alert.id)).scalar() or 0
+    unresolved = db.query(func.count(Alert.id)).filter(Alert.status == "unresolved").scalar() or 0
+    critical = db.query(func.count(Alert.id)).filter(
+        Alert.status == "unresolved",
+        Alert.severity == "critical",
+    ).scalar() or 0
+    warning = db.query(func.count(Alert.id)).filter(
+        Alert.status == "unresolved",
+        Alert.severity == "warning",
+    ).scalar() or 0
+    
+    by_type = db.query(
+        Alert.alert_type,
+        func.count(Alert.id).label("count"),
+    ).filter(Alert.status == "unresolved").group_by(Alert.alert_type).all()
+    
+    by_product = db.query(
+        Alert.product_name,
+        func.count(Alert.id).label("count"),
+    ).filter(Alert.status == "unresolved").group_by(Alert.product_name).order_by(desc(func.count(Alert.id))).limit(10).all()
     
     return ResponseModel(data={
-        "alerts": [{
-            "id": a.id,
-            "product_id": a.product_id,
-            "alert_type": a.alert_type,
-            "title": a.title,
-            "detail": a.detail,
-            "current_stock": a.current_stock,
-            "level": a.level,
-            "status": a.status,
-            "created_at": a.created_at.isoformat() if a.created_at else None
-        } for a in alerts]
+        "total": total,
+        "unresolved": unresolved,
+        "critical": critical,
+        "warning": warning,
+        "by_type": {t.alert_type: t.count for t in by_type},
+        "by_product": [{"name": p.product_name, "count": p.count} for p in by_product],
     })
-

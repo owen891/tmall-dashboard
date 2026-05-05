@@ -67,26 +67,28 @@ def get_trends(
     
     period_list = get_period_list(str(period), dimension, periods)
     
-    trend_data = {}
+    all_data = db.query(
+        getattr(Model, date_col).label('period'),
+        func.sum(Model.payment_amount).label('payment'),
+        func.sum(Model.refund_amount).label('refund'),
+        func.sum(getattr(Model, visitors_col)).label('visitors'),
+        func.avg(Model.payment_conversion).label('conversion'),
+        func.sum(Model.ad_spend).label('ad_spend'),
+    ).filter(
+        getattr(Model, date_col).in_(period_list)
+    ).group_by(getattr(Model, date_col)).all()
     
-    for p in period_list:
-        data = db.query(
-            func.sum(Model.payment_amount).label('payment'),
-            func.sum(Model.refund_amount).label('refund'),
-            func.sum(getattr(Model, visitors_col)).label('visitors'),
-            func.avg(Model.payment_conversion).label('conversion'),
-            func.sum(Model.ad_spend).label('ad_spend'),
-        ).filter(getattr(Model, date_col) == p).first()
-        
-        if data:
-            trend_data[p] = {
-                "payment_amount": float(data.payment or 0),
-                "refund_amount": float(data.refund or 0),
-                "net_sales": float(data.payment or 0) - float(data.refund or 0),
-                "visitors": int(data.visitors or 0),
-                "conversion": float(data.conversion or 0),
-                "ad_spend": float(data.ad_spend or 0)
-            }
+    trend_data = {}
+    for d in all_data:
+        p = str(d.period)
+        trend_data[p] = {
+            "payment_amount": float(d.payment or 0),
+            "refund_amount": float(d.refund or 0),
+            "net_sales": float(d.payment or 0) - float(d.refund or 0),
+            "visitors": int(d.visitors or 0),
+            "conversion": float(d.conversion or 0),
+            "ad_spend": float(d.ad_spend or 0)
+        }
     
     payments = [v['payment_amount'] for v in trend_data.values()]
     visitors_list = [v['visitors'] for v in trend_data.values()]
@@ -139,13 +141,19 @@ def get_payment_trend(
     
     period_list = get_period_list(str(period), dimension, periods)
     
+    all_data = db.query(
+        getattr(Model, date_col).label('period'),
+        func.sum(Model.payment_amount).label('payment'),
+        func.sum(Model.refund_amount).label('refund'),
+    ).filter(
+        getattr(Model, date_col).in_(period_list)
+    ).group_by(getattr(Model, date_col)).all()
+    
+    data_map = {str(d.period): d for d in all_data}
+    
     trend = []
     for p in period_list:
-        data = db.query(
-            func.sum(Model.payment_amount).label('payment'),
-            func.sum(Model.refund_amount).label('refund'),
-        ).filter(getattr(Model, date_col) == p).first()
-        
+        data = data_map.get(p)
         payment = float(data.payment or 0) if data else 0
         refund = float(data.refund or 0) if data else 0
         
@@ -182,13 +190,19 @@ def get_visitors_trend(
     
     period_list = get_period_list(str(period), dimension, periods)
     
+    all_data = db.query(
+        getattr(Model, date_col).label('period'),
+        func.sum(getattr(Model, visitors_col)).label('visitors'),
+        func.sum(Model.payment_amount).label('payment'),
+    ).filter(
+        getattr(Model, date_col).in_(period_list)
+    ).group_by(getattr(Model, date_col)).all()
+    
+    data_map = {str(d.period): d for d in all_data}
+    
     trend = []
     for p in period_list:
-        data = db.query(
-            func.sum(getattr(Model, visitors_col)).label('visitors'),
-            func.sum(Model.payment_amount).label('payment'),
-        ).filter(getattr(Model, date_col) == p).first()
-        
+        data = data_map.get(p)
         visitors = int(data.visitors or 0) if data else 0
         payment = float(data.payment or 0) if data else 0
         
@@ -224,12 +238,18 @@ def get_conversion_trend(
     
     period_list = get_period_list(str(period), dimension, periods)
     
+    all_data = db.query(
+        getattr(Model, date_col).label('period'),
+        func.avg(Model.payment_conversion).label('conversion'),
+    ).filter(
+        getattr(Model, date_col).in_(period_list)
+    ).group_by(getattr(Model, date_col)).all()
+    
+    data_map = {str(d.period): d for d in all_data}
+    
     trend = []
     for p in period_list:
-        data = db.query(
-            func.avg(Model.payment_conversion).label('conversion'),
-        ).filter(getattr(Model, date_col) == p).first()
-        
+        data = data_map.get(p)
         conversion = float(data.conversion or 0) if data else 0
         
         trend.append({

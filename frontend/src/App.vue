@@ -17,69 +17,45 @@
           active-text-color="#ffffff"
         >
           <el-menu-item index="/">
-            <el-icon><Odometer /></el-icon>
-            <template #title>数据概览</template>
+            <el-icon><DataBoard /></el-icon>
+            <template #title>指挥塔</template>
           </el-menu-item>
           
-          <el-menu-item index="/products">
-            <el-icon><Goods /></el-icon>
-            <template #title>商品列表</template>
-          </el-menu-item>
+          <el-sub-menu index="products">
+            <template #title>
+              <el-icon><Goods /></el-icon>
+              <span>商品管理</span>
+            </template>
+            <el-menu-item index="/products">商品列表</el-menu-item>
+            <el-menu-item index="/product-ranking">商品排行</el-menu-item>
+            <el-menu-item index="/lifecycle">生命周期</el-menu-item>
+            <el-menu-item index="/profit">利润分析</el-menu-item>
+          </el-sub-menu>
           
-          <el-menu-item index="/product-ranking">
-            <el-icon><DataLine /></el-icon>
-            <template #title>商品排行</template>
-          </el-menu-item>
-          
-          <el-menu-item index="/inventory">
-            <el-icon><Monitor /></el-icon>
-            <template #title>库存预警</template>
-          </el-menu-item>
-          
-          <el-menu-item index="/traffic-analysis">
-            <el-icon><TrendCharts /></el-icon>
-            <template #title>流量分析</template>
-          </el-menu-item>
-          
-          <el-menu-item index="/funnel">
-            <el-icon><DataAnalysis /></el-icon>
-            <template #title>转化漏斗</template>
-          </el-menu-item>
+          <el-sub-menu index="traffic">
+            <template #title>
+              <el-icon><TrendCharts /></el-icon>
+              <span>流量分析</span>
+            </template>
+            <el-menu-item index="/traffic-analysis">流量分析</el-menu-item>
+            <el-menu-item index="/funnel">转化漏斗</el-menu-item>
+          </el-sub-menu>
           
           <el-menu-item index="/ads">
             <el-icon><Tools /></el-icon>
             <template #title>广告投放</template>
           </el-menu-item>
           
-          <el-menu-item index="/profit">
-            <el-icon><Money /></el-icon>
-            <template #title>利润分析</template>
-          </el-menu-item>
-          
-          <el-menu-item index="/kpi">
-            <el-icon><Trophy /></el-icon>
-            <template #title>KPI管理</template>
-          </el-menu-item>
-          
-          <el-menu-item index="/lifecycle">
-            <el-icon><Odometer /></el-icon>
-            <template #title>生命周期</template>
-          </el-menu-item>
-          
-          <el-menu-item index="/reviews">
-            <el-icon><User /></el-icon>
-            <template #title>评价分析</template>
-          </el-menu-item>
-          
-          <el-menu-item index="/trends">
-            <el-icon><TrendCharts /></el-icon>
-            <template #title>趋势分析</template>
-          </el-menu-item>
-          
-          <el-menu-item index="/command-tower">
-            <el-icon><DataBoard /></el-icon>
-            <template #title>指挥塔</template>
-          </el-menu-item>
+          <el-sub-menu index="management">
+            <template #title>
+              <el-icon><Trophy /></el-icon>
+              <span>运营管理</span>
+            </template>
+            <el-menu-item index="/kpi">KPI管理</el-menu-item>
+            <el-menu-item index="/inventory">库存预警</el-menu-item>
+            <el-menu-item index="/reviews">评价分析</el-menu-item>
+            <el-menu-item index="/trends">趋势分析</el-menu-item>
+          </el-sub-menu>
         </el-menu>
       </el-scrollbar>
     </el-aside>
@@ -94,6 +70,12 @@
           >
             <el-icon size="20"><Expand v-if="isCollapsed" /><Fold v-else /></el-icon>
           </el-button>
+          <el-breadcrumb v-if="breadcrumbItems.length" separator="/">
+            <el-breadcrumb-item :to="{ path: '/' }">首页</el-breadcrumb-item>
+            <el-breadcrumb-item v-for="(item, index) in breadcrumbItems" :key="index" :to="item.to || undefined">
+              {{ item.title }}
+            </el-breadcrumb-item>
+          </el-breadcrumb>
           <h2 class="page-title">{{ pageTitle }}</h2>
         </div>
         <div class="header-right">
@@ -114,10 +96,14 @@
         </div>
       </el-header>
       
+      <div class="date-range-header">
+        <DateRangePicker />
+      </div>
+      
       <el-main class="app-main">
         <router-view v-slot="{ Component }">
-          <transition name="fade-slide" mode="out-in">
-            <component :is="Component" />
+          <transition :name="transitionName" mode="out-in">
+            <component :is="Component" :key="$route.path" />
           </transition>
         </router-view>
       </el-main>
@@ -126,38 +112,49 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { 
   DataBoard, DataLine, Odometer, Goods, Monitor,
   TrendCharts, Trophy, Expand, Fold, Sunny, Moon,
-  FullScreen, Tools, DataAnalysis, User, Money
+  FullScreen, Tools, DataAnalysis
 } from '@element-plus/icons-vue'
+import DateRangePicker from '@/components/DateRangePicker.vue'
 
 const route = useRoute()
 const isCollapsed = ref(false)
 const isDark = ref(false)
+const transitionName = ref('fade')
 
 const activeMenu = computed(() => route.path)
 
-const pageTitle = computed(() => {
-  const titles = {
-    '/': '数据概览',
-    '/command-tower': '指挥塔',
-    '/products': '商品列表',
-    '/product': '商品详情',
-    '/product-ranking': '商品排行',
-    '/inventory': '库存预警',
-    '/reviews': '评价分析',
-    '/traffic-analysis': '流量分析',
-    '/funnel': '转化漏斗',
-    '/ads': '广告投放',
-    '/profit': '利润分析',
-    '/kpi': 'KPI管理',
-    '/lifecycle': '生命周期',
-    '/trends': '趋势分析'
-  }
-  return titles[route.path] || '运营系统'
+const pageTitles = {
+  '/': '指挥塔',
+  '/products': '商品列表',
+  '/product': '商品详情',
+  '/product-ranking': '商品排行',
+  '/inventory': '库存预警',
+  '/reviews': '评价分析',
+  '/traffic-analysis': '流量分析',
+  '/funnel': '转化漏斗',
+  '/ads': '广告投放',
+  '/profit': '利润分析',
+  '/kpi': 'KPI管理',
+  '/lifecycle': '生命周期',
+  '/trends': '趋势分析'
+}
+
+const pageTitle = computed(() => pageTitles[route.path] || '运营系统')
+
+const breadcrumbItems = computed(() => {
+  const path = route.path
+  if (path === '/') return []
+  const segments = path.split('/').filter(Boolean)
+  if (segments.length === 1) return []
+  return segments.map((seg, i) => ({
+    title: pageTitles['/' + segments.slice(0, i + 1).join('/')] || seg,
+    to: '/' + segments.slice(0, i + 1).join('/'),
+  }))
 })
 
 const toggleSidebar = () => {
@@ -182,6 +179,10 @@ onMounted(() => {
     isDark.value = true
     document.documentElement.classList.add('dark')
   }
+})
+
+watch(() => route.meta.transitionName, (name) => {
+  if (name) transitionName.value = name
 })
 </script>
 
@@ -250,6 +251,14 @@ onMounted(() => {
   height: 60px;
 }
 
+.date-range-header {
+  background: white;
+  border-bottom: 1px solid #e4e7ed;
+  padding: 8px 20px;
+  display: flex;
+  justify-content: flex-end;
+}
+
 .header-left {
   display: flex;
   align-items: center;
@@ -308,6 +317,11 @@ onMounted(() => {
   }
   
   .app-header {
+    background-color: #1f1f1f;
+    border-bottom-color: #333;
+  }
+  
+  .date-range-header {
     background-color: #1f1f1f;
     border-bottom-color: #333;
   }

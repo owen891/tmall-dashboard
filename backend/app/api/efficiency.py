@@ -6,7 +6,7 @@ from app.core.database import get_db
 from app.models.command_tower import (
     UserKPI, TaskItem, CampaignProject, UserDailyPerformance
 )
-from app.models.product import OperationAction
+from app.models.operations import OperationAction
 from app.schemas.common import ResponseModel
 from datetime import datetime, timedelta
 

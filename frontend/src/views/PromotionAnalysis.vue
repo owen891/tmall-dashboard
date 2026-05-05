@@ -168,6 +168,7 @@ import { ElMessage } from 'element-plus'
 import { Search } from '@element-plus/icons-vue'
 import * as echarts from 'echarts'
 import ExportButton from '@/components/ExportButton.vue'
+import { formatNumber } from '@/utils/format'
 
 const activeChannel = ref('all')
 const searchKeyword = ref('')
@@ -178,6 +179,7 @@ const trendChartRef = ref(null)
 const pieChartRef = ref(null)
 let trendChart = null
 let pieChart = null
+let handleResize = null
 
 const summary = ref({
   totalCost: 125680,
@@ -221,14 +223,6 @@ const loadCampaignData = async () => {
   ]
   
   total.value = campaignList.value.length
-}
-
-const formatNumber = (num) => {
-  if (!num) return '0'
-  if (num >= 10000) {
-    return (num / 10000).toFixed(1) + '万'
-  }
-  return num.toLocaleString()
 }
 
 const getChannelType = (channel) => {
@@ -387,9 +381,15 @@ const renderPieChart = () => {
 onMounted(() => {
   loadCampaignData()
   renderCharts()
+  handleResize = () => {
+    trendChart?.resize()
+    pieChart?.resize()
+  }
+  window.addEventListener('resize', handleResize)
 })
 
 onBeforeUnmount(() => {
+  window.removeEventListener('resize', handleResize)
   trendChart?.dispose()
   pieChart?.dispose()
 })

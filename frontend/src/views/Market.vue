@@ -133,10 +133,12 @@
 import { ref, onMounted, onUnmounted } from 'vue'
 import api from '@/api'
 import * as echarts from 'echarts'
+import { formatNumber } from '@/utils/format'
 
 const activeTab = ref('keywords')
 const categoryChartRef = ref(null)
 let categoryChart = null
+let handleResize = null
 
 const overview = ref({
   total_products: 0,
@@ -228,12 +230,6 @@ const getCompetitionColor = (value) => {
   return '#f56c6c'
 }
 
-const formatNumber = (num) => {
-  if (!num) return '0'
-  if (num >= 10000) return (num / 10000).toFixed(2) + '万'
-  return num.toFixed(2)
-}
-
 onMounted(() => {
   categoryChart = echarts.init(categoryChartRef.value)
   loadOverview()
@@ -241,10 +237,12 @@ onMounted(() => {
   loadOpportunities()
   loadCategories()
   loadCompetitors()
-  window.addEventListener('resize', () => categoryChart?.resize())
+  handleResize = () => categoryChart?.resize()
+  window.addEventListener('resize', handleResize)
 })
 
 onUnmounted(() => {
+  window.removeEventListener('resize', handleResize)
   categoryChart?.dispose()
 })
 </script>

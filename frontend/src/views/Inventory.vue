@@ -190,6 +190,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { Refresh, Warning, WarningFilled, InfoFilled, QuestionFilled } from '@element-plus/icons-vue'
 import api from '@/api'
+import { getTierType } from '@/utils/format'
 
 const dimension = ref('weekly')
 const loading = ref(true)
@@ -209,15 +210,6 @@ const filteredWarnings = computed(() => {
   }
   return warnings.value.filter(w => w.warning_level === levelFilter.value)
 })
-
-const getTierType = (tier) => {
-  const types = {
-    '引流款': 'success',
-    '利润款': 'primary',
-    '潜力款': 'warning'
-  }
-  return types[tier] || 'info'
-}
 
 const getLevelType = (level) => {
   const types = {
@@ -258,8 +250,8 @@ const loadData = async () => {
       high_threshold: highThreshold.value
     }
 
-    const res = await api.request.get('/inventory/warnings', { params })
-    const data = res.data || {}
+    const res = await api.getInventoryWarnings(params)
+    const data = res.data || res || {}
 
     warnings.value = data.warnings || []
     productsWithoutData.value = data.products_without_data || []
@@ -280,8 +272,8 @@ const loadVelocity = async () => {
       dimension: dimension.value,
       limit: 50
     }
-    const res = await api.request.get('/inventory/velocity', { params })
-    velocityData.value = res.data?.products || []
+    const res = await api.getInventoryVelocity(params)
+    velocityData.value = res.data?.products || res?.products || []
   } catch (error) {
     console.error('Load velocity error:', error)
   } finally {
@@ -290,19 +282,17 @@ const loadVelocity = async () => {
 }
 
 const filterWarnings = () => {
-  // Computed property handles filtering
 }
 
-onMounted(() => {
-  loadData()
-})
-
-// Load velocity when tab changes
 import { watch } from 'vue'
 watch(activeTab, (newTab) => {
   if (newTab === 'velocity' && velocityData.value.length === 0) {
     loadVelocity()
   }
+})
+
+onMounted(() => {
+  loadData()
 })
 </script>
 

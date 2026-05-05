@@ -86,37 +86,35 @@ const handleCommand = (command) => {
   }
 }
 
-const exportAsExcel = () => {
-  let dataToExport = props.tableData
-  
-  if (props.columns) {
-    dataToExport = props.tableData.map(row => {
-      const obj = {}
-      props.columns.forEach(col => {
-        obj[col.label] = row[col.prop]
-      })
-      return obj
+const transformData = () => {
+  if (!props.tableData || props.tableData.length === 0) return null
+  if (!props.columns) return props.tableData
+  return props.tableData.map(row => {
+    const obj = {}
+    props.columns.forEach(col => {
+      obj[col.label] = row[col.prop]
     })
+    return obj
+  })
+}
+
+const exportAsExcel = () => {
+  const dataToExport = transformData()
+  if (!dataToExport) {
+    ElMessage.warning('没有可导出的数据')
+    return
   }
-  
   exportTableToExcel(dataToExport, props.fileName)
   ElMessage.success('导出成功')
   emit('export-success', { type: 'excel', fileName: props.fileName })
 }
 
 const exportAsCSV = () => {
-  let dataToExport = props.tableData
-  
-  if (props.columns) {
-    dataToExport = props.tableData.map(row => {
-      const obj = {}
-      props.columns.forEach(col => {
-        obj[col.label] = row[col.prop]
-      })
-      return obj
-    })
+  const dataToExport = transformData()
+  if (!dataToExport) {
+    ElMessage.warning('没有可导出的数据')
+    return
   }
-  
   exportToCSV(dataToExport, props.fileName)
   ElMessage.success('导出成功')
   emit('export-success', { type: 'csv', fileName: props.fileName })

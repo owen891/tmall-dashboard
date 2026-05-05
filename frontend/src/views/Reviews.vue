@@ -96,6 +96,7 @@ const sentimentChartRef = ref(null)
 const ratingChartRef = ref(null)
 let sentimentChart = null
 let ratingChart = null
+let handleResize = null
 
 const summary = ref({
   total_reviews: 0,
@@ -189,13 +190,15 @@ onMounted(() => {
   sentimentChart = echarts.init(sentimentChartRef.value)
   ratingChart = echarts.init(ratingChartRef.value)
   loadData()
-  window.addEventListener('resize', () => {
+  handleResize = () => {
     sentimentChart?.resize()
     ratingChart?.resize()
-  })
+  }
+  window.addEventListener('resize', handleResize)
 })
 
 onUnmounted(() => {
+  window.removeEventListener('resize', handleResize)
   sentimentChart?.dispose()
   ratingChart?.dispose()
 })

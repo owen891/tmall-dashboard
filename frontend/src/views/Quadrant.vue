@@ -65,12 +65,14 @@
 </template>
 
 <script setup>
-import { ref, onMounted, nextTick } from 'vue'
+import { ref, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import * as echarts from 'echarts'
 import api from '@/api'
+import { formatNumber } from '@/utils/format'
 
 const chartRef = ref(null)
 let chart = null
+let handleResize = null
 
 const quadrantData = ref([])
 const quadrantGroups = ref({})
@@ -79,14 +81,6 @@ const quadrantNames = {
   cash_cow: '现金牛',
   question: '问题商品',
   dog: '瘦狗商品'
-}
-
-const formatNumber = (num) => {
-  if (!num) return '0'
-  if (num >= 10000) {
-    return (num / 10000).toFixed(2) + '万'
-  }
-  return num.toLocaleString()
 }
 
 const gmvMid = ref(10000)
@@ -208,11 +202,17 @@ const initChart = () => {
   
   chart.setOption(option)
   
-  window.addEventListener('resize', () => chart.resize())
+  handleResize = () => chart?.resize()
+  window.addEventListener('resize', handleResize)
 }
 
 onMounted(() => {
   loadData()
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('resize', handleResize)
+  chart?.dispose()
 })
 </script>
 

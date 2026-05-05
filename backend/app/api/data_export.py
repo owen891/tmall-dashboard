@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func, desc
 from typing import Optional, List
 from app.core.database import get_db
+from app.core.utils import get_latest_period
 from app.models import DailyData, WeeklyData, MonthlyData, Product
 from app.schemas.common import ResponseModel
 from fastapi.responses import StreamingResponse
@@ -262,9 +263,3 @@ def get_export_fields():
         'field_labels': {k: HEADER_MAP.get(k, k) for k in DEFAULT_FIELDS}
     })
 
-def get_latest_period(Model, date_col, db):
-    """获取最新周期"""
-    latest = db.query(Model).order_by(desc(getattr(Model, date_col))).first()
-    if latest:
-        return getattr(latest, date_col)
-    return None

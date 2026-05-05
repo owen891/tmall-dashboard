@@ -4,48 +4,11 @@ from sqlalchemy import func, desc
 from typing import Optional, Tuple, Dict, Any
 from app.core.database import get_db
 from app.core.cache import cached
+from app.core.utils import get_prev_period, get_data_model, get_latest_period
 from app.models import DailyData, WeeklyData, MonthlyData, Product
 from app.schemas.common import ResponseModel
 
 router = APIRouter(prefix="/dashboard", tags=["仪表盘"])
-
-
-def get_prev_period(period_str: str, dim: str) -> str:
-    """获取上一个周期"""
-    from datetime import datetime, timedelta
-    
-    try:
-        if dim == 'monthly':
-            y, m = period_str.split('-')
-            m = int(m) - 1
-            if m == 0:
-                m, y = 12, str(int(y) - 1)
-            return f"{y}-{m:02d}"
-        else:
-            d = datetime.strptime(period_str, '%Y-%m-%d')
-            if dim == 'weekly':
-                prev = d - timedelta(days=7)
-            else:
-                prev = d - timedelta(days=1)
-            return prev.strftime('%Y-%m-%d')
-    except (ValueError, IndexError, TypeError, AttributeError):
-        return period_str
-
-
-def get_data_model(dimension: str) -> Tuple[Any, str, str]:
-    """根据维度获取数据模型、日期字段、访客字段"""
-    if dimension == "monthly":
-        return MonthlyData, 'month', 'visitors'
-    elif dimension == "daily":
-        return DailyData, 'date', 'ipv'
-    else:
-        return WeeklyData, 'week_start', 'ipv'
-
-
-def get_latest_period(Model, date_col, db) -> Optional[str]:
-    """获取最新周期"""
-    latest = db.query(Model).order_by(desc(getattr(Model, date_col))).first()
-    return getattr(latest, date_col) if latest else None
 
 
 @router.get("", response_model=ResponseModel)
@@ -179,6 +142,7 @@ def get_dashboard(
     top_products_query = db.query(
         Model.product_id,
         func.max(Product.title).label('product_name'),
+        func.max(Product.image_url).label('image_url'),
         func.sum(Model.payment_amount).label('payment'),
         func.sum(Model.refund_amount).label('refund'),
         func.sum(getattr(Model, visitors_col)).label('visitors'),
@@ -203,6 +167,7 @@ def get_dashboard(
         top_products.append({
             "product_id": p.product_id,
             "product_name": p.product_name,
+            "image_url": p.image_url,
             "payment_amount": round(payment, 2),
             "net_sales": round(payment - refund, 2),
             "refund_amount": round(refund, 2),
@@ -279,37 +244,52 @@ def get_dashboard(
 def get_dashboard_summary(
     dimension: str = Query("weekly", description="时间维度"),
     period: Optional[str] = Query(None, description="指定周期"),
+    start_date: Optional[str] = Query(None, description="开始日期"),
+    end_date: Optional[str] = Query(None, description="结束日期"),
     db: Session = Depends(get_db)
 ):
     """获取仪表盘汇总数据（新版前端用）"""
     
     Model, date_col, visitors_col = get_data_model(dimension)
     
-    if not period:
+    if not period and not start_date:
         period = get_latest_period(Model, date_col, db)
     
-    if not period:
+    if not period and not start_date:
         return ResponseModel(data={"kpi": {}, "trends": []})
     
-    period_str = str(period)
-    prev_period_str = get_prev_period(period_str, dimension)
+    period_str = str(period) if period else None
+    prev_period_str = get_prev_period(period_str, dimension) if period_str else None
     
-    current_data = db.query(
+    base_query = db.query(
         func.sum(Model.payment_amount).label('total_payment'),
         func.sum(Model.refund_amount).label('total_refund'),
         func.sum(getattr(Model, visitors_col)).label('total_visitors'),
         func.sum(Model.ad_spend).label('total_ad_spend'),
         func.avg(Model.payment_conversion).label('avg_conversion'),
         func.avg(Model.ad_roi).label('avg_roi'),
-    ).filter(getattr(Model, date_col) == period).first()
+    )
     
-    prev_data = db.query(
+    if start_date and end_date:
+        current_data = base_query.filter(
+            getattr(Model, date_col) >= start_date,
+            getattr(Model, date_col) <= end_date
+        ).first()
+    else:
+        current_data = base_query.filter(getattr(Model, date_col) == period).first()
+    
+    prev_base_query = db.query(
         func.sum(Model.payment_amount).label('total_payment'),
         func.sum(Model.refund_amount).label('total_refund'),
         func.sum(getattr(Model, visitors_col)).label('total_visitors'),
         func.avg(Model.payment_conversion).label('avg_conversion'),
         func.avg(Model.ad_roi).label('avg_roi'),
-    ).filter(getattr(Model, date_col) == prev_period_str).first()
+    )
+    
+    if prev_period_str:
+        prev_data = prev_base_query.filter(getattr(Model, date_col) == prev_period_str).first()
+    else:
+        prev_data = None
     
     if not current_data:
         return ResponseModel(data={"kpi": {}, "trends": []})
@@ -399,6 +379,8 @@ def get_dashboard_summary(
 def get_top_products(
     dimension: str = Query("weekly", description="时间维度"),
     period: Optional[str] = Query(None, description="指定周期"),
+    start_date: Optional[str] = Query(None, description="开始日期"),
+    end_date: Optional[str] = Query(None, description="结束日期"),
     metric: str = Query("payment_amount", description="排名指标"),
     limit: int = Query(10, description="返回数量"),
     db: Session = Depends(get_db)
@@ -407,10 +389,10 @@ def get_top_products(
     
     Model, date_col, visitors_col = get_data_model(dimension)
     
-    if not period:
+    if not period and not start_date:
         period = get_latest_period(Model, date_col, db)
     
-    if not period:
+    if not period and not start_date:
         return ResponseModel(data={"products": []})
     
     metric_map = {
@@ -424,22 +406,33 @@ def get_top_products(
     
     metric_func = metric_map.get(metric, metric_map['payment_amount'])
     
-    products_query = db.query(
+    base_query = db.query(
         Model.product_id,
         Product.title,
         Product.image_url,
         Product.tier,
-        metric_func.label('metric_value')
+        func.sum(Model.payment_amount).label('payment_amount'),
+        func.sum(getattr(Model, visitors_col)).label('visitors'),
+        func.avg(Model.payment_conversion).label('conversion'),
+        func.avg(Model.ad_roi).label('roi'),
     ).join(
         Product, Model.product_id == Product.product_id
-    ).filter(
-        getattr(Model, date_col) == period
-    ).group_by(
+    )
+    
+    if start_date and end_date:
+        base_query = base_query.filter(
+            getattr(Model, date_col) >= start_date,
+            getattr(Model, date_col) <= end_date
+        )
+    else:
+        base_query = base_query.filter(getattr(Model, date_col) == period)
+    
+    products_query = base_query.group_by(
         Model.product_id,
         Product.title,
         Product.image_url,
         Product.tier
-    ).order_by(desc('metric_value')).limit(limit).all()
+    ).order_by(desc(func.sum(Model.payment_amount))).limit(limit).all()
 
     products = []
     for i, p in enumerate(products_query, 1):
@@ -450,11 +443,14 @@ def get_top_products(
             "image_url": p.image_url,
             "tier": p.tier,
             "metric": metric,
-            "value": round(float(p.metric_value or 0), 2)
+            "value": round(float(p.payment_amount or 0), 2),
+            "visitors": int(p.visitors or 0),
+            "conversion": round(float(p.conversion or 0) * 100, 2) if p.conversion else 0,
+            "roi": round(float(p.roi or 0), 2) if p.roi else 0
         })
     
     return ResponseModel(data={
         "products": products,
-        "period": str(period),
+        "period": str(period) if period else f"{start_date} ~ {end_date}",
         "metric": metric
     })

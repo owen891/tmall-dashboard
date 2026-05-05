@@ -19,3 +19,7 @@ pre-commit>=3.6
 websockets>=12.0
 aiosqlite>=0.19
 apscheduler>=3.10
+python-jose[cryptography]>=3.3
+passlib[bcrypt]>=1.7
+alembic>=1.12
+redis>=5.0

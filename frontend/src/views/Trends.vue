@@ -74,6 +74,7 @@ import api from '@/api'
 
 const chartRef = ref(null)
 let trendChart = null
+let handleResize = null
 
 const dimension = ref('weekly')
 const productId = ref(null)
@@ -236,10 +237,12 @@ const updateChart = () => {
 onMounted(async () => {
   await loadProducts()
   await loadTrends()
-  window.addEventListener('resize', () => trendChart?.resize())
+  handleResize = () => trendChart?.resize()
+  window.addEventListener('resize', handleResize)
 })
 
 onUnmounted(() => {
+  window.removeEventListener('resize', handleResize)
   trendChart?.dispose()
 })
 </script>

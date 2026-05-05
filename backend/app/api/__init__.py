@@ -1,58 +1,21 @@
 from fastapi import APIRouter
-from app.api import products, imports, dashboard, custom_fields, kpi, trends, ads, health, operations, lifecycle, refunds, targets, alerts, reviews, market, toolbox, compare, profit, inventory, pace, events, attribution, funnel, reports_api, misc, data_export, promotion, recommendation, reports, realtime, prediction, collaboration, data_quality, backup, upload, settings, smart_import, system, crowd_asset, abtest_sop, efficiency, smart_alert, backup_management
-from app.api import dashboard_api, traffic_api, products_api, supply_api, ads_api, alerts_tasks_api, tasks_kpis_api
+from importlib import import_module
+from pathlib import Path
+
+BLACKLIST = {"__init__"}
 
 api_router = APIRouter(prefix="/api")
 
-api_router.include_router(products.router)
-api_router.include_router(imports.router)
-api_router.include_router(dashboard.router)
-api_router.include_router(custom_fields.router)
-api_router.include_router(kpi.router)
-api_router.include_router(trends.router)
-api_router.include_router(ads.router)
-api_router.include_router(health.router)
-api_router.include_router(operations.router)
-api_router.include_router(lifecycle.router)
-api_router.include_router(refunds.router)
-api_router.include_router(targets.router)
-api_router.include_router(alerts.router)
-api_router.include_router(reviews.router)
-api_router.include_router(market.router)
-api_router.include_router(toolbox.router)
-api_router.include_router(compare.router)
-api_router.include_router(profit.router)
-api_router.include_router(inventory.router)
-api_router.include_router(pace.router)
-api_router.include_router(events.router)
-api_router.include_router(attribution.router)
-api_router.include_router(funnel.router)
-api_router.include_router(reports_api.router)
-api_router.include_router(misc.router)
-api_router.include_router(data_export.router)
-api_router.include_router(promotion.router)
-api_router.include_router(recommendation.router)
-api_router.include_router(reports.router)
-api_router.include_router(realtime.router)
-api_router.include_router(prediction.router)
-api_router.include_router(collaboration.router)
-api_router.include_router(data_quality.router)
-api_router.include_router(backup.router)
-api_router.include_router(upload.router)
-api_router.include_router(settings.router)
-api_router.include_router(smart_import.router)
-api_router.include_router(system.router)
-api_router.include_router(crowd_asset.router)
-api_router.include_router(abtest_sop.router)
-api_router.include_router(efficiency.router)
-api_router.include_router(smart_alert.router)
-api_router.include_router(backup_management.router)
+_api_dir = Path(__file__).parent
+for _file in sorted(_api_dir.glob("*.py")):
+    _name = _file.stem
+    if _name in BLACKLIST:
+        continue
 
-api_router.include_router(dashboard_api.router)
-api_router.include_router(traffic_api.router)
-api_router.include_router(products_api.router)
-api_router.include_router(supply_api.router)
-api_router.include_router(ads_api.router)
-api_router.include_router(alerts_tasks_api.router)
-api_router.include_router(tasks_kpis_api.router)
-api_router.include_router(tasks_kpis_api.router_kpi)
+    _mod = import_module(f"app.api.{_name}")
+
+    if hasattr(_mod, "router"):
+        api_router.include_router(_mod.router)
+
+    if hasattr(_mod, "router_kpi"):
+        api_router.include_router(_mod.router_kpi)

@@ -116,6 +116,7 @@
 import { ref, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import api from '@/api'
+import { formatNumber } from '@/utils/format'
 
 const dimension = ref('weekly')
 const summary = ref({
@@ -133,7 +134,11 @@ const productKPIs = ref([])
 
 const loadKPI = async () => {
   try {
-    const summaryRes = await api.getKPISummary(dimension.value)
+    const [summaryRes, anomaliesRes, productsRes] = await Promise.all([
+      api.getKPISummary(dimension.value),
+      api.getKPIAnomalies(),
+      api.getProducts({ dim: dimension.value, limit: 10 })
+    ])
     const kpi = summaryRes.data?.kpi || {}
     summary.value = {
       gmv: kpi.total_gmv?.value || 0,
@@ -146,10 +151,8 @@ const loadKPI = async () => {
       roi_trend: kpi.avg_roi?.change?.percent || 0
     }
     
-    const anomaliesRes = await api.getKPIAnomalies()
     anomalies.value = anomaliesRes.data?.alerts || []
     
-    const productsRes = await api.getProducts({ dim: dimension.value, limit: 10 })
     productKPIs.value = (productsRes.data?.data || []).map(p => ({
       product_name: p.title,
       gmv: p.payment_amount,
@@ -172,14 +175,6 @@ const dismissAnomaly = async (id) => {
   } catch (error) {
     ElMessage.error('操作失败')
   }
-}
-
-const formatNumber = (num) => {
-  if (!num) return '0'
-  if (num >= 10000) {
-    return (num / 10000).toFixed(2) + '万'
-  }
-  return num.toFixed ? num.toFixed(2) : num
 }
 
 onMounted(() => {

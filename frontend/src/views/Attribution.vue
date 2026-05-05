@@ -193,6 +193,7 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import api from '@/api'
+import { formatNumber, formatPercent, getTierType } from '@/utils/format'
 
 const dimension = ref('weekly')
 const loading = ref(true)
@@ -207,20 +208,6 @@ const suggestions = ref([])
 const rootCauses = ref([])
 const selectedProductId = ref('')
 const productList = ref([])
-
-const formatNumber = (num) => {
-  if (!num && num !== 0) return '0'
-  num = Number(num)
-  if (num >= 10000) {
-    return (num / 10000).toFixed(2) + '万'
-  }
-  return num.toLocaleString()
-}
-
-const getTierType = (tier) => {
-  const types = { '引流款': 'success', '利润款': 'primary', '潜力款': 'warning' }
-  return types[tier] || 'info'
-}
 
 const loadData = async () => {
   loading.value = true

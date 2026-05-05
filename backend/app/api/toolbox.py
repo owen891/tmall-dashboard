@@ -1,13 +1,18 @@
+from sqlalchemy.orm import Session
 from datetime import datetime, timedelta
 from typing import Optional, List, Dict, Any
 from collections import Counter
 import re
 import json
-from fastapi import APIRouter, Query, HTTPException
+from fastapi import Depends, APIRouter, Query, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import func, desc
 from app.core.database import get_db
-from app.models.product import Product, DailyData, ProductNote, Review, MonthlyData, ProductHealth, ReviewSummary
+from app.models import Product
+from app.models.sales_data import DailyData, MonthlyData
+from app.models.product import ProductNote
+from app.models.review import Review, ReviewSummary
+from app.models.health import ProductHealth
 
 router = APIRouter(prefix="/toolbox", tags=["运营工具箱"])
 
@@ -174,9 +179,7 @@ class ToolExecuteResponse(BaseModel):
 
 
 @router.get("/analysis/product/{product_id}", response_model=dict)
-def analyze_product(product_id: int):
-    db = next(get_db())
-    try:
+def analyze_product(product_id: int, db: Session = Depends(get_db)):
         product = db.query(Product).filter(Product.id == product_id).first()
         if not product:
             return {"code": 404, "message": "商品不存在"}
@@ -261,7 +264,7 @@ def analyze_product(product_id: int):
 
         analysis = ProductAnalysis(
             product_id=product_id,
-            product_name=product.name,
+            product_name=product.title,
             health_score=health_score,
             lifecycle_stage=lifecycle_stage,
             roi_trend=roi_trend,
@@ -272,14 +275,8 @@ def analyze_product(product_id: int):
 
         return {"code": 200, "data": analysis}
 
-    finally:
-        db.close()
-
-
 @router.get("/price/recommendation/{product_id}", response_model=dict)
-def get_price_recommendation(product_id: int):
-    db = next(get_db())
-    try:
+def get_price_recommendation(product_id: int, db: Session = Depends(get_db)):
         product = db.query(Product).filter(Product.id == product_id).first()
         if not product:
             return {"code": 404, "message": "商品不存在"}
@@ -316,7 +313,7 @@ def get_price_recommendation(product_id: int):
 
         recommendation = PriceRecommendation(
             product_id=product_id,
-            product_name=product.name,
+            product_name=product.title,
             current_price=current_price,
             recommended_price=round(recommended_price, 2),
             price_range_min=round(price_range_min, 2),
@@ -326,14 +323,8 @@ def get_price_recommendation(product_id: int):
 
         return {"code": 200, "data": recommendation}
 
-    finally:
-        db.close()
-
-
 @router.get("/inventory/alerts", response_model=dict)
-def get_inventory_alerts(days_threshold: int = Query(7, description="库存预警天数阈值")):
-    db = next(get_db())
-    try:
+def get_inventory_alerts(days_threshold: int = Query(7, description="库存预警天数阈值"), db: Session = Depends(get_db)):
         daily_data = db.query(
             DailyData.product_id,
             func.avg(DailyData.sales).label("avg_daily_sales")
@@ -367,7 +358,7 @@ def get_inventory_alerts(days_threshold: int = Query(7, description="库存预�
 
             alerts.append(InventoryAlert(
                 product_id=product.id,
-                product_name=product.name,
+                product_name=product.title,
                 current_stock=stock,
                 daily_sales=round(avg_sales, 2),
                 days_remaining=round(days_remaining, 1),
@@ -379,17 +370,11 @@ def get_inventory_alerts(days_threshold: int = Query(7, description="库存预�
 
         return {"code": 200, "data": alerts}
 
-    finally:
-        db.close()
-
-
 @router.get("/forecast/{product_id}", response_model=dict)
 def get_sales_forecast(
     product_id: int,
     period: str = Query("7d", description="预测周期: 7d/14d/30d")
 ):
-    db = next(get_db())
-    try:
         product = db.query(Product).filter(Product.id == product_id).first()
         if not product:
             return {"code": 404, "message": "商品不存在"}
@@ -401,7 +386,7 @@ def get_sales_forecast(
         if len(daily_data) < 3:
             return {"code": 200, "data": SalesForecast(
                 product_id=product_id,
-                product_name=product.name,
+                product_name=product.title,
                 period=period,
                 forecast_gmv=product.gmv or 0,
                 forecast_sales=int(product.sales or 0),
@@ -441,7 +426,7 @@ def get_sales_forecast(
 
         forecast = SalesForecast(
             product_id=product_id,
-            product_name=product.name,
+            product_name=product.title,
             period=period,
             forecast_gmv=round(forecast_gmv, 2),
             forecast_sales=forecast_sales,
@@ -451,14 +436,8 @@ def get_sales_forecast(
 
         return {"code": 200, "data": forecast}
 
-    finally:
-        db.close()
-
-
 @router.get("/competitor/compare/{product_id}", response_model=dict)
-def compare_with_competitors(product_id: int):
-    db = next(get_db())
-    try:
+def compare_with_competitors(product_id: int, db: Session = Depends(get_db)):
         product = db.query(Product).filter(Product.id == product_id).first()
         if not product:
             return {"code": 404, "message": "商品不存在"}
@@ -474,7 +453,7 @@ def compare_with_competitors(product_id: int):
         if not similar_products:
             return {"code": 200, "data": CompetitorComparison(
                 product_id=product_id,
-                product_name=product.name,
+                product_name=product.title,
                 your_price=price,
                 avg_competitor_price=price,
                 price_diff=0,
@@ -503,7 +482,7 @@ def compare_with_competitors(product_id: int):
 
         comparison = CompetitorComparison(
             product_id=product_id,
-            product_name=product.name,
+            product_name=product.title,
             your_price=price,
             avg_competitor_price=round(avg_competitor_price, 2),
             price_diff=round(price_diff, 2),
@@ -514,10 +493,6 @@ def compare_with_competitors(product_id: int):
 
         return {"code": 200, "data": comparison}
 
-    finally:
-        db.close()
-
-
 @router.post("/bulk/pricing", response_model=dict)
 def apply_bulk_pricing(
     min_price: float,
@@ -525,8 +500,6 @@ def apply_bulk_pricing(
     adjustment_type: str,
     adjustment_value: float
 ):
-    db = next(get_db())
-    try:
         query = db.query(Product)
 
         if min_price > 0:
@@ -553,14 +526,8 @@ def apply_bulk_pricing(
 
         return {"code": 200, "message": f"已更新 {updated_count} 个商品的价格"}
 
-    finally:
-        db.close()
-
-
 @router.get("/tips/daily", response_model=dict)
-def get_daily_tips():
-    db = next(get_db())
-    try:
+def get_daily_tips(db: Session = Depends(get_db)):
         products = db.query(Product).all()
 
         tips = []
@@ -611,14 +578,8 @@ def get_daily_tips():
 
         return {"code": 200, "data": tips}
 
-    finally:
-        db.close()
-
-
 @router.get("/auto-optimize/{product_id}", response_model=dict)
-def get_auto_optimization(product_id: int):
-    db = next(get_db())
-    try:
+def get_auto_optimization(product_id: int, db: Session = Depends(get_db)):
         product = db.query(Product).filter(Product.id == product_id).first()
         if not product:
             return {"code": 404, "message": "商品不存在"}
@@ -670,13 +631,9 @@ def get_auto_optimization(product_id: int):
 
         return {"code": 200, "data": {
             "product_id": product_id,
-            "product_name": product.name,
+            "product_name": product.title,
             "optimizations": optimizations
         }}
-
-    finally:
-        db.close()
-
 
 def calculate_health_score(product: Product) -> float:
     score = 100.0
@@ -729,7 +686,7 @@ def get_tools():
 
 
 @router.post("/tools/execute", response_model=dict)
-def execute_tool(request: ToolExecuteRequest):
+def execute_tool(request: ToolExecuteRequest, db: Session = Depends(get_db)):
     """执行工具任务"""
     tool_id = request.tool_id
     params = request.params
@@ -755,7 +712,6 @@ def execute_tool(request: ToolExecuteRequest):
         }
 
     # 分发到具体工具处理器
-    db = next(get_db())
     try:
         if tool_id == "main_image_suggest":
             result = _exec_main_image_suggest(db, params)
@@ -772,10 +728,6 @@ def execute_tool(request: ToolExecuteRequest):
         return {"code": 200, "data": {"result": result, "status": "success"}}
     except Exception as e:
         return {"code": 500, "message": f"执行失败: {str(e)}"}
-    finally:
-        db.close()
-
-
 # ========== 工具实现函数 ==========
 
 def _exec_main_image_suggest(db, params):

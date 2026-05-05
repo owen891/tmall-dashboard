@@ -122,6 +122,12 @@ def get_product_profits(
 
     results = query.limit(limit).all()
 
+    product_ids = [r.product_id for r in results]
+    product_map = {}
+    if product_ids:
+        product_rows = db.query(Product).filter(Product.product_id.in_(product_ids)).all()
+        product_map = {p.product_id: p for p in product_rows}
+
     products = []
     for r in results:
         payment = safe_float(r.payment)
@@ -133,7 +139,7 @@ def get_product_profits(
 
         metrics = calculate_profit_metrics(payment, refund, ad_spend, cost, commission, freight)
 
-        product = db.query(Product).filter(Product.product_id == r.product_id).first()
+        product = product_map.get(r.product_id)
         if product:
             products.append({
                 "product_id": r.product_id,
@@ -171,16 +177,26 @@ def get_profit_trends(
     if not period:
         return ResponseModel(data={"trends": []})
 
-    trends = []
+    period_list = []
     current = str(period)
-
     for _ in range(periods):
-        data = db.query(
-            func.sum(Model.payment_amount).label('payment'),
-            func.sum(Model.refund_amount).label('refund'),
-            func.sum(Model.ad_spend).label('ad_spend'),
-        ).filter(getattr(Model, date_col) == current).first()
+        period_list.append(current)
+        current = get_prev_period(current, dimension)
 
+    all_data = db.query(
+        getattr(Model, date_col).label('period'),
+        func.sum(Model.payment_amount).label('payment'),
+        func.sum(Model.refund_amount).label('refund'),
+        func.sum(Model.ad_spend).label('ad_spend'),
+    ).filter(
+        getattr(Model, date_col).in_(period_list)
+    ).group_by(getattr(Model, date_col)).all()
+
+    data_map = {str(d.period): d for d in all_data}
+
+    trends = []
+    for p in period_list:
+        data = data_map.get(p)
         if data:
             payment = safe_float(data.payment)
             refund = safe_float(data.refund)
@@ -192,12 +208,10 @@ def get_profit_trends(
             metrics = calculate_profit_metrics(payment, refund, ad_spend, cost, commission, freight)
 
             trends.append({
-                "period": current,
+                "period": p,
                 "payment": round(payment, 2),
                 "metrics": metrics
             })
-
-        current = get_prev_period(current, dimension)
 
     trends.reverse()
 

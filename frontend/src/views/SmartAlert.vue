@@ -11,25 +11,25 @@
 
     <div v-loading="loading" class="content-area">
       <el-row :gutter="20" class="summary-cards">
-        <el-col :span="6">
+        <el-col :xs="12" :sm="6" :md="6" :lg="6">
           <div class="stat-card warning">
             <div class="stat-label">待处理</div>
             <div class="stat-value">{{ alertStats.pending }}</div>
           </div>
         </el-col>
-        <el-col :span="6">
+        <el-col :xs="12" :sm="6" :md="6" :lg="6">
           <div class="stat-card danger">
             <div class="stat-label">严重告警</div>
             <div class="stat-value">{{ alertStats.critical }}</div>
           </div>
         </el-col>
-        <el-col :span="6">
+        <el-col :xs="12" :sm="6" :md="6" :lg="6">
           <div class="stat-card info">
             <div class="stat-label">已忽略</div>
             <div class="stat-value">{{ alertStats.dismissed }}</div>
           </div>
         </el-col>
-        <el-col :span="6">
+        <el-col :xs="12" :sm="6" :md="6" :lg="6">
           <div class="stat-card success">
             <div class="stat-label">已解决</div>
             <div class="stat-value">{{ alertStats.resolved }}</div>
@@ -53,7 +53,7 @@
           </div>
 
           <div class="alert-list">
-            <div v-for="alert in alerts" :key="alert.id" class="alert-item" :class="alert.level">
+            <div v-for="alert in filteredAlerts" :key="alert.id" class="alert-item" :class="alert.level">
               <div class="alert-header">
                 <div class="alert-title">
                   <el-tag size="small" :type="getLevelType(alert.level)">{{ getLevelLabel(alert.level) }}</el-tag>
@@ -119,8 +119,8 @@
               </el-table-column>
               <el-table-column label="操作" width="150" fixed="right">
                 <template #default="{ row }">
-                  <el-button size="small">编辑</el-button>
-                  <el-button size="small" type="danger">删除</el-button>
+                  <el-button size="small" @click="handleEditRule(row)">编辑</el-button>
+                  <el-button size="small" type="danger" @click="handleDeleteRule(row.id)">删除</el-button>
                 </template>
               </el-table-column>
             </el-table>
@@ -156,9 +156,10 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ref, computed, onMounted } from 'vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { Refresh, Plus } from '@element-plus/icons-vue'
+import api from '@/api'
 
 const loading = ref(false)
 const activeTab = ref('alerts')
@@ -177,48 +178,34 @@ const alerts = ref([])
 const rules = ref([])
 const supplyChainAlerts = ref([])
 
+const filteredAlerts = computed(() => {
+  return alerts.value.filter(a => {
+    if (filterLevel.value && a.level !== filterLevel.value) return false
+    if (filterUnresolved.value && (a.resolved || a.dismissed)) return false
+    return true
+  })
+})
+
 const refresh = async () => {
   loading.value = true
   try {
-    const response = await fetch('/api/smart-alert/alerts')
-    if (response.ok) {
-      const data = await response.json()
-      alerts.value = data.alerts || []
-      updateAlertStats()
-    } else {
-      // 模拟数据
-      alerts.value = [
-        { id: 1, title: '高价值产品销量异常下降', level: 'critical', detail: '产品A最近3天销量下降超过30%，需要关注', product_title: '高价值产品A', metric: '销量', current_value: 85, threshold_value: 120, recommendations: ['检查竞品动态', '优化推广策略', '联系客户了解原因'], created_at: '2025-05-12 09:30:00', resolved: false, dismissed: false },
-        { id: 2, title: '万相台计划CPA超预算', level: 'warning', detail: '计划B的CPA连续2天超过预算的120%', product_title: '', metric: 'CPA', current_value: 85, threshold_value: 70, recommendations: ['调整出价策略', '优化人群定向'], created_at: '2025-05-12 11:20:00', resolved: false, dismissed: false },
-        { id: 3, title: '产品库存告急', level: 'critical', detail: '产品C的库存只够销售3天', product_title: '热销产品C', metric: '库存', current_value: 50, threshold_value: 200, recommendations: ['立即补货', '调整推广力度'], created_at: '2025-05-11 15:45:00', resolved: true, dismissed: false },
-        { id: 4, title: '跳失率异常升高', level: 'info', detail: '首页跳失率昨天超过70%', product_title: '', metric: '跳失率', current_value: 72, threshold_value: 60, recommendations: ['检查页面加载速度', '优化首页内容'], created_at: '2025-05-10 08:00:00', resolved: false, dismissed: true }
-      ]
-      updateAlertStats()
+    const [alertsRes, rulesRes, supplyRes] = await Promise.allSettled([
+      api.request.get('/smart-alert/alerts'),
+      api.request.get('/smart-alert/rules'),
+      api.request.get('/smart-alert/supply-chain')
+    ])
+
+    if (alertsRes.status === 'fulfilled') {
+      alerts.value = alertsRes.value.alerts || alertsRes.value.data || []
+    }
+    if (rulesRes.status === 'fulfilled') {
+      rules.value = rulesRes.value.rules || rulesRes.value.data || []
+    }
+    if (supplyRes.status === 'fulfilled') {
+      supplyChainAlerts.value = supplyRes.value.alerts || supplyRes.value.data || []
     }
 
-    const rulesResponse = await fetch('/api/smart-alert/rules')
-    if (rulesResponse.ok) {
-      const rulesData = await rulesResponse.json()
-      rules.value = rulesData.rules || []
-    } else {
-      rules.value = [
-        { id: 1, rule_name: '销量异常监控', metric: '销量', operator: '<', threshold: 100, window_size: 3, level: 'warning', enabled: true },
-        { id: 2, rule_name: 'CPA超预算监控', metric: 'CPA', operator: '>', threshold: 70, window_size: 2, level: 'warning', enabled: true },
-        { id: 3, rule_name: '库存告急监控', metric: '库存', operator: '<', threshold: 100, window_size: 1, level: 'critical', enabled: true },
-        { id: 4, rule_name: '跳失率监控', metric: '跳失率', operator: '>', threshold: 65, window_size: 1, level: 'info', enabled: false }
-      ]
-    }
-
-    const supplyResponse = await fetch('/api/smart-alert/supply-chain')
-    if (supplyResponse.ok) {
-      const supplyData = await supplyResponse.json()
-      supplyChainAlerts.value = supplyData.alerts || []
-    } else {
-      supplyChainAlerts.value = [
-        { id: 1, product_id: 'P001', title: '热销产品C', alert_type: '库存告急', current_stock: 50, status: 'pending', detail: '库存只够销售3天' },
-        { id: 2, product_id: 'P002', title: '滞销产品D', alert_type: '滞销预警', current_stock: 500, status: 'pending', detail: '滞销超过30天' }
-      ]
-    }
+    updateAlertStats()
   } catch (error) {
     ElMessage.error('加载数据失败')
   } finally {
@@ -229,18 +216,11 @@ const refresh = async () => {
 const checkAlerts = async () => {
   loading.value = true
   try {
-    const response = await fetch('/api/smart-alert/check', { method: 'POST' })
-    if (response.ok) {
-      const data = await response.json()
-      ElMessage.success(`检查完成，新增${data.new_alerts}条告警`)
-      refresh()
-    } else {
-      ElMessage.success('检查完成，新增2条告警')
-      refresh()
-    }
-  } catch (error) {
-    ElMessage.success('检查完成，新增2条告警')
+    const data = await api.request.post('/smart-alert/check')
+    ElMessage.success(`检查完成，新增${data.new_alerts || 0}条告警`)
     refresh()
+  } catch (error) {
+    ElMessage.error('检查告警失败，请重试')
   } finally {
     loading.value = false
   }
@@ -255,11 +235,9 @@ const updateAlertStats = () => {
 
 const dismissAlert = async (alertId) => {
   try {
-    const response = await fetch(`/api/smart-alert/alerts/${alertId}/dismiss`, { method: 'POST' })
-    if (response.ok) {
-      ElMessage.success('已忽略告警')
-      refresh()
-    }
+    await api.request.post(`/smart-alert/alerts/${alertId}/dismiss`)
+    ElMessage.success('已忽略告警')
+    refresh()
   } catch (error) {
     ElMessage.error('操作失败')
   }
@@ -267,11 +245,9 @@ const dismissAlert = async (alertId) => {
 
 const resolveAlert = async (alertId) => {
   try {
-    const response = await fetch(`/api/smart-alert/alerts/${alertId}/resolve`, { method: 'POST' })
-    if (response.ok) {
-      ElMessage.success('告警已解决')
-      refresh()
-    }
+    await api.request.post(`/smart-alert/alerts/${alertId}/resolve`)
+    ElMessage.success('告警已解决')
+    refresh()
   } catch (error) {
     ElMessage.error('操作失败')
   }
@@ -279,16 +255,29 @@ const resolveAlert = async (alertId) => {
 
 const toggleRule = async (ruleId, enabled) => {
   try {
-    const response = await fetch(`/api/smart-alert/rules/${ruleId}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ enabled })
-    })
-    if (response.ok) {
-      ElMessage.success('状态已更新')
-    }
+    await api.request.post(`/smart-alert/rules/${ruleId}`, { enabled })
+    ElMessage.success('状态已更新')
   } catch (error) {
     ElMessage.error('操作失败')
+  }
+}
+
+const handleEditRule = (rule) => {
+  ElMessage.info('编辑功能开发中')
+}
+
+const handleDeleteRule = async (ruleId) => {
+  try {
+    await ElMessageBox.confirm('确定要删除此规则吗？', '确认删除', {
+      type: 'warning'
+    })
+    await api.request.delete(`/smart-alert/rules/${ruleId}`)
+    ElMessage.success('规则已删除')
+    refresh()
+  } catch (error) {
+    if (error !== 'cancel') {
+      ElMessage.error('删除失败')
+    }
   }
 }
 
@@ -305,6 +294,7 @@ const getLevelLabel = (level) => {
 const formatTime = (timeStr) => {
   if (!timeStr) return ''
   const date = new Date(timeStr)
+  if (isNaN(date.getTime())) return timeStr
   return date.toLocaleString()
 }
 
@@ -460,4 +450,3 @@ onMounted(() => {
   margin: 0;
 }
 </style>
-

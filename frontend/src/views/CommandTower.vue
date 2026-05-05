@@ -6,7 +6,6 @@
         <span class="subtitle">电商运营核心工作台</span>
       </div>
       <div class="header-right">
-        <GlobalTimeFilter />
         <el-button type="primary" @click="refresh">
           <el-icon><Refresh /></el-icon>
           刷新数据
@@ -21,8 +20,8 @@
     <div class="hexagon-area">
       <div class="hexagon-grid">
         <HexagonCard
-          :title="'核心驾驶舱'"
-          :icon="'DataLine'"
+          title="核心驾驶舱"
+          icon="DataLine"
           color="#409eff"
           :stats="[
             { label: 'GMV', value: '¥456,789', change: 12.3 },
@@ -36,8 +35,8 @@
         />
 
         <HexagonCard
-          :title="'商品矩阵'"
-          :icon="'Goods'"
+          title="商品矩阵"
+          icon="Goods"
           color="#67c23a"
           :stats="[
             { label: '热销TOP', value: '87,654元', change: 12.3 },
@@ -52,8 +51,8 @@
         />
 
         <HexagonCard
-          :title="'流量投放'"
-          :icon="'TrendCharts'"
+          title="流量投放"
+          icon="TrendCharts"
           color="#e6a23c"
           :stats="[
             { label: '总消耗', value: '¥12,345', change: 8.9 },
@@ -68,8 +67,8 @@
         />
 
         <HexagonCard
-          :title="'生命周期'"
-          :icon="'Odometer'"
+          title="生命周期"
+          icon="Odometer"
           color="#f56c6c"
           :stats="[
             { label: '新品导入', value: '12个', change: 15 },
@@ -91,8 +90,8 @@
             <div class="chart-header">
               <h3>📊 GMV趋势</h3>
               <el-radio-group v-model="trendPeriod" size="small">
-                <el-radio-button label="week">近7天</el-radio-button>
-                <el-radio-button label="month">近30天</el-radio-button>
+                <el-radio-button value="week">近7天</el-radio-button>
+                <el-radio-button value="month">近30天</el-radio-button>
               </el-radio-group>
             </div>
             <div ref="trendChartRef" class="chart-container"></div>
@@ -101,7 +100,7 @@
         <el-col :span="8">
           <div class="chart-card">
             <div class="chart-header">
-              <h3>🎯 目标完成情况</h3>
+              <h3> 目标完成情况</h3>
             </div>
             <div ref="gaugeChartRef" class="chart-container"></div>
           </div>
@@ -112,7 +111,7 @@
         <el-col :span="24">
           <div class="chart-card">
             <div class="chart-header">
-              <h3>🔥 热销TOP10</h3>
+              <h3> 热销TOP10</h3>
               <el-button type="primary" text @click="$router.push('/products')">
                 查看全部
               </el-button>
@@ -154,59 +153,94 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted, onBeforeUnmount, nextTick } from 'vue'
+import { ref, reactive, onMounted, onBeforeUnmount, nextTick, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import * as echarts from 'echarts'
-import { Refresh, DataLine, Goods, TrendCharts, Odometer } from '@element-plus/icons-vue'
-import GlobalTimeFilter from '@/components/GlobalTimeFilter.vue'
+import { Refresh } from '@element-plus/icons-vue'
 import CoreIndicators from '@/components/tower/CoreIndicators.vue'
 import AlertBar from '@/components/tower/AlertBar.vue'
 import HexagonCard from '@/components/tower/HexagonCard.vue'
+import api from '@/api'
+import { formatNumber, formatCurrency, getTierType } from '@/utils/format'
 
 const router = useRouter()
 const trendPeriod = ref('week')
 const trendChartRef = ref(null)
 const gaugeChartRef = ref(null)
 const charts = reactive({ trend: null, gauge: null })
+const loading = ref(false)
 
 const coreIndicators = ref([
-  { label: 'GMV', value: '¥456,789', change: 12.3, color: '#409eff', icon: 'DataLine' },
-  { label: '访客数', value: '123,456', change: 8.9, color: '#67c23a', icon: 'User' },
-  { label: 'ROI', value: '3.87', change: 3.1, color: '#e6a23c', icon: 'DataAnalysis' },
-  { label: '转化率', value: '3.2%', change: 1.2, color: '#00bcd4', icon: 'TrendCharts' }
+  { label: 'GMV', value: '--', change: 0, color: '#409eff', icon: 'DataLine' },
+  { label: '访客数', value: '--', change: 0, color: '#67c23a', icon: 'User' },
+  { label: 'ROI', value: '--', change: 0, color: '#e6a23c', icon: 'DataAnalysis' },
+  { label: '转化率', value: '--', change: 0, color: '#00bcd4', icon: 'TrendCharts' }
 ])
 
-const alerts = ref([
-  { id: 1, level: 'urgent', title: '热销商品库存告急', desc: 'TOP1热销商品库存仅剩86件，预计明天断货', time: '10分钟前' },
-  { id: 2, level: 'urgent', title: '万相台ROI下降预警', desc: '万相台某个计划ROI低于2.0，已连续3天下降', time: '32分钟前' },
-  { id: 3, level: 'warning', title: '首页跳出率过高', desc: '首页跳出率68%，超过正常水平20%', time: '1小时前' }
-])
+const alerts = ref([])
+const topProducts = ref([])
 
-const topProducts = ref([
-  { id: 1, title: '中古风玄关装饰摆件', tier: '利润款', net_sales: 87654, visitors: 4567, conversion: 0.032 },
-  { id: 2, title: '入户玄关装饰品钟馗财神爷摆件', tier: '引流款', net_sales: 76543, visitors: 5678, conversion: 0.028 },
-  { id: 3, title: '中古风玄关装饰摆件放钥匙收纳', tier: '利润款', net_sales: 54321, visitors: 3456, conversion: 0.041 },
-  { id: 4, title: '现代简约客厅装饰画', tier: '潜力款', net_sales: 43210, visitors: 2345, conversion: 0.035 },
-  { id: 5, title: '北欧风电视柜组合', tier: '利润款', net_sales: 32109, visitors: 1234, conversion: 0.038 }
-])
+const loadDashboard = async () => {
+  loading.value = true
+  try {
+    const [summaryRes, topRes, alertsRes] = await Promise.all([
+      api.dashboardApi.getMetrics({ dimension: trendPeriod.value }),
+      api.getTopProducts({ dimension: trendPeriod.value, limit: 10 }),
+      api.getAlerts({ limit: 5 })
+    ])
 
-const formatNumber = (num) => {
-  if (!num && num !== 0) return '0'
-  num = Number(num)
-  if (num >= 10000) return (num / 10000).toFixed(2) + '万'
-  return num.toLocaleString()
+    if (summaryRes?.data?.kpi) {
+      const kpi = summaryRes.data.kpi
+      coreIndicators.value = [
+        { label: 'GMV', value: formatCurrency(kpi.total_gmv?.value), change: kpi.total_gmv?.change || 0, color: '#409eff', icon: 'DataLine' },
+        { label: '访客数', value: formatNumber(kpi.visitors?.value), change: kpi.visitors?.change || 0, color: '#67c23a', icon: 'User' },
+        { label: 'ROI', value: (kpi.roi?.value || 0).toFixed(2), change: 0, color: '#e6a23c', icon: 'DataAnalysis' },
+        { label: '转化率', value: (kpi.conversion?.value || 0).toFixed(1) + '%', change: 0, color: '#00bcd4', icon: 'TrendCharts' }
+      ]
+
+      if (summaryRes.data.trends?.length) {
+        updateTrendChart(summaryRes.data.trends)
+      }
+    }
+
+    if (topRes?.data?.products) {
+      topProducts.value = topRes.data.products.map(p => ({
+        id: p.product_id,
+        product_id: p.product_id,
+        title: p.product_name,
+        tier: p.tier,
+        net_sales: p.value,
+        visitors: p.visitors,
+        conversion: (p.conversion || 0) / 100,
+        image_url: p.image_url
+      }))
+    }
+
+    if (alertsRes?.data) {
+      alerts.value = (alertsRes.data.records || alertsRes.data.data || []).map(a => ({
+        id: a.id,
+        level: a.status === 'pending' ? 'urgent' : 'warning',
+        title: a.title,
+        desc: a.detail || a.message || '',
+        time: a.created_at || ''
+      }))
+    }
+  } catch (err) {
+    console.error('加载仪表盘数据失败:', err)
+    ElMessage.error('数据加载失败')
+  } finally {
+    loading.value = false
+  }
 }
 
-const getTierType = (tier) => {
-  const types = { '引流款': 'success', '利润款': 'primary', '潜力款': 'warning' }
-  return types[tier] || 'info'
+const refresh = () => {
+  ElMessage.info('正在刷新数据...')
+  loadDashboard()
 }
-
-const refresh = () => ElMessage.success('数据已刷新')
 
 const viewProduct = (product) => {
-  router.push(`/product/${product.id}`)
+  router.push(`/product/${product.product_id || product.id}`)
 }
 
 const initCharts = () => {
@@ -222,23 +256,43 @@ const initCharts = () => {
   if (gaugeChartRef.value) charts.gauge = echarts.init(gaugeChartRef.value)
 }
 
-const updateTrendChart = () => {
+const updateTrendChart = (trendsData) => {
   if (!charts.trend) return
-  const dates = ['1号', '2号', '3号', '4号', '5号', '6号', '7号']
-  const data1 = [32000, 38000, 45000, 42000, 52000, 48000, 56000]
-  const data2 = [28000, 32000, 38000, 36000, 42000, 40000, 45000]
+
+  if (trendsData?.length) {
+    const dates = trendsData.map(t => t.period?.slice(-5) || '')
+    const gmvData = trendsData.map(t => t.payment_amount || 0)
+    const visitorData = trendsData.map(t => t.visitors || 0)
+
+    charts.trend.setOption({
+      tooltip: { trigger: 'axis' },
+      legend: { data: ['GMV', '访客数'], bottom: 0 },
+      grid: { left: '3%', right: '4%', bottom: '10%', containLabel: true },
+      xAxis: { type: 'category', data: dates },
+      yAxis: [
+        { type: 'value', name: 'GMV', position: 'left' },
+        { type: 'value', name: '访客数', position: 'right' }
+      ],
+      series: [
+        { name: 'GMV', type: 'line', data: gmvData, smooth: true, itemStyle: { color: '#409eff' }, areaStyle: { opacity: 0.3 } },
+        { name: '访客数', type: 'line', yAxisIndex: 1, data: visitorData, smooth: true, itemStyle: { color: '#67c23a' } }
+      ]
+    })
+    return
+  }
+
   charts.trend.setOption({
     tooltip: { trigger: 'axis' },
     legend: { data: ['GMV', '访客数'], bottom: 0 },
     grid: { left: '3%', right: '4%', bottom: '10%', containLabel: true },
-    xAxis: { type: 'category', data: dates },
+    xAxis: { type: 'category', data: [] },
     yAxis: [
       { type: 'value', name: 'GMV', position: 'left' },
       { type: 'value', name: '访客数', position: 'right' }
     ],
     series: [
-      { name: 'GMV', type: 'line', data: data1, smooth: true, itemStyle: { color: '#409eff' }, areaStyle: { opacity: 0.3 } },
-      { name: '访客数', type: 'line', yAxisIndex: 1, data: data2, smooth: true, itemStyle: { color: '#67c23a' } }
+      { name: 'GMV', type: 'line', data: [], smooth: true, itemStyle: { color: '#409eff' } },
+      { name: '访客数', type: 'line', yAxisIndex: 1, data: [], smooth: true, itemStyle: { color: '#67c23a' } }
     ]
   })
 }
@@ -256,7 +310,7 @@ const updateGaugeChart = () => {
       axisLabel: { distance: 25, fontSize: 12 },
       anchor: { show: true, showAbove: true, size: 25, itemStyle: { borderWidth: 10 } },
       detail: { valueAnimation: true, fontSize: 32, offsetCenter: [0, '70%'] },
-      data: [{ value: 87, name: '目标完成率' }]
+      data: [{ value: 0, name: '加载中...' }]
     }]
   })
 }
@@ -271,11 +325,16 @@ const handleResize = () => {
   if (charts.gauge) charts.gauge.resize()
 }
 
+watch(trendPeriod, () => {
+  loadDashboard()
+})
+
 onMounted(async () => {
   await nextTick()
   initCharts()
   updateCharts()
   window.addEventListener('resize', handleResize)
+  loadDashboard()
 })
 
 onBeforeUnmount(() => {

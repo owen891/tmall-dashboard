@@ -172,6 +172,8 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
+import api from '@/api'
+import { formatNumber } from '@/utils/format'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   Calendar, DataLine, TrendCharts, Plus, View, Download,
@@ -200,11 +202,6 @@ const filteredReports = computed(() => {
   return reports.value.filter(r => r.type === filterType.value)
 })
 
-const formatNumber = (num) => {
-  if (num >= 10000) return (num / 10000).toFixed(1) + '万'
-  return num?.toLocaleString() || '0'
-}
-
 const formatMoney = (money) => {
   if (money >= 100000000) return (money / 100000000).toFixed(1) + '亿'
   if (money >= 10000) return (money / 10000).toFixed(1) + '万'
@@ -219,17 +216,12 @@ const getTypeName = (type) => {
 const generateReport = async (type) => {
   generating.value = type
   try {
-    const response = await fetch(`/api/reports/${type}`, { method: 'POST' })
-    if (response.ok) {
-      const data = await response.json()
-      ElMessage.success(`${getTypeName(type)}生成成功`)
-      await fetchReports()
-      previewReport(data)
-    } else {
-      ElMessage.error(`生成失败`)
-    }
+    const data = await api.request.post(`/reports/${type}`)
+    ElMessage.success(`${getTypeName(type)}生成成功`)
+    await fetchReports()
+    previewReport(data)
   } catch (e) {
-    ElMessage.error(`生成报告失败: ${e.message}`)
+    ElMessage.error(`生成报告失败: ${e.message || '未知错误'}`)
   } finally {
     generating.value = null
   }
@@ -238,10 +230,8 @@ const generateReport = async (type) => {
 const fetchReports = async () => {
   loading.value = true
   try {
-    const response = await fetch('/api/reports/list')
-    if (response.ok) {
-      reports.value = await response.json()
-    }
+    const data = await api.request.get('/reports/list')
+    reports.value = data?.items || data || []
   } catch (e) {
     ElMessage.error('获取报告列表失败')
   } finally {
@@ -253,10 +243,8 @@ const previewReport = async (report) => {
   previewVisible.value = true
   previewLoading.value = true
   try {
-    const response = await fetch(`/api/reports/${report.id}`)
-    if (response.ok) {
-      currentReport.value = await response.json()
-    }
+    const data = await api.request.get(`/reports/${report.id}`)
+    currentReport.value = data
   } catch (e) {
     ElMessage.error('获取报告详情失败')
   } finally {
@@ -274,21 +262,19 @@ const exportReport = async (report) => {
 
 const shareReport = (report) => {
   const url = `${window.location.origin}/report/${report.id}`
-  navigator.clipboard.writeText(url)
-  ElMessage.success('报告链接已复制到剪贴板')
+  try {
+    navigator.clipboard.writeText(url)
+    ElMessage.success('报告链接已复制到剪贴板')
+  } catch (e) {
+    ElMessage.error('复制失败，请手动复制')
+  }
 }
 
 const duplicateReport = async (report) => {
   try {
-    const response = await fetch('/api/reports/duplicate', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id: report.id })
-    })
-    if (response.ok) {
-      ElMessage.success('报告已复制')
-      fetchReports()
-    }
+    await api.request.post('/reports/duplicate', { id: report.id })
+    ElMessage.success('报告已复制')
+    fetchReports()
   } catch (e) {
     ElMessage.error('复制失败')
   }
@@ -299,11 +285,9 @@ const deleteReport = async (report) => {
     await ElMessageBox.confirm('确定要删除这份报告吗？', '删除确认', {
       type: 'warning'
     })
-    const response = await fetch(`/api/reports/${report.id}`, { method: 'DELETE' })
-    if (response.ok) {
-      ElMessage.success('报告已删除')
-      fetchReports()
-    }
+    await api.request.delete(`/reports/${report.id}`)
+    ElMessage.success('报告已删除')
+    fetchReports()
   } catch (e) {
     if (e !== 'cancel') ElMessage.error('删除失败')
   }
@@ -312,16 +296,10 @@ const deleteReport = async (report) => {
 const createReport = async () => {
   creating.value = true
   try {
-    const response = await fetch('/api/reports/create', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(createForm.value)
-    })
-    if (response.ok) {
-      ElMessage.success('报告创建成功')
-      showCreateDialog.value = false
-      fetchReports()
-    }
+    await api.request.post('/reports/create', createForm.value)
+    ElMessage.success('报告创建成功')
+    showCreateDialog.value = false
+    fetchReports()
   } catch (e) {
     ElMessage.error('创建失败')
   } finally {

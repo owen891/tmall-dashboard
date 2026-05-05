@@ -3,7 +3,9 @@
     <el-card class="filter-card">
       <el-form :inline="true" :model="filters" class="filter-form">
         <el-form-item label="搜索">
-          <el-input v-model="filters.search" placeholder="商品名称/ID" clearable size="default" />
+          <el-input v-model="filters.search" placeholder="商品名称/ID" clearable size="default" @keyup.enter="loadProducts">
+            <template #prefix><el-icon><Search /></el-icon></template>
+          </el-input>
         </el-form-item>
         <el-form-item label="分层">
           <el-select v-model="filters.tier" placeholder="全部" clearable size="default">
@@ -21,12 +23,21 @@
           </el-select>
         </el-form-item>
         <el-form-item>
-          <el-button type="primary" @click="loadProducts" size="default">查询</el-button>
-          <el-button @click="resetFilters" size="default">重置</el-button>
-          <el-button type="success" @click="openColumnSelector" size="default">字段设置</el-button>
-          <el-button type="warning" @click="handleExport" size="default" :loading="exporting">
-            <el-icon><Download /></el-icon> 导出
+          <el-button type="primary" @click="loadProducts" size="default">
+            <el-icon><Search /></el-icon> 查询
           </el-button>
+          <el-button @click="resetFilters" size="default">
+            <el-icon><RefreshLeft /></el-icon> 重置
+          </el-button>
+          <el-dropdown split-button type="success" @click="handleExport" size="default">
+            <el-icon><Download /></el-icon> 导出
+            <template #dropdown>
+              <el-dropdown-menu>
+                <el-dropdown-item @click="handleExport('csv')">导出为 CSV</el-dropdown-item>
+                <el-dropdown-item @click="handleExport('json')">导出为 JSON</el-dropdown-item>
+              </el-dropdown-menu>
+            </template>
+          </el-dropdown>
           <el-button @click="loadProducts" size="default" :loading="loading">
             <el-icon><Refresh /></el-icon>
           </el-button>
@@ -36,35 +47,48 @@
 
     <el-card class="table-card">
       <div class="table-toolbar" v-if="selectedProducts.length > 0">
-        <span class="selected-count">已选择 {{ selectedProducts.length }} 项</span>
-        <el-button size="small" @click="showBatchUpdate = true">批量修改</el-button>
+        <span class="selected-count">
+          <el-icon><Check /></el-icon>
+          已选择 <strong>{{ selectedProducts.length }}</strong> 项
+        </span>
+        <el-button size="small" type="primary" @click="showBatchUpdate = true">
+          <el-icon><Edit /></el-icon> 批量修改
+        </el-button>
         <el-button size="small" @click="selectedProducts = []">取消选择</el-button>
       </div>
+      
       <el-table 
         :data="products" 
         stripe 
         v-loading="loading"
+        element-loading-text="正在加载商品数据..."
         size="small"
-        :cell-style="{ padding: '6px 4px' }"
-        :header-cell-style="{ padding: '8px 4px' }"
+        :cell-style="{ padding: '8px 6px' }"
+        :header-cell-style="{ padding: '10px 6px', background: 'var(--el-fill-color-light)' }"
         @selection-change="handleSelectionChange"
+        @sort-change="handleSortChange"
+        empty-text="暂无商品数据，请先导入数据"
       >
-        <el-table-column type="selection" width="40" fixed="left" />
-        <el-table-column width="50" fixed="left">
+        <el-table-column type="selection" width="45" fixed="left" />
+        <el-table-column width="55" fixed="left" label="收藏">
           <template #default="{ row }">
-            <el-icon 
-              :color="row.starred ? '#e6a23c' : '#c0c4cc'" 
-              style="cursor: pointer; font-size: 16px"
-              @click="toggleStar(row)"
-            >
-              <Star />
-            </el-icon>
+            <el-tooltip :content="row.starred ? '取消收藏' : '收藏商品'" placement="top">
+              <el-icon 
+                :color="row.starred ? '#e6a23c' : '#c0c4cc'" 
+                style="cursor: pointer; font-size: 16px; transition: all 0.3s"
+                @click="toggleStar(row)"
+                class="star-icon"
+                :class="{ 'star-active': row.starred }"
+              >
+                <Star />
+              </el-icon>
+            </el-tooltip>
           </template>
         </el-table-column>
 
-        <el-table-column label="商品信息" min-width="260" fixed="left">
+        <el-table-column label="商品信息" min-width="280" fixed="left">
           <template #default="{ row }">
-            <div class="product-info-compact">
+            <div class="product-info-compact" @click="goToDetail(row)" style="cursor: pointer">
               <div class="product-image-compact">
                 <img 
                   :src="row.image_url || 'https://via.placeholder.com/50x50/f0f2f5/909399?text=商'" 
@@ -74,14 +98,14 @@
                 />
               </div>
               <div class="product-content-compact">
-                <div class="product-title-compact">{{ row.title }}</div>
+                <div class="product-title-compact" :title="row.title">{{ row.title }}</div>
                 <div class="product-tags-compact">
-                  <el-tag size="small" v-if="row.tier" :type="getTierType(row.tier)" style="margin-right: 4px">{{ row.tier }}</el-tag>
-                  <el-tag size="small" v-if="row.category" type="info" style="margin-right: 4px">{{ row.category }}</el-tag>
-                  <el-tag size="small" v-if="row.style" type="success" style="margin-right: 4px">{{ row.style }}</el-tag>
-                  <el-tag size="small" v-if="row.scene" type="warning">{{ row.scene }}</el-tag>
+                  <el-tag size="small" v-if="row.tier" :type="getTierType(row.tier)" effect="plain">{{ row.tier }}</el-tag>
+                  <el-tag size="small" v-if="row.category" type="info" effect="plain">{{ row.category }}</el-tag>
+                  <el-tag size="small" v-if="row.style" type="success" effect="plain">{{ row.style }}</el-tag>
+                  <el-tag size="small" v-if="row.scene" type="warning" effect="plain">{{ row.scene }}</el-tag>
                 </div>
-                <div class="product-id-compact">{{ row.product_id }}</div>
+                <div class="product-id-compact">ID: {{ row.product_id }}</div>
               </div>
             </div>
           </template>
@@ -95,38 +119,35 @@
           :width="field.width || 120"
           :min-width="field.minWidth || 100"
           sortable="custom"
+          :sort-orders="['descending', 'ascending', null]"
         >
           <template #default="{ row }">
-            <span v-if="['payment_amount', 'refund_amount', 'net_sales', 'ad_spend', 'avg_order_value', 'keyword_sales', 'crowd_sales', 'site_sales'].includes(field.key)">
+            <span v-if="['payment_amount', 'refund_amount', 'net_sales', 'ad_spend', 'avg_order_value'].includes(field.key)" :class="getNumberClass(row[field.key], field.key)">
               {{ formatNumber(row[field.key], 2) }}
             </span>
-            <span v-else-if="['payment_conversion', 'cart_rate', 'fav_rate', 'refund_rate', 'ad_ratio', 'search_conversion', 'click_rate', 'industry_ctr', 'search_click_rate', 'ad_roi', 'keyword_roi', 'crowd_roi', 'site_roi', 'guide_potential_ratio', 'cross_sell_rate', 'repurchase_rate', 'new_buyer_ratio'].includes(field.key)">
+            <span v-else-if="['payment_conversion', 'cart_rate', 'fav_rate', 'refund_rate', 'ad_ratio'].includes(field.key)" :class="getPercentClass(row[field.key], field.key)">
               {{ formatPercent(row[field.key]) }}
             </span>
-            <span v-else-if="['ipv', 'pv', 'search_ipv', 'recommend_ipv', 'paid_ipv', 'organic_ipv', 'buyers', 'cart_users', 'fav_users', 'payment_qty', 'cart_qty', 'cross_sell_qty', 'repurchase_users', 'new_buyers', 'keyword_visitors', 'guide_visits', 'guide_visitors', 'guide_potential'].includes(field.key)">
-              {{ formatNumber(row[field.key], 0) }}
-            </span>
-            <span v-else-if="['avg_stay_duration', 'uv_value'].includes(field.key)">
-              {{ formatNumber(row[field.key], 2) }}
-            </span>
             <span v-else>
-              {{ row[field.key] || '-' }}
+              {{ row[field.key] != null ? row[field.key] : '-' }}
             </span>
           </template>
         </el-table-column>
 
-        <el-table-column label="操作" width="70" fixed="right" align="center">
+        <el-table-column label="操作" width="90" fixed="right" align="center">
           <template #default="{ row }">
-            <el-tooltip content="详情" placement="top">
-              <el-button type="primary" link size="small" @click="goToDetail(row)" style="padding: 4px">
-                <el-icon size="14"><View /></el-icon>
-              </el-button>
-            </el-tooltip>
-            <el-tooltip content="运营动作" placement="top">
-              <el-button type="success" link size="small" @click="openActionForProduct(row)" style="padding: 4px">
-                <el-icon size="14"><Edit /></el-icon>
-              </el-button>
-            </el-tooltip>
+            <div class="action-buttons">
+              <el-tooltip content="查看详情" placement="top">
+                <el-button type="primary" link size="small" @click="goToDetail(row)">
+                  <el-icon><View /></el-icon>
+                </el-button>
+              </el-tooltip>
+              <el-tooltip content="记录运营动作" placement="top">
+                <el-button type="success" link size="small" @click="openActionForProduct(row)">
+                  <el-icon><EditPen /></el-icon>
+                </el-button>
+              </el-tooltip>
+            </div>
           </template>
         </el-table-column>
       </el-table>
@@ -135,22 +156,20 @@
         v-model:current-page="pagination.page"
         v-model:page-size="pagination.page_size"
         :total="pagination.total"
-        :page-sizes="[20, 50, 100]"
+        :page-sizes="[20, 50, 100, 200]"
         layout="total, sizes, prev, pager, next, jumper"
         @size-change="loadProducts"
         @current-change="loadProducts"
-        style="margin-top: 16px; justify-content: flex-end"
+        class="pagination-bar"
       />
     </el-card>
 
-    <ColumnSelector ref="columnSelectorRef" v-model="selectedFields" @change="onColumnsChange" />
-
-    <el-dialog v-model="actionDialogVisible" title="添加运营动作" width="600px">
-      <el-form :model="actionForm" label-width="100px">
-        <el-form-item label="商品ID">
+    <el-dialog v-model="actionDialogVisible" title="添加运营动作" width="600px" :close-on-click-modal="false">
+      <el-form :model="actionForm" label-width="100px" ref="actionFormRef" :rules="actionFormRules">
+        <el-form-item label="商品ID" prop="product_id">
           <el-input v-model="actionForm.product_id" placeholder="请输入商品ID" />
         </el-form-item>
-        <el-form-item label="动作类型">
+        <el-form-item label="动作类型" prop="action_type">
           <el-select v-model="actionForm.action_type" placeholder="请选择">
             <el-option label="标题优化" value="title" />
             <el-option label="主图优化" value="image" />
@@ -162,20 +181,21 @@
             <el-option label="其他" value="other" />
           </el-select>
         </el-form-item>
-        <el-form-item label="动作描述">
+        <el-form-item label="动作描述" prop="action_detail">
           <el-input v-model="actionForm.action_detail" type="textarea" :rows="3" placeholder="请描述具体动作" />
         </el-form-item>
         <el-form-item label="执行日期">
-          <el-date-picker v-model="actionForm.action_date" type="date" placeholder="选择日期" value-format="YYYY-MM-DD" />
+          <el-date-picker v-model="actionForm.action_date" type="date" placeholder="选择日期" value-format="YYYY-MM-DD" style="width: 100%" />
         </el-form-item>
       </el-form>
       <template #footer>
         <el-button @click="actionDialogVisible = false">取消</el-button>
-        <el-button type="primary" @click="submitAction">提交</el-button>
+        <el-button type="primary" @click="submitAction" :loading="submitting">提交</el-button>
       </template>
     </el-dialog>
 
-    <el-dialog v-model="showBatchUpdate" title="批量修改" width="500px">
+    <el-dialog v-model="showBatchUpdate" title="批量修改" width="500px" :close-on-click-modal="false">
+      <el-alert title="提示：批量修改将影响选中的所有商品" type="info" show-icon :closable="false" style="margin-bottom: 16px" />
       <el-form :model="batchForm" label-width="100px">
         <el-form-item label="分层">
           <el-select v-model="batchForm.tier" placeholder="不修改" clearable style="width: 100%">
@@ -197,7 +217,7 @@
       </el-form>
       <template #footer>
         <el-button @click="showBatchUpdate = false">取消</el-button>
-        <el-button type="primary" @click="submitBatchUpdate">确定修改</el-button>
+        <el-button type="primary" @click="submitBatchUpdate" :loading="submitting">确定修改</el-button>
       </template>
     </el-dialog>
   </div>
@@ -206,16 +226,21 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { ElMessage } from 'element-plus'
-import { View, Edit, Refresh, Download } from '@element-plus/icons-vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import { 
+  View, Edit, EditPen, Refresh, RefreshLeft, Download, Search, Check, Star 
+} from '@element-plus/icons-vue'
 import api from '@/api'
-import ColumnSelector from '@/components/ColumnSelector.vue'
 import { fieldCategories, loadColumnConfig, getFieldConfig, defaultVisibleFields } from '@/config/columns'
+import { useTimeStore } from '@/stores/time'
+import { formatNumber, formatPercent, getTierType } from '@/utils/format'
 
 const router = useRouter()
+const timeStore = useTimeStore()
 
 const loading = ref(false)
 const exporting = ref(false)
+const submitting = ref(false)
 const products = ref([])
 const filterOptions = ref({})
 const filters = ref({
@@ -231,14 +256,19 @@ const pagination = ref({
   total: 0
 })
 const selectedFields = ref([])
-const columnSelectorRef = ref(null)
 const actionDialogVisible = ref(false)
+const actionFormRef = ref(null)
 const actionForm = ref({
   product_id: '',
   action_type: '',
   action_detail: '',
   action_date: ''
 })
+const actionFormRules = {
+  product_id: [{ required: true, message: '请输入商品ID', trigger: 'blur' }],
+  action_type: [{ required: true, message: '请选择动作类型', trigger: 'change' }],
+  action_detail: [{ required: true, message: '请描述具体动作', trigger: 'blur' }],
+}
 const selectedProducts = ref([])
 const showBatchUpdate = ref(false)
 const batchForm = ref({
@@ -251,30 +281,18 @@ const visibleColumns = computed(() => {
   return selectedFields.value.map(key => getFieldConfig(key)).filter(Boolean)
 })
 
-const getTierType = (tier) => {
-  const types = {
-    '引流款': 'success',
-    '利润款': 'primary',
-    '潜力款': 'warning'
-  }
-  return types[tier] || 'info'
+function getNumberClass(value, field) {
+  if (!value || value <= 0) return 'text-muted'
+  if (['ad_spend', 'refund_amount'].includes(field)) return 'text-danger'
+  return 'text-primary'
 }
 
-const formatNumber = (value, decimals = 2) => {
-  if (value === null || value === undefined) return '-'
-  const num = Number(value)
-  if (isNaN(num)) return '-'
-  return num.toLocaleString('zh-CN', {
-    minimumFractionDigits: decimals,
-    maximumFractionDigits: decimals
-  })
-}
-
-const formatPercent = (value) => {
-  if (value === null || value === undefined) return '-'
-  const num = Number(value)
-  if (isNaN(num)) return '-'
-  return `${(num * 100).toFixed(2)}%`
+function getPercentClass(value, field) {
+  if (!value) return 'text-muted'
+  const pct = value * 100
+  if (field === 'refund_rate' && pct > 20) return 'text-danger'
+  if (field === 'payment_conversion' && pct < 2) return 'text-warning'
+  return 'text-success'
 }
 
 const loadFilterOptions = async () => {
@@ -294,13 +312,24 @@ const loadProducts = async () => {
       page_size: pagination.value.page_size,
       ...filters.value
     }
+    
+    if (timeStore.startDate && timeStore.endDate) {
+      params.start_date = timeStore.startDate
+      params.end_date = timeStore.endDate
+    }
+    
     const res = await api.getProducts(params)
     const resData = res.data || {}
     products.value = resData.data || []
     pagination.value.total = resData.total || 0
+    
+    if (products.value.length === 0) {
+      ElMessage.info('未找到匹配的商品数据')
+    }
   } catch (error) {
     console.error('Load products error:', error)
-    ElMessage.error('加载商品列表失败')
+    ElMessage.error(`加载商品列表失败: ${error.message || '网络错误'}`)
+    products.value = []
   } finally {
     loading.value = false
   }
@@ -316,16 +345,31 @@ const resetFilters = () => {
   }
   pagination.value.page = 1
   loadProducts()
+  ElMessage.success('筛选条件已重置')
+}
+
+const handleSortChange = ({ prop, order }) => {
+  if (!order) {
+    loadProducts()
+    return
+  }
+  const sortMap = { descending: 'desc', ascending: 'asc' }
+  filters.value.sort = prop
+  filters.value.order = sortMap[order]
+  loadProducts()
 }
 
 const toggleStar = async (product) => {
   try {
     await api.toggleProductStar(product.product_id)
     product.starred = !product.starred
-    ElMessage.success(product.starred ? '已收藏' : '已取消收藏')
+    ElMessage.success({
+      message: product.starred ? '已收藏' : '已取消收藏',
+      duration: 1500,
+    })
   } catch (error) {
     console.error('Toggle star error:', error)
-    ElMessage.error('操作失败')
+    ElMessage.error('操作失败，请重试')
   }
 }
 
@@ -338,58 +382,55 @@ const openActionForProduct = (product) => {
   actionDialogVisible.value = true
 }
 
-const openColumnSelector = () => {
-  columnSelectorRef.value?.open()
-}
-
-const handleExport = async () => {
+const handleExport = async (format = 'csv') => {
+  ElMessage.info(`正在准备导出${format.toUpperCase()}文件...`)
   exporting.value = true
   try {
     const params = {
       ...filters.value,
-      columns: selectedFields.value.join(',')
+      columns: selectedFields.value.join(','),
+      format
     }
     const response = await api.exportProducts(params)
-    const blob = new Blob([response], { type: 'text/csv;charset=utf-8' })
+    const blob = new Blob([response], { type: format === 'csv' ? 'text/csv;charset=utf-8' : 'application/json' })
     const url = window.URL.createObjectURL(blob)
     const link = document.createElement('a')
     link.href = url
-    link.download = `products_export_${new Date().toISOString().slice(0, 10)}.csv`
+    link.download = `products_${new Date().toISOString().slice(0, 10)}.${format}`
     document.body.appendChild(link)
     link.click()
     document.body.removeChild(link)
     window.URL.revokeObjectURL(url)
-    ElMessage.success('导出成功')
+    ElMessage.success(`导出成功！共 ${products.value.length} 条数据`)
   } catch (error) {
     console.error('Export error:', error)
-    ElMessage.error('导出失败')
+    ElMessage.error(`导出失败: ${error.message || '未知错误'}`)
   } finally {
     exporting.value = false
   }
 }
 
-const onColumnsChange = (fields) => {
-  selectedFields.value = fields
-}
-
 const submitAction = async () => {
-  if (!actionForm.value.product_id || !actionForm.value.action_type || !actionForm.value.action_detail) {
-    ElMessage.warning('请填写完整信息')
+  if (!actionFormRef.value) return
+  
+  try {
+    await actionFormRef.value.validate()
+  } catch {
+    ElMessage.warning('请检查必填项')
     return
   }
+  
+  submitting.value = true
   try {
     await api.createAction(actionForm.value)
     ElMessage.success('运营动作添加成功')
     actionDialogVisible.value = false
-    actionForm.value = {
-      product_id: '',
-      action_type: '',
-      action_detail: '',
-      action_date: ''
-    }
+    actionForm.value = { product_id: '', action_type: '', action_detail: '', action_date: '' }
   } catch (error) {
     console.error('Submit action error:', error)
-    ElMessage.error('添加失败')
+    ElMessage.error(`添加失败: ${error.message || '未知错误'}`)
+  } finally {
+    submitting.value = false
   }
 }
 
@@ -402,6 +443,18 @@ const submitBatchUpdate = async () => {
     ElMessage.warning('请至少选择一项要修改的内容')
     return
   }
+  
+  try {
+    await ElMessageBox.confirm(
+      `确定要修改选中的 ${selectedProducts.value.length} 个商品吗？此操作不可撤销。`,
+      '批量修改确认',
+      { confirmButtonText: '确定', cancelButtonText: '取消', type: 'warning' }
+    )
+  } catch {
+    return
+  }
+  
+  submitting.value = true
   try {
     const productIds = selectedProducts.value.map(p => p.product_id)
     await api.batchUpdateProducts(productIds, {
@@ -416,7 +469,9 @@ const submitBatchUpdate = async () => {
     loadProducts()
   } catch (error) {
     console.error('Batch update error:', error)
-    ElMessage.error('批量修改失败')
+    ElMessage.error(`批量修改失败: ${error.message || '未知错误'}`)
+  } finally {
+    submitting.value = false
   }
 }
 
@@ -425,11 +480,14 @@ onMounted(() => {
   selectedFields.value = config.visibleFields || defaultVisibleFields
   loadFilterOptions()
   loadProducts()
-  
+})
+
+onUnmounted(() => {
+  document.removeEventListener('keydown', handleKeyDown)
+})
+
+onMounted(() => {
   document.addEventListener('keydown', handleKeyDown)
-  onUnmounted(() => {
-    document.removeEventListener('keydown', handleKeyDown)
-  })
 })
 
 const handleKeyDown = (e) => {
@@ -463,29 +521,60 @@ const handleKeyDown = (e) => {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 10px 0;
+  padding: 12px 0;
   border-bottom: 1px solid #ebeef5;
-  margin-bottom: 10px;
+  margin-bottom: 12px;
 }
 
 .selected-count {
   color: #409eff;
   font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.star-icon {
+  transition: all 0.3s;
+}
+.star-icon:hover {
+  transform: scale(1.2);
+}
+.star-active {
+  animation: starPulse 0.6s ease-in-out;
+}
+
+@keyframes starPulse {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.3); }
+}
+
+.pagination-bar {
+  margin-top: 16px;
+  display: flex;
+  justify-content: flex-end;
 }
 
 .product-info-compact {
   display: flex;
   align-items: flex-start;
-  gap: 10px;
+  gap: 12px;
+  padding: 2px 0;
+  transition: background 0.2s;
+}
+.product-info-compact:hover {
+  background: var(--el-fill-color-light);
+  border-radius: 4px;
 }
 
 .product-image-compact {
   flex-shrink: 0;
-  width: 50px;
-  height: 50px;
-  border-radius: 4px;
+  width: 56px;
+  height: 56px;
+  border-radius: 6px;
   overflow: hidden;
   background: #f5f7fa;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.08);
 }
 
 .product-image-compact img {
@@ -502,28 +591,52 @@ const handleKeyDown = (e) => {
 .product-title-compact {
   font-weight: 500;
   font-size: 13px;
-  margin-bottom: 4px;
+  margin-bottom: 6px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  color: var(--el-text-color-primary);
 }
 
 .product-tags-compact {
   display: flex;
   flex-wrap: wrap;
-  gap: 0;
-  margin-bottom: 2px;
-}
-
-.product-tags-compact :deep(.el-tag) {
-  margin-right: 4px;
-  height: 20px;
-  line-height: 18px;
-  font-size: 11px;
+  gap: 4px;
+  margin-bottom: 4px;
 }
 
 .product-id-compact {
   color: #909399;
   font-size: 11px;
+}
+
+.action-buttons {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+}
+
+.text-muted {
+  color: #c0c4cc;
+}
+.text-primary {
+  color: #409eff;
+  font-weight: 500;
+}
+.text-success {
+  color: #67c23a;
+}
+.text-warning {
+  color: #e6a23c;
+}
+.text-danger {
+  color: #f56c6c;
+}
+
+:deep(.dark) .product-image-compact {
+  background: #333;
+}
+:deep(.dark) .table-toolbar {
+  border-bottom-color: #333;
 }
 </style>

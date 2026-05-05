@@ -160,12 +160,15 @@ import { ElMessage } from 'element-plus'
 import { User, View, TrendCharts, Coin } from '@element-plus/icons-vue'
 import * as echarts from 'echarts'
 import ExportButton from '@/components/ExportButton.vue'
+import api from '@/api'
+import { formatNumber } from '@/utils/format'
 
 const loading = ref(false)
 const trendChartRef = ref(null)
 const sourceChartRef = ref(null)
 let trendChart = null
 let sourceChart = null
+let handleResize = null
 
 const overview = ref({
   visitors: 0,
@@ -181,18 +184,13 @@ const topPages = ref([])
 const loadData = async () => {
   loading.value = true
   try {
-    // 尝试从API获取数据
-    const response = await fetch('/api/traffic/overview')
-    if (response.ok) {
-      const result = await response.json()
-      if (result.code === 200) {
-        overview.value = result.data.overview
-        channelData.value = result.data.channels || []
-        topKeywords.value = result.data.keywords || []
-        topPages.value = result.data.pages || []
-      }
+    const result = await api.trafficApi.getKeywords({})
+    if (result?.data) {
+      overview.value = result.data.overview || overview.value
+      channelData.value = result.data.channels || []
+      topKeywords.value = result.data.keywords || []
+      topPages.value = result.data.pages || []
     } else {
-      // 使用模拟数据
       loadMockData()
     }
   } catch (error) {
@@ -237,14 +235,6 @@ const loadMockData = () => {
     { page: '分类页-家居饰品', visits: 28000, bounceRate: 0.38 },
     { page: '商品详情页-财神摆件', visits: 25000, bounceRate: 0.22 }
   ]
-}
-
-const formatNumber = (num) => {
-  if (!num) return '0'
-  if (num >= 10000) {
-    return (num / 10000).toFixed(1) + '万'
-  }
-  return num.toLocaleString()
 }
 
 const getChannelColor = (channel) => {
@@ -378,9 +368,15 @@ const renderSourceChart = () => {
 
 onMounted(() => {
   loadData()
+  handleResize = () => {
+    trendChart?.resize()
+    sourceChart?.resize()
+  }
+  window.addEventListener('resize', handleResize)
 })
 
 onBeforeUnmount(() => {
+  window.removeEventListener('resize', handleResize)
   trendChart?.dispose()
   sourceChart?.dispose()
 })

@@ -59,9 +59,14 @@ class SystemMetrics:
             }
 
     def get_disk_metrics(self) -> Dict[str, Any]:
-        """获取磁盘指标"""
         try:
-            disk = psutil.disk_usage('/')
+            import sys
+            if sys.platform == 'win32':
+                import os
+                disk_path = os.path.splitdrive(os.getcwd())[0] + '\\'
+            else:
+                disk_path = '/'
+            disk = psutil.disk_usage(disk_path)
             return {
                 "total": disk.total,
                 "used": disk.used,

@@ -224,6 +224,7 @@ import { ref, reactive, onMounted, onBeforeUnmount } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Refresh } from '@element-plus/icons-vue'
 import * as echarts from 'echarts'
+import { formatNumber, formatPercent } from '@/utils/format'
 
 const periodType = ref('7d')
 const loading = ref(false)
@@ -287,16 +288,6 @@ const fetchData = async () => {
   } finally {
     loading.value = false
   }
-}
-
-const formatNumber = (num) => {
-  if (num >= 100000000) return (num / 100000000).toFixed(1) + '亿'
-  if (num >= 10000) return (num / 10000).toFixed(1) + '万'
-  return num?.toLocaleString() || '0'
-}
-
-const formatPercent = (num) => {
-  return (num || 0).toFixed(1) + '%'
 }
 
 const getTrendClass = (trend) => {

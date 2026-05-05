@@ -4,7 +4,8 @@ from sqlalchemy import func, desc, asc, case, text
 from typing import Optional, List, Dict, Any
 from app.core.database import get_db
 from app.core.cache import cached
-from app.models import DailyData, WeeklyData, MonthlyData, Product, ProductTag, ProductNote, OperationAction
+from app.core.utils import DIMENSION_MAP, get_prev_period, get_latest_period, calc_score
+from app.models import DailyData, WeeklyData, MonthlyData, Product, ProductTag, ProductNote, OperationAction, ProductLifecycle, ProductLifecycleMeta
 from app.schemas.common import ResponseModel
 import io
 import csv
@@ -12,36 +13,10 @@ from datetime import datetime
 
 router = APIRouter(prefix="/products", tags=["商品运营"])
 
-DIMENSION_MAP = {
-    'monthly': {'table': 'monthly_data', 'date_col': 'month', 'visitors_col': 'visitors'},
-    'weekly': {'table': 'weekly_data', 'date_col': 'week_start', 'visitors_col': 'ipv'},
-    'daily': {'table': 'daily_data', 'date_col': 'date', 'visitors_col': 'ipv'},
-}
-
 SORT_WHITELIST = [
     'payment_amount', 'net_sales', 'refund_rate', 'refund_amount',
     'visitors', 'conversion', 'aov', 'ad_spend', 'roi', 'ad_ratio',
-    'payment_count', 'order_count', 'page_views', 'uv_value',
-    'search_visitors', 'search_ratio', 'cart_rate', 'fav_rate',
-    'bounce_rate', 'avg_stay_duration', 'score',
-    'category', 'tier', 'style', 'scene', 'title',
-    'keyword_spend', 'keyword_roi', 'keyword_visitors', 'keyword_ppc',
-    'crowd_spend', 'crowd_roi', 'crowd_visitors', 'crowd_ppc',
-    'site_spend', 'site_roi', 'site_visitors', 'site_ppc',
-    'overall_roi', 'paid_ratio', 'refund_paid_ratio',
-    'repurchase_rate', 'cross_sell_rate', 'buyers', 'avg_order_value',
-    'cart_qty', 'fav_users', 'click_rate', 'net_sales',
-    'paid_ipv', 'organic_ipv', 'search_ipv', 'recommend_ipv',
-    'cart_users', 'industry_ctr', 'cross_sell_qty', 'cross_sell_categories',
-    'new_buyers', 'new_buyer_ratio',
-    'impressions', 'clicks', 'cost', 'ctr', 'cpc', 'cpm',
-    'direct_gmv', 'indirect_gmv', 'total_gmv', 'total_orders',
-    'direct_orders', 'indirect_orders', 'click_conversion', 'presale_roi',
-    'total_cost', 'cart_adds', 'direct_cart_adds', 'indirect_cart_adds',
-    'favs', 'store_favs', 'store_fav_cost', 'total_fav_cart', 'total_fav_cart_cost',
-    'item_fav_cart', 'item_fav_cart_cost', 'total_favs', 'item_fav_cost',
-    'item_fav_rate', 'cart_cost',
-    'manager', 'product_id', 'list_date',
+    'score', 'title',
 ]
 
 WEEKLY_ONLY_COLS = [
@@ -76,47 +51,6 @@ MONTHLY_ONLY_COLS = [
 ]
 
 ALL_COMMON_COLS = []
-
-
-def get_latest_period(Model, date_col, db):
-    latest = db.query(Model).order_by(desc(getattr(Model, date_col))).first()
-    if latest:
-        return getattr(latest, date_col)
-    return None
-
-
-def calc_score(row_data: dict) -> float:
-    score = 50.0
-    conv = row_data.get('conversion', 0) or 0
-    roi = row_data.get('overall_roi', 0) or row_data.get('roi', 0) or 0
-    refund = row_data.get('refund_rate', 0) or 0
-    uv = row_data.get('uv_value', 0) or 0
-    search = row_data.get('search_ratio', 0) or 0
-    
-    score += min(conv * 5, 20)
-    score += min(roi * 1.5, 15)
-    score -= min(refund * 1.5, 20)
-    score += min(uv * 0.5, 10)
-    score += min(search * 5, 5)
-    
-    return round(max(0, min(100, score)), 1)
-
-
-def get_prev_period(period: str, dim: str) -> str:
-    try:
-        if dim == 'monthly':
-            y, m = str(period).split('-')
-            m = int(m) - 1
-            if m == 0:
-                m, y = 12, str(int(y) - 1)
-            return f"{y}-{m:02d}"
-        else:
-            from datetime import datetime, timedelta
-            d = datetime.strptime(str(period), '%Y-%m-%d')
-            prev = d - timedelta(days=7 if dim == 'weekly' else 1)
-            return prev.strftime('%Y-%m-%d')
-    except (ValueError, IndexError, TypeError, AttributeError):
-        return period
 
 
 def build_product_query(dimension: str, period: str, db: Session):
@@ -197,6 +131,8 @@ def build_product_query(dimension: str, period: str, db: Session):
 def get_products(
     dim: str = Query("weekly", alias="dim", description="时间维度: daily/weekly/monthly"),
     period: Optional[str] = Query(None, description="指定周期"),
+    start_date: Optional[str] = Query(None, description="开始日期"),
+    end_date: Optional[str] = Query(None, description="结束日期"),
     tier: Optional[str] = Query(None, description="分层筛选"),
     style: Optional[str] = Query(None, description="风格筛选"),
     scene: Optional[str] = Query(None, description="场景筛选"),
@@ -206,8 +142,8 @@ def get_products(
     category: Optional[str] = Query(None, description="类目筛选"),
     sort_by: str = Query("payment_amount", description="排序字段"),
     order: str = Query("desc", description="排序方向: asc/desc"),
-    limit: int = Query(20, description="每页数量"),
-    offset: int = Query(0, description="偏移量"),
+    page: int = Query(1, ge=1, description="页码"),
+    page_size: int = Query(20, ge=1, le=500, description="每页数量"),
     db: Session = Depends(get_db)
 ):
     dim_cfg = DIMENSION_MAP.get(dim, DIMENSION_MAP['weekly'])
@@ -221,14 +157,20 @@ def get_products(
     else:
         Model = WeeklyData
     
-    if not period:
+    if not period and not start_date:
         period = get_latest_period(Model, date_col, db)
     
-    if not period:
-        return ResponseModel(data={"data": [], "total": 0, "limit": limit, "offset": offset})
+    if not period and not start_date:
+        return ResponseModel(data={"data": [], "total": 0, "page": page, "page_size": page_size})
     
     query, _, _, _ = build_product_query(dim, period, db)
-    filter_conditions = [getattr(Model, date_col) == period]
+    
+    filter_conditions = []
+    if start_date and end_date:
+        filter_conditions.append(getattr(Model, date_col) >= start_date)
+        filter_conditions.append(getattr(Model, date_col) <= end_date)
+    elif period:
+        filter_conditions.append(getattr(Model, date_col) == period)
     
     if tier:
         filter_conditions.append(Product.tier == tier)
@@ -283,12 +225,12 @@ def get_products(
     elif sort_col == 'title':
         query = query.order_by(sort_dir(func.lower(func.max(Product.title))))
     else:
-        if hasattr(Model, sort_col):
+        if sort_col in ('payment_amount', 'refund_amount'):
             query = query.order_by(sort_dir(func.sum(getattr(Model, sort_col))))
         else:
             query = query.order_by(sort_dir(func.sum(Model.payment_amount)))
     
-    products_data = query.offset(offset).limit(limit).all()
+    products_data = query.offset((page - 1) * page_size).limit(page_size).all()
     
     product_ids = [p.product_id for p in products_data]
     prev_period = get_prev_period(str(period), dim)
@@ -411,8 +353,8 @@ def get_products(
     return ResponseModel(data={
         "data": products,
         "total": total,
-        "limit": limit,
-        "offset": offset,
+        "page": page,
+        "page_size": page_size,
         "dimension": dim,
         "period": str(period) if period else None,
     })
@@ -863,3 +805,164 @@ def create_action(
     db.refresh(new_action)
     
     return ResponseModel(data={"success": True, "id": new_action.id})
+
+
+@router.get("/{product_id}/lifecycle", response_model=ResponseModel)
+def get_product_lifecycle(
+    product_id: str,
+    db: Session = Depends(get_db)
+):
+    """获取产品生命周期数据"""
+    gsv_records = db.query(ProductLifecycle).filter(
+        ProductLifecycle.product_id == product_id
+    ).order_by(ProductLifecycle.year, ProductLifecycle.month).all()
+
+    meta = db.query(ProductLifecycleMeta).filter(
+        ProductLifecycleMeta.product_id == product_id
+    ).first()
+
+    if not gsv_records and not meta:
+        return ResponseModel(data={
+            "product_id": product_id,
+            "gsv_data": [],
+            "gsv_25_total": 0,
+            "gsv_26_total": 0,
+            "lifecycle_stage": None,
+            "lifecycle_curve": None
+        })
+
+    gsv_data = []
+    for rec in gsv_records:
+        gsv_data.append({
+            "month": f"{rec.year % 100}年-{str(rec.month).zfill(2)}月",
+            "year": 2000 + rec.year if rec.year < 100 else rec.year,
+            "month_num": rec.month,
+            "gsv": rec.gsv or 0
+        })
+
+    return ResponseModel(data={
+        "product_id": product_id,
+        "gsv_data": gsv_data,
+        "gsv_25_total": meta.gsv_25_total if meta else 0,
+        "gsv_26_total": meta.gsv_26_total if meta else 0,
+        "lifecycle_stage": meta.lifecycle_stage if meta else None,
+        "lifecycle_curve": meta.lifecycle_curve if meta else None
+    })
+
+
+@router.post("/{product_id}/lifecycle", response_model=ResponseModel)
+def update_product_lifecycle(
+    product_id: str,
+    gsv_data: List[Dict] = Body(..., embed=True),
+    lifecycle_stage: Optional[str] = Body(None, embed=True),
+    lifecycle_curve: Optional[str] = Body(None, embed=True),
+    db: Session = Depends(get_db)
+):
+    """更新产品生命周期数据"""
+    meta = db.query(ProductLifecycleMeta).filter(
+        ProductLifecycleMeta.product_id == product_id
+    ).first()
+
+    if not meta:
+        meta = ProductLifecycleMeta(
+            product_id=product_id,
+            lifecycle_stage=lifecycle_stage,
+            lifecycle_curve=lifecycle_curve,
+        )
+        db.add(meta)
+    else:
+        meta.lifecycle_stage = lifecycle_stage
+        meta.lifecycle_curve = lifecycle_curve
+
+    gsv_25_total = 0
+    gsv_26_total = 0
+
+    for item in gsv_data:
+        year = item.get('year', 2025)
+        month = int(item.get('month_num', 1))
+        gsv = item.get('gsv', 0) or 0
+
+        year_short = year % 100
+
+        existing = db.query(ProductLifecycle).filter(
+            ProductLifecycle.product_id == product_id,
+            ProductLifecycle.year == year_short,
+            ProductLifecycle.month == month,
+        ).first()
+
+        if existing:
+            existing.gsv = gsv
+        else:
+            new_record = ProductLifecycle(
+                product_id=product_id,
+                year=year_short,
+                month=month,
+                gsv=gsv,
+            )
+            db.add(new_record)
+
+        if year == 2025:
+            gsv_25_total += gsv
+        elif year == 2026:
+            gsv_26_total += gsv
+
+    meta.gsv_25_total = gsv_25_total
+    meta.gsv_26_total = gsv_26_total
+
+    db.commit()
+
+    return ResponseModel(data={"success": True})
+
+
+@router.get("/lifecycle/batch", response_model=ResponseModel)
+def get_batch_lifecycle(
+    product_ids: str = Query(..., description="逗号分隔的商品ID"),
+    db: Session = Depends(get_db)
+):
+    """批量获取多个产品的生命周期数据"""
+    ids = [id.strip() for id in product_ids.split(',') if id.strip()]
+
+    gsv_records = db.query(ProductLifecycle).filter(
+        ProductLifecycle.product_id.in_(ids)
+    ).all()
+
+    metas = db.query(ProductLifecycleMeta).filter(
+        ProductLifecycleMeta.product_id.in_(ids)
+    ).all()
+
+    result = {}
+    for pid in ids:
+        result[pid] = {
+            "gsv_data": [],
+            "gsv_25_total": 0,
+            "gsv_26_total": 0,
+            "lifecycle_stage": None,
+            "lifecycle_curve": None
+        }
+
+    for rec in gsv_records:
+        pid = rec.product_id
+        if pid not in result:
+            result[pid] = {
+                "gsv_data": [],
+                "gsv_25_total": 0,
+                "gsv_26_total": 0,
+                "lifecycle_stage": None,
+                "lifecycle_curve": None
+            }
+        result[pid]["gsv_data"].append({
+            "month": f"{rec.year % 100}年-{str(rec.month).zfill(2)}月",
+            "year": 2000 + rec.year if rec.year < 100 else rec.year,
+            "month_num": rec.month,
+            "gsv": rec.gsv or 0
+        })
+
+    for meta in metas:
+        pid = meta.product_id
+        if pid in result:
+            result[pid]["gsv_25_total"] = meta.gsv_25_total or 0
+            result[pid]["gsv_26_total"] = meta.gsv_26_total or 0
+            result[pid]["lifecycle_stage"] = meta.lifecycle_stage
+            result[pid]["lifecycle_curve"] = meta.lifecycle_curve
+
+    return ResponseModel(data=result)
