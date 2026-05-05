@@ -35,8 +35,6 @@
               <el-icon><TrendCharts /></el-icon>
               <span>数据分析</span>
             </template>
-            <el-menu-item index="/products">商品列表</el-menu-item>
-            <el-menu-item index="/lifecycle">生命周期</el-menu-item>
             <el-menu-item index="/trends">趋势分析</el-menu-item>
             <el-menu-item index="/ads">广告投放</el-menu-item>
             <el-menu-item index="/kpi">KPI管理</el-menu-item>

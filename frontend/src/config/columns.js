@@ -172,6 +172,7 @@ export const defaultVisibleFields = [
   'tier',
   'style',
   'scene',
+  'score',
   'ipv',
   'payment_amount',
   'payment_conversion',
