@@ -1,0 +1,24 @@
+    <!-- ========== 生命周期管理 ========== -->
+    <div class="lifecycle-container">
+        <div class="lifecycle-toolbar">
+            <input type="text" class="product-search" id="lifecycleSearch" placeholder="搜索商品..." oninput="debounceLifecycleSearch()">
+            <select class="product-filter" id="lifecycleTierFilter" onchange="loadLifecycleData()">
+                <option value="">全部分层</option>
+                <option value="引流款">引流款</option>
+                <option value="利润款">利润款</option>
+                <option value="爆款">爆款</option>
+                <option value="形象款">形象款</option>
+            </select>
+        </div>
+        <div class="lifecycle-grid" id="lifecycleGrid">
+            <!-- Product lifecycle cards rendered here -->
+        </div>
+        <div class="lifecycle-detail" id="lifecycleDetail" style="display:none;">
+            <div class="lifecycle-detail-header">
+                <button class="tool-exec-back" onclick="closeLifecycleDetail()">&#8592; 返回列表</button>
+                <div id="lifecycleDetailInfo"></div>
+            </div>
+            <div class="chart-box tall" id="chartLifecycle"></div>
+            <div class="lifecycle-metrics-grid" id="lifecycleMetrics"></div>
+        </div>
+    </div>

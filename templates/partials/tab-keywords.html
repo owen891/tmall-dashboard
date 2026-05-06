@@ -1,0 +1,45 @@
+<div class="section-card">
+    <div id="keywordsContainer">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:12px;">
+            <h3 class="section-title">🔍 搜索词效能矩阵</h3>
+            <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+                <select id="kwDateSelect" onchange="KW_STATE.date=this.value;KW_STATE.page=1;loadKeywords()" style="padding:6px 12px;border-radius:8px;border:1px solid var(--border);background:var(--card);color:var(--text-primary);font-size:13px;">
+                    <option value="">全部日期</option>
+                </select>
+                <select onchange="KW_STATE.category=this.value;KW_STATE.page=1;loadKeywords()" style="padding:6px 12px;border-radius:8px;border:1px solid var(--border);background:var(--card);color:var(--text-primary);font-size:13px;">
+                    <option value="">全部分类</option>
+                    <option value="蓝海词">🌊 蓝海词</option>
+                    <option value="流量词">⚔️ 流量词</option>
+                    <option value="废词">📉 废词</option>
+                </select>
+                <input type="text" placeholder="搜索词..." oninput="KW_STATE.search=this.value;KW_STATE.page=1;loadKeywords()" style="padding:6px 12px;border-radius:8px;border:1px solid var(--border);background:var(--card);color:var(--text-primary);font-size:13px;width:160px;">
+                <input type="file" id="kwFileInput" accept=".xlsx,.xls" onchange="handleKeywordUpload()" style="display:none;">
+                <button id="kwUploadBtn" onclick="document.getElementById('kwFileInput').click()" style="padding:6px 16px;border-radius:8px;border:none;background:var(--accent);color:#fff;font-size:13px;cursor:pointer;font-weight:600;">📤 上传搜索词报表</button>
+            </div>
+        </div>
+        <div id="kwSummary" class="kw-summary-grid"></div>
+        <div style="overflow-x:auto;border-radius:12px;border:1px solid var(--border);margin-top:16px;">
+            <table class="kw-table">
+                <thead>
+                    <tr>
+                        <th>搜索词</th>
+                        <th>分类</th>
+                        <th style="cursor:pointer" onclick="KW_STATE.sort='popularity';KW_STATE.order=KW_STATE.order==='desc'?'asc':'desc';loadKeywords()">人气 ↕</th>
+                        <th style="cursor:pointer" onclick="KW_STATE.sort='impressions';KW_STATE.order=KW_STATE.order==='desc'?'asc':'desc';loadKeywords()">展现 ↕</th>
+                        <th style="cursor:pointer" onclick="KW_STATE.sort='clicks';KW_STATE.order=KW_STATE.order==='desc'?'asc':'desc';loadKeywords()">点击 ↕</th>
+                        <th style="cursor:pointer" onclick="KW_STATE.sort='ctr';KW_STATE.order=KW_STATE.order==='desc'?'asc':'desc';loadKeywords()">CTR ↕</th>
+                        <th style="cursor:pointer" onclick="KW_STATE.sort='cvr';KW_STATE.order=KW_STATE.order==='desc'?'asc':'desc';loadKeywords()">CVR ↕</th>
+                        <th style="cursor:pointer" onclick="KW_STATE.sort='cost';KW_STATE.order=KW_STATE.order==='desc'?'asc':'desc';loadKeywords()">花费 ↕</th>
+                        <th style="cursor:pointer" onclick="KW_STATE.sort='gmv';KW_STATE.order=KW_STATE.order==='desc'?'asc':'desc';loadKeywords()">成交 ↕</th>
+                        <th style="cursor:pointer" onclick="KW_STATE.sort='roi';KW_STATE.order=KW_STATE.order==='desc'?'asc':'desc';loadKeywords()">ROI ↕</th>
+                        <th style="cursor:pointer" onclick="KW_STATE.sort='efficacy';KW_STATE.order=KW_STATE.order==='desc'?'asc':'desc';loadKeywords()">效能 ↕</th>
+                    </tr>
+                </thead>
+                <tbody id="kwTableBody">
+                    <tr><td colspan="11" style="text-align:center;padding:40px;color:var(--text-secondary);">请上传搜索词报表</td></tr>
+                </tbody>
+            </table>
+        </div>
+        <div id="kwPagination" style="display:flex;gap:6px;align-items:center;margin-top:12px;"></div>
+    </div>
+</div>

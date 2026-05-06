@@ -1,0 +1,30 @@
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;">
+    <!-- 任务看板 -->
+    <div class="section-card">
+        <h3 class="section-title">📋 任务看板</h3>
+        <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;align-items:center;">
+            <input type="text" id="newTaskTitle" placeholder="任务标题..." style="flex:1;min-width:150px;padding:6px 12px;border-radius:8px;border:1px solid var(--border);background:var(--card);color:var(--text-primary);font-size:13px;">
+            <select id="newTaskPriority" style="padding:6px 8px;border-radius:8px;border:1px solid var(--border);background:var(--card);color:var(--text-primary);font-size:13px;">
+                <option value="P2">P2</option><option value="P0">P0</option><option value="P1">P1</option><option value="P3">P3</option>
+            </select>
+            <input type="text" id="newTaskAssignee" placeholder="负责人" style="width:80px;padding:6px 8px;border-radius:8px;border:1px solid var(--border);background:var(--card);color:var(--text-primary);font-size:13px;">
+            <input type="date" id="newTaskDue" style="padding:6px 8px;border-radius:8px;border:1px solid var(--border);background:var(--card);color:var(--text-primary);font-size:13px;">
+            <button onclick="addTask()" style="padding:6px 14px;border-radius:8px;border:none;background:var(--accent);color:#fff;font-size:13px;cursor:pointer;font-weight:600;">+ 添加</button>
+        </div>
+        <div id="taskBoardContainer">
+            <div id="taskList" class="task-list"></div>
+        </div>
+    </div>
+    <!-- 用户KPI -->
+    <div class="section-card">
+        <h3 class="section-title">🏆 用户KPI</h3>
+        <div style="overflow-x:auto;border-radius:12px;border:1px solid var(--border);">
+            <table class="kw-table">
+                <thead><tr><th>姓名</th><th>周期</th><th>目标</th><th>实际</th><th>达成率</th><th>评级</th></tr></thead>
+                <tbody id="kpiTableBody">
+                    <tr><td colspan="6" style="text-align:center;padding:30px;color:var(--text-secondary);">暂无KPI数据</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
