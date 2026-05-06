@@ -1,48 +1,69 @@
 <template>
   <div class="products">
     <el-card class="filter-card">
-      <el-form :inline="true" :model="filters" class="filter-form">
-        <el-form-item label="搜索">
-          <el-input v-model="filters.search" placeholder="商品名称/ID" clearable size="default" @keyup.enter="loadProducts">
-            <template #prefix><el-icon><Search /></el-icon></template>
-          </el-input>
-        </el-form-item>
-        <el-form-item label="分层">
-          <el-select v-model="filters.tier" placeholder="全部" clearable size="default">
-            <el-option v-for="t in filterOptions.tiers || []" :key="t" :label="t" :value="t" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="风格">
-          <el-select v-model="filters.style" placeholder="全部" clearable size="default">
-            <el-option v-for="s in filterOptions.styles || []" :key="s" :label="s" :value="s" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="场景">
-          <el-select v-model="filters.scene" placeholder="全部" clearable size="default">
-            <el-option v-for="s in filterOptions.scenes || []" :key="s" :label="s" :value="s" />
-          </el-select>
-        </el-form-item>
-        <el-form-item>
-          <el-button type="primary" @click="loadProducts" size="default">
-            <el-icon><Search /></el-icon> 查询
+      <template #header>
+        <div class="filter-header">
+          <span class="filter-title">
+            <el-icon><Search /></el-icon>
+            筛选条件
+          </span>
+          <el-button link @click="showFilters = !showFilters">
+            <el-icon><ArrowDown v-if="!showFilters" /><ArrowUp v-else /></el-icon>
+            {{ showFilters ? '收起' : '展开' }}
           </el-button>
-          <el-button @click="resetFilters" size="default">
-            <el-icon><RefreshLeft /></el-icon> 重置
-          </el-button>
-          <el-dropdown split-button type="success" @click="handleExport" size="default">
-            <el-icon><Download /></el-icon> 导出
-            <template #dropdown>
-              <el-dropdown-menu>
-                <el-dropdown-item @click="handleExport('csv')">导出为 CSV</el-dropdown-item>
-                <el-dropdown-item @click="handleExport('json')">导出为 JSON</el-dropdown-item>
-              </el-dropdown-menu>
-            </template>
-          </el-dropdown>
-          <el-button @click="loadProducts" size="default" :loading="loading">
-            <el-icon><Refresh /></el-icon>
-          </el-button>
-        </el-form-item>
-      </el-form>
+        </div>
+      </template>
+      <el-collapse-transition>
+        <div v-show="showFilters">
+          <el-form :inline="true" :model="filters" class="filter-form">
+            <el-form-item label="搜索">
+              <el-input v-model="filters.search" placeholder="商品名称/ID" clearable size="default" @keyup.enter="loadProducts">
+                <template #prefix><el-icon><Search /></el-icon></template>
+              </el-input>
+            </el-form-item>
+            <el-form-item label="分层">
+              <el-select v-model="filters.tier" placeholder="全部" clearable size="default">
+                <el-option v-for="t in filterOptions.tiers || []" :key="t" :label="t" :value="t" />
+              </el-select>
+            </el-form-item>
+            <el-form-item label="风格">
+              <el-select v-model="filters.style" placeholder="全部" clearable size="default">
+                <el-option v-for="s in filterOptions.styles || []" :key="s" :label="s" :value="s" />
+              </el-select>
+            </el-form-item>
+            <el-form-item label="场景">
+              <el-select v-model="filters.scene" placeholder="全部" clearable size="default">
+                <el-option v-for="s in filterOptions.scenes || []" :key="s" :label="s" :value="s" />
+              </el-select>
+            </el-form-item>
+            <el-form-item>
+              <el-button type="primary" @click="loadProducts" size="default">
+                <el-icon><Search /></el-icon> 查询
+              </el-button>
+              <el-button @click="resetFilters" size="default">
+                <el-icon><RefreshLeft /></el-icon> 重置
+              </el-button>
+            </el-form-item>
+          </el-form>
+        </div>
+      </el-collapse-transition>
+      <div class="filter-actions">
+        <el-dropdown split-button type="success" @click="handleExport" size="default">
+          <el-icon><Download /></el-icon> 导出
+          <template #dropdown>
+            <el-dropdown-menu>
+              <el-dropdown-item @click="handleExport('csv')">导出为 CSV</el-dropdown-item>
+              <el-dropdown-item @click="handleExport('json')">导出为 JSON</el-dropdown-item>
+            </el-dropdown-menu>
+          </template>
+        </el-dropdown>
+        <el-button @click="loadProducts" size="default" :loading="loading">
+          <el-icon><Refresh /></el-icon> 刷新
+        </el-button>
+        <el-button @click="showColumnConfig = true" size="default">
+          <el-icon><Setting /></el-icon> 列配置
+        </el-button>
+      </div>
     </el-card>
 
     <el-card class="table-card">
@@ -220,6 +241,27 @@
         <el-button type="primary" @click="submitBatchUpdate" :loading="submitting">确定修改</el-button>
       </template>
     </el-dialog>
+
+    <el-dialog v-model="showColumnConfig" title="列配置" width="600px">
+      <div class="column-config">
+        <div class="column-section" v-for="category in fieldCategories" :key="category.key">
+          <h4 class="column-category">{{ category.label }}</h4>
+          <el-checkbox-group v-model="selectedFields">
+            <el-checkbox 
+              v-for="field in category.fields" 
+              :key="field.key" 
+              :label="field.key"
+            >
+              {{ field.label }}
+            </el-checkbox>
+          </el-checkbox-group>
+        </div>
+      </div>
+      <template #footer>
+        <el-button @click="showColumnConfig = false">取消</el-button>
+        <el-button type="primary" @click="saveColumnConfig">保存</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -228,7 +270,8 @@ import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { 
-  View, Edit, EditPen, Refresh, RefreshLeft, Download, Search, Check, Star 
+  View, Edit, EditPen, Refresh, RefreshLeft, Download, Search, Check, Star,
+  ArrowDown, ArrowUp, Setting
 } from '@element-plus/icons-vue'
 import api from '@/api'
 import { fieldCategories, loadColumnConfig, getFieldConfig, defaultVisibleFields } from '@/config/columns'
@@ -271,6 +314,8 @@ const actionFormRules = {
 }
 const selectedProducts = ref([])
 const showBatchUpdate = ref(false)
+const showFilters = ref(true)
+const showColumnConfig = ref(false)
 const batchForm = ref({
   tier: '',
   style: '',
@@ -438,6 +483,12 @@ const handleSelectionChange = (selection) => {
   selectedProducts.value = selection
 }
 
+const saveColumnConfig = () => {
+  localStorage.setItem('product_column_config', JSON.stringify(selectedFields.value))
+  showColumnConfig.value = false
+  ElMessage.success('列配置已保存')
+}
+
 const submitBatchUpdate = async () => {
   if (!batchForm.value.tier && !batchForm.value.style && !batchForm.value.manager) {
     ElMessage.warning('请至少选择一项要修改的内容')
@@ -509,8 +560,48 @@ const handleKeyDown = (e) => {
   margin-bottom: 16px;
 }
 
+.filter-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.filter-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  font-size: 15px;
+}
+
 .filter-form {
   margin: 0;
+  padding: 16px 0;
+  border-bottom: 1px solid #ebeef5;
+}
+
+.filter-actions {
+  display: flex;
+  gap: 12px;
+  padding-top: 16px;
+}
+
+.column-config {
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.column-section {
+  margin-bottom: 20px;
+}
+
+.column-category {
+  font-size: 14px;
+  font-weight: 600;
+  color: #303133;
+  margin: 0 0 12px 0;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #ebeef5;
 }
 
 .table-card {

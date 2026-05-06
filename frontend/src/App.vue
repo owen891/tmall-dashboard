@@ -24,36 +24,21 @@
           <el-sub-menu index="products">
             <template #title>
               <el-icon><Goods /></el-icon>
-              <span>商品管理</span>
+              <span>商品运营</span>
             </template>
             <el-menu-item index="/products">商品列表</el-menu-item>
-            <el-menu-item index="/product-ranking">商品排行</el-menu-item>
             <el-menu-item index="/lifecycle">生命周期</el-menu-item>
             <el-menu-item index="/profit">利润分析</el-menu-item>
           </el-sub-menu>
           
-          <el-sub-menu index="traffic">
+          <el-sub-menu index="data">
             <template #title>
               <el-icon><TrendCharts /></el-icon>
-              <span>流量分析</span>
+              <span>数据分析</span>
             </template>
             <el-menu-item index="/traffic-analysis">流量分析</el-menu-item>
-            <el-menu-item index="/funnel">转化漏斗</el-menu-item>
-          </el-sub-menu>
-          
-          <el-menu-item index="/ads">
-            <el-icon><Tools /></el-icon>
-            <template #title>广告投放</template>
-          </el-menu-item>
-          
-          <el-sub-menu index="management">
-            <template #title>
-              <el-icon><Trophy /></el-icon>
-              <span>运营管理</span>
-            </template>
+            <el-menu-item index="/ads">广告投放</el-menu-item>
             <el-menu-item index="/kpi">KPI管理</el-menu-item>
-            <el-menu-item index="/inventory">库存预警</el-menu-item>
-            <el-menu-item index="/reviews">评价分析</el-menu-item>
             <el-menu-item index="/trends">趋势分析</el-menu-item>
           </el-sub-menu>
         </el-menu>
@@ -96,10 +81,6 @@
         </div>
       </el-header>
       
-      <div class="date-range-header">
-        <DateRangePicker />
-      </div>
-      
       <el-main class="app-main">
         <router-view v-slot="{ Component }">
           <transition :name="transitionName" mode="out-in">
@@ -119,7 +100,7 @@ import {
   TrendCharts, Trophy, Expand, Fold, Sunny, Moon,
   FullScreen, Tools, DataAnalysis
 } from '@element-plus/icons-vue'
-import DateRangePicker from '@/components/DateRangePicker.vue'
+
 
 const route = useRoute()
 const isCollapsed = ref(false)
@@ -249,14 +230,6 @@ watch(() => route.meta.transitionName, (name) => {
   align-items: center;
   padding: 0 20px;
   height: 60px;
-}
-
-.date-range-header {
-  background: white;
-  border-bottom: 1px solid #e4e7ed;
-  padding: 8px 20px;
-  display: flex;
-  justify-content: flex-end;
 }
 
 .header-left {

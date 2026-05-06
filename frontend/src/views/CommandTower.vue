@@ -17,69 +17,48 @@
 
     <AlertBar :alerts="alerts" />
 
-    <div class="hexagon-area">
-      <div class="hexagon-grid">
-        <HexagonCard
-          title="核心驾驶舱"
-          icon="DataLine"
-          color="#409eff"
-          :stats="[
-            { label: 'GMV', value: '¥456,789', change: 12.3 },
-            { label: '访客数', value: '123,456', change: 8.9 },
-            { label: '转化率', value: '3.2%', change: 1.2 }
-          ]"
-          :actions="[
-            { label: '查看详情', type: 'primary' }
-          ]"
-          to="/"
-        />
+    <div class="quick-access">
+      <h3 class="section-title">快捷入口</h3>
+      <div class="quick-grid">
+        <router-link to="/products" class="quick-card">
+          <div class="quick-icon" style="background: #e8f5e9; color: #4caf50;">
+            <el-icon size="28"><Goods /></el-icon>
+          </div>
+          <div class="quick-info">
+            <span class="quick-name">商品列表</span>
+            <span class="quick-desc">查看所有商品数据</span>
+          </div>
+        </router-link>
 
-        <HexagonCard
-          title="商品矩阵"
-          icon="Goods"
-          color="#67c23a"
-          :stats="[
-            { label: '热销TOP', value: '87,654元', change: 12.3 },
-            { label: '滞销警告', value: '5个', change: -2 },
-            { label: '转化率', value: '3.2%', change: 1.2 }
-          ]"
-          :actions="[
-            { label: '商品列表', type: 'primary' },
-            { label: '库存预警', type: '' }
-          ]"
-          to="/products"
-        />
+        <router-link to="/lifecycle" class="quick-card">
+          <div class="quick-icon" style="background: #fff3e0; color: #ff9800;">
+            <el-icon size="28"><Odometer /></el-icon>
+          </div>
+          <div class="quick-info">
+            <span class="quick-name">生命周期</span>
+            <span class="quick-desc">管理商品生命周期</span>
+          </div>
+        </router-link>
 
-        <HexagonCard
-          title="流量投放"
-          icon="TrendCharts"
-          color="#e6a23c"
-          :stats="[
-            { label: '总消耗', value: '¥12,345', change: 8.9 },
-            { label: 'ROI', value: '3.87', change: 3.1 },
-            { label: '访客数', value: '45,678', change: 12.3 }
-          ]"
-          :actions="[
-            { label: '流量分析', type: 'primary' },
-            { label: '推广效果', type: '' }
-          ]"
-          to="/traffic"
-        />
+        <router-link to="/profit" class="quick-card">
+          <div class="quick-icon" style="background: #e3f2fd; color: #2196f3;">
+            <el-icon size="28"><DataLine /></el-icon>
+          </div>
+          <div class="quick-info">
+            <span class="quick-name">利润分析</span>
+            <span class="quick-desc">查看利润报表</span>
+          </div>
+        </router-link>
 
-        <HexagonCard
-          title="生命周期"
-          icon="Odometer"
-          color="#f56c6c"
-          :stats="[
-            { label: '新品导入', value: '12个', change: 15 },
-            { label: '活跃商品', value: '156个', change: 3 },
-            { label: '滞销清理', value: '5个', change: -2 }
-          ]"
-          :actions="[
-            { label: '生命周期', type: 'primary' }
-          ]"
-          to="/lifecycle"
-        />
+        <router-link to="/ads" class="quick-card">
+          <div class="quick-icon" style="background: #fce4ec; color: #e91e63;">
+            <el-icon size="28"><TrendCharts /></el-icon>
+          </div>
+          <div class="quick-info">
+            <span class="quick-name">广告投放</span>
+            <span class="quick-desc">管理广告数据</span>
+          </div>
+        </router-link>
       </div>
     </div>
 
@@ -90,8 +69,9 @@
             <div class="chart-header">
               <h3>📊 GMV趋势</h3>
               <el-radio-group v-model="trendPeriod" size="small">
-                <el-radio-button value="week">近7天</el-radio-button>
-                <el-radio-button value="month">近30天</el-radio-button>
+                <el-radio-button value="daily">今日</el-radio-button>
+                <el-radio-button value="weekly">本周</el-radio-button>
+                <el-radio-button value="monthly">本月</el-radio-button>
               </el-radio-group>
             </div>
             <div ref="trendChartRef" class="chart-container"></div>
@@ -165,7 +145,7 @@ import api from '@/api'
 import { formatNumber, formatCurrency, getTierType } from '@/utils/format'
 
 const router = useRouter()
-const trendPeriod = ref('week')
+const trendPeriod = ref('daily')
 const trendChartRef = ref(null)
 const gaugeChartRef = ref(null)
 const charts = reactive({ trend: null, gauge: null })
@@ -386,14 +366,65 @@ onBeforeUnmount(() => {
   gap: 12px;
 }
 
-.hexagon-area {
+.quick-access {
   margin: 24px 0;
 }
 
-.hexagon-grid {
+.section-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: #303133;
+  margin: 0 0 16px 0;
+}
+
+.quick-grid {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 24px;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 16px;
+}
+
+.quick-card {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 20px;
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+  text-decoration: none;
+  transition: all 0.3s ease;
+}
+
+.quick-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.12);
+}
+
+.quick-icon {
+  width: 56px;
+  height: 56px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.quick-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.quick-name {
+  font-size: 16px;
+  font-weight: 600;
+  color: #303133;
+}
+
+.quick-desc {
+  font-size: 13px;
+  color: #909399;
 }
 
 .bottom-section {
