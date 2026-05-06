@@ -1,0 +1,65 @@
+<!-- ==================== 工具箱: FAB + 抽屉面板 ==================== -->
+<button class="toolbox-fab" id="toolboxFab" onclick="openToolbox()" title="运营工具箱">T</button>
+<div class="toolbox-overlay" id="toolboxOverlay" onclick="closeToolbox()"></div>
+<div class="toolbox-drawer" id="toolboxDrawer">
+    <div class="toolbox-drawer-header">
+        <span class="toolbox-drawer-title">运营工具箱</span>
+        <button class="toolbox-drawer-close" onclick="closeToolbox()">X</button>
+    </div>
+    <div class="toolbox-drawer-body">
+        <!-- 定时任务管理 -->
+        <div class="schedule-section" id="scheduleSection">
+            <div class="schedule-section-header">
+                <span style="font-size:0.9rem;font-weight:600;color:var(--text-primary);">&#9200; 定时任务</span>
+            </div>
+            <div class="schedule-form" id="scheduleForm">
+                <input type="text" class="schedule-input" id="scheduleTaskName" placeholder="任务名称">
+                <div style="display:flex;gap:6px;align-items:center;">
+                    <select class="schedule-input" id="scheduleType" style="flex:1;" onchange="updateScheduleExpr()">
+                        <option value="daily">每天</option>
+                        <option value="weekly">每周</option>
+                        <option value="monthly">每月</option>
+                    </select>
+                    <select class="schedule-input" id="scheduleDayOfWeek" style="flex:1;display:none;">
+                        <option value="mon">周一</option>
+                        <option value="tue">周二</option>
+                        <option value="wed">周三</option>
+                        <option value="thu">周四</option>
+                        <option value="fri">周五</option>
+                        <option value="sat">周六</option>
+                        <option value="sun">周日</option>
+                    </select>
+                    <input type="number" class="schedule-input" id="scheduleDayOfMonth" style="flex:1;display:none;min-width:60px;" placeholder="日" min="1" max="31" value="1">
+                    <input type="time" class="schedule-input" id="scheduleTime" style="flex:1;" value="08:00">
+                </div>
+                <input type="text" class="schedule-input" id="scheduleFilePattern" placeholder="文件匹配模式 (如 *.xlsx)" value="*.xlsx">
+                <button class="schedule-add-btn" onclick="addScheduledTask()">添加任务</button>
+            </div>
+            <div class="schedule-list" id="scheduleList">
+                <div style="text-align:center;color:var(--text-muted);padding:16px;font-size:0.82rem;">加载中...</div>
+            </div>
+        </div>
+
+        <!-- 工具卡片列表 -->
+        <div class="toolbox-grid tool-grid-panel" id="toolGridPanel">
+        </div>
+        <!-- 工具执行面板 -->
+        <div class="tool-exec-panel" id="toolExecPanel">
+            <button class="tool-exec-back" onclick="backToToolList()">← 返回工具列表</button>
+            <div class="tool-exec-title" id="toolExecTitle"></div>
+            <div class="tool-exec-desc" id="toolExecDesc"></div>
+            <form id="toolParamForm" onsubmit="return false;"></form>
+            <button class="tool-execute-btn" id="toolExecuteBtn" onclick="executeCurrentTool()">执行</button>
+            <!-- Feature 6: 导入进度条 -->
+            <div id="importProgressContainer" class="import-progress-container" style="display:none;">
+                <div class="import-progress-bar">
+                    <div id="importProgressBar" class="import-progress-fill" style="width:0%"></div>
+                </div>
+                <span id="importProgressText" class="import-progress-text">准备中...</span>
+            </div>
+            <div class="tool-result-area" id="toolResultArea">
+                <div class="tool-result-placeholder">执行结果将显示在这里</div>
+            </div>
+        </div>
+    </div>
+</div>

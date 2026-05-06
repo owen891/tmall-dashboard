@@ -1,0 +1,115 @@
+    <!-- ========== 空状态占位 ========== -->
+    <div class="empty-state" id="emptyStateReview" style="display:none;">
+        <div class="empty-icon">&#128172;</div>
+        <h3>暂无数据</h3>
+        <p>请先上传天猫生意参谋的 Excel 数据文件</p>
+        <button class="empty-action-btn" onclick="switchTab('tab-market')">前往市场分析上传数据</button>
+    </div>
+
+    <!-- ========== 模块9: 评价分析 ========== -->
+    <div class="review-module" id="reviewModule">
+        <div class="section-title" style="display:flex;align-items:center;justify-content:space-between;">
+            <span>评价分析</span>
+            <button class="export-btn" onclick="exportData('reviews')">导出评价数据</button>
+        </div>
+        <!-- 上传区域 -->
+        <div class="review-upload-area" id="reviewUploadArea">
+            <span class="upload-icon">&#128194;</span>
+            <span>点击或拖拽上传评价 Excel 文件</span>
+            <input type="file" id="reviewFileInput" accept=".xlsx,.xls,.csv">
+        </div>
+
+        <!-- 统计卡片行 -->
+        <div class="review-stats-row" id="reviewStatsRow">
+            <div class="review-stat-card">
+                <div class="stat-label">总评价数</div>
+                <div class="stat-value" id="rv-stat-total">--</div>
+            </div>
+            <div class="review-stat-card">
+                <div class="stat-label">好评率</div>
+                <div class="stat-value positive" id="rv-stat-pos-rate">--</div>
+            </div>
+            <div class="review-stat-card">
+                <div class="stat-label">差评率</div>
+                <div class="stat-value negative" id="rv-stat-neg-rate">--</div>
+            </div>
+            <div class="review-stat-card">
+                <div class="stat-label">平均评分</div>
+                <div class="stat-value" id="rv-stat-avg-rating">--</div>
+            </div>
+            <div class="review-stat-card">
+                <div class="stat-label">带图评价</div>
+                <div class="stat-value" id="rv-stat-with-image">--</div>
+            </div>
+            <div class="review-stat-card">
+                <div class="stat-label">有效评价率</div>
+                <div class="stat-value" id="rv-stat-effective">--</div>
+            </div>
+        </div>
+
+        <!-- 图表行: 左-情感+评分分布, 右-维度分析 -->
+        <div class="review-charts-row half">
+            <div>
+                <div class="review-chart-panel" style="position:relative;">
+                    <div class="loading-mask" id="loading-rv-sentiment"><div class="spinner"></div></div>
+                    <div class="panel-title">情感分布</div>
+                    <div class="review-chart-box" id="chartReviewSentiment"></div>
+                </div>
+                <div class="review-chart-panel" style="position:relative;margin-top:16px;">
+                    <div class="loading-mask" id="loading-rv-rating"><div class="spinner"></div></div>
+                    <div class="panel-title">评分分布</div>
+                    <div class="review-chart-box" id="chartReviewRating"></div>
+                </div>
+            </div>
+            <div>
+                <div class="review-chart-panel" style="position:relative;">
+                    <div class="loading-mask" id="loading-rv-pos-dim"><div class="spinner"></div></div>
+                    <div class="panel-title">好评维度</div>
+                    <div id="reviewPositiveDims" style="padding:8px 0;">
+                        <div style="text-align:center;color:#64748B;padding:20px;">暂无数据</div>
+                    </div>
+                </div>
+                <div class="review-chart-panel" style="position:relative;margin-top:16px;">
+                    <div class="loading-mask" id="loading-rv-neg-dim"><div class="spinner"></div></div>
+                    <div class="panel-title">差评维度</div>
+                    <div id="reviewNegativeDims" style="padding:8px 0;">
+                        <div style="text-align:center;color:#64748B;padding:20px;">暂无数据</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 高频词 -->
+        <div class="review-charts-row full">
+            <div class="review-chart-panel" style="position:relative;">
+                <div class="loading-mask" id="loading-rv-words"><div class="spinner"></div></div>
+                <div class="panel-title">高频词 TOP20</div>
+                <div class="review-wordcloud-box" id="chartReviewWords"></div>
+            </div>
+        </div>
+
+        <!-- 场景分布 -->
+        <div class="review-chart-panel" style="position:relative;margin-bottom:16px;">
+            <div class="loading-mask" id="loading-rv-scenes"><div class="spinner"></div></div>
+            <div class="panel-title">使用场景分布</div>
+            <div class="review-scene-tags" id="reviewSceneTags">
+                <span style="color:#64748B;font-size:0.85rem;">暂无数据</span>
+            </div>
+        </div>
+
+        <!-- 筛选栏 -->
+        <div class="review-filter-bar">
+            <select id="reviewProductSelect" onchange="filterReviewByProduct(this.value)">
+                <option value="">全部商品</option>
+            </select>
+            <button class="review-sentiment-btn active" data-sentiment="" onclick="filterReviewBySentiment('')">全部</button>
+            <button class="review-sentiment-btn" data-sentiment="positive" onclick="filterReviewBySentiment('positive')">好评</button>
+            <button class="review-sentiment-btn" data-sentiment="neutral" onclick="filterReviewBySentiment('neutral')">中评</button>
+            <button class="review-sentiment-btn" data-sentiment="negative" onclick="filterReviewBySentiment('negative')">差评</button>
+        </div>
+
+        <!-- 评价列表 -->
+        <div class="review-list-panel" id="reviewListPanel">
+            <div style="text-align:center;color:#64748B;padding:40px;">暂无评价数据</div>
+        </div>
+    </div>
