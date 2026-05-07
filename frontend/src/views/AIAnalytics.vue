@@ -1,5 +1,5 @@
 <template>
-  <div class="ai-analytics">
+  <div class="ai-analytics page-container">
     <div class="page-header">
       <h1>AI智能分析</h1>
       <el-button type="primary" @click="generateReport">

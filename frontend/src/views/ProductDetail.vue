@@ -1,5 +1,5 @@
 <template>
-  <div class="product-detail">
+  <div class="product-detail page-container">
     <el-page-header @back="goBack" content="商品详情" />
 
     <!-- 产品头部信息 -->
