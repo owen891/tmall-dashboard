@@ -1,5 +1,5 @@
 <template>
-  <div class="refunds-container">
+  <div class="refunds-container page-container">
     <div class="header">
       <h2>退款分析</h2>
       <div class="dimension-selector">

@@ -1,5 +1,5 @@
 <template>
-  <div class="targets-container">
+  <div class="targets-container page-container">
     <el-tabs v-model="activeTab">
       <el-tab-pane label="店铺目标" name="shop">
         <div class="header">

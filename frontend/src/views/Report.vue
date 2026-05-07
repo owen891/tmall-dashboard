@@ -1,5 +1,5 @@
 <template>
-  <div class="report-container">
+  <div class="report-container page-container">
     <div class="page-header">
       <h1>运营报告中心</h1>
       <div class="header-actions">

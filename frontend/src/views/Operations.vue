@@ -1,5 +1,5 @@
 <template>
-  <div class="operations-container">
+  <div class="operations-container page-container">
     <div class="header">
       <h2>操作效果统计</h2>
       <el-button type="primary" @click="showAddOp = true">记录操作</el-button>

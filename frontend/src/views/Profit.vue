@@ -158,9 +158,9 @@
 </template>
 
 <script setup>
-import { ref, onMounted, nextTick, onUnmounted } from 'vue'
-import * as echarts from 'echarts'
+import { ref, onMounted, nextTick } from 'vue'
 import api from '@/api'
+import { useChartManager } from '@/composables/useChartManager'
 import ExportButton from '@/components/ExportButton.vue'
 import { TrendCharts, Money, Wallet, DataLine } from '@element-plus/icons-vue'
 import { formatNumber, getTierType } from '@/utils/format'
@@ -173,9 +173,7 @@ const trends = ref([])
 const tierData = ref([])
 const trendChartRef = ref(null)
 const tierChartRef = ref(null)
-let trendChart = null
-let tierChart = null
-let handleResize = null
+const chartManager = useChartManager()
 
 const costRate = ref(0.5)
 const commissionRate = ref(0.06)
@@ -237,16 +235,16 @@ const loadData = async () => {
 }
 
 const initTrendChart = () => {
-  if (!trendChartRef.value) return
-  if (trendChart) trendChart.dispose()
+  if (trends.value.length === 0) {
+    chartManager.showEmpty(trendChartRef, '暂无趋势数据')
+    return
+  }
 
-  trendChart = echarts.init(trendChartRef.value)
-
-  const periods = trends.value.map(t => t.period)
+  const periods = trends.value.map(t => t.period || '')
   const grossProfits = trends.value.map(t => t.metrics?.gross_profit || 0)
   const netProfits = trends.value.map(t => t.metrics?.net_profit || 0)
 
-  trendChart.setOption({
+  chartManager.setOption(trendChartRef, {
     tooltip: { trigger: 'axis' },
     legend: { data: ['毛利', '净利'], bottom: 0 },
     grid: { left: '3%', right: '4%', bottom: '15%', containLabel: true },
@@ -260,15 +258,15 @@ const initTrendChart = () => {
 }
 
 const initTierChart = () => {
-  if (!tierChartRef.value) return
-  if (tierChart) tierChart.dispose()
+  if (tierData.value.length === 0) {
+    chartManager.showEmpty(tierChartRef, '暂无分层数据')
+    return
+  }
 
-  tierChart = echarts.init(tierChartRef.value)
-
-  const tiers = tierData.value.map(t => t.tier)
+  const tiers = tierData.value.map(t => t.tier || '未知')
   const profits = tierData.value.map(t => t.metrics?.net_profit || 0)
 
-  tierChart.setOption({
+  chartManager.setOption(tierChartRef, {
     tooltip: { trigger: 'item', formatter: '{b}: ¥{c} ({d}%)' },
     legend: { bottom: 0 },
     series: [{
@@ -281,18 +279,10 @@ const initTierChart = () => {
 }
 
 onMounted(() => {
+  chartManager.initChart(trendChartRef)
+  chartManager.initChart(tierChartRef)
   loadData()
-  handleResize = () => {
-    trendChart?.resize()
-    tierChart?.resize()
-  }
-  window.addEventListener('resize', handleResize)
-})
-
-onUnmounted(() => {
-  window.removeEventListener('resize', handleResize)
-  trendChart?.dispose()
-  tierChart?.dispose()
+  chartManager.setupResize()
 })
 </script>
 

@@ -1,5 +1,5 @@
 <template>
-  <div class="market-container">
+  <div class="market-container page-container">
     <div class="header">
       <h2>市场分析</h2>
     </div>

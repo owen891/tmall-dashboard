@@ -1,5 +1,5 @@
 <template>
-  <div class="alerts-container">
+  <div class="alerts-container page-container">
     <div class="header">
       <h2>异常告警</h2>
       <div class="controls">

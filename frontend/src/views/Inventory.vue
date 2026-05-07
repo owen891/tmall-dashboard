@@ -1,5 +1,5 @@
 <template>
-  <div class="inventory-warning">
+  <div class="inventory-warning page-container">
     <div class="header">
       <h2>库存预警</h2>
       <div class="controls">

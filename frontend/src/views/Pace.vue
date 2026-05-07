@@ -1,5 +1,5 @@
 <template>
-  <div class="pace-monitor">
+  <div class="pace-monitor page-container">
     <div class="header">
       <h2>Pace 监控</h2>
       <div class="controls">

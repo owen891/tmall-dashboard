@@ -1,5 +1,5 @@
 <template>
-  <div class="efficiency-container">
+  <div class="efficiency-container page-container">
     <div class="page-header">
       <h1>人效精准度量</h1>
       <el-tabs v-model="activeTab" type="card" class="header-tabs">

@@ -1,5 +1,5 @@
 <template>
-  <div class="settings-page">
+  <div class="settings-page page-container">
     <el-card class="settings-card">
       <template #header>
         <div class="card-header">

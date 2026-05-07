@@ -1,5 +1,5 @@
 <template>
-  <div class="promotion-analysis">
+  <div class="promotion-analysis page-container">
     <div class="page-header">
       <h1>推广效果分析</h1>
       <ExportButton 

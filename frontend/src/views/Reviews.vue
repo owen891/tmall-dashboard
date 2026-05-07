@@ -1,5 +1,5 @@
 <template>
-  <div class="reviews-container">
+  <div class="reviews-container page-container">
     <div class="header">
       <h2>评价分析</h2>
     </div>
