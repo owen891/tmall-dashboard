@@ -57,7 +57,7 @@
           <el-badge :value="anomalies.length" type="danger" />
         </div>
       </template>
-      <el-table :data="anomalies" stripe>
+      <el-table :data="anomalies" stripe empty-text="暂无KPI数据">
         <el-table-column prop="product_name" label="商品" />
         <el-table-column prop="metric" label="指标" />
         <el-table-column prop="current_value" label="当前值">
@@ -91,7 +91,7 @@
       <template #header>
         <span>商品KPI排名</span>
       </template>
-      <el-table :data="productKPIs" stripe>
+      <el-table :data="productKPIs" stripe empty-text="暂无KPI数据">
         <el-table-column prop="product_name" label="商品名称" />
         <el-table-column prop="gmv" label="GMV">
           <template #default="{ row }">

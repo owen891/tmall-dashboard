@@ -93,7 +93,7 @@
         </el-input>
       </div>
 
-      <el-table :data="filteredCampaigns" style="width: 100%">
+      <el-table :data="filteredCampaigns" style="width: 100%" empty-text="暂无推广计划">
         <el-table-column prop="campaign_name" label="计划名称" min-width="200" />
         <el-table-column prop="channel" label="渠道" width="100">
           <template #default="{ row }">

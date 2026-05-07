@@ -120,7 +120,7 @@
           <el-col :span="12">
             <div class="table-card">
               <h3>各渠道详细数据</h3>
-              <el-table :data="sourceData" stripe size="small">
+              <el-table :data="sourceData" stripe size="small" empty-text="暂无漏斗数据">
                 <el-table-column prop="source" label="渠道" width="120">
                   <template #default="{ row }">
                     <el-tag size="small" :type="getSourceTagType(row.source)">
@@ -169,7 +169,7 @@
           <el-col :span="24">
             <div class="table-card">
               <h3>流失节点优化建议</h3>
-              <el-table :data="dropAnalysis" stripe size="small">
+              <el-table :data="dropAnalysis" stripe size="small" empty-text="暂无漏斗数据">
                 <el-table-column prop="stage" label="流失环节" width="150">
                   <template #default="{ row }">
                     <span class="stage-badge" :class="'stage-' + row.stage_key">

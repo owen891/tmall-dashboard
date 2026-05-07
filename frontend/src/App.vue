@@ -119,7 +119,9 @@
       <el-main class="app-main">
         <router-view v-slot="{ Component }">
           <transition :name="transitionName" mode="out-in">
-            <component :is="Component" :key="$route.path" />
+            <ErrorBoundary :key="$route.path">
+              <component :is="Component" />
+            </ErrorBoundary>
           </transition>
         </router-view>
       </el-main>
@@ -136,6 +138,7 @@ import {
   FullScreen, Tools, DataAnalysis, Setting
 } from '@element-plus/icons-vue'
 import GlobalSearch from '@/components/GlobalSearch.vue'
+import ErrorBoundary from '@/components/ErrorBoundary.vue'
 
 
 const route = useRoute()

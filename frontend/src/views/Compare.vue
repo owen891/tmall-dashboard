@@ -109,7 +109,7 @@
           <ExportButton :data="productComparisons" :columns="exportColumns" filename="同比对比" />
         </div>
       </template>
-      <el-table :data="productComparisons" stripe>
+      <el-table :data="productComparisons" stripe empty-text="暂无对比数据">
         <el-table-column prop="product_id" label="商品ID" width="120" />
         <el-table-column prop="title" label="商品名称" min-width="200" />
         <el-table-column prop="tier" label="分层" width="100">

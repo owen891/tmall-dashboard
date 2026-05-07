@@ -78,7 +78,7 @@
           </el-select>
         </div>
       </template>
-      <el-table :data="filteredHealthList" stripe v-loading="loading">
+      <el-table :data="filteredHealthList" stripe v-loading="loading" empty-text="暂无健康度数据">
         <el-table-column prop="product_name" label="商品" min-width="180">
           <template #default="{ row }">
             <div class="product-cell">

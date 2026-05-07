@@ -115,7 +115,7 @@
           <ExportButton :data="productProfits" :columns="exportColumns" filename="利润排行" />
         </div>
       </template>
-      <el-table :data="productProfits" stripe>
+      <el-table :data="productProfits" stripe empty-text="暂无利润数据">
         <el-table-column prop="product_id" label="商品ID" width="120" />
         <el-table-column prop="title" label="商品名称" min-width="200" />
         <el-table-column prop="tier" label="分层" width="100">

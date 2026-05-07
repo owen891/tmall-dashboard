@@ -25,7 +25,7 @@
           <el-button type="primary" size="small" @click="showEventDialog = true">添加事件</el-button>
         </div>
       </template>
-      <el-table :data="eventList" stripe>
+      <el-table :data="eventList" stripe empty-text="暂无趋势数据">
         <el-table-column prop="event_date" label="日期" width="120" />
         <el-table-column prop="event_type" label="类型" width="100">
           <template #default="{ row }">

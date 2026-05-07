@@ -19,7 +19,7 @@
     </el-tabs>
 
     <div v-loading="loading" class="ranking-content">
-      <el-table :data="products" style="width: 100%">
+      <el-table :data="products" style="width: 100%" empty-text="暂无排行数据">
         <el-table-column label="排名" width="80">
           <template #default="{ $index }">
             <div class="rank-badge" :class="getRankClass($index)">

@@ -42,7 +42,7 @@
       <template #header>
         <span>商品广告排名</span>
       </template>
-      <el-table :data="productAds" stripe>
+      <el-table :data="productAds" stripe empty-text="暂无广告数据">
         <el-table-column prop="product_name" label="商品" />
         <el-table-column prop="channel" label="渠道" />
         <el-table-column prop="spend" label="花费">
@@ -63,14 +63,14 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, onMounted } from 'vue'
 import api from '@/api'
-import * as echarts from 'echarts'
+import { useChartManager } from '@/composables/useChartManager'
 import { formatNumber } from '@/utils/format'
 
 const chartRef = ref(null)
-let chart = null
-let handleResize = null
+const chartManager = useChartManager()
+const loading = ref(false)
 
 const summary = ref({
   total_spend: 0,
@@ -107,14 +107,17 @@ const loadAds = async () => {
 }
 
 const updateChart = () => {
-  if (!chart) return
+  if (channelComparison.value.length === 0) {
+    chartManager.showEmpty(chartRef, '暂无渠道数据')
+    return
+  }
 
-  const channels = channelComparison.value.map(c => c.channel)
-  const spendData = channelComparison.value.map(c => c.spend)
-  const gmvData = channelComparison.value.map(c => c.gmv)
-  const roiData = channelComparison.value.map(c => c.roi)
+  const channels = channelComparison.value.map(c => c.channel || '未知')
+  const spendData = channelComparison.value.map(c => c.spend || 0)
+  const gmvData = channelComparison.value.map(c => c.gmv || 0)
+  const roiData = channelComparison.value.map(c => c.roi || 0)
 
-  chart.setOption({
+  chartManager.setOption(chartRef, {
     tooltip: { trigger: 'axis' },
     legend: { data: ['花费', 'GMV', 'ROI'] },
     grid: { left: '3%', right: '4%', bottom: '3%', containLabel: true },
@@ -132,15 +135,9 @@ const updateChart = () => {
 }
 
 onMounted(() => {
-  chart = echarts.init(chartRef.value)
+  chartManager.initChart(chartRef)
   loadAds()
-  handleResize = () => chart?.resize()
-  window.addEventListener('resize', handleResize)
-})
-
-onUnmounted(() => {
-  window.removeEventListener('resize', handleResize)
-  chart?.dispose()
+  chartManager.setupResize()
 })
 </script>
 

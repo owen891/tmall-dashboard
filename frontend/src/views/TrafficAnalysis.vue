@@ -85,7 +85,7 @@
             <div class="card-header">
               <h3>渠道效果对比</h3>
             </div>
-            <el-table :data="channelData" style="width: 100%">
+            <el-table :data="channelData" style="width: 100%" empty-text="暂无流量数据">
               <el-table-column prop="channel" label="渠道" width="150" />
               <el-table-column label="访客数" width="120">
                 <template #default="{ row }">{{ formatNumber(row.visitors) }}</template>
@@ -122,7 +122,7 @@
             <div class="card-header">
               <h3>TOP搜索关键词</h3>
             </div>
-            <el-table :data="topKeywords" style="width: 100%" max-height="400">
+            <el-table :data="topKeywords" style="width: 100%" max-height="400" empty-text="暂无流量数据">
               <el-table-column prop="keyword" label="关键词" />
               <el-table-column label="流量" width="100">
                 <template #default="{ row }">{{ formatNumber(row.visitors) }}</template>
@@ -138,7 +138,7 @@
             <div class="card-header">
               <h3>TOP页面</h3>
             </div>
-            <el-table :data="topPages" style="width: 100%" max-height="400">
+            <el-table :data="topPages" style="width: 100%" max-height="400" empty-text="暂无流量数据">
               <el-table-column prop="page" label="页面" show-overflow-tooltip />
               <el-table-column label="访问量" width="100">
                 <template #default="{ row }">{{ formatNumber(row.visits) }}</template>
