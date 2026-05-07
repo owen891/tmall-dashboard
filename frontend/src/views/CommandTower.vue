@@ -165,7 +165,7 @@ const loadDashboard = async () => {
   loading.value = true
   try {
     const [summaryRes, topRes, alertsRes] = await Promise.all([
-      api.dashboardApi.getMetrics({ dimension: trendPeriod.value }),
+      api.getDashboardSummary({ dimension: trendPeriod.value }),
       api.getTopProducts({ dimension: trendPeriod.value, limit: 10 }),
       api.getAlerts({ limit: 5 })
     ])
