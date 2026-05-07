@@ -7,6 +7,7 @@ import zhCn from 'element-plus/es/locale/lang/zh-cn'
 import CommonComponents from '@/components/index.js'
 import './styles/dark-theme.css'
 import './styles/global-utils.css'
+import './styles/page.scss'
 
 import App from './App.vue'
 import router from './router'

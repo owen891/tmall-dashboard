@@ -1,5 +1,19 @@
 <template>
-  <div class="lifecycle-page">
+  <div class="page-container lifecycle-page">
+    <!-- 生命周期阶段统计 -->
+    <div class="stage-stats">
+      <div class="stage-card" v-for="stage in lifecycleStages" :key="stage.key" :class="{ active: stageFilter === stage.key }" @click="filterByStage(stage.key)">
+        <div class="stage-icon" :style="{ background: stage.bgColor, color: stage.color }">
+          <el-icon size="24"><component :is="stage.icon" /></el-icon>
+        </div>
+        <div class="stage-info">
+          <div class="stage-name">{{ stage.name }}</div>
+          <div class="stage-count">{{ getStageCount(stage.key) }} <span class="stage-unit">款</span></div>
+        </div>
+        <div class="stage-bar" :style="{ width: getStagePercent(stage.key) + '%', background: stage.color }"></div>
+      </div>
+    </div>
+
     <el-card class="filter-card">
       <div class="filter-row">
         <el-input 
@@ -49,6 +63,9 @@
           <div class="card-info">
             <div class="card-title">{{ product.title }}</div>
             <div class="card-meta">
+              <el-tag v-if="getProductStage(product)" :style="{ background: getProductStage(product).bgColor, color: getProductStage(product).color, borderColor: getProductStage(product).color }" size="small">
+                {{ getProductStage(product).name }}
+              </el-tag>
               <el-tag v-if="product.tier" :type="getTierType(product.tier)" size="small">{{ product.tier }}</el-tag>
               <span v-if="product.style" class="meta-text">{{ product.style }}</span>
             </div>
@@ -125,13 +142,22 @@
 
 <script setup>
 import { ref, onMounted, onBeforeUnmount, computed, nextTick } from 'vue'
-import { Search, Refresh, Picture, ArrowUp, ArrowDown, ArrowLeft } from '@element-plus/icons-vue'
+import { Search, Refresh, Picture, ArrowUp, ArrowDown, ArrowLeft, Sunny, Sunrise, Sunset, Moon } from '@element-plus/icons-vue'
 import * as echarts from 'echarts'
 import api from '@/api'
 import { getTierType } from '@/utils/format'
 
+// 生命周期阶段定义
+const lifecycleStages = [
+  { key: 'intro', name: '导入期', icon: 'Sunrise', color: '#409eff', bgColor: '#e8f4ff', range: [0, 3] },
+  { key: 'growth', name: '成长期', icon: 'Sunny', color: '#67c23a', bgColor: '#e8f9e8', range: [3, 12] },
+  { key: 'mature', name: '成熟期', icon: 'Sunset', color: '#e6a23c', bgColor: '#fdf6ec', range: [12, 24] },
+  { key: 'decline', name: '衰退期', icon: 'Moon', color: '#f56c6c', bgColor: '#fef0f0', range: [24, 999] }
+]
+
 const searchText = ref('')
 const tierFilter = ref('')
+const stageFilter = ref('')
 const loading = ref(false)
 const products = ref([])
 const showDetail = ref(false)
@@ -314,6 +340,36 @@ const getTrendClass = (trend) => {
   return ''
 }
 
+// 根据活跃月数判断生命周期阶段
+const getStage = (activeMonths) => {
+  if (activeMonths < 3) return 'intro'
+  if (activeMonths < 12) return 'growth'
+  if (activeMonths < 24) return 'mature'
+  return 'decline'
+}
+
+// 获取各阶段商品数量
+const getStageCount = (stageKey) => {
+  return products.value.filter(p => getStage(p.active_months || 0) === stageKey).length
+}
+
+// 获取各阶段占比
+const getStagePercent = (stageKey) => {
+  if (products.value.length === 0) return 0
+  return (getStageCount(stageKey) / products.value.length) * 100
+}
+
+// 按阶段筛选
+const filterByStage = (stageKey) => {
+  stageFilter.value = stageFilter.value === stageKey ? '' : stageKey
+}
+
+// 获取商品阶段标签
+const getProductStage = (product) => {
+  const stageKey = getStage(product.active_months || 0)
+  return lifecycleStages.find(s => s.key === stageKey)
+}
+
 onMounted(() => {
   loadLifecycleData()
 })
@@ -327,6 +383,91 @@ onBeforeUnmount(() => {
 <style scoped>
 .lifecycle-page {
   padding: 0;
+}
+
+.stage-stats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+@media (max-width: 1200px) {
+  .stage-stats {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 768px) {
+  .stage-stats {
+    grid-template-columns: 1fr;
+  }
+}
+
+.stage-card {
+  background: #fff;
+  border-radius: 12px;
+  padding: 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  cursor: pointer;
+  transition: all 0.3s;
+  position: relative;
+  overflow: hidden;
+  border: 2px solid transparent;
+}
+
+.stage-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.stage-card.active {
+  border-color: var(--el-color-primary);
+}
+
+.stage-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.stage-info {
+  flex: 1;
+  position: relative;
+  z-index: 1;
+}
+
+.stage-name {
+  font-size: 14px;
+  color: #909399;
+  margin-bottom: 4px;
+}
+
+.stage-count {
+  font-size: 24px;
+  font-weight: 700;
+  color: #303133;
+}
+
+.stage-unit {
+  font-size: 14px;
+  font-weight: 400;
+  color: #909399;
+}
+
+.stage-bar {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  height: 4px;
+  border-radius: 2px;
+  transition: width 0.3s;
 }
 
 .filter-card {

@@ -29,9 +29,11 @@
             <el-menu-item index="/products">商品列表</el-menu-item>
             <el-menu-item index="/lifecycle">生命周期</el-menu-item>
             <el-menu-item index="/profit">利润分析</el-menu-item>
+            <el-menu-item index="/product-ranking">商品排行</el-menu-item>
+            <el-menu-item index="/quadrant">四象限分析</el-menu-item>
           </el-sub-menu>
           
-          <el-sub-menu index="data">
+          <el-sub-menu index="analysis">
             <template #title>
               <el-icon><TrendCharts /></el-icon>
               <span>数据分析</span>
@@ -40,7 +42,39 @@
             <el-menu-item index="/ads">广告投放</el-menu-item>
             <el-menu-item index="/kpi">KPI管理</el-menu-item>
             <el-menu-item index="/trends">趋势分析</el-menu-item>
+            <el-menu-item index="/funnel">转化漏斗</el-menu-item>
+            <el-menu-item index="/compare">对比分析</el-menu-item>
+            <el-menu-item index="/prediction">预测分析</el-menu-item>
           </el-sub-menu>
+          
+          <el-sub-menu index="operations">
+            <template #title>
+              <el-icon><Tools /></el-icon>
+              <span>运营管理</span>
+            </template>
+            <el-menu-item index="/operations">运营动作</el-menu-item>
+            <el-menu-item index="/targets">目标管理</el-menu-item>
+            <el-menu-item index="/promotion">促销活动</el-menu-item>
+            <el-menu-item index="/alerts">告警管理</el-menu-item>
+            <el-menu-item index="/health">健康度分析</el-menu-item>
+          </el-sub-menu>
+          
+          <el-sub-menu index="data">
+            <template #title>
+              <el-icon><DataAnalysis /></el-icon>
+              <span>数据中心</span>
+            </template>
+            <el-menu-item index="/import-center">数据导入</el-menu-item>
+            <el-menu-item index="/smart-import">智能导入</el-menu-item>
+            <el-menu-item index="/report">报表中心</el-menu-item>
+            <el-menu-item index="/backup">数据备份</el-menu-item>
+            <el-menu-item index="/data-quality">数据质量</el-menu-item>
+          </el-sub-menu>
+          
+          <el-menu-item index="/settings">
+            <el-icon><Setting /></el-icon>
+            <template #title>系统设置</template>
+          </el-menu-item>
         </el-menu>
       </el-scrollbar>
     </el-aside>
@@ -64,6 +98,7 @@
           <h2 class="page-title">{{ pageTitle }}</h2>
         </div>
         <div class="header-right">
+          <GlobalSearch />
           <el-button 
             link 
             @click="toggleTheme"
@@ -98,8 +133,9 @@ import { useRoute } from 'vue-router'
 import { 
   DataBoard, DataLine, Odometer, Goods, Monitor,
   TrendCharts, Trophy, Expand, Fold, Sunny, Moon,
-  FullScreen, Tools, DataAnalysis
+  FullScreen, Tools, DataAnalysis, Setting
 } from '@element-plus/icons-vue'
+import GlobalSearch from '@/components/GlobalSearch.vue'
 
 
 const route = useRoute()
@@ -114,15 +150,29 @@ const pageTitles = {
   '/products': '商品列表',
   '/product': '商品详情',
   '/product-ranking': '商品排行',
-  '/inventory': '库存预警',
-  '/reviews': '评价分析',
-  '/traffic-analysis': '流量分析',
-  '/funnel': '转化漏斗',
-  '/ads': '广告投放',
-  '/profit': '利润分析',
-  '/kpi': 'KPI管理',
   '/lifecycle': '生命周期',
-  '/trends': '趋势分析'
+  '/profit': '利润分析',
+  '/quadrant': '四象限分析',
+  '/traffic-analysis': '流量分析',
+  '/ads': '广告投放',
+  '/kpi': 'KPI管理',
+  '/trends': '趋势分析',
+  '/funnel': '转化漏斗',
+  '/compare': '对比分析',
+  '/prediction': '预测分析',
+  '/operations': '运营动作',
+  '/targets': '目标管理',
+  '/promotion': '促销活动',
+  '/alerts': '告警管理',
+  '/health': '健康度分析',
+  '/import-center': '数据导入',
+  '/smart-import': '智能导入',
+  '/report': '报表中心',
+  '/backup': '数据备份',
+  '/data-quality': '数据质量',
+  '/settings': '系统设置',
+  '/inventory': '库存预警',
+  '/reviews': '评价分析'
 }
 
 const pageTitle = computed(() => pageTitles[route.path] || '运营系统')

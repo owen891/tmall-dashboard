@@ -1,5 +1,5 @@
 <template>
-  <div class="products">
+  <div class="page-container products-page">
     <el-card class="filter-card">
       <template #header>
         <div class="filter-header">

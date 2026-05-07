@@ -1,0 +1,240 @@
+// 页面布局统一样式
+// 所有页面应使用这些类来保持一致性
+
+// 页面容器
+.page-container {
+  padding: 16px;
+  min-height: 100%;
+  
+  &.no-padding {
+    padding: 0;
+  }
+}
+
+// 页面头部
+.page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+  padding: 16px 20px;
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+  
+  .page-title {
+    font-size: 18px;
+    font-weight: 600;
+    color: #303133;
+    margin: 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  
+  .page-actions {
+    display: flex;
+    gap: 12px;
+  }
+}
+
+// 页面卡片
+.page-card {
+  background: #fff;
+  border-radius: 12px;
+  padding: 20px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+  margin-bottom: 16px;
+  
+  &:last-child {
+    margin-bottom: 0;
+  }
+  
+  .card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 16px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid #ebeef5;
+    
+    .card-title {
+      font-size: 16px;
+      font-weight: 600;
+      color: #303133;
+      margin: 0;
+    }
+  }
+  
+  &.no-header {
+    .card-header {
+      display: none;
+    }
+  }
+}
+
+// 筛选区域
+.filter-section {
+  background: #fff;
+  border-radius: 12px;
+  padding: 16px 20px;
+  margin-bottom: 16px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+  
+  .filter-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    align-items: center;
+  }
+}
+
+// 统计卡片网格
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+  margin-bottom: 16px;
+  
+  @media (max-width: 1200px) {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  
+  @media (max-width: 768px) {
+    grid-template-columns: 1fr;
+  }
+  
+  .stat-card {
+    background: #fff;
+    border-radius: 12px;
+    padding: 20px;
+    text-align: center;
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+    
+    .stat-value {
+      font-size: 28px;
+      font-weight: 700;
+      color: #409eff;
+      margin-bottom: 8px;
+      
+      &.success { color: #67c23a; }
+      &.warning { color: #e6a23c; }
+      &.danger { color: #f56c6c; }
+    }
+    
+    .stat-label {
+      font-size: 14px;
+      color: #909399;
+    }
+    
+    .stat-change {
+      font-size: 12px;
+      margin-top: 8px;
+      
+      &.up { color: #67c23a; }
+      &.down { color: #f56c6c; }
+    }
+  }
+}
+
+// 图表容器
+.chart-wrapper {
+  background: #fff;
+  border-radius: 12px;
+  padding: 20px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+  
+  .chart-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 16px;
+    
+    .chart-title {
+      font-size: 16px;
+      font-weight: 600;
+      color: #303133;
+    }
+  }
+  
+  .chart-container {
+    height: 300px;
+    
+    &.large { height: 400px; }
+    &.small { height: 200px; }
+  }
+}
+
+// 表格容器
+.table-wrapper {
+  background: #fff;
+  border-radius: 12px;
+  padding: 20px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+  
+  .table-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 16px;
+  }
+  
+  .table-footer {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 16px;
+  }
+}
+
+// 空状态
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 60px 20px;
+  color: #909399;
+  
+  .empty-icon {
+    font-size: 48px;
+    margin-bottom: 16px;
+    color: #c0c4cc;
+  }
+  
+  .empty-text {
+    font-size: 14px;
+    margin-bottom: 16px;
+  }
+}
+
+// 暗色主题适配
+:deep(.dark) {
+  .page-header,
+  .page-card,
+  .filter-section,
+  .stat-card,
+  .chart-wrapper,
+  .table-wrapper {
+    background: #1f1f1f;
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.3);
+  }
+  
+  .page-title,
+  .card-title,
+  .chart-title {
+    color: #e0e0e0;
+  }
+  
+  .card-header,
+  .table-header {
+    border-bottom-color: #333;
+  }
+  
+  .stat-value {
+    color: #409eff;
+  }
+  
+  .stat-label {
+    color: #909399;
+  }
+}
