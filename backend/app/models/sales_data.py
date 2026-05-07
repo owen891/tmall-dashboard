@@ -82,21 +82,6 @@ class WeeklyData(Base):
     data_source = Column(String, nullable=True)
     imported_at = Column(DateTime, default=func.now())
     industry_ctr = Column(Float, default=0)
-    visitors = Column(Integer, default=0)
-    search_visitors = Column(Integer, default=0)
-    cart_count = Column(Integer, default=0)
-    new_customers = Column(Integer, default=0)
-    new_customer_cost = Column(Float, default=0)
-    direct_cart_cost = Column(Float, default=0)
-    total_cart_cost = Column(Float, default=0)
-    search_ctr = Column(Float, default=0)
-    total_roi = Column(Float, default=0)
-    direct_roi = Column(Float, default=0)
-    gsv_change = Column(Float, default=0)
-    ad_spend_change = Column(Float, default=0)
-    direct_roi_change = Column(Float, default=0)
-    refund_ad_ratio = Column(Float, default=0)
-    lead_potential_ratio = Column(Float, default=0)
 
 
 class MonthlyData(Base):
