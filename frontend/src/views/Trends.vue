@@ -67,15 +67,13 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted } from 'vue'
-import * as echarts from 'echarts'
+import { ref, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
+import { useChartManager } from '@/composables/useChartManager'
 import api from '@/api'
 
+const chartManager = useChartManager()
 const chartRef = ref(null)
-let trendChart = null
-let handleResize = null
-
 const dimension = ref('weekly')
 const productId = ref(null)
 const products = ref([])
@@ -156,11 +154,12 @@ const deleteEvent = async (id) => {
 const updateChart = () => {
   if (!chartRef.value) return
   
-  if (trendChart) {
-    trendChart.dispose()
+  if (trendData.value.length === 0) {
+    chartManager.showEmpty(chartRef)
+    return
   }
   
-  trendChart = echarts.init(chartRef.value)
+  chartManager.initChart(chartRef)
 
   const dates = trendData.value.map(t => t?.week_start || t?.period || t?.date)
   const series = [
@@ -235,25 +234,14 @@ const updateChart = () => {
     ]
   }
   
-  trendChart.setOption(option)
+  chartManager.setOption(chartRef, option)
 }
 
 onMounted(async () => {
   await loadProducts()
   await loadTrends()
-  handleResize = () => trendChart?.resize()
-  window.addEventListener('resize', handleResize)
-})
-
-onUnmounted(() => {
-  if (handleResize) {
-    window.removeEventListener('resize', handleResize)
-    handleResize = null
-  }
-  if (trendChart) {
-    trendChart.dispose()
-    trendChart = null
-  }
+  chartManager.initChart(chartRef)
+  chartManager.setupResize()
 })
 </script>
 

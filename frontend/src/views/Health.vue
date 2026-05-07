@@ -182,17 +182,16 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { ElMessage } from 'element-plus'
+import { useChartManager } from '@/composables/useChartManager'
 import api from '@/api'
-import * as echarts from 'echarts'
 import { useTimeStore } from '@/stores/time'
 
 const timeStore = useTimeStore()
 
+const chartManager = useChartManager()
 const chartRef = ref(null)
-let chart = null
-let handleResize = null
 
 const loading = ref(false)
 const stats = ref({ product_count: 0, excellent_count: 0, good_count: 0, warning_count: 0, danger_count: 0 })
@@ -291,7 +290,7 @@ const getBarColor = (score) => {
 }
 
 const updateChart = () => {
-  if (!chart) return
+  if (!chartRef.value) return
 
   const data = [
     { value: stats.value.excellent_count, name: '优秀', itemStyle: { color: '#67c23a' } },
@@ -300,7 +299,14 @@ const updateChart = () => {
     { value: stats.value.danger_count, name: '预警', itemStyle: { color: '#f56c6c' } },
   ].filter(d => d.value > 0)
 
-  chart.setOption({
+  const total = stats.value.product_count || 1
+  if (data.length === 0) {
+    chartManager.showEmpty(chartRef, '暂无健康度数据')
+    return
+  }
+
+  chartManager.initChart(chartRef)
+  chartManager.setOption(chartRef, {
     tooltip: { trigger: 'item', formatter: '{b}: {c}件 ({d}%)' },
     legend: { bottom: '5%', left: 'center' },
     series: [{
@@ -309,31 +315,19 @@ const updateChart = () => {
       avoidLabelOverlap: false,
       itemStyle: { borderRadius: 10, borderColor: '#fff', borderWidth: 2 },
       label: { show: true, formatter: '{b}: {c}' },
-      data: data.length > 0 ? data : [{ value: 1, name: '暂无数据', itemStyle: { color: '#ccc' } }]
+      data: data
     }]
   })
 }
 
 onMounted(() => {
-  chart = echarts.init(chartRef.value)
+  chartManager.initChart(chartRef)
+  chartManager.setupResize()
   loadHealth()
-  handleResize = () => chart?.resize()
-  window.addEventListener('resize', handleResize)
 })
 
 watch(() => [timeStore.startDate, timeStore.endDate], () => {
   loadHealth()
-})
-
-onUnmounted(() => {
-  if (handleResize) {
-    window.removeEventListener('resize', handleResize)
-    handleResize = null
-  }
-  if (chart) {
-    chart.dispose()
-    chart = null
-  }
 })
 </script>
 

@@ -144,23 +144,22 @@
 </template>
 
 <script setup>
-import { ref, onMounted, nextTick, onUnmounted } from 'vue'
-import * as echarts from 'echarts'
+import { ref, onMounted, nextTick } from 'vue'
 import api from '@/api'
 import ExportButton from '@/components/ExportButton.vue'
 import { Right } from '@element-plus/icons-vue'
 import { formatNumber, getTierType } from '@/utils/format'
+import { useChartManager } from '@/composables/useChartManager'
+
+const chartManager = useChartManager()
+const trendChartRef = ref(null)
+const changeChartRef = ref(null)
 
 const dimension = ref('monthly')
 const loading = ref(true)
 const compareData = ref({})
 const productComparisons = ref([])
 const trends = ref([])
-const trendChartRef = ref(null)
-const changeChartRef = ref(null)
-let trendChart = null
-let changeChart = null
-let handleResize = null
 
 const exportColumns = [
   { key: 'product_id', label: '商品ID' },
@@ -208,15 +207,19 @@ const loadData = async () => {
 
 const initTrendChart = () => {
   if (!trendChartRef.value) return
-  if (trendChart) trendChart.dispose()
 
-  trendChart = echarts.init(trendChartRef.value)
+  if (trends.value.length === 0) {
+    chartManager.showEmpty(trendChartRef, '暂无趋势数据')
+    return
+  }
+
+  chartManager.initChart(trendChartRef)
 
   const periods = trends.value.map(t => t?.period)
   const currentPayments = trends.value.map(t => t?.current?.payment || 0)
   const previousPayments = trends.value.map(t => t?.previous?.payment || 0)
 
-  trendChart.setOption({
+  chartManager.setOption(trendChartRef, {
     tooltip: { trigger: 'axis' },
     legend: { data: ['当期', '去年同期'], bottom: 0 },
     grid: { left: '3%', right: '4%', bottom: '15%', containLabel: true },
@@ -231,15 +234,19 @@ const initTrendChart = () => {
 
 const initChangeChart = () => {
   if (!changeChartRef.value) return
-  if (changeChart) changeChart.dispose()
-
-  changeChart = echarts.init(changeChartRef.value)
 
   const metrics = ['payment', 'refund', 'visitors', 'conversion', 'ad_spend']
   const labels = ['销售额', '退款额', '访客', '转化率', '广告支出']
   const changes = metrics.map(m => compareData.value.comparison?.[m]?.change_percent || 0)
 
-  changeChart.setOption({
+  const hasData = changes.some(c => c !== 0)
+  if (!hasData) {
+    chartManager.showEmpty(changeChartRef, '暂无变化数据')
+    return
+  }
+
+  chartManager.initChart(changeChartRef)
+  chartManager.setOption(changeChartRef, {
     tooltip: { trigger: 'axis', formatter: '{b}: {c}%' },
     grid: { left: '3%', right: '4%', bottom: '3%', containLabel: true },
     xAxis: { type: 'value', name: '变化率(%)' },
@@ -257,26 +264,7 @@ const initChangeChart = () => {
 
 onMounted(() => {
   loadData()
-  handleResize = () => {
-    trendChart?.resize()
-    changeChart?.resize()
-  }
-  window.addEventListener('resize', handleResize)
-})
-
-onUnmounted(() => {
-  if (handleResize) {
-    window.removeEventListener('resize', handleResize)
-    handleResize = null
-  }
-  if (trendChart) {
-    trendChart.dispose()
-    trendChart = null
-  }
-  if (changeChart) {
-    changeChart.dispose()
-    changeChart = null
-  }
+  chartManager.setupResize()
 })
 </script>
 

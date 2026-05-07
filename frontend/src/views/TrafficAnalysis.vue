@@ -4,7 +4,7 @@
       <h1>流量分析</h1>
       <ExportButton 
         :table-data="channelData" 
-        :chart-instance="trendChart"
+        :chart-instance="chartManager.getChart(trendChartRef)"
         :file-name="`流量分析_${new Date().toISOString().split('T')[0]}`"
         button-text="导出数据"
         type="primary"
@@ -155,20 +155,18 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onBeforeUnmount } from 'vue'
+import { ref, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { User, View, TrendCharts, Coin } from '@element-plus/icons-vue'
-import * as echarts from 'echarts'
 import ExportButton from '@/components/ExportButton.vue'
 import api from '@/api'
 import { formatNumber } from '@/utils/format'
+import { useChartManager } from '@/composables/useChartManager'
 
+const chartManager = useChartManager()
 const loading = ref(false)
 const trendChartRef = ref(null)
 const sourceChartRef = ref(null)
-let trendChart = null
-let sourceChart = null
-let handleResize = null
 
 const overview = ref({
   visitors: 0,
@@ -246,21 +244,17 @@ const renderCharts = () => {
 
 const renderTrendChart = () => {
   if (!trendChartRef.value) return
-  
-  if (!trendChart) {
-    trendChart = echarts.init(trendChartRef.value)
-  }
 
   const trends = channelData.value.length > 0 ? channelData.value : []
-  
+
   if (trends.length === 0) {
-    trendChart.setOption({
-      title: { text: '暂无数据', left: 'center', top: 'center', textStyle: { color: '#999' } }
-    }, true)
+    chartManager.showEmpty(trendChartRef, '暂无趋势数据')
     return
   }
 
-  trendChart.setOption({
+  chartManager.initChart(trendChartRef)
+
+  chartManager.setOption(trendChartRef, {
     tooltip: { trigger: 'axis', axisPointer: { type: 'cross' } },
     legend: { data: ['访客数', '转化率'] },
     xAxis: { type: 'category', data: trends.map(c => c.channel || ''), boundaryGap: false },
@@ -277,21 +271,16 @@ const renderTrendChart = () => {
 
 const renderSourceChart = () => {
   if (!sourceChartRef.value) return
-  
-  if (!sourceChart) {
-    sourceChart = echarts.init(sourceChartRef.value)
-  }
 
   const data = channelData.value.length > 0 ? channelData.value : []
-  
+
   if (data.length === 0) {
-    sourceChart.setOption({
-      title: { text: '暂无数据', left: 'center', top: 'center', textStyle: { color: '#999' } }
-    }, true)
+    chartManager.showEmpty(sourceChartRef, '暂无来源数据')
     return
   }
 
-  sourceChart.setOption({
+  chartManager.initChart(sourceChartRef)
+  chartManager.setOption(sourceChartRef, {
     tooltip: { trigger: 'item', formatter: '{b}: {c} ({d}%)' },
     legend: { orient: 'vertical', left: 'left' },
     series: [{
@@ -309,17 +298,7 @@ const renderSourceChart = () => {
 
 onMounted(() => {
   loadData()
-  handleResize = () => {
-    trendChart?.resize()
-    sourceChart?.resize()
-  }
-  window.addEventListener('resize', handleResize)
-})
-
-onBeforeUnmount(() => {
-  window.removeEventListener('resize', handleResize)
-  trendChart?.dispose()
-  sourceChart?.dispose()
+  chartManager.setupResize()
 })
 </script>
 

@@ -220,11 +220,13 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted, onBeforeUnmount } from 'vue'
+import { ref, reactive, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Refresh } from '@element-plus/icons-vue'
-import * as echarts from 'echarts'
+import { useChartManager } from '@/composables/useChartManager'
 import { formatNumber, formatPercent } from '@/utils/format'
+
+const chartManager = useChartManager()
 
 const periodType = ref('7d')
 const loading = ref(false)
@@ -253,10 +255,6 @@ const dropAnalysis = ref([])
 const funnelChartRef = ref(null)
 const dropChartRef = ref(null)
 const sourceChartRef = ref(null)
-
-let funnelChart = null
-let dropChart = null
-let sourceChart = null
 
 const fetchData = async () => {
   loading.value = true
@@ -331,9 +329,12 @@ const renderCharts = () => {
 const renderFunnelChart = () => {
   if (!funnelChartRef.value) return
 
-  if (!funnelChart) {
-    funnelChart = echarts.init(funnelChartRef.value)
+  if (sourceData.value.length === 0) {
+    chartManager.showEmpty(funnelChartRef, '暂无漏斗数据')
+    return
   }
+
+  chartManager.initChart(funnelChartRef)
 
   const funnelData = [
     { name: '曝光', value: overview.total_exposure, color: '#409EFF' },
@@ -343,7 +344,7 @@ const renderFunnelChart = () => {
     { name: '支付', value: overview.total_pay, color: '#909399' }
   ]
 
-  funnelChart.setOption({
+  chartManager.setOption(funnelChartRef, {
     tooltip: {
       trigger: 'item',
       formatter: (params) => `${params.name}: ${formatNumber(params.value)}`
@@ -385,17 +386,14 @@ const renderFunnelChart = () => {
 const renderDropChart = () => {
   if (!dropChartRef.value) return
 
-  if (!dropChart) {
-    dropChart = echarts.init(dropChartRef.value)
-  }
-
   const dropData = [
     { stage: '曝光→点击', rate: 100 - (overview.ctr || 5) },
     { stage: '点击→加购', rate: 100 - (overview.cart_rate || 8) },
     { stage: '加购→支付', rate: 100 - (overview.pay_rate || 15) }
   ]
 
-  dropChart.setOption({
+  chartManager.initChart(dropChartRef)
+  chartManager.setOption(dropChartRef, {
     tooltip: {
       trigger: 'axis',
       axisPointer: { type: 'shadow' },
@@ -433,11 +431,13 @@ const renderDropChart = () => {
 const renderSourceChart = () => {
   if (!sourceChartRef.value) return
 
-  if (!sourceChart) {
-    sourceChart = echarts.init(sourceChartRef.value)
+  if (sourceData.value.length === 0) {
+    chartManager.showEmpty(sourceChartRef, '暂无渠道数据')
+    return
   }
 
-  sourceChart.setOption({
+  chartManager.initChart(sourceChartRef)
+  chartManager.setOption(sourceChartRef, {
     tooltip: {
       trigger: 'axis',
       axisPointer: { type: 'shadow' }
@@ -463,31 +463,9 @@ const renderSourceChart = () => {
   })
 }
 
-const handleResize = () => {
-  funnelChart?.resize()
-  dropChart?.resize()
-  sourceChart?.resize()
-}
-
 onMounted(() => {
   fetchData()
-  window.addEventListener('resize', handleResize)
-})
-
-onBeforeUnmount(() => {
-  window.removeEventListener('resize', handleResize)
-  if (funnelChart) {
-    funnelChart.dispose()
-    funnelChart = null
-  }
-  if (dropChart) {
-    dropChart.dispose()
-    dropChart = null
-  }
-  if (sourceChart) {
-    sourceChart.dispose()
-    sourceChart = null
-  }
+  chartManager.setupResize()
 })
 </script>
 
