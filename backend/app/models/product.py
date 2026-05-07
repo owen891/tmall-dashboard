@@ -22,6 +22,16 @@ class Product(Base):
     created_at = Column(DateTime, default=func.now())
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
 
+    growth_stage = Column(String, nullable=True, index=True)
+    presale_amount = Column(Float, default=0)
+    presale_qty = Column(Integer, default=0)
+    score = Column(Integer, default=0)
+    repurchase_rate = Column(Float, default=0)
+    cross_sell_rate = Column(Float, default=0)
+    new_customer_cost = Column(Float, default=0)
+    direct_cart_cost = Column(Float, default=0)
+    total_cart_cost = Column(Float, default=0)
+
 
 class ProductTag(Base):
     __tablename__ = "product_tags"
