@@ -1,5 +1,5 @@
 <template>
-  <div class="health-container">
+  <div class="page-container health-page">
     <div class="header">
       <h2>商品健康度评分</h2>
     </div>
@@ -330,8 +330,7 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
-.health-container {
-  padding: 20px;
+.health-page {
 }
 
 .header {

@@ -382,7 +382,6 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .lifecycle-page {
-  padding: 0;
 }
 
 .stage-stats {

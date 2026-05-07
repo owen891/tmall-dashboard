@@ -1,5 +1,5 @@
 <template>
-  <div class="compare-analysis">
+  <div class="page-container compare-page">
     <div class="header">
       <h2>同比数据对比</h2>
       <div class="controls">
@@ -268,8 +268,7 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
-.compare-analysis {
-  padding: 20px;
+.compare-page {
 }
 
 .header {

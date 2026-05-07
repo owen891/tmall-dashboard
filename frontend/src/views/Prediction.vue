@@ -1,5 +1,5 @@
 <template>
-  <div class="prediction-page">
+  <div class="page-container prediction-page">
     <el-card class="header-card">
       <template #header>
         <div class="card-header">
@@ -18,7 +18,7 @@
                 <template #header>
                   <span>GMV 趋势预测</span>
                 </template>
-                <div ref="gmvChartRef" style="width: 100%; height: 350px;"></div>
+                <div ref="gmvChartRef" style="width: 100%; height: 300px;"></div>
               </el-card>
             </el-col>
             <el-col :span="8">
@@ -207,7 +207,6 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .prediction-page {
-  padding: 0;
 }
 
 .card-header {

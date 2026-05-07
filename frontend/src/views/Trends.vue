@@ -1,5 +1,5 @@
 <template>
-  <div class="trends-container">
+  <div class="page-container trends-page">
     <div class="header">
       <h2>趋势分析</h2>
       <div class="controls">
@@ -15,7 +15,7 @@
     </div>
 
     <el-card class="chart-card">
-      <div ref="chartRef" style="width: 100%; height: 400px;"></div>
+      <div ref="chartRef" style="width: 100%; height: 300px;"></div>
     </el-card>
 
     <el-card class="events-card">
@@ -248,8 +248,7 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
-.trends-container {
-  padding: 20px;
+.trends-page {
 }
 
 .header {

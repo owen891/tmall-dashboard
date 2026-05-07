@@ -1,5 +1,5 @@
 <template>
-  <div class="funnel-container">
+  <div class="page-container funnel-page">
     <div class="page-header">
       <h1>流量漏斗转化分析</h1>
       <div class="header-actions">
@@ -474,8 +474,7 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
-.funnel-container {
-  padding: 24px;
+.funnel-page {
 }
 
 .page-header {
@@ -592,7 +591,7 @@ onBeforeUnmount(() => {
 }
 
 .chart-container {
-  height: 320px;
+  height: 300px;
 }
 
 .chart-container.small {

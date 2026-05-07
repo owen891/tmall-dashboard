@@ -1,5 +1,5 @@
 <template>
-  <div class="ads-container">
+  <div class="page-container ads-page">
     <div class="header">
       <h2>广告分析</h2>
     </div>
@@ -35,7 +35,7 @@
       <template #header>
         <span>渠道对比</span>
       </template>
-      <div ref="chartRef" style="width: 100%; height: 350px;"></div>
+      <div ref="chartRef" style="width: 100%; height: 300px;"></div>
     </el-card>
 
     <el-card class="products-card">
@@ -137,8 +137,7 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
-.ads-container {
-  padding: 20px;
+.ads-page {
 }
 
 .header {

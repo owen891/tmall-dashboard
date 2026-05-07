@@ -1,5 +1,5 @@
 <template>
-  <div class="traffic-analysis">
+  <div class="page-container traffic-page">
     <div class="page-header">
       <h1>流量分析</h1>
       <ExportButton 
@@ -66,7 +66,7 @@
             <div class="card-header">
               <h3>流量趋势</h3>
             </div>
-            <div ref="trendChartRef" style="height: 400px;"></div>
+            <div ref="trendChartRef" style="height: 300px;"></div>
           </div>
         </el-col>
         <el-col :span="8">
@@ -74,7 +74,7 @@
             <div class="card-header">
               <h3>流量来源分布</h3>
             </div>
-            <div ref="sourceChartRef" style="height: 400px;"></div>
+            <div ref="sourceChartRef" style="height: 300px;"></div>
           </div>
         </el-col>
       </el-row>
@@ -383,8 +383,7 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
-.traffic-analysis {
-  padding: 24px;
+.traffic-page {
 }
 
 .page-header {

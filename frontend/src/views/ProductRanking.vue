@@ -1,5 +1,5 @@
 <template>
-  <div class="product-ranking">
+  <div class="page-container ranking-page">
     <div class="page-header">
       <h1>商品排行榜</h1>
       <ExportButton 
@@ -228,8 +228,7 @@ onMounted(() => {
 </script>
 
 <style scoped>
-.product-ranking {
-  padding: 24px;
+.ranking-page {
 }
 
 .page-header {

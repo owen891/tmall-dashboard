@@ -1,5 +1,5 @@
 <template>
-  <div class="kpi-container">
+  <div class="page-container kpi-page">
     <div class="header">
       <h2>多维度KPI分析</h2>
       <div class="dimension-selector">
@@ -183,8 +183,7 @@ onMounted(() => {
 </script>
 
 <style scoped>
-.kpi-container {
-  padding: 20px;
+.kpi-page {
 }
 
 .header {

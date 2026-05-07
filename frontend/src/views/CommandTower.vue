@@ -1,5 +1,5 @@
 <template>
-  <div class="command-tower">
+  <div class="page-container command-tower-page">
     <div class="tower-header">
       <div class="header-left">
         <h1>🎯 运营指挥塔</h1>
@@ -331,10 +331,8 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
-.command-tower {
-  padding: 20px;
+.command-tower-page {
   background: #f5f7fa;
-  min-height: 100%;
 }
 
 .tower-header {

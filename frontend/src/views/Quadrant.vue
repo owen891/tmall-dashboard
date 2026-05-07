@@ -1,5 +1,5 @@
 <template>
-  <div class="quadrant">
+  <div class="page-container quadrant-page">
     <el-card>
       <template #header>
         <div class="card-header">
@@ -217,8 +217,7 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
-.quadrant {
-  width: 100%;
+.quadrant-page {
 }
 
 .card-header {

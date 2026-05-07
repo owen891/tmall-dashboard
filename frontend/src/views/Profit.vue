@@ -1,5 +1,5 @@
 <template>
-  <div class="profit-analysis">
+  <div class="page-container profit-page">
     <div class="header">
       <h2>利润分析</h2>
       <div class="controls">
@@ -291,8 +291,7 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
-.profit-analysis {
-  padding: 20px;
+.profit-page {
 }
 
 .header {
