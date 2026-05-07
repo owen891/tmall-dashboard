@@ -224,7 +224,7 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { ref, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import {
   MagicStick,
@@ -237,12 +237,14 @@ import {
   Goods,
   Connection
 } from '@element-plus/icons-vue'
+import api from '@/api'
 
 const activeTab = ref('report')
 const generating = ref(false)
 const querying = ref(false)
 const queryText = ref('')
 const queryResult = ref(null)
+const reportHistory = ref([])
 
 const aiSettings = ref({
   model: 'gpt-4',
@@ -258,83 +260,38 @@ const depthMarks = {
   5: '深度'
 }
 
-const currentReport = ref({
-  title: '2026年5月1日运营日报',
-  type: 'daily',
-  time: '2026-05-01 23:59',
-  metrics: {
-    gmv: '¥35,556',
-    gmvTrend: 12.5,
-    visitors: '37,062',
-    visitorsTrend: 8.3,
-    conversion: '1.59%',
-    conversionTrend: 3.2,
-    roi: '3.87',
-    roiTrend: 5.1
-  },
-  issues: [
-    {
-      level: 'high',
-      title: '首页跳出率过高',
-      description: '首页跳出率达到68%，高于行业平均水平50%，可能导致转化损失。'
-    },
-    {
-      level: 'medium',
-      title: '部分商品库存不足',
-      description: '热销商品A库存仅剩50件，按当前销量预计3天后断货。'
-    },
-    {
-      level: 'low',
-      title: '直通车ROI略有下降',
-      description: '直通车ROI从4.2下降到3.8，建议优化关键词出价。'
-    }
-  ],
-  suggestions: [
-    {
-      title: '优化首页内容',
-      priority: 'high',
-      description: '建议在首页增加热销商品推荐模块，提高用户停留时间，预计可降低跳出率15%。'
-    },
-    {
-      title: '及时补充库存',
-      priority: 'high',
-      description: '立即联系供应商补货，避免因断货导致的GMV损失。'
-    },
-    {
-      title: '调整直通车策略',
-      priority: 'medium',
-      description: '优化关键词匹配方式，降低无效点击，预计可提升ROI 10%。'
-    },
-    {
-      title: '加强客户评价管理',
-      priority: 'medium',
-      description: '近期有3条负面评价，建议主动联系客户解决问题，提升店铺评分。'
-    }
-  ]
-})
-
-const reportHistory = ref([
-  { id: 1, title: '2026年4月30日运营日报', type: 'daily', time: '2026-04-30 23:59' },
-  { id: 2, title: '2026年4月第四周周报', type: 'weekly', time: '2026-04-28 18:00' },
-  { id: 3, title: '2026年4月29日运营日报', type: 'daily', time: '2026-04-29 23:59' }
-])
+const currentReport = ref(null)
 
 const generateReport = async () => {
   generating.value = true
-  
-  await new Promise(resolve => setTimeout(resolve, 2000))
-  
-  ElMessage.success('报告生成成功')
-  generating.value = false
+  try {
+    const res = await api.aiAnalyticsApi.generateReport({ type: 'daily' })
+    currentReport.value = res.data || res
+    ElMessage.success('报告生成成功')
+    await fetchHistory()
+  } catch (error) {
+    console.error('生成报告失败:', error)
+    ElMessage.error('生成报告失败')
+  } finally {
+    generating.value = false
+  }
 }
 
 const generateQuickReport = async (type) => {
   generating.value = true
-  
-  await new Promise(resolve => setTimeout(resolve, 1500))
-  
-  ElMessage.success(`${type === 'daily' ? '日报' : type === 'weekly' ? '周报' : type === 'product' ? '商品分析' : '流量分析'}生成成功`)
-  generating.value = false
+  try {
+    const reportType = type === 'daily' ? 'daily' : type === 'weekly' ? 'weekly' : type === 'product' ? 'product' : 'traffic'
+    const res = await api.aiAnalyticsApi.generateReport({ type: reportType })
+    currentReport.value = res.data || res
+    const typeName = type === 'daily' ? '日报' : type === 'weekly' ? '周报' : type === 'product' ? '商品分析' : '流量分析'
+    ElMessage.success(`${typeName}生成成功`)
+    await fetchHistory()
+  } catch (error) {
+    console.error(`生成${typeName}失败:`, error)
+    ElMessage.error('生成失败')
+  } finally {
+    generating.value = false
+  }
 }
 
 const executeQuery = async () => {
@@ -344,36 +301,56 @@ const executeQuery = async () => {
   }
 
   querying.value = true
-  
-  await new Promise(resolve => setTimeout(resolve, 2000))
-  
-  queryResult.value = {
-    answer: `根据您的查询"${queryText.value}"，分析结果显示：上周销售额最高的商品是"中古风玄关装饰摆件"，销售额达到13,870元，占总销售额的3.9%。该商品转化率为1.12%，高于平均水平。`,
-    data: [
-      { rank: 1, product: '中古风玄关装饰摆件', gmv: 13870, conversion: '1.12%' },
-      { rank: 2, product: '入户玄关装饰品钟馗财神爷摆件', gmv: 7090, conversion: '1.28%' },
-      { rank: 3, product: '中古风玄关装饰摆件放钥匙收纳', gmv: 5731, conversion: '0.93%' }
-    ],
-    columns: ['rank', 'product', 'gmv', 'conversion']
+  try {
+    const res = await api.aiAnalyticsApi.executeQuery({ query: queryText.value })
+    queryResult.value = res.data || res
+  } catch (error) {
+    console.error('查询失败:', error)
+    ElMessage.error('查询失败')
+  } finally {
+    querying.value = false
   }
-  
-  querying.value = false
 }
 
 const applySuggestion = (suggestion) => {
   ElMessage.success(`已应用建议：${suggestion.title}`)
 }
 
-const exportReport = () => {
-  ElMessage.info('导出功能开发中')
+const exportReport = async () => {
+  try {
+    window.open('/api/ai-analytics/report/export', '_blank')
+    ElMessage.success('正在导出...')
+  } catch (error) {
+    ElMessage.error('导出失败')
+  }
 }
 
 const shareReport = () => {
-  ElMessage.info('分享功能开发中')
+  const url = `${window.location.origin}/ai-report/${currentReport.value?.id}`
+  try {
+    navigator.clipboard.writeText(url)
+    ElMessage.success('报告链接已复制')
+  } catch (error) {
+    ElMessage.error('复制失败')
+  }
 }
 
-const loadReport = (reportId) => {
-  ElMessage.info(`加载报告 ${reportId}`)
+const loadReport = async (reportId) => {
+  try {
+    const res = await api.aiAnalyticsApi.getReport(reportId)
+    currentReport.value = res.data || res
+  } catch (error) {
+    ElMessage.error('加载报告失败')
+  }
+}
+
+const fetchHistory = async () => {
+  try {
+    const res = await api.aiAnalyticsApi.getReportHistory()
+    reportHistory.value = res.data?.reports || res?.reports || []
+  } catch (error) {
+    console.error('获取历史报告失败:', error)
+  }
 }
 
 const getIssueType = (level) => {
@@ -395,6 +372,10 @@ const getSuggestionPriority = (priority) => {
   const priorities = { high: '高优', medium: '中优', low: '低优' }
   return priorities[priority] || priority
 }
+
+onMounted(() => {
+  fetchHistory()
+})
 </script>
 
 <style scoped>

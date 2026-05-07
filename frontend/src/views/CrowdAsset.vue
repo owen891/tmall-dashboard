@@ -114,15 +114,34 @@ const efficiencyMatrix = ref([])
 const refresh = async () => {
   loading.value = true
   try {
-    const data = await api.request.get('/crowd-asset/dashboard')
-    if (data?.summary) {
-      Object.assign(summary.value, data.summary)
-      topCrowds.value = data.top_crowds || []
-    } else {
-      loadMockData()
+    const [dashboardRes, matrixRes] = await Promise.all([
+      api.crowdAssetApi.getDashboard(),
+      api.crowdAssetApi.getEfficiencyMatrix()
+    ])
+    
+    const dashboardData = dashboardRes?.data || {}
+    const matrixData = matrixRes?.data || {}
+    
+    if (dashboardData.summary) {
+      summary.value = {
+        total_cost: dashboardData.summary.total_cost || 0,
+        total_gmv: dashboardData.summary.total_gmv || 0,
+        asset_roi: dashboardData.summary.total_roi || 0,
+        aipl_increase: (dashboardData.aipl_increase?.awareness || 0) + 
+                       (dashboardData.aipl_increase?.interest || 0) + 
+                       (dashboardData.aipl_increase?.purchase || 0) + 
+                       (dashboardData.aipl_increase?.loyalty || 0)
+      }
+      topCrowds.value = dashboardData.top_crowds || []
     }
+    
+    if (matrixData.matrix) {
+      efficiencyMatrix.value = matrixData.matrix
+    }
+    
     renderCharts()
   } catch (error) {
+    console.error('加载人群资产数据失败:', error)
     loadMockData()
     renderCharts()
     ElMessage.error('加载数据失败，使用模拟数据')
@@ -186,22 +205,38 @@ const renderMatrixChart = () => {
     matrixChart = echarts.init(matrixChartRef.value)
   }
   
+  const matrixData = efficiencyMatrix.value.length > 0 ? efficiencyMatrix.value : [
+    { crowd_name: '人群1', tier: 'S', bid_ratio: 1.2, asset_roi: 2.5, scale: 10000 },
+    { crowd_name: '人群2', tier: 'A', bid_ratio: 1.5, asset_roi: 3.2, scale: 8000 },
+    { crowd_name: '人群3', tier: 'B', bid_ratio: 0.9, asset_roi: 1.8, scale: 15000 },
+    { crowd_name: '人群4', tier: 'S', bid_ratio: 1.8, asset_roi: 4.1, scale: 5000 },
+    { crowd_name: '人群5', tier: 'A', bid_ratio: 1.4, asset_roi: 2.9, scale: 12000 }
+  ]
+  
+  const tierColors = { 'S': '#f56c6c', 'A': '#e6a23c', 'B': '#909399' }
+  
   matrixChart.setOption({
-    tooltip: { trigger: 'item' },
-    xAxis: { type: 'value', name: 'ROI' },
-    yAxis: { type: 'value', name: '出价系数' },
+    tooltip: { 
+      trigger: 'item',
+      formatter: (params) => {
+        const item = matrixData[params.dataIndex]
+        return `${item.crowd_name}<br/>层级: ${item.tier}<br/>ROI: ${item.asset_roi}<br/>出价系数: ${item.bid_ratio}`
+      }
+    },
+    xAxis: { type: 'value', name: 'ROI', min: 0 },
+    yAxis: { type: 'value', name: '出价系数', min: 0 },
     series: [
       {
         type: 'scatter',
-        data: [
-          [2.5, 1.2, 10000],
-          [3.2, 1.5, 8000],
-          [1.8, 0.9, 15000],
-          [4.1, 1.8, 5000],
-          [2.9, 1.4, 12000]
-        ],
+        data: matrixData.map(item => ({
+          value: [item.asset_roi, item.bid_ratio, item.scale],
+          itemStyle: { color: tierColors[item.tier] || '#409EFF' }
+        })),
         symbolSize: function (val) {
-          return Math.sqrt(val[2]) / 5
+          return Math.sqrt(val[2]) / 8
+        },
+        label: {
+          show: false
         }
       }
     ]

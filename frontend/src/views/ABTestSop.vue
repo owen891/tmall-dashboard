@@ -32,6 +32,7 @@
                     <el-tag size="small" :type="getStatusType(row.status)">{{ row.status }}</el-tag>
                   </template>
                 </el-table-column>
+                <el-table-column prop="created_at" label="创建时间" width="150"></el-table-column>
                 <el-table-column label="进度" width="250">
                   <template #default="{ row }">
                     <div v-if="row.status === 'finished'">
@@ -49,10 +50,20 @@
                     </div>
                   </template>
                 </el-table-column>
-                <el-table-column label="操作" width="200" fixed="right">
+                <el-table-column label="操作" width="220" fixed="right">
                   <template #default="{ row }">
-                    <el-button size="small" @click="viewTest(row)">查看</el-button>
-                    <el-button v-if="row.status === 'running'" size="small" type="primary" @click="analyzeTest(row.id)">分析</el-button>
+                    <el-button size="small" @click="viewTest(row)" title="查看详情">
+                      <el-icon><View /></el-icon>
+                    </el-button>
+                    <el-button v-if="row.status === 'running'" size="small" type="primary" @click="analyzeTest(row.id)" title="分析结果">
+                      <el-icon><VideoPlay /></el-icon> 分析
+                    </el-button>
+                    <el-button v-if="row.status === 'finished'" size="small" type="success" title="复制结果">
+                      <el-icon><CopyDocument /></el-icon>
+                    </el-button>
+                    <el-button v-if="row.status !== 'running'" size="small" type="danger" @click="deleteTest(row)" title="删除">
+                      <el-icon><Delete /></el-icon>
+                    </el-button>
                   </template>
                 </el-table-column>
               </el-table>
@@ -80,6 +91,7 @@
                     <el-progress :percentage="row.avg_effectiveness || 0" :color="'#409eff'" style="width: 100px;" />
                   </template>
                 </el-table-column>
+                <el-table-column prop="updated_at" label="更新时间" width="150"></el-table-column>
                 <el-table-column label="操作" width="150" fixed="right">
                   <template #default="{ row }">
                     <el-button size="small">查看</el-button>
@@ -132,14 +144,49 @@
         </el-row>
       </div>
     </div>
+
+    <el-dialog v-model="showCreateTest" title="创建A/B实验" width="600px">
+      <el-form :model="createTestForm" label-width="100px">
+        <el-form-item label="实验名称" prop="test_name">
+          <el-input v-model="createTestForm.test_name" placeholder="请输入实验名称" />
+        </el-form-item>
+        <el-form-item label="实验类型" prop="test_type">
+          <el-select v-model="createTestForm.test_type" placeholder="请选择实验类型">
+            <el-option label="主图测试" value="主图测试" />
+            <el-option label="标题测试" value="标题测试" />
+            <el-option label="人群测试" value="人群测试" />
+            <el-option label="价格测试" value="价格测试" />
+            <el-option label="页面测试" value="页面测试" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="实验描述" prop="description">
+          <el-input v-model="createTestForm.description" type="textarea" placeholder="请输入实验描述" />
+        </el-form-item>
+        <el-form-item label="实验变体">
+          <div class="variants-container">
+            <div v-for="(variant, index) in createTestForm.variants" :key="index" class="variant-item">
+              <el-input v-model="variant.name" :placeholder="`变体 ${index + 1} 名称`" style="width: 200px" />
+              <el-input v-model="variant.weight" type="number" :placeholder="`权重 ${index + 1}`" style="width: 100px" />
+              <el-button v-if="createTestForm.variants.length > 2" size="small" type="danger" @click="removeVariant(index)">删除</el-button>
+            </div>
+            <el-button v-if="createTestForm.variants.length < 5" size="small" @click="addVariant">+ 添加变体</el-button>
+          </div>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="showCreateTest = false">取消</el-button>
+        <el-button type="primary" @click="createTest">创建</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup>
 import { ref, onMounted, watch } from 'vue'
-import { ElMessage } from 'element-plus'
-import { Refresh, Plus } from '@element-plus/icons-vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import { Refresh, Plus, View, VideoPlay, CopyDocument, Delete } from '@element-plus/icons-vue'
 import { formatNumber } from '@/utils/format'
+import api from '@/api'
 
 const activeTab = ref('abtest')
 const loading = ref(false)
@@ -148,48 +195,37 @@ const sopTemplates = ref([])
 const campaigns = ref([])
 const showCreateTest = ref(false)
 
+const createTestForm = ref({
+  test_name: '',
+  test_type: '',
+  description: '',
+  variants: [{ name: 'A组', weight: 50 }, { name: 'B组', weight: 50 }]
+})
+
+const addVariant = () => {
+  const index = createTestForm.value.variants.length + 1
+  createTestForm.value.variants.push({ name: `${String.fromCharCode(64 + index)}组`, weight: Math.round(100 / (index + 1)) })
+}
+
+const removeVariant = (index) => {
+  createTestForm.value.variants.splice(index, 1)
+}
+
 const refresh = async () => {
   loading.value = true
   try {
     if (activeTab.value === 'abtest') {
-      const response = await fetch('/api/abtest-sop/tests')
-      if (response.ok) {
-        const data = await response.json()
-        tests.value = data.tests || []
-      } else {
-        // 使用模拟数据
-        tests.value = [
-          { id: 1, test_name: '首图优化测试', test_type: '主图测试', status: 'running', progress: 75, has_winner: false },
-          { id: 2, test_name: '人群包测试', test_type: '人群测试', status: 'finished', has_winner: true, winner_variant: 'B组', is_significant: true },
-          { id: 3, test_name: '标题关键词测试', test_type: '标题测试', status: 'paused', progress: 40 }
-        ]
-      }
+      const res = await api.abtestSopApi.getTests()
+      tests.value = res.data?.tests || res?.tests || []
     } else if (activeTab.value === 'sop') {
-      const response = await fetch('/api/abtest-sop/sop-templates')
-      if (response.ok) {
-        const data = await response.json()
-        sopTemplates.value = data.templates || []
-      } else {
-        sopTemplates.value = [
-          { id: 1, template_name: '618大促SOP', template_type: '活动', category: '大促', use_count: 5, avg_effectiveness: 85 },
-          { id: 2, template_name: '新品上市SOP', template_type: '推广', category: '新品', use_count: 8, avg_effectiveness: 78 },
-          { id: 3, template_name: '日常维护SOP', template_type: '运营', category: '日常', use_count: 20, avg_effectiveness: 90 }
-        ]
-      }
+      const res = await api.abtestSopApi.getSopTemplates()
+      sopTemplates.value = res.data?.templates || res?.templates || []
     } else {
-      const response = await fetch('/api/abtest-sop/campaign-projects')
-      if (response.ok) {
-        const data = await response.json()
-        campaigns.value = data.projects || []
-      } else {
-        campaigns.value = [
-          { id: 1, project_name: '55大促', project_type: '大促活动', status: 'finished', target_gmv: 500000, actual_gmv: 480000, completion_rate: 96 },
-          { id: 2, project_name: '夏季新品推广', project_type: '推广活动', status: 'running', target_gmv: 300000, actual_gmv: 180000, completion_rate: 60 },
-          { id: 3, project_name: '周年庆活动', project_type: '大促活动', status: 'planned', target_gmv: 800000, actual_gmv: 0, completion_rate: 0 }
-        ]
-      }
+      const res = await api.abtestSopApi.getCampaignProjects()
+      campaigns.value = res.data?.projects || res?.projects || []
     }
   } catch (error) {
+    console.error('加载数据失败:', error)
     ElMessage.error('加载数据失败')
   } finally {
     loading.value = false
@@ -202,11 +238,42 @@ const getStatusType = (status) => {
 }
 
 const viewTest = (row) => {
-  ElMessage.info('查看实验详情')
+  ElMessage.info(`查看实验: ${row.test_name}`)
 }
 
-const analyzeTest = (testId) => {
-  ElMessage.success('开始分析实验结果')
+const analyzeTest = async (testId) => {
+  try {
+    await api.abtestSopApi.analyzeTest(testId)
+    ElMessage.success('分析完成')
+    refresh()
+  } catch (error) {
+    ElMessage.error('分析失败')
+  }
+}
+
+const createTest = async () => {
+  try {
+    await api.abtestSopApi.createTest(createTestForm.value)
+    ElMessage.success('创建成功')
+    showCreateTest.value = false
+    createTestForm.value = { test_name: '', test_type: '', description: '', variants: [] }
+    refresh()
+  } catch (error) {
+    ElMessage.error('创建失败')
+  }
+}
+
+const deleteTest = async (test) => {
+  try {
+    await ElMessageBox.confirm(`确定删除实验"${test.test_name}"？`, '确认删除', { type: 'warning' })
+    await api.request.delete(`/abtest-sop/tests/${test.id}`)
+    ElMessage.success('删除成功')
+    refresh()
+  } catch (error) {
+    if (error !== 'cancel') {
+      ElMessage.error('删除失败')
+    }
+  }
 }
 
 watch(activeTab, () => {

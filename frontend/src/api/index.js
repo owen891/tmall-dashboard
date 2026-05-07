@@ -65,6 +65,9 @@ export default {
   getKPIDimensions() {
     return request.get('/kpi/dimensions')
   },
+  dismissAnomaly(anomalyId) {
+    return request.post(`/kpi/anomalies/${anomalyId}/dismiss`)
+  },
 
   getHealthList(params) {
     return request.get('/health/list', { params })
@@ -75,6 +78,20 @@ export default {
 
   getTrends(params) {
     return request.get('/trends', { params })
+  },
+  getTrendsData(productId, dimension) {
+    const params = { dimension }
+    if (productId) params.product_id = productId
+    return request.get('/trends/data', { params })
+  },
+  getTrendEvents(params) {
+    return cachedRequest('get', '/trends/events', { params, useCache: true })
+  },
+  addTrendEvent(data) {
+    return request.post('/trends/events', data)
+  },
+  deleteTrendEvent(eventId) {
+    return request.delete(`/trends/events/${eventId}`)
   },
 
   getAlerts(params) {
@@ -123,6 +140,16 @@ export default {
   },
   getCacheStats() {
     return apiCache.getStats()
+  },
+
+  getProductRecommendations(params) {
+    return cachedRequest('get', '/recommendations/products', { params, useCache: true })
+  },
+  getPriceOptimizations(params) {
+    return cachedRequest('get', '/recommendations/price', { params, useCache: true })
+  },
+  getKeywordRecommendations(params) {
+    return cachedRequest('get', '/recommendations/keywords', { params, useCache: true })
   },
 
   dashboardApi: {
@@ -266,6 +293,60 @@ export default {
     },
     getStats() {
       return cachedRequest('get', '/kpis/stats', { useCache: true })
+    }
+  },
+
+  abtestSopApi: {
+    getTests(params) {
+      return cachedRequest('get', '/abtest-sop/tests', { params, useCache: true })
+    },
+    getSopTemplates(params) {
+      return cachedRequest('get', '/abtest-sop/sop-templates', { params, useCache: true })
+    },
+    getCampaignProjects(params) {
+      return cachedRequest('get', '/abtest-sop/campaign-projects', { params, useCache: true })
+    },
+    createTest(data) {
+      return request.post('/abtest-sop/tests', data)
+    },
+    analyzeTest(testId) {
+      return request.post(`/abtest-sop/tests/${testId}/analyze`)
+    }
+  },
+
+  aiAnalyticsApi: {
+    generateReport(params) {
+      return request.post('/ai-analytics/report', params)
+    },
+    executeQuery(params) {
+      return request.post('/ai-analytics/query', params)
+    },
+    getReportHistory(params) {
+      return cachedRequest('get', '/ai-analytics/reports', { params, useCache: true })
+    },
+    getReport(reportId) {
+      return request.get(`/ai-analytics/reports/${reportId}`)
+    }
+  },
+
+  crowdAssetApi: {
+    getDashboard() {
+      return cachedRequest('get', '/crowd-asset/dashboard', { useCache: true })
+    },
+    getCampaigns(params) {
+      return cachedRequest('get', '/crowd-asset/campaigns', { params, useCache: true })
+    },
+    getCampaignDetail(campaignId) {
+      return request.get(`/crowd-asset/campaigns/${campaignId}`)
+    },
+    getCrowds(params) {
+      return cachedRequest('get', '/crowd-asset/crowds', { params, useCache: true })
+    },
+    getEfficiencyMatrix() {
+      return cachedRequest('get', '/crowd-asset/efficiency-matrix', { useCache: true })
+    },
+    updateCrowdBid(crowdId, bidRatio) {
+      return request.post(`/crowd-asset/crowds/${crowdId}/update-bid`, { bid_ratio: bidRatio })
     }
   }
 }
