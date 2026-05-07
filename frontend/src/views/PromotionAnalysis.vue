@@ -168,6 +168,7 @@ import { ElMessage } from 'element-plus'
 import { Search } from '@element-plus/icons-vue'
 import * as echarts from 'echarts'
 import ExportButton from '@/components/ExportButton.vue'
+import api from '@/api'
 import { formatNumber } from '@/utils/format'
 
 const activeChannel = ref('all')
@@ -182,15 +183,16 @@ let pieChart = null
 let handleResize = null
 
 const summary = ref({
-  totalCost: 125680,
-  totalGmv: 485920,
-  avgRoi: 3.87,
-  totalClicks: 156800,
-  costTrend: 12.5,
-  gmvTrend: 18.3,
-  roiTrend: 5.2,
-  clickTrend: 8.7
+  totalCost: 0,
+  totalGmv: 0,
+  avgRoi: 0,
+  totalClicks: 0,
+  costTrend: 0,
+  gmvTrend: 0,
+  roiTrend: 0,
+  clickTrend: 0
 })
+const loading = ref(false)
 
 const campaignList = ref([])
 
@@ -211,18 +213,44 @@ const filteredCampaigns = computed(() => {
 })
 
 const loadCampaignData = async () => {
-  campaignList.value = [
-    { id: 1, campaign_name: '新品推广计划A', channel: 'zhitongche', cost: 15800, clicks: 12500, gmv: 52600, roi: 3.33, conversionRate: 0.042, status: 'running' },
-    { id: 2, campaign_name: '爆款引流计划B', channel: 'zhitongche', cost: 22500, clicks: 18900, gmv: 98500, roi: 4.38, conversionRate: 0.052, status: 'running' },
-    { id: 3, campaign_name: '首页推荐计划C', channel: 'yinlimofang', cost: 18200, clicks: 25600, gmv: 45600, roi: 2.51, conversionRate: 0.018, status: 'running' },
-    { id: 4, campaign_name: '搜索推广计划D', channel: 'yinlimofang', cost: 12800, clicks: 15200, gmv: 38900, roi: 3.04, conversionRate: 0.026, status: 'paused' },
-    { id: 5, campaign_name: '万相台拉新计划', channel: 'wanxiangtai', cost: 28500, clicks: 32100, gmv: 128500, roi: 4.51, conversionRate: 0.040, status: 'running' },
-    { id: 6, campaign_name: '万相台收割计划', channel: 'wanxiangtai', cost: 19800, clicks: 18600, gmv: 89200, roi: 4.51, conversionRate: 0.048, status: 'running' },
-    { id: 7, campaign_name: '淘客推广计划A', channel: 'taoke', cost: 7680, clicks: 34200, gmv: 32400, roi: 4.22, conversionRate: 0.009, status: 'running' },
-    { id: 8, campaign_name: '淘客推广计划B', channel: 'taoke', cost: 3200, clicks: 15600, gmv: 18500, roi: 5.78, conversionRate: 0.012, status: 'running' }
-  ]
-  
-  total.value = campaignList.value.length
+  loading.value = true
+  try {
+    const res = await api.adsApi.getCampaigns({ channel: activeChannel.value === 'all' ? undefined : activeChannel.value })
+    const data = res?.data || {}
+    
+    summary.value = {
+      totalCost: data.total_cost || 0,
+      totalGmv: data.total_gmv || 0,
+      avgRoi: data.avg_roi || 0,
+      totalClicks: data.total_clicks || 0,
+      costTrend: data.cost_trend || 0,
+      gmvTrend: data.gmv_trend || 0,
+      roiTrend: data.roi_trend || 0,
+      clickTrend: data.click_trend || 0
+    }
+    
+    campaignList.value = (data.campaigns || []).map(c => ({
+      id: c.id,
+      campaign_name: c.name || '未命名计划',
+      channel: c.channel || 'unknown',
+      cost: c.cost || 0,
+      clicks: c.clicks || 0,
+      gmv: c.gmv || 0,
+      roi: c.roi || 0,
+      conversionRate: c.conversion_rate || 0,
+      status: c.status || 'paused'
+    }))
+    
+    total.value = campaignList.value.length
+    renderCharts()
+  } catch (error) {
+    console.error('加载推广数据失败:', error)
+    ElMessage.error('加载推广数据失败')
+    campaignList.value = []
+    total.value = 0
+  } finally {
+    loading.value = false
+  }
 }
 
 const getChannelType = (channel) => {
@@ -275,52 +303,28 @@ const renderTrendChart = () => {
     trendChart = echarts.init(trendChartRef.value)
   }
 
-  const dates = Array.from({ length: 30 }, (_, i) => {
-    const d = new Date()
-    d.setDate(d.getDate() - 29 + i)
-    return `${d.getMonth() + 1}/${d.getDate()}`
-  })
+  const trends = campaignList.value.length > 0 ? campaignList.value : []
+  const dates = trends.map(c => c.date || '').filter(Boolean)
+  
+  if (dates.length === 0) {
+    trendChart.setOption({
+      title: { text: '暂无数据', left: 'center', top: 'center', textStyle: { color: '#999' } }
+    }, true)
+    return
+  }
 
   trendChart.setOption({
-    tooltip: {
-      trigger: 'axis'
-    },
-    legend: {
-      data: ['花费', '成交额', 'ROI']
-    },
-    xAxis: {
-      type: 'category',
-      data: dates
-    },
+    tooltip: { trigger: 'axis' },
+    legend: { data: ['花费', '成交额', 'ROI'] },
+    xAxis: { type: 'category', data: dates },
     yAxis: [
-      {
-        type: 'value',
-        name: '金额',
-        position: 'left'
-      },
-      {
-        type: 'value',
-        name: 'ROI',
-        position: 'right'
-      }
+      { type: 'value', name: '金额', position: 'left' },
+      { type: 'value', name: 'ROI', position: 'right' }
     ],
     series: [
-      {
-        name: '花费',
-        type: 'bar',
-        data: Array.from({ length: 30 }, () => Math.floor(Math.random() * 5000) + 3000)
-      },
-      {
-        name: '成交额',
-        type: 'bar',
-        data: Array.from({ length: 30 }, () => Math.floor(Math.random() * 20000) + 10000)
-      },
-      {
-        name: 'ROI',
-        type: 'line',
-        yAxisIndex: 1,
-        data: Array.from({ length: 30 }, () => (Math.random() * 3 + 2).toFixed(2))
-      }
+      { name: '花费', type: 'bar', data: trends.map(c => c.cost || 0) },
+      { name: '成交额', type: 'bar', data: trends.map(c => c.gmv || 0) },
+      { name: 'ROI', type: 'line', yAxisIndex: 1, data: trends.map(c => c.roi || 0) }
     ]
   })
 }
@@ -332,55 +336,41 @@ const renderPieChart = () => {
     pieChart = echarts.init(pieChartRef.value)
   }
 
-  const channelCosts = [
-    { value: 38300, name: '直通车' },
-    { value: 31000, name: '引力魔方' },
-    { value: 48300, name: '万相台' },
-    { value: 10880, name: '淘客' }
-  ]
+  const channelCosts = campaignList.value.length > 0 
+    ? Object.entries(
+        campaignList.value.reduce((acc, c) => {
+          const name = getChannelLabel(c.channel)
+          acc[name] = (acc[name] || 0) + (c.cost || 0)
+          return acc
+        }, {})
+      ).map(([name, value]) => ({ name, value }))
+    : []
+
+  if (channelCosts.length === 0) {
+    pieChart.setOption({
+      title: { text: '暂无数据', left: 'center', top: 'center', textStyle: { color: '#999' } }
+    }, true)
+    return
+  }
 
   pieChart.setOption({
-    tooltip: {
-      trigger: 'item',
-      formatter: '{b}: ¥{c} ({d}%)'
-    },
-    legend: {
-      orient: 'vertical',
-      left: 'left'
-    },
-    series: [
-      {
-        type: 'pie',
-        radius: ['40%', '70%'],
-        avoidLabelOverlap: false,
-        itemStyle: {
-          borderRadius: 10,
-          borderColor: '#fff',
-          borderWidth: 2
-        },
-        label: {
-          show: false,
-          position: 'center'
-        },
-        emphasis: {
-          label: {
-            show: true,
-            fontSize: 16,
-            fontWeight: 'bold'
-          }
-        },
-        labelLine: {
-          show: false
-        },
-        data: channelCosts
-      }
-    ]
+    tooltip: { trigger: 'item', formatter: '{b}: ¥{c} ({d}%)' },
+    legend: { orient: 'vertical', left: 'left' },
+    series: [{
+      type: 'pie',
+      radius: ['40%', '70%'],
+      avoidLabelOverlap: false,
+      itemStyle: { borderRadius: 10, borderColor: '#fff', borderWidth: 2 },
+      label: { show: false, position: 'center' },
+      emphasis: { label: { show: true, fontSize: 16, fontWeight: 'bold' } },
+      labelLine: { show: false },
+      data: channelCosts
+    }]
   })
 }
 
 onMounted(() => {
   loadCampaignData()
-  renderCharts()
   handleResize = () => {
     trendChart?.resize()
     pieChart?.resize()

@@ -185,56 +185,47 @@ const loadData = async () => {
   loading.value = true
   try {
     const result = await api.trafficApi.getKeywords({})
-    if (result?.data) {
-      overview.value = result.data.overview || overview.value
-      channelData.value = result.data.channels || []
-      topKeywords.value = result.data.keywords || []
-      topPages.value = result.data.pages || []
-    } else {
-      loadMockData()
+    const data = result?.data || {}
+    
+    overview.value = {
+      visitors: data.overview?.visitors || 0,
+      pv: data.overview?.pv || 0,
+      conversion: data.overview?.conversion || 0,
+      uvValue: data.overview?.uv_value || 0
     }
+    
+    channelData.value = (data.channels || []).map(c => ({
+      channel: c.channel || '未知',
+      visitors: c.visitors || 0,
+      ratio: c.ratio || 0,
+      conversion: c.conversion || 0,
+      aov: c.aov || 0,
+      gmv: c.gmv || 0
+    }))
+    
+    topKeywords.value = (data.keywords || []).map(k => ({
+      keyword: k.keyword || '',
+      visitors: k.visitors || 0,
+      conversion: k.conversion || 0
+    }))
+    
+    topPages.value = (data.pages || []).map(p => ({
+      page: p.page || '',
+      visits: p.visits || 0,
+      bounceRate: p.bounce_rate || 0
+    }))
+    
+    renderCharts()
   } catch (error) {
-    loadMockData()
+    console.error('加载流量数据失败:', error)
+    ElMessage.error('加载流量数据失败')
+    overview.value = { visitors: 0, pv: 0, conversion: 0, uvValue: 0 }
+    channelData.value = []
+    topKeywords.value = []
+    topPages.value = []
   } finally {
     loading.value = false
-    renderCharts()
   }
-}
-
-const loadMockData = () => {
-  overview.value = {
-    visitors: 370616,
-    pv: 892450,
-    conversion: 0.0159,
-    uvValue: 0.96
-  }
-
-  channelData.value = [
-    { channel: '搜索流量', visitors: 150000, ratio: 0.40, conversion: 0.018, aov: 98.5, gmv: 265950 },
-    { channel: '推荐流量', visitors: 120000, ratio: 0.32, conversion: 0.012, aov: 85.2, gmv: 122688 },
-    { channel: '付费流量', visitors: 60000, ratio: 0.16, conversion: 0.025, aov: 112.3, gmv: 168450 },
-    { channel: '自主访问', visitors: 25000, ratio: 0.07, conversion: 0.020, aov: 95.8, gmv: 47900 },
-    { channel: '其他', visitors: 15616, ratio: 0.05, conversion: 0.008, aov: 68.4, gmv: 8540 }
-  ]
-
-  topKeywords.value = [
-    { keyword: '玄关装饰摆件', visitors: 12500, conversion: 0.025 },
-    { keyword: '财神爷摆件', visitors: 9800, conversion: 0.022 },
-    { keyword: '乔迁之喜礼物', visitors: 8500, conversion: 0.028 },
-    { keyword: '中古风摆件', visitors: 7200, conversion: 0.019 },
-    { keyword: '入户玄关装饰', visitors: 6800, conversion: 0.021 },
-    { keyword: '客厅摆件', visitors: 5500, conversion: 0.015 },
-    { keyword: '搬家礼物', visitors: 4800, conversion: 0.032 },
-    { keyword: '新中式摆件', visitors: 4200, conversion: 0.018 }
-  ]
-
-  topPages.value = [
-    { page: '首页', visits: 125000, bounceRate: 0.35 },
-    { page: '商品详情页-玄关摆件', visits: 45000, bounceRate: 0.25 },
-    { page: '活动页-新品上市', visits: 32000, bounceRate: 0.42 },
-    { page: '分类页-家居饰品', visits: 28000, bounceRate: 0.38 },
-    { page: '商品详情页-财神摆件', visits: 25000, bounceRate: 0.22 }
-  ]
 }
 
 const getChannelColor = (channel) => {
@@ -260,59 +251,26 @@ const renderTrendChart = () => {
     trendChart = echarts.init(trendChartRef.value)
   }
 
-  const dates = Array.from({ length: 30 }, (_, i) => {
-    const d = new Date()
-    d.setDate(d.getDate() - 29 + i)
-    return `${d.getMonth() + 1}/${d.getDate()}`
-  })
+  const trends = channelData.value.length > 0 ? channelData.value : []
+  
+  if (trends.length === 0) {
+    trendChart.setOption({
+      title: { text: '暂无数据', left: 'center', top: 'center', textStyle: { color: '#999' } }
+    }, true)
+    return
+  }
 
   trendChart.setOption({
-    tooltip: {
-      trigger: 'axis',
-      axisPointer: {
-        type: 'cross'
-      }
-    },
-    legend: {
-      data: ['访客数', '转化率']
-    },
-    xAxis: {
-      type: 'category',
-      data: dates,
-      boundaryGap: false
-    },
+    tooltip: { trigger: 'axis', axisPointer: { type: 'cross' } },
+    legend: { data: ['访客数', '转化率'] },
+    xAxis: { type: 'category', data: trends.map(c => c.channel || ''), boundaryGap: false },
     yAxis: [
-      {
-        type: 'value',
-        name: '访客数',
-        position: 'left'
-      },
-      {
-        type: 'value',
-        name: '转化率',
-        position: 'right',
-        axisLabel: {
-          formatter: '{value}%'
-        }
-      }
+      { type: 'value', name: '访客数', position: 'left' },
+      { type: 'value', name: '转化率', position: 'right', axisLabel: { formatter: '{value}%' } }
     ],
     series: [
-      {
-        name: '访客数',
-        type: 'line',
-        smooth: true,
-        data: Array.from({ length: 30 }, () => Math.floor(Math.random() * 5000) + 10000),
-        areaStyle: {
-          opacity: 0.3
-        }
-      },
-      {
-        name: '转化率',
-        type: 'line',
-        smooth: true,
-        yAxisIndex: 1,
-        data: Array.from({ length: 30 }, () => (Math.random() * 2 + 1).toFixed(2))
-      }
+      { name: '访客数', type: 'line', smooth: true, data: trends.map(c => c.visitors || 0), areaStyle: { opacity: 0.3 } },
+      { name: '转化率', type: 'line', smooth: true, yAxisIndex: 1, data: trends.map(c => (c.conversion || 0) * 100) }
     ]
   })
 }
@@ -324,45 +282,28 @@ const renderSourceChart = () => {
     sourceChart = echarts.init(sourceChartRef.value)
   }
 
+  const data = channelData.value.length > 0 ? channelData.value : []
+  
+  if (data.length === 0) {
+    sourceChart.setOption({
+      title: { text: '暂无数据', left: 'center', top: 'center', textStyle: { color: '#999' } }
+    }, true)
+    return
+  }
+
   sourceChart.setOption({
-    tooltip: {
-      trigger: 'item',
-      formatter: '{b}: {c} ({d}%)'
-    },
-    legend: {
-      orient: 'vertical',
-      left: 'left'
-    },
-    series: [
-      {
-        type: 'pie',
-        radius: ['40%', '70%'],
-        avoidLabelOverlap: false,
-        itemStyle: {
-          borderRadius: 10,
-          borderColor: '#fff',
-          borderWidth: 2
-        },
-        label: {
-          show: false,
-          position: 'center'
-        },
-        emphasis: {
-          label: {
-            show: true,
-            fontSize: 16,
-            fontWeight: 'bold'
-          }
-        },
-        labelLine: {
-          show: false
-        },
-        data: channelData.value.map(c => ({
-          value: c.visitors,
-          name: c.channel
-        }))
-      }
-    ]
+    tooltip: { trigger: 'item', formatter: '{b}: {c} ({d}%)' },
+    legend: { orient: 'vertical', left: 'left' },
+    series: [{
+      type: 'pie',
+      radius: ['40%', '70%'],
+      avoidLabelOverlap: false,
+      itemStyle: { borderRadius: 10, borderColor: '#fff', borderWidth: 2 },
+      label: { show: false, position: 'center' },
+      emphasis: { label: { show: true, fontSize: 16, fontWeight: 'bold' } },
+      labelLine: { show: false },
+      data: data.map(c => ({ value: c.visitors || 0, name: c.channel || '未知' }))
+    }]
   })
 }
 

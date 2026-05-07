@@ -117,6 +117,7 @@ import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import ExportButton from '@/components/ExportButton.vue'
+import api from '@/api'
 import { formatNumber } from '@/utils/format'
 
 const router = useRouter()
@@ -130,49 +131,36 @@ const total = ref(0)
 const loadProducts = async () => {
   loading.value = true
   try {
-    const params = new URLSearchParams({
+    const res = await api.productsApi.getRanking({
       limit: pageSize.value,
       offset: (currentPage.value - 1) * pageSize.value,
       sort_by: activeTab.value,
       sort_order: 'desc'
     })
-
-    const response = await fetch(`/api/products?${params}`)
-    if (response.ok) {
-      const result = await response.json()
-      if (result.code === 200) {
-        products.value = result.data.data || []
-        total.value = result.data.total || 0
-      }
-    } else {
-      // 使用模拟数据
-      products.value = generateMockProducts()
-      total.value = 100
-    }
+    
+    const data = res?.data || {}
+    products.value = (data.products || []).map(p => ({
+      product_id: p.product_id || '',
+      title: p.title || '未知商品',
+      image_url: p.image_url || '',
+      category: p.category || '',
+      tier: p.tier || '',
+      payment_amount: p.payment_amount || 0,
+      payment_count: p.payment_count || 0,
+      visitors: p.visitors || 0,
+      conversion: p.conversion || 0,
+      refund_rate: p.refund_rate || 0,
+      roi: p.roi || 0
+    }))
+    total.value = data.total || 0
   } catch (error) {
-    // 使用模拟数据
-    products.value = generateMockProducts()
-    total.value = 100
-    ElMessage.warning('使用模拟数据')
+    console.error('加载排行榜失败:', error)
+    ElMessage.error('加载排行榜失败')
+    products.value = []
+    total.value = 0
   } finally {
     loading.value = false
   }
-}
-
-const generateMockProducts = () => {
-  return Array.from({ length: 20 }, (_, i) => ({
-    product_id: `MOCK_${i + 1}`,
-    title: `示例商品 ${i + 1} - 这是一个很长的商品标题用于测试显示效果`,
-    image_url: 'https://via.placeholder.com/60',
-    category: '家居饰品',
-    tier: ['引流款', '利润款', '形象款'][i % 3],
-    payment_amount: Math.random() * 50000 + 10000,
-    payment_count: Math.floor(Math.random() * 500) + 50,
-    visitors: Math.floor(Math.random() * 10000) + 1000,
-    conversion: Math.random() * 0.05 + 0.01,
-    refund_rate: Math.random() * 0.2,
-    roi: Math.random() * 10 + 1
-  }))
 }
 
 const getRankClass = (index) => {
