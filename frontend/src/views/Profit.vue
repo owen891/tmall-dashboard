@@ -225,6 +225,12 @@ const loadData = async () => {
     })
   } catch (error) {
     console.error('Load data error:', error)
+    const errorMsg = error.response?.data?.detail || error.message || '网络错误'
+    ElMessage.error(`加载利润数据失败: ${errorMsg}`)
+    summary.value = {}
+    productProfits.value = []
+    trends.value = []
+    tierData.value = []
   } finally {
     loading.value = false
   }

@@ -196,7 +196,11 @@ const loadData = async () => {
       initChangeChart()
     })
   } catch (error) {
+    ElMessage.error('加载对比数据失败')
     console.error('Load data error:', error)
+    compareData.value = {}
+    productComparisons.value = []
+    trends.value = []
   } finally {
     loading.value = false
   }
@@ -208,9 +212,9 @@ const initTrendChart = () => {
 
   trendChart = echarts.init(trendChartRef.value)
 
-  const periods = trends.value.map(t => t.period)
-  const currentPayments = trends.value.map(t => t.current?.payment || 0)
-  const previousPayments = trends.value.map(t => t.previous?.payment || 0)
+  const periods = trends.value.map(t => t?.period)
+  const currentPayments = trends.value.map(t => t?.current?.payment || 0)
+  const previousPayments = trends.value.map(t => t?.previous?.payment || 0)
 
   trendChart.setOption({
     tooltip: { trigger: 'axis' },
@@ -261,9 +265,18 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
-  window.removeEventListener('resize', handleResize)
-  trendChart?.dispose()
-  changeChart?.dispose()
+  if (handleResize) {
+    window.removeEventListener('resize', handleResize)
+    handleResize = null
+  }
+  if (trendChart) {
+    trendChart.dispose()
+    trendChart = null
+  }
+  if (changeChart) {
+    changeChart.dispose()
+    changeChart = null
+  }
 })
 </script>
 

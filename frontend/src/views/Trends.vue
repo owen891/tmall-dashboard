@@ -95,6 +95,7 @@ const loadProducts = async () => {
       products.value = res.data?.data || []
     }
   } catch (error) {
+    ElMessage.error('加载商品列表失败')
     console.error('Load products error:', error)
   }
 }
@@ -105,17 +106,20 @@ const loadTrends = async () => {
       api.getTrendsData(productId.value, dimension.value),
       api.getTrendEvents()
     ])
-    
+
     if (trendRes.code === 200 || trendRes.data) {
       trendData.value = trendRes.data?.trend || trendRes.data || []
       updateChart()
     }
-    
+
     if (eventsRes.code === 200 || eventsRes.data) {
       eventList.value = eventsRes.data?.events || eventsRes.data || []
     }
   } catch (error) {
+    ElMessage.error('加载趋势数据失败')
     console.error('Load trends error:', error)
+    trendData.value = []
+    eventList.value = []
   }
 }
 
@@ -157,13 +161,13 @@ const updateChart = () => {
   }
   
   trendChart = echarts.init(chartRef.value)
-  
-  const dates = trendData.value.map(t => t.week_start || t.period || t.date)
+
+  const dates = trendData.value.map(t => t?.week_start || t?.period || t?.date)
   const series = [
-    { name: 'GMV', data: trendData.value.map(t => t.net_sales || t.payment_amount) },
-    { name: '访客', data: trendData.value.map(t => t.visitors) },
-    { name: '转化率(%)', data: trendData.value.map(t => (t.conversion || 0) * 100) },
-    { name: 'ROI', data: trendData.value.map(t => t.roi || 0) }
+    { name: 'GMV', data: trendData.value.map(t => t?.net_sales || t?.payment_amount || 0) },
+    { name: '访客', data: trendData.value.map(t => t?.visitors || 0) },
+    { name: '转化率(%)', data: trendData.value.map(t => (t?.conversion || 0) * 100) },
+    { name: 'ROI', data: trendData.value.map(t => t?.roi || 0) }
   ]
   
   const option = {
@@ -242,8 +246,14 @@ onMounted(async () => {
 })
 
 onUnmounted(() => {
-  window.removeEventListener('resize', handleResize)
-  trendChart?.dispose()
+  if (handleResize) {
+    window.removeEventListener('resize', handleResize)
+    handleResize = null
+  }
+  if (trendChart) {
+    trendChart.dispose()
+    trendChart = null
+  }
 })
 </script>
 

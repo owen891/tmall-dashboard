@@ -82,6 +82,7 @@ const channelComparison = ref([])
 const productAds = ref([])
 
 const loadAds = async () => {
+  loading.value = true
   try {
     const [summaryRes, compRes, productsRes] = await Promise.all([
       api.adsApi.getSummary(),
@@ -89,12 +90,19 @@ const loadAds = async () => {
       api.adsApi.getProducts()
     ])
     
-    summary.value = summaryRes?.data || summaryRes || {}
-    channelComparison.value = compRes?.data || compRes || []
-    productAds.value = productsRes?.data || productsRes || []
+    summary.value = summaryRes?.data || {}
+    channelComparison.value = compRes?.data || []
+    productAds.value = productsRes?.data || []
     updateChart()
   } catch (error) {
     console.error('加载广告数据失败:', error)
+    const errorMsg = error.response?.data?.detail || error.message || '网络错误'
+    ElMessage.error(`加载广告数据失败: ${errorMsg}`)
+    summary.value = { total_spend: 0, total_gmv: 0, avg_roi: 0, total_clicks: 0 }
+    channelComparison.value = []
+    productAds.value = []
+  } finally {
+    loading.value = false
   }
 }
 

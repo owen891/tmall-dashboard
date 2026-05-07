@@ -271,20 +271,30 @@ const fetchData = async () => {
     if (overviewRes.ok) {
       const data = await overviewRes.json()
       Object.assign(overview, data)
+    } else {
+      ElMessage.error('加载概览数据失败')
     }
 
     if (sourceRes.ok) {
       sourceData.value = await sourceRes.json()
+    } else {
+      sourceData.value = []
+      ElMessage.error('加载渠道数据失败')
     }
 
     if (dropRes.ok) {
       dropAnalysis.value = await dropRes.json()
+    } else {
+      dropAnalysis.value = []
+      ElMessage.error('加载流失分析失败')
     }
 
     renderCharts()
   } catch (e) {
     error.value = true
     ElMessage.error('加载漏斗数据失败')
+    sourceData.value = []
+    dropAnalysis.value = []
   } finally {
     loading.value = false
   }
@@ -439,17 +449,16 @@ const renderSourceChart = () => {
     grid: { left: '3%', right: '4%', bottom: '15%', top: '5%', containLabel: true },
     xAxis: {
       type: 'category',
-      data: sourceData.value.map(d => d.source)
+      data: sourceData.value.map(d => d?.source)
     },
     yAxis: {
-      type: 'log',
       type: 'value'
     },
     series: [
-      { name: '曝光', type: 'bar', data: sourceData.value.map(d => d.exposure), itemStyle: { color: '#409EFF' } },
-      { name: '点击', type: 'bar', data: sourceData.value.map(d => d.click), itemStyle: { color: '#67C23A' } },
-      { name: '加购', type: 'bar', data: sourceData.value.map(d => d.cart), itemStyle: { color: '#E6A23C' } },
-      { name: '支付', type: 'bar', data: sourceData.value.map(d => d.pay), itemStyle: { color: '#F56C6C' } }
+      { name: '曝光', type: 'bar', data: sourceData.value.map(d => d?.exposure || 0), itemStyle: { color: '#409EFF' } },
+      { name: '点击', type: 'bar', data: sourceData.value.map(d => d?.click || 0), itemStyle: { color: '#67C23A' } },
+      { name: '加购', type: 'bar', data: sourceData.value.map(d => d?.cart || 0), itemStyle: { color: '#E6A23C' } },
+      { name: '支付', type: 'bar', data: sourceData.value.map(d => d?.pay || 0), itemStyle: { color: '#F56C6C' } }
     ]
   })
 }
@@ -467,9 +476,18 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   window.removeEventListener('resize', handleResize)
-  funnelChart?.dispose()
-  dropChart?.dispose()
-  sourceChart?.dispose()
+  if (funnelChart) {
+    funnelChart.dispose()
+    funnelChart = null
+  }
+  if (dropChart) {
+    dropChart.dispose()
+    dropChart = null
+  }
+  if (sourceChart) {
+    sourceChart.dispose()
+    sourceChart = null
+  }
 })
 </script>
 

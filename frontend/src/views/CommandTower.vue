@@ -208,7 +208,16 @@ const loadDashboard = async () => {
     }
   } catch (err) {
     console.error('加载仪表盘数据失败:', err)
-    ElMessage.error('数据加载失败')
+    const errorMsg = err.response?.data?.detail || err.message || '网络错误'
+    ElMessage.error(`数据加载失败: ${errorMsg}`)
+    coreIndicators.value = [
+      { label: 'GMV', value: '--', change: 0, color: '#409eff', icon: 'DataLine' },
+      { label: '访客数', value: '--', change: 0, color: '#67c23a', icon: 'User' },
+      { label: 'ROI', value: '--', change: 0, color: '#e6a23c', icon: 'DataAnalysis' },
+      { label: '转化率', value: '--', change: 0, color: '#00bcd4', icon: 'TrendCharts' }
+    ]
+    topProducts.value = []
+    alerts.value = []
   } finally {
     loading.value = false
   }

@@ -154,13 +154,13 @@ const loadKPI = async () => {
     anomalies.value = anomaliesRes.data?.alerts || []
     
     productKPIs.value = (productsRes.data?.data || []).map(p => ({
-      product_name: p.title,
-      gmv: p.payment_amount,
-      visitors: p.visitors,
-      conversion: (p.conversion * 100).toFixed(2),
-      roi: p.roi?.toFixed(2) || '0',
-      ad_spend: p.ad_spend,
-      refund_rate: (p.refund_rate * 100).toFixed(2)
+      product_name: p.title || '未知商品',
+      gmv: p.payment_amount || 0,
+      visitors: p.visitors || 0,
+      conversion: ((p.conversion || 0) * 100).toFixed(2),
+      roi: (p.roi || 0).toFixed(2),
+      ad_spend: p.ad_spend || 0,
+      refund_rate: ((p.refund_rate || 0) * 100).toFixed(2)
     }))
   } catch (error) {
     console.error('加载KPI失败:', error)

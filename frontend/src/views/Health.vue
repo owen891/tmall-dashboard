@@ -230,24 +230,26 @@ const loadHealth = async () => {
       params.start_date = timeStore.startDate
       params.end_date = timeStore.endDate
     }
-    
+
     const [listRes, summaryRes] = await Promise.all([
       api.getHealthList({ page_size: 100, ...params }),
       api.getHealthSummary(params)
     ])
-    
+
     if (listRes.data) {
-      healthList.value = listRes.data.products || []
+      healthList.value = listRes.data?.products || []
     }
-    
+
     if (summaryRes.data) {
-      stats.value = summaryRes.data.summary || {}
-      dimensionAvgScores.value = summaryRes.data.summary?.dimension_avg_scores || {}
+      stats.value = summaryRes.data?.summary || {}
+      dimensionAvgScores.value = summaryRes.data?.summary?.dimension_avg_scores || {}
     }
 
     updateChart()
   } catch (error) {
+    ElMessage.error('加载健康度数据失败')
     console.error('加载健康度失败:', error)
+    healthList.value = []
   } finally {
     loading.value = false
   }
@@ -324,8 +326,14 @@ watch(() => [timeStore.startDate, timeStore.endDate], () => {
 })
 
 onUnmounted(() => {
-  window.removeEventListener('resize', handleResize)
-  chart?.dispose()
+  if (handleResize) {
+    window.removeEventListener('resize', handleResize)
+    handleResize = null
+  }
+  if (chart) {
+    chart.dispose()
+    chart = null
+  }
 })
 </script>
 

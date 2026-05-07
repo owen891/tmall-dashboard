@@ -194,6 +194,13 @@ const debounceSearch = () => {
   }, 300)
 }
 
+onBeforeUnmount(() => {
+  if (searchTimer) {
+    clearTimeout(searchTimer)
+    searchTimer = null
+  }
+})
+
 const loadLifecycleData = async () => {
   loading.value = true
   try {
@@ -375,8 +382,15 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  if (searchTimer) {
+    clearTimeout(searchTimer)
+    searchTimer = null
+  }
   window.removeEventListener('resize', handleResize)
-  chart?.dispose()
+  if (chart) {
+    chart.dispose()
+    chart = null
+  }
 })
 </script>
 

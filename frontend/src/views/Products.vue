@@ -37,10 +37,10 @@
               </el-select>
             </el-form-item>
             <el-form-item>
-              <el-button type="primary" @click="loadProducts" size="default">
+              <el-button type="primary" @click="loadProducts" size="default" :loading="loading">
                 <el-icon><Search /></el-icon> 查询
               </el-button>
-              <el-button @click="resetFilters" size="default">
+              <el-button @click="resetFilters" size="default" :disabled="loading">
                 <el-icon><RefreshLeft /></el-icon> 重置
               </el-button>
             </el-form-item>
@@ -48,7 +48,7 @@
         </div>
       </el-collapse-transition>
       <div class="filter-actions">
-        <el-dropdown split-button type="success" @click="handleExport" size="default">
+        <el-dropdown split-button type="success" @click="handleExport" size="default" :loading="exporting" :disabled="exporting">
           <el-icon><Download /></el-icon> 导出
           <template #dropdown>
             <el-dropdown-menu>
@@ -72,7 +72,7 @@
           <el-icon><Check /></el-icon>
           已选择 <strong>{{ selectedProducts.length }}</strong> 项
         </span>
-        <el-button size="small" type="primary" @click="showBatchUpdate = true">
+        <el-button size="small" type="primary" @click="showBatchUpdate = true" :disabled="submitting">
           <el-icon><Edit /></el-icon> 批量修改
         </el-button>
         <el-button size="small" @click="selectedProducts = []">取消选择</el-button>
@@ -533,12 +533,12 @@ onMounted(() => {
   loadProducts()
 })
 
-onUnmounted(() => {
-  document.removeEventListener('keydown', handleKeyDown)
-})
-
 onMounted(() => {
   document.addEventListener('keydown', handleKeyDown)
+})
+
+onUnmounted(() => {
+  document.removeEventListener('keydown', handleKeyDown)
 })
 
 const handleKeyDown = (e) => {

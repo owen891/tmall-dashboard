@@ -79,3 +79,29 @@ export function safeDiv(numerator, denominator, fallback = 0) {
   if (!denominator || denominator === 0) return fallback
   return numerator / denominator
 }
+
+export function safeNumber(value, fallback = 0) {
+  if (value == null || value === '' || isNaN(value)) return fallback
+  return Number(value)
+}
+
+export function safePercent(value, decimals = 2) {
+  if (value == null || isNaN(value)) return '0.00'
+  return (Number(value) * 100).toFixed(decimals)
+}
+
+export function safeCurrency(value, decimals = 2) {
+  if (value == null || isNaN(value)) return '¥0.00'
+  return formatCurrency(value, decimals)
+}
+
+export function safeAccess(obj, path, fallback = null) {
+  if (!obj || !path) return fallback
+  const keys = path.split('.')
+  let result = obj
+  for (const key of keys) {
+    if (result == null || typeof result !== 'object') return fallback
+    result = result[key]
+  }
+  return result !== undefined ? result : fallback
+}
