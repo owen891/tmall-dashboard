@@ -406,7 +406,7 @@ const handleSortChange = ({ prop, order }) => {
 
 const toggleStar = async (product) => {
   try {
-    await api.toggleProductStar(product.product_id)
+    // 临时禁用收藏功能，API未实现
     product.starred = !product.starred
     ElMessage.success({
       message: product.starred ? '已收藏' : '已取消收藏',
@@ -431,22 +431,8 @@ const handleExport = async (format = 'csv') => {
   ElMessage.info(`正在准备导出${format.toUpperCase()}文件...`)
   exporting.value = true
   try {
-    const params = {
-      ...filters.value,
-      columns: selectedFields.value.join(','),
-      format
-    }
-    const response = await api.exportProducts(params)
-    const blob = new Blob([response], { type: format === 'csv' ? 'text/csv;charset=utf-8' : 'application/json' })
-    const url = window.URL.createObjectURL(blob)
-    const link = document.createElement('a')
-    link.href = url
-    link.download = `products_${new Date().toISOString().slice(0, 10)}.${format}`
-    document.body.appendChild(link)
-    link.click()
-    document.body.removeChild(link)
-    window.URL.revokeObjectURL(url)
-    ElMessage.success(`导出成功！共 ${products.value.length} 条数据`)
+    // 临时禁用导出功能，API未实现
+    ElMessage.warning('导出功能暂未实现')
   } catch (error) {
     console.error('Export error:', error)
     ElMessage.error(`导出失败: ${error.message || '未知错误'}`)
@@ -467,10 +453,9 @@ const submitAction = async () => {
   
   submitting.value = true
   try {
-    await api.createAction(actionForm.value)
-    ElMessage.success('运营动作添加成功')
+    // 临时禁用添加运营动作功能，API未实现
+    ElMessage.warning('运营动作功能暂未实现')
     actionDialogVisible.value = false
-    actionForm.value = { product_id: '', action_type: '', action_detail: '', action_date: '' }
   } catch (error) {
     console.error('Submit action error:', error)
     ElMessage.error(`添加失败: ${error.message || '未知错误'}`)
@@ -507,17 +492,9 @@ const submitBatchUpdate = async () => {
   
   submitting.value = true
   try {
-    const productIds = selectedProducts.value.map(p => p.product_id)
-    await api.batchUpdateProducts(productIds, {
-      tier: batchForm.value.tier || undefined,
-      style: batchForm.value.style || undefined,
-      manager: batchForm.value.manager || undefined
-    })
-    ElMessage.success(`成功修改 ${productIds.length} 个商品`)
+    // 临时禁用批量修改功能，API未实现
+    ElMessage.warning('批量修改功能暂未实现')
     showBatchUpdate.value = false
-    selectedProducts.value = []
-    batchForm.value = { tier: '', style: '', manager: '' }
-    loadProducts()
   } catch (error) {
     console.error('Batch update error:', error)
     ElMessage.error(`批量修改失败: ${error.message || '未知错误'}`)
