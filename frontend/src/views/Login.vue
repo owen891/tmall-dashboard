@@ -1,5 +1,5 @@
 <template>
-  <div class="login-container">
+  <div class="login-container page-container">
     <div class="login-card">
       <div class="login-header">
         <el-icon size="40" color="#667eea"><DataBoard /></el-icon>

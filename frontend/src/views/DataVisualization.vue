@@ -1,5 +1,5 @@
 <template>
-  <div class="data-visualization">
+  <div class="data-visualization page-container">
     <div class="page-header">
       <h1>高级数据可视化</h1>
       <div class="header-actions">

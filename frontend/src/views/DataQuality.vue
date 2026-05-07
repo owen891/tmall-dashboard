@@ -1,5 +1,5 @@
 <template>
-  <div class="data-quality-page">
+  <div class="data-quality-page page-container">
     <el-card class="header-card">
       <template #header>
         <div class="card-header">

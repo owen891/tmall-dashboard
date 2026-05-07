@@ -1,5 +1,5 @@
 <template>
-  <div class="smart-alert-container">
+  <div class="smart-alert-container page-container">
     <div class="page-header">
       <h1>智能告警中心</h1>
       <div class="header-actions">

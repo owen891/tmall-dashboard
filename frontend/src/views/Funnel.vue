@@ -223,6 +223,7 @@
 import { ref, reactive, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Refresh } from '@element-plus/icons-vue'
+import api from '@/api'
 import { useChartManager } from '@/composables/useChartManager'
 import { formatNumber, formatPercent } from '@/utils/format'
 
@@ -261,34 +262,48 @@ const fetchData = async () => {
   error.value = false
   try {
     const [overviewRes, sourceRes, dropRes] = await Promise.all([
-      fetch(`/api/funnel/overview?period=${periodType.value}`),
-      fetch(`/api/funnel/by-source?period=${periodType.value}`),
-      fetch(`/api/funnel/drop-analysis?period=${periodType.value}`)
+      api.funnelApi.getOverview({ period: periodType.value }),
+      api.funnelApi.getBySource({ period: periodType.value }),
+      api.funnelApi.getDropAnalysis({ period: periodType.value })
     ])
 
-    if (overviewRes.ok) {
-      const data = await overviewRes.json()
-      Object.assign(overview, data)
-    } else {
-      ElMessage.error('加载概览数据失败')
-    }
+    const overviewData = overviewRes?.data || {}
+    Object.assign(overview, {
+      total_exposure: overviewData.total_exposure || 0,
+      total_click: overviewData.total_click || 0,
+      total_cart: overviewData.total_cart || 0,
+      total_pay: overviewData.total_pay || 0,
+      exposure_trend: overviewData.exposure_trend || 0,
+      click_trend: overviewData.click_trend || 0,
+      cart_trend: overviewData.cart_trend || 0,
+      pay_trend: overviewData.pay_trend || 0,
+      ctr: overviewData.ctr || 0,
+      cart_rate: overviewData.cart_rate || 0,
+      pay_rate: overviewData.pay_rate || 0,
+      industry_ctr: overviewData.industry_ctr || 5.2,
+      industry_cart: overviewData.industry_cart || 8.5,
+      industry_pay: overviewData.industry_pay || 15.0
+    })
 
-    if (sourceRes.ok) {
-      sourceData.value = await sourceRes.json()
-    } else {
-      sourceData.value = []
-      ElMessage.error('加载渠道数据失败')
-    }
+    sourceData.value = (sourceRes?.data || []).map(d => ({
+      source: d.source || '未知',
+      exposure: d.exposure || 0,
+      click: d.click || 0,
+      cart: d.cart || 0,
+      pay: d.pay || 0
+    }))
 
-    if (dropRes.ok) {
-      dropAnalysis.value = await dropRes.json()
-    } else {
-      dropAnalysis.value = []
-      ElMessage.error('加载流失分析失败')
-    }
+    dropAnalysis.value = (dropRes?.data || []).map(d => ({
+      stage: d.stage || '',
+      drop_rate: d.drop_rate || 0,
+      lost_users: d.lost_users || 0,
+      suggestions: d.suggestions || [],
+      priority: d.priority || '低'
+    }))
 
     renderCharts()
   } catch (e) {
+    console.error('加载漏斗数据失败:', e)
     error.value = true
     ElMessage.error('加载漏斗数据失败')
     sourceData.value = []

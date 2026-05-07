@@ -1,5 +1,5 @@
 <template>
-  <div class="backup-page">
+  <div class="backup-page page-container">
     <el-card class="header-card">
       <template #header>
         <div class="card-header">

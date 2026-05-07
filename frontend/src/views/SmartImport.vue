@@ -1,5 +1,5 @@
 <template>
-  <div class="smart-import-page">
+  <div class="smart-import-page page-container">
     <el-card class="config-card">
       <template #header>
         <div class="card-header">

@@ -1,5 +1,5 @@
 <template>
-  <div class="channel-detail">
+  <div class="channel-detail page-container">
     <el-page-header @back="goBack" content="渠道详情" />
     
     <div class="page-header">

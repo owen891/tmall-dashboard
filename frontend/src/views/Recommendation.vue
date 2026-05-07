@@ -1,5 +1,5 @@
 <template>
-  <div class="recommendation-page">
+  <div class="recommendation-page page-container">
     <el-card class="header-card">
       <template #header>
         <div class="card-header">

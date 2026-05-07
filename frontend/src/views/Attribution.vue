@@ -1,5 +1,5 @@
 <template>
-  <div class="attribution-analysis">
+  <div class="attribution-analysis page-container">
     <div class="header">
       <h2>异动归因分析</h2>
       <div class="controls">

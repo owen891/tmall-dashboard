@@ -1,5 +1,5 @@
 <template>
-  <div class="collaboration-page">
+  <div class="collaboration-page page-container">
     <h2>协同办公</h2>
     <p class="placeholder">功能开发中...</p>
   </div>

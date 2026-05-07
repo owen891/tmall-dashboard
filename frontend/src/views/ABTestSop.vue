@@ -1,5 +1,5 @@
 <template>
-  <div class="abtest-sop-container">
+  <div class="abtest-sop-container page-container">
     <div class="page-header">
       <h1>策略实验场与SOP资产</h1>
       <el-tabs v-model="activeTab" type="card" class="header-tabs">

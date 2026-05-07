@@ -1,5 +1,5 @@
 <template>
-  <div class="import-center">
+  <div class="import-center page-container">
     <div class="page-header">
       <h1>数据导入中心</h1>
       <div class="header-actions">

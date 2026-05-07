@@ -1,5 +1,5 @@
 <template>
-  <div class="toolbox-container">
+  <div class="toolbox-container page-container">
     <div class="header">
       <h2>运营工具箱</h2>
     </div>

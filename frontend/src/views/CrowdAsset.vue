@@ -1,5 +1,5 @@
 <template>
-  <div class="crowd-asset-container">
+  <div class="crowd-asset-container page-container">
     <div class="page-header">
       <h1>人群资产归因</h1>
       <div class="header-actions">

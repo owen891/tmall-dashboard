@@ -1,5 +1,5 @@
 <template>
-  <div class="promotion-analysis">
+  <div class="promotion-analysis page-container">
     <el-card class="filter-card">
       <div class="filter-row">
         <div class="filter-group">

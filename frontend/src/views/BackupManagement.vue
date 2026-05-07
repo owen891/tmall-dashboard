@@ -1,5 +1,5 @@
 <template>
-  <div class="backup-management">
+  <div class="backup-management page-container">
     <div class="page-header">
       <h1>数据备份与恢复</h1>
       <el-button type="primary" @click="createBackup">
@@ -147,6 +147,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Refresh, InfoFilled, WarningFilled, Download } from '@element-plus/icons-vue'
+import api from '@/api'
 
 const loading = ref(false)
 const creating = ref(false)
@@ -176,49 +177,23 @@ const totalSize = computed(() =>
 const loadBackups = async () => {
   loading.value = true
   try {
-    const response = await fetch('/api/backup/list')
-    if (response.ok) {
-      const result = await response.json()
-      if (result.code === 200) {
-        backups.value = result.data.backups
-      }
+    const result = await api.backupApi.getList()
+    if (result?.code === 200) {
+      backups.value = (result.data?.backups || []).map(b => ({
+        id: b.id,
+        file_name: b.file_name || '',
+        file_size: b.file_size || 0,
+        backup_type: b.backup_type || 'manual',
+        created_at: b.created_at || ''
+      }))
     } else {
-      // 使用模拟数据
-      backups.value = [
-        {
-          id: 1,
-          file_name: 'dashboard_manual_20260502_143022.db',
-          file_size: 2560000,
-          backup_type: 'manual',
-          created_at: '2026-05-02 14:30:22'
-        },
-        {
-          id: 2,
-          file_name: 'dashboard_auto_20260502_000000.db',
-          file_size: 2480000,
-          backup_type: 'auto',
-          created_at: '2026-05-02 00:00:00'
-        },
-        {
-          id: 3,
-          file_name: 'dashboard_manual_20260501_091533.db',
-          file_size: 2450000,
-          backup_type: 'manual',
-          created_at: '2026-05-01 09:15:33'
-        }
-      ]
+      backups.value = []
+      ElMessage.error('加载备份列表失败')
     }
   } catch (error) {
-    // 使用模拟数据
-    backups.value = [
-      {
-        id: 1,
-        file_name: 'dashboard_manual_20260502_143022.db',
-        file_size: 2560000,
-        backup_type: 'manual',
-        created_at: '2026-05-02 14:30:22'
-      }
-    ]
+    console.error('加载备份列表失败:', error)
+    ElMessage.error('加载备份列表失败')
+    backups.value = []
   } finally {
     loading.value = false
   }
@@ -235,23 +210,13 @@ const createBackup = () => {
 const confirmCreateBackup = async () => {
   creating.value = true
   try {
-    const response = await fetch('/api/backup/create', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(backupForm.value)
-    })
-    
-    if (response.ok) {
-      ElMessage.success('备份创建成功')
-      showCreateDialog.value = false
-      loadBackups()
-    } else {
-      ElMessage.error('备份创建失败')
-    }
-  } catch (error) {
-    ElMessage.success('备份创建成功（模拟）')
+    await api.backupApi.create(backupForm.value)
+    ElMessage.success('备份创建成功')
     showCreateDialog.value = false
     loadBackups()
+  } catch (error) {
+    console.error('备份创建失败:', error)
+    ElMessage.error('备份创建失败')
   } finally {
     creating.value = false
   }
@@ -265,22 +230,15 @@ const restoreBackup = (backup) => {
 const confirmRestoreBackup = async () => {
   restoring.value = true
   try {
-    const response = await fetch(`/api/backup/restore/${selectedBackup.value.id}`, {
-      method: 'POST'
-    })
-    
-    if (response.ok) {
-      ElMessage.success('备份恢复成功，请刷新页面')
-      showRestoreDialog.value = false
-      setTimeout(() => {
-        window.location.reload()
-      }, 1500)
-    } else {
-      ElMessage.error('备份恢复失败')
-    }
-  } catch (error) {
-    ElMessage.success('备份恢复成功（模拟）')
+    await api.backupApi.restore(selectedBackup.value.id)
+    ElMessage.success('备份恢复成功，请刷新页面')
     showRestoreDialog.value = false
+    setTimeout(() => {
+      window.location.reload()
+    }, 1500)
+  } catch (error) {
+    console.error('备份恢复失败:', error)
+    ElMessage.error('备份恢复失败')
   } finally {
     restoring.value = false
   }
@@ -288,21 +246,17 @@ const confirmRestoreBackup = async () => {
 
 const downloadBackup = async (backup) => {
   try {
-    const response = await fetch(`/api/backup/download/${backup.id}`)
-    if (response.ok) {
-      const blob = await response.blob()
-      const url = window.URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = backup.file_name
-      a.click()
-      window.URL.revokeObjectURL(url)
-      ElMessage.success('下载成功')
-    } else {
-      ElMessage.error('下载失败')
-    }
+    const blob = await api.backupApi.download(backup.id)
+    const url = window.URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = backup.file_name
+    a.click()
+    window.URL.revokeObjectURL(url)
+    ElMessage.success('下载成功')
   } catch (error) {
-    ElMessage.info('下载功能需要后端支持')
+    console.error('下载失败:', error)
+    ElMessage.error('下载失败')
   }
 }
 
@@ -318,19 +272,13 @@ const deleteBackup = async (backup) => {
       }
     )
     
-    const response = await fetch(`/api/backup/${backup.id}`, {
-      method: 'DELETE'
-    })
-    
-    if (response.ok) {
-      ElMessage.success('删除成功')
-      loadBackups()
-    } else {
-      ElMessage.error('删除失败')
-    }
+    await api.backupApi.delete(backup.id)
+    ElMessage.success('删除成功')
+    loadBackups()
   } catch (error) {
     if (error !== 'cancel') {
-      ElMessage.info('删除功能需要后端支持')
+      console.error('删除失败:', error)
+      ElMessage.error('删除失败')
     }
   }
 }
