@@ -32,7 +32,7 @@ export function setupGlobalErrorHandler(app) {
     const status = event.reason?.response?.status
     if (status === 401) {
       localStorage.removeItem('token')
-      window.location.href = '/login'
+      event.preventDefault()
       return
     }
     
