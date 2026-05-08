@@ -30,6 +30,14 @@ const routes = [
     meta: { title: '商品排行' }
   },
   {
+    path: '/ranking',
+    redirect: '/product-ranking'
+  },
+  {
+    path: '/dashboard',
+    redirect: '/'
+  },
+  {
     path: '/traffic-analysis',
     name: 'TrafficAnalysis',
     component: () => import('@/views/TrafficAnalysis.vue'),
