@@ -355,3 +355,94 @@ def get_targets_vs_actual(
         })
     
     return ResponseModel(data={"comparison": comparison, "count": len(comparison)})
+
+
+@router.get("/anomalies", response_model=ResponseModel)
+def get_kpi_anomalies(
+    dimension: str = Query("weekly", description="时间维度"),
+    period: Optional[str] = Query(None, description="指定周期"),
+    db: Session = Depends(get_db)
+):
+    """获取KPI异常数据"""
+    Model, date_col, visitors_col = get_data_model(dimension)
+    
+    if not period:
+        period = get_latest_period(Model, date_col, db)
+    
+    if not period:
+        return ResponseModel(data={"anomalies": []})
+    
+    prev_period = get_prev_period(str(period), dimension)
+    
+    curr_data = db.query(
+        Model.product_id,
+        func.sum(Model.payment_amount).label('payment'),
+        func.sum(getattr(Model, visitors_col)).label('visitors'),
+        func.avg(Model.payment_conversion).label('conversion'),
+        func.sum(Model.ad_spend).label('ad_spend'),
+    ).filter(getattr(Model, date_col) == period).group_by(Model.product_id).all()
+    
+    prev_data = db.query(
+        Model.product_id,
+        func.sum(Model.payment_amount).label('payment'),
+        func.sum(getattr(Model, visitors_col)).label('visitors'),
+        func.avg(Model.payment_conversion).label('conversion'),
+    ).filter(getattr(Model, date_col) == prev_period).group_by(Model.product_id).all()
+    
+    prev_map = {d.product_id: d for d in prev_data}
+    
+    anomalies = []
+    for d in curr_data:
+        prev = prev_map.get(d.product_id)
+        if not prev:
+            continue
+        
+        curr_payment = safe_float(d.payment)
+        prev_payment = safe_float(prev.payment)
+        curr_conversion = safe_float(d.conversion)
+        prev_conversion = safe_float(prev.conversion)
+        
+        # 检测异常：支付金额下降超过30%
+        if prev_payment > 0 and curr_payment / prev_payment < 0.7:
+            anomalies.append({
+                "id": f"{d.product_id}_{period}_payment_drop",
+                "product_id": d.product_id,
+                "type": "payment_drop",
+                "title": "支付金额大幅下降",
+                "description": f"支付金额从 {prev_payment:.0f} 降至 {curr_payment:.0f}",
+                "severity": "high" if curr_payment / prev_payment < 0.5 else "medium",
+                "period": str(period),
+                "dimension": dimension,
+                "dismissed": False
+            })
+        
+        # 转化率异常下降
+        if prev_conversion > 0 and curr_conversion / prev_conversion < 0.7:
+            anomalies.append({
+                "id": f"{d.product_id}_{period}_conversion_drop",
+                "product_id": d.product_id,
+                "type": "conversion_drop",
+                "title": "转化率大幅下降",
+                "description": f"转化率从 {prev_conversion*100:.2f}% 降至 {curr_conversion*100:.2f}%",
+                "severity": "medium",
+                "period": str(period),
+                "dimension": dimension,
+                "dismissed": False
+            })
+    
+    return ResponseModel(data={
+        "anomalies": anomalies,
+        "period": str(period),
+        "dimension": dimension,
+        "total": len(anomalies)
+    })
+
+
+# 临时存储已忽略的异常
+DISMISSED_ANOMALIES = set()
+
+@router.post("/anomalies/{anomaly_id}/dismiss", response_model=ResponseModel)
+def dismiss_anomaly(anomaly_id: str):
+    """忽略异常"""
+    DISMISSED_ANOMALIES.add(anomaly_id)
+    return ResponseModel(data={"message": "异常已忽略"})

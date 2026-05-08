@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
-from sqlalchemy import func, desc, case
+from sqlalchemy import func, desc, case, literal
 from typing import Optional, List
 from app.core.database import get_db
 from app.core.utils import get_data_model, get_prev_period, get_latest_period, safe_float
@@ -311,8 +311,6 @@ def get_health_list(
     prev_period = get_prev_period(str(period), dimension)
     
     filter_conditions = [getattr(Model, date_col) == period]
-    if health_level:
-        filter_conditions.append(Product.health_level == health_level)
     
     products_query = db.query(
         Model.product_id,
@@ -326,15 +324,15 @@ def get_health_list(
         func.avg(Model.payment_conversion).label('conversion'),
         func.sum(Model.ad_spend).label('ad_spend'),
         func.avg(Model.ad_roi).label('roi'),
-        func.sum(Model.cart_count).label('cart_count'),
-        func.sum(Model.search_visitors).label('search_visitors'),
-        func.sum(Model.new_customers).label('new_customers'),
-        func.avg(Model.new_customer_cost).label('new_customer_cost'),
-        func.avg(Model.direct_cart_cost).label('direct_cart_cost'),
-        func.avg(Model.total_cart_cost).label('total_cart_cost'),
-        func.avg(Model.repurchase_rate).label('repurchase_rate'),
-        func.avg(Model.cross_sell_rate).label('cross_sell_rate'),
-        func.avg(Model.search_ctr).label('search_ctr'),
+        func.sum(getattr(Model, 'cart_count', 0)).label('cart_count') if hasattr(Model, 'cart_count') else literal(0).label('cart_count'),
+        func.sum(getattr(Model, 'search_visitors', 0)).label('search_visitors') if hasattr(Model, 'search_visitors') else literal(0).label('search_visitors'),
+        func.sum(getattr(Model, 'new_customers', 0)).label('new_customers') if hasattr(Model, 'new_customers') else literal(0).label('new_customers'),
+        func.avg(getattr(Model, 'new_customer_cost', 0)).label('new_customer_cost') if hasattr(Model, 'new_customer_cost') else literal(0).label('new_customer_cost'),
+        func.avg(getattr(Model, 'direct_cart_cost', 0)).label('direct_cart_cost') if hasattr(Model, 'direct_cart_cost') else literal(0).label('direct_cart_cost'),
+        func.avg(getattr(Model, 'total_cart_cost', 0)).label('total_cart_cost') if hasattr(Model, 'total_cart_cost') else literal(0).label('total_cart_cost'),
+        func.avg(getattr(Model, 'repurchase_rate', 0)).label('repurchase_rate') if hasattr(Model, 'repurchase_rate') else literal(0).label('repurchase_rate'),
+        func.avg(getattr(Model, 'cross_sell_rate', 0)).label('cross_sell_rate') if hasattr(Model, 'cross_sell_rate') else literal(0).label('cross_sell_rate'),
+        func.avg(getattr(Model, 'search_ctr', 0)).label('search_ctr') if hasattr(Model, 'search_ctr') else literal(0).label('search_ctr'),
     ).join(Product, Model.product_id == Product.product_id).filter(*filter_conditions).group_by(
         Model.product_id,
         Product.title,
@@ -440,15 +438,15 @@ def get_health_summary(
         func.avg(Model.payment_conversion).label('conversion'),
         func.sum(Model.ad_spend).label('ad_spend'),
         func.avg(Model.ad_roi).label('roi'),
-        func.sum(Model.cart_count).label('cart_count'),
-        func.sum(Model.search_visitors).label('search_visitors'),
-        func.sum(Model.new_customers).label('new_customers'),
-        func.avg(Model.new_customer_cost).label('new_customer_cost'),
-        func.avg(Model.direct_cart_cost).label('direct_cart_cost'),
-        func.avg(Model.total_cart_cost).label('total_cart_cost'),
-        func.avg(Model.repurchase_rate).label('repurchase_rate'),
-        func.avg(Model.cross_sell_rate).label('cross_sell_rate'),
-        func.avg(Model.search_ctr).label('search_ctr'),
+        func.sum(getattr(Model, 'cart_count', 0)).label('cart_count') if hasattr(Model, 'cart_count') else literal(0).label('cart_count'),
+        func.sum(getattr(Model, 'search_visitors', 0)).label('search_visitors') if hasattr(Model, 'search_visitors') else literal(0).label('search_visitors'),
+        func.sum(getattr(Model, 'new_customers', 0)).label('new_customers') if hasattr(Model, 'new_customers') else literal(0).label('new_customers'),
+        func.avg(getattr(Model, 'new_customer_cost', 0)).label('new_customer_cost') if hasattr(Model, 'new_customer_cost') else literal(0).label('new_customer_cost'),
+        func.avg(getattr(Model, 'direct_cart_cost', 0)).label('direct_cart_cost') if hasattr(Model, 'direct_cart_cost') else literal(0).label('direct_cart_cost'),
+        func.avg(getattr(Model, 'total_cart_cost', 0)).label('total_cart_cost') if hasattr(Model, 'total_cart_cost') else literal(0).label('total_cart_cost'),
+        func.avg(getattr(Model, 'repurchase_rate', 0)).label('repurchase_rate') if hasattr(Model, 'repurchase_rate') else literal(0).label('repurchase_rate'),
+        func.avg(getattr(Model, 'cross_sell_rate', 0)).label('cross_sell_rate') if hasattr(Model, 'cross_sell_rate') else literal(0).label('cross_sell_rate'),
+        func.avg(getattr(Model, 'search_ctr', 0)).label('search_ctr') if hasattr(Model, 'search_ctr') else literal(0).label('search_ctr'),
     ).filter(filter_cond).group_by(Model.product_id).all()
     
     prev_data_map = {}
@@ -626,6 +624,15 @@ def get_health_alerts(
         func.avg(Model.payment_conversion).label('conversion'),
         func.sum(Model.ad_spend).label('ad_spend'),
         func.avg(Model.ad_roi).label('roi'),
+        func.sum(getattr(Model, 'cart_count', 0)).label('cart_count') if hasattr(Model, 'cart_count') else literal(0).label('cart_count'),
+        func.sum(getattr(Model, 'search_visitors', 0)).label('search_visitors') if hasattr(Model, 'search_visitors') else literal(0).label('search_visitors'),
+        func.sum(getattr(Model, 'new_customers', 0)).label('new_customers') if hasattr(Model, 'new_customers') else literal(0).label('new_customers'),
+        func.avg(getattr(Model, 'new_customer_cost', 0)).label('new_customer_cost') if hasattr(Model, 'new_customer_cost') else literal(0).label('new_customer_cost'),
+        func.avg(getattr(Model, 'direct_cart_cost', 0)).label('direct_cart_cost') if hasattr(Model, 'direct_cart_cost') else literal(0).label('direct_cart_cost'),
+        func.avg(getattr(Model, 'total_cart_cost', 0)).label('total_cart_cost') if hasattr(Model, 'total_cart_cost') else literal(0).label('total_cart_cost'),
+        func.avg(getattr(Model, 'repurchase_rate', 0)).label('repurchase_rate') if hasattr(Model, 'repurchase_rate') else literal(0).label('repurchase_rate'),
+        func.avg(getattr(Model, 'cross_sell_rate', 0)).label('cross_sell_rate') if hasattr(Model, 'cross_sell_rate') else literal(0).label('cross_sell_rate'),
+        func.avg(getattr(Model, 'search_ctr', 0)).label('search_ctr') if hasattr(Model, 'search_ctr') else literal(0).label('search_ctr'),
     ).join(Product, Model.product_id == Product.product_id).filter(filter_cond).group_by(
         Model.product_id,
         Product.title

@@ -8,7 +8,7 @@ from app.models.dashboard_models import (
     ProductRanking, ProductProfit, ReviewAnalysis
 )
 
-router = APIRouter(prefix="/api/products", tags=["商品矩阵"])
+router = APIRouter(prefix="/products", tags=["商品矩阵"])
 
 
 @router.get("/ranking")

@@ -8,7 +8,7 @@ from app.models.dashboard_models import (
     CampaignMetrics, AIPLStats
 )
 
-router = APIRouter(prefix="/api/ads", tags=["投放效果"])
+router = APIRouter(prefix="/ads", tags=["投放效果"])
 
 
 @router.get("/campaigns")

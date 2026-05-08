@@ -4,7 +4,7 @@ from app.models import Product, WeeklyData, DailyData, MonthlyData, PaidDetail
 from app.core.database import get_db
 from typing import Optional
 
-router = APIRouter(prefix="/api/promotion", tags=["推广分析"])
+router = APIRouter(prefix="/promotion", tags=["推广分析"])
 
 @router.get("/summary")
 async def get_promotion_summary(

@@ -4,7 +4,7 @@ from app.models import Product, WeeklyData, DailyData, MonthlyData
 from app.core.database import get_db
 from typing import Optional
 
-router = APIRouter(prefix="/api/market", tags=["市场分析"])
+router = APIRouter(prefix="/market", tags=["市场分析"])
 
 @router.get("/category-stats")
 async def get_category_stats(

@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import func, desc
 from typing import Optional, List
@@ -6,6 +6,24 @@ from app.core.database import get_db
 from app.core.utils import get_data_model, get_prev_period, get_latest_period
 from app.models import DailyData, WeeklyData, MonthlyData, Product
 from app.schemas.common import ResponseModel
+from pydantic import BaseModel
+from datetime import datetime
+
+class TrendEventCreate(BaseModel):
+    title: str
+    description: Optional[str] = None
+    event_date: str
+    event_type: Optional[str] = None
+    product_id: Optional[str] = None
+    impact: Optional[str] = None
+
+class TrendEventUpdate(BaseModel):
+    title: Optional[str] = None
+    description: Optional[str] = None
+    event_date: Optional[str] = None
+    event_type: Optional[str] = None
+    product_id: Optional[str] = None
+    impact: Optional[str] = None
 
 router = APIRouter(prefix="/trends", tags=["趋势分析"])
 
@@ -317,3 +335,41 @@ def get_product_trend(
         },
         "dimension": dimension
     })
+
+
+# 临时添加趋势事件API（简化版）
+TREND_EVENTS = []
+EVENT_ID_COUNTER = 1
+
+@router.get("/events", response_model=ResponseModel)
+def get_trend_events(
+    dimension: Optional[str] = Query(None),
+    product_id: Optional[str] = Query(None),
+    limit: int = Query(50)
+):
+    """获取趋势事件列表"""
+    events = TREND_EVENTS
+    if product_id:
+        events = [e for e in events if e.get('product_id') == product_id]
+    events = events[:limit]
+    return ResponseModel(data={"events": events, "total": len(events)})
+
+@router.post("/events", response_model=ResponseModel)
+def create_trend_event(event: TrendEventCreate):
+    """创建趋势事件"""
+    global EVENT_ID_COUNTER
+    new_event = {
+        "id": EVENT_ID_COUNTER,
+        **event.dict(),
+        "created_at": datetime.now().isoformat()
+    }
+    TREND_EVENTS.append(new_event)
+    EVENT_ID_COUNTER += 1
+    return ResponseModel(data={"id": new_event["id"], "message": "事件创建成功"})
+
+@router.delete("/events/{event_id}", response_model=ResponseModel)
+def delete_trend_event(event_id: int):
+    """删除趋势事件"""
+    global TREND_EVENTS
+    TREND_EVENTS = [e for e in TREND_EVENTS if e.get('id') != event_id]
+    return ResponseModel(data={"message": "事件删除成功"})

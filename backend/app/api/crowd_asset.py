@@ -2,12 +2,17 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import desc, func, and_
 from typing import Optional, List
+from pydantic import BaseModel
 from app.core.database import get_db
 from app.models.command_tower import (
     WxtCampaign, WxtDailyMetrics, DmpCrowd, DmpCampaignLink, CrowdAssetStats
 )
 from app.schemas.common import ResponseModel
 from datetime import datetime, timedelta
+
+
+class UpdateBidRequest(BaseModel):
+    bid_ratio: float
 
 router = APIRouter(prefix="/crowd-asset", tags=["人群资产归因"])
 
@@ -230,7 +235,7 @@ def get_efficiency_matrix(db: Session = Depends(get_db)):
 @router.post("/crowds/{crowd_id}/update-bid", response_model=ResponseModel)
 def update_crowd_bid(
     crowd_id: int,
-    bid_ratio: float,
+    request: UpdateBidRequest,
     db: Session = Depends(get_db)
 ):
     """更新人群出价系数"""
@@ -238,7 +243,7 @@ def update_crowd_bid(
     if not crowd:
         return ResponseModel(code=404, message="人群包不存在")
     
-    crowd.actual_bid_ratio = bid_ratio
+    crowd.actual_bid_ratio = request.bid_ratio
     crowd.updated_at = datetime.now()
     db.commit()
     

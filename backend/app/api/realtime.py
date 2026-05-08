@@ -5,7 +5,7 @@ from app.core.logger import get_logger
 
 logger = get_logger(__name__)
 
-router = APIRouter(prefix="/api/realtime", tags=["realtime"])
+router = APIRouter(prefix="/realtime", tags=["realtime"])
 
 
 @router.websocket("/ws")

@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import desc, func
 from typing import Optional, List
+from pydantic import BaseModel
 from app.core.database import get_db
 from app.models.command_tower import (
     ABTest, ABTestVariant, ABTestMetrics, ABTestAnalysis, SOPTemplate, CampaignProject
@@ -9,6 +10,15 @@ from app.models.command_tower import (
 from app.schemas.common import ResponseModel
 from datetime import datetime
 import math
+
+
+class ABTestCreate(BaseModel):
+    test_name: str
+    test_type: str = "landing_page"
+    description: Optional[str] = None
+    start_date: Optional[str] = None
+    end_date: Optional[str] = None
+    significance_level: float = 0.95
 
 router = APIRouter(prefix="/abtest-sop", tags=["A/B测试与SOP"])
 
@@ -313,6 +323,31 @@ def get_campaign_projects(
         } for p in projects],
         "total": total
     })
+
+
+@router.post("/tests", response_model=ResponseModel)
+def create_ab_test(
+    test: ABTestCreate,
+    db: Session = Depends(get_db)
+):
+    """创建A/B测试"""
+    db_test = ABTest(
+        test_name=test.test_name,
+        test_type=test.test_type,
+        description=test.description,
+        start_date=test.start_date or datetime.now().strftime("%Y-%m-%d"),
+        end_date=test.end_date,
+        significance_level=test.significance_level,
+        status="draft",
+        created_by="system",
+        created_at=datetime.now()
+    )
+    
+    db.add(db_test)
+    db.commit()
+    db.refresh(db_test)
+    
+    return ResponseModel(data={"id": db_test.id, "message": "测试创建成功"})
 
 
 @router.post("/sop-templates", response_model=ResponseModel)

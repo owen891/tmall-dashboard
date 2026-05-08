@@ -8,7 +8,7 @@ from app.models.dashboard_models import (
     KeywordMetrics, FunnelMetrics, CompetitorShare
 )
 
-router = APIRouter(prefix="/api/traffic", tags=["流量漏斗"])
+router = APIRouter(prefix="/traffic", tags=["流量漏斗"])
 
 
 @router.get("/keywords")

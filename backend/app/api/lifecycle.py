@@ -4,7 +4,7 @@ from app.models import Product, ProductLifecycle, WeeklyData, DailyData, Monthly
 from app.core.database import get_db
 from typing import Optional
 
-router = APIRouter(prefix="/api/lifecycle", tags=["生命周期分析"])
+router = APIRouter(prefix="/lifecycle", tags=["生命周期分析"])
 
 @router.get("/stats")
 async def get_lifecycle_stats(db=Depends(get_db)):

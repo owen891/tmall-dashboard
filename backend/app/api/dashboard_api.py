@@ -8,7 +8,7 @@ from app.models.dashboard_models import (
     DailyMetrics, MonthlyTarget, TrafficStructure
 )
 
-router = APIRouter(prefix="/api/dashboard", tags=["驾驶舱"])
+router = APIRouter(prefix="/dashboard", tags=["驾驶舱"])
 
 
 @router.get("/metrics")

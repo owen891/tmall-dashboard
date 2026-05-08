@@ -8,7 +8,7 @@ from app.models.dashboard_models import (
     InventoryStatus, SlowMoving
 )
 
-router = APIRouter(prefix="/api/supply", tags=["供应链"])
+router = APIRouter(prefix="/supply", tags=["供应链"])
 
 
 @router.get("/inventory")

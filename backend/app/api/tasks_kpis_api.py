@@ -7,7 +7,7 @@ from pydantic import BaseModel
 from app.core.database import get_db
 from app.models.command_tower import TaskItem, UserKPI
 
-router = APIRouter(prefix="/api/tasks", tags=["任务管理"])
+router = APIRouter(prefix="/tasks", tags=["任务管理"])
 
 
 class TaskCreate(BaseModel):
@@ -153,7 +153,7 @@ async def get_task_stats(
     }
 
 
-router_kpi = APIRouter(prefix="/api/kpis", tags=["KPI管理"])
+router_kpi = APIRouter(prefix="/kpis", tags=["KPI管理"])
 
 
 @router_kpi.get("")
