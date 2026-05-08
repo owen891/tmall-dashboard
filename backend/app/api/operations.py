@@ -68,6 +68,7 @@ def calculate_effectiveness(action: OperationAction) -> dict:
 
 
 @router.get("/", response_model=ResponseModel)
+@router.get("", response_model=ResponseModel)
 def get_operations(
     product_id: Optional[str] = None,
     action_type: Optional[str] = None,
@@ -140,7 +141,7 @@ def get_operations(
             "id": op.id,
             "product_id": op.product_id,
             "product_title": product.title if product else None,
-            "action_date": op.action_date.isoformat() if op.action_date else None,
+            "action_date": op.action_date if op.action_date else None,
             "action_type": op.action_type,
             "action_detail": op.action_detail,
             "effectiveness": effectiveness
@@ -206,7 +207,7 @@ def create_operation(
         "operation": {
             "id": operation.id,
             "product_id": operation.product_id,
-            "action_date": operation.action_date.isoformat(),
+            "action_date": operation.action_date,
             "action_type": operation.action_type,
             "effectiveness_score": operation.effectiveness_score
         },
@@ -274,7 +275,7 @@ def get_operation_statistics(
             "product_id": op.product_id,
             "product_title": product.title if product else None,
             "action_type": op.action_type,
-            "action_date": op.action_date.isoformat() if op.action_date else None,
+            "action_date": op.action_date if op.action_date else None,
             "effectiveness_score": op.effectiveness_score
         })
     

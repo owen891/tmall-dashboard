@@ -48,7 +48,7 @@ app = FastAPI(
     title=settings.PROJECT_NAME,
     version=settings.PROJECT_VERSION,
     lifespan=lifespan,
-    redirect_slashes=False,
+    redirect_slashes=True,
     description="""
 ## 海贝海数据仪表盘 API
 
