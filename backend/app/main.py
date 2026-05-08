@@ -121,9 +121,12 @@ if frontend_dist.exists():
     # Mount static files for assets (CSS, JS, etc.)
     app.mount("/assets", StaticFiles(directory=str(frontend_dist / "assets")), name="assets")
     
-    # Serve index.html for all other routes (SPA fallback)
+    # Serve index.html for SPA routes (exclude API paths)
     @app.get("/{full_path:path}")
     async def serve_spa(full_path: str, request: Request):
+        # Skip API routes
+        if full_path.startswith("api/") or full_path.startswith("docs") or full_path.startswith("redoc") or full_path.startswith("health"):
+            raise StarletteHTTPException(status_code=404, detail="Not Found")
         index_path = frontend_dist / "index.html"
         if index_path.exists():
             return FileResponse(str(index_path))

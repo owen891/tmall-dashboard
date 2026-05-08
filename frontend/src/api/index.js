@@ -95,7 +95,7 @@ export default {
   },
 
   getAlerts(params) {
-    return request.get('/alerts', { params })
+    return request.get('/alerts/records', { params })
   },
 
   getOperations(params) {
