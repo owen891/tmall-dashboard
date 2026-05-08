@@ -4,7 +4,7 @@
       <div class="card-left">
         <div class="icon" :style="{ backgroundColor: item.color }">
           <el-icon :size="24" color="#fff">
-            <component :is="item.icon" />
+            <component v-if="iconComponents[item.icon]" :is="iconComponents[item.icon]" />
           </el-icon>
         </div>
       </div>
@@ -22,12 +22,21 @@
 </template>
 
 <script setup>
+import { DataLine, User, DataAnalysis, TrendCharts } from '@element-plus/icons-vue'
+
 const props = defineProps({
   indicators: {
     type: Array,
     default: () => []
   }
 })
+
+const iconComponents = {
+  DataLine,
+  User,
+  DataAnalysis,
+  TrendCharts
+}
 </script>
 
 <style scoped>

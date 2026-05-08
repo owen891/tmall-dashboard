@@ -34,7 +34,9 @@ if (savedTheme === 'dark') {
   document.body.classList.add('dark-theme')
 }
 
+app.mount('#app')
+
 const authStore = useAuthStore()
-authStore.init().finally(() => {
-  app.mount('#app')
+authStore.init().catch((err) => {
+  console.warn('Auth init failed:', err)
 })

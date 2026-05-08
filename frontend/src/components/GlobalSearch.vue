@@ -23,7 +23,7 @@
             :class="{ active: activeIndex === index }"
             @mousedown="goToPage(page.path)"
           >
-            <el-icon><component :is="page.icon" /></el-icon>
+            <el-icon><component v-if="iconComponents[page.icon]" :is="iconComponents[page.icon]" /></el-icon>
             <span>{{ page.title }}</span>
           </div>
         </div>
@@ -68,6 +68,17 @@ const activeIndex = ref(0)
 const products = ref([])
 
 const defaultImage = 'https://via.placeholder.com/40x40/f0f2f5/909399?text=商'
+
+const iconComponents = {
+  DataBoard,
+  Goods,
+  TrendCharts,
+  Tools,
+  DataAnalysis,
+  Setting,
+  Odometer,
+  Trophy
+}
 
 // 可搜索的页面列表
 const pages = [
