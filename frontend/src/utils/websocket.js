@@ -4,16 +4,19 @@ class WebSocketClient {
   constructor() {
     this.ws = null
     this.reconnectAttempts = 0
-    this.maxReconnectAttempts = 5
-    this.reconnectDelay = 3000
+    this.maxReconnectAttempts = 3
+    this.reconnectDelay = 5000
     this.messageHandlers = new Map()
     this.channel = 'global'
     this.manualClose = false
     this.heartbeatTimer = null
     this.heartbeatInterval = 30000
+    this.enabled = false
   }
 
   connect(channel = 'global') {
+    if (!this.enabled) return
+
     if (this.ws && (this.ws.readyState === WebSocket.OPEN || this.ws.readyState === WebSocket.CONNECTING)) {
       if (this.channel === channel) return
       this.disconnect()
@@ -40,23 +43,21 @@ class WebSocketClient {
           if (data.type === 'pong') return
           this.handleMessage(data)
         } catch (e) {
-          console.error('Failed to parse WebSocket message:', e)
+          // ignore parse errors
         }
       }
 
       this.ws.onclose = (event) => {
-        console.log('WebSocket disconnected:', event.code, event.reason)
         this.stopHeartbeat()
         if (!this.manualClose) {
           this.scheduleReconnect()
         }
       }
 
-      this.ws.onerror = (error) => {
-        console.error('WebSocket error:', error)
+      this.ws.onerror = () => {
+        // silent - don't log WebSocket errors
       }
     } catch (e) {
-      console.error('Failed to create WebSocket connection:', e)
       if (!this.manualClose) {
         this.scheduleReconnect()
       }
@@ -84,10 +85,9 @@ class WebSocketClient {
       this.reconnectAttempts++
       const delay = this.reconnectDelay * Math.pow(1.5, this.reconnectAttempts - 1)
       const jitter = delay * (0.5 + Math.random() * 0.5)
-      console.log(
-        `Attempting to reconnect (${this.reconnectAttempts}/${this.maxReconnectAttempts}) in ${Math.round(jitter)}ms...`
-      )
       setTimeout(() => this.connect(this.channel), jitter)
+    } else {
+      this.enabled = false
     }
   }
 
@@ -146,6 +146,12 @@ class WebSocketClient {
       this.ws.close(1000, 'Manual disconnect')
       this.ws = null
     }
+  }
+
+  enable() {
+    this.enabled = true
+    this.reconnectAttempts = 0
+    this.connect()
   }
 }
 

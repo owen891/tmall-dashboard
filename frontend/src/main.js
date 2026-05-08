@@ -11,7 +11,6 @@ import './styles/page.scss'
 
 import App from './App.vue'
 import router from './router'
-import { wsClient } from './utils/websocket'
 import { useAuthStore } from './stores/auth'
 import { setupGlobalErrorHandler } from './utils/globalErrorHandler'
 
@@ -36,10 +35,6 @@ if (savedTheme === 'dark') {
 }
 
 const authStore = useAuthStore()
-authStore.init().then(() => {
+authStore.init().finally(() => {
   app.mount('#app')
-  wsClient.connect()
-}).catch(() => {
-  app.mount('#app')
-  wsClient.connect()
 })

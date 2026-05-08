@@ -198,7 +198,8 @@ const loadDashboard = async () => {
     }
 
     if (alertsRes?.data) {
-      alerts.value = (alertsRes.data.records || alertsRes.data.data || []).map(a => ({
+      const alertList = alertsRes.data.records || (Array.isArray(alertsRes.data) ? alertsRes.data : [])
+      alerts.value = alertList.map(a => ({
         id: a.id,
         level: a.status === 'pending' ? 'urgent' : 'warning',
         title: a.title,
