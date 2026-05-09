@@ -145,6 +145,7 @@
 
 <script setup>
 import { ref, onMounted, nextTick } from 'vue'
+import { ElMessage } from 'element-plus'
 import api from '@/api'
 import ExportButton from '@/components/ExportButton.vue'
 import { Right } from '@element-plus/icons-vue'

@@ -1,8 +1,9 @@
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Body
 from sqlalchemy.orm import Session
 from sqlalchemy import func, desc
 from typing import Optional, List
 from datetime import datetime
+from pydantic import BaseModel
 from app.core.database import get_db
 from app.models import ProductTrafficDetail, MonthlyPlanning, Product, TrafficSource
 from app.schemas.common import ResponseModel
@@ -11,26 +12,159 @@ from app.models.alerts import Alert
 router = APIRouter(prefix="/smart-alerts", tags=["智能预警"])
 
 
+class SmartAlertRuleCreate(BaseModel):
+    name: str
+    metric: str
+    condition: str = "below"
+    threshold: float
+    severity: str = "warning"
+    enabled: bool = True
+
+
+class SmartAlertRuleUpdate(BaseModel):
+    name: Optional[str] = None
+    metric: Optional[str] = None
+    condition: Optional[str] = None
+    threshold: Optional[float] = None
+    severity: Optional[str] = None
+    enabled: Optional[bool] = None
+
+
+_ALERT_RULES = []
+_ALERT_RULE_COUNTER = 1
+
+
+@router.get("/rules", response_model=ResponseModel)
+def get_smart_alert_rules(
+    db: Session = Depends(get_db)
+):
+    if not _ALERT_RULES:
+        defaults = [
+            {"id": 1, "name": "低转化率预警", "metric": "conversion", "condition": "below", "threshold": 0.02, "severity": "critical", "enabled": True},
+            {"id": 2, "name": "高退款率预警", "metric": "refund_rate", "condition": "above", "threshold": 0.20, "severity": "critical", "enabled": True},
+            {"id": 3, "name": "高跳失率预警", "metric": "bounce_rate", "condition": "above", "threshold": 0.65, "severity": "warning", "enabled": True},
+            {"id": 4, "name": "广告亏损预警", "metric": "ad_roi", "condition": "below", "threshold": 1.0, "severity": "critical", "enabled": True},
+            {"id": 5, "name": "付费占比过高", "metric": "ad_ratio", "condition": "above", "threshold": 40, "severity": "warning", "enabled": True},
+        ]
+        return ResponseModel(data={"rules": defaults, "total": len(defaults)})
+    return ResponseModel(data={"rules": _ALERT_RULES, "total": len(_ALERT_RULES)})
+
+
+@router.post("/rules", response_model=ResponseModel)
+def create_smart_alert_rule(
+    rule: SmartAlertRuleCreate,
+    db: Session = Depends(get_db)
+):
+    global _ALERT_RULE_COUNTER
+    new_rule = {
+        "id": _ALERT_RULE_COUNTER,
+        "name": rule.name,
+        "metric": rule.metric,
+        "condition": rule.condition,
+        "threshold": rule.threshold,
+        "severity": rule.severity,
+        "enabled": rule.enabled,
+    }
+    _ALERT_RULES.append(new_rule)
+    _ALERT_RULE_COUNTER += 1
+    return ResponseModel(data={"rule": new_rule, "message": "规则创建成功"})
+
+
+@router.put("/rules/{rule_id}", response_model=ResponseModel)
+def update_smart_alert_rule(
+    rule_id: int,
+    rule: SmartAlertRuleUpdate,
+    db: Session = Depends(get_db)
+):
+    for r in _ALERT_RULES:
+        if r["id"] == rule_id:
+            for field, value in rule.model_dump(exclude_unset=True).items():
+                r[field] = value
+            return ResponseModel(data={"rule": r, "message": "规则更新成功"})
+    return ResponseModel(data={"message": "规则不存在"})
+
+
+@router.delete("/rules/{rule_id}", response_model=ResponseModel)
+def delete_smart_alert_rule(
+    rule_id: int,
+    db: Session = Depends(get_db)
+):
+    global _ALERT_RULES
+    _ALERT_RULES = [r for r in _ALERT_RULES if r["id"] != rule_id]
+    return ResponseModel(data={"message": "规则删除成功"})
+
+
+@router.get("/records", response_model=ResponseModel)
+def get_smart_alert_records(
+    severity: Optional[str] = Query(None, description="严重程度"),
+    alert_type: Optional[str] = Query(None, description="预警类型"),
+    status: Optional[str] = Query(None, description="状态"),
+    limit: int = Query(50, ge=1, le=200),
+    db: Session = Depends(get_db)
+):
+    query = db.query(Alert)
+    if severity:
+        query = query.filter(Alert.severity == severity)
+    if alert_type:
+        query = query.filter(Alert.alert_type == alert_type)
+    if status:
+        if status == "resolved":
+            query = query.filter(Alert.dismissed == True)
+        else:
+            query = query.filter(Alert.dismissed == False)
+
+    alerts = query.order_by(desc(Alert.id)).limit(limit).all()
+
+    records = []
+    for a in alerts:
+        records.append({
+            "id": a.id,
+            "product_id": None,
+            "product_name": None,
+            "alert_type": a.alert_type,
+            "severity": a.severity,
+            "metric": a.metric_name,
+            "current_value": a.current_value,
+            "threshold": a.target_value,
+            "message": a.detail or a.title or "",
+            "status": "resolved" if a.dismissed else "unresolved",
+            "created_at": a.created_at.isoformat() if a.created_at else None,
+        })
+
+    return ResponseModel(data={"records": records, "total": len(records)})
+
+
+@router.put("/records/{record_id}", response_model=ResponseModel)
+def update_smart_alert_record(
+    record_id: int,
+    status: str = Body("resolved", description="新状态"),
+    db: Session = Depends(get_db)
+):
+    alert = db.query(Alert).filter(Alert.id == record_id).first()
+    if not alert:
+        return ResponseModel(data={"message": "记录不存在"})
+    alert.dismissed = (status == "resolved")
+    db.commit()
+    return ResponseModel(data={"message": "状态更新成功"})
+
+
 def check_and_create_alert(db: Session, product_id: str, product_name: str, alert_type: str, severity: str, metric: str, current_value: float, threshold: float, message: str) -> bool:
-    """Check if alert already exists and create if not"""
     existing = db.query(Alert).filter(
-        Alert.product_id == int(product_id) if product_id.isdigit() else None,
-        Alert.status == "unresolved",
-        Alert.metric == metric,
         Alert.alert_type == alert_type,
+        Alert.dismissed == False,
+        Alert.metric_name == metric,
     ).first()
     if existing:
         return False
     new_alert = Alert(
-        product_id=int(product_id) if product_id.isdigit() else None,
-        product_name=product_name,
         alert_type=alert_type,
         severity=severity,
-        metric=metric,
+        title=message[:200] if message else None,
+        detail=message,
+        metric_name=metric,
         current_value=current_value,
-        threshold=threshold,
-        message=message,
-        status="unresolved",
+        target_value=threshold,
+        dismissed=False,
     )
     db.add(new_alert)
     return True
@@ -146,33 +280,32 @@ def get_alert_summary(
     days: int = Query(30, description="统计天数"),
     db: Session = Depends(get_db)
 ):
-    """获取智能预警汇总"""
     total = db.query(func.count(Alert.id)).scalar() or 0
-    unresolved = db.query(func.count(Alert.id)).filter(Alert.status == "unresolved").scalar() or 0
+    unresolved = db.query(func.count(Alert.id)).filter(Alert.dismissed == False).scalar() or 0
     critical = db.query(func.count(Alert.id)).filter(
-        Alert.status == "unresolved",
+        Alert.dismissed == False,
         Alert.severity == "critical",
     ).scalar() or 0
     warning = db.query(func.count(Alert.id)).filter(
-        Alert.status == "unresolved",
+        Alert.dismissed == False,
         Alert.severity == "warning",
     ).scalar() or 0
-    
+
     by_type = db.query(
         Alert.alert_type,
         func.count(Alert.id).label("count"),
-    ).filter(Alert.status == "unresolved").group_by(Alert.alert_type).all()
-    
+    ).filter(Alert.dismissed == False).group_by(Alert.alert_type).all()
+
     by_product = db.query(
-        Alert.product_name,
+        Alert.title,
         func.count(Alert.id).label("count"),
-    ).filter(Alert.status == "unresolved").group_by(Alert.product_name).order_by(desc(func.count(Alert.id))).limit(10).all()
-    
+    ).filter(Alert.dismissed == False).group_by(Alert.title).order_by(desc(func.count(Alert.id))).limit(10).all()
+
     return ResponseModel(data={
         "total": total,
         "unresolved": unresolved,
         "critical": critical,
         "warning": warning,
         "by_type": {t.alert_type: t.count for t in by_type},
-        "by_product": [{"name": p.product_name, "count": p.count} for p in by_product],
+        "by_product": [{"name": p.title or "未知", "count": p.count} for p in by_product],
     })

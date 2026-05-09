@@ -7,7 +7,7 @@ from app.schemas.common import ResponseModel
 from app.models import Product, WeeklyData
 import random
 
-router = APIRouter(prefix="/recommendation", tags=["智能推荐"])
+router = APIRouter(prefix="/recommendations", tags=["智能推荐"])
 
 
 @router.get("/products", response_model=ResponseModel)
@@ -65,7 +65,8 @@ def get_product_recommendations(
     })
 
 
-@router.get("/price-optimization", response_model=ResponseModel)
+@router.get("/price", response_model=ResponseModel)
+@router.get("/price-optimization", response_model=ResponseModel, include_in_schema=False)
 def get_price_optimization(
     product_id: Optional[str] = Query(None, description="商品ID"),
     limit: int = Query(20, ge=1, le=50),

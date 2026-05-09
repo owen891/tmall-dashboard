@@ -129,6 +129,75 @@ def get_trends(
     })
 
 
+@router.get("/data", response_model=ResponseModel)
+def get_trends_data(
+    dimension: str = Query("weekly", description="时间维度"),
+    product_id: Optional[str] = Query(None, description="商品ID"),
+    period: Optional[str] = Query(None, description="指定周期"),
+    periods: int = Query(12, description="周期数量"),
+    db: Session = Depends(get_db)
+):
+    Model, date_col, visitors_col = get_data_model(dimension)
+
+    if not period:
+        period = get_latest_period(Model, date_col, db)
+
+    if not period:
+        return ResponseModel(data={"trend": [], "summary": {}})
+
+    period_list = get_period_list(str(period), dimension, periods)
+
+    query = db.query(
+        getattr(Model, date_col).label('period'),
+        func.sum(Model.payment_amount).label('payment'),
+        func.sum(Model.refund_amount).label('refund'),
+        func.sum(getattr(Model, visitors_col)).label('visitors'),
+        func.avg(Model.payment_conversion).label('conversion'),
+        func.sum(Model.ad_spend).label('ad_spend'),
+    ).filter(
+        getattr(Model, date_col).in_(period_list)
+    )
+
+    if product_id:
+        query = query.filter(Model.product_id == product_id)
+
+    all_data = query.group_by(getattr(Model, date_col)).all()
+
+    data_map = {str(d.period): d for d in all_data}
+
+    trend = []
+    for p in period_list:
+        d = data_map.get(p)
+        payment = float(d.payment or 0) if d else 0
+        refund = float(d.refund or 0) if d else 0
+        visitors = int(d.visitors or 0) if d else 0
+        conversion = float(d.conversion or 0) if d else 0
+        ad_spend = float(d.ad_spend or 0) if d else 0
+
+        trend.append({
+            "period": p,
+            "payment_amount": round(payment, 2),
+            "refund_amount": round(refund, 2),
+            "net_sales": round(payment - refund, 2),
+            "visitors": visitors,
+            "conversion": round(conversion * 100, 2),
+            "ad_spend": round(ad_spend, 2),
+        })
+
+    payments = [t['payment_amount'] for t in trend]
+    visitors_list = [t['visitors'] for t in trend]
+
+    return ResponseModel(data={
+        "trend": trend,
+        "summary": {
+            "payment_trend": calculate_trend(payments),
+            "visitors_trend": calculate_trend(visitors_list),
+        },
+        "periods": period_list,
+        "dimension": dimension
+    })
+
+
 @router.get("/overview", response_model=ResponseModel)
 def get_trends_overview(
     dimension: str = Query("weekly", description="时间维度"),

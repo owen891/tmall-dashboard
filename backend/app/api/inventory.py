@@ -218,16 +218,15 @@ def get_inventory_summary(
     latest_period = get_latest_period(Model, date_col, db)
     if latest_period:
         recent_data = recent_data.filter(getattr(Model, date_col) == latest_period)
-    else:
-        recent_data = recent_data.first()
+    recent_data = recent_data.first()
 
     return ResponseModel(data={
         "dimension": dimension,
         "period": latest_period,
         "active_products": products_with_inventory,
-        "total_inventory": int(float(recent_data.total_inventory or 0)),
-        "avg_inventory": round(float(recent_data.avg_inventory or 0), 1),
-        "total_sales": int(float(recent_data.total_sales or 0))
+        "total_inventory": int(float(recent_data.total_inventory or 0)) if recent_data else 0,
+        "avg_inventory": round(float(recent_data.avg_inventory or 0), 1) if recent_data else 0,
+        "total_sales": int(float(recent_data.total_sales or 0)) if recent_data else 0
     })
 
 

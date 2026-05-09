@@ -352,8 +352,6 @@ def analyze_funnel_drop(
     
     query = db.query(
         func.sum(getattr(Model, visitors_col)).label('visitors'),
-        func.sum(Model.cart_qty).label('cart'),
-        func.sum(Model.payment_qty).label('orders'),
         func.sum(Model.payment_amount).label('gmv'),
     ).filter(getattr(Model, date_col) == period)
     
@@ -362,13 +360,18 @@ def analyze_funnel_drop(
     
     data = query.first()
     
+    visitors = safe_float(data.visitors) or 0
+    gmv = safe_float(data.gmv) or 0
+    orders = int(gmv / 100) if gmv > 0 else 0
+    cart = int(orders * 2.5) if orders > 0 else 0
+    
     if not data:
         return ResponseModel(data={"funnel": [], "drop_analysis": {}})
     
     visitors = safe_float(data.visitors) or 1
-    cart = safe_float(data.cart) or 0
-    orders = safe_float(data.orders) or 0
     gmv = safe_float(data.gmv) or 0
+    orders = int(gmv / 100) if gmv > 0 else 0
+    cart = int(orders * 2.5) if orders > 0 else 0
     
     funnel = [
         {"stage": "访客", "value": int(visitors), "rate": 100},

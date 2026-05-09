@@ -159,6 +159,7 @@
 
 <script setup>
 import { ref, onMounted, nextTick } from 'vue'
+import { ElMessage } from 'element-plus'
 import api from '@/api'
 import { useChartManager } from '@/composables/useChartManager'
 import ExportButton from '@/components/ExportButton.vue'

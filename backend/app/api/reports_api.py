@@ -148,10 +148,10 @@ def generate_weekly_report(
     aov = gmv / visitors if visitors > 0 else 0
     
     targets = db.query(ShopTarget).filter(
-        ShopTarget.year == datetime.now().year
+        ShopTarget.period.like(f"{datetime.now().year}%")
     ).all()
     
-    target_gmv = sum(safe_float(t.gmv_target) for t in targets) / 52 if targets else 0
+    target_gmv = sum(safe_float(t.target_gsv) for t in targets) / 52 if targets else 0
     target_progress = (gmv / target_gmv * 100) if target_gmv > 0 else 0
     
     prev_week = get_prev_period(week_start, 'weekly')
@@ -278,10 +278,10 @@ def generate_monthly_report(
     roi = (net_sales / ad_spend * 100) if ad_spend > 0 else 0
     
     targets = db.query(ShopTarget).filter(
-        ShopTarget.year == int(month.split('-')[0])
+        ShopTarget.period.like(f"{int(month.split('-')[0])}%")
     ).all()
     
-    target_gmv = sum(safe_float(t.gmv_target) for t in targets) / 12 if targets else 0
+    target_gmv = sum(safe_float(t.target_gsv) for t in targets) / 12 if targets else 0
     target_progress = (gmv / target_gmv * 100) if target_gmv > 0 else 0
     
     prev_month = get_prev_period(month, 'monthly')

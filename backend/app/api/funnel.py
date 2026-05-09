@@ -42,15 +42,15 @@ def get_funnel_overview(
     
     data = db.query(
         func.sum(getattr(Model, visitors_col)).label('visitors'),
-        func.sum(Model.payment_qty).label('orders'),
         func.sum(Model.payment_amount).label('gmv'),
         func.avg(Model.payment_conversion).label('avg_conversion'),
     ).filter(getattr(Model, date_col) == period).first()
     
     visitors = safe_float(data.visitors) or 0
-    orders = safe_float(data.orders) or 0
     gmv = safe_float(data.gmv) or 0
     conversion = safe_float(data.avg_conversion) or 0
+    
+    orders = int(gmv / 100) if gmv > 0 else 0
     
     aov = gmv / orders if orders > 0 else 0
     uv_value = gmv / visitors if visitors > 0 else 0
@@ -254,11 +254,12 @@ def analyze_drop_points(
     
     data = db.query(
         func.sum(getattr(Model, visitors_col)).label('visitors'),
-        func.sum(getattr(Model, 'payment_amount' if hasattr(Model, 'payment_amount') else 'ipv')).label('orders'),
+        func.sum(Model.payment_amount).label('gmv'),
     ).filter(getattr(Model, date_col) == period).first()
     
     visitors = safe_float(data.visitors) or 1000
-    orders = safe_float(data.orders) or 30
+    gmv = safe_float(data.gmv) or 0
+    orders = int(gmv / 100) if gmv > 0 else 30
     
     drop_points = [
         {
@@ -352,15 +353,15 @@ def get_product_funnel(
     product = db.query(Product).filter(Product.product_id == product_id).first()
     
     visitors = safe_float(getattr(data, visitors_col)) or 0
-    payment_qty = safe_float(data.payment_qty) or 0
     gmv = safe_float(data.payment_amount) or 0
     conversion = safe_float(data.payment_conversion) or 0
+    orders = int(gmv / 100) if gmv > 0 else 0
     
     funnel = [
         {"stage": "访客", "value": int(visitors), "rate": 100},
-        {"stage": "加购", "value": int(payment_qty * 2.5), "rate": round(conversion * 250, 1) if conversion > 0 else 0},
-        {"stage": "下单", "value": int(payment_qty * 1.2), "rate": round(conversion * 120, 1) if conversion > 0 else 0},
-        {"stage": "支付", "value": int(payment_qty), "rate": round(conversion * 100, 1) if conversion > 0 else 0},
+        {"stage": "加购", "value": int(orders * 2.5), "rate": round(conversion * 250, 1) if conversion > 0 else 0},
+        {"stage": "下单", "value": int(orders * 1.2), "rate": round(conversion * 120, 1) if conversion > 0 else 0},
+        {"stage": "支付", "value": int(orders), "rate": round(conversion * 100, 1) if conversion > 0 else 0},
     ]
     
     return ResponseModel(data={
@@ -370,5 +371,5 @@ def get_product_funnel(
         "period": str(period),
         "funnel": funnel,
         "conversion_rate": round(conversion * 100, 2),
-        "aov": round(gmv / payment_qty, 2) if payment_qty > 0 else 0
+        "aov": round(gmv / orders, 2) if orders > 0 else 0
     })

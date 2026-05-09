@@ -350,6 +350,36 @@ export default {
     }
   },
 
+  funnelApi: {
+    getOverview(params) {
+      return cachedRequest('get', '/funnel/overview', { params, useCache: true })
+    },
+    getBySource(params) {
+      return cachedRequest('get', '/funnel/by-source', { params, useCache: true })
+    },
+    getDropAnalysis(params) {
+      return cachedRequest('get', '/funnel/drop-analysis', { params, useCache: true })
+    }
+  },
+
+  backupApi: {
+    getList() {
+      return request.get('/backup/list')
+    },
+    create(data) {
+      return request.post('/backup/create', data)
+    },
+    restore(backupId) {
+      return request.post(`/backup/${backupId}/restore`)
+    },
+    download(backupId) {
+      return request.get(`/backup/${backupId}/download`, { responseType: 'blob' })
+    },
+    delete(backupId) {
+      return request.delete(`/backup/${backupId}`)
+    }
+  },
+
   getSettings() {
     return request.get('/settings')
   },

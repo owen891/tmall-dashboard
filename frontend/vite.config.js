@@ -20,13 +20,30 @@ export default defineConfig({
     }
   },
   build: {
-    chunkSizeWarningLimit: 600,
+    chunkSizeWarningLimit: 1000,
     rollupOptions: {
       output: {
-        manualChunks: {
-          'element-plus': ['element-plus'],
-          'echarts': ['echarts'],
-          'vue-core': ['vue', 'vue-router', 'pinia']
+        manualChunks(id) {
+          if (!id.includes('node_modules')) return
+
+          if (id.includes('element-plus')) {
+            if (id.includes('element-plus/es/components')) {
+              const match = id.match(/components\/([^/]+)/)
+              if (match) return `ep-${match[1]}`
+            }
+            return 'element-plus'
+          }
+          if (id.includes('echarts')) {
+            if (id.includes('echarts/charts')) return 'echarts-charts'
+            if (id.includes('echarts/components')) return 'echarts-components'
+            if (id.includes('echarts/renderers')) return 'echarts-renderers'
+            if (id.includes('zrender')) return 'echarts-zrender'
+            return 'echarts-core'
+          }
+          if (id.includes('vue') || id.includes('pinia')) return 'vue-core'
+          if (id.includes('axios')) return 'axios'
+          if (id.includes('xlsx') || id.includes('exceljs')) return 'vendor-xlsx'
+          return 'vendor'
         }
       }
     }

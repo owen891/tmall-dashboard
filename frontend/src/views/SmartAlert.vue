@@ -190,9 +190,9 @@ const refresh = async () => {
   loading.value = true
   try {
     const [alertsRes, rulesRes, supplyRes] = await Promise.allSettled([
-      api.request.get('/smart-alert/alerts'),
-      api.request.get('/smart-alert/rules'),
-      api.request.get('/smart-alert/supply-chain')
+      api.request.get('/smart-alerts/alerts'),
+      api.request.get('/smart-alerts/rules'),
+      api.request.get('/smart-alerts/supply-chain')
     ])
 
     if (alertsRes.status === 'fulfilled') {
@@ -216,7 +216,7 @@ const refresh = async () => {
 const checkAlerts = async () => {
   loading.value = true
   try {
-    const data = await api.request.post('/smart-alert/check')
+    const data = await api.request.post('/smart-alerts/check')
     ElMessage.success(`检查完成，新增${data.new_alerts || 0}条告警`)
     refresh()
   } catch (error) {
@@ -235,7 +235,7 @@ const updateAlertStats = () => {
 
 const dismissAlert = async (alertId) => {
   try {
-    await api.request.post(`/smart-alert/alerts/${alertId}/dismiss`)
+    await api.request.post(`/smart-alerts/alerts/${alertId}/dismiss`)
     ElMessage.success('已忽略告警')
     refresh()
   } catch (error) {
@@ -245,7 +245,7 @@ const dismissAlert = async (alertId) => {
 
 const resolveAlert = async (alertId) => {
   try {
-    await api.request.post(`/smart-alert/alerts/${alertId}/resolve`)
+    await api.request.post(`/smart-alerts/alerts/${alertId}/resolve`)
     ElMessage.success('告警已解决')
     refresh()
   } catch (error) {
@@ -255,7 +255,7 @@ const resolveAlert = async (alertId) => {
 
 const toggleRule = async (ruleId, enabled) => {
   try {
-    await api.request.post(`/smart-alert/rules/${ruleId}`, { enabled })
+    await api.request.post(`/smart-alerts/rules/${ruleId}`, { enabled })
     ElMessage.success('状态已更新')
   } catch (error) {
     ElMessage.error('操作失败')
@@ -271,7 +271,7 @@ const handleDeleteRule = async (ruleId) => {
     await ElMessageBox.confirm('确定要删除此规则吗？', '确认删除', {
       type: 'warning'
     })
-    await api.request.delete(`/smart-alert/rules/${ruleId}`)
+    await api.request.delete(`/smart-alerts/rules/${ruleId}`)
     ElMessage.success('规则已删除')
     refresh()
   } catch (error) {

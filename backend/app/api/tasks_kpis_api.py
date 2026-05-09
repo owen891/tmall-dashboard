@@ -177,8 +177,8 @@ async def get_kpis(
                 "period": k.period,
                 "target_gmv": k.target_gmv,
                 "actual_gmv": k.actual_gmv,
-                "achievement_rate": k.achievement_rate,
-                "rating": k.rating,
+                "achievement_rate": k.gmv_progress,
+                "rating": k.performance_rating,
                 "target_task_count": k.target_task_count,
                 "actual_task_count": k.actual_task_count
             }
@@ -192,21 +192,20 @@ async def get_kpis(
 async def get_kpi_stats(
     db: Session = Depends(get_db)
 ):
-    """KPI统计"""
     total_users = db.query(func.count(func.distinct(UserKPI.username))).scalar() or 0
-    
-    avg_achievement = db.query(func.avg(UserKPI.achievement_rate)).scalar() or 0
-    
+
+    avg_achievement = db.query(func.avg(UserKPI.gmv_progress)).scalar() or 0
+
     a_rated = db.query(func.count(UserKPI.id)).filter(
-        UserKPI.rating == 'A'
+        UserKPI.performance_rating == 'A'
     ).scalar() or 0
     b_rated = db.query(func.count(UserKPI.id)).filter(
-        UserKPI.rating == 'B'
+        UserKPI.performance_rating == 'B'
     ).scalar() or 0
     c_rated = db.query(func.count(UserKPI.id)).filter(
-        UserKPI.rating == 'C'
+        UserKPI.performance_rating == 'C'
     ).scalar() or 0
-    
+
     return {
         "total_users": total_users,
         "avg_achievement": round(avg_achievement, 2),

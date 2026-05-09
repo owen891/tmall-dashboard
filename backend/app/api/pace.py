@@ -8,9 +8,9 @@ from sqlalchemy import func, desc
 from typing import Optional, List
 from datetime import datetime, timedelta
 from app.core.database import get_db
-from app.core.utils import get_data_model, get_latest_period, safe_float
+from app.core.utils import get_data_model, get_latest_period, safe_float, DIMENSION_MAP
 from app.models import (
-    WeeklyData, MonthlyData, Product, 
+    WeeklyData, MonthlyData, DailyData, Product, 
     ShopTarget, ProductTarget, Alert
 )
 from app.schemas.common import ResponseModel
@@ -84,28 +84,32 @@ def get_pace_overview(
     dimension: str = Query("monthly", description="时间维度: weekly/monthly/yearly"),
     db: Session = Depends(get_db)
 ):
-    """获取 Pace 监控概览 - 首屏核心"""
-    
     time_info = get_period_progress(dimension)
     time_progress = time_info["progress"]
     
     targets = db.query(ShopTarget).filter(
-        ShopTarget.year == datetime.now().year
+        ShopTarget.period.like(f"{datetime.now().year}%")
     ).all()
     
     if not targets:
         return ResponseModel(data={
             "time_progress": time_info,
             "sales_progress": {"progress": 0, "current": 0, "target": 0},
-            "pace_status": {"status": "no_target", "level": "info", "message": "未设置目标"},
-            "budget_pace": None
+            "pace_status": {"status": "no_target", "level": "info", "message": "未设置目标", "gap": 0},
+            "budget_pace": None,
+            "alerts": []
         })
     
-    target_gmv = sum(safe_float(t.gmv_target) for t in targets)
-    target_visitors = sum(safe_float(t.visitors_target) for t in targets)
-    target_budget = sum(safe_float(t.budget) for t in targets if t.budget)
+    target_gmv = sum(safe_float(t.target_gsv) for t in targets)
+    target_budget = sum(safe_float(t.target_ad_spend) for t in targets)
     
-    Model, date_col, visitors_col = get_data_model(dimension)
+    if dimension == "yearly":
+        Model = MonthlyData
+        date_col = 'month'
+        visitors_col = 'visitors'
+    else:
+        dim_cfg = DIMENSION_MAP.get(dimension, DIMENSION_MAP['monthly'])
+        Model, date_col, visitors_col = get_data_model(dimension)
     
     if dimension == "yearly":
         current_gmv = db.query(func.sum(Model.payment_amount)).filter(
@@ -127,7 +131,6 @@ def get_pace_overview(
     current_ad_spend = safe_float(current_ad_spend)
     
     sales_progress = (current_gmv / target_gmv * 100) if target_gmv > 0 else 0
-    visitors_progress = (current_visitors / target_visitors * 100) if target_visitors > 0 else 0
     budget_progress = (current_ad_spend / target_budget * 100) if target_budget > 0 else 0
     
     pace_status = calculate_pace_status(time_progress, sales_progress)
@@ -174,9 +177,9 @@ def get_pace_overview(
             "daily_needed": round((target_gmv - current_gmv) / max(1, time_info.get("total_days", 30) - time_info.get("elapsed_days", 15)), 2) if time_info.get("elapsed_days") else 0
         },
         "visitors_progress": {
-            "target": int(target_visitors),
+            "target": int(current_visitors),
             "current": int(current_visitors),
-            "progress": round(visitors_progress, 1)
+            "progress": 0
         },
         "pace_status": pace_status,
         "budget_pace": budget_pace,
@@ -216,8 +219,6 @@ def get_product_pace(
     dimension: str = Query("monthly", description="时间维度"),
     db: Session = Depends(get_db)
 ):
-    """获取商品级别的 Pace 监控"""
-    
     time_info = get_period_progress(dimension)
     time_progress = time_info["progress"]
     
@@ -233,14 +234,24 @@ def get_product_pace(
         if not product:
             continue
         
-        Model, date_col, visitors_col = get_data_model(dimension)
+        if dimension == "yearly":
+            Model = MonthlyData
+            date_col = 'month'
+        else:
+            Model, date_col, _ = get_data_model(dimension)
         
-        current_gmv = db.query(func.sum(Model.payment_amount)).filter(
-            Model.product_id == target.product_id
-        ).scalar() or 0
+        if dimension == "yearly":
+            current_gmv = db.query(func.sum(Model.payment_amount)).filter(
+                Model.product_id == target.product_id,
+                func.strftime('%Y', getattr(Model, date_col)) == str(datetime.now().year)
+            ).scalar() or 0
+        else:
+            current_gmv = db.query(func.sum(Model.payment_amount)).filter(
+                Model.product_id == target.product_id
+            ).scalar() or 0
         
         current_gmv = safe_float(current_gmv)
-        target_gmv = safe_float(target.gmv_target)
+        target_gmv = safe_float(target.target_gsv)
         
         progress = (current_gmv / target_gmv * 100) if target_gmv > 0 else 0
         pace_status = calculate_pace_status(time_progress, progress)
@@ -274,9 +285,11 @@ def get_pace_history(
     periods: int = Query(12, description="历史周期数"),
     db: Session = Depends(get_db)
 ):
-    """获取 Pace 历史趋势"""
-    
-    Model, date_col, visitors_col = get_data_model(dimension)
+    if dimension == "yearly":
+        Model = MonthlyData
+        date_col = 'month'
+    else:
+        Model, date_col, visitors_col = get_data_model(dimension)
     
     latest_periods = db.query(getattr(Model, date_col)).distinct().order_by(
         desc(getattr(Model, date_col))
@@ -284,7 +297,7 @@ def get_pace_history(
     
     history = []
     targets = db.query(ShopTarget).all()
-    target_gmv = sum(safe_float(t.gmv_target) for t in targets) / max(1, len(targets)) if targets else 0
+    target_gmv = sum(safe_float(t.target_gsv) for t in targets) / max(1, len(targets)) if targets else 0
     
     for period_row in reversed(latest_periods):
         period = period_row[0]
@@ -318,18 +331,20 @@ def get_pace_forecast(
     dimension: str = Query("monthly", description="时间维度"),
     db: Session = Depends(get_db)
 ):
-    """基于当前 Pace 预测期末达成情况"""
-    
     time_info = get_period_progress(dimension)
     time_progress = time_info["progress"]
     
     targets = db.query(ShopTarget).filter(
-        ShopTarget.year == datetime.now().year
+        ShopTarget.period.like(f"{datetime.now().year}%")
     ).all()
     
-    target_gmv = sum(safe_float(t.gmv_target) for t in targets)
+    target_gmv = sum(safe_float(t.target_gsv) for t in targets)
     
-    Model, date_col, visitors_col = get_data_model(dimension)
+    if dimension == "yearly":
+        Model = MonthlyData
+        date_col = 'month'
+    else:
+        Model, date_col, _ = get_data_model(dimension)
     
     current_gmv = safe_float(db.query(func.sum(Model.payment_amount)).scalar() or 0)
     
