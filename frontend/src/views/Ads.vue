@@ -64,6 +64,7 @@
 
 <script setup>
 import { ref, onMounted } from 'vue'
+import { ElMessage } from 'element-plus'
 import api from '@/api'
 import { useChartManager } from '@/composables/useChartManager'
 import { formatNumber } from '@/utils/format'
@@ -91,8 +92,8 @@ const loadAds = async () => {
     ])
     
     summary.value = summaryRes?.data || {}
-    channelComparison.value = compRes?.data || []
-    productAds.value = productsRes?.data || []
+    channelComparison.value = Array.isArray(compRes?.data) ? compRes.data : (compRes?.data?.channels || [])
+    productAds.value = Array.isArray(productsRes?.data) ? productsRes.data : (productsRes?.data?.products || [])
     updateChart()
   } catch (error) {
     console.error('加载广告数据失败:', error)

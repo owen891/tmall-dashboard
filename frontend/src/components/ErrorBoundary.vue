@@ -1,17 +1,19 @@
 <template>
-  <div v-if="hasError" class="error-boundary">
-    <el-result
-      icon="error"
-      :title="errorTitle"
-      :sub-title="errorMessage"
-    >
-      <template #extra>
-        <el-button type="primary" @click="handleRetry">重试</el-button>
-        <el-button @click="handleReset">返回首页</el-button>
-      </template>
-    </el-result>
+  <div class="error-boundary-wrapper">
+    <div v-if="hasError" class="error-boundary">
+      <el-result
+        icon="error"
+        :title="errorTitle"
+        :sub-title="errorMessage"
+      >
+        <template #extra>
+          <el-button type="primary" @click="handleRetry">重试</el-button>
+          <el-button @click="handleReset">返回首页</el-button>
+        </template>
+      </el-result>
+    </div>
+    <slot v-else />
   </div>
-  <slot v-else />
 </template>
 
 <script setup>

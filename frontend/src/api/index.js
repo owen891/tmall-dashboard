@@ -348,5 +348,15 @@ export default {
     updateCrowdBid(crowdId, bidRatio) {
       return request.post(`/crowd-asset/crowds/${crowdId}/update-bid`, { bid_ratio: bidRatio })
     }
+  },
+
+  getSettings() {
+    return request.get('/settings')
+  },
+  updateSettings(data) {
+    return request.put('/settings', data)
+  },
+  initializeSettings() {
+    return request.post('/settings/init')
   }
 }
