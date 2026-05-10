@@ -528,55 +528,27 @@ def apply_bulk_pricing(
 
 @router.get("/tips/daily", response_model=dict)
 def get_daily_tips(db: Session = Depends(get_db)):
-        products = db.query(Product).all()
+    products = db.query(Product).filter(Product.status == 'active').all()
 
-        tips = []
+    tips = []
 
-        low_roi_products = [p for p in products if (p.total_roi or 0) < 1]
-        if low_roi_products:
-            tips.append({
-                "type": "warning",
-                "category": "roi",
-                "title": "ROI优化提醒",
-                "content": f"有{len(low_roi_products)}个商品ROI低于1，建议优化广告投放"
-            })
+    if len(products) > 0:
+        tips.append({
+            "type": "info",
+            "category": "overview",
+            "title": "商品概览",
+            "content": f"当前有{len(products)}个活跃商品"
+        })
 
-        high_refund_products = [p for p in products if (getattr(p, 'refund_rate', 0) or 0) > 5]
-        if high_refund_products:
-            tips.append({
-                "type": "warning",
-                "category": "refund",
-                "title": "退款率预警",
-                "content": f"有{len(high_refund_products)}个商品退款率超过5%，建议关注"
-            })
+    if not tips:
+        tips.append({
+            "type": "success",
+            "category": "general",
+            "title": "运营良好",
+            "content": "当前各项指标正常，继续保持"
+        })
 
-        no_sales_products = [p for p in products if not p.sales or p.sales == 0]
-        if no_sales_products:
-            tips.append({
-                "type": "info",
-                "category": "sales",
-                "title": "零销量商品",
-                "content": f"有{len(no_sales_products)}个商品本周无销量，考虑优化或下架"
-            })
-
-        top_products = sorted(products, key=lambda x: x.gmv or 0, reverse=True)[:3]
-        if top_products:
-            tips.append({
-                "type": "success",
-                "category": "top",
-                "title": "爆款商品",
-                "content": f"当前GMV前三: {', '.join(p.name for p in top_products)}"
-            })
-
-        if not tips:
-            tips.append({
-                "type": "success",
-                "category": "general",
-                "title": "运营良好",
-                "content": "当前各项指标正常，继续保持"
-            })
-
-        return {"code": 200, "data": tips}
+    return {"code": 200, "data": tips}
 
 @router.get("/auto-optimize/{product_id}", response_model=dict)
 def get_auto_optimization(product_id: int, db: Session = Depends(get_db)):

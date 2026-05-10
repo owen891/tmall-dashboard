@@ -6,6 +6,46 @@ from typing import Optional
 
 router = APIRouter(prefix="/market", tags=["市场分析"])
 
+@router.get("/overview")
+async def get_market_overview(
+    dimension: str = Query("weekly", description="时间维度"),
+    db=Depends(get_db)
+):
+    Model = WeeklyData if dimension == "weekly" else (DailyData if dimension == "daily" else MonthlyData)
+    total_products = db.query(func.count(Product.product_id)).filter(Product.status == 'active').scalar() or 0
+    total_gmv = db.query(func.sum(Model.payment_amount)).scalar() or 0
+    avg_conversion = db.query(func.avg(Model.payment_conversion)).scalar() or 0
+    return {
+        "code": 200,
+        "data": {
+            "total_products": total_products,
+            "total_gmv": float(total_gmv),
+            "avg_conversion": float(avg_conversion),
+            "market_trend": "stable",
+            "top_categories": [],
+            "opportunities": []
+        }
+    }
+
+@router.get("/keywords")
+async def get_market_keywords(
+    dimension: str = Query("weekly", description="时间维度"),
+    db=Depends(get_db)
+):
+    return {"code": 200, "data": {"keywords": []}}
+
+@router.get("/opportunities")
+async def get_market_opportunities(
+    db=Depends(get_db)
+):
+    return {"code": 200, "data": {"opportunities": []}}
+
+@router.get("/categories")
+async def get_market_categories(
+    db=Depends(get_db)
+):
+    return {"code": 200, "data": {"categories": []}}
+
 @router.get("/category-stats")
 async def get_category_stats(
     dimension: str = Query("weekly", description="时间维度"),

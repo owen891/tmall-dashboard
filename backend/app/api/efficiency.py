@@ -13,6 +13,39 @@ from datetime import datetime, timedelta
 router = APIRouter(prefix="/efficiency", tags=["人效度量"])
 
 
+@router.get("/overview", response_model=ResponseModel)
+def get_efficiency_overview(
+    db: Session = Depends(get_db)
+):
+    total_users = db.query(func.count(func.distinct(UserKPI.username))).scalar() or 0
+    total_tasks = db.query(func.count(TaskItem.id)).scalar() or 0
+    completed_tasks = db.query(func.count(TaskItem.id)).filter(TaskItem.status == 'completed').scalar() or 0
+    avg_progress = db.query(func.avg(UserKPI.gmv_progress)).scalar() or 0
+
+    return ResponseModel(data={
+        "total_users": total_users,
+        "total_tasks": total_tasks,
+        "completed_tasks": completed_tasks,
+        "completion_rate": round(completed_tasks / total_tasks * 100, 1) if total_tasks > 0 else 0,
+        "avg_progress": round(float(avg_progress), 2),
+        "active_projects": db.query(func.count(func.distinct(CampaignProject.id))).scalar() or 0
+    })
+
+
+@router.get("/channels", response_model=ResponseModel)
+def get_efficiency_channels(
+    db: Session = Depends(get_db)
+):
+    return ResponseModel(data={"channels": []})
+
+
+@router.get("/products", response_model=ResponseModel)
+def get_efficiency_products(
+    db: Session = Depends(get_db)
+):
+    return ResponseModel(data={"products": []})
+
+
 @router.get("/users", response_model=ResponseModel)
 def get_user_list(
     db: Session = Depends(get_db)

@@ -6,7 +6,8 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import func, desc
 from typing import Optional, List
-from datetime import datetime
+from datetime import datetime, timedelta
+from dateutil.relativedelta import relativedelta
 from app.core.database import get_db
 from app.core.utils import get_data_model, get_prev_period, get_latest_period, safe_float
 from app.models import DailyData, WeeklyData, MonthlyData, Product
@@ -24,37 +25,72 @@ TRAFFIC_SOURCES = [
 ]
 
 
+def resolve_period(period: Optional[str], Model, date_col: str, db: Session) -> Optional[str]:
+    if not period:
+        return get_latest_period(Model, date_col, db)
+
+    today = datetime.now().date()
+    if period == "today":
+        target = today.isoformat()
+    elif period == "yesterday":
+        target = (today - timedelta(days=1)).isoformat()
+    elif period.endswith("d"):
+        try:
+            days = int(period[:-1])
+            target_date = today - timedelta(days=days)
+            target = target_date.isoformat()
+        except ValueError:
+            return get_latest_period(Model, date_col, db)
+    else:
+        return period
+
+    col = getattr(Model, date_col, None)
+    if col is None:
+        return get_latest_period(Model, date_col, db)
+
+    match = db.query(col).filter(col >= target).order_by(col).first()
+    if match:
+        return str(match[0])
+
+    latest = db.query(col).order_by(desc(col)).first()
+    if latest:
+        return str(latest[0])
+
+    return None
+
+
+def _get_funnel_base_data(Model, date_col, visitors_col, period, db):
+    data = db.query(
+        func.sum(getattr(Model, visitors_col)).label('visitors'),
+        func.sum(Model.payment_amount).label('gmv'),
+        func.avg(Model.payment_conversion).label('avg_conversion'),
+    ).filter(getattr(Model, date_col) == period).first()
+    return data
+
+
 @router.get("/overview", response_model=ResponseModel)
 def get_funnel_overview(
     dimension: str = Query("weekly", description="时间维度"),
     period: Optional[str] = Query(None, description="指定周期"),
     db: Session = Depends(get_db)
 ):
-    """获取漏斗概览"""
-    
     Model, date_col, visitors_col = get_data_model(dimension)
-    
-    if not period:
-        period = get_latest_period(Model, date_col, db)
-    
+    period = resolve_period(period, Model, date_col, db)
+
     if not period:
         return ResponseModel(data={"funnel": [], "conversion_rates": {}})
-    
-    data = db.query(
-        func.sum(getattr(Model, visitors_col)).label('visitors'),
-        func.sum(Model.payment_amount).label('gmv'),
-        func.avg(Model.payment_conversion).label('avg_conversion'),
-    ).filter(getattr(Model, date_col) == period).first()
-    
+
+    data = _get_funnel_base_data(Model, date_col, visitors_col, period, db)
+
     visitors = safe_float(data.visitors) or 0
     gmv = safe_float(data.gmv) or 0
     conversion = safe_float(data.avg_conversion) or 0
-    
+
     orders = int(gmv / 100) if gmv > 0 else 0
-    
+
     aov = gmv / orders if orders > 0 else 0
     uv_value = gmv / visitors if visitors > 0 else 0
-    
+
     funnel = [
         {
             "stage": "曝光",
@@ -71,23 +107,23 @@ def get_funnel_overview(
         {
             "stage": "加购",
             "value": int(orders * 3),
-            "rate": round((orders * 3) / (visitors * 1.5) * 100, 1),
+            "rate": round((orders * 3) / (visitors * 1.5) * 100, 1) if visitors > 0 else 0,
             "description": "用户将商品加入购物车"
         },
         {
             "stage": "下单",
             "value": int(orders * 1.2),
-            "rate": round((orders * 1.2) / (visitors * 1.5) * 100, 1),
+            "rate": round((orders * 1.2) / (visitors * 1.5) * 100, 1) if visitors > 0 else 0,
             "description": "用户提交订单"
         },
         {
             "stage": "支付",
             "value": int(orders),
-            "rate": round(orders / (visitors * 1.5) * 100, 1),
+            "rate": round(orders / (visitors * 1.5) * 100, 1) if visitors > 0 else 0,
             "description": "用户完成支付"
         },
     ]
-    
+
     return ResponseModel(data={
         "dimension": dimension,
         "period": str(period),
@@ -114,29 +150,25 @@ def get_funnel_by_source(
     period: Optional[str] = Query(None, description="指定周期"),
     db: Session = Depends(get_db)
 ):
-    """按流量来源分析漏斗"""
-    
     Model, date_col, visitors_col = get_data_model(dimension)
-    
-    if not period:
-        period = get_latest_period(Model, date_col, db)
-    
+    period = resolve_period(period, Model, date_col, db)
+
     if not period:
         return ResponseModel(data={"sources": []})
-    
+
     products = db.query(
         Model.product_id,
         func.sum(getattr(Model, visitors_col)).label('visitors'),
         func.sum(Model.payment_amount).label('gmv'),
         func.sum(Model.ad_spend).label('ad_spend'),
     ).filter(getattr(Model, date_col) == period).group_by(Model.product_id).all()
-    
+
     total_visitors = sum(safe_float(p.visitors) for p in products)
     total_gmv = sum(safe_float(p.gmv) for p in products)
     total_ad_spend = sum(safe_float(p.ad_spend) for p in products)
-    
+
     sources = []
-    
+
     for source in TRAFFIC_SOURCES:
         if source["key"] == "search":
             visitors = total_visitors * 0.35
@@ -153,10 +185,10 @@ def get_funnel_by_source(
         else:
             visitors = total_visitors * 0.10
             gmv = total_gmv * 0.10
-        
+
         orders = gmv / 100 if gmv > 0 else 0
         roi = gmv / (total_ad_spend * 0.3) if total_ad_spend > 0 else 0
-        
+
         sources.append({
             "source": source["key"],
             "label": source["label"],
@@ -169,9 +201,9 @@ def get_funnel_by_source(
             "visitor_share": round(visitors / total_visitors * 100, 1) if total_visitors > 0 else 0,
             "gmv_share": round(gmv / total_gmv * 100, 1) if total_gmv > 0 else 0,
         })
-    
+
     sources.sort(key=lambda x: x["gmv"], reverse=True)
-    
+
     return ResponseModel(data={
         "dimension": dimension,
         "period": str(period),
@@ -188,16 +220,12 @@ def get_conversion_path(
     period: Optional[str] = Query(None, description="指定周期"),
     db: Session = Depends(get_db)
 ):
-    """分析转化路径"""
-    
     Model, date_col, visitors_col = get_data_model(dimension)
-    
-    if not period:
-        period = get_latest_period(Model, date_col, db)
-    
+    period = resolve_period(period, Model, date_col, db)
+
     if not period:
         return ResponseModel(data={"paths": []})
-    
+
     paths = [
         {
             "path": "搜索 → 详情页 → 加购 → 下单 → 支付",
@@ -228,7 +256,7 @@ def get_conversion_path(
             "description": "广告延迟转化路径"
         },
     ]
-    
+
     return ResponseModel(data={
         "dimension": dimension,
         "period": str(period),
@@ -242,25 +270,21 @@ def analyze_drop_points(
     period: Optional[str] = Query(None, description="指定周期"),
     db: Session = Depends(get_db)
 ):
-    """流失点分析"""
-    
     Model, date_col, visitors_col = get_data_model(dimension)
-    
-    if not period:
-        period = get_latest_period(Model, date_col, db)
-    
+    period = resolve_period(period, Model, date_col, db)
+
     if not period:
         return ResponseModel(data={"drop_points": []})
-    
+
     data = db.query(
         func.sum(getattr(Model, visitors_col)).label('visitors'),
         func.sum(Model.payment_amount).label('gmv'),
     ).filter(getattr(Model, date_col) == period).first()
-    
+
     visitors = safe_float(data.visitors) or 1000
     gmv = safe_float(data.gmv) or 0
     orders = int(gmv / 100) if gmv > 0 else 30
-    
+
     drop_points = [
         {
             "stage": "详情页浏览",
@@ -314,7 +338,7 @@ def analyze_drop_points(
             ]
         }
     ]
-    
+
     return ResponseModel(data={
         "dimension": dimension,
         "period": str(period),
@@ -332,38 +356,34 @@ def get_product_funnel(
     period: Optional[str] = Query(None, description="指定周期"),
     db: Session = Depends(get_db)
 ):
-    """获取单个商品的漏斗数据"""
-    
     Model, date_col, visitors_col = get_data_model(dimension)
-    
-    if not period:
-        period = get_latest_period(Model, date_col, db)
-    
+    period = resolve_period(period, Model, date_col, db)
+
     if not period:
         return ResponseModel(data={"funnel": []})
-    
+
     data = db.query(Model).filter(
         Model.product_id == product_id,
         getattr(Model, date_col) == period
     ).first()
-    
+
     if not data:
         return ResponseModel(data={"funnel": [], "message": "无数据"})
-    
+
     product = db.query(Product).filter(Product.product_id == product_id).first()
-    
+
     visitors = safe_float(getattr(data, visitors_col)) or 0
     gmv = safe_float(data.payment_amount) or 0
     conversion = safe_float(data.payment_conversion) or 0
     orders = int(gmv / 100) if gmv > 0 else 0
-    
+
     funnel = [
         {"stage": "访客", "value": int(visitors), "rate": 100},
         {"stage": "加购", "value": int(orders * 2.5), "rate": round(conversion * 250, 1) if conversion > 0 else 0},
         {"stage": "下单", "value": int(orders * 1.2), "rate": round(conversion * 120, 1) if conversion > 0 else 0},
         {"stage": "支付", "value": int(orders), "rate": round(conversion * 100, 1) if conversion > 0 else 0},
     ]
-    
+
     return ResponseModel(data={
         "product_id": product_id,
         "title": product.title if product else "",

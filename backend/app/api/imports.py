@@ -12,7 +12,7 @@ from app.schemas import ResponseModel
 from app.services import ExcelImportService
 from app.models import ImportHistory
 
-router = APIRouter(prefix="/import", tags=["import"])
+router = APIRouter(prefix="/imports", tags=["import"])
 
 
 @router.get("/template/{type}")

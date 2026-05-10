@@ -388,5 +388,32 @@ export default {
   },
   initializeSettings() {
     return request.post('/settings/init')
-  }
+  },
+
+  getPrediction(params) {
+    return request.get('/prediction/overview', { params })
+  },
+  getImportHistory(params) {
+    return request.get('/imports/history', { params })
+  },
+  startImport(data) {
+    return request.post('/imports/upload', data)
+  },
+  getImportTemplates() {
+    return request.get('/imports/templates')
+  },
+
+  get(url, params) {
+    return request.get(url, { params })
+  },
+  post(url, data) {
+    return request.post(url, data)
+  },
+  put(url, data) {
+    return request.put(url, data)
+  },
+  delete(url) {
+    return request.delete(url)
+  },
+  request
 }

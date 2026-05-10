@@ -11,6 +11,21 @@ import json
 router = APIRouter(prefix="/reports", tags=["自动化报告"])
 
 
+@router.get("", response_model=ResponseModel)
+def get_reports_list(
+    db: Session = Depends(get_db)
+):
+    return ResponseModel(data={
+        "reports": [
+            {"id": "weekly", "name": "周度汇总报告", "type": "weekly-summary", "frequency": "每周"},
+            {"id": "monthly", "name": "月度汇总报告", "type": "monthly-summary", "frequency": "每月"},
+            {"id": "health", "name": "健康度报告", "type": "health-report", "frequency": "每周"},
+            {"id": "alert", "name": "预警汇总报告", "type": "alert-summary", "frequency": "每日"},
+        ],
+        "total": 4
+    })
+
+
 @router.get("/weekly-summary", response_model=ResponseModel)
 def get_weekly_summary_report(
     period: Optional[str] = Query(None, description="周期 YYYY-MM-DD"),

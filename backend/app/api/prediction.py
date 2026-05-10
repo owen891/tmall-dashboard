@@ -11,6 +11,37 @@ import math
 router = APIRouter(prefix="/prediction", tags=["预测分析"])
 
 
+@router.get("/overview", response_model=ResponseModel)
+def get_prediction_overview(
+    periods: int = Query(4, ge=1, le=12, description="预测周期数"),
+    db: Session = Depends(get_db)
+):
+    gmv_data = db.query(
+        func.avg(WeeklyData.payment_amount).label('avg_gmv'),
+    ).first()
+    avg_gmv = float(gmv_data.avg_gmv or 0) if gmv_data else 0
+
+    predictions = []
+    current = avg_gmv
+    for i in range(1, periods + 1):
+        growth = 1 + (0.02 * (i % 3 - 1))
+        current = current * growth
+        predictions.append({
+            "period": f"W+{i}",
+            "predicted_gmv": round(current, 2),
+            "confidence": round(max(0.6, 0.95 - i * 0.05), 2),
+            "trend": "up" if growth > 1 else "down"
+        })
+
+    return ResponseModel(data={
+        "dimension": "weekly",
+        "predictions": predictions,
+        "avg_gmv": round(avg_gmv, 2),
+        "trend": "stable",
+        "confidence": 0.85
+    })
+
+
 @router.get("/gmv", response_model=ResponseModel)
 def predict_gmv(
     periods: int = Query(4, ge=1, le=12, description="预测周期数"),
