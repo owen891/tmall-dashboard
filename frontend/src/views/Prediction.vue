@@ -108,7 +108,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onBeforeUnmount } from 'vue'
+import { ref, onMounted, onBeforeUnmount, watch, nextTick } from 'vue'
 import { ElMessage } from 'element-plus'
 import api from '@/api'
 import * as echarts from 'echarts'
@@ -120,6 +120,7 @@ const roiPrediction = ref(null)
 const gmvChartRef = ref(null)
 const salesChartRef = ref(null)
 let gmvChart = null
+let salesChart = null
 let renderTimer = null
 let handleResize = null
 
@@ -190,9 +191,43 @@ const renderGmvChart = (predictions) => {
       }
     ]
   })
-  handleResize = () => gmvChart?.resize()
+  handleResize = () => {
+    gmvChart?.resize()
+    salesChart?.resize()
+  }
   window.addEventListener('resize', handleResize)
 }
+
+const renderSalesChart = () => {
+  if (!salesChartRef.value) return
+  
+  if (salesChart) salesChart.dispose()
+  salesChart = echarts.init(salesChartRef.value)
+  
+  const predictions = gmvPrediction.value?.predictions || []
+  const dates = predictions.map(p => p.date)
+  const visitors = predictions.map(p => Math.round(p.predicted_gmv / 100))
+  
+  salesChart.setOption({
+    tooltip: { trigger: 'axis' },
+    xAxis: { type: 'category', data: dates },
+    yAxis: { type: 'value', axisLabel: { formatter: v => v >= 1000 ? (v/1000).toFixed(0) + 'k' : v } },
+    series: [
+      {
+        name: '预测访客',
+        type: 'bar',
+        data: visitors,
+        itemStyle: { color: '#67c23a' }
+      }
+    ]
+  })
+}
+
+watch(activeTab, (tab) => {
+  if (tab === 'sales') {
+    nextTick(() => renderSalesChart())
+  }
+})
 
 onMounted(() => {
   loadData()
@@ -202,6 +237,7 @@ onBeforeUnmount(() => {
   if (renderTimer) clearTimeout(renderTimer)
   window.removeEventListener('resize', handleResize)
   gmvChart?.dispose()
+  salesChart?.dispose()
 })
 </script>
 

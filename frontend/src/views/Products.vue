@@ -508,9 +508,6 @@ onMounted(() => {
   selectedFields.value = config.visibleFields || defaultVisibleFields
   loadFilterOptions()
   loadProducts()
-})
-
-onMounted(() => {
   document.addEventListener('keydown', handleKeyDown)
 })
 

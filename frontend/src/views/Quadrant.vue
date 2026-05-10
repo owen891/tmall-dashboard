@@ -179,20 +179,20 @@ const initChart = () => {
           },
           data: [
             [
-              { name: '明星商品', xAxis: gmvMid.value, yAxis: roiMid.value, itemStyle: { color: 'rgba(103, 194, 58, 0.1)' } },
-              {}
+              { name: '明星商品', xAxis: gmvMid.value, yAxis: 'max', itemStyle: { color: 'rgba(103, 194, 58, 0.1)' } },
+              { xAxis: 'max', yAxis: roiMid.value }
             ],
             [
-              { name: '问题商品', yAxis: roiMid.value, itemStyle: { color: 'rgba(230, 162, 60, 0.1)' } },
-              { xAxis: gmvMid.value }
-            ],
-            [
-              { name: '现金牛', xAxis: gmvMid.value, itemStyle: { color: 'rgba(64, 158, 255, 0.1)' } },
-              { yAxis: roiMid.value }
-            ],
-            [
-              { name: '瘦狗商品', itemStyle: { color: 'rgba(144, 147, 153, 0.1)' } },
+              { name: '问题商品', xAxis: 'min', yAxis: 'max', itemStyle: { color: 'rgba(230, 162, 60, 0.1)' } },
               { xAxis: gmvMid.value, yAxis: roiMid.value }
+            ],
+            [
+              { name: '现金牛', xAxis: gmvMid.value, yAxis: roiMid.value, itemStyle: { color: 'rgba(64, 158, 255, 0.1)' } },
+              { xAxis: 'max', yAxis: 'min' }
+            ],
+            [
+              { name: '瘦狗商品', xAxis: 'min', yAxis: roiMid.value, itemStyle: { color: 'rgba(144, 147, 153, 0.1)' } },
+              { xAxis: gmvMid.value, yAxis: 'min' }
             ]
           ]
         }

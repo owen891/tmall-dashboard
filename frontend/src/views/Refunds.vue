@@ -185,6 +185,7 @@ const updateChart = () => {
 onMounted(() => {
   chart = echarts.init(chartRef.value)
   loadData()
+  loadAlerts()
   handleResize = () => chart?.resize()
   window.addEventListener('resize', handleResize)
 })

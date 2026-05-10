@@ -62,11 +62,11 @@
               <template #header>
                 <span>优化建议</span>
               </template>
-              <el-ul>
-                <el-li v-for="(rec, index) in analysis.recommendations" :key="index">
+              <ul class="recommendation-list">
+                <li v-for="(rec, index) in analysis.recommendations" :key="index">
                   {{ rec }}
-                </el-li>
-              </el-ul>
+                </li>
+              </ul>
             </el-card>
           </div>
         </el-card>

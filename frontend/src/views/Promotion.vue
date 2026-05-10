@@ -273,11 +273,16 @@ const loadPlans = async () => {
     if (res && res.data) {
       plans.value = res.data.data || []
       
+      const plans = plans.value
+      const totalClicksVal = plans.reduce((sum, p) => sum + (p.clicks || 0), 0)
+      const totalImpressionsVal = plans.reduce((sum, p) => sum + (p.impressions || 0), 0)
+      const totalOrdersVal = plans.reduce((sum, p) => sum + (p.orders || p.conversions || 0), 0)
+      
       efficiencyStats.value = {
-        totalSearches: totalClicks.value * 10,
-        clickRate: totalImpressions.value > 0 ? (totalClicks.value / totalImpressions.value) * 100 : 0,
-        conversionRate: 3.5 + Math.random() * 2,
-        growthRate: 8 + Math.random() * 10
+        totalSearches: totalImpressionsVal,
+        clickRate: totalImpressionsVal > 0 ? (totalClicksVal / totalImpressionsVal) * 100 : 0,
+        conversionRate: totalClicksVal > 0 ? (totalOrdersVal / totalClicksVal) * 100 : 0,
+        growthRate: plans.length > 0 ? plans.reduce((sum, p) => sum + (p.growth || p.lift || 0), 0) / plans.length : 0
       }
     }
   } catch (error) {

@@ -44,11 +44,11 @@
                 </div>
                 <div class="stat-item">
                   <span class="label">ROI</span>
-                  <span class="value">{{ item.ad_roi.toFixed(2) }}</span>
+                  <span class="value">{{ Number(item.ad_roi || 0).toFixed(2) }}</span>
                 </div>
                 <div class="stat-item">
                   <span class="label">转化率</span>
-                  <span class="value">{{ (item.conversion * 100).toFixed(2) }}%</span>
+                  <span class="value">{{ (Number(item.conversion || 0) * 100).toFixed(2) }}%</span>
                 </div>
               </div>
               <div class="reasons">

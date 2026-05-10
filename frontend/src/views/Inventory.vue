@@ -282,6 +282,7 @@ const loadVelocity = async () => {
 }
 
 const filterWarnings = () => {
+  // filteredWarnings computed already handles the filtering, just trigger update
 }
 
 import { watch } from 'vue'
