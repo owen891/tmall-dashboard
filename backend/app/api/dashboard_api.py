@@ -7,6 +7,8 @@ from app.core.database import get_db
 from app.models.dashboard_models import (
     DailyMetrics, MonthlyTarget, TrafficStructure
 )
+from app.models import Product, ProductMeta
+from app.core.utils import get_data_model, safe_float, get_latest_period
 
 router = APIRouter(prefix="/dashboard", tags=["驾驶舱"])
 
@@ -252,4 +254,55 @@ async def get_top_products(
             }
             for idx, p in enumerate(products)
         ]
+    }
+
+
+@router.get("/quadrant")
+async def get_quadrant_products(
+    dimension: str = Query("weekly", description="时间维度"),
+    db: Session = Depends(get_db)
+):
+    """四象限商品分布：X轴=GMV，Y轴=ROI"""
+    Model, date_col, visitors_col = get_data_model(dimension)
+    
+    latest = db.query(func.max(getattr(Model, date_col))).scalar()
+    if not latest:
+        return {"products": [], "axes": {"gmv_mid": 0, "roi_mid": 0}}
+
+    products_with_data = db.query(
+        Model.product_id,
+        func.sum(getattr(Model, visitors_col)).label('visitors'),
+        func.sum(Model.payment_amount).label('gmv'),
+        func.sum(Model.ad_spend).label('ad_spend'),
+    ).filter(getattr(Model, date_col) == latest).group_by(Model.product_id).all()
+
+    product_ids = [p.product_id for p in products_with_data]
+    products = {p.product_id: p for p in db.query(Product).filter(Product.product_id.in_(product_ids)).all()}
+
+    items = []
+    total_gmv = 0
+    for p in products_with_data:
+        gmv = safe_float(p.gmv) or 0
+        ad_spend = safe_float(p.ad_spend) or 0
+        roi = gmv / ad_spend if ad_spend > 0 else 0
+        total_gmv += gmv
+        
+        prod = products.get(p.product_id)
+        items.append({
+            "product_id": p.product_id,
+            "title": prod.title if prod else str(p.product_id),
+            "gmv": round(gmv, 2),
+            "roi": round(roi, 2),
+            "visitors": int(p.visitors) if p.visitors else 0
+        })
+
+    avg_gmv = total_gmv / len(items) if items else 0
+    avg_roi = sum(i["roi"] for i in items) / len(items) if items else 0
+
+    return {
+        "products": items,
+        "axes": {
+            "gmv_mid": round(avg_gmv, 2),
+            "roi_mid": round(avg_roi, 2)
+        }
     }
