@@ -18,12 +18,19 @@ thresholds:
   health_warning: 40
 
 health_score_weights:
-  sales: 0.25
-  conversion: 0.20
-  roi: 0.15
-  refund: 0.15
-  growth: 0.10
-  review: 0.15
+  # 12维度权重配置（与calc_health.py算法一致）
+  gmv_change: 0.15
+  ad_spend_change: 0.08
+  roi_change: 0.10
+  refund_rate: 0.10
+  cart_rate: 0.08
+  search_ratio: 0.07
+  new_customer_cost: 0.07
+  direct_cart_cost: 0.05
+  total_cart_cost: 0.05
+  repurchase_rate: 0.08
+  cross_sell_rate: 0.07
+  search_ctr_vs_industry: 0.10
 
 refresh:
   auto_refresh_interval: 300
