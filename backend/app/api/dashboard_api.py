@@ -7,7 +7,7 @@ from app.core.database import get_db
 from app.models.dashboard_models import (
     DailyMetrics, MonthlyTarget, TrafficStructure
 )
-from app.models import Product, ProductMeta
+from app.models import Product
 from app.core.utils import get_data_model, safe_float, get_latest_period
 
 router = APIRouter(prefix="/dashboard", tags=["驾驶舱"])

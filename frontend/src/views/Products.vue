@@ -431,8 +431,18 @@ const handleExport = async (format = 'csv') => {
   ElMessage.info(`正在准备导出${format.toUpperCase()}文件...`)
   exporting.value = true
   try {
-    // 临时禁用导出功能，API未实现
-    ElMessage.warning('导出功能暂未实现')
+    const params = { ...filters.value }
+    const query = new URLSearchParams()
+    Object.entries(params).forEach(([k, v]) => { if (v) query.append(k, v) })
+    query.append('format', format)
+    const url = `${window.location.origin}/api/export/products?${query.toString()}`
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `products_${new Date().toISOString().slice(0, 10)}.${format === 'csv' ? 'csv' : 'json'}`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    ElMessage.success('导出任务已提交，请在下载目录查看文件')
   } catch (error) {
     console.error('Export error:', error)
     ElMessage.error(`导出失败: ${error.message || '未知错误'}`)
@@ -453,9 +463,16 @@ const submitAction = async () => {
   
   submitting.value = true
   try {
-    // 临时禁用添加运营动作功能，API未实现
-    ElMessage.warning('运营动作功能暂未实现')
+    const typeMap = { title: 'title', image: 'image', price: 'price', sku: 'sku', detail: 'detail', promotion: 'promotion', ad: 'ad', other: 'other' }
+    await api.post('/operations', {
+      product_id: actionForm.value.product_id,
+      action_type: typeMap[actionForm.value.action_type] || actionForm.value.action_type,
+      action_date: actionForm.value.action_date || new Date().toISOString().slice(0, 10),
+      action_detail: actionForm.value.action_detail
+    })
+    ElMessage.success('运营动作已记录')
     actionDialogVisible.value = false
+    actionForm.value = { product_id: '', action_type: '', action_detail: '', action_date: '' }
   } catch (error) {
     console.error('Submit action error:', error)
     ElMessage.error(`添加失败: ${error.message || '未知错误'}`)
@@ -492,9 +509,18 @@ const submitBatchUpdate = async () => {
   
   submitting.value = true
   try {
-    // 临时禁用批量修改功能，API未实现
-    ElMessage.warning('批量修改功能暂未实现')
+    const productIds = selectedProducts.value.map(p => p.product_id)
+    await api.post('/products/batch-update', {
+      product_ids: productIds,
+      tier: batchForm.value.tier || null,
+      style: batchForm.value.style || null,
+      manager: batchForm.value.manager || null
+    })
+    ElMessage.success(`已成功修改 ${productIds.length} 个商品`)
     showBatchUpdate.value = false
+    batchForm.value = { tier: '', style: '', manager: '' }
+    selectedProducts.value = []
+    loadProducts()
   } catch (error) {
     console.error('Batch update error:', error)
     ElMessage.error(`批量修改失败: ${error.message || '未知错误'}`)

@@ -238,31 +238,48 @@ def get_target_comparison(
     months: int = Query(6, description="对比月份数"),
     db: Session = Depends(get_db)
 ):
+    from app.models import MonthlyData
     targets = db.query(ShopTarget).order_by(ShopTarget.period.desc()).limit(months).all()
 
     comparisons = []
     for t in reversed(targets):
         target_val = safe_float(t.target_gsv)
-        actual_val = 0
+        month_str = t.period
 
         if metric == "gmv":
             target_val = safe_float(t.target_gsv)
+            actual_val = db.query(func.sum(MonthlyData.payment_amount)).filter(
+                MonthlyData.month.like(f"{month_str}%")
+            ).scalar() or 0
         elif metric == "conversion":
             target_val = safe_float(t.target_conversion)
+            avg_conversion = db.query(func.avg(MonthlyData.payment_conversion)).filter(
+                MonthlyData.month.like(f"{month_str}%")
+            ).scalar()
+            actual_val = avg_conversion or 0
         elif metric == "roi":
             target_val = safe_float(t.target_ad_ratio)
+            avg_roi = db.query(func.avg(MonthlyData.ad_roi)).filter(
+                MonthlyData.month.like(f"{month_str}%")
+            ).scalar()
+            actual_val = avg_roi or 0
         elif metric == "ad_spend":
             target_val = safe_float(t.target_ad_spend)
+            actual_val = db.query(func.sum(MonthlyData.ad_spend)).filter(
+                MonthlyData.month.like(f"{month_str}%")
+            ).scalar() or 0
+        else:
+            actual_val = 0
 
         progress = (actual_val / target_val * 100) if target_val else 0
         gap = target_val - actual_val
 
         comparisons.append({
             "month": t.period,
-            "target": target_val,
-            "actual": actual_val,
+            "target": round(target_val, 2),
+            "actual": round(actual_val, 2),
             "progress": round(progress, 2),
-            "gap": gap
+            "gap": round(gap, 2)
         })
 
     return {"code": 200, "data": comparisons}

@@ -164,10 +164,11 @@ const topProducts = ref([])
 const loadDashboard = async () => {
   loading.value = true
   try {
-    const [summaryRes, topRes, alertsRes] = await Promise.all([
+    const [summaryRes, topRes, alertsRes, targetsRes] = await Promise.all([
       api.getDashboardSummary({ dimension: trendPeriod.value }),
       api.getTopProducts({ dimension: trendPeriod.value, limit: 10 }),
-      api.getAlerts({ limit: 5 })
+      api.getAlerts({ limit: 5 }),
+      api.get('/targets/comparison')
     ])
 
     if (summaryRes?.data?.kpi) {
@@ -206,6 +207,16 @@ const loadDashboard = async () => {
         desc: a.detail || a.message || '',
         time: a.created_at || ''
       }))
+    }
+
+    if (targetsRes?.data) {
+      const comparisons = Array.isArray(targetsRes.data) ? targetsRes.data : []
+      if (comparisons.length > 0) {
+        const latest = comparisons[comparisons.length - 1]
+        updateGaugeChart(latest.progress, latest.month)
+      } else {
+        updateGaugeChart(0, '暂无目标')
+      }
     }
   } catch (err) {
     console.error('加载仪表盘数据失败:', err)
@@ -287,11 +298,12 @@ const updateTrendChart = (trendsData) => {
   })
 }
 
-const updateGaugeChart = () => {
+const updateGaugeChart = (progress = 0, label = '目标完成') => {
   if (!charts.gauge) return
   charts.gauge.setOption({
     tooltip: { formatter: '{a} <br/>{b} : {c}%' },
     series: [{
+      name: '目标完成',
       type: 'gauge',
       progress: { show: true, width: 18 },
       axisLine: { lineStyle: { width: 18 } },
@@ -300,7 +312,7 @@ const updateGaugeChart = () => {
       axisLabel: { distance: 25, fontSize: 12 },
       anchor: { show: true, showAbove: true, size: 25, itemStyle: { borderWidth: 10 } },
       detail: { valueAnimation: true, fontSize: 32, offsetCenter: [0, '70%'] },
-      data: [{ value: 0, name: '加载中...' }]
+      data: [{ value: Math.round(progress), name: label }]
     }]
   })
 }

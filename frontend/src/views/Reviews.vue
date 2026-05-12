@@ -50,6 +50,32 @@
       </el-col>
     </el-row>
 
+    <el-row :gutter="20">
+      <el-col :span="12">
+        <el-card class="chart-card">
+          <template #header>
+            <span>好评维度</span>
+          </template>
+          <div ref="positiveDimChartRef" style="width: 100%; height: 280px;"></div>
+        </el-card>
+      </el-col>
+      <el-col :span="12">
+        <el-card class="chart-card">
+          <template #header>
+            <span>差评维度</span>
+          </template>
+          <div ref="negativeDimChartRef" style="width: 100%; height: 280px;"></div>
+        </el-card>
+      </el-col>
+    </el-row>
+
+    <el-card class="chart-card">
+      <template #header>
+        <span>典型场景分布</span>
+      </template>
+      <div ref="sceneChartRef" style="width: 100%; height: 280px;"></div>
+    </el-card>
+
     <el-card class="keywords-card">
       <template #header>
         <span>热点关键词</span>
@@ -94,8 +120,14 @@ import * as echarts from 'echarts'
 
 const sentimentChartRef = ref(null)
 const ratingChartRef = ref(null)
+const positiveDimChartRef = ref(null)
+const negativeDimChartRef = ref(null)
+const sceneChartRef = ref(null)
 let sentimentChart = null
 let ratingChart = null
+let positiveDimChart = null
+let negativeDimChart = null
+let sceneChart = null
 let handleResize = null
 
 const summary = ref({
@@ -109,6 +141,9 @@ const summary = ref({
 })
 const sentimentDistribution = ref({ positive: 0, negative: 0, neutral: 0 })
 const ratingDistribution = ref([])
+const positiveDims = ref([])
+const negativeDims = ref([])
+const scenes = ref([])
 const reviews = ref([])
 
 const loadData = async () => {
@@ -128,6 +163,17 @@ const loadData = async () => {
     if (ratingRes.code === 200 || ratingRes.data) {
       ratingDistribution.value = ratingRes.data || ratingRes
       updateRatingChart()
+    }
+
+    const dimRes = await api.get('/reviews/dimensions')
+    if (dimRes.code === 200 || dimRes.data) {
+      const dimData = dimRes.data || dimRes
+      positiveDims.value = dimData.positive_dims || []
+      negativeDims.value = dimData.negative_dims || []
+      scenes.value = dimData.scenes || []
+      updatePositiveDimChart()
+      updateNegativeDimChart()
+      updateSceneChart()
     }
 
     const listRes = await api.get('/reviews/list?page_size=20')
@@ -176,6 +222,61 @@ const updateRatingChart = () => {
   })
 }
 
+const updatePositiveDimChart = () => {
+  if (!positiveDimChart) return
+  if (positiveDims.value.length === 0) return
+
+  const dims = positiveDims.value.slice(0, 8)
+  positiveDimChart.setOption({
+    tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
+    grid: { left: '3%', right: '4%', bottom: '3%', containLabel: true },
+    xAxis: { type: 'value', name: '提及次数' },
+    yAxis: { type: 'category', data: dims.map(d => d.dimension).reverse() },
+    series: [{
+      type: 'bar',
+      data: dims.map(d => d.count).reverse(),
+      itemStyle: { color: '#67c23a' },
+      label: { show: true, position: 'right' }
+    }]
+  })
+}
+
+const updateNegativeDimChart = () => {
+  if (!negativeDimChart) return
+  if (negativeDims.value.length === 0) return
+
+  const dims = negativeDims.value.slice(0, 8)
+  negativeDimChart.setOption({
+    tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
+    grid: { left: '3%', right: '4%', bottom: '3%', containLabel: true },
+    xAxis: { type: 'value', name: '提及次数' },
+    yAxis: { type: 'category', data: dims.map(d => d.dimension).reverse() },
+    series: [{
+      type: 'bar',
+      data: dims.map(d => d.count).reverse(),
+      itemStyle: { color: '#f56c6c' },
+      label: { show: true, position: 'right' }
+    }]
+  })
+}
+
+const updateSceneChart = () => {
+  if (!sceneChart) return
+  if (scenes.value.length === 0) return
+
+  sceneChart.setOption({
+    tooltip: { trigger: 'item' },
+    legend: { bottom: '5%', left: 'center' },
+    series: [{
+      type: 'pie',
+      radius: ['40%', '70%'],
+      avoidLabelOverlap: false,
+      data: scenes.value.map(s => ({ value: s.count, name: s.scene })),
+      label: { formatter: '{b}: {c}次' }
+    }]
+  })
+}
+
 const getSentimentType = (sentiment) => {
   const map = { positive: 'success', negative: 'danger', neutral: 'info' }
   return map[sentiment] || 'info'
@@ -189,10 +290,16 @@ const getSentimentLabel = (sentiment) => {
 onMounted(() => {
   sentimentChart = echarts.init(sentimentChartRef.value)
   ratingChart = echarts.init(ratingChartRef.value)
+  positiveDimChart = echarts.init(positiveDimChartRef.value)
+  negativeDimChart = echarts.init(negativeDimChartRef.value)
+  sceneChart = echarts.init(sceneChartRef.value)
   loadData()
   handleResize = () => {
     sentimentChart?.resize()
     ratingChart?.resize()
+    positiveDimChart?.resize()
+    negativeDimChart?.resize()
+    sceneChart?.resize()
   }
   window.addEventListener('resize', handleResize)
 })
@@ -201,6 +308,9 @@ onUnmounted(() => {
   window.removeEventListener('resize', handleResize)
   sentimentChart?.dispose()
   ratingChart?.dispose()
+  positiveDimChart?.dispose()
+  negativeDimChart?.dispose()
+  sceneChart?.dispose()
 })
 </script>
 
