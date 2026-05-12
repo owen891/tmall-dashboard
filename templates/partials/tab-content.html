@@ -1,0 +1,235 @@
+<div class="section-card">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;flex-wrap:wrap;gap:12px;">
+        <h3 class="section-title">📺 内容维度分析</h3>
+        <div style="display:flex;gap:10px;align-items:center;">
+            <input type="file" id="contentFileInput" accept=".xlsx,.xls" onchange="handleContentUpload()" style="display:none;">
+            <button onclick="document.getElementById('contentFileInput').click()" style="padding:8px 16px;border-radius:8px;border:none;background:var(--accent);color:#fff;font-size:13px;cursor:pointer;font-weight:600;">
+                📤 导入内容数据
+            </button>
+        </div>
+    </div>
+
+    <!-- KPI概览卡片 -->
+    <div class="kpi-grid" id="contentSummaryCards" style="margin-bottom:20px;">
+        <div class="kpi-card">
+            <div class="kpi-label">UV价值</div>
+            <div class="kpi-value" id="content-uv-value">--</div>
+        </div>
+        <div class="kpi-card">
+            <div class="kpi-label">平均停留时长</div>
+            <div class="kpi-value" id="content-stay-duration">--</div>
+        </div>
+        <div class="kpi-card">
+            <div class="kpi-label">总内容GMV</div>
+            <div class="kpi-value" id="content-total-gmv">--</div>
+        </div>
+        <div class="kpi-card">
+            <div class="kpi-label">直播GMV</div>
+            <div class="kpi-value" id="content-live-gmv">--</div>
+        </div>
+        <div class="kpi-card">
+            <div class="kpi-label">短视频GMV</div>
+            <div class="kpi-value" id="content-video-gmv">--</div>
+        </div>
+        <div class="kpi-card">
+            <div class="kpi-label">图文GMV</div>
+            <div class="kpi-value" id="content-article-gmv">--</div>
+        </div>
+    </div>
+
+    <!-- 内容渠道占比图 -->
+    <div class="chart-row half">
+        <div class="chart-panel" style="position:relative;">
+            <div class="panel-title">内容渠道GMV占比</div>
+            <div class="loading-mask" id="loading-content-pie"><div class="spinner"></div></div>
+            <div class="chart-box" id="chartContentPie"></div>
+        </div>
+        <div class="chart-panel" style="position:relative;">
+            <div class="panel-title">内容转化指标</div>
+            <div class="loading-mask" id="loading-content-metrics"><div class="spinner"></div></div>
+            <div class="chart-box" id="chartContentMetrics"></div>
+        </div>
+    </div>
+
+    <!-- 趋势图 -->
+    <div class="section-title" style="margin:24px 0 12px;">📈 内容趋势</div>
+    <div class="chart-panel" style="position:relative;">
+        <div class="loading-mask" id="loading-content-trend"><div class="spinner"></div></div>
+        <div class="chart-box tall" id="chartContentTrend"></div>
+    </div>
+
+    <!-- 详细数据 -->
+    <div class="section-title" style="margin:24px 0 12px;">📋 内容数据明细</div>
+    <div id="contentTableLoading" style="text-align:center;padding:40px;color:var(--text-muted);">
+        <span class="loading-spinner"></span> 加载中...
+    </div>
+    <div id="contentTableContainer" style="display:none;overflow-x:auto;border-radius:12px;border:1px solid var(--border);">
+        <table class="data-table" id="contentDataTable">
+            <thead>
+                <tr>
+                    <th>日期</th>
+                    <th>UV价值</th>
+                    <th>停留时长</th>
+                    <th>内容GMV</th>
+                    <th>直播GMV</th>
+                    <th>短视频GMV</th>
+                    <th>图文GMV</th>
+                    <th>CTR</th>
+                    <th>CVR</th>
+                </tr>
+            </thead>
+            <tbody id="contentTableBody"></tbody>
+        </table>
+    </div>
+</div>
+
+<script>
+const CONTENT_CONFIG = { data: [] };
+
+async function loadContentSummary() {
+    try {
+        const resp = await fetch('/api/content_analysis/summary');
+        const data = await resp.json();
+        document.getElementById('content-uv-value').textContent = (data.avg_uv_value || 0).toFixed(2);
+        document.getElementById('content-stay-duration').textContent = ((data.avg_stay_duration || 0) / 60).toFixed(1) + '分钟';
+        document.getElementById('content-total-gmv').textContent = formatNumber(data.total_content_gmv || 0);
+        document.getElementById('content-live-gmv').textContent = formatNumber(data.total_live_gmv || 0);
+        document.getElementById('content-video-gmv').textContent = formatNumber(data.total_video_gmv || 0);
+        document.getElementById('content-article-gmv').textContent = formatNumber(data.total_article_gmv || 0);
+    } catch (e) {
+        console.error('加载内容概览失败:', e);
+    }
+}
+
+async function loadContentPie() {
+    try {
+        const resp = await fetch('/api/content_analysis/summary');
+        const data = await resp.json();
+        const chart = echarts.init(document.getElementById('chartContentPie'));
+        chart.setOption({
+            tooltip: { trigger: 'item', formatter: '{b}: {c} ({d}%)' },
+            legend: { bottom: 0 },
+            series: [{
+                type: 'pie',
+                radius: ['40%', '70%'],
+                avoidLabelOverlap: false,
+                itemStyle: { borderRadius: 10, borderColor: '#fff', borderWidth: 2 },
+                label: { show: true, formatter: '{b}\n{d}%' },
+                data: [
+                    { value: data.total_live_gmv || 0, name: '直播', itemStyle: { color: '#8b5cf6' } },
+                    { value: data.total_video_gmv || 0, name: '短视频', itemStyle: { color: '#06b6d4' } },
+                    { value: data.total_article_gmv || 0, name: '图文', itemStyle: { color: '#10b981' } }
+                ]
+            }]
+        });
+        document.getElementById('loading-content-pie').style.display = 'none';
+    } catch (e) {
+        console.error('加载饼图失败:', e);
+    }
+}
+
+async function loadContentMetrics() {
+    try {
+        const resp = await fetch('/api/content_analysis/summary');
+        const data = await resp.json();
+        const chart = echarts.init(document.getElementById('chartContentMetrics'));
+        chart.setOption({
+            tooltip: { trigger: 'axis' },
+            legend: { data: ['CTR', 'CVR'], bottom: 0 },
+            grid: { left: '3%', right: '4%', bottom: '18%', containLabel: true },
+            xAxis: { type: 'category', data: ['CTR', 'CVR'] },
+            yAxis: { type: 'value', axisLabel: { formatter: v => (v * 100).toFixed(1) + '%' } },
+            series: [
+                { name: 'CTR', type: 'bar', data: [{ value: data.avg_ctr || 0, itemStyle: { color: '#3b82f6' } }] },
+                { name: 'CVR', type: 'bar', data: [{ value: data.avg_cvr || 0, itemStyle: { color: '#8b5cf6' } }] }
+            ]
+        });
+        document.getElementById('loading-content-metrics').style.display = 'none';
+    } catch (e) {
+        console.error('加载指标失败:', e);
+    }
+}
+
+async function loadContentTrend() {
+    try {
+        const resp = await fetch('/api/content_analysis?limit=100');
+        CONTENT_CONFIG.data = await resp.json();
+        const chart = echarts.init(document.getElementById('chartContentTrend'));
+        const dates = [...new Set(CONTENT_CONFIG.data.map(d => d.date))].sort();
+        const series = [
+            { name: '直播GMV', data: dates.map(d => CONTENT_CONFIG.data.filter(x => x.date === d).reduce((s, i) => s + (i.live_gmv || 0), 0)) },
+            { name: '短视频GMV', data: dates.map(d => CONTENT_CONFIG.data.filter(x => x.date === d).reduce((s, i) => s + (i.short_video_gmv || 0), 0)) },
+            { name: '图文GMV', data: dates.map(d => CONTENT_CONFIG.data.filter(x => x.date === d).reduce((s, i) => s + (i.article_gmv || 0), 0)) }
+        ];
+        chart.setOption({
+            tooltip: { trigger: 'axis' },
+            legend: { data: series.map(s => s.name), bottom: 0 },
+            grid: { left: '3%', right: '4%', bottom: '18%', containLabel: true },
+            xAxis: { type: 'category', data: dates },
+            yAxis: { type: 'value', name: 'GMV' },
+            series: series.map((s, i) => ({
+                ...s,
+                type: 'bar',
+                stack: 'total',
+                itemStyle: { color: ['#8b5cf6', '#06b6d4', '#10b981'][i] }
+            }))
+        });
+        document.getElementById('loading-content-trend').style.display = 'none';
+        renderContentTable();
+    } catch (e) {
+        console.error('加载趋势失败:', e);
+    }
+}
+
+function renderContentTable() {
+    const tbody = document.getElementById('contentTableBody');
+    tbody.innerHTML = CONTENT_CONFIG.data.slice(0, 50).map(item => `
+        <tr>
+            <td>${item.date}</td>
+            <td>${(item.uv_value || 0).toFixed(2)}</td>
+            <td>${((item.avg_stay_duration || 0) / 60).toFixed(1)}分钟</td>
+            <td>${formatNumber(item.content_gmv || 0)}</td>
+            <td>${formatNumber(item.live_gmv || 0)}</td>
+            <td>${formatNumber(item.short_video_gmv || 0)}</td>
+            <td>${formatNumber(item.article_gmv || 0)}</td>
+            <td>${((item.content_ctr || 0) * 100).toFixed(2)}%</td>
+            <td>${((item.content_cvr || 0) * 100).toFixed(2)}%</td>
+        </tr>
+    `).join('');
+    document.getElementById('contentTableLoading').style.display = 'none';
+    document.getElementById('contentTableContainer').style.display = 'block';
+}
+
+async function handleContentUpload() {
+    const fileInput = document.getElementById('contentFileInput');
+    const file = fileInput.files[0];
+    if (!file) return;
+    const formData = new FormData();
+    formData.append('file', file);
+    try {
+        const resp = await fetch('/api/upload/content', { method: 'POST', body: formData });
+        const result = await resp.json();
+        if (result.success) {
+            showToast(`成功导入 ${result.count} 条数据`, 'success');
+            loadContentSummary();
+            loadContentPie();
+            loadContentMetrics();
+            loadContentTrend();
+        } else {
+            showToast(result.error || '导入失败', 'error');
+        }
+    } catch (e) {
+        showToast('导入失败: ' + e.message, 'error');
+    }
+    fileInput.value = '';
+}
+
+if (document.getElementById('tab-content')) {
+    document.getElementById('tab-content').addEventListener('shown.bs.tab', () => {
+        loadContentSummary();
+        loadContentPie();
+        loadContentMetrics();
+        loadContentTrend();
+    });
+}
+</script>

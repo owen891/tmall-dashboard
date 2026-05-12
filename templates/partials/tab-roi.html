@@ -1,0 +1,292 @@
+<div class="section-card">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;flex-wrap:wrap;gap:12px;">
+        <h3 class="section-title">💰 品类投产ROI分析</h3>
+        <div style="display:flex;gap:10px;align-items:center;">
+            <button onclick="aggregateCategoryROI()" style="padding:8px 16px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--text-primary);font-size:13px;cursor:pointer;">
+                🔄 从现有数据聚合
+            </button>
+            <input type="file" id="roiFileInput" accept=".xlsx,.xls" onchange="handleRoiUpload()" style="display:none;">
+            <button onclick="document.getElementById('roiFileInput').click()" style="padding:8px 16px;border-radius:8px;border:none;background:var(--accent);color:#fff;font-size:13px;cursor:pointer;font-weight:600;">
+                📤 导入品类ROI
+            </button>
+        </div>
+    </div>
+
+    <!-- KPI概览卡片 -->
+    <div class="kpi-grid" id="roiSummaryCards" style="margin-bottom:20px;">
+        <div class="kpi-card">
+            <div class="kpi-label">品类数量</div>
+            <div class="kpi-value" id="roi-total-categories">--</div>
+        </div>
+        <div class="kpi-card">
+            <div class="kpi-label">平均ROI</div>
+            <div class="kpi-value" id="roi-avg-roi">--</div>
+        </div>
+        <div class="kpi-card">
+            <div class="kpi-label">总广告花费</div>
+            <div class="kpi-value" id="roi-total-spend">--</div>
+        </div>
+        <div class="kpi-card">
+            <div class="kpi-label">总GMV</div>
+            <div class="kpi-value" id="roi-total-gmv">--</div>
+        </div>
+        <div class="kpi-card">
+            <div class="kpi-label">平均利润率</div>
+            <div class="kpi-value" id="roi-avg-margin">--</div>
+        </div>
+    </div>
+
+    <!-- ROI分布图 -->
+    <div class="chart-row half">
+        <div class="chart-panel" style="position:relative;">
+            <div class="panel-title">品类ROI分布</div>
+            <div class="loading-mask" id="loading-roi-bar"><div class="spinner"></div></div>
+            <div class="chart-box" id="chartRoiBar"></div>
+        </div>
+        <div class="chart-panel" style="position:relative;">
+            <div class="panel-title">ROI vs 利润率</div>
+            <div class="loading-mask" id="loading-roi-scatter"><div class="spinner"></div></div>
+            <div class="chart-box" id="chartRoiScatter"></div>
+        </div>
+    </div>
+
+    <!-- 趋势图 -->
+    <div class="section-title" style="margin:24px 0 12px;">📈 ROI趋势</div>
+    <div class="chart-panel" style="position:relative;">
+        <div class="loading-mask" id="loading-roi-trend"><div class="spinner"></div></div>
+        <div class="chart-box tall" id="chartRoiTrend"></div>
+    </div>
+
+    <!-- 详细表格 -->
+    <div class="section-title" style="margin:24px 0 12px;">📋 品类ROI明细</div>
+    <div id="roiTableLoading" style="text-align:center;padding:40px;color:var(--text-muted);">
+        <span class="loading-spinner"></span> 加载中...
+    </div>
+    <div id="roiTableContainer" style="display:none;overflow-x:auto;border-radius:12px;border:1px solid var(--border);">
+        <table class="data-table" id="roiDataTable">
+            <thead>
+                <tr>
+                    <th>品类</th>
+                    <th>周期</th>
+                    <th>广告花费</th>
+                    <th>GMV</th>
+                    <th>ROI</th>
+                    <th>订单数</th>
+                    <th>访客数</th>
+                    <th>转化率</th>
+                    <th>客单价</th>
+                    <th>利润率</th>
+                    <th>ROI评级</th>
+                </tr>
+            </thead>
+            <tbody id="roiTableBody"></tbody>
+        </table>
+    </div>
+</div>
+
+<script>
+const ROI_CONFIG = { data: [] };
+
+async function loadRoiSummary() {
+    try {
+        const resp = await fetch('/api/category_roi/summary');
+        const data = await resp.json();
+        document.getElementById('roi-total-categories').textContent = data.total_categories || 0;
+        document.getElementById('roi-avg-roi').textContent = (data.avg_roi || 0).toFixed(2);
+        document.getElementById('roi-total-spend').textContent = formatNumber(data.total_spend || 0);
+        document.getElementById('roi-total-gmv').textContent = formatNumber(data.total_gmv || 0);
+        document.getElementById('roi-avg-margin').textContent = ((data.avg_profit_margin || 0)).toFixed(1) + '%';
+    } catch (e) {
+        console.error('加载ROI概览失败:', e);
+    }
+}
+
+async function loadRoiBar() {
+    try {
+        const resp = await fetch('/api/category_roi?limit=100');
+        ROI_CONFIG.data = await resp.json();
+        const categoryData = {};
+        ROI_CONFIG.data.forEach(item => {
+            if (!categoryData[item.category]) {
+                categoryData[item.category] = { roi: 0, count: 0 };
+            }
+            categoryData[item.category].roi += (item.roi || 0);
+            categoryData[item.category].count++;
+        });
+        const categories = Object.keys(categoryData).slice(0, 10);
+        const avgRois = categories.map(c => categoryData[c].roi / categoryData[c].count);
+        const chart = echarts.init(document.getElementById('chartRoiBar'));
+        chart.setOption({
+            tooltip: { trigger: 'axis' },
+            grid: { left: '3%', right: '4%', bottom: '3%', containLabel: true },
+            xAxis: { type: 'category', data: categories, axisLabel: { rotate: 30 } },
+            yAxis: { type: 'value', name: 'ROI' },
+            series: [{
+                type: 'bar',
+                data: avgRois.map((v, i) => ({
+                    value: v.toFixed(2),
+                    itemStyle: { color: v >= 3 ? '#10b981' : v >= 2 ? '#3b82f6' : v >= 1.5 ? '#f59e0b' : '#ef4444' }
+                })),
+                label: { show: true, position: 'top', formatter: '{c}' }
+            }]
+        });
+        document.getElementById('loading-roi-bar').style.display = 'none';
+        renderRoiTable();
+    } catch (e) {
+        console.error('加载ROI柱状图失败:', e);
+    }
+}
+
+async function loadRoiScatter() {
+    try {
+        const resp = await fetch('/api/category_roi?limit=200');
+        const data = await resp.json();
+        const categoryAgg = {};
+        data.forEach(item => {
+            if (!categoryAgg[item.category]) {
+                categoryAgg[item.category] = { roi_sum: 0, margin_sum: 0, count: 0 };
+            }
+            categoryAgg[item.category].roi_sum += (item.roi || 0);
+            categoryAgg[item.category].margin_sum += (item.profit_margin || 0);
+            categoryAgg[item.category].count++;
+        });
+        const scatterData = Object.entries(categoryAgg).map(([cat, agg]) => ({
+            name: cat,
+            value: [(agg.roi_sum / agg.count).toFixed(2), (agg.margin_sum / agg.count).toFixed(1)]
+        }));
+        const chart = echarts.init(document.getElementById('chartRoiScatter'));
+        chart.setOption({
+            tooltip: { trigger: 'item', formatter: p => `${p.data.name}<br/>ROI: ${p.data.value[0]}<br/>利润率: ${p.data.value[1]}%` },
+            grid: { left: '3%', right: '4%', bottom: '3%', containLabel: true },
+            xAxis: { type: 'value', name: 'ROI', min: 0 },
+            yAxis: { type: 'value', name: '利润率%', min: 0 },
+            series: [{
+                type: 'scatter',
+                symbolSize: 20,
+                data: scatterData.map(d => ({
+                    value: d.value,
+                    name: d.name,
+                    itemStyle: { color: d.value[0] >= 2 && d.value[1] >= 20 ? '#10b981' : '#3b82f6' }
+                }))
+            }]
+        });
+        document.getElementById('loading-roi-scatter').style.display = 'none';
+    } catch (e) {
+        console.error('加载散点图失败:', e);
+    }
+}
+
+async function loadRoiTrend() {
+    try {
+        const resp = await fetch('/api/category_roi?limit=300');
+        const data = await resp.json();
+        const periods = [...new Set(data.map(d => d.period))].sort();
+        const categories = [...new Set(data.map(d => d.category))].slice(0, 5);
+        const chart = echarts.init(document.getElementById('chartRoiTrend'));
+        const series = categories.map((cat, i) => ({
+            name: cat,
+            type: 'line',
+            data: periods.map(p => {
+                const item = data.find(x => x.category === cat && x.period === p);
+                return item ? item.roi : null;
+            }),
+            smooth: true,
+            itemStyle: { color: ['#3b82f6', '#8b5cf6', '#06b6d4', '#10b981', '#f59e0b'][i] }
+        }));
+        chart.setOption({
+            tooltip: { trigger: 'axis' },
+            legend: { data: categories, bottom: 0 },
+            grid: { left: '3%', right: '4%', bottom: '18%', containLabel: true },
+            xAxis: { type: 'category', data: periods },
+            yAxis: { type: 'value', name: 'ROI' },
+            series
+        });
+        document.getElementById('loading-roi-trend').style.display = 'none';
+    } catch (e) {
+        console.error('加载趋势失败:', e);
+    }
+}
+
+function getRoiGrade(roi) {
+    if (roi >= 3) return { grade: 'A', color: '#10b981' };
+    if (roi >= 2) return { grade: 'B', color: '#3b82f6' };
+    if (roi >= 1.5) return { grade: 'C', color: '#f59e0b' };
+    return { grade: 'D', color: '#ef4444' };
+}
+
+function renderRoiTable() {
+    const tbody = document.getElementById('roiTableBody');
+    tbody.innerHTML = ROI_CONFIG.data.slice(0, 100).map(item => {
+        const grade = getRoiGrade(item.roi);
+        return `
+            <tr>
+                <td>${item.category}</td>
+                <td>${item.period}</td>
+                <td>${formatNumber(item.ad_spend || 0)}</td>
+                <td>${formatNumber(item.gmv || 0)}</td>
+                <td style="color:${grade.color};font-weight:600;">${(item.roi || 0).toFixed(2)}</td>
+                <td>${item.orders || 0}</td>
+                <td>${formatNumber(item.visitors || 0)}</td>
+                <td>${((item.conversion_rate || 0) * 100).toFixed(2)}%</td>
+                <td>${(item.avg_order_value || 0).toFixed(2)}</td>
+                <td>${(item.profit_margin || 0).toFixed(1)}%</td>
+                <td><span class="badge" style="background:${grade.color};color:#fff;">${grade.grade}</span></td>
+            </tr>
+        `;
+    }).join('');
+    document.getElementById('roiTableLoading').style.display = 'none';
+    document.getElementById('roiTableContainer').style.display = 'block';
+}
+
+async function handleRoiUpload() {
+    const fileInput = document.getElementById('roiFileInput');
+    const file = fileInput.files[0];
+    if (!file) return;
+    const formData = new FormData();
+    formData.append('file', file);
+    try {
+        const resp = await fetch('/api/upload/category_roi', { method: 'POST', body: formData });
+        const result = await resp.json();
+        if (result.success) {
+            showToast(`成功导入 ${result.count} 条数据`, 'success');
+            loadRoiSummary();
+            loadRoiBar();
+            loadRoiScatter();
+            loadRoiTrend();
+        } else {
+            showToast(result.error || '导入失败', 'error');
+        }
+    } catch (e) {
+        showToast('导入失败: ' + e.message, 'error');
+    }
+    fileInput.value = '';
+}
+
+async function aggregateCategoryROI() {
+    try {
+        showToast('正在聚合数据...', 'info');
+        const resp = await fetch('/api/category_roi/aggregate', { method: 'POST' });
+        const result = await resp.json();
+        if (result.success) {
+            showToast(`成功聚合 ${result.count} 个品类`, 'success');
+            loadRoiSummary();
+            loadRoiBar();
+            loadRoiScatter();
+            loadRoiTrend();
+        } else {
+            showToast(result.error || '聚合失败', 'error');
+        }
+    } catch (e) {
+        showToast('聚合失败: ' + e.message, 'error');
+    }
+}
+
+if (document.getElementById('tab-roi')) {
+    document.getElementById('tab-roi').addEventListener('shown.bs.tab', () => {
+        loadRoiSummary();
+        loadRoiBar();
+        loadRoiScatter();
+        loadRoiTrend();
+    });
+}
+</script>

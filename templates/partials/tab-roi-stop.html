@@ -1,0 +1,246 @@
+<div class="section-card">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;flex-wrap:wrap;gap:12px;">
+        <h3 class="section-title">⚠️ ROI停投策略</h3>
+        <div style="display:flex;gap:10px;align-items:center;">
+            <button onclick="openRoiStopRuleModal()" style="padding:8px 16px;border-radius:8px;border:none;background:var(--accent);color:#fff;font-size:13px;cursor:pointer;font-weight:600;">
+                ➕ 添加规则
+            </button>
+        </div>
+    </div>
+
+    <!-- KPI概览 -->
+    <div class="kpi-grid" style="margin-bottom:20px;">
+        <div class="kpi-card" style="border-left:3px solid #ef4444;">
+            <div class="kpi-label">紧急停投</div>
+            <div class="kpi-value" id="roi-stop-critical" style="color:#ef4444;">--</div>
+        </div>
+        <div class="kpi-card" style="border-left:3px solid #f59e0b;">
+            <div class="kpi-label">需预警</div>
+            <div class="kpi-value" id="roi-stop-warning" style="color:#f59e0b;">--</div>
+        </div>
+        <div class="kpi-card">
+            <div class="kpi-label">活跃规则数</div>
+            <div class="kpi-value" id="roi-stop-rules-count">--</div>
+        </div>
+        <div class="kpi-card">
+            <div class="kpi-label">默认阈值</div>
+            <div class="kpi-value">ROI &lt; 1.5</div>
+        </div>
+    </div>
+
+    <!-- 停投检查列表 -->
+    <div class="section-title" style="margin-bottom:12px;">🚫 需要停投/预警的商品</div>
+    <div id="roiStopCheckLoading" style="text-align:center;padding:40px;color:var(--text-muted);">
+        <span class="loading-spinner"></span> 加载中...
+    </div>
+    <div id="roiStopCheckContainer" style="display:none;overflow-x:auto;border-radius:12px;border:1px solid var(--border);margin-bottom:24px;">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>商品</th>
+                    <th>品类</th>
+                    <th>当前ROI</th>
+                    <th>阈值</th>
+                    <th>严重程度</th>
+                    <th>建议</th>
+                    <th>操作</th>
+                </tr>
+            </thead>
+            <tbody id="roiStopCheckBody"></tbody>
+        </table>
+    </div>
+
+    <!-- 规则管理 -->
+    <div class="section-title" style="margin-bottom:12px;">📋 停投规则管理</div>
+    <div id="roiRulesLoading" style="text-align:center;padding:40px;color:var(--text-muted);">
+        <span class="loading-spinner"></span> 加载中...
+    </div>
+    <div id="roiRulesContainer" style="display:none;overflow-x:auto;border-radius:12px;border:1px solid var(--border);">
+        <table class="data-table">
+            <thead>
+                <tr>
+                    <th>规则ID</th>
+                    <th>商品/品类</th>
+                    <th>ROI阈值</th>
+                    <th>动作</th>
+                    <th>状态</th>
+                    <th>创建时间</th>
+                    <th>操作</th>
+                </tr>
+            </thead>
+            <tbody id="roiRulesBody"></tbody>
+        </table>
+    </div>
+</div>
+
+<!-- 添加规则弹窗 -->
+<div id="roiStopModal" class="modal" style="display:none;position:fixed;z-index:1000;left:0;top:0;width:100%;height:100%;background:rgba(0,0,0,0.5);">
+    <div style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);background:var(--card);padding:24px;border-radius:12px;width:400px;max-width:90%;">
+        <h3 style="margin:0 0 16px;">添加ROI停投规则</h3>
+        <div style="margin-bottom:12px;">
+            <label style="display:block;margin-bottom:4px;font-size:13px;color:var(--text-secondary);">商品ID（可选，优先级高于品类）</label>
+            <input type="text" id="roiRuleProductId" placeholder="留空表示按品类" style="width:100%;padding:8px;border-radius:8px;border:1px solid var(--border);background:var(--bg);color:var(--text-primary);box-sizing:border-box;">
+        </div>
+        <div style="margin-bottom:12px;">
+            <label style="display:block;margin-bottom:4px;font-size:13px;color:var(--text-secondary);">品类（可选）</label>
+            <input type="text" id="roiRuleCategory" placeholder="如：美妆" style="width:100%;padding:8px;border-radius:8px;border:1px solid var(--border);background:var(--bg);color:var(--text-primary);box-sizing:border-box;">
+        </div>
+        <div style="margin-bottom:12px;">
+            <label style="display:block;margin-bottom:4px;font-size:13px;color:var(--text-secondary);">ROI阈值</label>
+            <input type="number" id="roiRuleThreshold" value="1.5" step="0.1" style="width:100%;padding:8px;border-radius:8px;border:1px solid var(--border);background:var(--bg);color:var(--text-primary);box-sizing:border-box;">
+        </div>
+        <div style="margin-bottom:16px;">
+            <label style="display:block;margin-bottom:4px;font-size:13px;color:var(--text-secondary);">动作</label>
+            <select id="roiRuleAction" style="width:100%;padding:8px;border-radius:8px;border:1px solid var(--border);background:var(--bg);color:var(--text-primary);box-sizing:border-box;">
+                <option value="alert">仅预警</option>
+                <option value="stop">自动停投</option>
+            </select>
+        </div>
+        <div style="display:flex;gap:10px;justify-content:flex-end;">
+            <button onclick="document.getElementById('roiStopModal').style.display='none'" style="padding:8px 16px;border-radius:8px;border:1px solid var(--border);background:transparent;cursor:pointer;">取消</button>
+            <button onclick="addRoiStopRule()" style="padding:8px 16px;border-radius:8px;border:none;background:var(--accent);color:#fff;cursor:pointer;font-weight:600;">保存</button>
+        </div>
+    </div>
+</div>
+
+<script>
+async function loadRoiStopChecks() {
+    const container = document.getElementById('roiStopCheckContainer');
+    const loading = document.getElementById('roiStopCheckLoading');
+    const critical = document.getElementById('roi-stop-critical');
+    const warning = document.getElementById('roi-stop-warning');
+
+    try {
+        const resp = await fetch('/api/roi_stop_checks');
+        const data = await resp.json();
+        loading.style.display = 'none';
+        container.style.display = 'block';
+
+        const criticalCount = data.filter(d => d.severity === 'danger').length;
+        const warningCount = data.filter(d => d.severity === 'warning').length;
+        critical.textContent = criticalCount;
+        warning.textContent = warningCount;
+
+        if (data.length === 0) {
+            container.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text-muted);">暂无需要停投的商品</div>';
+            return;
+        }
+
+        document.getElementById('roiStopCheckBody').innerHTML = data.map(item => `
+            <tr style="background:${item.severity === 'danger' ? 'rgba(239,68,68,0.1)' : 'rgba(245,158,11,0.1)'};">
+                <td>${item.product_id}</td>
+                <td>${item.category || '-'}</td>
+                <td style="color:#ef4444;font-weight:600;">${item.current_roi}</td>
+                <td>${item.threshold}</td>
+                <td><span class="badge badge-${item.severity === 'danger' ? 'red' : 'yellow'}">${item.severity === 'danger' ? '紧急' : '警告'}</span></td>
+                <td>${item.message}</td>
+                <td>
+                    <button onclick="confirmStop('${item.product_id}')" style="padding:4px 8px;border-radius:4px;border:1px solid #ef4444;background:transparent;color:#ef4444;cursor:pointer;font-size:12px;">
+                        ${item.action === 'stop' ? '确认停投' : '确认预警'}
+                    </button>
+                </td>
+            </tr>
+        `).join('');
+    } catch (e) {
+        console.error('加载停投检查失败:', e);
+        loading.textContent = '加载失败';
+    }
+}
+
+async function loadRoiStopRules() {
+    const container = document.getElementById('roiRulesContainer');
+    const loading = document.getElementById('roiRulesLoading');
+    const count = document.getElementById('roi-stop-rules-count');
+
+    try {
+        const resp = await fetch('/api/roi_stop_rules');
+        const data = await resp.json();
+        loading.style.display = 'none';
+        container.style.display = 'block';
+        count.textContent = data.filter(r => r.enabled).length;
+
+        if (data.length === 0) {
+            container.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text-muted);">暂无规则，添加一个吧</div>';
+            return;
+        }
+
+        document.getElementById('roiRulesBody').innerHTML = data.map(item => `
+            <tr>
+                <td>#${item.id}</td>
+                <td>${item.product_id || item.category || '全部'}</td>
+                <td>${item.roi_threshold}</td>
+                <td><span class="badge">${item.action === 'stop' ? '停投' : '预警'}</span></td>
+                <td><span class="badge badge-${item.enabled ? 'green' : 'gray'}">${item.enabled ? '启用' : '禁用'}</span></td>
+                <td>${item.created_at ? new Date(item.created_at).toLocaleDateString() : '-'}</td>
+                <td>
+                    <button onclick="deleteRoiRule(${item.id})" style="padding:4px 8px;border-radius:4px;border:1px solid #ef4444;background:transparent;color:#ef4444;cursor:pointer;font-size:12px;">删除</button>
+                </td>
+            </tr>
+        `).join('');
+    } catch (e) {
+        console.error('加载规则失败:', e);
+        loading.textContent = '加载失败';
+    }
+}
+
+function openRoiStopRuleModal() {
+    document.getElementById('roiStopModal').style.display = 'block';
+}
+
+async function addRoiStopRule() {
+    const productId = document.getElementById('roiRuleProductId').value.trim();
+    const category = document.getElementById('roiRuleCategory').value.trim();
+    const threshold = parseFloat(document.getElementById('roiRuleThreshold').value) || 1.5;
+    const action = document.getElementById('roiRuleAction').value;
+
+    if (!productId && !category) {
+        showToast('请输入商品ID或品类', 'warning');
+        return;
+    }
+
+    try {
+        const resp = await fetch('/api/roi_stop_rules', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ product_id: productId, category, roi_threshold: threshold, action })
+        });
+        const result = await resp.json();
+        if (result.success) {
+            showToast('规则添加成功', 'success');
+            document.getElementById('roiStopModal').style.display = 'none';
+            loadRoiStopRules();
+        } else {
+            showToast(result.error || '添加失败', 'error');
+        }
+    } catch (e) {
+        showToast('添加失败: ' + e.message, 'error');
+    }
+}
+
+async function deleteRoiRule(id) {
+    if (!confirm('确定删除此规则？')) return;
+    try {
+        const resp = await fetch(`/api/roi_stop_rules/${id}`, { method: 'DELETE' });
+        const result = await resp.json();
+        if (result.success) {
+            showToast('规则已删除', 'success');
+            loadRoiStopRules();
+        } else {
+            showToast(result.error || '删除失败', 'error');
+        }
+    } catch (e) {
+        showToast('删除失败: ' + e.message, 'error');
+    }
+}
+
+function confirmStop(productId) {
+    showToast(`已标记商品 ${productId} 停投/预警`, 'success');
+}
+
+if (document.getElementById('tab-roi-stop')) {
+    document.getElementById('tab-roi-stop').addEventListener('shown.bs.tab', () => {
+        loadRoiStopChecks();
+        loadRoiStopRules();
+    });
+}
+</script>

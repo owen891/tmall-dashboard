@@ -125,6 +125,30 @@
             </span>
             <span class="sidebar-nav-label">管理</span>
         </button>
+        <button class="sidebar-nav-item tab-btn" role="tab" data-tab="tab-inventory" aria-selected="false" aria-controls="tab-inventory" onclick="switchTab('tab-inventory')">
+            <span class="sidebar-nav-icon">
+                <svg viewBox="0 0 24 24"><path d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </span>
+            <span class="sidebar-nav-label">库存</span>
+        </button>
+        <button class="sidebar-nav-item tab-btn" role="tab" data-tab="tab-content" aria-selected="false" aria-controls="tab-content" onclick="switchTab('tab-content')">
+            <span class="sidebar-nav-icon">
+                <svg viewBox="0 0 24 24"><path d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </span>
+            <span class="sidebar-nav-label">内容</span>
+        </button>
+        <button class="sidebar-nav-item tab-btn" role="tab" data-tab="tab-roi" aria-selected="false" aria-controls="tab-roi" onclick="switchTab('tab-roi')">
+            <span class="sidebar-nav-icon">
+                <svg viewBox="0 0 24 24"><path d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </span>
+            <span class="sidebar-nav-label">品类ROI</span>
+        </button>
+        <button class="sidebar-nav-item tab-btn" role="tab" data-tab="tab-roi-stop" aria-selected="false" aria-controls="tab-roi-stop" onclick="switchTab('tab-roi-stop')">
+            <span class="sidebar-nav-icon">
+                <svg viewBox="0 0 24 24"><path d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </span>
+            <span class="sidebar-nav-label">停投</span>
+        </button>
     </nav>
     <div class="sidebar-bottom">
         <button class="sidebar-toolbox-btn" onclick="openToolbox()" title="运营工具箱">
@@ -225,6 +249,26 @@
     <!-- Tab: 管理（任务看板+用户KPI） -->
     <div class="tab-content" id="tab-manage">
         {% include 'partials/tab-manage.html' %}
+    </div>
+
+    <!-- Tab: 库存维度管理 -->
+    <div class="tab-content" id="tab-inventory">
+        {% include 'partials/tab-inventory.html' %}
+    </div>
+
+    <!-- Tab: 内容维度分析 -->
+    <div class="tab-content" id="tab-content">
+        {% include 'partials/tab-content.html' %}
+    </div>
+
+    <!-- Tab: 品类投产ROI分析 -->
+    <div class="tab-content" id="tab-roi">
+        {% include 'partials/tab-roi.html' %}
+    </div>
+
+    <!-- Tab: ROI停投策略 -->
+    <div class="tab-content" id="tab-roi-stop">
+        {% include 'partials/tab-roi-stop.html' %}
     </div>
 
 </div><!-- /main-container -->

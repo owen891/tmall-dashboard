@@ -1,0 +1,265 @@
+<div class="section-card">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;flex-wrap:wrap;gap:12px;">
+        <h3 class="section-title">📦 库存维度管理</h3>
+        <div style="display:flex;gap:10px;align-items:center;">
+            <input type="file" id="invFileInput" accept=".xlsx,.xls" onchange="handleInventoryUpload()" style="display:none;">
+            <button onclick="document.getElementById('invFileInput').click()" style="padding:8px 16px;border-radius:8px;border:none;background:var(--accent);color:#fff;font-size:13px;cursor:pointer;font-weight:600;">
+                📤 导入库存数据
+            </button>
+        </div>
+    </div>
+
+    <!-- KPI概览卡片 -->
+    <div class="kpi-grid" id="invSummaryCards" style="margin-bottom:20px;">
+        <div class="kpi-card">
+            <div class="kpi-label">监控商品数</div>
+            <div class="kpi-value" id="inv-total-products">--</div>
+        </div>
+        <div class="kpi-card">
+            <div class="kpi-label">平均周转天数</div>
+            <div class="kpi-value" id="inv-avg-turnover">--</div>
+        </div>
+        <div class="kpi-card">
+            <div class="kpi-label">平均缺货率</div>
+            <div class="kpi-value" id="inv-avg-shortage">--</div>
+        </div>
+        <div class="kpi-card" style="border-left:3px solid #ef4444;">
+            <div class="kpi-label">紧急预警</div>
+            <div class="kpi-value" id="inv-shortage-alerts" style="color:#ef4444;">--</div>
+        </div>
+        <div class="kpi-card" style="border-left:3px solid #f59e0b;">
+            <div class="kpi-label">黄色预警</div>
+            <div class="kpi-value" id="inv-warning-alerts" style="color:#f59e0b;">--</div>
+        </div>
+        <div class="kpi-card" style="border-left:3px solid #10b981;">
+            <div class="kpi-label">正常商品</div>
+            <div class="kpi-value" id="inv-normal-count" style="color:#10b981;">--</div>
+        </div>
+    </div>
+
+    <!-- 预警列表 -->
+    <div class="section-title" style="margin-bottom:12px;">⚠️ 库存预警</div>
+    <div id="invAlertLoading" style="text-align:center;padding:40px;color:var(--text-muted);">
+        <span class="loading-spinner"></span> 加载中...
+    </div>
+    <div id="invAlertContainer" style="display:none;">
+        <div id="invAlertTable"></div>
+    </div>
+
+    <!-- 库存趋势图 -->
+    <div class="section-title" style="margin:24px 0 12px;">📈 库存指标趋势</div>
+    <div class="chart-panel" style="position:relative;">
+        <div class="loading-mask" id="loading-inv-trend"><div class="spinner"></div></div>
+        <div class="chart-box" id="chartInventoryTrend"></div>
+    </div>
+
+    <!-- 库存数据列表 -->
+    <div class="section-title" style="margin:24px 0 12px;">📋 库存明细</div>
+    <div style="display:flex;gap:10px;margin-bottom:12px;flex-wrap:wrap;">
+        <input type="text" id="invSearchInput" placeholder="搜索商品ID或名称..." oninput="filterInventory()" style="flex:1;min-width:200px;padding:8px 12px;border-radius:8px;border:1px solid var(--border);background:var(--card);color:var(--text-primary);font-size:13px;">
+        <select id="invAlertFilter" onchange="filterInventory()" style="padding:8px 12px;border-radius:8px;border:1px solid var(--border);background:var(--card);color:var(--text-primary);font-size:13px;">
+            <option value="">全部状态</option>
+            <option value="red">紧急预警</option>
+            <option value="yellow">黄色预警</option>
+            <option value="green">正常</option>
+        </select>
+    </div>
+    <div id="invTableLoading" style="text-align:center;padding:40px;color:var(--text-muted);">
+        <span class="loading-spinner"></span> 加载中...
+    </div>
+    <div id="invTableContainer" style="display:none;overflow-x:auto;border-radius:12px;border:1px solid var(--border);">
+        <table class="data-table" id="invDataTable">
+            <thead>
+                <tr>
+                    <th>商品ID</th>
+                    <th>商品名称</th>
+                    <th>日期</th>
+                    <th>库存量</th>
+                    <th>日销量</th>
+                    <th>周转天数</th>
+                    <th>缺货率</th>
+                    <th>安全库存</th>
+                    <th>预警等级</th>
+                </tr>
+            </thead>
+            <tbody id="invTableBody"></tbody>
+        </table>
+        <div id="invPagination" style="padding:12px;display:flex;justify-content:center;gap:8px;"></div>
+    </div>
+</div>
+
+<script>
+const INV_CONFIG = {
+    page: 1,
+    pageSize: 20,
+    search: '',
+    alertFilter: '',
+    data: []
+};
+
+async function loadInventorySummary() {
+    try {
+        const resp = await fetch('/api/inventory/summary');
+        const data = await resp.json();
+        document.getElementById('inv-total-products').textContent = data.total_products || 0;
+        document.getElementById('inv-avg-turnover').textContent = (data.avg_turnover_days || 0) + '天';
+        document.getElementById('inv-avg-shortage').textContent = ((data.avg_shortage_rate || 0) * 100).toFixed(1) + '%';
+        document.getElementById('inv-shortage-alerts').textContent = data.shortage_alerts || 0;
+        document.getElementById('inv-warning-alerts').textContent = data.warning_alerts || 0;
+        document.getElementById('inv-normal-count').textContent = data.normal_count || 0;
+    } catch (e) {
+        console.error('加载库存概览失败:', e);
+    }
+}
+
+async function loadInventoryAlerts() {
+    const container = document.getElementById('invAlertContainer');
+    const loading = document.getElementById('invAlertLoading');
+    try {
+        const resp = await fetch('/api/inventory/alerts');
+        const data = await resp.json();
+        loading.style.display = 'none';
+        container.style.display = 'block';
+        if (data.length === 0) {
+            container.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text-muted);">暂无预警</div>';
+            return;
+        }
+        container.innerHTML = '<table class="data-table"><thead><tr><th>商品</th><th>预警等级</th><th>缺货率</th><th>建议</th></tr></thead><tbody>' +
+            data.map(item => `
+                <tr style="background:${item.alert_level === 'red' ? 'rgba(239,68,68,0.1)' : 'rgba(245,158,11,0.1)'};">
+                    <td>${item.product_id}</td>
+                    <td><span class="badge badge-${item.alert_level}">${item.alert_level === 'red' ? '紧急' : '警告'}</span></td>
+                    <td>${((item.shortage_rate || 0) * 100).toFixed(1)}%</td>
+                    <td>${item.alert_level === 'red' ? '立即补货' : '关注库存'}</td>
+                </tr>
+            `).join('') + '</tbody></table>';
+    } catch (e) {
+        console.error('加载预警失败:', e);
+        loading.textContent = '加载失败';
+    }
+}
+
+async function loadInventoryTrend() {
+    try {
+        const resp = await fetch('/api/inventory?limit=100');
+        const data = await resp.json();
+        const chart = echarts.init(document.getElementById('chartInventoryTrend'));
+        const dates = [...new Set(data.map(d => d.date))].sort();
+        const turnoverData = dates.map(d => {
+            const items = data.filter(x => x.date === d);
+            return items.length ? items.reduce((s, i) => s + (i.turnover_days || 0), 0) / items.length : 0;
+        });
+        const shortageData = dates.map(d => {
+            const items = data.filter(x => x.date === d);
+            return items.length ? items.reduce((s, i) => s + (i.shortage_rate || 0), 0) / items.length * 100 : 0;
+        });
+        chart.setOption({
+            tooltip: { trigger: 'axis' },
+            legend: { data: ['周转天数', '缺货率%'] },
+            grid: { left: '3%', right: '4%', bottom: '3%', containLabel: true },
+            xAxis: { type: 'category', data: dates },
+            yAxis: [{ type: 'value', name: '周转天数' }, { type: 'value', name: '缺货率%', max: 100 }],
+            series: [
+                { name: '周转天数', type: 'bar', data: turnoverData },
+                { name: '缺货率%', type: 'line', yAxisIndex: 1, data: shortageData, color: '#ef4444' }
+            ]
+        });
+        document.getElementById('loading-inv-trend').style.display = 'none';
+    } catch (e) {
+        console.error('加载趋势失败:', e);
+    }
+}
+
+async function loadInventoryData() {
+    const tableContainer = document.getElementById('invTableContainer');
+    const loading = document.getElementById('invTableLoading');
+    try {
+        const resp = await fetch('/api/inventory?limit=500');
+        INV_CONFIG.data = await resp.json();
+        loading.style.display = 'none';
+        tableContainer.style.display = 'block';
+        renderInventoryTable();
+    } catch (e) {
+        console.error('加载库存数据失败:', e);
+        loading.textContent = '加载失败';
+    }
+}
+
+function filterInventory() {
+    INV_CONFIG.search = document.getElementById('invSearchInput').value.toLowerCase();
+    INV_CONFIG.alertFilter = document.getElementById('invAlertFilter').value;
+    INV_CONFIG.page = 1;
+    renderInventoryTable();
+}
+
+function renderInventoryTable() {
+    const filtered = INV_CONFIG.data.filter(item => {
+        const matchSearch = !INV_CONFIG.search || 
+            (item.product_id + '').toLowerCase().includes(INV_CONFIG.search) ||
+            (item.title || '').toLowerCase().includes(INV_CONFIG.search);
+        const matchFilter = !INV_CONFIG.alertFilter || item.alert_level === INV_CONFIG.alertFilter;
+        return matchSearch && matchFilter;
+    });
+
+    const totalPages = Math.ceil(filtered.length / INV_CONFIG.pageSize);
+    const start = (INV_CONFIG.page - 1) * INV_CONFIG.pageSize;
+    const pageData = filtered.slice(start, start + INV_CONFIG.pageSize);
+
+    const tbody = document.getElementById('invTableBody');
+    tbody.innerHTML = pageData.map(item => `
+        <tr>
+            <td>${item.product_id}</td>
+            <td>${item.title || '-'}</td>
+            <td>${item.date}</td>
+            <td>${item.stock_qty || 0}</td>
+            <td>${item.sales_qty || 0}</td>
+            <td>${item.turnover_days || 0}天</td>
+            <td style="color:${item.shortage_rate > 0.3 ? '#ef4444' : item.shortage_rate > 0.1 ? '#f59e0b' : '#10b981'};">
+                ${((item.shortage_rate || 0) * 100).toFixed(1)}%
+            </td>
+            <td>${item.safety_stock || 0}</td>
+            <td><span class="badge badge-${item.alert_level}">${item.alert_level === 'red' ? '紧急' : item.alert_level === 'yellow' ? '警告' : '正常'}</span></td>
+        </tr>
+    `).join('');
+
+    const pag = document.getElementById('invPagination');
+    pag.innerHTML = '';
+    if (totalPages > 1) {
+        for (let i = 1; i <= Math.min(totalPages, 5); i++) {
+            pag.innerHTML += `<button onclick="INV_CONFIG.page=${i};renderInventoryTable();" style="padding:4px 10px;border-radius:6px;border:1px solid var(--border);background:${INV_CONFIG.page === i ? 'var(--accent)' : 'transparent'};color:${INV_CONFIG.page === i ? '#fff' : 'var(--text-primary)'};cursor:pointer;">${i}</button>`;
+        }
+    }
+}
+
+async function handleInventoryUpload() {
+    const fileInput = document.getElementById('invFileInput');
+    const file = fileInput.files[0];
+    if (!file) return;
+    const formData = new FormData();
+    formData.append('file', file);
+    try {
+        const resp = await fetch('/api/upload/inventory', { method: 'POST', body: formData });
+        const result = await resp.json();
+        if (result.success) {
+            showToast(`成功导入 ${result.count} 条数据`, 'success');
+            loadInventorySummary();
+            loadInventoryData();
+            loadInventoryAlerts();
+        } else {
+            showToast(result.error || '导入失败', 'error');
+        }
+    } catch (e) {
+        showToast('导入失败: ' + e.message, 'error');
+    }
+    fileInput.value = '';
+}
+
+if (document.getElementById('tab-inventory')) {
+    document.getElementById('tab-inventory').addEventListener('shown.bs.tab', () => {
+        loadInventorySummary();
+        loadInventoryAlerts();
+        loadInventoryTrend();
+        loadInventoryData();
+    });
+}
+</script>
