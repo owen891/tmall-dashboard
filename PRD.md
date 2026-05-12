@@ -1,7 +1,10 @@
 # 天猫数据仪表盘 — 产品需求文档 (PRD)
 
-> **版本**: v2.0
-> **更新日期**: 2026-05-01
+> **版本**: v4.0
+> **更新日期**: 2026-05-12
+> **变更记录**:
+> - v2.0 → v3.0: 新增搜索词效能、流量结构分析、任务看板、用户KPI、复盘分析模块
+> - v3.0 → v4.0: 修正数据库路径配置、补充联合索引、统一健康评分算法配置
 > **技术栈**: Python Flask + SQLite + ECharts + 原生 JavaScript
 
 ---
@@ -100,6 +103,10 @@
 | 生命周期 | `lifecycle.js` | 商品月度趋势缩略图 |
 | 对比 | `compare.js` | 周期对比、多周期叠加 |
 | 工具箱 | `toolbox.js` | 定时任务、工具执行 |
+| 搜索词效能 | `keywords.js` | 搜索词上传、分类、效能矩阵表格 |
+| 流量结构 | `traffic.js` | 流量来源饼图、趋势叠加图 |
+| 任务看板 | `taskboard.js` | 任务CRUD、状态管理、用户KPI展示 |
+| 复盘分析 | `postmortem.js` | 环比同比指标对比、趋势图 |
 
 ### 2.3 UI 设计规范
 
@@ -410,6 +417,109 @@
 
 ---
 
+### 3.9 搜索词效能
+
+#### 3.9.1 数据上传
+
+- 支持 Excel (.xlsx/.xls) 文件上传
+- 自动解析搜索词报表数据
+- 导入后自动分类（蓝海词/流量词/废词）
+
+#### 3.9.2 概览卡片
+
+总词数、蓝海词数、流量词数、废词数、总花费、总成交、平均ROI
+
+#### 3.9.3 搜索词矩阵表格
+
+| 列名 | 说明 |
+|------|------|
+| 搜索词 | 关键词文本 |
+| 分类 | 蓝海词/流量词/废词（带颜色标签） |
+| 人气 | 搜索人气 |
+| 展现 | 展现量 |
+| 点击 | 点击量 |
+| CTR | 点击率 |
+| CVR | 支付转化率 |
+| 花费 | 推广花费 |
+| 成交 | GMV |
+| ROI | 投入产出比 |
+| 效能 | 综合效能评分 |
+
+**交互功能：**
+- 按日期筛选、按分类筛选、按关键词搜索
+- 点击列头排序
+- 分页展示
+
+#### 3.9.4 搜索词分类算法
+
+| 分类 | 判定逻辑 |
+|------|---------|
+| 蓝海词 | 高效能、低竞争（效能≥1.2且点击率高于行业均值） |
+| 流量词 | 高人气、高展现但竞争激烈 |
+| 废词 | 低效能、低转化（效能<0.8） |
+
+---
+
+### 3.10 流量结构分析
+
+#### 3.10.1 流量来源占比
+
+- 饼图展示：搜索/推荐/付费/其他 四类流量占比
+- 每类流量显示具体访客数和百分比
+
+#### 3.10.2 流量趋势
+
+- 堆叠面积图展示近N期四类流量占比变化趋势
+- 支持日/周/月维度切换
+
+---
+
+### 3.11 任务管理
+
+#### 3.11.1 任务看板
+
+**任务字段：**
+- 标题、描述、状态（待办/进行中/已完成/已取消）
+- 优先级（P0/P1/P2/P3）
+- 负责人、截止日期
+
+**交互功能：**
+- 创建任务：填写标题、选择优先级、指定负责人和截止日期
+- 状态流转：下拉菜单切换任务状态
+- 删除任务：确认后删除
+- 筛选：按状态、优先级筛选
+
+#### 3.11.2 用户KPI
+
+**KPI字段：**
+- 姓名、周期、目标GMV、实际GMV、达成率、评级（A/B/C/D）
+
+**评级标准：**
+| 等级 | 达成率 |
+|------|--------|
+| A | ≥ 120% |
+| B | 100% ~ 119% |
+| C | 80% ~ 99% |
+| D | < 80% |
+
+---
+
+### 3.12 复盘分析
+
+#### 3.12.1 环比/同比指标对比
+
+- 支持日/周/月维度
+- 核心指标对比：总销售额、访客、转化率、退款率、推广花费、ROI等
+- 环比（与上期对比）和同比（与去年同期对比）
+- 变化超过20%自动高亮
+
+#### 3.12.2 趋势图
+
+- 柱状图+折线图叠加：总销售额、推广花费（柱状）+ 转化率（折线）
+- 展示近N期趋势变化
+
+---
+
 ### 3.8 工具箱
 
 #### 3.8.1 定时任务管理
@@ -465,6 +575,9 @@ market_keyword_opportunities     独立表
 chart_events (图表事件标注)      独立表
 scheduled_tasks (定时任务)       独立表
 operation_logs (操作日志)        独立表
+keyword_metrics (搜索词效能)      独立表
+task_items (任务看板)            独立表
+user_kpis (用户KPI)              独立表
 ```
 
 ### 4.2 核心表结构
@@ -669,6 +782,69 @@ operation_logs (操作日志)        独立表
 | alert_dimensions | TEXT(JSON) | 预警维度列表 |
 | created_at | TIMESTAMP | 创建时间 |
 
+#### chart_events (图表事件标注)
+
+| 列名 | 类型 | 说明 |
+|------|------|------|
+| id | INTEGER PK | 主键 |
+| event_date | TEXT | 事件日期 |
+| title | TEXT | 事件标题 |
+| description | TEXT | 事件描述 |
+| color | TEXT | 颜色标记 |
+| chart_type | TEXT | 图表类型 |
+| created_at | TIMESTAMP | 创建时间 |
+
+#### keyword_metrics (搜索词效能)
+
+| 列名 | 类型 | 说明 |
+|------|------|------|
+| id | INTEGER PK | 自增主键 |
+| date | TEXT | 日期 |
+| keyword | TEXT | 搜索词 |
+| popularity | INTEGER | 搜索人气 |
+| impressions | INTEGER | 展现量 |
+| clicks | INTEGER | 点击量 |
+| ctr | REAL | 点击率 |
+| cost | REAL | 花费 |
+| gmv | REAL | GMV |
+| cvr | REAL | 转化率 |
+| roi | REAL | 投入产出比 |
+| cpc | REAL | 点击成本 |
+| conversion | INTEGER | 转化数 |
+| efficacy | REAL | 效能评分 |
+| category | TEXT | 分类（蓝海词/流量词/废词） |
+| data_source | TEXT | 数据来源 |
+| imported_at | TEXT | 导入时间 |
+| UNIQUE(date, keyword) | - | 联合唯一索引 |
+
+#### task_items (任务看板)
+
+| 列名 | 类型 | 说明 |
+|------|------|------|
+| id | INTEGER PK | 自增主键 |
+| title | TEXT | 任务标题 |
+| description | TEXT | 任务描述 |
+| status | TEXT | 状态（todo/doing/done/cancelled） |
+| priority | TEXT | 优先级（P0/P1/P2/P3） |
+| assignee | TEXT | 负责人 |
+| due_date | TEXT | 截止日期 |
+| created_at | TEXT | 创建时间 |
+| updated_at | TEXT | 更新时间 |
+
+#### user_kpis (用户KPI)
+
+| 列名 | 类型 | 说明 |
+|------|------|------|
+| id | INTEGER PK | 自增主键 |
+| user_name | TEXT | 姓名 |
+| period | TEXT | 周期 |
+| target_gmv | REAL | 目标GMV |
+| actual_gmv | REAL | 实际GMV |
+| achievement_rate | REAL | 达成率 |
+| rating | TEXT | 评级（A/B/C/D） |
+| created_at | TEXT | 创建时间 |
+| updated_at | TEXT | 更新时间 |
+
 #### 其他表
 
 | 表名 | 说明 | 主要字段 |
@@ -691,6 +867,45 @@ operation_logs (操作日志)        独立表
 ---
 
 ## 5. API 接口
+
+#### 搜索词效能
+
+| 方法 | 路径 | 参数 | 说明 |
+|------|------|------|------|
+| POST | `/api/upload/keywords` | file | 上传搜索词报表 |
+| GET | `/api/keywords` | date, category, search, sort, order, page | 搜索词列表 |
+
+#### 流量结构
+
+| 方法 | 路径 | 参数 | 说明 |
+|------|------|------|------|
+| GET | `/api/traffic_structure` | dim, period | 流量来源占比与趋势 |
+
+#### 任务管理
+
+| 方法 | 路径 | 参数 | 说明 |
+|------|------|------|------|
+| GET | `/api/tasks` | status, priority | 任务列表 |
+| POST | `/api/tasks` | task对象 | 创建任务 |
+| PUT | `/api/tasks/<id>` | task对象 | 更新任务 |
+| DELETE | `/api/tasks/<id>` | - | 删除任务 |
+| GET | `/api/user_kpis` | - | 用户KPI列表 |
+| POST | `/api/user_kpis` | kpi对象 | 创建KPI |
+| PUT | `/api/user_kpis/<id>` | kpi对象 | 更新KPI |
+| DELETE | `/api/user_kpis/<id>` | - | 删除KPI |
+
+#### 复盘分析
+
+| 方法 | 路径 | 参数 | 说明 |
+|------|------|------|------|
+| GET | `/api/review` | dim, period | 复盘数据（环比/同比） |
+
+#### 推广分析（补充）
+
+| 方法 | 路径 | 参数 | 说明 |
+|------|------|------|------|
+| GET | `/api/ad_trend` | dim, period | 推广趋势数据 |
+| GET | `/api/ad_alerts` | dim, period | 推广预警列表 |
 
 ### 5.1 数据接口
 
@@ -908,6 +1123,21 @@ operation_logs (操作日志)        独立表
 | 异步导入 | 数据导入后台线程执行，不阻塞主线程 |
 | 图表懒加载 | Tab切换时才加载对应图表 |
 | 数据库索引 | product_id + period/date 联合索引 |
+| WAL模式 | SQLite WAL模式提升并发读写性能 |
+
+### 7.5 数据库索引优化
+
+| 索引名 | 字段 | 用途 |
+|--------|------|------|
+| idx_daily_product_date | daily_data(product_id, date) | 日度数据查询 |
+| idx_weekly_product_date | weekly_data(product_id, week_start) | 周度数据查询 |
+| idx_monthly_product_month | monthly_data(product_id, month) | 月度数据查询 |
+| idx_paid_product_range | paid_detail(product_id, date_range) | 推广明细查询 |
+| idx_health_product_period | product_health(product_id, period) | 健康度查询 |
+| idx_keyword_date_category | keyword_metrics(date, category) | 关键词筛选 |
+| idx_task_status | task_items(status) | 任务看板筛选 |
+| idx_kpi_period | user_kpis(period) | KPI周期查询 |
+| idx_reviews_product_sentiment | reviews(product_id, sentiment) | 评价筛选 |
 
 ---
 
@@ -936,12 +1166,27 @@ thresholds:
   health_warning: 40            # 健康度预警阈值
 
 health_score_weights:
-  sales: 0.25       # 销售权重
-  conversion: 0.20  # 转化权重
-  roi: 0.15         # ROI权重
-  refund: 0.15      # 退款权重
-  growth: 0.10      # 增长权重
-  review: 0.15      # 评价权重
+  # 新版12维度权重（与3.3.1健康评分算法一致）
+  gmv_change: 0.15
+  ad_spend_change: 0.08
+  roi_change: 0.10
+  refund_rate: 0.10
+  cart_rate: 0.08
+  search_ratio: 0.07
+  new_customer_cost: 0.07
+  direct_cart_cost: 0.05
+  total_cart_cost: 0.05
+  repurchase_rate: 0.08
+  cross_sell_rate: 0.07
+  search_ctr_vs_industry: 0.10
+
+  # 旧版6维度权重（已废弃，保留兼容）
+  # sales: 0.25
+  # conversion: 0.20
+  # roi: 0.15
+  # refund: 0.15
+  # growth: 0.10
+  # review: 0.15
 
 refresh:
   auto_refresh_interval: 300    # 自动刷新间隔（秒）
@@ -978,22 +1223,27 @@ tmall-dashboard/
 ├── db.py                     # 数据库连接与迁移
 ├── config.yaml               # 配置文件
 ├── requirements.txt          # Python 依赖
+├── PRD.md                    # 产品需求文档
 ├── api/
 │   ├── __init__.py
-│   ├── data_api.py           # 数据接口（70+ 端点）
+│   ├── data_api.py           # 数据接口（80+ 端点）
 │   └── tool_api.py           # 工具接口
 ├── templates/
 │   ├── dashboard.html        # 主页面
 │   ├── preview.html          # 预览页
 │   └── partials/
-│       ├── tab-overview.html
-│       ├── tab-ops.html
-│       ├── tab-health.html
-│       ├── tab-review.html
-│       ├── tab-market.html
-│       ├── tab-lifecycle.html
-│       ├── tab-compare.html
-│       └── toolbox.html
+│       ├── tab-overview.html      # 总览
+│       ├── tab-ops.html           # 商品运营
+│       ├── tab-health.html        # 健康度
+│       ├── tab-review.html        # 评价分析
+│       ├── tab-market.html        # 市场分析
+│       ├── tab-lifecycle.html     # 生命周期
+│       ├── tab-compare.html       # 周期对比
+│       ├── tab-keywords.html      # 搜索词效能
+│       ├── tab-traffic.html       # 流量结构
+│       ├── tab-postmortem.html    # 复盘分析
+│       ├── tab-manage.html        # 任务管理
+│       └── toolbox.html           # 工具箱
 ├── static/
 │   ├── css/dashboard.css     # 样式（暗色/亮色主题）
 │   └── js/
@@ -1012,7 +1262,11 @@ tmall-dashboard/
 │       ├── market.js         # 市场分析
 │       ├── lifecycle.js      # 生命周期
 │       ├── compare.js        # 周期对比
-│       └── toolbox.js        # 工具箱
+│       ├── toolbox.js        # 工具箱
+│       ├── keywords.js       # 搜索词效能
+│       ├── traffic.js        # 流量结构
+│       ├── taskboard.js      # 任务看板 + 用户KPI
+│       └── postmortem.js     # 复盘分析
 ├── scripts/
 │   ├── import_data.py        # 核心数据导入
 │   ├── import_smart.py       # 智能选款（月度）

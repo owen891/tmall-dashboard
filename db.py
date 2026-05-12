@@ -498,6 +498,15 @@ def init_db(db_path=None):
     CREATE INDEX IF NOT EXISTS idx_keyword_metrics_category ON keyword_metrics(category);
     CREATE INDEX IF NOT EXISTS idx_task_items_status ON task_items(status);
     CREATE INDEX IF NOT EXISTS idx_user_kpis_period ON user_kpis(period);
+
+    -- Composite indexes for query optimization
+    CREATE INDEX IF NOT EXISTS idx_daily_product_date ON daily_data(product_id, date);
+    CREATE INDEX IF NOT EXISTS idx_weekly_product_date ON weekly_data(product_id, week_start);
+    CREATE INDEX IF NOT EXISTS idx_monthly_product_month ON monthly_data(product_id, month);
+    CREATE INDEX IF NOT EXISTS idx_paid_product_range ON paid_detail(product_id, date_range);
+    CREATE INDEX IF NOT EXISTS idx_health_product_period ON product_health(product_id, period);
+    CREATE INDEX IF NOT EXISTS idx_keyword_date_category ON keyword_metrics(date, category);
+    CREATE INDEX IF NOT EXISTS idx_reviews_product_sentiment ON reviews(product_id, sentiment);
     ''')
 
     conn.commit()
