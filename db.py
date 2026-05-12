@@ -491,6 +491,80 @@ def init_db(db_path=None):
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
 
+    -- 库存维度管理表
+    CREATE TABLE IF NOT EXISTS inventory (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        product_id TEXT NOT NULL,
+        date DATE NOT NULL,
+        stock_qty INTEGER DEFAULT 0,
+        sales_qty INTEGER DEFAULT 0,
+        turnover_days REAL DEFAULT 0,
+        shortage_rate REAL DEFAULT 0,
+        safety_stock INTEGER DEFAULT 0,
+        warehouse TEXT DEFAULT '',
+        status TEXT DEFAULT 'normal',
+        alert_level TEXT DEFAULT 'green',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(product_id, date)
+    );
+    CREATE INDEX IF NOT EXISTS idx_inventory_product ON inventory(product_id);
+    CREATE INDEX IF NOT EXISTS idx_inventory_date ON inventory(date);
+    CREATE INDEX IF NOT EXISTS idx_inventory_product_date ON inventory(product_id, date);
+
+    -- 内容维度分析表
+    CREATE TABLE IF NOT EXISTS content_analysis (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        product_id TEXT NOT NULL,
+        date DATE NOT NULL,
+        uv_value REAL DEFAULT 0,
+        avg_stay_duration REAL DEFAULT 0,
+        content_gmv REAL DEFAULT 0,
+        content_visitors INTEGER DEFAULT 0,
+        live_gmv REAL DEFAULT 0,
+        live_visitors INTEGER DEFAULT 0,
+        short_video_gmv REAL DEFAULT 0,
+        short_video_visitors INTEGER DEFAULT 0,
+        article_gmv REAL DEFAULT 0,
+        article_visitors INTEGER DEFAULT 0,
+        content_ctr REAL DEFAULT 0,
+        content_cvr REAL DEFAULT 0,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(product_id, date)
+    );
+    CREATE INDEX IF NOT EXISTS idx_content_product ON content_analysis(product_id);
+    CREATE INDEX IF NOT EXISTS idx_content_date ON content_analysis(date);
+    CREATE INDEX IF NOT EXISTS idx_content_product_date ON content_analysis(product_id, date);
+
+    -- 品类投产ROI表
+    CREATE TABLE IF NOT EXISTS category_roi (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        category TEXT NOT NULL,
+        period TEXT NOT NULL,
+        ad_spend REAL DEFAULT 0,
+        gmv REAL DEFAULT 0,
+        roi REAL DEFAULT 0,
+        orders INTEGER DEFAULT 0,
+        visitors INTEGER DEFAULT 0,
+        conversion_rate REAL DEFAULT 0,
+        avg_order_value REAL DEFAULT 0,
+        profit_margin REAL DEFAULT 0,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(category, period)
+    );
+    CREATE INDEX IF NOT EXISTS idx_category_roi_category ON category_roi(category);
+    CREATE INDEX IF NOT EXISTS idx_category_roi_period ON category_roi(period);
+
+    -- ROI停投策略表
+    CREATE TABLE IF NOT EXISTS roi_stop_rules (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        product_id TEXT,
+        category TEXT,
+        roi_threshold REAL DEFAULT 1.5,
+        action TEXT DEFAULT 'alert',
+        enabled INTEGER DEFAULT 1,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+
     CREATE INDEX IF NOT EXISTS idx_product_tags_product ON product_tags(product_id);
     CREATE INDEX IF NOT EXISTS idx_product_tags_tag ON product_tags(tag);
 

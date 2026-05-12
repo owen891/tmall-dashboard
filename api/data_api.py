@@ -2378,16 +2378,16 @@ def set_shop_target():
 
 @data_bp.route('/api/lifecycle', methods=['GET'])
 def get_lifecycle():
-    """Get product lifecycle data - monthly GSV for each product"""
+    """Get product lifecycle data with stage detection and scoring"""
     product_id = request.args.get('product_id', '')
     limit = request.args.get('limit', 50, type=int)
     limit = min(limit, 500)
 
     with get_db() as conn:
         if product_id:
-            # Single product lifecycle
+            # Single product lifecycle with stage analysis
             rows = conn.execute('''
-                SELECT p.product_id, p.title, p.image_url, p.tier, p.style,
+                SELECT p.product_id, p.title, p.image_url, p.tier, p.style, p.category,
                        d.month, d.payment_amount as gsv, d.payment_qty, d.refund_amount,
                        d.visitors, d.ad_spend, d.ad_roi, d.payment_conversion,
                        d.cart_rate, d.fav_rate, d.bounce_rate, d.avg_stay_duration,
@@ -2398,15 +2398,83 @@ def get_lifecycle():
                 WHERE p.product_id = ?
                 ORDER BY d.month
             ''', (product_id,)).fetchall()
+
+            results = [dict(r) for r in rows]
+
+            # 计算生命周期阶段
+            if results:
+                total_months = len(results)
+                total_gsv = sum(r['gsv'] for r in results)
+                avg_roi = sum(r['ad_roi'] for r in results if r['ad_roi']) / max(len([r for r in results if r['ad_roi']]), 1)
+                recent_gsv = sum(r['gsv'] for r in results[-3:]) if len(results) >= 3 else total_gsv
+                earlier_gsv = sum(r['gsv'] for r in results[:-3]) if len(results) > 3 else 0
+
+                # 判断生命周期阶段
+                stage = '导入期'
+                if total_months <= 3:
+                    stage = '导入期'
+                elif recent_gsv > earlier_gsv * 1.5 if earlier_gsv > 0 else total_gsv > 0:
+                    stage = '成长期'
+                elif total_months > 6 and abs(recent_gsv - earlier_gsv) / max(earlier_gsv, 1) < 0.2:
+                    stage = '成熟期'
+                elif recent_gsv < earlier_gsv * 0.7 if earlier_gsv > 0 else False:
+                    stage = '衰退期'
+
+                # 全周期评分（100分制）
+                score = 100
+                # ROI扣分（<1.5严重扣分）
+                if avg_roi < 1.5:
+                    score -= 40
+                elif avg_roi < 2.0:
+                    score -= 20
+                # 趋势扣分
+                if stage == '衰退期':
+                    score -= 20
+                # 退款率扣分
+                avg_refund_rate = sum(r['refund_amount'] / max(r['gsv'], 1) for r in results) / max(total_months, 1)
+                if avg_refund_rate > 0.3:
+                    score -= 20
+                elif avg_refund_rate > 0.15:
+                    score -= 10
+
+                # 建议操作
+                action = '保留'
+                if score < 60:
+                    action = '清仓淘汰'
+                elif score < 80:
+                    action = '观察优化'
+                elif stage == '衰退期':
+                    action = '打折清仓'
+                elif stage == '成熟期':
+                    action = '毛利最大化'
+                elif stage == '成长期':
+                    action = '持续内容投放'
+                elif avg_roi < 1.5:
+                    action = 'ROI警戒-考虑停投'
+
+                lifecycle_info = {
+                    'stage': stage,
+                    'score': max(score, 0),
+                    'action': action,
+                    'total_months': total_months,
+                    'total_gsv': round(total_gsv, 0),
+                    'avg_roi': round(avg_roi, 2),
+                    'avg_refund_rate': round(avg_refund_rate, 3)
+                }
+                return jsonify({'products': results, 'lifecycle': lifecycle_info})
+            return jsonify({'products': results, 'lifecycle': {}})
         else:
-            # Top products lifecycle summary
+            # Top products lifecycle summary with stage
             rows = conn.execute('''
-                SELECT p.product_id, p.title, p.image_url, p.tier, p.style,
+                SELECT p.product_id, p.title, p.image_url, p.tier, p.style, p.category,
                        GROUP_CONCAT(d.month || ':' || COALESCE(d.payment_amount,0)) as gsv_series,
                        SUM(d.payment_amount) as total_gsv,
                        COUNT(DISTINCT d.month) as active_months,
                        MIN(d.month) as first_month,
-                       MAX(d.month) as last_month
+                       MAX(d.month) as last_month,
+                       AVG(d.ad_roi) as avg_roi,
+                       SUM(d.refund_amount) / NULLIF(SUM(d.payment_amount), 0) as refund_rate,
+                       MAX(d.payment_amount) as peak_gsv
                 FROM products p
                 JOIN monthly_data d ON p.product_id = d.product_id
                 GROUP BY p.product_id
@@ -2414,7 +2482,41 @@ def get_lifecycle():
                 LIMIT ?
             ''', (limit,)).fetchall()
 
-    return jsonify([dict(r) for r in rows])
+            results = []
+            for r in rows:
+                row = dict(r)
+                # 简单阶段判断
+                months = row['active_months']
+                avg_roi = row['avg_roi'] or 0
+                refund_rate = row['refund_rate'] or 0
+
+                if months <= 3:
+                    row['stage'] = '导入期'
+                    row['action'] = 'ROI警戒' if avg_roi < 1.5 else '观察'
+                elif avg_roi > 2.5 and refund_rate < 0.15:
+                    row['stage'] = '成熟期'
+                    row['action'] = '毛利最大化'
+                elif months > 6:
+                    row['stage'] = '衰退期'
+                    row['action'] = '打折清仓'
+                else:
+                    row['stage'] = '成长期'
+                    row['action'] = '持续投放'
+
+                # 评分
+                score = 100
+                if avg_roi < 1.5: score -= 40
+                elif avg_roi < 2.0: score -= 20
+                if refund_rate > 0.3: score -= 20
+                elif refund_rate > 0.15: score -= 10
+                if row['stage'] == '衰退期': score -= 15
+                row['score'] = max(score, 0)
+                row['avg_roi'] = round(avg_roi, 2)
+                row['refund_rate'] = round(refund_rate, 3)
+
+                results.append(row)
+
+            return jsonify(results)
 
 # ==================== 商品健康度 API ====================
 
@@ -4044,3 +4146,353 @@ def delete_product_tag(tag_id):
         conn.execute('DELETE FROM product_tags WHERE id = ?', (tag_id,))
         conn.commit()
     return jsonify({'success': True})
+
+
+# ==================== 库存维度管理 ====================
+
+@data_bp.route('/api/inventory', methods=['GET'])
+def get_inventory():
+    """库存数据查询"""
+    dim = request.args.get('dim', 'day')
+    product_id = request.args.get('product_id', '')
+    date_range = request.args.get('date_range', '')
+
+    with get_db() as conn:
+        query = 'SELECT * FROM inventory WHERE 1=1'
+        params = []
+        if product_id:
+            query += ' AND product_id = ?'
+            params.append(product_id)
+        if date_range:
+            query += ' AND date >= ?'
+            params.append(date_range)
+        query += ' ORDER BY date DESC LIMIT 100'
+
+        rows = conn.execute(query, params).fetchall()
+        results = [dict(r) for r in rows]
+
+    return jsonify(results)
+
+
+@data_bp.route('/api/inventory/summary', methods=['GET'])
+def get_inventory_summary():
+    """库存概览：周转天数、缺货率、安全库存统计"""
+    with get_db() as conn:
+        summary = conn.execute('''
+            SELECT 
+                COUNT(DISTINCT product_id) as total_products,
+                AVG(turnover_days) as avg_turnover_days,
+                AVG(shortage_rate) as avg_shortage_rate,
+                SUM(CASE WHEN alert_level = 'red' THEN 1 ELSE 0 END) as shortage_alerts,
+                SUM(CASE WHEN alert_level = 'yellow' THEN 1 ELSE 0 END) as warning_alerts,
+                SUM(CASE WHEN alert_level = 'green' THEN 1 ELSE 0 END) as normal_count
+            FROM inventory
+            WHERE date >= date('now', '-30 days')
+        ''').fetchone()
+
+    if summary:
+        return jsonify({
+            'total_products': summary[0],
+            'avg_turnover_days': round(summary[1], 1) if summary[1] else 0,
+            'avg_shortage_rate': round(summary[2], 2) if summary[2] else 0,
+            'shortage_alerts': summary[3] or 0,
+            'warning_alerts': summary[4] or 0,
+            'normal_count': summary[5] or 0
+        })
+    return jsonify({})
+
+
+@data_bp.route('/api/inventory', methods=['POST'])
+def add_inventory():
+    """添加库存数据（支持批量）"""
+    data = request.get_json(force=True) or {}
+    items = data.get('items', [data])
+
+    with get_db() as conn:
+        for item in items:
+            product_id = item.get('product_id', '')
+            date = item.get('date', '')
+            stock_qty = item.get('stock_qty', 0)
+            sales_qty = item.get('sales_qty', 0)
+
+            # 计算周转天数 = 库存量 / 日均销量 * 30
+            turnover_days = (stock_qty / max(sales_qty, 1)) * 30 if sales_qty > 0 else 999
+
+            # 计算缺货率
+            shortage_rate = 0
+            if stock_qty < sales_qty:
+                shortage_rate = round((sales_qty - stock_qty) / max(sales_qty, 1), 2)
+
+            # 安全库存 = 日均销量 * 7天
+            safety_stock = int(sales_qty * 7) if sales_qty > 0 else 0
+
+            # 预警等级
+            alert_level = 'green'
+            if shortage_rate > 0.3:
+                alert_level = 'red'
+            elif shortage_rate > 0.1:
+                alert_level = 'yellow'
+
+            conn.execute('''
+                INSERT OR REPLACE INTO inventory 
+                (product_id, date, stock_qty, sales_qty, turnover_days, shortage_rate, safety_stock, alert_level)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ''', (product_id, date, stock_qty, sales_qty, round(turnover_days, 1), 
+                  shortage_rate, safety_stock, alert_level))
+        conn.commit()
+
+    return jsonify({'success': True, 'count': len(items)})
+
+
+@data_bp.route('/api/inventory/alerts', methods=['GET'])
+def get_inventory_alerts():
+    """库存预警列表"""
+    with get_db() as conn:
+        rows = conn.execute('''
+            SELECT i.*, p.title, p.category
+            FROM inventory i
+            LEFT JOIN products p ON i.product_id = p.product_id
+            WHERE i.alert_level IN ('red', 'yellow')
+            ORDER BY i.shortage_rate DESC
+            LIMIT 50
+        ''').fetchall()
+        results = [dict(r) for r in rows]
+
+    return jsonify(results)
+
+
+# ==================== 内容维度分析 ====================
+
+@data_bp.route('/api/content_analysis', methods=['GET'])
+def get_content_analysis():
+    """内容维度数据查询"""
+    product_id = request.args.get('product_id', '')
+    date_range = request.args.get('date_range', '')
+
+    with get_db() as conn:
+        query = 'SELECT * FROM content_analysis WHERE 1=1'
+        params = []
+        if product_id:
+            query += ' AND product_id = ?'
+            params.append(product_id)
+        if date_range:
+            query += ' AND date >= ?'
+            params.append(date_range)
+        query += ' ORDER BY date DESC LIMIT 100'
+
+        rows = conn.execute(query, params).fetchall()
+        results = [dict(r) for r in rows]
+
+    return jsonify(results)
+
+
+@data_bp.route('/api/content_analysis/summary', methods=['GET'])
+def get_content_summary():
+    """内容维度概览"""
+    with get_db() as conn:
+        summary = conn.execute('''
+            SELECT 
+                AVG(uv_value) as avg_uv_value,
+                AVG(avg_stay_duration) as avg_stay_duration,
+                SUM(content_gmv) as total_content_gmv,
+                SUM(live_gmv) as total_live_gmv,
+                SUM(short_video_gmv) as total_video_gmv,
+                SUM(article_gmv) as total_article_gmv,
+                AVG(content_ctr) as avg_ctr,
+                AVG(content_cvr) as avg_cvr
+            FROM content_analysis
+            WHERE date >= date('now', '-30 days')
+        ''').fetchone()
+
+    if summary:
+        return jsonify({
+            'avg_uv_value': round(summary[0], 2) if summary[0] else 0,
+            'avg_stay_duration': round(summary[1], 1) if summary[1] else 0,
+            'total_content_gmv': round(summary[2], 0) if summary[2] else 0,
+            'total_live_gmv': round(summary[3], 0) if summary[3] else 0,
+            'total_video_gmv': round(summary[4], 0) if summary[4] else 0,
+            'total_article_gmv': round(summary[5], 0) if summary[5] else 0,
+            'avg_ctr': round(summary[6], 3) if summary[6] else 0,
+            'avg_cvr': round(summary[7], 3) if summary[7] else 0
+        })
+    return jsonify({})
+
+
+@data_bp.route('/api/content_analysis', methods=['POST'])
+def add_content_analysis():
+    """添加内容分析数据"""
+    data = request.get_json(force=True) or {}
+    items = data.get('items', [data])
+
+    with get_db() as conn:
+        for item in items:
+            product_id = item.get('product_id', '')
+            date = item.get('date', '')
+            conn.execute('''
+                INSERT OR REPLACE INTO content_analysis 
+                (product_id, date, uv_value, avg_stay_duration, content_gmv, content_visitors,
+                 live_gmv, live_visitors, short_video_gmv, short_video_visitors,
+                 article_gmv, article_visitors, content_ctr, content_cvr)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ''', (product_id, date,
+                  item.get('uv_value', 0), item.get('avg_stay_duration', 0),
+                  item.get('content_gmv', 0), item.get('content_visitors', 0),
+                  item.get('live_gmv', 0), item.get('live_visitors', 0),
+                  item.get('short_video_gmv', 0), item.get('short_video_visitors', 0),
+                  item.get('article_gmv', 0), item.get('article_visitors', 0),
+                  item.get('content_ctr', 0), item.get('content_cvr', 0)))
+        conn.commit()
+
+    return jsonify({'success': True, 'count': len(items)})
+
+
+# ==================== 品类投产ROI分析 ====================
+
+@data_bp.route('/api/category_roi', methods=['GET'])
+def get_category_roi():
+    """品类ROI数据查询"""
+    period = request.args.get('period', '')
+
+    with get_db() as conn:
+        query = 'SELECT * FROM category_roi WHERE 1=1'
+        params = []
+        if period:
+            query += ' AND period = ?'
+            params.append(period)
+        query += ' ORDER BY roi DESC'
+
+        rows = conn.execute(query, params).fetchall()
+        results = [dict(r) for r in rows]
+
+    return jsonify(results)
+
+
+@data_bp.route('/api/category_roi/summary', methods=['GET'])
+def get_category_roi_summary():
+    """品类ROI概览"""
+    with get_db() as conn:
+        summary = conn.execute('''
+            SELECT 
+                COUNT(DISTINCT category) as total_categories,
+                AVG(roi) as avg_roi,
+                SUM(ad_spend) as total_spend,
+                SUM(gmv) as total_gmv,
+                AVG(profit_margin) as avg_profit_margin
+            FROM category_roi
+            WHERE period >= date('now', '-30 days')
+        ''').fetchone()
+
+    if summary:
+        return jsonify({
+            'total_categories': summary[0] or 0,
+            'avg_roi': round(summary[1], 2) if summary[1] else 0,
+            'total_spend': round(summary[2], 0) if summary[2] else 0,
+            'total_gmv': round(summary[3], 0) if summary[3] else 0,
+            'avg_profit_margin': round(summary[4], 2) if summary[4] else 0
+        })
+    return jsonify({})
+
+
+@data_bp.route('/api/category_roi', methods=['POST'])
+def add_category_roi():
+    """添加品类ROI数据"""
+    data = request.get_json(force=True) or {}
+    items = data.get('items', [data])
+
+    with get_db() as conn:
+        for item in items:
+            category = item.get('category', '')
+            period = item.get('period', '')
+            ad_spend = item.get('ad_spend', 0)
+            gmv = item.get('gmv', 0)
+            roi = gmv / max(ad_spend, 1)
+            orders = item.get('orders', 0)
+            visitors = item.get('visitors', 0)
+            conversion_rate = orders / max(visitors, 1)
+            avg_order_value = gmv / max(orders, 1)
+            profit_margin = item.get('profit_margin', 0)
+
+            conn.execute('''
+                INSERT OR REPLACE INTO category_roi 
+                (category, period, ad_spend, gmv, roi, orders, visitors, 
+                 conversion_rate, avg_order_value, profit_margin)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ''', (category, period, ad_spend, gmv, round(roi, 2), orders, visitors,
+                  round(conversion_rate, 3), round(avg_order_value, 2), profit_margin))
+        conn.commit()
+
+    return jsonify({'success': True, 'count': len(items)})
+
+
+# ==================== ROI停投策略 ====================
+
+@data_bp.route('/api/roi_stop_rules', methods=['GET'])
+def get_roi_stop_rules():
+    """获取ROI停投规则"""
+    with get_db() as conn:
+        rows = conn.execute('SELECT * FROM roi_stop_rules ORDER BY created_at DESC').fetchall()
+        results = [dict(r) for r in rows]
+    return jsonify(results)
+
+
+@data_bp.route('/api/roi_stop_rules', methods=['POST'])
+def add_roi_stop_rule():
+    """添加ROI停投规则"""
+    data = request.get_json(force=True) or {}
+    with get_db() as conn:
+        conn.execute('''
+            INSERT INTO roi_stop_rules (product_id, category, roi_threshold, action, enabled)
+            VALUES (?, ?, ?, ?, ?)
+        ''', (data.get('product_id', ''), data.get('category', ''), 
+              data.get('roi_threshold', 1.5), data.get('action', 'alert'),
+              data.get('enabled', 1)))
+        conn.commit()
+    return jsonify({'success': True})
+
+
+@data_bp.route('/api/roi_stop_rules/<int:rule_id>', methods=['DELETE'])
+def delete_roi_stop_rule(rule_id):
+    """删除ROI停投规则"""
+    with get_db() as conn:
+        conn.execute('DELETE FROM roi_stop_rules WHERE id = ?', (rule_id,))
+        conn.commit()
+    return jsonify({'success': True})
+
+
+@data_bp.route('/api/roi_stop_checks', methods=['GET'])
+def roi_stop_checks():
+    """ROI停投检查 - 返回需要停投或预警的商品"""
+    with get_db() as conn:
+        # 查询ROI低于阈值的商品
+        rows = conn.execute('''
+            SELECT p.product_id, p.title, p.category, 
+                   pd.roi, pd.cost, pd.total_gmv,
+                   r.roi_threshold, r.action
+            FROM paid_detail pd
+            JOIN products p ON pd.product_id = p.product_id
+            LEFT JOIN roi_stop_rules r ON pd.product_id = r.product_id OR p.category = r.category
+            WHERE r.enabled = 1 OR r.id IS NULL
+            AND pd.roi < COALESCE(r.roi_threshold, 1.5)
+            AND pd.date_range >= date('now', '-7 days')
+            ORDER BY pd.roi ASC
+            LIMIT 50
+        ''').fetchall()
+
+        results = []
+        for r in rows:
+            roi = r[3]
+            threshold = r[6] or 1.5
+            action = r[7] or 'alert'
+            severity = 'danger' if roi < threshold * 0.5 else 'warning'
+            results.append({
+                'product_id': r[0],
+                'title': r[1],
+                'category': r[2],
+                'current_roi': round(roi, 2),
+                'threshold': threshold,
+                'action': action,
+                'severity': severity,
+                'message': f'ROI {round(roi, 2)} 低于阈值 {threshold}，建议{"停投" if action == "stop" else "预警"}'
+            })
+
+    return jsonify(results)
