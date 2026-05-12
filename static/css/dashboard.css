@@ -1367,3 +1367,320 @@ td.editable-cell:hover { background: var(--bg-hover); }
 .task-list { display: flex; flex-direction: column; gap: 8px; max-height: 500px; overflow-y: auto; }
 .task-item { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; transition: all 0.2s; }
 .task-item:hover { border-color: var(--accent); }
+
+/* ================================================================
+   玻璃态 + 渐变彩色卡片主题
+================================================================ */
+
+/* 玻璃态基础样式 */
+.glass-card {
+    background: rgba(255, 255, 255, 0.06);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 16px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+}
+
+.glass-card:hover {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(255, 255, 255, 0.15);
+    box-shadow: 0 12px 48px rgba(0, 0, 0, 0.3);
+    transform: translateY(-2px);
+}
+
+/* 渐变彩色卡片 */
+.gradient-card {
+    border-radius: 16px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+    transition: all 0.3s ease;
+    position: relative;
+    overflow: hidden;
+}
+
+.gradient-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.1) 0%, transparent 50%);
+    pointer-events: none;
+}
+
+.gradient-card:hover {
+    transform: translateY(-4px) scale(1.02);
+    box-shadow: 0 16px 64px rgba(0, 0, 0, 0.35);
+}
+
+/* 渐变色彩方案 */
+.gradient-purple {
+    background: linear-gradient(135deg, rgba(139, 92, 246, 0.3) 0%, rgba(139, 92, 246, 0.15) 100%);
+    border-color: rgba(139, 92, 246, 0.3);
+}
+
+.gradient-cyan {
+    background: linear-gradient(135deg, rgba(6, 182, 212, 0.3) 0%, rgba(6, 182, 212, 0.15) 100%);
+    border-color: rgba(6, 182, 212, 0.3);
+}
+
+.gradient-green {
+    background: linear-gradient(135deg, rgba(16, 185, 129, 0.3) 0%, rgba(16, 185, 129, 0.15) 100%);
+    border-color: rgba(16, 185, 129, 0.3);
+}
+
+.gradient-orange {
+    background: linear-gradient(135deg, rgba(245, 158, 11, 0.3) 0%, rgba(245, 158, 11, 0.15) 100%);
+    border-color: rgba(245, 158, 11, 0.3);
+}
+
+.gradient-pink {
+    background: linear-gradient(135deg, rgba(236, 72, 153, 0.3) 0%, rgba(236, 72, 153, 0.15) 100%);
+    border-color: rgba(236, 72, 153, 0.3);
+}
+
+.gradient-blue {
+    background: linear-gradient(135deg, rgba(59, 130, 246, 0.3) 0%, rgba(59, 130, 246, 0.15) 100%);
+    border-color: rgba(59, 130, 246, 0.3);
+}
+
+.gradient-rose {
+    background: linear-gradient(135deg, rgba(244, 63, 94, 0.3) 0%, rgba(244, 63, 94, 0.15) 100%);
+    border-color: rgba(244, 63, 94, 0.3);
+}
+
+.gradient-amber {
+    background: linear-gradient(135deg, rgba(251, 191, 36, 0.3) 0%, rgba(251, 191, 36, 0.15) 100%);
+    border-color: rgba(251, 191, 36, 0.3);
+}
+
+/* 玻璃态KPI卡片 */
+.kpi-glass {
+    padding: 20px;
+    position: relative;
+}
+
+.kpi-glass .kpi-icon {
+    width: 48px;
+    height: 48px;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.4rem;
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+}
+
+.kpi-glass .kpi-label {
+    font-size: 0.78rem;
+    color: rgba(255, 255, 255, 0.7);
+    margin-bottom: 6px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    font-weight: 600;
+}
+
+.kpi-glass .kpi-value {
+    font-size: 1.8rem;
+    font-weight: 800;
+    color: #fff;
+    line-height: 1.1;
+}
+
+.kpi-glass .kpi-change {
+    font-size: 0.78rem;
+    margin-top: 6px;
+    padding: 4px 10px;
+    border-radius: 8px;
+    display: inline-block;
+    font-weight: 600;
+}
+
+.kpi-glass .kpi-change.positive {
+    background: rgba(16, 185, 129, 0.2);
+    color: #6ee7b7;
+}
+
+.kpi-glass .kpi-change.negative {
+    background: rgba(239, 68, 68, 0.2);
+    color: #fca5a5;
+}
+
+/* 玻璃态网格布局 */
+.glass-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: 16px;
+}
+
+/* 模块卡片样式 */
+.module-card {
+    border-radius: 16px;
+    padding: 16px;
+    transition: all 0.3s ease;
+}
+
+.module-card:hover {
+    transform: translateY(-2px);
+}
+
+.module-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 16px;
+}
+
+.module-title {
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: rgba(255, 255, 255, 0.95);
+}
+
+.module-action {
+    font-size: 0.8rem;
+    color: rgba(255, 255, 255, 0.5);
+    cursor: pointer;
+    transition: color 0.15s;
+}
+
+.module-action:hover {
+    color: rgba(255, 255, 255, 0.8);
+}
+
+/* 子卡片网格 */
+.sub-cards-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+}
+
+.sub-card {
+    padding: 12px;
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    transition: all 0.2s ease;
+}
+
+.sub-card:hover {
+    background: rgba(255, 255, 255, 0.1);
+    transform: scale(1.02);
+}
+
+.sub-card-icon {
+    width: 36px;
+    height: 36px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.1rem;
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    flex-shrink: 0;
+}
+
+.sub-card-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.sub-card-label {
+    font-size: 0.72rem;
+    color: rgba(255, 255, 255, 0.6);
+    margin-bottom: 2px;
+}
+
+.sub-card-value {
+    font-size: 1rem;
+    font-weight: 700;
+    color: #fff;
+}
+
+/* 统计卡片 */
+.stats-card {
+    padding: 14px;
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    text-align: center;
+}
+
+.stats-value {
+    font-size: 1.4rem;
+    font-weight: 700;
+    color: #fff;
+}
+
+.stats-label {
+    font-size: 0.72rem;
+    color: rgba(255, 255, 255, 0.6);
+    margin-top: 4px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+/* 响应式 */
+@media (max-width: 1024px) {
+    .glass-grid {
+        grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    }
+    .sub-cards-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+@media (max-width: 768px) {
+    .glass-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+    .sub-cards-grid {
+        grid-template-columns: 1fr;
+    }
+    .kpi-glass .kpi-value {
+        font-size: 1.4rem;
+    }
+}
+
+/* 亮色主题适配 */
+:root.light .glass-card {
+    background: rgba(0, 0, 0, 0.04);
+    border-color: rgba(0, 0, 0, 0.08);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.08);
+}
+
+:root.light .gradient-card {
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.08);
+}
+
+:root.light .kpi-glass .kpi-label {
+    color: rgba(0, 0, 0, 0.5);
+}
+
+:root.light .kpi-glass .kpi-value {
+    color: #111;
+}
+
+:root.light .sub-card {
+    background: rgba(0, 0, 0, 0.03);
+    border-color: rgba(0, 0, 0, 0.06);
+}
+
+:root.light .sub-card-label {
+    color: rgba(0, 0, 0, 0.5);
+}
+
+:root.light .sub-card-value {
+    color: #111;
+}
+
+:root.light .module-title {
+    color: #111;
+}

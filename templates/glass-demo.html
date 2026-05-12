@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>玻璃态 + 渐变彩色卡片演示</title>
+    <link rel="stylesheet" href="/static/css/dashboard.css">
+    <style>
+        body {
+            margin: 0;
+            padding: 24px;
+            background: linear-gradient(135deg, #0b0f19 0%, #111827 50%, #1e2433 100%);
+            min-height: 100vh;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+        }
+        .page-header {
+            text-align: center;
+            margin-bottom: 32px;
+            color: #fff;
+        }
+        .page-title {
+            font-size: 2rem;
+            font-weight: 800;
+            margin-bottom: 8px;
+            background: linear-gradient(135deg, #06b6d4, #8b5cf6);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        .page-subtitle {
+            color: rgba(255, 255, 255, 0.6);
+            font-size: 0.95rem;
+        }
+        .section-title {
+            color: rgba(255, 255, 255, 0.9);
+            font-size: 1.1rem;
+            font-weight: 700;
+            margin: 32px 0 16px;
+        }
+        .demo-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 20px;
+            margin-bottom: 32px;
+        }
+        .demo-module-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 20px;
+            margin-bottom: 32px;
+        }
+        @media (max-width: 1024px) {
+            .demo-module-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+        /* 示例图标 */
+        .icon {
+            display: inline-flex;
+        }
+    </style>
+</head>
+<body>
+    <div class="page-header">
+        <h1 class="page-title">✨ 玻璃态 + 渐变彩色卡片</h1>
+        <p class="page-subtitle">现代数据仪表盘UI设计风格演示</p>
+    </div>
+
+    <div class="section-title">📊 KPI玻璃态卡片</div>
+    <div class="glass-grid">
+        <div class="gradient-card gradient-cyan kpi-glass">
+            <div class="kpi-icon">💰</div>
+            <div class="kpi-label">总销售额</div>
+            <div class="kpi-value">¥1,234,567</div>
+            <div class="kpi-change positive">↑ +12.5%</div>
+        </div>
+
+        <div class="gradient-card gradient-purple kpi-glass">
+            <div class="kpi-icon">👥</div>
+            <div class="kpi-label">访客数量</div>
+            <div class="kpi-value">45,678</div>
+            <div class="kpi-change positive">↑ +8.2%</div>
+        </div>
+
+        <div class="gradient-card gradient-green kpi-glass">
+            <div class="kpi-icon">📦</div>
+            <div class="kpi-label">订单数量</div>
+            <div class="kpi-value">2,345</div>
+            <div class="kpi-change negative">↓ -3.1%</div>
+        </div>
+
+        <div class="gradient-card gradient-orange kpi-glass">
+            <div class="kpi-icon">📈</div>
+            <div class="kpi-label">转化率</div>
+            <div class="kpi-value">5.2%</div>
+            <div class="kpi-change positive">↑ +1.8%</div>
+        </div>
+    </div>
+
+    <div class="section-title">🎯 模块卡片（含子卡片网格）</div>
+    <div class="demo-module-grid">
+        <div class="gradient-card gradient-blue module-card">
+            <div class="module-card-header">
+                <div class="module-title">📊 销售分析</div>
+                <div class="module-action">更多 →</div>
+            </div>
+            <div class="sub-cards-grid">
+                <div class="sub-card">
+                    <div class="sub-card-icon">💵</div>
+                    <div class="sub-card-info">
+                        <div class="sub-card-label">日销售</div>
+                        <div class="sub-card-value">¥89,234</div>
+                    </div>
+                </div>
+                <div class="sub-card">
+                    <div class="sub-card-icon">📊</div>
+                    <div class="sub-card-info">
+                        <div class="sub-card-label">周销售</div>
+                        <div class="sub-card-value">¥654,321</div>
+                    </div>
+                </div>
+                <div class="sub-card">
+                    <div class="sub-card-icon">📅</div>
+                    <div class="sub-card-info">
+                        <div class="sub-card-label">月销售</div>
+                        <div class="sub-card-value">¥2,345,678</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="gradient-card gradient-rose module-card">
+            <div class="module-card-header">
+                <div class="module-title">👥 用户分析</div>
+                <div class="module-action">更多 →</div>
+            </div>
+            <div class="sub-cards-grid">
+                <div class="sub-card">
+                    <div class="sub-card-icon">🆕</div>
+                    <div class="sub-card-info">
+                        <div class="sub-card-label">新用户</div>
+                        <div class="sub-card-value">1,234</div>
+                    </div>
+                </div>
+                <div class="sub-card">
+                    <div class="sub-card-icon">🔄</div>
+                    <div class="sub-card-info">
+                        <div class="sub-card-label">活跃用户</div>
+                        <div class="sub-card-value">8,901</div>
+                    </div>
+                </div>
+                <div class="sub-card">
+                    <div class="sub-card-icon">💎</div>
+                    <div class="sub-card-info">
+                        <div class="sub-card-label">VIP用户</div>
+                        <div class="sub-card-value">567</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="section-title">🌈 所有渐变色彩方案</div>
+    <div class="demo-grid">
+        <div class="gradient-card gradient-purple module-card">
+            <div class="module-card-header">
+                <div class="module-title">💜 紫色主题</div>
+            </div>
+            <div style="padding-top: 8px; color: rgba(255,255,255,0.7); font-size: 0.85rem;">
+                适合表现创意、创新、高端感
+            </div>
+        </div>
+
+        <div class="gradient-card gradient-cyan module-card">
+            <div class="module-card-header">
+                <div class="module-title">💙 青色主题</div>
+            </div>
+            <div style="padding-top: 8px; color: rgba(255,255,255,0.7); font-size: 0.85rem;">
+                适合表现科技、数据、现代感
+            </div>
+        </div>
+
+        <div class="gradient-card gradient-green module-card">
+            <div class="module-card-header">
+                <div class="module-title">💚 绿色主题</div>
+            </div>
+            <div style="padding-top: 8px; color: rgba(255,255,255,0.7); font-size: 0.85rem;">
+                适合表现健康、增长、可持续
+            </div>
+        </div>
+
+        <div class="gradient-card gradient-orange module-card">
+            <div class="module-card-header">
+                <div class="module-title">🧡 橙色主题</div>
+            </div>
+            <div style="padding-top: 8px; color: rgba(255,255,255,0.7); font-size: 0.85rem;">
+                适合表现活力、能量、热情
+            </div>
+        </div>
+
+        <div class="gradient-card gradient-pink module-card">
+            <div class="module-card-header">
+                <div class="module-title">💗 粉色主题</div>
+            </div>
+            <div style="padding-top: 8px; color: rgba(255,255,255,0.7); font-size: 0.85rem;">
+                适合表现时尚、年轻、创意
+            </div>
+        </div>
+
+        <div class="gradient-card gradient-blue module-card">
+            <div class="module-card-header">
+                <div class="module-title">🔵 蓝色主题</div>
+            </div>
+            <div style="padding-top: 8px; color: rgba(255,255,255,0.7); font-size: 0.85rem;">
+                适合表现专业、信任、稳定
+            </div>
+        </div>
+
+        <div class="gradient-card gradient-rose module-card">
+            <div class="module-card-header">
+                <div class="module-title">🟣 玫瑰色主题</div>
+            </div>
+            <div style="padding-top: 8px; color: rgba(255,255,255,0.7); font-size: 0.85rem;">
+                适合表现优雅、精致、高端
+            </div>
+        </div>
+
+        <div class="gradient-card gradient-amber module-card">
+            <div class="module-card-header">
+                <div class="module-title">🟡 琥珀色主题</div>
+            </div>
+            <div style="padding-top: 8px; color: rgba(255,255,255,0.7); font-size: 0.85rem;">
+                适合表现质量、卓越、优秀
+            </div>
+        </div>
+    </div>
+
+    <div class="section-title">📦 统计卡片网格</div>
+    <div class="glass-grid">
+        <div class="glass-card stats-card">
+            <div class="stats-value">89%</div>
+            <div class="stats-label">满意度</div>
+        </div>
+
+        <div class="glass-card stats-card">
+            <div class="stats-value">4.8</div>
+            <div class="stats-label">评分</div>
+        </div>
+
+        <div class="glass-card stats-card">
+            <div class="stats-value">234</div>
+            <div class="stats-label">评论数</div>
+        </div>
+
+        <div class="glass-card stats-card">
+            <div class="stats-value">12h</div>
+            <div class="stats-label">响应时间</div>
+        </div>
+    </div>
+
+</body>
+</html>
