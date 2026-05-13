@@ -50,52 +50,6 @@ html { font-size: 14px; }
     --topbar-height: 44px;
 }
 
-/* ========== 亮色主题 ========== */
-:root.light {
-    --bg-deep: #F1F5F9;
-    --bg-base: #FFFFFF;
-    --bg-surface: #F8FAFC;
-    --bg-card: #FFFFFF;
-    --bg-elevated: #F1F5F9;
-    --bg-hover: rgba(6,182,212,0.04);
-    --border: rgba(15,23,42,0.08);
-    --border-light: rgba(15,23,42,0.05);
-    --border-active: rgba(6,182,212,0.5);
-    --text-primary: #0F172A;
-    --text-secondary: #475569;
-    --text-muted: #94A3B8;
-    --accent: #0891B2;
-    --accent-hover: #0E7490;
-    --accent-bg: rgba(6,182,212,0.06);
-    --accent-muted: rgba(6,182,212,0.7);
-    --success: #059669;
-    --success-bg: rgba(5,150,105,0.08);
-    --warning: #D97706;
-    --warning-bg: rgba(217,119,6,0.08);
-    --danger: #E11D48;
-    --danger-bg: rgba(225,29,72,0.08);
-    --gold: #D97706;
-    --silver: #9CA3AF;
-    --bronze: #B45309;
-    --shadow-xs: 0 1px 2px rgba(0,0,0,0.04);
-    --shadow-sm: 0 1px 3px rgba(0,0,0,0.05), 0 1px 2px rgba(0,0,0,0.03);
-    --shadow-md: 0 4px 12px rgba(0,0,0,0.06);
-    --shadow-lg: 0 12px 32px rgba(0,0,0,0.08);
-    --shadow-hover: 0 8px 24px rgba(0,0,0,0.10);
-    --kpi-label-color: #94A3B8;
-    --table-header-bg: #F8FAFC;
-    --table-stripe: #F8FAFC;
-    --input-bg: #F1F5F9;
-    --hover-bg: rgba(6,182,212,0.04);
-    --card-border: rgba(15,23,42,0.06);
-}
-:root.light .alert-entry { background: rgba(0,0,0,0.04); }
-:root.light .review-upload-area { background: rgba(0,0,0,0.04); }
-:root.light .review-item { background: rgba(0,0,0,0.04); }
-:root.light .review-item:hover { background: rgba(0,0,0,0.08); }
-:root.light .tool-result-area { background: rgba(0,0,0,0.04); }
-:root.light .chart-save-btn { background: rgba(0,0,0,0.06); }
-
 /* ========== Body & Typography ========== */
 body {
     font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
@@ -207,7 +161,7 @@ body {
     transition: left 0.25s cubic-bezier(0.4,0,0.2,1);
 }
 body.sidebar-collapsed .top-bar { left: var(--sidebar-collapsed); }
-:root.light .top-bar { background: rgba(255,255,255,0.8); }
+.top-bar { background: rgba(255,255,255,0.8); }
 .top-bar-left { display: flex; align-items: center; gap: 16px; }
 .top-bar-right { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
 .logo { font-size: 1rem; font-weight: 700; color: var(--text-primary); white-space: nowrap; display: none; }
@@ -1029,31 +983,21 @@ body.sidebar-collapsed .main-container { margin-left: var(--sidebar-collapsed); 
 #productTable thead th:nth-child(1),
 #productTable thead th:nth-child(2),
 #productTable thead .th-sticky-left-1,
-#productTable thead .th-sticky-left-2 { background: #111827; }
-#productTable thead .th-sticky-left-2 { box-shadow: 4px 0 8px rgba(0,0,0,0.5); }
-/* 亮色主题覆盖 */
-:root.light #productTable .th-sticky-left-1,
-:root.light #productTable .td-rank,
-:root.light #productTable th:nth-child(1),
-:root.light #productTable td:nth-child(1) { background: #FFFFFF; }
-:root.light #productTable .th-sticky-left-2,
-:root.light #productTable .td-product,
-:root.light #productTable th:nth-child(2),
-:root.light #productTable td:nth-child(2) { background: #FFFFFF; box-shadow: 4px 0 8px rgba(0,0,0,0.12); }
-:root.light #productTable thead th:nth-child(1),
-:root.light #productTable thead th:nth-child(2),
-:root.light #productTable thead .th-sticky-left-1,
-:root.light #productTable thead .th-sticky-left-2 { background: #F8FAFC; }
-:root.light #productTable thead .th-sticky-left-2 { box-shadow: 4px 0 8px rgba(0,0,0,0.12); }
+#productTable thead .th-sticky-left-2 { background: #F8FAFC; }
+#productTable thead .th-sticky-left-2 { box-shadow: 4px 0 8px rgba(0,0,0,0.12); }
+#productTable .th-sticky-left-1,
+#productTable .td-rank,
+#productTable th:nth-child(1),
+#productTable td:nth-child(1) { background: #FFFFFF; }
+#productTable .th-sticky-left-2,
+#productTable .td-product,
+#productTable th:nth-child(2),
+#productTable td:nth-child(2) { background: #FFFFFF; box-shadow: 4px 0 8px rgba(0,0,0,0.12); }
 /* Sticky column background for striped/hover rows */
 #productTable tbody tr:nth-child(even) td:nth-child(1),
-#productTable tbody tr:nth-child(even) td:nth-child(2) { background: rgba(148,163,184,0.03); }
-:root.light #productTable tbody tr:nth-child(even) td:nth-child(1),
-:root.light #productTable tbody tr:nth-child(even) td:nth-child(2) { background: #F8FAFC; }
+#productTable tbody tr:nth-child(even) td:nth-child(2) { background: #F8FAFC; }
 #productTable tbody tr:hover td:nth-child(1),
-#productTable tbody tr:hover td:nth-child(2) { background: rgba(6,182,212,0.06); }
-:root.light #productTable tbody tr:hover td:nth-child(1),
-:root.light #productTable tbody tr:hover td:nth-child(2) { background: rgba(6,182,212,0.04); }
+#productTable tbody tr:hover td:nth-child(2) { background: rgba(59,130,246,0.06); }
 .detail-row td { padding: 0 !important; background: var(--bg-elevated); }
 .row-detail-content { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 12px; padding: 12px 20px; }
 .row-detail-item { display: flex; flex-direction: column; gap: 2px; }
@@ -1399,17 +1343,6 @@ td.editable-cell:hover { background: var(--bg-hover); }
     overflow: hidden;
 }
 
-.gradient-card::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: linear-gradient(135deg, rgba(255, 255, 255, 0.6) 0%, rgba(255, 255, 255, 0.2) 100%);
-    pointer-events: none;
-}
-
 .gradient-card:hover {
     transform: translateY(-2px);
     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
@@ -1462,6 +1395,7 @@ td.editable-cell:hover { background: var(--bg-hover); }
     position: relative;
 }
 
+/* KPI图标 - 与卡片配色一致 */
 .kpi-glass .kpi-icon {
     width: 44px;
     height: 44px;
@@ -1470,11 +1404,21 @@ td.editable-cell:hover { background: var(--bg-hover); }
     align-items: center;
     justify-content: center;
     font-size: 1.3rem;
-    background: rgba(255, 255, 255, 0.8);
-    border: 1px solid rgba(15, 23, 42, 0.08);
+    background: rgba(255, 255, 255, 0.6);
+    border: 1px solid rgba(15, 23, 42, 0.06);
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
     margin-bottom: 12px;
 }
+
+/* 各配色方案的图标背景 */
+.gradient-cyan .kpi-icon { background: rgba(56, 189, 248, 0.2); border-color: rgba(56, 189, 248, 0.2); }
+.gradient-blue .kpi-icon { background: rgba(59, 130, 246, 0.2); border-color: rgba(59, 130, 246, 0.2); }
+.gradient-purple .kpi-icon { background: rgba(147, 112, 219, 0.2); border-color: rgba(147, 112, 219, 0.2); }
+.gradient-green .kpi-icon { background: rgba(34, 197, 94, 0.2); border-color: rgba(34, 197, 94, 0.2); }
+.gradient-orange .kpi-icon { background: rgba(251, 146, 60, 0.2); border-color: rgba(251, 146, 60, 0.2); }
+.gradient-amber .kpi-icon { background: rgba(251, 191, 36, 0.2); border-color: rgba(251, 191, 36, 0.2); }
+.gradient-rose .kpi-icon { background: rgba(244, 63, 94, 0.2); border-color: rgba(244, 63, 94, 0.2); }
+.gradient-pink .kpi-icon { background: rgba(236, 72, 153, 0.2); border-color: rgba(236, 72, 153, 0.2); }
 
 .kpi-glass .kpi-label {
     font-size: 0.82rem;
@@ -1521,7 +1465,6 @@ td.editable-cell:hover { background: var(--bg-hover); }
     border-radius: 16px;
     padding: 20px;
     transition: all 0.3s ease;
-    background: #FFFFFF;
 }
 
 .module-card:hover {
