@@ -1343,78 +1343,50 @@ td.editable-cell:hover { background: var(--bg-hover); }
     overflow: hidden;
 }
 
-.gradient-card::after {
-    content: '';
-    position: absolute;
-    top: -50%;
-    left: -50%;
-    width: 200%;
-    height: 200%;
-    background: linear-gradient(
-        45deg,
-        transparent 30%,
-        rgba(255, 255, 255, 0.15) 50%,
-        transparent 70%
-    );
-    transform: rotate(45deg);
-    transition: all 0.5s ease;
-    opacity: 0;
-}
-
 .gradient-card:hover {
     transform: translateY(-3px);
     box-shadow: 0 12px 32px rgba(0, 0, 0, 0.1);
 }
 
-.gradient-card:hover::after {
-    opacity: 1;
-    animation: shimmer 2s infinite;
-}
-
-@keyframes shimmer {
-    0% { transform: translateX(-100%) rotate(45deg); }
-    100% { transform: translateX(100%) rotate(45deg); }
-}
-
 /* 渐变色彩方案 - 柔和清新风格 */
 .gradient-purple {
-    background: linear-gradient(135deg, rgba(147, 112, 219, 0.15) 0%, rgba(147, 112, 219, 0.06) 100%);
-    border-color: rgba(147, 112, 219, 0.15);
+    background: linear-gradient(135deg, rgba(147, 112, 219, 0.25) 0%, rgba(147, 112, 219, 0.10) 100%);
+    border-color: rgba(147, 112, 219, 0.25);
 }
 
 .gradient-cyan {
-    background: linear-gradient(135deg, rgba(56, 189, 248, 0.15) 0%, rgba(56, 189, 248, 0.06) 100%);
-    border-color: rgba(56, 189, 248, 0.15);
+    background: linear-gradient(135deg, rgba(56, 189, 248, 0.25) 0%, rgba(56, 189, 248, 0.10) 100%);
+    border-color: rgba(56, 189, 248, 0.25);
 }
 
 .gradient-green {
-    background: linear-gradient(135deg, rgba(34, 197, 94, 0.15) 0%, rgba(34, 197, 94, 0.06) 100%);
-    border-color: rgba(34, 197, 94, 0.15);
+    background: linear-gradient(135deg, rgba(34, 197, 94, 0.25) 0%, rgba(34, 197, 94, 0.10) 100%);
+    border-color: rgba(34, 197, 94, 0.25);
 }
 
 .gradient-orange {
-    background: linear-gradient(135deg, rgba(251, 146, 60, 0.15) 0%, rgba(251, 146, 60, 0.06) 100%);
-    border-color: rgba(251, 146, 60, 0.15);
+    background: linear-gradient(135deg, rgba(251, 146, 60, 0.25) 0%, rgba(251, 146, 60, 0.10) 100%);
+    border-color: rgba(251, 146, 60, 0.25);
 }
 
 .gradient-pink {
-    background: linear-gradient(135deg, rgba(236, 72, 153, 0.15) 0%, rgba(236, 72, 153, 0.06) 100%);
-    border-color: rgba(236, 72, 153, 0.15);
+    background: linear-gradient(135deg, rgba(236, 72, 153, 0.25) 0%, rgba(236, 72, 153, 0.10) 100%);
+    border-color: rgba(236, 72, 153, 0.25);
 }
 
 .gradient-blue {
-    background: linear-gradient(135deg, rgba(59, 130, 246, 0.15) 0%, rgba(59, 130, 246, 0.06) 100%);
-    border-color: rgba(59, 130, 246, 0.15);
+    background: linear-gradient(135deg, rgba(59, 130, 246, 0.25) 0%, rgba(59, 130, 246, 0.10) 100%);
+    border-color: rgba(59, 130, 246, 0.25);
 }
 
 .gradient-rose {
-    background: linear-gradient(135deg, rgba(244, 63, 94, 0.15) 0%, rgba(244, 63, 94, 0.06) 100%);
-    border-color: rgba(244, 63, 94, 0.15);
+    background: linear-gradient(135deg, rgba(244, 63, 94, 0.25) 0%, rgba(244, 63, 94, 0.10) 100%);
+    border-color: rgba(244, 63, 94, 0.25);
 }
 
 .gradient-amber {
-    background: linear-gradient(135deg, rgba(251, 191, 36, 0.15) 0%, rgba(251, 191, 36, 0.06) 100%);
-    border-color: rgba(251, 191, 36, 0.15);
+    background: linear-gradient(135deg, rgba(251, 191, 36, 0.25) 0%, rgba(251, 191, 36, 0.10) 100%);
+    border-color: rgba(251, 191, 36, 0.25);
 }
 
 /* 玻璃态KPI卡片 */
@@ -1439,14 +1411,14 @@ td.editable-cell:hover { background: var(--bg-hover); }
 }
 
 /* 各配色方案的图标背景 */
-.gradient-cyan .kpi-icon { background: rgba(56, 189, 248, 0.2); border-color: rgba(56, 189, 248, 0.2); }
-.gradient-blue .kpi-icon { background: rgba(59, 130, 246, 0.2); border-color: rgba(59, 130, 246, 0.2); }
-.gradient-purple .kpi-icon { background: rgba(147, 112, 219, 0.2); border-color: rgba(147, 112, 219, 0.2); }
-.gradient-green .kpi-icon { background: rgba(34, 197, 94, 0.2); border-color: rgba(34, 197, 94, 0.2); }
-.gradient-orange .kpi-icon { background: rgba(251, 146, 60, 0.2); border-color: rgba(251, 146, 60, 0.2); }
-.gradient-amber .kpi-icon { background: rgba(251, 191, 36, 0.2); border-color: rgba(251, 191, 36, 0.2); }
-.gradient-rose .kpi-icon { background: rgba(244, 63, 94, 0.2); border-color: rgba(244, 63, 94, 0.2); }
-.gradient-pink .kpi-icon { background: rgba(236, 72, 153, 0.2); border-color: rgba(236, 72, 153, 0.2); }
+.gradient-cyan .kpi-icon { background: rgba(56, 189, 248, 0.35); border-color: rgba(56, 189, 248, 0.4); }
+.gradient-blue .kpi-icon { background: rgba(59, 130, 246, 0.35); border-color: rgba(59, 130, 246, 0.4); }
+.gradient-purple .kpi-icon { background: rgba(147, 112, 219, 0.35); border-color: rgba(147, 112, 219, 0.4); }
+.gradient-green .kpi-icon { background: rgba(34, 197, 94, 0.35); border-color: rgba(34, 197, 94, 0.4); }
+.gradient-orange .kpi-icon { background: rgba(251, 146, 60, 0.35); border-color: rgba(251, 146, 60, 0.4); }
+.gradient-amber .kpi-icon { background: rgba(251, 191, 36, 0.35); border-color: rgba(251, 191, 36, 0.4); }
+.gradient-rose .kpi-icon { background: rgba(244, 63, 94, 0.35); border-color: rgba(244, 63, 94, 0.4); }
+.gradient-pink .kpi-icon { background: rgba(236, 72, 153, 0.35); border-color: rgba(236, 72, 153, 0.4); }
 
 .kpi-glass .kpi-label {
     font-size: 0.82rem;
@@ -1517,20 +1489,20 @@ td.editable-cell:hover { background: var(--bg-hover); }
 
 .module-title::before {
     content: '';
-    width: 4px;
-    height: 16px;
+    width: 6px;
+    height: 20px;
     background: var(--accent);
-    border-radius: 2px;
+    border-radius: 3px;
 }
 
-.gradient-cyan .module-title::before { background: linear-gradient(180deg, #06B6D4 0%, #22D3EE 100%); }
-.gradient-blue .module-title::before { background: linear-gradient(180deg, #2563EB 0%, #3B82F6 100%); }
-.gradient-purple .module-title::before { background: linear-gradient(180deg, #8B5CF6 0%, #A78BFA 100%); }
-.gradient-green .module-title::before { background: linear-gradient(180deg, #10B981 0%, #34D399 100%); }
-.gradient-orange .module-title::before { background: linear-gradient(180deg, #F97316 0%, #FB923C 100%); }
-.gradient-amber .module-title::before { background: linear-gradient(180deg, #D97706 0%, #FBBF24 100%); }
-.gradient-rose .module-title::before { background: linear-gradient(180deg, #E11D48 0%, #F43F5E 100%); }
-.gradient-pink .module-title::before { background: linear-gradient(180deg, #DB2777 0%, #EC4899 100%); }
+.gradient-cyan .module-title::before { background: linear-gradient(180deg, #0891B2 0%, #22D3EE 100%); }
+.gradient-blue .module-title::before { background: linear-gradient(180deg, #1D4ED8 0%, #3B82F6 100%); }
+.gradient-purple .module-title::before { background: linear-gradient(180deg, #7C3AED 0%, #A78BFA 100%); }
+.gradient-green .module-title::before { background: linear-gradient(180deg, #059669 0%, #34D399 100%); }
+.gradient-orange .module-title::before { background: linear-gradient(180deg, #EA580C 0%, #FB923C 100%); }
+.gradient-amber .module-title::before { background: linear-gradient(180deg, #B45309 0%, #FBBF24 100%); }
+.gradient-rose .module-title::before { background: linear-gradient(180deg, #BE123C 0%, #F43F5E 100%); }
+.gradient-pink .module-title::before { background: linear-gradient(180deg, #BE185D 0%, #EC4899 100%); }
 
 .module-action {
     font-size: 0.8rem;
