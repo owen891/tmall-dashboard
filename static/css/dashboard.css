@@ -7,44 +7,44 @@
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 html { font-size: 14px; }
 
-/* ========== CSS 变量 — 暗色主题（默认） ========== */
+/* ========== CSS 变量 — 浅色主题（默认） ========== */
 :root {
-    --bg-deep: #0B0F19;
-    --bg-base: #111827;
-    --bg-surface: #1A1F2E;
-    --bg-card: #111827;
-    --bg-elevated: #1E2433;
-    --bg-hover: rgba(6, 182, 212, 0.06);
-    --border: rgba(148, 163, 184, 0.12);
-    --border-light: rgba(148, 163, 184, 0.08);
-    --border-active: rgba(6, 182, 212, 0.4);
-    --text-primary: #F1F5F9;
-    --text-secondary: #CBD5E1;
-    --text-muted: #64748B;
-    --accent: #06B6D4;
-    --accent-hover: #22D3EE;
-    --accent-bg: rgba(6, 182, 212, 0.10);
-    --accent-muted: rgba(6, 182, 212, 0.6);
+    --bg-deep: #F8FAFC;
+    --bg-base: #FFFFFF;
+    --bg-surface: #F1F5F9;
+    --bg-card: #FFFFFF;
+    --bg-elevated: #FAFBFC;
+    --bg-hover: rgba(59, 130, 246, 0.06);
+    --border: rgba(15, 23, 42, 0.08);
+    --border-light: rgba(15, 23, 42, 0.05);
+    --border-active: rgba(59, 130, 246, 0.4);
+    --text-primary: #1E293B;
+    --text-secondary: #475569;
+    --text-muted: #94A3B8;
+    --accent: #3B82F6;
+    --accent-hover: #2563EB;
+    --accent-bg: rgba(59, 130, 246, 0.06);
+    --accent-muted: rgba(59, 130, 246, 0.6);
     --success: #10B981;
-    --success-bg: rgba(16, 185, 129, 0.10);
+    --success-bg: rgba(16, 185, 129, 0.08);
     --warning: #F59E0B;
-    --warning-bg: rgba(245, 158, 11, 0.10);
-    --danger: #F43F5E;
-    --danger-bg: rgba(244, 63, 94, 0.10);
-    --gold: #FBBF24;
-    --silver: #94A3B8;
-    --bronze: #D97706;
-    --shadow-xs: 0 1px 2px rgba(0,0,0,0.3);
-    --shadow-sm: 0 1px 3px rgba(0,0,0,0.3), 0 1px 2px rgba(0,0,0,0.2);
-    --shadow-md: 0 4px 12px rgba(0,0,0,0.3);
-    --shadow-lg: 0 12px 32px rgba(0,0,0,0.4);
-    --shadow-hover: 0 8px 24px rgba(0,0,0,0.35);
-    --kpi-label-color: #64748B;
-    --table-header-bg: #111827;
-    --table-stripe: rgba(148,163,184,0.03);
-    --input-bg: var(--bg-elevated);
-    --hover-bg: rgba(6,182,212,0.06);
-    --card-border: var(--border);
+    --warning-bg: rgba(245, 158, 11, 0.08);
+    --danger: #EF4444;
+    --danger-bg: rgba(239, 68, 68, 0.08);
+    --gold: #D97706;
+    --silver: #9CA3AF;
+    --bronze: #B45309;
+    --shadow-xs: 0 1px 2px rgba(0,0,0,0.04);
+    --shadow-sm: 0 1px 3px rgba(0,0,0,0.05), 0 1px 2px rgba(0,0,0,0.03);
+    --shadow-md: 0 4px 12px rgba(0,0,0,0.06);
+    --shadow-lg: 0 12px 32px rgba(0,0,0,0.08);
+    --shadow-hover: 0 8px 24px rgba(0,0,0,0.10);
+    --kpi-label-color: #94A3B8;
+    --table-header-bg: #F8FAFC;
+    --table-stripe: #F8FAFC;
+    --input-bg: #F1F5F9;
+    --hover-bg: rgba(59,130,246,0.06);
+    --card-border: rgba(15,23,42,0.06);
     --sidebar-width: 180px;
     --sidebar-collapsed: 52px;
     --topbar-height: 44px;
@@ -1369,31 +1369,31 @@ td.editable-cell:hover { background: var(--bg-hover); }
 .task-item:hover { border-color: var(--accent); }
 
 /* ================================================================
-   玻璃态 + 渐变彩色卡片主题
+   玻璃态 + 渐变彩色卡片主题 (浅色清新风格)
 ================================================================ */
 
 /* 玻璃态基础样式 */
 .glass-card {
-    background: rgba(255, 255, 255, 0.06);
+    background: rgba(255, 255, 255, 0.95);
     backdrop-filter: blur(20px);
     -webkit-backdrop-filter: blur(20px);
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(15, 23, 42, 0.06);
     border-radius: 16px;
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.06);
 }
 
 .glass-card:hover {
-    background: rgba(255, 255, 255, 0.1);
-    border-color: rgba(255, 255, 255, 0.15);
-    box-shadow: 0 12px 48px rgba(0, 0, 0, 0.3);
+    background: rgba(255, 255, 255, 1);
+    border-color: rgba(59, 130, 246, 0.2);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
     transform: translateY(-2px);
 }
 
 /* 渐变彩色卡片 */
 .gradient-card {
     border-radius: 16px;
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+    border: 1px solid rgba(15, 23, 42, 0.06);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.06);
     transition: all 0.3s ease;
     position: relative;
     overflow: hidden;
@@ -1406,54 +1406,54 @@ td.editable-cell:hover { background: var(--bg-hover); }
     left: 0;
     right: 0;
     bottom: 0;
-    background: linear-gradient(135deg, rgba(255, 255, 255, 0.1) 0%, transparent 50%);
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.6) 0%, rgba(255, 255, 255, 0.2) 100%);
     pointer-events: none;
 }
 
 .gradient-card:hover {
-    transform: translateY(-4px) scale(1.02);
-    box-shadow: 0 16px 64px rgba(0, 0, 0, 0.35);
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
 }
 
-/* 渐变色彩方案 */
+/* 渐变色彩方案 - 柔和清新风格 */
 .gradient-purple {
-    background: linear-gradient(135deg, rgba(139, 92, 246, 0.3) 0%, rgba(139, 92, 246, 0.15) 100%);
-    border-color: rgba(139, 92, 246, 0.3);
+    background: linear-gradient(135deg, rgba(147, 112, 219, 0.15) 0%, rgba(147, 112, 219, 0.06) 100%);
+    border-color: rgba(147, 112, 219, 0.15);
 }
 
 .gradient-cyan {
-    background: linear-gradient(135deg, rgba(6, 182, 212, 0.3) 0%, rgba(6, 182, 212, 0.15) 100%);
-    border-color: rgba(6, 182, 212, 0.3);
+    background: linear-gradient(135deg, rgba(56, 189, 248, 0.15) 0%, rgba(56, 189, 248, 0.06) 100%);
+    border-color: rgba(56, 189, 248, 0.15);
 }
 
 .gradient-green {
-    background: linear-gradient(135deg, rgba(16, 185, 129, 0.3) 0%, rgba(16, 185, 129, 0.15) 100%);
-    border-color: rgba(16, 185, 129, 0.3);
+    background: linear-gradient(135deg, rgba(34, 197, 94, 0.15) 0%, rgba(34, 197, 94, 0.06) 100%);
+    border-color: rgba(34, 197, 94, 0.15);
 }
 
 .gradient-orange {
-    background: linear-gradient(135deg, rgba(245, 158, 11, 0.3) 0%, rgba(245, 158, 11, 0.15) 100%);
-    border-color: rgba(245, 158, 11, 0.3);
+    background: linear-gradient(135deg, rgba(251, 146, 60, 0.15) 0%, rgba(251, 146, 60, 0.06) 100%);
+    border-color: rgba(251, 146, 60, 0.15);
 }
 
 .gradient-pink {
-    background: linear-gradient(135deg, rgba(236, 72, 153, 0.3) 0%, rgba(236, 72, 153, 0.15) 100%);
-    border-color: rgba(236, 72, 153, 0.3);
+    background: linear-gradient(135deg, rgba(236, 72, 153, 0.15) 0%, rgba(236, 72, 153, 0.06) 100%);
+    border-color: rgba(236, 72, 153, 0.15);
 }
 
 .gradient-blue {
-    background: linear-gradient(135deg, rgba(59, 130, 246, 0.3) 0%, rgba(59, 130, 246, 0.15) 100%);
-    border-color: rgba(59, 130, 246, 0.3);
+    background: linear-gradient(135deg, rgba(59, 130, 246, 0.15) 0%, rgba(59, 130, 246, 0.06) 100%);
+    border-color: rgba(59, 130, 246, 0.15);
 }
 
 .gradient-rose {
-    background: linear-gradient(135deg, rgba(244, 63, 94, 0.3) 0%, rgba(244, 63, 94, 0.15) 100%);
-    border-color: rgba(244, 63, 94, 0.3);
+    background: linear-gradient(135deg, rgba(244, 63, 94, 0.15) 0%, rgba(244, 63, 94, 0.06) 100%);
+    border-color: rgba(244, 63, 94, 0.15);
 }
 
 .gradient-amber {
-    background: linear-gradient(135deg, rgba(251, 191, 36, 0.3) 0%, rgba(251, 191, 36, 0.15) 100%);
-    border-color: rgba(251, 191, 36, 0.3);
+    background: linear-gradient(135deg, rgba(251, 191, 36, 0.15) 0%, rgba(251, 191, 36, 0.06) 100%);
+    border-color: rgba(251, 191, 36, 0.15);
 }
 
 /* 玻璃态KPI卡片 */
@@ -1463,50 +1463,50 @@ td.editable-cell:hover { background: var(--bg-hover); }
 }
 
 .kpi-glass .kpi-icon {
-    width: 48px;
-    height: 48px;
+    width: 44px;
+    height: 44px;
     border-radius: 12px;
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 1.4rem;
-    background: rgba(255, 255, 255, 0.1);
-    border: 1px solid rgba(255, 255, 255, 0.15);
+    font-size: 1.3rem;
+    background: rgba(255, 255, 255, 0.8);
+    border: 1px solid rgba(15, 23, 42, 0.08);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+    margin-bottom: 12px;
 }
 
 .kpi-glass .kpi-label {
-    font-size: 0.78rem;
-    color: rgba(255, 255, 255, 0.7);
+    font-size: 0.82rem;
+    color: #64748B;
     margin-bottom: 6px;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    font-weight: 600;
+    font-weight: 500;
 }
 
 .kpi-glass .kpi-value {
-    font-size: 1.8rem;
-    font-weight: 800;
-    color: #fff;
+    font-size: 1.7rem;
+    font-weight: 700;
+    color: #1E293B;
     line-height: 1.1;
 }
 
 .kpi-glass .kpi-change {
     font-size: 0.78rem;
-    margin-top: 6px;
+    margin-top: 8px;
     padding: 4px 10px;
-    border-radius: 8px;
+    border-radius: 6px;
     display: inline-block;
     font-weight: 600;
 }
 
 .kpi-glass .kpi-change.positive {
-    background: rgba(16, 185, 129, 0.2);
-    color: #6ee7b7;
+    background: rgba(16, 185, 129, 0.1);
+    color: #10B981;
 }
 
 .kpi-glass .kpi-change.negative {
-    background: rgba(239, 68, 68, 0.2);
-    color: #fca5a5;
+    background: rgba(239, 68, 68, 0.1);
+    color: #EF4444;
 }
 
 /* 玻璃态网格布局 */
@@ -1519,8 +1519,9 @@ td.editable-cell:hover { background: var(--bg-hover); }
 /* 模块卡片样式 */
 .module-card {
     border-radius: 16px;
-    padding: 16px;
+    padding: 20px;
     transition: all 0.3s ease;
+    background: #FFFFFF;
 }
 
 .module-card:hover {
@@ -1536,19 +1537,30 @@ td.editable-cell:hover { background: var(--bg-hover); }
 
 .module-title {
     font-size: 0.95rem;
-    font-weight: 700;
-    color: rgba(255, 255, 255, 0.95);
+    font-weight: 600;
+    color: #1E293B;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.module-title::before {
+    content: '';
+    width: 4px;
+    height: 16px;
+    background: var(--accent);
+    border-radius: 2px;
 }
 
 .module-action {
     font-size: 0.8rem;
-    color: rgba(255, 255, 255, 0.5);
+    color: #94A3B8;
     cursor: pointer;
     transition: color 0.15s;
 }
 
 .module-action:hover {
-    color: rgba(255, 255, 255, 0.8);
+    color: #3B82F6;
 }
 
 /* 子卡片网格 */
@@ -1559,31 +1571,31 @@ td.editable-cell:hover { background: var(--bg-hover); }
 }
 
 .sub-card {
-    padding: 12px;
+    padding: 14px;
     border-radius: 12px;
-    background: rgba(255, 255, 255, 0.05);
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: #FAFBFC;
+    border: 1px solid rgba(15, 23, 42, 0.06);
     display: flex;
-    gap: 10px;
+    gap: 12px;
     align-items: center;
     transition: all 0.2s ease;
 }
 
 .sub-card:hover {
-    background: rgba(255, 255, 255, 0.1);
+    background: #F1F5F9;
     transform: scale(1.02);
 }
 
 .sub-card-icon {
     width: 36px;
     height: 36px;
-    border-radius: 8px;
+    border-radius: 10px;
     display: flex;
     align-items: center;
     justify-content: center;
     font-size: 1.1rem;
-    background: rgba(255, 255, 255, 0.1);
-    border: 1px solid rgba(255, 255, 255, 0.15);
+    background: rgba(59, 130, 246, 0.06);
+    border: 1px solid rgba(59, 130, 246, 0.1);
     flex-shrink: 0;
 }
 
@@ -1593,38 +1605,37 @@ td.editable-cell:hover { background: var(--bg-hover); }
 }
 
 .sub-card-label {
-    font-size: 0.72rem;
-    color: rgba(255, 255, 255, 0.6);
+    font-size: 0.78rem;
+    color: #94A3B8;
     margin-bottom: 2px;
 }
 
 .sub-card-value {
     font-size: 1rem;
-    font-weight: 700;
-    color: #fff;
+    font-weight: 600;
+    color: #1E293B;
 }
 
 /* 统计卡片 */
 .stats-card {
-    padding: 14px;
+    padding: 16px;
     border-radius: 12px;
-    background: rgba(255, 255, 255, 0.06);
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: #FFFFFF;
+    border: 1px solid rgba(15, 23, 42, 0.06);
     text-align: center;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
 }
 
 .stats-value {
     font-size: 1.4rem;
     font-weight: 700;
-    color: #fff;
+    color: #1E293B;
 }
 
 .stats-label {
-    font-size: 0.72rem;
-    color: rgba(255, 255, 255, 0.6);
+    font-size: 0.78rem;
+    color: #94A3B8;
     margin-top: 4px;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
 }
 
 /* 响应式 */
@@ -1649,38 +1660,27 @@ td.editable-cell:hover { background: var(--bg-hover); }
     }
 }
 
-/* 亮色主题适配 */
-:root.light .glass-card {
-    background: rgba(0, 0, 0, 0.04);
-    border-color: rgba(0, 0, 0, 0.08);
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.08);
+/* 暗色主题切换（如需） */
+:root.dark {
+    --bg-deep: #0B0F19;
+    --bg-base: #111827;
+    --bg-surface: #1A1F2E;
+    --bg-card: #111827;
+    --text-primary: #F1F5F9;
+    --text-secondary: #CBD5E1;
+    --text-muted: #64748B;
+    --accent: #06B6D4;
 }
 
-:root.light .gradient-card {
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.08);
+:root.dark .gradient-card {
+    background: rgba(255, 255, 255, 0.06);
+    border-color: rgba(255, 255, 255, 0.1);
 }
 
-:root.light .kpi-glass .kpi-label {
-    color: rgba(0, 0, 0, 0.5);
+:root.dark .kpi-glass .kpi-label {
+    color: rgba(255, 255, 255, 0.7);
 }
 
-:root.light .kpi-glass .kpi-value {
-    color: #111;
-}
-
-:root.light .sub-card {
-    background: rgba(0, 0, 0, 0.03);
-    border-color: rgba(0, 0, 0, 0.06);
-}
-
-:root.light .sub-card-label {
-    color: rgba(0, 0, 0, 0.5);
-}
-
-:root.light .sub-card-value {
-    color: #111;
-}
-
-:root.light .module-title {
-    color: #111;
+:root.dark .kpi-glass .kpi-value {
+    color: #fff;
 }
