@@ -19,9 +19,9 @@ app.register_blueprint(tool_bp)
 def index():
     return render_template('dashboard.html')
 
-@app.route('/demo')
-def demo():
-    return render_template('glass-demo.html')
+# @app.route('/demo')
+# def demo():
+#     return render_template('glass-demo.html')
 
 @app.route('/static/<path:path>')
 def static_files(path):
@@ -29,4 +29,4 @@ def static_files(path):
 
 if __name__ == '__main__':
     init_db()
-    app.run(host='0.0.0.0', port=5000, debug=False)
+    app.run(host='0.0.0.0', port=8000, debug=False)

@@ -124,12 +124,12 @@
     <!-- ========== 模块5: 推广分析 ========== -->
     <div class="section-title">推广分析</div>
     <div class="chart-row half">
-        <div class="chart-panel" style="position:relative;">
+        <div class="gradient-card gradient-purple module-card" style="position:relative;">
             <div class="loading-mask" id="loading-scatter"><div class="spinner"></div></div>
             <div class="panel-title">推广花费 vs ROI（气泡=销售额）</div>
             <div class="chart-box tall" id="chartAdScatter"></div>
         </div>
-        <div class="chart-panel" style="position:relative;">
+        <div class="gradient-card gradient-orange module-card" style="position:relative;">
             <div class="loading-mask" id="loading-adbar"><div class="spinner"></div></div>
             <div class="panel-title">推广方式花费对比</div>
             <div class="chart-box tall" id="chartAdCompare"></div>
@@ -138,16 +138,16 @@
 
     <!-- ========== 联动②: 蓝海关键词推荐 ========== -->
     <div class="chart-row full" id="marketOpportunityRow" style="display:none;">
-        <div class="chart-panel">
-            <div class="panel-title">🌊 蓝海关键词推荐 <span style="font-size:0.75rem;color:#64748B;font-weight:400;margin-left:8px;">来自市场分析</span></div>
+        <div class="gradient-card gradient-cyan module-card">
+            <div class="panel-title">🌊 蓝海关键词推荐 <span style="font-size:0.75rem;color:rgba(255,255,255,0.6);font-weight:400;margin-left:8px;">来自市场分析</span></div>
             <div id="opsOpportunityList" style="max-height:200px;overflow-y:auto;padding:8px 0;">
-                <div style="text-align:center;color:#64748B;padding:20px;">暂无市场分析数据</div>
+                <div style="text-align:center;color:rgba(255,255,255,0.5);padding:20px;">暂无市场分析数据</div>
             </div>
         </div>
     </div>
 
     <!-- 推广预警 -->
-    <div class="section-card">
+    <div class="gradient-card gradient-rose module-card">
         <h3 class="section-title">⚠️ 推广效果预警</h3>
         <div id="adAlertsContainer">
             <div class="loading-placeholder">加载中...</div>
@@ -155,7 +155,7 @@
     </div>
 
     <!-- 推广趋势 -->
-    <div class="section-card">
+    <div class="gradient-card gradient-blue module-card">
         <h3 class="section-title">📈 推广趋势分析</h3>
         <div id="chartAdTrend" style="height:320px;"></div>
     </div>
@@ -166,16 +166,16 @@
         <button class="export-btn" onclick="exportData('refund')">导出退款数据</button>
     </div>
     <div class="chart-row half">
-        <div class="chart-panel" style="position:relative;">
+        <div class="gradient-card gradient-amber module-card" style="position:relative;">
             <div class="loading-mask" id="loading-refund-trend"><div class="spinner"></div></div>
             <div class="panel-title">退款金额与退款率趋势</div>
             <div class="chart-box tall" id="chartRefundTrend"></div>
         </div>
-        <div class="chart-panel" style="position:relative;">
+        <div class="gradient-card gradient-pink module-card" style="position:relative;">
             <div class="loading-mask" id="loading-refund-alert"><div class="spinner"></div></div>
             <div class="panel-title">高退款率商品预警</div>
             <div class="alert-list" id="refundAlertList">
-                <div style="text-align:center;color:#64748B;padding:40px;">暂无数据</div>
+                <div style="text-align:center;color:rgba(255,255,255,0.5);padding:40px;">暂无数据</div>
             </div>
         </div>
     </div>

@@ -21,42 +21,50 @@
             <div class="skeleton skeleton-card"></div><div class="skeleton skeleton-card"></div><div class="skeleton skeleton-card"></div><div class="skeleton skeleton-card"></div>
             <div class="skeleton skeleton-card"></div><div class="skeleton skeleton-card"></div><div class="skeleton skeleton-card"></div><div class="skeleton skeleton-card"></div>
         </div>
-        <div class="kpi-card" id="kpi-gmv" data-metric="gmv">
+        <div class="gradient-card gradient-cyan kpi-glass" id="kpi-gmv" data-metric="gmv">
+            <div class="kpi-icon">💰</div>
             <div class="kpi-label">总销售额</div>
             <div class="kpi-value" id="kpi-gmv-val">--</div>
             <div class="kpi-change" id="kpi-gmv-chg">--</div>
         </div>
-        <div class="kpi-card" id="kpi-net_sales" data-metric="net_sales">
+        <div class="gradient-card gradient-blue kpi-glass" id="kpi-net_sales" data-metric="net_sales">
+            <div class="kpi-icon">💵</div>
             <div class="kpi-label">净销售额</div>
             <div class="kpi-value" id="kpi-net_sales-val">--</div>
             <div class="kpi-change" id="kpi-net_sales-chg">--</div>
         </div>
-        <div class="kpi-card" id="kpi-visitors" data-metric="visitors">
+        <div class="gradient-card gradient-purple kpi-glass" id="kpi-visitors" data-metric="visitors">
+            <div class="kpi-icon">👥</div>
             <div class="kpi-label">总访客</div>
             <div class="kpi-value" id="kpi-visitors-val">--</div>
             <div class="kpi-change" id="kpi-visitors-chg">--</div>
         </div>
-        <div class="kpi-card" id="kpi-conv_rate" data-metric="conv_rate">
+        <div class="gradient-card gradient-green kpi-glass" id="kpi-conv_rate" data-metric="conv_rate">
+            <div class="kpi-icon">📈</div>
             <div class="kpi-label">整体转化率</div>
             <div class="kpi-value" id="kpi-conv_rate-val">--</div>
             <div class="kpi-change" id="kpi-conv_rate-chg">--</div>
         </div>
-        <div class="kpi-card" id="kpi-ad_cost" data-metric="ad_cost">
+        <div class="gradient-card gradient-orange kpi-glass" id="kpi-ad_cost" data-metric="ad_cost">
+            <div class="kpi-icon">📊</div>
             <div class="kpi-label">推广花费</div>
             <div class="kpi-value" id="kpi-ad_cost-val">--</div>
             <div class="kpi-change" id="kpi-ad_cost-chg">--</div>
         </div>
-        <div class="kpi-card" id="kpi-roi" data-metric="roi">
+        <div class="gradient-card gradient-amber kpi-glass" id="kpi-roi" data-metric="roi">
+            <div class="kpi-icon">🎯</div>
             <div class="kpi-label">综合ROI</div>
             <div class="kpi-value" id="kpi-roi-val">--</div>
             <div class="kpi-change" id="kpi-roi-chg">--</div>
         </div>
-        <div class="kpi-card" id="kpi-refund_rate" data-metric="refund_rate">
+        <div class="gradient-card gradient-rose kpi-glass" id="kpi-refund_rate" data-metric="refund_rate">
+            <div class="kpi-icon">⚠️</div>
             <div class="kpi-label">退款率</div>
             <div class="kpi-value" id="kpi-refund_rate-val">--</div>
             <div class="kpi-change" id="kpi-refund_rate-chg">--</div>
         </div>
-        <div class="kpi-card" id="kpi-aov" data-metric="aov">
+        <div class="gradient-card gradient-pink kpi-glass" id="kpi-aov" data-metric="aov">
+            <div class="kpi-icon">💎</div>
             <div class="kpi-label">客单价</div>
             <div class="kpi-value" id="kpi-aov-val">--</div>
             <div class="kpi-change" id="kpi-aov-chg">--</div>
@@ -80,24 +88,32 @@
             暂未设置目标，请在目标表格中导入或通过API设置
         </div>
         <!-- 进度卡片行 -->
-        <div class="progress-card-row" id="progressCardRow">
-            <div class="progress-card">
-                <div class="card-label">GSV完成进度</div>
+        <div class="progress-card-row glass-grid" id="progressCardRow">
+            <div class="gradient-card gradient-green module-card">
+                <div class="module-card-header">
+                    <div class="module-title">GSV完成进度</div>
+                </div>
                 <div class="gauge-box" id="gaugeGSV"></div>
                 <div class="card-detail" id="gsvDetail">--</div>
             </div>
-            <div class="progress-card">
-                <div class="card-label">费用预算进度</div>
+            <div class="gradient-card gradient-orange module-card">
+                <div class="module-card-header">
+                    <div class="module-title">费用预算进度</div>
+                </div>
                 <div class="gauge-box" id="gaugeBudget"></div>
                 <div class="card-detail" id="budgetDetail">--</div>
             </div>
-            <div class="progress-card">
-                <div class="card-label">实际费比 vs 目标费比</div>
+            <div class="gradient-card gradient-purple module-card">
+                <div class="module-card-header">
+                    <div class="module-title">实际费比 vs 目标费比</div>
+                </div>
                 <div class="gauge-box" id="gaugeFeeRatio"></div>
                 <div class="card-detail" id="feeRatioDetail">--</div>
             </div>
-            <div class="progress-card time-progress-card">
-                <div class="card-label">时间进度</div>
+            <div class="gradient-card gradient-cyan module-card">
+                <div class="module-card-header">
+                    <div class="module-title">时间进度</div>
+                </div>
                 <div class="time-bar-pct" id="timeProgressPct">--%</div>
                 <div class="time-bar-wrapper">
                     <div class="time-bar-label">本月已过</div>
@@ -108,19 +124,21 @@
             </div>
         </div>
         <!-- 智能预测 & 预警区域 -->
-        <div class="predict-alert-row">
-            <div class="predict-card" id="predictCard">
-                <div class="predict-title">智能预测</div>
+        <div class="predict-alert-row" style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+            <div class="gradient-card gradient-amber module-card" id="predictCard">
+                <div class="module-card-header">
+                    <div class="module-title">智能预测</div>
+                </div>
                 <div class="predict-value" id="predictValue">--</div>
                 <div class="predict-gap" id="predictGap">--</div>
             </div>
-            <div class="alert-panel" id="alertPanel">
-                <div class="panel-header">
-                    <span class="panel-header-title">预警通知</span>
-                    <span id="alertCount" style="font-size:0.78rem;color:#64748B;"></span>
+            <div class="gradient-card gradient-rose module-card" id="alertPanel">
+                <div class="module-card-header">
+                    <div class="module-title">预警通知</div>
+                    <span id="alertCount" style="font-size:0.78rem;color:var(--text-muted);"></span>
                 </div>
                 <div class="alert-list-body" id="alertListBody">
-                    <div style="text-align:center;color:#64748B;padding:20px;">暂无预警</div>
+                    <div style="text-align:center;color:var(--text-muted);padding:20px;">暂无预警</div>
                 </div>
             </div>
         </div>
@@ -132,7 +150,7 @@
         <button class="event-marker-btn" onclick="openEventFormModal()" title="添加事件标注">&#128204; 添加标注</button>
     </div>
     <div class="chart-row full">
-        <div class="chart-panel" style="position:relative;">
+        <div class="gradient-card gradient-cyan module-card" style="position:relative;">
             <div class="loading-mask" id="loading-trend"><div class="spinner"></div></div>
             <div class="chart-box tall" id="chartSalesTrend"></div>
         </div>
@@ -140,15 +158,15 @@
 
     <!-- ========== 模块3: 流量与转化分析 ========== -->
     <div class="section-title">流量与转化分析</div>
-    <div class="chart-row half">
-        <div class="chart-panel" style="position:relative;">
+    <div class="chart-row half" style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+        <div class="gradient-card gradient-blue module-card" style="position:relative;">
             <div class="loading-mask" id="loading-uv"><div class="spinner"></div></div>
-            <div class="panel-title">访客数(UV)趋势</div>
+            <div class="module-title" style="margin-bottom:12px;">访客数(UV)趋势</div>
             <div class="chart-box" id="chartUVTrend"></div>
         </div>
-        <div class="chart-panel" style="position:relative;">
+        <div class="gradient-card gradient-purple module-card" style="position:relative;">
             <div class="loading-mask" id="loading-conv"><div class="spinner"></div></div>
-            <div class="panel-title">转化率趋势</div>
+            <div class="module-title" style="margin-bottom:12px;">转化率趋势</div>
             <div class="chart-box" id="chartConvTrend"></div>
         </div>
     </div>
