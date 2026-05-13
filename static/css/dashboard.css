@@ -1338,14 +1338,42 @@ td.editable-cell:hover { background: var(--bg-hover); }
     border-radius: 16px;
     border: 1px solid rgba(15, 23, 42, 0.06);
     box-shadow: 0 4px 16px rgba(0, 0, 0, 0.06);
-    transition: all 0.3s ease;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     position: relative;
     overflow: hidden;
 }
 
+.gradient-card::after {
+    content: '';
+    position: absolute;
+    top: -50%;
+    left: -50%;
+    width: 200%;
+    height: 200%;
+    background: linear-gradient(
+        45deg,
+        transparent 30%,
+        rgba(255, 255, 255, 0.15) 50%,
+        transparent 70%
+    );
+    transform: rotate(45deg);
+    transition: all 0.5s ease;
+    opacity: 0;
+}
+
 .gradient-card:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+    transform: translateY(-3px);
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.1);
+}
+
+.gradient-card:hover::after {
+    opacity: 1;
+    animation: shimmer 2s infinite;
+}
+
+@keyframes shimmer {
+    0% { transform: translateX(-100%) rotate(45deg); }
+    100% { transform: translateX(100%) rotate(45deg); }
 }
 
 /* 渐变色彩方案 - 柔和清新风格 */
@@ -1495,6 +1523,15 @@ td.editable-cell:hover { background: var(--bg-hover); }
     border-radius: 2px;
 }
 
+.gradient-cyan .module-title::before { background: linear-gradient(180deg, #06B6D4 0%, #22D3EE 100%); }
+.gradient-blue .module-title::before { background: linear-gradient(180deg, #2563EB 0%, #3B82F6 100%); }
+.gradient-purple .module-title::before { background: linear-gradient(180deg, #8B5CF6 0%, #A78BFA 100%); }
+.gradient-green .module-title::before { background: linear-gradient(180deg, #10B981 0%, #34D399 100%); }
+.gradient-orange .module-title::before { background: linear-gradient(180deg, #F97316 0%, #FB923C 100%); }
+.gradient-amber .module-title::before { background: linear-gradient(180deg, #D97706 0%, #FBBF24 100%); }
+.gradient-rose .module-title::before { background: linear-gradient(180deg, #E11D48 0%, #F43F5E 100%); }
+.gradient-pink .module-title::before { background: linear-gradient(180deg, #DB2777 0%, #EC4899 100%); }
+
 .module-action {
     font-size: 0.8rem;
     color: #94A3B8;
@@ -1516,17 +1553,19 @@ td.editable-cell:hover { background: var(--bg-hover); }
 .sub-card {
     padding: 14px;
     border-radius: 12px;
-    background: #FAFBFC;
+    background: rgba(255, 255, 255, 0.8);
     border: 1px solid rgba(15, 23, 42, 0.06);
     display: flex;
     gap: 12px;
     align-items: center;
-    transition: all 0.2s ease;
+    transition: all 0.25s ease;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
 }
 
 .sub-card:hover {
-    background: #F1F5F9;
-    transform: scale(1.02);
+    background: #FFFFFF;
+    transform: translateY(-2px);
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.08);
 }
 
 .sub-card-icon {
@@ -1537,10 +1576,20 @@ td.editable-cell:hover { background: var(--bg-hover); }
     align-items: center;
     justify-content: center;
     font-size: 1.1rem;
-    background: rgba(59, 130, 246, 0.06);
-    border: 1px solid rgba(59, 130, 246, 0.1);
+    background: rgba(59, 130, 246, 0.08);
+    border: 1px solid rgba(59, 130, 246, 0.12);
     flex-shrink: 0;
 }
+
+/* 子卡片图标配色 */
+.sub-card-icon.cyan { background: rgba(6, 182, 212, 0.12); border-color: rgba(6, 182, 212, 0.2); }
+.sub-card-icon.blue { background: rgba(59, 130, 246, 0.12); border-color: rgba(59, 130, 246, 0.2); }
+.sub-card-icon.purple { background: rgba(147, 112, 219, 0.12); border-color: rgba(147, 112, 219, 0.2); }
+.sub-card-icon.green { background: rgba(34, 197, 94, 0.12); border-color: rgba(34, 197, 94, 0.2); }
+.sub-card-icon.orange { background: rgba(251, 146, 60, 0.12); border-color: rgba(251, 146, 60, 0.2); }
+.sub-card-icon.amber { background: rgba(251, 191, 36, 0.12); border-color: rgba(251, 191, 36, 0.2); }
+.sub-card-icon.rose { background: rgba(244, 63, 94, 0.12); border-color: rgba(244, 63, 94, 0.2); }
+.sub-card-icon.pink { background: rgba(236, 72, 153, 0.12); border-color: rgba(236, 72, 153, 0.2); }
 
 .sub-card-info {
     flex: 1;
@@ -1562,23 +1611,32 @@ td.editable-cell:hover { background: var(--bg-hover); }
 /* 统计卡片 */
 .stats-card {
     padding: 16px;
-    border-radius: 12px;
-    background: #FFFFFF;
+    border-radius: 14px;
+    background: rgba(255, 255, 255, 0.9);
     border: 1px solid rgba(15, 23, 42, 0.06);
     text-align: center;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.04);
+    transition: all 0.25s ease;
+}
+
+.stats-card:hover {
+    background: #FFFFFF;
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.08);
 }
 
 .stats-value {
-    font-size: 1.4rem;
+    font-size: 1.5rem;
     font-weight: 700;
     color: #1E293B;
+    letter-spacing: -0.02em;
 }
 
 .stats-label {
     font-size: 0.78rem;
     color: #94A3B8;
-    margin-top: 4px;
+    margin-top: 6px;
+    font-weight: 500;
 }
 
 /* 响应式 */
