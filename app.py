@@ -19,9 +19,9 @@ app.register_blueprint(tool_bp)
 def index():
     return render_template('dashboard.html')
 
-# @app.route('/demo')
-# def demo():
-#     return render_template('glass-demo.html')
+@app.route('/demo')
+def demo():
+    return render_template('glass-demo.html')
 
 @app.route('/static/<path:path>')
 def static_files(path):
