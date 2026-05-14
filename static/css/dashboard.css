@@ -1343,9 +1343,37 @@ td.editable-cell:hover { background: var(--bg-hover); }
     overflow: hidden;
 }
 
+.gradient-card::after {
+    content: '';
+    position: absolute;
+    top: -50%;
+    left: -50%;
+    width: 200%;
+    height: 200%;
+    background: linear-gradient(
+        45deg,
+        transparent 30%,
+        rgba(255, 255, 255, 0.15) 50%,
+        transparent 70%
+    );
+    transform: rotate(45deg);
+    transition: all 0.5s ease;
+    opacity: 0;
+}
+
 .gradient-card:hover {
     transform: translateY(-3px);
     box-shadow: 0 12px 32px rgba(0, 0, 0, 0.1);
+}
+
+.gradient-card:hover::after {
+    opacity: 1;
+    animation: shimmer 2s infinite;
+}
+
+@keyframes shimmer {
+    0% { transform: translateX(-100%) rotate(45deg); }
+    100% { transform: translateX(100%) rotate(45deg); }
 }
 
 /* 渐变色彩方案 - 柔和清新风格 */
