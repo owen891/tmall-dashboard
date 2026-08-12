@@ -13,7 +13,7 @@
                     <option value="废词">📉 废词</option>
                 </select>
                 <input type="text" placeholder="搜索词..." oninput="KW_STATE.search=this.value;KW_STATE.page=1;loadKeywords()" style="padding:6px 12px;border-radius:8px;border:1px solid var(--border);background:var(--card);color:var(--text-primary);font-size:13px;width:160px;">
-                <input type="file" id="kwFileInput" accept=".xlsx,.xls" onchange="handleKeywordUpload()" style="display:none;">
+                <input type="file" id="kwFileInput" aria-label="上传搜索词报表" accept=".xlsx,.xls" onchange="handleKeywordUpload()" style="display:none;">
                 <button id="kwUploadBtn" onclick="document.getElementById('kwFileInput').click()" style="padding:6px 16px;border-radius:8px;border:none;background:var(--accent);color:#fff;font-size:13px;cursor:pointer;font-weight:600;">📤 上传搜索词报表</button>
             </div>
         </div>

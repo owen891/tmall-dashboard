@@ -27,6 +27,17 @@ DIMENSION_MAP = {
 
 UPLOAD_FOLDER = os.path.join(project_root, 'data/uploads/')
 
+
+def _unique_upload_path(filename):
+    """Keep the original name for file classification while avoiding overwrites."""
+    safe_name = secure_filename(filename or '')
+    stem, suffix = os.path.splitext(safe_name)
+    candidate = os.path.join(UPLOAD_FOLDER, safe_name)
+    if not os.path.exists(candidate):
+        return safe_name, candidate
+    safe_name = f'{stem}_{uuid.uuid4().hex[:8]}{suffix}'
+    return safe_name, os.path.join(UPLOAD_FOLDER, safe_name)
+
 # 导入进度追踪（进程内存储）
 _import_progress = {}
 
@@ -656,8 +667,8 @@ def get_products():
     period = request.args.get('period', '')
     sort_by = request.args.get('sort', 'payment_amount')
     order = request.args.get('order', 'desc')
-    limit = request.args.get('limit', 20, type=int)
-    offset = request.args.get('offset', 0, type=int)
+    limit = max(1, min(request.args.get('limit', 20, type=int) or 20, 200))
+    offset = max(0, request.args.get('offset', 0, type=int) or 0)
     tier = request.args.get('tier', '')
     style = request.args.get('style', '')
     search = request.args.get('search', '')
@@ -1352,7 +1363,7 @@ def create_task():
         return jsonify({'success': True})
 
 @data_bp.route('/api/tasks/<int:task_id>', methods=['PUT'])
-def update_task():
+def update_task(task_id):
     """更新任务"""
     data = request.get_json(force=True, silent=True) or {}
     with get_db() as conn:
@@ -1371,7 +1382,7 @@ def update_task():
         return jsonify({'success': True})
 
 @data_bp.route('/api/tasks/<int:task_id>', methods=['DELETE'])
-def delete_task():
+def delete_task(task_id):
     """删除任务"""
     with get_db() as conn:
         conn.execute('DELETE FROM task_items WHERE id = ?', (task_id,))
@@ -1408,7 +1419,7 @@ def create_user_kpi():
         return jsonify({'success': True})
 
 @data_bp.route('/api/user_kpis/<int:kpi_id>', methods=['PUT'])
-def update_user_kpi():
+def update_user_kpi(kpi_id):
     """更新用户KPI"""
     data = request.get_json(force=True, silent=True) or {}
     with get_db() as conn:
@@ -1427,7 +1438,7 @@ def update_user_kpi():
         return jsonify({'success': True})
 
 @data_bp.route('/api/user_kpis/<int:kpi_id>', methods=['DELETE'])
-def delete_user_kpi():
+def delete_user_kpi(kpi_id):
     """删除用户KPI"""
     with get_db() as conn:
         conn.execute('DELETE FROM user_kpis WHERE id = ?', (kpi_id,))
@@ -1442,7 +1453,7 @@ def upload_keywords():
     if 'file' not in request.files:
         return jsonify({'error': '未上传文件'}), 400
     file = request.files['file']
-    if not file.filename.endswith(('.xlsx', '.xls')):
+    if not file.filename.lower().endswith(('.xlsx', '.xls')):
         return jsonify({'error': '仅支持Excel文件'}), 400
     
     import pandas as pd
@@ -1499,6 +1510,16 @@ def upload_keywords():
                 from datetime import datetime
                 date_str = datetime.now().strftime('%Y-%m-%d')
         
+        # Normalize numeric values before calculating derived metrics. Tmall
+        # exports often use blank cells or "-" for unavailable values.
+        numeric_columns = [
+            'popularity', 'impressions', 'clicks', 'ctr', 'cost', 'gmv',
+            'cvr', 'roi', 'cpc', 'conversion',
+        ]
+        for numeric_column in numeric_columns:
+            if numeric_column in df.columns:
+                df[numeric_column] = pd.to_numeric(df[numeric_column], errors='coerce').fillna(0)
+
         # Calculate derived metrics
         if 'ctr' not in df.columns and 'clicks' in df.columns and 'impressions' in df.columns:
             df['ctr'] = df.apply(lambda r: r['clicks'] / r['impressions'] if r.get('impressions', 0) > 0 else 0, axis=1)
@@ -1508,7 +1529,7 @@ def upload_keywords():
             df['roi'] = df.apply(lambda r: r['gmv'] / r['cost'] if r.get('cost', 0) > 0 else 0, axis=1)
         if 'cvr' not in df.columns and 'conversion' in df.columns and 'clicks' in df.columns:
             df['cvr'] = df.apply(lambda r: r['conversion'] / r['clicks'] if r.get('clicks', 0) > 0 else 0, axis=1)
-        
+
         # Calculate efficacy (词效能)
         with get_db() as conn:
             avg_ctr = df['ctr'].mean() if 'ctr' in df.columns else 0
@@ -1517,7 +1538,7 @@ def upload_keywords():
             count = 0
             for _, row in df.iterrows():
                 kw = str(row.get('keyword', '')).strip()
-                if not kw:
+                if not kw or kw.lower() in {'nan', 'none', 'null', '--'}:
                     continue
                 
                 ctr_val = float(row.get('ctr', 0) or 0)
@@ -1578,8 +1599,11 @@ def get_keywords():
     search = request.args.get('search', '')
     sort = request.args.get('sort', 'efficacy')
     order = request.args.get('order', 'desc')
-    page = int(request.args.get('page', 1))
-    per_page = int(request.args.get('per_page', 50))
+    try:
+        page = max(1, int(request.args.get('page', 1)))
+        per_page = max(1, min(int(request.args.get('per_page', 50)), 200))
+    except (TypeError, ValueError):
+        return jsonify({'error': 'page and per_page must be positive integers'}), 400
     
     with get_db() as conn:
         # Get available dates
@@ -1662,8 +1686,7 @@ def upload_market():
     for file in files:
         if not file.filename:
             continue
-        filename = secure_filename(file.filename)
-        filepath = os.path.join(UPLOAD_FOLDER, filename)
+        filename, filepath = _unique_upload_path(file.filename)
         file.save(filepath)
         saved_paths.append(filepath)
 
@@ -1711,7 +1734,7 @@ def get_market_summary():
         row = conn.execute(query, params).fetchone()
 
     if not row:
-        return jsonify({'error': 'no data'}), 404
+        return jsonify({'meta': None, 'summary': {}, 'keywords_count': 0, 'empty': True})
 
     data = dict(row)
     return jsonify({
@@ -1735,7 +1758,7 @@ def get_market_summary():
 def get_market_keywords():
     """获取关键词分析数据"""
     category = request.args.get('category', '')
-    limit = request.args.get('limit', 50, type=int)
+    limit = max(1, min(request.args.get('limit', 50, type=int) or 50, 200))
     opportunity = request.args.get('opportunity', '')
 
     with get_db() as conn:
@@ -2464,12 +2487,11 @@ def upload_reviews():
         return jsonify({'error': 'No file'}), 400
 
     file = request.files['file']
-    if not file.filename.endswith(('.xlsx', '.xls', '.csv')):
+    if not file.filename.lower().endswith(('.xlsx', '.xls', '.csv')):
         return jsonify({'error': 'Unsupported file type'}), 400
 
     os.makedirs(UPLOAD_FOLDER, exist_ok=True)
-    filename = secure_filename(file.filename)
-    filepath = os.path.join(UPLOAD_FOLDER, filename)
+    filename, filepath = _unique_upload_path(file.filename)
     file.save(filepath)
 
     # 解析并导入
@@ -2626,8 +2648,8 @@ def get_reviews_list():
     """评价列表"""
     product_id = request.args.get('product_id', '')
     sentiment = request.args.get('sentiment', '')
-    limit = request.args.get('limit', 50, type=int)
-    offset = request.args.get('offset', 0, type=int)
+    limit = max(1, min(request.args.get('limit', 50, type=int) or 50, 200))
+    offset = max(0, request.args.get('offset', 0, type=int) or 0)
 
     with get_db() as conn:
         query = 'SELECT * FROM reviews WHERE 1=1'
@@ -2829,8 +2851,7 @@ def get_reviewed_products():
 @data_bp.route('/api/logs', methods=['GET'])
 def get_logs():
     """获取最近操作日志"""
-    limit = request.args.get('limit', 50, type=int)
-    limit = min(limit, 200)
+    limit = max(1, min(request.args.get('limit', 50, type=int) or 50, 200))
     with get_db() as conn:
         rows = [dict(r) for r in conn.execute(
             'SELECT * FROM operation_logs ORDER BY id DESC LIMIT ?', (limit,)
@@ -3865,12 +3886,23 @@ def get_industry_benchmark():
     date_col = dim_cfg['date_col']
     visitors_col = dim_cfg['visitors_col']
 
+    # CTR fields differ between the imported report dimensions.
+    if dim == 'monthly':
+        shop_ctr_expr = 'click_rate'
+        industry_ctr_expr = 'industry_ctr'
+    elif dim == 'weekly':
+        shop_ctr_expr = 'search_click_rate'
+        industry_ctr_expr = 'industry_ctr'
+    else:
+        shop_ctr_expr = '0'
+        industry_ctr_expr = '0'
+
     with get_db() as conn:
         # 当期行业CTR均值
         row = conn.execute(f'''
             SELECT
-                AVG(industry_ctr) as industry_ctr,
-                AVG(click_rate) as shop_ctr
+                AVG({industry_ctr_expr}) as industry_ctr,
+                AVG({shop_ctr_expr}) as shop_ctr
             FROM {table} WHERE {date_col} = ?
         ''', (period,)).fetchone()
 
@@ -3882,8 +3914,8 @@ def get_industry_benchmark():
         # 趋势：最近6个周期
         trend_rows = conn.execute(f'''
             SELECT {date_col} as period,
-                   AVG(click_rate) as shop_ctr,
-                   AVG(industry_ctr) as industry_ctr
+                   AVG({shop_ctr_expr}) as shop_ctr,
+                   AVG({industry_ctr_expr}) as industry_ctr
             FROM {table}
             WHERE {date_col} <= ?
             GROUP BY {date_col}
