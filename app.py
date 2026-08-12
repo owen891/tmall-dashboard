@@ -14,6 +14,7 @@ app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50MB 上传限制
 
 app.register_blueprint(data_bp)
 app.register_blueprint(tool_bp)
+init_db()
 
 @app.route('/')
 def index():
@@ -24,5 +25,4 @@ def static_files(path):
     return send_from_directory(os.path.join(project_root, 'static'), path)
 
 if __name__ == '__main__':
-    init_db()
-    app.run(host='0.0.0.0', port=5000, debug=False)
+    app.run(host='127.0.0.1', port=5000, debug=False)

@@ -245,7 +245,6 @@ const TAB_LOADERS = {
     'tab-ops': (dim, period) => [
         loadProducts(dim, period),
         loadAdPerformance(dim, period),
-        loadAdAlerts(dim, period),
         loadAdTrend(dim, period),
     ],
     'tab-health': (dim, period) => [
@@ -2527,7 +2526,7 @@ async function toggleStar(productId, el) {
 // 空数据列自动隐藏
 function autoHideEmptyColumns(pageData, visibleCols) {
     if (!pageData || pageData.length === 0) return;
-    const metricCols = visibleCols.filter(c => c.key !== 'image' && c.key !== 'title' && c.key !== 'rank');
+    const metricCols = visibleCols.filter(c => c.key !== 'image' && c.key !== 'title' && c.key !== 'rank' && c.key !== 'action');
     metricCols.forEach(col => {
         const allEmpty = pageData.every(p => {
             const v = p[col.key];
@@ -2890,6 +2889,49 @@ function buildProductRow(p, rank, metricCols, visibleCols) {
         `<tr class="detail-row" id="detail-${p.product_id}" style="display:none"><td colspan="99"><div class="row-detail-content">${buildRowDetailContent(p)}</div></td></tr>`;
 }
 
+function normalizeProductTableHeader(visibleCols) {
+    const table = document.getElementById('productTable');
+    const thead = document.getElementById('productTableHead');
+    if (!table || !thead) return;
+
+    const rows = thead.querySelectorAll('tr');
+    if (rows.length < 2) return;
+    const groupRow = rows[0];
+    const headerRow = rows[1];
+    const frozenGroupCells = Array.from(groupRow.children).slice(0, 2);
+    const frozenHeaderCells = Array.from(headerRow.children).slice(0, 2);
+
+    // The first two cells are structural columns, so they must span both rows.
+    frozenGroupCells.forEach((cell, index) => {
+        cell.rowSpan = 2;
+        cell.dataset.col = index === 0 ? 'rank' : 'product';
+        if (frozenHeaderCells[index]) {
+            const checkbox = frozenHeaderCells[index].querySelector('input');
+            if (checkbox && index === 0 && !cell.querySelector('input')) cell.appendChild(checkbox);
+            frozenHeaderCells[index].remove();
+        }
+    });
+
+    const metricCols = visibleCols.filter(col => col.key !== 'image' && col.key !== 'title');
+    const oldColgroup = table.querySelector(':scope > colgroup');
+    if (oldColgroup) oldColgroup.remove();
+    const colgroup = document.createElement('colgroup');
+    const rankCol = document.createElement('col');
+    rankCol.className = 'col-rank';
+    rankCol.style.width = 'var(--product-rank-width)';
+    const productCol = document.createElement('col');
+    productCol.className = 'col-product';
+    productCol.style.width = 'var(--product-info-width)';
+    colgroup.append(rankCol, productCol);
+    metricCols.forEach(col => {
+        const metricCol = document.createElement('col');
+        metricCol.dataset.col = col.key;
+        metricCol.style.width = col.key === 'action' ? '190px' : '108px';
+        colgroup.appendChild(metricCol);
+    });
+    table.insertBefore(colgroup, thead);
+}
+
 function renderProductTable() {
     const { productData, sortKey, sortOrder, page, pageSize } = STATE;
     const visibleCols = getVisibleColumns();
@@ -2953,6 +2995,7 @@ function renderProductTable() {
         }
 
         thead.innerHTML = `<tr class="group-row">${groupRowHtml}</tr><tr class="header-row">${headerRowHtml}</tr>`;
+        normalizeProductTableHeader(visibleCols);
     }
 
     // ---- 渲染行 ----
@@ -2967,7 +3010,8 @@ function renderProductTable() {
     renderSummaryRow(pageData, visibleCols);
 
     // 空数据列自动隐藏
-    autoHideEmptyColumns(pageData, visibleCols);
+    // Keep the configured view grid intact. Hiding individual cells leaves
+    // colgroup tracks behind and makes a fixed-layout table misalign.
 
     // 加载更多按钮（追加到表格底部）
     if (page * pageSize < total) {
@@ -5963,9 +6007,9 @@ async function showLifecycleDetail(product_id) {
     const style = escapeHtml(p.style || '');
 
     infoEl.innerHTML = `<div style="display:flex;align-items:center;gap:12px;">
-        ${img ? `<img src="${img}" style="width:48px;height:48px;border-radius:8px;object-fit:cover;background:#1E293B;">` : ''}
+        ${img ? `<img src="${img}" alt="${title}" loading="lazy" style="width:48px;height:48px;border-radius:8px;object-fit:cover;background:var(--bg-elevated);">` : ''}
         <div>
-            <div style="font-size:1rem;font-weight:600;color:#F1F5F9;">${title}</div>
+            <div style="font-size:1rem;font-weight:600;color:var(--text-primary);">${title}</div>
             <div style="font-size:0.8rem;color:#64748B;">${tier} &middot; ${style} &middot; ${data.length}个月数据</div>
         </div>
     </div>`;
@@ -5983,6 +6027,10 @@ function closeLifecycleDetail() {
 
 function renderLifecycleChart(data) {
     const chart = getChart('chartLifecycle');
+    const isLight = document.documentElement.classList.contains('light');
+    const chartText = isLight ? '#526579' : '#94A3B8';
+    const chartAxis = isLight ? '#8FA2B5' : '#334155';
+    const chartGrid = isLight ? '#D9E2EA' : '#1E293B';
     const months = data.map(d => d.month);
     const gsvValues = data.map(d => d.gsv || 0);
     const qtyValues = data.map(d => d.payment_qty || 0);
@@ -6004,7 +6052,7 @@ function renderLifecycleChart(data) {
     opt.legend = {
         data: ['GSV', '销量', '退款额'],
         top: 0,
-        textStyle: { color: '#94A3B8' },
+        textStyle: { color: chartText },
     };
     opt.grid = { left: 60, right: 60, top: 40, bottom: 30 };
     opt.xAxis.data = months;
@@ -6012,15 +6060,15 @@ function renderLifecycleChart(data) {
         {
             type: 'value',
             name: '金额',
-            axisLine: { lineStyle: { color: '#334155' } },
+            axisLine: { lineStyle: { color: chartAxis } },
             axisLabel: { color: '#94A3B8', formatter: v => (v / 10000).toFixed(0) + '万' },
-            splitLine: { lineStyle: { color: '#1E293B', type: 'dashed' } },
+            splitLine: { lineStyle: { color: chartGrid, type: 'dashed' } },
         },
         {
             type: 'value',
             name: '件数',
-            axisLine: { lineStyle: { color: '#334155' } },
-            axisLabel: { color: '#94A3B8' },
+            axisLine: { lineStyle: { color: chartAxis } },
+            axisLabel: { color: chartText },
             splitLine: { show: false },
         },
     ];

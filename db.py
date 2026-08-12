@@ -3,6 +3,8 @@ import os
 from contextlib import contextmanager
 import yaml
 
+PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
+
 _config_cache = None
 
 def load_config():
@@ -17,7 +19,8 @@ def load_config():
 
 def get_db_path():
     config = load_config()
-    return config['data']['db_path']
+    configured_path = config['data']['db_path']
+    return configured_path if os.path.isabs(configured_path) else os.path.join(PROJECT_ROOT, configured_path)
 
 def get_connection(db_path=None):
     if db_path is None:

@@ -204,7 +204,60 @@ function onPeriodChange() {
     const idx = STATE.periods.indexOf(STATE.period);
     STATE.prevPeriod = idx < STATE.periods.length - 1 ? STATE.periods[idx + 1] : '';
     STATE.page = 1;
+    updateTimeControl();
+    syncURL();
     refreshAll();
+}
+
+function updateTimeControl() {
+    const label = document.getElementById('timeRangeLabel');
+    if (label) label.textContent = STATE.period || '--';
+    document.querySelectorAll('.time-quick').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.preset === ({ daily: 'yesterday', weekly: 'seven', monthly: 'thirty' }[STATE.dim] || ''));
+    });
+}
+
+function selectTimePreset(preset) {
+    const dim = { yesterday: 'daily', seven: 'weekly', thirty: 'monthly', sixty: 'monthly' }[preset];
+    if (!dim) return;
+    document.querySelectorAll('.time-quick').forEach(btn => btn.classList.toggle('active', btn.dataset.preset === preset));
+    if (STATE.dim === dim) {
+        loadPeriods();
+    } else {
+        switchDimension(dim);
+    }
+}
+
+function openCustomPeriod(event) {
+    const select = document.getElementById('periodSelect');
+    const popover = document.getElementById('timeCustomPopover');
+    const button = event?.currentTarget || document.querySelector('.time-custom-btn');
+    if (!select || !popover) return;
+    popover.hidden = !popover.hidden;
+    if (button) button.setAttribute('aria-expanded', popover.hidden ? 'false' : 'true');
+    if (!popover.hidden) select.focus();
+}
+
+function closeCustomPeriod() {
+    const popover = document.getElementById('timeCustomPopover');
+    const button = document.querySelector('.time-custom-btn');
+    if (popover) popover.hidden = true;
+    if (button) button.setAttribute('aria-expanded', 'false');
+}
+
+function applyCustomPeriod() {
+    onPeriodChange();
+    closeCustomPeriod();
+}
+
+function shiftPeriod(direction) {
+    if (!STATE.periods || STATE.periods.length < 2) return;
+    const index = STATE.periods.indexOf(STATE.period);
+    const nextIndex = Math.max(0, Math.min(STATE.periods.length - 1, index - direction));
+    const select = document.getElementById('periodSelect');
+    if (!select || nextIndex === index) return;
+    select.value = STATE.periods[nextIndex];
+    onPeriodChange();
 }
 
 async function loadPeriods() {
@@ -225,6 +278,8 @@ async function loadPeriods() {
     STATE.period = periods[0];
     STATE.prevPeriod = periods.length > 1 ? periods[1] : '';
     sel.value = STATE.period;
+    updateTimeControl();
+    syncURL();
     refreshAll();
 }
 
@@ -245,7 +300,6 @@ const TAB_LOADERS = {
     'tab-ops': (dim, period) => [
         loadProducts(dim, period),
         loadAdPerformance(dim, period),
-        loadAdAlerts(dim, period),
         loadAdTrend(dim, period),
     ],
     'tab-health': (dim, period) => [
@@ -452,7 +506,11 @@ let _autoRefreshTimer = null;
 function toggleTheme() {
     const isLight = document.documentElement.classList.toggle('light');
     localStorage.setItem('theme', isLight ? 'light' : 'dark');
-    document.getElementById('themeToggle').textContent = isLight ? '☀️' : '🌙';
+    const themeButton = document.getElementById('themeToggle');
+    if (themeButton) {
+        themeButton.setAttribute('aria-pressed', String(isLight));
+        themeButton.setAttribute('aria-label', isLight ? '切换到深色主题' : '切换到浅色主题');
+    }
     // 重新加载当前Tab以刷新图表颜色
     if (STATE._currentTab) {
         STATE._loadedTabs = {}; // 清除缓存强制重绘
@@ -465,7 +523,10 @@ function toggleTheme() {
     if (saved === 'light') {
         document.documentElement.classList.add('light');
         const btn = document.getElementById('themeToggle');
-        if (btn) btn.textContent = '☀️';
+        if (btn) {
+            btn.setAttribute('aria-pressed', 'true');
+            btn.setAttribute('aria-label', '切换到深色主题');
+        }
     }
 })();
 
