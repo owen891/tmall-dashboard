@@ -1,0 +1,53 @@
+:root {
+  /* ===== Brand Primary (天猫橙红) ===== */
+  --brand: #E4400F;
+  --brand-foreground: #FFFFFF;
+  --brand-muted: #FFF1EC;
+  --brand-hover: #C7380D;
+
+  /* ===== Prefixed Semantic Aliases (required by apply-html-head-contract) ===== */
+  --brand-background: #F7F8FA;
+  --brand-foreground: #1A1D23;
+  --brand-card: #FFFFFF;
+  --brand-card-foreground: #1A1D23;
+  --brand-popover: #FFFFFF;
+  --brand-popover-foreground: #1A1D23;
+  --brand-primary: #E4400F;
+  --brand-primary-foreground: #FFFFFF;
+  --brand-muted: #F0F1F4;
+  --brand-muted-foreground: #6B7280;
+  --brand-border: #E5E7EB;
+  --brand-input: #E5E7EB;
+  --brand-ring: #E4400F;
+  --brand-radius-sm: 4px;
+  --brand-radius-md: 8px;
+  --brand-radius-lg: 12px;
+
+  /* ===== Surfaces (unprefixed, for direct use) ===== */
+  --background: #F7F8FA;
+  --foreground: #1A1D23;
+  --card: #FFFFFF;
+  --card-foreground: #1A1D23;
+  --popover: #FFFFFF;
+  --popover-foreground: #1A1D23;
+  --muted: #F0F1F4;
+  --muted-foreground: #6B7280;
+  --border: #E5E7EB;
+  --input: #E5E7EB;
+  --ring: #E4400F;
+
+  /* ===== State Colors ===== */
+  --state-success: #16A34A;
+  --state-warning: #D97706;
+  --state-error: #DC2626;
+  --state-info: #2563EB;
+
+  /* ===== Radius ===== */
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+
+  /* ===== Typography ===== */
+  --font-sans: "Inter", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", "SF Mono", "Consolas", monospace;
+}

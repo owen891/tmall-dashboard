@@ -77,9 +77,9 @@ async function loadLifecycleData() {
         };
         const tierColor = tierColors[tier] || '#64748B';
 
-        return `<div class="lifecycle-card" onclick="showLifecycleDetail('${p.product_id}')">
+        return `<div class="lifecycle-card" role="button" tabindex="0" aria-label="查看${title}生命周期详情" onclick="showLifecycleDetail('${p.product_id}')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();showLifecycleDetail('${p.product_id}')}" >
             <div class="lifecycle-card-header">
-                ${img ? `<img class="lifecycle-card-img" src="${img}" alt="">` : '<div class="lifecycle-card-img" style="display:flex;align-items:center;justify-content:center;color:#475569;font-size:1.2rem;">&#128230;</div>'}
+                ${img ? `<img class="lifecycle-card-img" src="${img}" alt="${title}" loading="lazy">` : '<div class="lifecycle-card-img" aria-hidden="true" style="display:flex;align-items:center;justify-content:center;color:#475569;font-size:1.2rem;">&#128230;</div>'}
                 <div>
                     <div class="lifecycle-card-title">${title}</div>
                     <div class="lifecycle-card-meta">
@@ -138,9 +138,9 @@ async function showLifecycleDetail(product_id) {
     const style = escapeHtml(p.style || '');
 
     infoEl.innerHTML = `<div style="display:flex;align-items:center;gap:12px;">
-        ${img ? `<img src="${img}" style="width:48px;height:48px;border-radius:8px;object-fit:cover;background:#1E293B;">` : ''}
+        ${img ? `<img src="${img}" alt="${title}" loading="lazy" style="width:48px;height:48px;border-radius:8px;object-fit:cover;background:var(--bg-elevated);">` : ''}
         <div>
-            <div style="font-size:1rem;font-weight:600;color:#F1F5F9;">${title}</div>
+            <div style="font-size:1rem;font-weight:600;color:var(--text-primary);">${title}</div>
             <div style="font-size:0.8rem;color:#64748B;">${tier} &middot; ${style} &middot; ${data.length}个月数据</div>
         </div>
     </div>`;
@@ -158,6 +158,10 @@ function closeLifecycleDetail() {
 
 function renderLifecycleChart(data) {
     const chart = getChart('chartLifecycle');
+    const isLight = document.documentElement.classList.contains('light');
+    const chartText = isLight ? '#526579' : '#94A3B8';
+    const chartAxis = isLight ? '#8FA2B5' : '#334155';
+    const chartGrid = isLight ? '#D9E2EA' : '#1E293B';
     const months = data.map(d => d.month);
     const gsvValues = data.map(d => d.gsv || 0);
     const qtyValues = data.map(d => d.payment_qty || 0);
@@ -179,7 +183,7 @@ function renderLifecycleChart(data) {
     opt.legend = {
         data: ['GSV', '销量', '退款额'],
         top: 0,
-        textStyle: { color: '#94A3B8' },
+        textStyle: { color: chartText },
     };
     opt.grid = { left: 60, right: 60, top: 40, bottom: 30 };
     opt.xAxis.data = months;
@@ -187,15 +191,15 @@ function renderLifecycleChart(data) {
         {
             type: 'value',
             name: '金额',
-            axisLine: { lineStyle: { color: '#334155' } },
+            axisLine: { lineStyle: { color: chartAxis } },
             axisLabel: { color: '#94A3B8', formatter: v => (v / 10000).toFixed(0) + '万' },
-            splitLine: { lineStyle: { color: '#1E293B', type: 'dashed' } },
+            splitLine: { lineStyle: { color: chartGrid, type: 'dashed' } },
         },
         {
             type: 'value',
             name: '件数',
-            axisLine: { lineStyle: { color: '#334155' } },
-            axisLabel: { color: '#94A3B8' },
+            axisLine: { lineStyle: { color: chartAxis } },
+            axisLabel: { color: chartText },
             splitLine: { show: false },
         },
     ];
