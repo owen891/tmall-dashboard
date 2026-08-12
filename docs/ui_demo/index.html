@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>天猫数据仪表盘 UI Demo</title>
+  <link rel="stylesheet" href="assets/tokens.css">
+  <link rel="stylesheet" href="assets/shell.css">
+  <link rel="stylesheet" href="assets/components.css">
+  <script src="https://unpkg.com/lucide@1.8.0/dist/umd/lucide.min.js"></script>
+</head>
+<body data-page="catalog">
+  <div class="demo-app">
+    <aside class="demo-sidebar" data-shell-sidebar></aside>
+    <div class="demo-main">
+      <header class="demo-topbar" data-shell-header></header>
+      <main class="demo-page">
+        <div class="demo-page__intro"><div><h2>页面 Demo 目录</h2><p>以数据概览参考稿为母版，保留当前确认需要继续设计的业务页面。</p></div></div>
+        <section class="section-grid">
+          <a class="plain-panel panel" href="../../数据概览（标题最左+时间选择器）/pages/数据概览（标题最左+时间选择器）.html"><div class="panel__header"><div><h3 class="panel__title">数据概览</h3><p class="panel__hint">参考母版：标题最左 + 时间选择器</p></div><i data-lucide="arrow-up-right"></i></div><span class="badge badge--brand">Reference</span></a>
+          <a class="plain-panel panel" href="pages/products.html"><div class="panel__header"><div><h3 class="panel__title">商品运营</h3><p class="panel__hint">商品分析、推广、退款和运营动作</p></div><i data-lucide="arrow-up-right"></i></div><span class="badge badge--info">Products</span></a>
+          <a class="plain-panel panel" href="pages/promotion.html"><div class="panel__header"><div><h3 class="panel__title">推广分析</h3><p class="panel__hint">计划、商品、关键词、人群和创意分粒度分析</p></div><i data-lucide="arrow-up-right"></i></div><span class="badge badge--warning">Promotion</span></a>
+          <a class="plain-panel panel" href="pages/lifecycle.html"><div class="panel__header"><div><h3 class="panel__title">生命周期</h3><p class="panel__hint">商品跨月 GSV、销量与退款趋势</p></div><i data-lucide="arrow-up-right"></i></div><span class="badge badge--info">Lifecycle</span></a>
+          <a class="plain-panel panel" href="pages/compare.html"><div class="panel__header"><div><h3 class="panel__title">周期对比</h3><p class="panel__hint">双周期指标差异与贡献</p></div><i data-lucide="arrow-up-right"></i></div><span class="badge badge--purple">Compare</span></a>
+          <a class="plain-panel panel" href="pages/manage.html"><div class="panel__header"><div><h3 class="panel__title">管理工作台</h3><p class="panel__hint">任务、目标、定时任务和日志</p></div><i data-lucide="arrow-up-right"></i></div><span class="badge badge--warning">Manage</span></a>
+        </section>
+      </main>
+    </div>
+  </div>
+  <script src="assets/shell.js"></script>
+</body>
+</html>

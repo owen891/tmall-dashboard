@@ -24,7 +24,7 @@ for (const name of required) {
   assert(html.includes('../assets/shell.js'), `${relative}: missing shell.js`);
   assert(!/<svg\b/i.test(html), `${relative}: inline SVG is not allowed; use icon data attributes`);
   assert(!/\b(?:TODO|TBD)\b/i.test(html), `${relative}: unresolved TODO/TBD marker`);
-  const ids = [...html.matchAll(/\bid=["']([^"']+)["']/gi)].map((match) => match[1]);
+  const ids = [...html.matchAll(/(?<![\w-])id=["']([^"']+)["']/gi)].map((match) => match[1]);
   const duplicates = ids.filter((id, index) => ids.indexOf(id) !== index);
   assert(duplicates.length === 0, `${relative}: duplicate ids: ${[...new Set(duplicates)].join(', ')}`);
 
@@ -49,12 +49,13 @@ for (const name of required) {
   }
 
   if (name === 'promotion') {
+    const promotionJs = read(path.join(root, 'assets', 'promotion.js'));
     assert(html.includes('../assets/promotion.js'), `${relative}: missing promotion interaction module`);
     for (const scope of ['products', 'keywords', 'audience', 'creative', 'content']) {
       assert(html.includes(`data-promotion-template-scope="${scope}"`), `${relative}: missing ${scope} field-template scope`);
     }
-    assert(html.includes('data-rule-builder') && html.includes('data-rule-group'), `${relative}: missing nested alert rule builder`);
-    assert(html.includes('data-add-rule-condition') && html.includes('data-add-rule-group'), `${relative}: missing rule group controls`);
+    assert(html.includes('data-rule-builder') && promotionJs.includes('data-rule-group'), `${relative}: missing nested alert rule builder`);
+    assert(promotionJs.includes('data-add-rule-condition') && promotionJs.includes('data-add-rule-group'), `${relative}: missing rule group controls`);
     for (const preset of ['低效消耗', '高点击低转化', '高花费零成交', '曝光不足', '点击异常']) {
       assert(html.includes(preset), `${relative}: missing alert preset ${preset}`);
     }

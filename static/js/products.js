@@ -677,7 +677,7 @@ async function toggleStar(productId, el) {
 // 空数据列自动隐藏
 function autoHideEmptyColumns(pageData, visibleCols) {
     if (!pageData || pageData.length === 0) return;
-    const metricCols = visibleCols.filter(c => c.key !== 'image' && c.key !== 'title' && c.key !== 'rank');
+    const metricCols = visibleCols.filter(c => c.key !== 'image' && c.key !== 'title' && c.key !== 'rank' && c.key !== 'action');
     metricCols.forEach(col => {
         const allEmpty = pageData.every(p => {
             const v = p[col.key];
@@ -923,7 +923,7 @@ function buildRowDetailContent(p) {
                 <div style="color:var(--text-muted);font-size:0.8rem;">加载中...</div>
             </div>
             <div class="note-input-row">
-                <input type="text" id="note-input-${p.product_id}" placeholder="添加备注..." onkeydown="if(event.key==='Enter')addProductNote('${p.product_id}')">
+                <input type="text" id="note-input-${p.product_id}" aria-label="为${title}添加备注" placeholder="添加备注..." onkeydown="if(event.key==='Enter')addProductNote('${p.product_id}')">
                 <button onclick="addProductNote('${p.product_id}')" style="padding:4px 12px;border-radius:4px;border:none;background:var(--accent);color:#fff;cursor:pointer;font-size:0.8rem;">添加</button>
             </div>
         </div>
@@ -963,7 +963,7 @@ function buildProductRow(p, rank, metricCols, visibleCols) {
     }).join('');
     const addTagBtn = `<span class="tag-add-btn" onclick="event.stopPropagation();showAddTagDialog('${pid}')" title="添加标签">+</span>`;
     const tagsHtml = tagBadges ? `<div class="tag-badges-row">${tagBadges}${addTagBtn}</div>` : `<div class="tag-badges-row">${addTagBtn}</div>`;
-    const productCell = `<td class="td-product"><div class="product-cell-inner">${starIcon}${imgUrl ? `<img src="${imgUrl}" alt="" loading="lazy" onerror="this.style.display='none'">` : '<div class="product-img-placeholder">📦</div>'}<div class="product-info"><span class="product-title-text" title="${title}">${shortTitle}</span><span class="product-id-text">${escapeHtml(p.product_id || '--')}</span>${tagsHtml}</div></div></td>`;
+    const productCell = `<td class="td-product"><div class="product-cell-inner">${starIcon}${imgUrl ? `<img src="${imgUrl}" alt="${title}" loading="lazy" onerror="this.style.display='none'">` : '<div class="product-img-placeholder" aria-hidden="true">📦</div>'}<div class="product-info"><span class="product-title-text" title="${title}">${shortTitle}</span><span class="product-id-text">${escapeHtml(p.product_id || '--')}</span>${tagsHtml}</div></div></td>`;
 
     const cells = metricCols.map(col => {
         const style = getCellStyle(col, p);
@@ -973,7 +973,7 @@ function buildProductRow(p, rank, metricCols, visibleCols) {
         // 运营动作列：点击即编辑，一步保存
         if (col.key === 'action') {
             const lastAction = p._last_action || null;
-            let actionHtml = '<td class="td-action"><div class="inline-action">';
+            let actionHtml = '<td class="td-action" data-col="action"><div class="inline-action">';
             if (lastAction) {
                 const scoreBadge = lastAction.score != null
                     ? `<span class="action-score ${lastAction.score > 60 ? 'high' : lastAction.score >= 30 ? 'medium' : 'low'}">${lastAction.score.toFixed(0)}</span>`
@@ -996,13 +996,13 @@ function buildProductRow(p, rank, metricCols, visibleCols) {
         if (col.key === 'score' && rawVal != null && !isNaN(rawVal)) {
             const scoreVal = Number(rawVal);
             const badgeColor = scoreVal >= 80 ? '#22C55E' : scoreVal >= 60 ? '#3B82F6' : scoreVal >= 40 ? '#F59E0B' : '#EF4444';
-            return `<td class="text-right"><span class="score-badge-circle" style="background:${badgeColor}">${scoreVal}</span></td>`;
+            return `<td class="text-right" data-col="${col.key}"><span class="score-badge-circle" style="background:${badgeColor}">${scoreVal}</span></td>`;
         }
         // 百分比列用迷你进度条
         if (col.type === 'percent' && rawVal != null && !isNaN(rawVal)) {
             const pctVal = Number(rawVal) * 100;
             const barColor = pctVal > 10 ? '#22C55E' : pctVal > 3 ? '#3B82F6' : pctVal > 0 ? '#F59E0B' : '#475569';
-            let cellHtml = `<td class="text-right"><div class="cell-with-bar"><span>${value}</span><div class="mini-bar"><div class="mini-bar-fill" style="width:${Math.min(pctVal, 100)}%;background:${barColor}"></div></div></div>`;
+            let cellHtml = `<td class="text-right" data-col="${col.key}"><div class="cell-with-bar"><span>${value}</span><div class="mini-bar"><div class="mini-bar-fill" style="width:${Math.min(pctVal, 100)}%;background:${barColor}"></div></div></div>`;
             // 月度维度下显示环比变化
             if (STATE.dim === 'monthly' && p.changes) {
                 const changeKeyMap = { 'payment_amount': 'payment_amount', 'visitors': 'visitors', 'conversion': 'payment_conversion', 'refund_rate': 'refund_rate', 'uv_value': 'uv_value' };
@@ -1036,8 +1036,51 @@ function buildProductRow(p, rank, metricCols, visibleCols) {
         return `<td class="${alignCls}" data-col="${col.key}" style="${style}">${cellContent}</td>`;
     }).join('');
 
-    return `<tr data-pid="${p.product_id}" onclick="toggleRowDetail('${p.product_id}', this)" style="cursor:pointer"><td class="td-rank">${rankHtml}<input type="checkbox" class="row-check" value="${p.product_id}" onchange="updateSelectAll()" onclick="event.stopPropagation()"></td>${productCell}${cells}</tr>` +
+    return `<tr data-pid="${p.product_id}" role="button" tabindex="0" aria-label="查看${title}商品详情" onclick="toggleRowDetail('${p.product_id}', this)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleRowDetail('${p.product_id}', this)}" style="cursor:pointer"><td class="td-rank">${rankHtml}<input type="checkbox" class="row-check" aria-label="选择${title}" value="${p.product_id}" onchange="updateSelectAll()" onclick="event.stopPropagation()"></td>${productCell}${cells}</tr>` +
         `<tr class="detail-row" id="detail-${p.product_id}" style="display:none"><td colspan="99"><div class="row-detail-content">${buildRowDetailContent(p)}</div></td></tr>`;
+}
+
+function normalizeProductTableHeader(visibleCols) {
+    const table = document.getElementById('productTable');
+    const thead = document.getElementById('productTableHead');
+    if (!table || !thead) return;
+
+    const rows = thead.querySelectorAll('tr');
+    if (rows.length < 2) return;
+    const groupRow = rows[0];
+    const headerRow = rows[1];
+    const frozenGroupCells = Array.from(groupRow.children).slice(0, 2);
+    const frozenHeaderCells = Array.from(headerRow.children).slice(0, 2);
+
+    // The first two cells are structural columns, so they must span both rows.
+    frozenGroupCells.forEach((cell, index) => {
+        cell.rowSpan = 2;
+        cell.dataset.col = index === 0 ? 'rank' : 'product';
+        if (frozenHeaderCells[index]) {
+            const checkbox = frozenHeaderCells[index].querySelector('input');
+            if (checkbox && index === 0 && !cell.querySelector('input')) cell.appendChild(checkbox);
+            frozenHeaderCells[index].remove();
+        }
+    });
+
+    const metricCols = visibleCols.filter(col => col.key !== 'image' && col.key !== 'title');
+    const oldColgroup = table.querySelector(':scope > colgroup');
+    if (oldColgroup) oldColgroup.remove();
+    const colgroup = document.createElement('colgroup');
+    const rankCol = document.createElement('col');
+    rankCol.className = 'col-rank';
+    rankCol.style.width = 'var(--product-rank-width)';
+    const productCol = document.createElement('col');
+    productCol.className = 'col-product';
+    productCol.style.width = 'var(--product-info-width)';
+    colgroup.append(rankCol, productCol);
+    metricCols.forEach(col => {
+        const metricCol = document.createElement('col');
+        metricCol.dataset.col = col.key;
+        metricCol.style.width = col.key === 'action' ? '190px' : '108px';
+        colgroup.appendChild(metricCol);
+    });
+    table.insertBefore(colgroup, thead);
 }
 
 function renderProductTable() {
@@ -1103,6 +1146,7 @@ function renderProductTable() {
         }
 
         thead.innerHTML = `<tr class="group-row">${groupRowHtml}</tr><tr class="header-row">${headerRowHtml}</tr>`;
+        normalizeProductTableHeader(visibleCols);
     }
 
     // ---- 渲染行 ----
@@ -1117,7 +1161,8 @@ function renderProductTable() {
     renderSummaryRow(pageData, visibleCols);
 
     // 空数据列自动隐藏
-    autoHideEmptyColumns(pageData, visibleCols);
+    // Keep the configured view grid intact. Hiding individual cells leaves
+    // colgroup tracks behind and makes a fixed-layout table misalign.
 
     // 加载更多按钮（追加到表格底部）
     if (page * pageSize < total) {

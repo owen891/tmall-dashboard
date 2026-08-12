@@ -3,12 +3,22 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="天猫经营数据分析仪表盘">
     <title>天猫数据仪表盘</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="preload" href="/static/css/dashboard.css" as="style">
     <link rel="preload" href="/static/js/bundle.min.js" as="script">
+    <script>
+        (function () {
+            try {
+                if (localStorage.getItem('theme') !== 'dark') {
+                    document.documentElement.classList.add('light');
+                }
+            } catch (e) {}
+        })();
+    </script>
     <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
     <link rel="stylesheet" href="/static/css/dashboard.css">
 </head>
@@ -56,7 +66,7 @@
         <div class="sidebar-logo-icon">
             <svg viewBox="0 0 24 24"><path d="M3 13h8V3H3v10zm0 8h8v-6H3v6zm10 0h8V11h-8v10zm0-18v6h8V3h-8z"/></svg>
         </div>
-        <span class="sidebar-logo-text">天猫</span>
+        <span class="sidebar-logo-text"><strong>天猫数据</strong><strong>仪表盘</strong></span>
     </div>
     <nav class="sidebar-nav" role="tablist" aria-label="主导航">
         <button class="sidebar-nav-item tab-btn active" role="tab" data-tab="tab-overview" aria-selected="true" aria-controls="tab-overview" onclick="switchTab('tab-overview')">
@@ -138,32 +148,68 @@
 <div id="mobileOverlay" class="mobile-overlay" onclick="toggleMobileSidebar()"></div>
 
 <!-- ==================== 顶部控制栏 ==================== -->
-<div class="top-bar">
+<div class="top-bar" role="banner">
     <div class="top-bar-left">
-        <button class="sidebar-toggle" id="sidebarToggle" onclick="toggleSidebar()" title="折叠侧边栏">
+        <button class="sidebar-toggle" id="sidebarToggle" onclick="toggleSidebar()" title="折叠侧边栏" aria-label="折叠侧边栏">
             <svg viewBox="0 0 24 24"><path d="M11 19l-7-7 7-7m8 14l-7-7 7-7"/></svg>
         </button>
-        <button class="mobile-menu-btn" id="mobileMenuBtn" onclick="toggleMobileSidebar()" title="菜单" style="display:none;">
+        <button class="mobile-menu-btn" id="mobileMenuBtn" onclick="toggleMobileSidebar()" title="菜单" aria-label="打开导航菜单" style="display:none;">
             <svg viewBox="0 0 24 24" width="22" height="22"><path d="M3 12h18M3 6h18M3 18h18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
         </button>
-        <div class="logo">天猫数据仪表盘</div>
-        <div class="dim-switcher" role="radiogroup" aria-label="时间维度">
-            <button class="dim-btn" role="radio" aria-checked="false" data-dim="daily" onclick="switchDimension('daily')">日</button>
-            <button class="dim-btn" role="radio" aria-checked="false" data-dim="weekly" onclick="switchDimension('weekly')">周</button>
-            <button class="dim-btn active" role="radio" aria-checked="true" data-dim="monthly" onclick="switchDimension('monthly')">月</button>
+        <div class="page-heading">
+            <h1 class="page-title">数据概览</h1>
+            <span class="page-subtitle" id="pagePeriodStatus">经营总览</span>
         </div>
-        <select class="period-select" id="periodSelect" onchange="onPeriodChange()">
-            <option value="">加载中...</option>
-        </select>
+        <div class="time-control" role="group" aria-label="统计时间">
+            <div class="time-range-group">
+                <span class="time-caption">统计时间</span>
+                <span class="time-range-label tabular" id="timeRangeLabel" aria-live="polite">--</span>
+            </div>
+            <span class="time-separator" aria-hidden="true"></span>
+            <div class="time-quick-list" role="group" aria-label="快捷时间范围">
+                <button type="button" class="time-quick" data-preset="yesterday" onclick="selectTimePreset('yesterday')" aria-pressed="false">昨天</button>
+                <button type="button" class="time-quick" data-preset="seven" onclick="selectTimePreset('seven')" aria-pressed="false">7天</button>
+                <button type="button" class="time-quick" data-preset="thirty" onclick="selectTimePreset('thirty')" aria-pressed="false">30天</button>
+                <button type="button" class="time-quick" data-preset="sixty" onclick="selectTimePreset('sixty')" aria-pressed="false">60天</button>
+            </div>
+            <span class="time-separator" aria-hidden="true"></span>
+            <div class="dim-switcher" role="radiogroup" aria-label="时间维度">
+                <button class="dim-btn" role="radio" aria-checked="false" data-dim="daily" onclick="switchDimension('daily')">日</button>
+                <button class="dim-btn" role="radio" aria-checked="false" data-dim="weekly" onclick="switchDimension('weekly')">周</button>
+                <button class="dim-btn active" role="radio" aria-checked="true" data-dim="monthly" onclick="switchDimension('monthly')">月</button>
+            </div>
+            <span class="time-separator" aria-hidden="true"></span>
+            <button class="time-custom-btn" onclick="openCustomPeriod(event)" aria-label="自定义统计周期" aria-expanded="false" aria-controls="timeCustomPopover">
+                自定义
+                <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18"/></svg>
+            </button>
+            <div class="time-nav-group" aria-label="切换统计周期">
+                <button class="time-nav-btn" type="button" onclick="shiftPeriod(-1)" aria-label="上一个统计周期">‹</button>
+                <button class="time-nav-btn" type="button" onclick="shiftPeriod(1)" aria-label="下一个统计周期">›</button>
+            </div>
+            <div class="time-custom-popover" id="timeCustomPopover" hidden>
+                <label for="periodSelect">选择统计周期</label>
+                <select class="period-select" id="periodSelect" aria-label="选择统计周期">
+                    <option value="">加载中...</option>
+                </select>
+                <div class="time-custom-actions">
+                    <button class="time-custom-cancel" onclick="closeCustomPeriod()">取消</button>
+                    <button class="time-custom-apply" onclick="applyCustomPeriod()">确定</button>
+                </div>
+            </div>
+        </div>
     </div>
     <div class="top-bar-right">
-        <button class="refresh-btn" id="refreshBtn" onclick="manualRefresh()" title="手动刷新">刷新</button>
+        <button class="refresh-btn" id="refreshBtn" onclick="manualRefresh()" title="手动刷新" aria-label="刷新数据">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8.1 8.1 0 0 0-14.5-4.9L4 8m0-4v4h4M4 13a8.1 8.1 0 0 0 14.5 4.9L20 16m0 4v-4h-4"/></svg>
+            <span>刷新</span>
+        </button>
         <span class="last-update" id="lastUpdate"></span>
         <button class="auto-refresh-btn" id="autoRefreshBtn" onclick="toggleAutoRefresh()" title="自动刷新(5分钟)">AUTO</button>
-        <button class="theme-toggle-btn" id="themeToggle" onclick="toggleTheme()" title="切换主题">
+        <button class="theme-toggle-btn" id="themeToggle" onclick="toggleTheme()" title="切换主题" aria-label="切换主题">
             <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg>
         </button>
-        <button class="fullscreen-btn" onclick="toggleFullscreen()" title="全屏模式">
+        <button class="fullscreen-btn" onclick="toggleFullscreen()" title="全屏模式" aria-label="进入全屏模式">
             <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4"/></svg>
         </button>
     </div>
@@ -278,6 +324,19 @@ document.addEventListener('DOMContentLoaded', () => {
     loadLifecycleData();
     if (typeof initCompareTab === 'function') initCompareTab();
 });
+
+// Keep the reference-style segmented controls readable to assistive technology
+// while the legacy bundle continues to own the active-class state.
+(function syncTimeControlAria() {
+    const sync = () => {
+        document.querySelectorAll('.time-quick').forEach((button) => {
+            button.setAttribute('aria-pressed', button.classList.contains('active') ? 'true' : 'false');
+        });
+    };
+    sync();
+    const observer = new MutationObserver(sync);
+    document.querySelectorAll('.time-quick').forEach((button) => observer.observe(button, { attributes: true, attributeFilter: ['class'] }));
+})();
 </script>
 <!-- Toast容器 -->
 <div id="toastContainer" style="position:fixed;top:20px;right:20px;z-index:10000;display:flex;flex-direction:column;gap:8px;"></div>

@@ -288,7 +288,7 @@ def _exec_main_image_suggest(params):
     for row in rows:
         content = row['content'] or ''
         # 按常见分隔符分词
-        words = re.split(r'[，。！？、；：\s,.\-!?;:\(\)（）\[\]【】""''\"\'\/\\~·]+', content)
+        words = re.split(r'[，。！？、；：\s,.\-!?;:\(\)（）\[\]【】""''"\'\\~·]+', content)
         for w in words:
             w = w.strip()
             if len(w) >= 2 and w not in _STOP_WORDS:
