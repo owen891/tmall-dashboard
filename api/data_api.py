@@ -76,21 +76,6 @@ def _fmt_wan(val):
         return f"{n:,.0f}"
     return f"{n / 10000:.1f}万"
 
-@data_bp.route('/api/status', methods=['GET'])
-def get_status():
-    """检查数据库是否有数据"""
-    with get_db() as conn:
-        product_count = conn.execute('SELECT COUNT(*) FROM products').fetchone()[0]
-        monthly_count = conn.execute('SELECT COUNT(*) FROM monthly_data').fetchone()[0]
-        weekly_count = conn.execute('SELECT COUNT(*) FROM weekly_data').fetchone()[0]
-    has_data = product_count > 0 and (monthly_count > 0 or weekly_count > 0)
-    return jsonify({
-        'has_data': has_data,
-        'product_count': product_count,
-        'monthly_periods': monthly_count,
-        'weekly_periods': weekly_count,
-    })
-
 @data_bp.route('/api/kpi', methods=['GET'])
 def get_kpi():
     """KPI卡片数据"""
