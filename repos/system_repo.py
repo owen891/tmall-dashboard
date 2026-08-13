@@ -21,4 +21,3 @@ class SystemRepo:
             'monthly_periods': monthly_count,
             'weekly_periods': weekly_count,
         }
-
