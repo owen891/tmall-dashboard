@@ -17,11 +17,10 @@ py -3 app.py
 
 ## 本地生产启动
 
-本机生产运行使用 Waitress，不使用 Flask 开发服务器。先完成数据库备份，再以局域网监听地址启动：
+本机生产运行使用 Waitress，不使用 Flask 开发服务器。正式服务仅监听本机回环地址，必须通过受控启动脚本使用独立运行库：
 
 ```powershell
-Copy-Item data/dashboard.db data/dashboard.db.bak
-py -3 -m waitress --host=0.0.0.0 --port=5000 wsgi:application
+& powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\start_local_production.ps1
 ```
 
 启动后在本机验证：
@@ -30,7 +29,8 @@ py -3 -m waitress --host=0.0.0.0 --port=5000 wsgi:application
 Invoke-WebRequest http://127.0.0.1:5000/healthz | Select-Object -ExpandProperty Content
 ```
 
-返回 `"ok":true` 且 `"database":"ok"` 才可进入局域网访问。部署前将 `data/dashboard.db` 放在本机受控路径，Windows 防火墙仅允许受信任网段访问端口 `5000`。
+返回 `"ok":true` 且 `"database":"ok"` 才可继续使用。本机生产数据库位于
+`C:\ProgramData\TMallDashboard\data\dashboard.db`，服务不会开放给局域网或公网。
 
 启动前可运行只读预检；默认使用临时数据库，不会修改运营数据：
 
@@ -47,7 +47,9 @@ py -3 scripts/production_preflight.py
 ```
 
 该命令创建 `TMallDashboardLocal` 计划任务，并通过
-`scripts/start_local_production.ps1` 启动 Waitress。运行数据库和日志固定放在
+`scripts/start_local_production.ps1` 启动 Waitress；同时创建
+`TMallDashboardBackupDaily` 每日 02:30 备份任务，通过
+`scripts/backup_local_production.ps1` 生成经过 SQLite 完整性校验的恢复点。运行数据库和日志固定放在
 `C:\ProgramData\TMallDashboard\data\dashboard.db` 与
 `C:\ProgramData\TMallDashboard\logs\`，不依赖代码工作树。首次安装会从当前代码工作树的
 `data\dashboard.db` 复制运行库；需要迁移其他已验证运营库时，可显式指定来源：
@@ -82,11 +84,16 @@ Invoke-WebRequest http://127.0.0.1:5000/healthz | Select-Object -ExpandProperty 
 
 启动时 `db.init_db()` 执行幂等迁移。Windows 本机生产运行库位于
 `C:\ProgramData\TMallDashboard\data\dashboard.db`，其导入备份与导入审计日志同样位于该目录。
-升级前备份 SQLite 文件：
+升级前也可以手动备份 SQLite 文件：
 
 ```powershell
-Copy-Item C:\ProgramData\TMallDashboard\data\dashboard.db C:\ProgramData\TMallDashboard\data\dashboard.db.bak
-py -3 -c "from db import init_db; init_db()"
+& powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\backup_local_production.ps1
+```
+
+检查每日备份任务最近一次运行结果：
+
+```powershell
+schtasks.exe /Query /TN TMallDashboardBackupDaily /FO LIST /V
 ```
 
 恢复时先停止服务，再将 `C:\ProgramData\TMallDashboard\data\backups\` 中已验证的备份复制回运行库，最后通过计划任务重启：
@@ -129,7 +136,7 @@ node scripts/validate_ui_demos.cjs
 | 第 12 节视觉规范 | 已完成 | 统一 tokens、Panel、Table、Filter、Drawer、状态组件；桌面/390px 无横向溢出。 |
 | 第 13 节 API 契约 | 已完成 | 新域 API 使用统一 `{ok,data,availability,requestId}`；旧 API 保留兼容入口。 |
 | 第 15 节非功能 | 已完成 | 白名单、迁移、事务导入、批次撤销、服务端分页、异步兼容入口和前端语法检查已覆盖。 |
-| 第 16 节验收 | 已验证 | 150 项后端测试、全量 JS 检查、7 页静态校验、桌面/移动冒烟均通过。 |
+| 第 16 节验收 | 已验证 | 157 项后端测试、全量 JS 检查、7 页静态校验、桌面/移动冒烟均通过。 |
 
 明确边界：评价/市场/周期对比/工具箱等历史能力仍保留在兼容 API 或 `/legacy/`；它们不是当前七个一级页面的主导航。主应用 `frontend/ui_demo/` 统一使用 ECharts。
 
