@@ -14,15 +14,64 @@
 
 import sys
 import os
+import shutil
+import tempfile
 import unittest
+import uuid
 
 # 确保项目根目录在 sys.path 中
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
+# Mutation smoke tests run against a disposable copy so the checked-in demo
+# database remains stable across local and CI test runs.
+_TEST_DATA_DIR = tempfile.mkdtemp(prefix='tmall-dashboard-tests-')
+_TEST_DB_PATH = os.path.join(_TEST_DATA_DIR, 'dashboard.db')
+_SOURCE_DB_PATH = os.path.join(PROJECT_ROOT, 'data', 'dashboard.db')
+if os.path.exists(_SOURCE_DB_PATH):
+    shutil.copy2(_SOURCE_DB_PATH, _TEST_DB_PATH)
+os.environ['TMALL_DB_PATH'] = _TEST_DB_PATH
+
 from app import app
 from db import get_db
+
+
+def _insert_contract_products():
+    prefix = f"contract-{uuid.uuid4().hex[:10]}"
+    active_id = f"{prefix}-active"
+    inactive_id = f"{prefix}-inactive"
+    with get_db() as conn:
+        conn.execute(
+            "INSERT INTO products (product_id, title, tier, style, status, starred) VALUES (?, ?, ?, ?, ?, ?)",
+            (active_id, 'Contract Active Product', 'Contract Tier A', 'Contract Style A', 'active', 0)
+        )
+        conn.execute(
+            "INSERT INTO products (product_id, title, tier, style, status, starred) VALUES (?, ?, ?, ?, ?, ?)",
+            (inactive_id, 'Contract Inactive Product', 'Contract Tier B', 'Contract Style B', 'inactive', 1)
+        )
+        conn.execute(
+            "INSERT INTO daily_data (product_id, date, payment_amount, refund_amount, net_sales, ipv, pv, payment_conversion, ad_spend, ad_roi, buyers, avg_order_value) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (active_id, '2026-04-01', 100, 0, 100, 10, 20, 0.1, 20, 5, 2, 50)
+        )
+        conn.execute(
+            "INSERT INTO daily_data (product_id, date, payment_amount, refund_amount, net_sales, ipv, pv, payment_conversion, ad_spend, ad_roi, buyers, avg_order_value) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (inactive_id, '2026-04-01', 50, 0, 50, 5, 10, 0.2, 10, 5, 1, 50)
+        )
+        conn.execute(
+            "INSERT INTO operation_actions (product_id, action_date, action_type, action_detail) VALUES (?, ?, ?, ?)",
+            (active_id, '2026-04-02', 'active-action', 'included')
+        )
+        conn.execute(
+            "INSERT INTO operation_actions (product_id, action_date, action_type, action_detail) VALUES (?, ?, ?, ?)",
+            (inactive_id, '2026-04-02', 'inactive-action', 'filtered')
+        )
+        conn.execute(
+            "INSERT INTO operation_actions (product_id, action_date, action_type, action_detail) VALUES (?, ?, ?, ?)",
+            (active_id, '2026-05-02', 'other-period-action', 'filtered')
+        )
+        conn.commit()
+    return active_id, inactive_id
 
 
 def _get_first_product_id():
@@ -74,6 +123,7 @@ class TestPageRender(SmokeTestBase):
         resp = self.client.get('/')
         self.assertEqual(resp.status_code, 200)
         self.assertIn(b'\xe5\xa4\xa9\xe7\x8c\xab', resp.data)  # "天猫" in UTF-8
+        resp.close()
 
 
 class TestKpiEndpoints(SmokeTestBase):
@@ -122,6 +172,18 @@ class TestProductEndpoints(SmokeTestBase):
     def test_products(self):
         self.assertGetNoCrash('/api/products', params={'dim': 'weekly', 'page': 1})
 
+    def test_products_supports_daily_date_range(self):
+        response = self.client.get('/api/products', query_string={
+            'dim': 'daily',
+            'start': '2026-04-01',
+            'end': '2026-04-19',
+            'limit': 5,
+        })
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertGreater(payload['total'], 0)
+        self.assertTrue(any(row['payment_amount'] > 0 for row in payload['data']))
+
     def test_star_route(self):
         self.assertMutationNoCrash('POST', '/api/star', json={'product_id': 'nonexistent'})
 
@@ -163,6 +225,79 @@ class TestProductEndpoints(SmokeTestBase):
         self.assertMutationNoCrash('DELETE', '/api/batch_tags',
                                    json={'product_ids': [], 'tags': []})
 
+    def test_star_explicit_set_is_idempotent(self):
+        active_id, _ = _insert_contract_products()
+        first = self.client.post('/api/star', json={'product_id': active_id, 'starred': 1})
+        self.assertEqual(first.status_code, 200)
+        self.assertEqual(first.get_json()['starred'], 1)
+
+        second = self.client.post('/api/star', json={'product_id': active_id, 'starred': 1})
+        self.assertEqual(second.status_code, 200)
+        self.assertEqual(second.get_json()['starred'], 1)
+
+        with get_db() as conn:
+            row = conn.execute('SELECT starred FROM products WHERE product_id = ?', (active_id,)).fetchone()
+        self.assertEqual(row[0], 1)
+
+    def test_products_status_filter_uses_same_where_for_data_and_total(self):
+        _, inactive_id = _insert_contract_products()
+        response = self.client.get('/api/products', query_string={
+            'dim': 'daily',
+            'start': '2026-04-01',
+            'end': '2026-04-01',
+            'status': 'inactive',
+            'search': inactive_id,
+            'limit': 20,
+        })
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        ids = [row['product_id'] for row in payload['data']]
+        self.assertEqual(payload['total'], 1)
+        self.assertEqual(ids, [inactive_id])
+        self.assertTrue(all(row['status'] == 'inactive' for row in payload['data']))
+
+    def test_products_all_status_includes_active_and_inactive(self):
+        active_id, inactive_id = _insert_contract_products()
+        prefix = active_id.rsplit('-', 1)[0]
+        response = self.client.get('/api/products', query_string={
+            'dim': 'daily',
+            'start': '2026-04-01',
+            'end': '2026-04-01',
+            'status': 'all',
+            'search': prefix,
+            'limit': 20,
+        })
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertEqual(payload['total'], 2)
+        self.assertEqual({row['product_id'] for row in payload['data']}, {active_id, inactive_id})
+
+    def test_products_all_status_without_other_filters_is_valid_sql(self):
+        response = self.client.get('/api/products', query_string={
+            'dim': 'daily', 'start': '2026-04-01', 'end': '2026-04-19', 'status': 'all',
+        })
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('data', response.get_json())
+
+    def test_products_response_includes_global_facets(self):
+        active_id, _ = _insert_contract_products()
+        response = self.client.get('/api/products', query_string={
+            'dim': 'daily',
+            'start': '2026-04-01',
+            'end': '2026-04-01',
+            'search': active_id,
+            'limit': 20,
+        })
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertIn('facets', payload)
+        self.assertIn('Contract Tier A', payload['facets']['tiers'])
+        self.assertIn('Contract Tier B', payload['facets']['tiers'])
+        self.assertIn('Contract Style A', payload['facets']['styles'])
+        self.assertIn('Contract Style B', payload['facets']['styles'])
+        self.assertIn('active', payload['facets']['statuses'])
+        self.assertIn('inactive', payload['facets']['statuses'])
+
 
 class TestAdEndpoints(SmokeTestBase):
     """推广分析相关端点"""
@@ -175,6 +310,10 @@ class TestAdEndpoints(SmokeTestBase):
 
     def test_ad_trend(self):
         self.assertGetNoCrash('/api/ad_trend', params={'dim': 'weekly'})
+
+    def test_ad_trend_monthly_with_active_product_join(self):
+        response = self.client.get('/api/ad_trend', query_string={'dim': 'monthly', 'period': '2026-03'})
+        self.assertEqual(response.status_code, 200)
 
 
 class TestRefundEndpoints(SmokeTestBase):
@@ -206,6 +345,23 @@ class TestActionEndpoints(SmokeTestBase):
 
     def test_action_stats(self):
         self.assertGetNoCrash('/api/action_stats', params={'dim': 'weekly'})
+
+    def test_actions_list_filters_product_id_with_period(self):
+        active_id, _ = _insert_contract_products()
+        response = self.client.get('/api/legacy/actions', query_string={
+            'period': '2026-04',
+            'product_id': active_id,
+            'limit': 20,
+        })
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertEqual([row['product_id'] for row in payload], [active_id])
+        self.assertEqual([row['action_type'] for row in payload], ['active-action'])
+
+    def test_actions_list_clamps_negative_limit(self):
+        response = self.client.get('/api/legacy/actions', query_string={'limit': -1})
+        self.assertEqual(response.status_code, 200)
+        self.assertLessEqual(len(response.get_json()), 1)
 
 
 class TestAlertEndpoints(SmokeTestBase):
@@ -293,6 +449,11 @@ class TestCompareEndpoints(SmokeTestBase):
     def test_lifecycle(self):
         self.assertGetNoCrash('/api/lifecycle')
 
+    def test_lifecycle_clamps_negative_limit(self):
+        response = self.client.get('/api/lifecycle', query_string={'limit': -1})
+        self.assertEqual(response.status_code, 200)
+        self.assertLessEqual(len(response.get_json()), 1)
+
 
 class TestImportEndpoints(SmokeTestBase):
     """数据导入相关端点"""
@@ -314,7 +475,8 @@ class TestSystemEndpoints(SmokeTestBase):
         self.assertGetNoCrash('/api/periods', params={'dim': 'weekly'})
 
     def test_backup(self):
-        self.assertMutationNoCrash('POST', '/api/backup')
+        response = self.assertMutationNoCrash('POST', '/api/backup')
+        self.assertEqual(response.get_json(), {'success': True, 'skipped': 'testing'})
 
     def test_export(self):
         self.assertMutationNoCrash('POST', '/api/export', json={
@@ -388,12 +550,14 @@ class TestTaskBoardEndpoints(SmokeTestBase):
         })
 
     def test_tasks_update(self):
-        self.assertMutationNoCrash('PUT', '/api/tasks/99999', json={
+        response = self.assertMutationNoCrash('PUT', '/api/tasks/99999', json={
             'title': 'updated'
         })
+        self.assertEqual(response.status_code, 404)
 
     def test_tasks_delete(self):
-        self.assertMutationNoCrash('DELETE', '/api/tasks/99999')
+        response = self.assertMutationNoCrash('DELETE', '/api/tasks/99999')
+        self.assertEqual(response.status_code, 404)
 
 
 class TestUserKpiEndpoints(SmokeTestBase):
@@ -408,12 +572,14 @@ class TestUserKpiEndpoints(SmokeTestBase):
         })
 
     def test_user_kpis_update(self):
-        self.assertMutationNoCrash('PUT', '/api/user_kpis/99999', json={
+        response = self.assertMutationNoCrash('PUT', '/api/user_kpis/99999', json={
             'user_name': 'updated'
         })
+        self.assertEqual(response.status_code, 404)
 
     def test_user_kpis_delete(self):
-        self.assertMutationNoCrash('DELETE', '/api/user_kpis/99999')
+        response = self.assertMutationNoCrash('DELETE', '/api/user_kpis/99999')
+        self.assertEqual(response.status_code, 404)
 
 
 class TestKeywordsEndpoints(SmokeTestBase):
