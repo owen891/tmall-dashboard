@@ -3,6 +3,7 @@ import sys
 import tempfile
 import unittest
 import sqlite3
+import atexit
 
 from flask import Flask
 
@@ -11,6 +12,7 @@ if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
 _TEST_DATA_DIR = tempfile.TemporaryDirectory(prefix='tmall-dashboard-factory-tests-')
+atexit.register(_TEST_DATA_DIR.cleanup)
 os.environ.setdefault('TMALL_DB_PATH', os.path.join(_TEST_DATA_DIR.name, 'dashboard.db'))
 
 
