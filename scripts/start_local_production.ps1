@@ -1,13 +1,15 @@
 param(
-    [int]$Port = 5000
+    [int]$Port = 5000,
+    [string]$DatabasePath = (Join-Path $env:ProgramData 'TMallDashboard\data\dashboard.db'),
+    [string]$LogDirectory = (Join-Path $env:ProgramData 'TMallDashboard\logs')
 )
 
 $ErrorActionPreference = 'Stop'
 
 $projectRoot = Split-Path -Parent $PSScriptRoot
 $python = Join-Path $env:LOCALAPPDATA 'Programs\Python\Python314\python.exe'
-$database = Join-Path $projectRoot 'data\dashboard.db'
-$logDirectory = Join-Path $projectRoot 'logs'
+$database = [System.IO.Path]::GetFullPath($DatabasePath)
+$logDirectory = [System.IO.Path]::GetFullPath($LogDirectory)
 $stdoutLog = Join-Path $logDirectory 'waitress.stdout.log'
 $stderrLog = Join-Path $logDirectory 'waitress.stderr.log'
 
