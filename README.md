@@ -80,14 +80,24 @@ Invoke-WebRequest http://127.0.0.1:5000/healthz | Select-Object -ExpandProperty 
 
 ## 数据库迁移、备份与恢复
 
-启动时 `db.init_db()` 执行幂等迁移。升级前备份 SQLite 文件：
+启动时 `db.init_db()` 执行幂等迁移。Windows 本机生产运行库位于
+`C:\ProgramData\TMallDashboard\data\dashboard.db`，其导入备份与导入审计日志同样位于该目录。
+升级前备份 SQLite 文件：
 
 ```powershell
-Copy-Item data/dashboard.db data/dashboard.db.bak
+Copy-Item C:\ProgramData\TMallDashboard\data\dashboard.db C:\ProgramData\TMallDashboard\data\dashboard.db.bak
 py -3 -c "from db import init_db; init_db()"
 ```
 
-恢复时停止 Flask，将备份复制回 `data/dashboard.db` 后重新启动。不要直接编辑运行中的数据库；目标、动作、生命周期人工调整均保留版本和审计记录。
+恢复时先停止服务，再将 `C:\ProgramData\TMallDashboard\data\backups\` 中已验证的备份复制回运行库，最后通过计划任务重启：
+
+```powershell
+.\scripts\stop_local_production.ps1
+Copy-Item C:\ProgramData\TMallDashboard\data\backups\dashboard_YYYYMMDD_HHMMSS.db C:\ProgramData\TMallDashboard\data\dashboard.db -Force
+schtasks.exe /Run /TN TMallDashboardLocal
+```
+
+不要直接编辑运行中的数据库；目标、动作、生命周期人工调整均保留版本和审计记录。
 
 ## 已知边界
 
