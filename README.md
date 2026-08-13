@@ -87,6 +87,6 @@ node scripts/validate_ui_demos.cjs
 | 第 15 节非功能 | 已完成 | 白名单、迁移、事务导入、批次撤销、服务端分页、异步兼容入口和前端语法检查已覆盖。 |
 | 第 16 节验收 | 已验证 | 148 项后端测试、全量 JS 检查、7 页静态校验、桌面/移动冒烟均通过。 |
 
-明确边界：评价/市场/周期对比/工具箱等历史能力仍保留在兼容 API 或 `/legacy/`；它们不是当前七个一级页面的主导航。`docs/ui_demo/` 是旧归档，可能含 Chart.js 引用；主应用 `frontend/ui_demo/` 不含 Chart.js，统一使用 ECharts。
+明确边界：评价/市场/周期对比/工具箱等历史能力仍保留在兼容 API 或 `/legacy/`；它们不是当前七个一级页面的主导航。主应用 `frontend/ui_demo/` 统一使用 ECharts。
 
 字段、来源、R1/R2 状态和公式见 [docs/FIELD_DICTIONARY.md](docs/FIELD_DICTIONARY.md)，产品验收条款见 [docs/PRD_KEEP_EXISTING_ARCHITECTURE.md](docs/PRD_KEEP_EXISTING_ARCHITECTURE.md)。
