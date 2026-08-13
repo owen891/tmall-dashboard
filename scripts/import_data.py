@@ -3,6 +3,7 @@ import os
 import json
 import glob
 import shutil
+import uuid
 from datetime import datetime
 import pandas as pd
 import sqlite3
@@ -107,8 +108,8 @@ def backup_database():
     max_backups = config['data'].get('max_backups', 30)
 
     os.makedirs(backup_dir, exist_ok=True)
-    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-    backup_path = os.path.join(backup_dir, f'dashboard_{timestamp}.db')
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S_%f')
+    backup_path = os.path.join(backup_dir, f'dashboard_{timestamp}_{uuid.uuid4().hex}.db')
 
     source_conn = sqlite3.connect(db_path)
     backup_conn = sqlite3.connect(backup_path)

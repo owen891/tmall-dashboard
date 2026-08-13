@@ -2,6 +2,7 @@ import os
 import sqlite3
 import tempfile
 import unittest
+from datetime import datetime
 from unittest.mock import patch
 
 
@@ -50,6 +51,37 @@ class RuntimeStoragePathsTests(unittest.TestCase):
                 self.assertEqual(connection.execute('PRAGMA integrity_check').fetchone()[0], 'ok')
             finally:
                 connection.close()
+
+    def test_backups_created_in_the_same_second_use_distinct_paths(self):
+        from scripts import import_data
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            database_path = os.path.join(temp_dir, 'data', 'dashboard.db')
+            os.makedirs(os.path.dirname(database_path))
+            connection = sqlite3.connect(database_path)
+            try:
+                connection.execute('CREATE TABLE facts (id INTEGER PRIMARY KEY)')
+                connection.commit()
+            finally:
+                connection.close()
+
+            fixed_time = datetime(2026, 8, 13, 2, 30, 0)
+
+            class FixedDatetime(datetime):
+                @classmethod
+                def now(cls):
+                    return fixed_time
+
+            with patch.object(import_data, 'get_db_path', return_value=database_path), patch.object(
+                import_data,
+                'datetime',
+                FixedDatetime,
+            ):
+                self.assertTrue(import_data.backup_database())
+                self.assertTrue(import_data.backup_database())
+
+            backups = os.listdir(os.path.join(temp_dir, 'data', 'backups'))
+            self.assertEqual(len(backups), 2)
 
 
 if __name__ == '__main__':
