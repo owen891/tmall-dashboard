@@ -32,6 +32,12 @@ Invoke-WebRequest http://127.0.0.1:5000/healthz | Select-Object -ExpandProperty 
 
 返回 `"ok":true` 且 `"database":"ok"` 才可进入局域网访问。部署前将 `data/dashboard.db` 放在本机受控路径，Windows 防火墙仅允许受信任网段访问端口 `5000`。
 
+启动前可运行只读预检；默认使用临时数据库，不会修改运营数据：
+
+```powershell
+py -3 scripts/production_preflight.py
+```
+
 ## 数据导入
 
 数据中心支持店铺日度、商品日/周/月、推广渠道/计划/单元/商品、退款和新老客来源。导入流程为预览 -> 字段映射 -> 质量校验 -> 事务确认；缺少 R1 必填字段会阻止写入，缺失或不足数据显示为无数据/数据不足，不补造 0。
@@ -79,7 +85,7 @@ node scripts/validate_ui_demos.cjs
 | 第 12 节视觉规范 | 已完成 | 统一 tokens、Panel、Table、Filter、Drawer、状态组件；桌面/390px 无横向溢出。 |
 | 第 13 节 API 契约 | 已完成 | 新域 API 使用统一 `{ok,data,availability,requestId}`；旧 API 保留兼容入口。 |
 | 第 15 节非功能 | 已完成 | 白名单、迁移、事务导入、批次撤销、服务端分页、异步兼容入口和前端语法检查已覆盖。 |
-| 第 16 节验收 | 已验证 | 147 项后端测试、全量 JS 检查、7 页静态校验、桌面/移动冒烟均通过。 |
+| 第 16 节验收 | 已验证 | 148 项后端测试、全量 JS 检查、7 页静态校验、桌面/移动冒烟均通过。 |
 
 明确边界：评价/市场/周期对比/工具箱等历史能力仍保留在兼容 API 或 `/legacy/`；它们不是当前七个一级页面的主导航。`docs/ui_demo/` 是旧归档，可能含 Chart.js 引用；主应用 `frontend/ui_demo/` 不含 Chart.js，统一使用 ECharts。
 
