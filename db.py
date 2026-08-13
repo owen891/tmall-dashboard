@@ -2,6 +2,7 @@ import sqlite3
 import os
 from contextlib import contextmanager
 import yaml
+from flask import current_app, has_app_context
 
 PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
 
@@ -18,6 +19,13 @@ def load_config():
     return _config_cache
 
 def get_db_path():
+    if has_app_context():
+        configured_path = current_app.config.get('DATABASE_PATH')
+        if configured_path:
+            return os.path.abspath(configured_path)
+    override = os.environ.get('TMALL_DB_PATH')
+    if override:
+        return os.path.abspath(override)
     config = load_config()
     configured_path = config['data']['db_path']
     return configured_path if os.path.isabs(configured_path) else os.path.join(PROJECT_ROOT, configured_path)
@@ -234,6 +242,203 @@ def init_db(db_path=None):
     );
     CREATE INDEX IF NOT EXISTS idx_actions_product ON operation_actions(product_id);
     CREATE INDEX IF NOT EXISTS idx_actions_date ON operation_actions(action_date);
+
+    CREATE TABLE IF NOT EXISTS import_batches (
+        id TEXT PRIMARY KEY,
+        source_type TEXT NOT NULL,
+        source_filename TEXT NOT NULL,
+        source_hash TEXT NOT NULL,
+        status TEXT NOT NULL,
+        total_rows INTEGER NOT NULL DEFAULT 0,
+        valid_rows INTEGER NOT NULL DEFAULT 0,
+        invalid_rows INTEGER NOT NULL DEFAULT 0,
+        inserted_count INTEGER NOT NULL DEFAULT 0,
+        updated_count INTEGER NOT NULL DEFAULT 0,
+        quality_summary TEXT NOT NULL DEFAULT '{}',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        completed_at TIMESTAMP
+    );
+    CREATE INDEX IF NOT EXISTS idx_import_batches_status ON import_batches(status);
+
+    CREATE TABLE IF NOT EXISTS import_batch_changes (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        batch_id TEXT NOT NULL,
+        table_name TEXT NOT NULL,
+        business_key TEXT NOT NULL,
+        previous_row TEXT,
+        written_by TEXT NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (batch_id) REFERENCES import_batches(id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_import_batch_changes_batch ON import_batch_changes(batch_id);
+
+    CREATE TABLE IF NOT EXISTS store_daily_facts (
+        shop_id TEXT NOT NULL DEFAULT 'default',
+        date DATE NOT NULL,
+        payment_amount REAL,
+        successful_refund_amount REAL,
+        product_visitors INTEGER,
+        payment_buyers INTEGER,
+        returning_payment_buyers INTEGER,
+        ad_spend REAL,
+        source_batch_id TEXT,
+        PRIMARY KEY (shop_id, date)
+    );
+    CREATE TABLE IF NOT EXISTS promotion_daily_facts (
+        shop_id TEXT NOT NULL DEFAULT 'default',
+        date DATE NOT NULL,
+        channel TEXT NOT NULL,
+        campaign_id TEXT NOT NULL DEFAULT '',
+        unit_id TEXT NOT NULL DEFAULT '',
+        product_id TEXT NOT NULL DEFAULT '',
+        ad_spend REAL,
+        attributed_payment_amount REAL,
+        impressions INTEGER,
+        clicks INTEGER,
+        payment_buyers INTEGER,
+        direct_payment_amount REAL,
+        indirect_payment_amount REAL,
+        source_batch_id TEXT,
+        PRIMARY KEY (shop_id, date, channel, campaign_id, unit_id, product_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_promotion_daily_facts_grain ON promotion_daily_facts(date, channel, campaign_id, unit_id, product_id);
+
+    CREATE TABLE IF NOT EXISTS lifecycle_profiles (
+        product_id TEXT PRIMARY KEY,
+        recommended_stage TEXT,
+        manual_stage TEXT,
+        stage_locked INTEGER NOT NULL DEFAULT 0,
+        seasonal_attribute TEXT,
+        seasonal_source TEXT,
+        confidence TEXT,
+        rationale TEXT,
+        next_key_date TEXT,
+        version INTEGER NOT NULL DEFAULT 1,
+        updated_by TEXT,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE TABLE IF NOT EXISTS lifecycle_history (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        product_id TEXT NOT NULL,
+        recommended_stage TEXT,
+        manual_stage TEXT,
+        seasonal_attribute TEXT,
+        locked INTEGER NOT NULL DEFAULT 0,
+        reason TEXT,
+        operator TEXT,
+        version INTEGER NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS period_reviews (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        period_type TEXT NOT NULL CHECK(period_type IN ('day','week','month')),
+        period_key TEXT NOT NULL,
+        summary TEXT NOT NULL,
+        conclusions TEXT NOT NULL,
+        next_actions TEXT NOT NULL,
+        reviewer TEXT NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(period_type, period_key)
+    );
+
+    CREATE TABLE IF NOT EXISTS goal_versions (
+        year INTEGER PRIMARY KEY,
+        version INTEGER NOT NULL,
+        annual_target REAL NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS daily_goals (
+        year INTEGER NOT NULL,
+        goal_date DATE NOT NULL,
+        target_amount REAL NOT NULL,
+        source TEXT NOT NULL DEFAULT 'recommended',
+        reason TEXT,
+        version INTEGER NOT NULL,
+        PRIMARY KEY (year, goal_date)
+    );
+    CREATE INDEX IF NOT EXISTS idx_daily_goals_year_date ON daily_goals(year, goal_date);
+
+    CREATE TABLE IF NOT EXISTS goal_adjustments (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        year INTEGER NOT NULL,
+        period_type TEXT NOT NULL,
+        period_key TEXT NOT NULL,
+        target_amount REAL NOT NULL,
+        operator TEXT NOT NULL,
+        reason TEXT NOT NULL,
+        version INTEGER NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE INDEX IF NOT EXISTS idx_goal_adjustments_year ON goal_adjustments(year, created_at DESC);
+
+    CREATE TABLE IF NOT EXISTS goal_locks (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        year INTEGER NOT NULL,
+        period_type TEXT NOT NULL CHECK(period_type IN ('year', 'quarter', 'month', 'week', 'date')),
+        period_key TEXT NOT NULL,
+        version INTEGER NOT NULL,
+        locked_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(year, period_type, period_key)
+    );
+    CREATE INDEX IF NOT EXISTS idx_goal_locks_year ON goal_locks(year);
+
+    CREATE TABLE IF NOT EXISTS product_actions (
+        id TEXT PRIMARY KEY,
+        action_group_id TEXT,
+        product_id TEXT NOT NULL,
+        purpose_type TEXT NOT NULL,
+        purpose_note TEXT NOT NULL,
+        action_type TEXT NOT NULL,
+        action_detail TEXT NOT NULL,
+        target_metric TEXT NOT NULL,
+        expected_change REAL,
+        status TEXT NOT NULL,
+        planned_at DATE NOT NULL,
+        executed_at DATE,
+        observer_window_days INTEGER NOT NULL,
+        assigned_to TEXT,
+        blocked_reason TEXT,
+        expected_recovery_at DATE,
+        before_metric_value REAL,
+        after_metric_value REAL,
+        result_change REAL,
+        calculation_note TEXT,
+        review_effective INTEGER,
+        review_reason TEXT,
+        review_conclusion TEXT,
+        review_next_action TEXT,
+        reviewed_by TEXT,
+        reviewed_at TIMESTAMP,
+        version INTEGER NOT NULL DEFAULT 1,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (product_id) REFERENCES products(product_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_product_actions_status ON product_actions(status, planned_at);
+    CREATE INDEX IF NOT EXISTS idx_product_actions_product ON product_actions(product_id);
+
+    CREATE TABLE IF NOT EXISTS product_action_history (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        action_id TEXT NOT NULL,
+        from_status TEXT,
+        to_status TEXT NOT NULL,
+        detail TEXT,
+        operator TEXT,
+        version INTEGER NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (action_id) REFERENCES product_actions(id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_product_action_history_action ON product_action_history(action_id, id);
+
+    CREATE TABLE IF NOT EXISTS app_settings (
+        setting_key TEXT PRIMARY KEY,
+        setting_value TEXT NOT NULL,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
 
     CREATE TABLE IF NOT EXISTS shop_targets (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -504,6 +709,36 @@ def init_db(db_path=None):
     ''')
 
     conn.commit()
+
+    batch_change_columns = {row[1] for row in cursor.execute('PRAGMA table_info(import_batch_changes)').fetchall()}
+    if 'written_by' not in batch_change_columns:
+        cursor.execute("ALTER TABLE import_batch_changes ADD COLUMN written_by TEXT NOT NULL DEFAULT ''")
+        cursor.execute("UPDATE import_batch_changes SET written_by = batch_id WHERE written_by = ''")
+        conn.commit()
+
+    # SQLite cannot alter CHECK constraints in place; extend pre-existing goal lock tables.
+    goal_locks_sql = cursor.execute(
+        "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'goal_locks'"
+    ).fetchone()
+    goal_locks_definition = goal_locks_sql[0] if goal_locks_sql else ''
+    if goal_locks_sql and ("'quarter'" not in goal_locks_definition or "'year'" not in goal_locks_definition):
+        cursor.executescript('''
+        ALTER TABLE goal_locks RENAME TO goal_locks_legacy;
+        CREATE TABLE goal_locks (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            year INTEGER NOT NULL,
+            period_type TEXT NOT NULL CHECK(period_type IN ('year', 'quarter', 'month', 'week', 'date')),
+            period_key TEXT NOT NULL,
+            version INTEGER NOT NULL,
+            locked_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(year, period_type, period_key)
+        );
+        INSERT INTO goal_locks (id, year, period_type, period_key, version, locked_at)
+        SELECT id, year, period_type, period_key, version, locked_at FROM goal_locks_legacy;
+        DROP TABLE goal_locks_legacy;
+        CREATE INDEX IF NOT EXISTS idx_goal_locks_year ON goal_locks(year);
+        ''')
+        conn.commit()
 
     # Migration: add new health dimension columns if they don't exist
     new_health_cols = [
