@@ -47,8 +47,17 @@ py -3 scripts/production_preflight.py
 ```
 
 该命令创建 `TMallDashboardLocal` 计划任务，并通过
-`scripts/start_local_production.ps1` 启动 Waitress。脚本会拒绝重复占用端口，
-日志写入被 Git 忽略的 `logs/`。手动停止或移除任务：
+`scripts/start_local_production.ps1` 启动 Waitress。运行数据库和日志固定放在
+`C:\ProgramData\TMallDashboard\data\dashboard.db` 与
+`C:\ProgramData\TMallDashboard\logs\`，不依赖代码工作树。首次安装会从当前代码工作树的
+`data\dashboard.db` 复制运行库；需要迁移其他已验证运营库时，可显式指定来源：
+
+```powershell
+.\scripts\install_local_autostart.ps1 -SourceDatabasePath 'D:\path\to\dashboard.db'
+```
+
+安装不会覆盖已经存在的运行库。脚本会拒绝重复占用端口。
+手动停止或移除任务：
 
 ```powershell
 .\scripts\stop_local_production.ps1
