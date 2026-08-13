@@ -126,6 +126,28 @@ class AppFactoryTests(unittest.TestCase):
             ['/', '/products', '/promotion', '/lifecycle', '/reviews', '/data-center', '/settings'],
         )
 
+    def test_health_check_confirms_database_connectivity(self):
+        from app import create_app
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            database_path = os.path.join(temp_dir, 'health-check.db')
+            app = create_app({'TESTING': False, 'DATABASE_PATH': database_path})
+            with app.test_client() as client:
+                response = client.get('/healthz')
+                payload = response.get_json()
+                response.close()
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(payload['ok'])
+        self.assertEqual(payload['data']['database'], 'ok')
+        self.assertEqual(payload['data']['service'], 'tmall-dashboard')
+
+    def test_wsgi_module_exposes_factory_application(self):
+        from wsgi import application
+
+        self.assertIsInstance(application, Flask)
+        self.assertFalse(application.debug)
+
 
 if __name__ == '__main__':
     unittest.main(verbosity=2)
