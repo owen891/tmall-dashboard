@@ -14,4 +14,3 @@ def get_prev_period(period, dim):
         return date.strftime('%Y-%m-%d')
     except (TypeError, ValueError, AttributeError):
         return period
-

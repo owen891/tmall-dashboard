@@ -2,6 +2,7 @@
 
 import argparse
 import json
+import os
 import sqlite3
 import sys
 import tempfile
@@ -10,9 +11,6 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
-
-from app import create_app
-
 
 FORMAL_ROUTES = (
     '/',
@@ -44,6 +42,14 @@ def run_preflight(database_path=None):
     if database_path is None:
         with tempfile.TemporaryDirectory(prefix='tmall-production-preflight-') as directory:
             return run_preflight(str(Path(directory) / 'dashboard.db'))
+
+    original_database_path = os.environ.get('TMALL_DB_PATH')
+    os.environ['TMALL_DB_PATH'] = str(database_path)
+    from app import create_app
+    if original_database_path is None:
+        os.environ.pop('TMALL_DB_PATH', None)
+    else:
+        os.environ['TMALL_DB_PATH'] = original_database_path
 
     app = create_app({'TESTING': False, 'DATABASE_PATH': str(database_path)})
     with app.test_client() as client:

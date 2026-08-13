@@ -235,4 +235,3 @@ git diff --check -- docs/ui_demo scripts/validate_ui_demos.cjs
 ```
 
 Expected: both commands exit `0`.
-

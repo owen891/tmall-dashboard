@@ -19,4 +19,3 @@ def fmt_percent(value, digits=1):
     if value is None:
         return '--'
     return f'{float(value) * 100:.{digits}f}%'
-

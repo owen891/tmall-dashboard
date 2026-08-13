@@ -26,4 +26,3 @@ SORT_WHITELIST = {
     'repurchase_rate', 'cross_sell_rate', 'title', 'product_id',
     'tier', 'style', 'manager',
 }
-

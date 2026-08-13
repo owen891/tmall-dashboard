@@ -12,4 +12,3 @@ class Config:
     )
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     UPLOAD_FOLDER = os.path.join(PROJECT_ROOT, 'data', 'uploads')
-
