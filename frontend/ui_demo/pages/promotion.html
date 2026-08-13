@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>推广分析 | 天猫数据仪表盘</title>
+  <link rel="stylesheet" href="../assets/tokens.css">
+  <link rel="stylesheet" href="../assets/shell.css">
+  <link rel="stylesheet" href="../assets/components.css">
+  <script src="https://unpkg.com/lucide@1.8.0/dist/umd/lucide.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.1/dist/echarts.min.js"></script>
+</head>
+<body data-page="promotion">
+  <div class="demo-app">
+    <aside class="demo-sidebar" data-shell-sidebar></aside>
+    <div class="demo-main">
+      <header class="demo-topbar" data-shell-header></header>
+      <main class="demo-page">
+        <div class="demo-page__intro">
+          <div>
+            <h2>推广分析</h2>
+            <p>按商品记录还原投入、成交与投产；关键词、人群和站内渠道仅展示各自的月度聚合口径。</p>
+          </div>
+          <div class="demo-page__actions">
+            <button class="button" type="button" data-promotion-refresh><i data-lucide="refresh-cw"></i>刷新数据</button>
+            <button class="button button--primary" type="button" data-promotion-info><i data-lucide="circle-help"></i>数据口径</button>
+          </div>
+        </div>
+
+        <section class="metric-grid" aria-label="推广核心指标">
+          <article class="metric-card"><div class="metric-card__label">推广花费</div><div class="metric-card__value" data-promotion-kpi="spend">--</div><div class="metric-card__meta"><i data-lucide="wallet-cards"></i><span data-promotion-kpi-note>按商品记录汇总</span></div></article>
+          <article class="metric-card"><div class="metric-card__label">成交金额</div><div class="metric-card__value" data-promotion-kpi="gmv">--</div><div class="metric-card__meta"><i data-lucide="shopping-bag"></i>商品当期成交</div></article>
+          <article class="metric-card"><div class="metric-card__label">整体 ROI</div><div class="metric-card__value" data-promotion-kpi="roi">--</div><div class="metric-card__meta"><i data-lucide="target"></i>成交金额 / 推广花费</div></article>
+          <article class="metric-card"><div class="metric-card__label">投放商品</div><div class="metric-card__value" data-promotion-kpi="products">--</div><div class="metric-card__meta"><i data-lucide="package"></i>花费大于 0 的商品</div></article>
+        </section>
+
+        <section class="section-grid">
+          <article class="chart-panel panel">
+            <div class="panel__header"><div><h3 class="panel__title">推广趋势</h3><p class="panel__hint" data-promotion-period>加载中</p></div><span class="badge badge--brand">商品汇总</span></div>
+            <div class="chart-box chart-box--tall"><canvas id="promotionTrend"></canvas></div>
+          </article>
+          <article class="plain-panel panel">
+            <div class="panel__header"><div><h3 class="panel__title">投放预警</h3><p class="panel__hint">由当前月份商品表现自动识别</p></div><span class="badge badge--danger" data-promotion-alert-count>--</span></div>
+            <div class="alert-list" data-promotion-alerts aria-live="polite"><div class="empty-state"><span>加载中</span></div></div>
+          </article>
+        </section>
+
+        <section class="product-section promotion-subviews">
+          <div class="product-section__heading">
+            <div><h3>分粒度明细</h3><p data-promotion-grain>每个视图只使用对应数据口径，不与总盘相加。</p></div>
+            <div class="filter-group"><select class="select" data-promotion-drill-level aria-label="推广下钻层级"><option value="channel">渠道</option><option value="campaign">计划</option><option value="unit">单元</option><option value="product">商品</option></select><input class="input" data-promotion-channel placeholder="渠道（可选）" aria-label="推广渠道"><input class="input" data-promotion-campaign placeholder="计划 ID（可选）" aria-label="推广计划 ID"><input class="input" data-promotion-unit placeholder="单元 ID（可选）" aria-label="推广单元 ID"><button class="button" type="button" data-promotion-drill-load>查询下钻</button></div>
+            <div class="segmented" role="group" aria-label="推广分析视图" data-promotion-tabs>
+              <button type="button" aria-pressed="true" data-promotion-tab="products">商品表现</button>
+              <button type="button" aria-pressed="false" data-promotion-tab="keywords">关键词汇总</button>
+              <button type="button" aria-pressed="false" data-promotion-tab="crowd">人群汇总</button>
+              <button type="button" aria-pressed="false" data-promotion-tab="site">站内渠道汇总</button>
+              <button type="button" aria-pressed="false" data-promotion-tab="unavailable">未提供归因</button>
+            </div>
+          </div>
+          <article class="table-panel panel">
+            <div class="panel__header"><div><h3 class="panel__title" data-promotion-table-title>商品推广表现</h3><p class="panel__hint" data-promotion-table-hint>加载中</p></div><span class="badge badge--info" data-promotion-row-count>--</span></div>
+            <div class="data-table-wrap">
+              <table class="data-table" id="promotionTable" data-promotion-drill>
+                <thead data-promotion-head></thead>
+                <tbody data-promotion-body><tr><td>加载中</td></tr></tbody>
+              </table>
+            </div>
+          </article>
+        </section>
+      </main>
+    </div>
+  </div>
+
+  <div class="demo-drawer__backdrop" data-promotion-backdrop></div>
+  <aside class="demo-drawer promotion-drawer" data-promotion-drawer role="dialog" aria-modal="true" aria-labelledby="promotionDrawerTitle" aria-hidden="true" inert tabindex="-1">
+    <div class="modal-form__header">
+      <div><h3 id="promotionDrawerTitle" data-promotion-drawer-title>推广详情</h3><p class="panel__hint" data-promotion-drawer-subtitle>--</p></div>
+      <button class="button button--ghost" type="button" data-promotion-drawer-close aria-label="关闭"><i data-lucide="x"></i></button>
+    </div>
+    <div class="promotion-drawer__body" data-promotion-drawer-body></div>
+  </aside>
+
+  <script src="../assets/api.js"></script>
+  <script src="../assets/charts.js"></script>
+  <script src="../assets/shell.js"></script>
+  <script src="../assets/promotion-live.js"></script>
+</body>
+</html>

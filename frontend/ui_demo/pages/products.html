@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>商品运营 | 天猫数据仪表盘</title>
+  <link rel="stylesheet" href="../assets/tokens.css">
+  <link rel="stylesheet" href="../assets/shell.css">
+  <link rel="stylesheet" href="../assets/components.css">
+  <script src="https://unpkg.com/lucide@1.8.0/dist/umd/lucide.min.js"></script>
+</head>
+<body data-page="products">
+  <div class="demo-app">
+    <aside class="demo-sidebar" data-shell-sidebar></aside>
+    <div class="demo-main">
+      <header class="demo-topbar" data-shell-header></header>
+      <main class="demo-page">
+        <div class="demo-page__intro">
+          <div>
+            <h2>商品运营</h2>
+            <p>数据库商品经营表现</p>
+          </div>
+          <div class="demo-page__actions">
+            <button class="button" type="button" data-products-reset><i data-lucide="rotate-ccw"></i>重置</button>
+            <button class="button" type="button" data-products-refresh><i data-lucide="refresh-cw"></i>刷新</button>
+          </div>
+        </div>
+
+        <section class="metric-grid">
+          <article class="metric-card"><div class="metric-card__label">数据库商品总数</div><div class="metric-card__value" data-products-kpi="total">--</div></article>
+          <article class="metric-card"><div class="metric-card__label">当前页销售额</div><div class="metric-card__value" data-products-kpi="sales">--</div></article>
+          <article class="metric-card"><div class="metric-card__label">当前页推广花费</div><div class="metric-card__value" data-products-kpi="spend">--</div></article>
+          <article class="metric-card"><div class="metric-card__label">当前页 ROI</div><div class="metric-card__value" data-products-kpi="roi">--</div></article>
+        </section>
+
+        <section class="plain-panel panel">
+          <div class="panel__header">
+            <div>
+              <h3 class="panel__title">商品列表</h3>
+              <p class="panel__hint" data-products-status>等待加载</p>
+            </div>
+            <div class="product-field-controls">
+              <div class="segmented" role="group" aria-label="字段模板">
+                <button type="button" data-products-view="operate" aria-pressed="true">经营</button>
+                <button type="button" data-products-view="select" aria-pressed="false">选款</button>
+                <button type="button" data-products-view="paid" aria-pressed="false">投放</button>
+              </div>
+              <button class="button" type="button" data-products-columns-open><i data-lucide="settings-2"></i>列设置</button>
+            </div>
+          </div>
+
+          <div class="section-toolbar product-filters">
+            <input class="input" data-products-search placeholder="搜索商品名称或 ID" aria-label="搜索商品">
+            <select class="select" data-products-tier aria-label="筛选分层"><option value="">全部分层</option></select>
+            <select class="select" data-products-style aria-label="筛选风格"><option value="">全部风格</option></select>
+            <select class="select" data-products-status-filter aria-label="筛选状态"><option value="active">在售</option><option value="all">全部状态</option><option value="inactive">下架</option></select>
+            <select class="select" data-products-sort aria-label="排序字段">
+              <option value="payment_amount">销售额</option>
+              <option value="visitors">访客</option>
+              <option value="conversion">转化</option>
+              <option value="refund_rate">退款</option>
+              <option value="ad_spend">花费</option>
+              <option value="roi">ROI</option>
+            </select>
+            <select class="select" data-products-order aria-label="排序方向"><option value="desc">降序</option><option value="asc">升序</option></select>
+            <button class="button" type="button" data-products-starred aria-pressed="false"><i data-lucide="star"></i>当前页收藏</button>
+          </div>
+
+          <div class="batch-bar" data-products-batch>
+            <strong data-products-selected>已选 0 件</strong>
+            <select class="select" data-products-batch-field aria-label="批量字段"><option value="tier">批量分层</option><option value="style">批量风格</option></select>
+            <input class="input" data-products-batch-value placeholder="输入分层/风格" aria-label="批量字段值">
+            <button class="button button--primary" type="button" data-products-batch-apply><i data-lucide="check"></i>应用</button>
+            <input class="input" data-products-batch-tag placeholder="批量新增标签" aria-label="批量新增标签">
+            <button class="button" type="button" data-products-batch-tag-apply><i data-lucide="tag"></i>打标</button>
+            <button class="button" type="button" data-products-batch-star><i data-lucide="star"></i>收藏</button>
+          </div>
+
+          <div class="data-table-wrap">
+            <table class="data-table product-table">
+              <thead><tr data-products-head></tr></thead>
+              <tbody data-products-body>
+                <tr><td colspan="13">加载中</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="section-toolbar" data-products-pagination>
+            <button class="button" type="button" data-products-prev><i data-lucide="chevron-left"></i>上一页</button>
+            <span class="panel__hint" data-products-page-summary>--</span>
+            <button class="button" type="button" data-products-next>下一页<i data-lucide="chevron-right"></i></button>
+          </div>
+        </section>
+      </main>
+    </div>
+  </div>
+
+  <dialog class="modal-form panel products-columns-dialog" data-products-columns-dialog aria-labelledby="productsColumnsTitle" hidden>
+    <div class="modal-form__header">
+      <div>
+        <h3 id="productsColumnsTitle">列设置</h3>
+        <p class="panel__hint">选择商品列表中需要展示的字段</p>
+      </div>
+      <button class="button button--ghost" type="button" data-products-columns-close aria-label="关闭列设置"><i data-lucide="x"></i></button>
+    </div>
+    <div class="products-columns-dialog__body">
+      <div class="field-template-bar">
+        <div class="field-template-bar__current">当前显示 <strong data-products-visible-count>--</strong> 个字段</div>
+        <button class="button" type="button" data-products-columns-reset><i data-lucide="rotate-ccw"></i>恢复经营模板</button>
+      </div>
+      <div class="field-group-grid" data-products-column-options></div>
+      <p class="products-columns-dialog__status" data-products-columns-status aria-live="polite"></p>
+    </div>
+    <div class="modal-form__footer">
+      <button class="button" type="button" data-products-columns-close>取消</button>
+      <button class="button button--primary" type="button" data-products-columns-apply><i data-lucide="check"></i>应用字段</button>
+    </div>
+  </dialog>
+
+  <div class="demo-drawer__backdrop" data-product-drawer-backdrop></div>
+  <aside class="demo-drawer promotion-drawer" data-product-drawer role="dialog" aria-modal="true" aria-labelledby="productDrawerTitle" aria-hidden="true" inert tabindex="-1">
+    <div class="modal-form__header">
+      <div>
+        <h3 id="productDrawerTitle" data-product-drawer-title>商品详情</h3>
+        <p class="panel__hint" data-product-drawer-subtitle>--</p>
+        <a class="button button--ghost" data-product-detail-link href="#">打开完整详情页</a>
+      </div>
+      <button class="button button--ghost" type="button" data-product-drawer-close aria-label="关闭"><i data-lucide="x"></i></button>
+    </div>
+    <div class="promotion-drawer__body">
+      <div class="drawer-metrics" data-product-drawer-summary></div>
+      <section class="plain-panel panel">
+        <div class="panel__header"><div><h3 class="panel__title">备注</h3></div></div>
+        <div class="status-list" data-product-notes></div>
+        <div class="filter-group">
+          <input class="input" data-product-note-input placeholder="新增备注" aria-label="新增备注">
+          <button class="button" type="button" data-product-note-add><i data-lucide="message-square-plus"></i>新增</button>
+        </div>
+      </section>
+      <section class="plain-panel panel">
+        <div class="panel__header"><div><h3 class="panel__title">标签</h3><p class="panel__hint">聚合接口无 tag id，仅支持新增</p></div></div>
+        <div class="chip-list" data-product-tags></div>
+        <div class="filter-group">
+          <input class="input" data-product-tag-input placeholder="新增标签" aria-label="新增标签">
+          <button class="button" type="button" data-product-tag-add><i data-lucide="tag"></i>新增</button>
+        </div>
+      </section>
+      <section class="plain-panel panel">
+        <div class="panel__header"><div><h3 class="panel__title">运营动作</h3></div></div>
+        <div class="status-list" data-product-actions></div>
+        <div class="modal-form__body">
+          <input class="input" data-product-action-type placeholder="动作类型" aria-label="动作类型">
+          <input class="input" data-product-action-detail placeholder="动作说明" aria-label="动作说明">
+          <button class="button button--primary" type="button" data-product-action-add><i data-lucide="plus"></i>新增动作</button>
+        </div>
+      </section>
+    </div>
+  </aside>
+
+  <script src="../assets/api.js"></script>
+  <script src="../assets/shell.js"></script>
+  <script src="../assets/products-live.js"></script>
+</body>
+</html>

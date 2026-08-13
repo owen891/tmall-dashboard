@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>数据中心 | 天猫数据仪表盘</title>
+  <link rel="stylesheet" href="../assets/tokens.css"><link rel="stylesheet" href="../assets/shell.css"><link rel="stylesheet" href="../assets/components.css">
+  <script src="https://unpkg.com/lucide@1.8.0/dist/umd/lucide.min.js"></script>
+</head>
+<body data-page="data-center"><div class="demo-app"><aside class="demo-sidebar" data-shell-sidebar></aside><div class="demo-main"><header class="demo-topbar" data-shell-header></header><main class="demo-page">
+  <div class="demo-page__intro"><div><h2>数据中心</h2><p>上传商品日度 Excel，确认字段映射和质量结果后才会写入数据。</p></div></div>
+  <section class="plain-panel panel"><div class="panel__header"><div><h3 class="panel__title">商品日度报表导入</h3><p class="panel__hint">支持单 Sheet 的 .xlsx 或 .xls；必填字段缺失时不能确认导入。</p></div></div>
+    <div class="modal-form__body"><label>报表类型<select class="select" data-import-source-type><option value="product_day">商品日度</option><option value="store_day">店铺日度</option><option value="product_week">商品周度</option><option value="product_month">商品月度</option><option value="promotion_channel_day">推广渠道日度</option><option value="promotion_campaign_day">推广计划日度</option><option value="promotion_unit_day">推广单元日度</option><option value="promotion_product_day">推广商品日度</option><option value="refund_day">退款日度</option><option value="customer_day">新老客日度</option></select></label><label>Excel 文件<input class="input" type="file" accept=".xlsx,.xls" data-import-file></label><button class="button button--primary" type="button" data-import-preview><i data-lucide="scan-search"></i><span>预览并校验</span></button><p data-import-status role="status" aria-live="polite"></p></div>
+  </section>
+  <section class="plain-panel panel" data-import-preview-panel hidden><div class="panel__header"><div><h3 class="panel__title">字段映射与质量预览</h3><p class="panel__hint" data-import-quality></p></div><button class="button button--primary" type="button" data-import-confirm><i data-lucide="database"></i><span>确认导入</span></button></div>
+    <p class="panel__hint" data-import-quality-detail>未发现异常行</p><div class="data-table-wrap"><table class="data-table"><thead><tr><th>源列</th><th>标准字段</th><th>样例</th></tr></thead><tbody data-import-fields></tbody></table></div>
+  </section>
+  <section class="plain-panel panel"><div class="panel__header"><div><h3 class="panel__title">导入批次</h3><p class="panel__hint">撤销会恢复该批次覆盖前的数据，并保留审计记录。</p></div><button class="button" type="button" data-import-history-refresh><i data-lucide="refresh-cw"></i><span>刷新</span></button></div><div class="data-table-wrap"><table class="data-table"><thead><tr><th>文件</th><th>状态</th><th class="num">新增 / 更新</th><th>完成时间</th><th>操作</th></tr></thead><tbody data-import-history><tr><td colspan="5">加载中</td></tr></tbody></table></div></section>
+</main></div></div><script src="../assets/api.js"></script><script src="../assets/shell.js"></script><script src="../assets/data-center-live.js"></script></body></html>

@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>管理工作台 | 天猫数据仪表盘</title>
+  <link rel="stylesheet" href="../assets/tokens.css">
+  <link rel="stylesheet" href="../assets/shell.css">
+  <link rel="stylesheet" href="../assets/components.css">
+  <script src="https://unpkg.com/lucide@1.8.0/dist/umd/lucide.min.js"></script>
+</head>
+<body data-page="manage">
+  <div class="demo-app">
+    <aside class="demo-sidebar" data-shell-sidebar></aside>
+    <div class="demo-main">
+      <header class="demo-topbar" data-shell-header></header>
+      <main class="demo-page">
+        <div class="demo-page__intro">
+          <div><h2>管理工作台</h2><p>任务、人员目标和数据导入调度集中处理</p></div>
+          <div class="demo-page__actions"><button class="button" type="button" data-manage-refresh><i data-lucide="refresh-cw"></i>刷新</button></div>
+        </div>
+
+        <section class="metric-grid" aria-label="工作台概览">
+          <article class="metric-card"><div class="metric-card__label">任务总数</div><div class="metric-card__value" data-manage-kpi="tasks">--</div></article>
+          <article class="metric-card"><div class="metric-card__label">待处理</div><div class="metric-card__value" data-manage-kpi="pending">--</div></article>
+          <article class="metric-card"><div class="metric-card__label">已完成</div><div class="metric-card__value" data-manage-kpi="done">--</div></article>
+          <article class="metric-card"><div class="metric-card__label">启用调度</div><div class="metric-card__value" data-manage-kpi="scheduled">--</div></article>
+        </section>
+
+        <section class="plain-panel panel">
+          <div class="panel__header"><div><h3 class="panel__title">任务列表</h3><p class="panel__hint" data-manage-task-period>任务不按经营周期筛选</p></div><button class="button button--primary" type="button" data-manage-create-task><i data-lucide="plus"></i>新建任务</button></div>
+          <div class="data-table-wrap"><table class="data-table"><thead><tr><th>任务</th><th>状态</th><th>优先级</th><th>负责人</th><th>截止日期</th><th>操作</th></tr></thead><tbody data-manage-tasks><tr><td colspan="6">加载中</td></tr></tbody></table></div>
+        </section>
+
+        <section class="section-grid section-grid--wide">
+          <article class="plain-panel panel">
+            <div class="panel__header"><div><h3 class="panel__title">人员 KPI</h3><p class="panel__hint" data-manage-kpi-period>按当前自然月筛选</p></div><button class="button" type="button" data-manage-create-kpi><i data-lucide="plus"></i>新增 KPI</button></div>
+            <div class="data-table-wrap"><table class="data-table"><thead><tr><th>成员</th><th>目标 GMV</th><th>实际 GMV</th><th>达成率</th><th>评级</th><th>操作</th></tr></thead><tbody data-manage-kpis><tr><td colspan="6">加载中</td></tr></tbody></table></div>
+          </article>
+          <article class="plain-panel panel">
+            <div class="panel__header"><div><h3 class="panel__title">定时任务</h3><p class="panel__hint">仅管理已有的数据导入调度器</p></div><button class="button" type="button" data-manage-create-schedule><i data-lucide="calendar-plus"></i>新增调度</button></div>
+            <div class="data-table-wrap"><table class="data-table"><thead><tr><th>名称</th><th>计划</th><th>状态</th><th>下次执行</th><th>操作</th></tr></thead><tbody data-manage-scheduled><tr><td colspan="5">加载中</td></tr></tbody></table></div>
+            <div data-manage-schedule-actions class="sr-only" aria-live="polite"></div>
+          </article>
+        </section>
+
+        <section class="plain-panel panel">
+          <div class="panel__header"><div><h3 class="panel__title">操作日志</h3><p class="panel__hint">显示最近 20 条数据库操作记录</p></div></div>
+          <div class="data-table-wrap"><table class="data-table"><thead><tr><th>时间</th><th>操作</th><th>详情</th><th>执行人</th></tr></thead><tbody data-manage-logs><tr><td colspan="4">加载中</td></tr></tbody></table></div>
+        </section>
+        <p class="sr-only" data-manage-status role="status" aria-live="polite"></p>
+      </main>
+    </div>
+  </div>
+
+  <dialog class="modal-form" data-manage-task-dialog aria-labelledby="manage-task-title" hidden>
+    <form method="dialog" data-manage-task-form>
+      <div class="modal-form__header"><h3 id="manage-task-title">新建任务</h3><button class="button button--ghost" type="button" data-manage-dialog-close="task" aria-label="关闭"><i data-lucide="x"></i></button></div>
+      <div class="modal-form__body">
+        <label>任务名称<input class="input" name="title" required maxlength="120" autocomplete="off"></label>
+        <label>任务说明<textarea class="input" name="description" rows="3" maxlength="500"></textarea></label>
+        <div class="filter-group"><label>状态<select class="select" name="status"><option value="todo">待处理</option><option value="in_progress">处理中</option><option value="done">已完成</option></select></label><label>优先级<select class="select" name="priority"><option value="P0">P0</option><option value="P1">P1</option><option value="P2" selected>P2</option><option value="P3">P3</option></select></label></div>
+        <div class="filter-group"><label>负责人<input class="input" name="assignee" maxlength="40" autocomplete="off"></label><label>截止日期<input class="input" type="date" name="due_date"></label></div>
+      </div>
+      <div class="modal-form__footer"><button class="button" type="button" data-manage-dialog-close="task">取消</button><button class="button button--primary" type="submit">保存任务</button></div>
+    </form>
+  </dialog>
+
+  <dialog class="modal-form" data-manage-kpi-dialog aria-labelledby="manage-kpi-title" hidden>
+    <form method="dialog" data-manage-kpi-form>
+      <div class="modal-form__header"><h3 id="manage-kpi-title">新增 KPI</h3><button class="button button--ghost" type="button" data-manage-dialog-close="kpi" aria-label="关闭"><i data-lucide="x"></i></button></div>
+      <div class="modal-form__body">
+        <div class="filter-group"><label>成员<input class="input" name="user_name" required maxlength="40" autocomplete="off"></label><label>周期<input class="input" type="month" name="period" required></label></div>
+        <div class="filter-group"><label>目标 GMV<input class="input" type="number" name="target_gmv" min="0" step="0.01" required></label><label>实际 GMV<input class="input" type="number" name="actual_gmv" min="0" step="0.01" required></label></div>
+        <div class="filter-group"><label>达成率（%）<input class="input" type="number" name="achievement_rate" min="0" step="0.01" required></label><label>评级<select class="select" name="rating"><option value="A">A</option><option value="B">B</option><option value="C" selected>C</option><option value="D">D</option></select></label></div>
+      </div>
+      <div class="modal-form__footer"><button class="button" type="button" data-manage-dialog-close="kpi">取消</button><button class="button button--primary" type="submit">保存 KPI</button></div>
+    </form>
+  </dialog>
+
+  <dialog class="modal-form" data-manage-schedule-dialog aria-labelledby="manage-schedule-title" hidden>
+    <form method="dialog" data-manage-schedule-form>
+      <div class="modal-form__header"><h3 id="manage-schedule-title">新增调度</h3><button class="button button--ghost" type="button" data-manage-dialog-close="schedule" aria-label="关闭"><i data-lucide="x"></i></button></div>
+      <div class="modal-form__body">
+        <label>任务名称<input class="input" name="task_name" required maxlength="120" autocomplete="off"></label>
+        <label>调度表达式<input class="input" name="cron_expr" required placeholder="例如：0 8 * * *" autocomplete="off"></label>
+        <label>文件匹配模式<input class="input" name="file_pattern" value="*.xlsx" required autocomplete="off"></label>
+      </div>
+      <div class="modal-form__footer"><button class="button" type="button" data-manage-dialog-close="schedule">取消</button><button class="button button--primary" type="submit">保存调度</button></div>
+    </form>
+  </dialog>
+
+  <script src="../assets/api.js"></script>
+  <script src="../assets/shell.js"></script>
+  <script src="../assets/manage-live.js"></script>
+</body>
+</html>
