@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>设置 | 天猫数据仪表盘</title>
+  <link rel="stylesheet" href="../assets/tokens.css"><link rel="stylesheet" href="../assets/shell.css"><link rel="stylesheet" href="../assets/components.css">
+  <script src="https://unpkg.com/lucide@1.8.0/dist/umd/lucide.min.js"></script>
+</head>
+<body data-page="settings">
+  <div class="demo-app"><aside class="demo-sidebar" data-shell-sidebar></aside><div class="demo-main">
+    <header class="demo-topbar" data-shell-header></header><main class="demo-page">
+      <div class="demo-page__intro"><div><h2>设置</h2><p>维护店铺默认配置；核心指标公式不可编辑。</p></div></div>
+      <section class="plain-panel panel"><form class="modal-form__body" data-settings-form>
+        <label>店铺名<input class="input" name="shop_name"></label>
+        <label>时区<input class="input" name="timezone" value="Asia/Shanghai" readonly></label>
+        <label>货币<input class="input" name="currency" value="CNY" readonly></label>
+        <label>周起始日<select class="select" name="week_starts_on"><option value="monday">周一</option><option value="sunday">周日</option></select></label>
+        <label>年度目标默认值（元）<input class="input" type="number" name="annual_target_default" min="0" step="0.01"></label>
+        <label>生命周期阈值（JSON）<textarea class="input" name="lifecycle_thresholds" rows="3">{"continuous_days":60,"seasonal_months":12}</textarea></label>
+        <label>字段映射模板（JSON）<textarea class="input" name="field_mappings" rows="3">{}</textarea></label>
+        <label>导入映射模板（JSON）<textarea class="input" name="mapping_templates" rows="3">{}</textarea></label>
+        <label>商品视图模板配置（JSON）<textarea class="input" name="view_templates" rows="3">{}</textarea></label>
+        <label>当前商品视图<select class="select" name="product_view_template"><option value="default">基础经营</option><option value="selection">选款</option><option value="promotion">推广效率</option><option value="refund">退款售后</option><option value="lifecycle">生命周期</option></select></label>
+        <button class="button button--primary" type="submit">保存设置</button><p data-settings-status role="status"></p>
+      </form></section>
+      <section class="plain-panel panel"><div class="panel__header"><div><h3 class="panel__title">指标口径</h3><p class="panel__hint">核心指标公式不可编辑</p></div></div><p>净销售额 = 支付金额 - 成功退款金额；退款率与费比均按汇总后再计算。</p></section>
+    </main>
+  </div></div>
+  <script src="../assets/api.js"></script><script src="../assets/shell.js"></script><script src="../assets/settings-live.js"></script>
+</body>
+</html>
