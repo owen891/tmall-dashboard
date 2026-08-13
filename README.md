@@ -38,6 +38,31 @@ Invoke-WebRequest http://127.0.0.1:5000/healthz | Select-Object -ExpandProperty 
 py -3 scripts/production_preflight.py
 ```
 
+### Windows 本机自启动
+
+本机生产服务仅监听 `127.0.0.1:5000`。首次配置当前用户登录后自启动：
+
+```powershell
+.\scripts\install_local_autostart.ps1
+```
+
+该命令创建 `TMallDashboardLocal` 计划任务，并通过
+`scripts/start_local_production.ps1` 启动 Waitress。脚本会拒绝重复占用端口，
+日志写入被 Git 忽略的 `logs/`。手动停止或移除任务：
+
+```powershell
+.\scripts\stop_local_production.ps1
+.\scripts\uninstall_local_autostart.ps1
+```
+
+修改代码后，先完成预检和测试，再重启本机服务：
+
+```powershell
+.\scripts\stop_local_production.ps1
+schtasks.exe /Run /TN TMallDashboardLocal
+Invoke-WebRequest http://127.0.0.1:5000/healthz | Select-Object -ExpandProperty Content
+```
+
 ## 数据导入
 
 数据中心支持店铺日度、商品日/周/月、推广渠道/计划/单元/商品、退款和新老客来源。导入流程为预览 -> 字段映射 -> 质量校验 -> 事务确认；缺少 R1 必填字段会阻止写入，缺失或不足数据显示为无数据/数据不足，不补造 0。
