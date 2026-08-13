@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>数据概览 | 天猫数据仪表盘</title>
+  <link rel="stylesheet" href="../assets/tokens.css">
+  <link rel="stylesheet" href="../assets/shell.css">
+  <link rel="stylesheet" href="../assets/components.css">
+  <script src="https://unpkg.com/lucide@1.8.0/dist/umd/lucide.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.1/dist/echarts.min.js"></script>
+</head>
+<body data-page="overview">
+  <div class="demo-app">
+    <aside class="demo-sidebar" data-shell-sidebar></aside>
+    <div class="demo-main">
+      <header class="demo-topbar" data-shell-header></header>
+      <main class="demo-page">
+        <div class="demo-page__intro">
+          <div>
+            <h2>数据概览</h2>
+            <p data-overview-period>按日期范围汇总经营指标；月度模块使用不晚于结束日期的最新可用月。</p>
+          </div>
+          <div class="panel__tools">
+            <button class="button" type="button" data-overview-report-refresh><i data-lucide="refresh-cw"></i><span>刷新报告</span></button>
+            <button class="button button--primary" type="button" data-overview-event-open><i data-lucide="plus"></i><span>新增事件</span></button>
+          </div>
+        </div>
+
+        <section class="plain-panel panel"><div class="panel__header"><div><h3 class="panel__title">数据上下文</h3><p class="panel__hint" data-overview-context>加载中</p></div></div></section>
+        <section class="metric-grid" aria-label="经营指标">
+          <article class="metric-card"><div class="metric-card__label">支付金额</div><div class="metric-card__value" data-overview-kpi="payment_amount">--</div><div class="metric-card__meta" data-overview-kpi-meta="payment_amount">等待加载</div></article>
+          <article class="metric-card"><div class="metric-card__label">净销售额</div><div class="metric-card__value" data-overview-kpi="net_sales">--</div><div class="metric-card__meta" data-overview-kpi-meta="net_sales">等待加载</div></article>
+          <article class="metric-card"><div class="metric-card__label">退款率</div><div class="metric-card__value" data-overview-kpi="refund_rate">--</div><div class="metric-card__meta" data-overview-kpi-meta="refund_rate">等待加载</div></article>
+          <article class="metric-card"><div class="metric-card__label">费比</div><div class="metric-card__value" data-overview-kpi="expense_ratio">--</div><div class="metric-card__meta" data-overview-kpi-meta="expense_ratio">等待加载</div></article>
+        </section>
+
+        <section class="plain-panel panel"><div class="panel__header"><div><h3 class="panel__title">运营动作待办</h3><p class="panel__hint">按逾期、待复盘、执行中、待执行排序</p></div></div><div class="status-list" data-overview-action-todos><div class="empty-state"><span>加载中</span></div></div></section>
+
+        <section class="section-grid section-grid--wide">
+          <article class="chart-panel panel">
+            <div class="panel__header">
+              <div><h3 class="panel__title">日期范围趋势</h3><p class="panel__hint">daily trend API</p></div>
+            </div>
+            <div class="chart-box chart-box--tall"><canvas id="overviewTrend"></canvas></div>
+          </article>
+          <article class="plain-panel panel" aria-live="polite">
+            <div class="panel__header"><div><h3 class="panel__title">五层目标进度</h3><p class="panel__hint" data-overview-month>--</p></div></div>
+            <div class="status-list" data-overview-targets><div class="empty-state"><span>加载中</span></div></div>
+          </article>
+        </section>
+
+        <section class="plain-panel panel">
+          <div class="panel__header">
+            <div><h3 class="panel__title">日度经营矩阵</h3><p class="panel__hint">净销售额、支付金额、退款率、访客、买家、转化率、推广花费、费比与客单价；缺失字段显示为不可计算。</p></div>
+            <button class="button" type="button" data-overview-matrix-refresh><i data-lucide="refresh-cw"></i><span>刷新矩阵</span></button>
+          </div>
+          <div class="data-table-wrap data-table-wrap--scroll">
+            <table class="data-table" data-overview-matrix-table>
+              <thead><tr><th>日期</th><th class="num">净销售额</th><th class="num">支付金额</th><th class="num">成功退款</th><th class="num">退款率</th><th class="num">访客</th><th class="num">支付买家</th><th class="num">支付转化率</th><th class="num">推广花费</th><th class="num">费比</th><th class="num">客单价</th><th>来源</th></tr></thead>
+              <tbody data-overview-matrix><tr><td colspan="12">加载中</td></tr></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="section-grid">
+          <article class="plain-panel panel">
+            <div class="panel__header"><div><h3 class="panel__title">异常监控</h3><p class="panel__hint">与上个自然月对比</p></div></div>
+            <div class="alert-list" data-overview-anomalies><div class="empty-state"><span>加载中</span></div></div>
+          </article>
+          <article class="plain-panel panel">
+            <div class="panel__header"><div><h3 class="panel__title">客户结构</h3><p class="panel__hint">新老客占比</p></div></div>
+            <div class="mini-bars" data-overview-customers><div class="empty-state"><span>加载中</span></div></div>
+          </article>
+        </section>
+
+        <section class="section-grid">
+          <article class="plain-panel panel">
+            <div class="panel__header"><div><h3 class="panel__title">转化漏斗</h3><p class="panel__hint">曝光到支付</p></div></div>
+            <div class="funnel" data-overview-funnel><div class="empty-state"><span>加载中</span></div></div>
+          </article>
+          <article class="plain-panel panel">
+            <div class="panel__header"><div><h3 class="panel__title">行业 Benchmark</h3><p class="panel__hint">店铺 CTR vs 行业 CTR</p></div></div>
+            <div class="status-list" data-overview-benchmark><div class="empty-state"><span>加载中</span></div></div>
+          </article>
+        </section>
+
+        <section class="section-grid section-grid--wide">
+          <article class="plain-panel panel">
+            <div class="panel__header"><div><h3 class="panel__title">Top Products</h3><p class="panel__hint">日期范围内支付金额排序</p></div></div>
+            <div class="data-table-wrap">
+              <table class="data-table">
+                <thead><tr><th>商品</th><th class="num">支付金额</th><th class="num">支付件数</th><th class="num">退款率</th></tr></thead>
+                <tbody data-overview-products><tr><td colspan="4">加载中</td></tr></tbody>
+              </table>
+            </div>
+          </article>
+          <article class="plain-panel panel">
+            <div class="panel__header"><div><h3 class="panel__title">图表事件</h3><p class="panel__hint">sales chart events</p></div></div>
+            <div class="timeline" data-overview-events><div class="empty-state"><span>加载中</span></div></div>
+          </article>
+        </section>
+
+        <section class="plain-panel panel overview-report" data-overview-report aria-live="polite" aria-busy="true">
+          <div class="panel__header overview-report__header">
+            <div><h3 class="panel__title">经营报告</h3><p class="panel__hint">按月生成，聚焦本期规模、重点商品与经营风险</p></div>
+            <div class="overview-report__meta"><span class="badge badge--info" data-overview-report-period>--</span><span data-overview-report-time>等待生成</span></div>
+          </div>
+          <div class="overview-report__kpis" data-overview-report-kpis><div class="empty-state"><span>报告加载中</span></div></div>
+          <div class="overview-report__grid">
+            <section class="overview-report__section" aria-labelledby="overview-report-top-title">
+              <div class="overview-report__section-head"><div><h4 id="overview-report-top-title">销售 TOP5</h4><p>按本期销售额排序</p></div><i data-lucide="trophy"></i></div>
+              <div class="overview-report__products" data-overview-report-products></div>
+            </section>
+            <section class="overview-report__section" aria-labelledby="overview-report-risk-title">
+              <div class="overview-report__section-head"><div><h4 id="overview-report-risk-title">风险提示</h4><p>需要优先关注的环比变化</p></div><i data-lucide="triangle-alert"></i></div>
+              <div class="overview-report__risks" data-overview-report-risks></div>
+            </section>
+          </div>
+        </section>
+      </main>
+    </div>
+  </div>
+
+  <dialog class="modal-form overview-event-dialog" data-overview-event-dialog aria-labelledby="overview-event-title" hidden>
+    <form method="dialog" data-overview-event-form>
+      <div class="modal-form__header overview-event-dialog__header">
+        <div><h3 id="overview-event-title">新增图表事件</h3><p>在销售趋势上标记运营动作或关键节点</p></div>
+        <button class="button button--ghost" type="button" data-overview-event-close aria-label="关闭"><i data-lucide="x"></i></button>
+      </div>
+      <div class="modal-form__body">
+        <div class="overview-event-dialog__row">
+          <label for="overview-event-date">日期<span class="form-required">必填</span><input class="input" id="overview-event-date" name="event_date" type="date" required></label>
+          <label for="overview-event-title-input">标题<span class="form-required">必填</span><input class="input" id="overview-event-title-input" name="title" type="text" maxlength="80" placeholder="例如：调整主图与投放预算" required></label>
+        </div>
+        <label for="overview-event-desc">说明<span class="form-optional">选填</span><textarea class="input overview-event-dialog__textarea" id="overview-event-desc" name="description" rows="4" maxlength="240" placeholder="记录背景、动作或预期影响"></textarea></label>
+        <fieldset class="overview-event-colors">
+          <legend>标记颜色</legend>
+          <div class="overview-event-colors__list">
+            <label><input type="radio" name="color" value="#e4400f" checked><span class="event-swatch" style="--swatch:#e4400f"></span><span>重点</span></label>
+            <label><input type="radio" name="color" value="#d97706"><span class="event-swatch" style="--swatch:#d97706"></span><span>提醒</span></label>
+            <label><input type="radio" name="color" value="#2563eb"><span class="event-swatch" style="--swatch:#2563eb"></span><span>活动</span></label>
+            <label><input type="radio" name="color" value="#16a34a"><span class="event-swatch" style="--swatch:#16a34a"></span><span>完成</span></label>
+            <label><input type="radio" name="color" value="#7c3aed"><span class="event-swatch" style="--swatch:#7c3aed"></span><span>测试</span></label>
+          </div>
+        </fieldset>
+        <p class="overview-event-dialog__status" data-overview-event-status role="status" aria-live="polite"></p>
+      </div>
+      <div class="modal-form__footer">
+        <button class="button" type="button" data-overview-event-close>取消</button>
+        <button class="button button--primary" type="submit" data-overview-event-submit><i data-lucide="save"></i><span>保存事件</span></button>
+      </div>
+    </form>
+  </dialog>
+
+  <script src="../assets/api.js"></script>
+  <script src="../assets/charts.js"></script>
+  <script src="../assets/shell.js"></script>
+  <script src="../assets/overview-live.js"></script>
+</body>
+</html>

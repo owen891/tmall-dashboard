@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>生命周期 | 天猫数据仪表盘</title>
+  <link rel="stylesheet" href="../assets/tokens.css">
+  <link rel="stylesheet" href="../assets/shell.css">
+  <link rel="stylesheet" href="../assets/components.css">
+  <script src="https://unpkg.com/lucide@1.8.0/dist/umd/lucide.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.1/dist/echarts.min.js"></script>
+  <script src="../assets/charts.js"></script>
+</head>
+<body data-page="lifecycle">
+  <div class="demo-app">
+    <aside class="demo-sidebar" data-shell-sidebar></aside>
+    <div class="demo-main">
+      <header class="demo-topbar" data-shell-header></header>
+      <main class="demo-page">
+        <div class="demo-page__intro">
+          <div>
+            <h2>生命周期</h2>
+            <p data-lifecycle-period>正在加载数据库中的月度经营记录</p>
+          </div>
+          <div class="demo-page__actions">
+            <span class="badge badge--success"><i data-lucide="database"></i><span data-lifecycle-records>-- 条月度记录</span></span>
+            <button class="button" type="button" data-lifecycle-export><i data-lucide="download"></i>导出生命周期数据</button>
+          </div>
+        </div>
+
+        <section class="metric-grid" aria-label="生命周期概览">
+          <article class="metric-card"><div class="metric-card__label">跟踪商品</div><div class="metric-card__value" data-lifecycle-kpi="products">--</div><div class="metric-card__meta"><i data-lucide="package-search"></i>当前筛选范围内</div></article>
+          <article class="metric-card"><div class="metric-card__label">累计 GSV</div><div class="metric-card__value" data-lifecycle-kpi="gsv">--</div><div class="metric-card__meta"><i data-lucide="calendar-range"></i><span data-lifecycle-months>--</span></div></article>
+          <article class="metric-card"><div class="metric-card__label">平均活跃月数</div><div class="metric-card__value" data-lifecycle-kpi="average">--</div><div class="metric-card__meta"><i data-lucide="activity"></i>按真实月度记录统计</div></article>
+          <article class="metric-card"><div class="metric-card__label">最近月增长商品</div><div class="metric-card__value" data-lifecycle-kpi="growing">--</div><div class="metric-card__meta is-up"><i data-lucide="trending-up"></i><span data-lifecycle-growth-period>等待数据计算</span></div></article>
+        </section>
+
+        <section class="lifecycle-list" data-lifecycle-list aria-labelledby="lifecycle-list-title">
+          <div class="section-toolbar lifecycle-list__toolbar">
+            <div>
+              <h3 id="lifecycle-list-title" class="panel__title">商品列表</h3>
+              <span class="panel__hint" data-lifecycle-count>按累计 GSV 排序</span>
+            </div>
+            <div class="filter-group">
+              <input class="input" type="search" data-lifecycle-search aria-label="搜索生命周期商品" placeholder="搜索商品名称 / 商品 ID">
+              <select class="select" data-lifecycle-tier aria-label="商品分层"><option value="">全部分层</option></select>
+            </div>
+          </div>
+          <div class="lifecycle-grid" data-lifecycle-grid aria-live="polite" aria-busy="true"></div>
+          <div class="section-toolbar" data-lifecycle-pagination><button class="button" type="button" data-lifecycle-prev><i data-lucide="chevron-left"></i>上一页</button><button class="button" type="button" data-lifecycle-next>下一页<i data-lucide="chevron-right"></i></button></div>
+          <p class="panel__hint" data-lifecycle-status role="status"></p>
+        </section>
+        <section class="plain-panel panel"><div class="panel__header"><div><h3 class="panel__title">生命周期评估</h3><p class="panel__hint">连续有效日不足 60 天仅显示数据积累中；季节性需要至少 12 个完整自然月。</p></div></div><div class="data-table-wrap"><table class="data-table"><thead><tr><th>商品</th><th>阶段</th><th>置信度</th><th>季节属性</th><th>依据</th><th>操作</th></tr></thead><tbody data-lifecycle-assessments><tr><td colspan="6">加载中</td></tr></tbody></table></div></section>
+
+        <dialog class="lifecycle-detail" data-lifecycle-detail hidden aria-labelledby="lifecycle-detail-title">
+          <div class="lifecycle-detail__header">
+            <div class="lifecycle-detail__product">
+              <img data-detail-image src="" alt="">
+              <div><h3 id="lifecycle-detail-title" class="panel__title" data-detail-title>商品生命周期详情</h3><p class="panel__hint" data-detail-meta></p><div class="lifecycle-detail__id" data-detail-id></div></div>
+            </div>
+            <button class="button button--ghost" type="button" data-lifecycle-back aria-label="关闭商品生命周期详情"><i data-lucide="x"></i>关闭</button>
+          </div>
+          <div class="lifecycle-metrics" data-lifecycle-metrics></div>
+          <div class="lifecycle-chart-grid">
+            <article class="chart-panel panel lifecycle-chart-panel"><div class="panel__header"><div><h3 class="panel__title">经营规模</h3><p class="panel__hint">月度 GSV 与支付件数</p></div></div><div class="chart-box lifecycle-chart-box"><canvas id="lifecycleScaleChart" role="img" aria-label="月度 GSV 与支付件数趋势"></canvas></div></article>
+            <article class="chart-panel panel lifecycle-chart-panel"><div class="panel__header"><div><h3 class="panel__title">售后与投放</h3><p class="panel__hint">退款金额、推广花费与效率</p></div><div class="segmented" role="group" aria-label="效率指标"><button type="button" data-efficiency-mode="refundRate" aria-pressed="true">退款率</button><button type="button" data-efficiency-mode="roi" aria-pressed="false">ROI</button></div></div><div class="chart-box lifecycle-chart-box"><canvas id="lifecycleEfficiencyChart" role="img" aria-label="月度退款、推广花费与效率趋势"></canvas></div></article>
+          </div>
+          <div class="lifecycle-insights" data-lifecycle-insights aria-label="最近月经营结论"></div>
+          <article class="plain-panel panel"><div class="panel__header"><div><h3 class="panel__title">月度明细</h3><p class="panel__hint">图表的可读数据表</p></div></div><div class="data-table-wrap"><table class="data-table"><thead><tr><th>月份</th><th class="num">GSV</th><th class="num">支付件数</th><th class="num">退款金额</th><th class="num">推广花费</th><th class="num">ROI</th></tr></thead><tbody data-lifecycle-detail-body></tbody></table></div></article>
+        </dialog>
+        <dialog class="modal-form" data-lifecycle-edit-dialog hidden><form method="dialog" data-lifecycle-edit-form><div class="modal-form__header"><h3>人工生命周期调整</h3><button class="button button--ghost" type="button" data-lifecycle-edit-close aria-label="关闭"><i data-lucide="x"></i></button></div><div class="modal-form__body"><label>阶段<select class="select" name="manual_stage"><option value="">使用系统建议</option><option value="new">新品期</option><option value="growth">成长期</option><option value="breakout">爆发期</option><option value="mature">成熟期</option><option value="decline">衰退期</option><option value="clearance">清退期</option></select></label><label>季节属性<select class="select" name="seasonal_attribute"><option value="">不覆盖</option><option value="manual">人工维护</option><option value="stable">常年稳定型</option><option value="spring_summer">春夏型</option><option value="autumn_winter">秋冬型</option><option value="single_peak">单峰季节型</option><option value="double_peak">双峰季节型</option><option value="promotion_driven">节日/大促驱动型</option></select></label><label><input type="checkbox" name="lock">锁定阶段</label><label>原因<input class="input" name="reason" required></label><label>操作者<input class="input" name="operator" value="operator" required></label><button class="button button--primary" type="submit">保存调整</button><p data-lifecycle-edit-status role="status"></p></div></form></dialog>
+      </main>
+    </div>
+  </div>
+  <script src="../assets/api.js"></script>
+  <script src="../assets/shell.js"></script>
+  <!-- Live adapter calls DemoApi.request('/api/lifecycle?limit=2000') for the product summary. -->
+  <script src="../assets/lifecycle-live.js"></script>
+</body>
+</html>
