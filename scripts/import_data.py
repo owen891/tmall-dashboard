@@ -91,13 +91,21 @@ def backup_database():
 
     db_path = get_db_path()
     backup_dir = config['data'].get('backup_folder', 'data/backups/')
+    if not os.path.isabs(backup_dir):
+        backup_dir = os.path.join(PROJECT_ROOT, backup_dir)
     max_backups = config['data'].get('max_backups', 30)
 
     os.makedirs(backup_dir, exist_ok=True)
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
     backup_path = os.path.join(backup_dir, f'dashboard_{timestamp}.db')
 
-    shutil.copy2(db_path, backup_path)
+    source_conn = sqlite3.connect(db_path)
+    backup_conn = sqlite3.connect(backup_path)
+    try:
+        source_conn.backup(backup_conn)
+    finally:
+        backup_conn.close()
+        source_conn.close()
 
     # 校验备份
     test_conn = sqlite3.connect(backup_path)
