@@ -1,4 +1,4 @@
-from flask import Blueprint, jsonify, request, send_file
+from flask import Blueprint, current_app, jsonify, request, send_file
 import sqlite3
 import yaml
 import os
@@ -26,6 +26,17 @@ DIMENSION_MAP = {
 }
 
 UPLOAD_FOLDER = os.path.join(project_root, 'data/uploads/')
+
+
+def _unique_upload_path(filename):
+    """Keep the original name for file classification while avoiding overwrites."""
+    safe_name = secure_filename(filename or '')
+    stem, suffix = os.path.splitext(safe_name)
+    candidate = os.path.join(UPLOAD_FOLDER, safe_name)
+    if not os.path.exists(candidate):
+        return safe_name, candidate
+    safe_name = f'{stem}_{uuid.uuid4().hex[:8]}{suffix}'
+    return safe_name, os.path.join(UPLOAD_FOLDER, safe_name)
 
 # 导入进度追踪（进程内存储）
 _import_progress = {}
@@ -64,21 +75,6 @@ def _fmt_wan(val):
     if abs(n) < 10000:
         return f"{n:,.0f}"
     return f"{n / 10000:.1f}万"
-
-@data_bp.route('/api/status', methods=['GET'])
-def get_status():
-    """检查数据库是否有数据"""
-    with get_db() as conn:
-        product_count = conn.execute('SELECT COUNT(*) FROM products').fetchone()[0]
-        monthly_count = conn.execute('SELECT COUNT(*) FROM monthly_data').fetchone()[0]
-        weekly_count = conn.execute('SELECT COUNT(*) FROM weekly_data').fetchone()[0]
-    has_data = product_count > 0 and (monthly_count > 0 or weekly_count > 0)
-    return jsonify({
-        'has_data': has_data,
-        'product_count': product_count,
-        'monthly_periods': monthly_count,
-        'weekly_periods': weekly_count,
-    })
 
 @data_bp.route('/api/kpi', methods=['GET'])
 def get_kpi():
@@ -212,7 +208,10 @@ def toggle_star():
         row = conn.execute('SELECT starred FROM products WHERE product_id = ?', (product_id,)).fetchone()
         if not row:
             return jsonify({'error': '商品不存在'}), 404
-        new_val = 0 if (row[0] or 0) else 1
+        if 'starred' in data:
+            new_val = 1 if int(data.get('starred') or 0) else 0
+        else:
+            new_val = 0 if (row[0] or 0) else 1
         conn.execute('UPDATE products SET starred = ?, updated_at = datetime("now") WHERE product_id = ?', (new_val, product_id))
         conn.commit()
     return jsonify({'starred': new_val})
@@ -654,10 +653,12 @@ def get_products():
     """商品列表"""
     dimension = request.args.get('dim', 'monthly')
     period = request.args.get('period', '')
+    start = request.args.get('start', '')
+    end = request.args.get('end', '')
     sort_by = request.args.get('sort', 'payment_amount')
     order = request.args.get('order', 'desc')
-    limit = request.args.get('limit', 20, type=int)
-    offset = request.args.get('offset', 0, type=int)
+    limit = max(1, min(request.args.get('limit', 20, type=int) or 20, 200))
+    offset = max(0, request.args.get('offset', 0, type=int) or 0)
     tier = request.args.get('tier', '')
     style = request.args.get('style', '')
     search = request.args.get('search', '')
@@ -717,6 +718,53 @@ def get_products():
         monthly_extra_cols = _monthly_extra_cols if dimension == 'monthly' else _zero_extra
         repurchase_cross_cols = "COALESCE(d.repurchase_rate, 0) as repurchase_rate,\n               COALESCE(d.cross_sell_rate, 0) as cross_sell_rate," if dimension == 'monthly' else "0 as repurchase_rate,\n               0 as cross_sell_rate,"
         click_score_cols = "COALESCE(d.click_rate, 0) as click_rate,\n               COALESCE(d.score, 0) as score," if dimension == 'monthly' else "0 as click_rate,\n               0 as score,"
+
+        data_relation = table
+        join_clause = f'p.product_id = d.product_id AND d.{date_col} = ?'
+        params = [period]
+        if dimension == 'daily' and start and end:
+            data_relation = '''(
+                SELECT product_id,
+                       SUM(payment_amount) AS payment_amount,
+                       SUM(refund_amount) AS refund_amount,
+                       SUM(net_sales) AS net_sales,
+                       SUM(ipv) AS ipv,
+                       SUM(pv) AS pv,
+                       AVG(payment_conversion) AS payment_conversion,
+                       AVG(cart_rate) AS cart_rate,
+                       AVG(fav_rate) AS fav_rate,
+                       AVG(bounce_rate) AS bounce_rate,
+                       AVG(avg_stay_duration) AS avg_stay_duration,
+                       SUM(ad_spend) AS ad_spend,
+                       CASE WHEN SUM(ad_spend) > 0 THEN SUM(payment_amount) / SUM(ad_spend) ELSE 0 END AS ad_roi,
+                       SUM(buyers) AS buyers,
+                       CASE WHEN SUM(buyers) > 0 THEN SUM(payment_amount) / SUM(buyers) ELSE 0 END AS avg_order_value
+                FROM daily_data
+                WHERE date BETWEEN ? AND ?
+                GROUP BY product_id
+            )'''
+            join_clause = 'p.product_id = d.product_id'
+            params = [start, end]
+
+        where_clauses = []
+        where_params = []
+        if status_filter and status_filter != 'all':
+            where_clauses.append('p.status = ?')
+            where_params.append(status_filter)
+        elif status_filter != 'all':
+            where_clauses.append("p.status = 'active'")
+        if tier:
+            where_clauses.append('p.tier = ?')
+            where_params.append(tier)
+        if style:
+            where_clauses.append('p.style = ?')
+            where_params.append(style)
+        if search:
+            search_safe = search.replace('%', '\\%').replace('_', '\\_')
+            where_clauses.append("(p.title LIKE ? ESCAPE '\\' OR p.product_id LIKE ? ESCAPE '\\')")
+            where_params.append(f'%{search_safe}%')
+            where_params.append(f'%{search_safe}%')
+        where_sql = ' AND '.join(where_clauses) or '1=1'
 
         query = f'''
             SELECT p.product_id, p.title, p.tier, p.style, p.scene, p.status, p.image_url,
@@ -780,7 +828,7 @@ def get_products():
                    COALESCE(pd_latest.item_fav_rate, 0) as item_fav_rate,
                    COALESCE(pd_latest.cart_cost, 0) as cart_cost
             FROM products p
-            LEFT JOIN {table} d ON p.product_id = d.product_id AND d.{date_col} = ?
+            LEFT JOIN {data_relation} d ON {join_clause}
             LEFT JOIN (
                 SELECT pd.* FROM paid_detail pd
                 INNER JOIN (
@@ -788,24 +836,9 @@ def get_products():
                     FROM paid_detail GROUP BY product_id
                 ) pd_max ON pd.product_id = pd_max.product_id AND pd.imported_at = pd_max.max_imported
             ) pd_latest ON p.product_id = pd_latest.product_id
-            WHERE p.status = 'active'
+            WHERE {where_sql}
         '''
-        params = [period]
-
-        if tier:
-            query += ' AND p.tier = ?'
-            params.append(tier)
-        if style:
-            query += ' AND p.style = ?'
-            params.append(style)
-        if search:
-            search_safe = search.replace('%', '\\%').replace('_', '\\_')
-            query += ' AND (p.title LIKE ? ESCAPE \'\\\' OR p.product_id LIKE ? ESCAPE \'\\\')'
-            params.append(f'%{search_safe}%')
-            params.append(f'%{search_safe}%')
-        if status_filter:
-            query += ' AND p.status = ?'
-            params.append(status_filter)
+        params.extend(where_params)
 
         sort_whitelist = [
             'payment_amount','payment_count','refund_amount','refund_rate','conversion',
@@ -839,27 +872,18 @@ def get_products():
         rows = [dict(r) for r in conn.execute(query, params).fetchall()]
 
         # 获取总数（用于服务端分页）- 与主查询使用完全相同的WHERE条件
-        count_query = 'SELECT COUNT(*) as total FROM products p WHERE 1=1'
-        count_params = []
-        # 根据status_filter决定count的WHERE条件
-        if status_filter:
-            count_query += ' AND p.status = ?'
-            count_params.append(status_filter)
-        else:
-            count_query += " AND p.status = 'active'"
-        if tier:
-            count_query += ' AND p.tier = ?'
-            count_params.append(tier)
-        if style:
-            count_query += ' AND p.style = ?'
-            count_params.append(style)
-        if search:
-            search_escaped = search.replace('%', '\\%').replace('_', '\\_')
-            count_query += ' AND (p.title LIKE ? ESCAPE \'\\\' OR p.product_id LIKE ? ESCAPE \'\\\')'
-            count_params.append(f'%{search_escaped}%')
-            count_params.append(f'%{search_escaped}%')
+        count_query = f'SELECT COUNT(*) as total FROM products p WHERE {where_sql}'
+        count_params = list(where_params)
         total_row = conn.execute(count_query, count_params).fetchone()
         total_count = total_row['total'] if total_row else 0
+
+        facets = {}
+        for facet_name, column in [('tiers', 'tier'), ('styles', 'style'), ('statuses', 'status')]:
+            facets[facet_name] = [
+                r[column] for r in conn.execute(
+                    f"SELECT DISTINCT {column} FROM products WHERE {column} IS NOT NULL AND TRIM({column}) != '' ORDER BY {column}"
+                ).fetchall()
+            ]
 
         # 计算综合评分
         for row in rows:
@@ -902,7 +926,7 @@ def get_products():
             for row in rows:
                     row['changes'] = {}
 
-    return jsonify({'data': rows, 'total': total_count, 'limit': limit, 'offset': offset})
+    return jsonify({'data': rows, 'total': total_count, 'limit': limit, 'offset': offset, 'facets': facets})
 
 @data_bp.route('/api/refund_alert', methods=['GET'])
 def get_refund_alert():
@@ -1103,11 +1127,12 @@ def get_ad_trend():
                        SUM(ad_spend) / NULLIF(SUM(payment_amount), 0) as ad_ratio,
                        SUM(payment_amount) / NULLIF(SUM(ad_spend), 0) as overall_roi,
                        AVG(payment_conversion) as conversion,
-                       COUNT(DISTINCT product_id) as product_count
-                FROM {table}
-                WHERE {date_col} <= ?
-                GROUP BY {date_col}
-                ORDER BY {date_col} DESC
+                       COUNT(DISTINCT d.product_id) as product_count
+                FROM {table} d
+                JOIN products p ON p.product_id = d.product_id
+                WHERE d.{date_col} <= ? AND p.status = 'active' AND d.ad_spend > 0
+                GROUP BY d.{date_col}
+                ORDER BY d.{date_col} DESC
                 LIMIT ?
             ''', (period, periods_count)).fetchall()]
         elif dim == 'weekly':
@@ -1194,37 +1219,40 @@ def get_periods():
 @data_bp.route('/api/backup', methods=['POST'])
 def trigger_backup():
     """手动触发数据库备份"""
+    if current_app.config.get('TESTING'):
+        return jsonify({'success': True, 'skipped': 'testing'})
     from scripts.import_data import backup_database
     success = backup_database()
     return jsonify({'success': success})
 
-@data_bp.route('/api/actions', methods=['GET'])
+@data_bp.route('/api/legacy/actions', methods=['GET'])
 def get_actions():
     """运营动作列表"""
     period = request.args.get('period', '')
+    product_id = request.args.get('product_id', '')
     limit = request.args.get('limit', 100, type=int)
-    limit = min(limit, 500)
+    limit = max(1, min(limit or 100, 500))
 
     with get_db() as conn:
+        clauses = []
+        params = []
         if period:
-            rows = [dict(r) for r in conn.execute('''
-                SELECT a.id, a.product_id, a.action_date, a.action_type, a.action_detail,
-                       a.effectiveness_score, p.title, p.image_url
-                FROM operation_actions a
-                JOIN products p ON a.product_id = p.product_id
-                WHERE a.action_date LIKE ?
-                ORDER BY a.action_date DESC
-                LIMIT ?
-            ''', (f'{period}%', limit,)).fetchall()]
-        else:
-            rows = [dict(r) for r in conn.execute('''
-                SELECT a.id, a.product_id, a.action_date, a.action_type, a.action_detail,
-                       a.effectiveness_score, p.title, p.image_url
-                FROM operation_actions a
-                JOIN products p ON a.product_id = p.product_id
-                ORDER BY a.action_date DESC
-                LIMIT ?
-            ''', (limit,)).fetchall()]
+            clauses.append('a.action_date LIKE ?')
+            params.append(f'{period}%')
+        if product_id:
+            clauses.append('a.product_id = ?')
+            params.append(product_id)
+        where_sql = f"WHERE {' AND '.join(clauses)}" if clauses else ''
+        params.append(limit)
+        rows = [dict(r) for r in conn.execute(f'''
+            SELECT a.id, a.product_id, a.action_date, a.action_type, a.action_detail,
+                   a.effectiveness_score, p.title, p.image_url
+            FROM operation_actions a
+            JOIN products p ON a.product_id = p.product_id
+            {where_sql}
+            ORDER BY a.action_date DESC
+            LIMIT ?
+        ''', params).fetchall()]
     return jsonify(rows)
 
 # ==================== 流量结构分析 API ====================
@@ -1352,7 +1380,7 @@ def create_task():
         return jsonify({'success': True})
 
 @data_bp.route('/api/tasks/<int:task_id>', methods=['PUT'])
-def update_task():
+def update_task(task_id):
     """更新任务"""
     data = request.get_json(force=True, silent=True) or {}
     with get_db() as conn:
@@ -1366,15 +1394,19 @@ def update_task():
             return jsonify({'error': 'No fields to update'}), 400
         sets.append("updated_at = datetime('now')")
         params.append(task_id)
-        conn.execute(f'UPDATE task_items SET {", ".join(sets)} WHERE id = ?', params)
+        cursor = conn.execute(f'UPDATE task_items SET {", ".join(sets)} WHERE id = ?', params)
+        if cursor.rowcount == 0:
+            return jsonify({'error': 'Task not found'}), 404
         conn.commit()
         return jsonify({'success': True})
 
 @data_bp.route('/api/tasks/<int:task_id>', methods=['DELETE'])
-def delete_task():
+def delete_task(task_id):
     """删除任务"""
     with get_db() as conn:
-        conn.execute('DELETE FROM task_items WHERE id = ?', (task_id,))
+        cursor = conn.execute('DELETE FROM task_items WHERE id = ?', (task_id,))
+        if cursor.rowcount == 0:
+            return jsonify({'error': 'Task not found'}), 404
         conn.commit()
         return jsonify({'success': True})
 
@@ -1408,7 +1440,7 @@ def create_user_kpi():
         return jsonify({'success': True})
 
 @data_bp.route('/api/user_kpis/<int:kpi_id>', methods=['PUT'])
-def update_user_kpi():
+def update_user_kpi(kpi_id):
     """更新用户KPI"""
     data = request.get_json(force=True, silent=True) or {}
     with get_db() as conn:
@@ -1422,15 +1454,19 @@ def update_user_kpi():
             return jsonify({'error': 'No fields to update'}), 400
         sets.append("updated_at = datetime('now')")
         params.append(kpi_id)
-        conn.execute(f'UPDATE user_kpis SET {", ".join(sets)} WHERE id = ?', params)
+        cursor = conn.execute(f'UPDATE user_kpis SET {", ".join(sets)} WHERE id = ?', params)
+        if cursor.rowcount == 0:
+            return jsonify({'error': 'KPI not found'}), 404
         conn.commit()
         return jsonify({'success': True})
 
 @data_bp.route('/api/user_kpis/<int:kpi_id>', methods=['DELETE'])
-def delete_user_kpi():
+def delete_user_kpi(kpi_id):
     """删除用户KPI"""
     with get_db() as conn:
-        conn.execute('DELETE FROM user_kpis WHERE id = ?', (kpi_id,))
+        cursor = conn.execute('DELETE FROM user_kpis WHERE id = ?', (kpi_id,))
+        if cursor.rowcount == 0:
+            return jsonify({'error': 'KPI not found'}), 404
         conn.commit()
         return jsonify({'success': True})
 
@@ -1442,7 +1478,7 @@ def upload_keywords():
     if 'file' not in request.files:
         return jsonify({'error': '未上传文件'}), 400
     file = request.files['file']
-    if not file.filename.endswith(('.xlsx', '.xls')):
+    if not file.filename.lower().endswith(('.xlsx', '.xls')):
         return jsonify({'error': '仅支持Excel文件'}), 400
     
     import pandas as pd
@@ -1499,6 +1535,16 @@ def upload_keywords():
                 from datetime import datetime
                 date_str = datetime.now().strftime('%Y-%m-%d')
         
+        # Normalize numeric values before calculating derived metrics. Tmall
+        # exports often use blank cells or "-" for unavailable values.
+        numeric_columns = [
+            'popularity', 'impressions', 'clicks', 'ctr', 'cost', 'gmv',
+            'cvr', 'roi', 'cpc', 'conversion',
+        ]
+        for numeric_column in numeric_columns:
+            if numeric_column in df.columns:
+                df[numeric_column] = pd.to_numeric(df[numeric_column], errors='coerce').fillna(0)
+
         # Calculate derived metrics
         if 'ctr' not in df.columns and 'clicks' in df.columns and 'impressions' in df.columns:
             df['ctr'] = df.apply(lambda r: r['clicks'] / r['impressions'] if r.get('impressions', 0) > 0 else 0, axis=1)
@@ -1508,7 +1554,7 @@ def upload_keywords():
             df['roi'] = df.apply(lambda r: r['gmv'] / r['cost'] if r.get('cost', 0) > 0 else 0, axis=1)
         if 'cvr' not in df.columns and 'conversion' in df.columns and 'clicks' in df.columns:
             df['cvr'] = df.apply(lambda r: r['conversion'] / r['clicks'] if r.get('clicks', 0) > 0 else 0, axis=1)
-        
+
         # Calculate efficacy (词效能)
         with get_db() as conn:
             avg_ctr = df['ctr'].mean() if 'ctr' in df.columns else 0
@@ -1517,7 +1563,7 @@ def upload_keywords():
             count = 0
             for _, row in df.iterrows():
                 kw = str(row.get('keyword', '')).strip()
-                if not kw:
+                if not kw or kw.lower() in {'nan', 'none', 'null', '--'}:
                     continue
                 
                 ctr_val = float(row.get('ctr', 0) or 0)
@@ -1578,8 +1624,11 @@ def get_keywords():
     search = request.args.get('search', '')
     sort = request.args.get('sort', 'efficacy')
     order = request.args.get('order', 'desc')
-    page = int(request.args.get('page', 1))
-    per_page = int(request.args.get('per_page', 50))
+    try:
+        page = max(1, int(request.args.get('page', 1)))
+        per_page = max(1, min(int(request.args.get('per_page', 50)), 200))
+    except (TypeError, ValueError):
+        return jsonify({'error': 'page and per_page must be positive integers'}), 400
     
     with get_db() as conn:
         # Get available dates
@@ -1662,8 +1711,7 @@ def upload_market():
     for file in files:
         if not file.filename:
             continue
-        filename = secure_filename(file.filename)
-        filepath = os.path.join(UPLOAD_FOLDER, filename)
+        filename, filepath = _unique_upload_path(file.filename)
         file.save(filepath)
         saved_paths.append(filepath)
 
@@ -1711,7 +1759,7 @@ def get_market_summary():
         row = conn.execute(query, params).fetchone()
 
     if not row:
-        return jsonify({'error': 'no data'}), 404
+        return jsonify({'meta': None, 'summary': {}, 'keywords_count': 0, 'empty': True})
 
     data = dict(row)
     return jsonify({
@@ -1735,7 +1783,7 @@ def get_market_summary():
 def get_market_keywords():
     """获取关键词分析数据"""
     category = request.args.get('category', '')
-    limit = request.args.get('limit', 50, type=int)
+    limit = max(1, min(request.args.get('limit', 50, type=int) or 50, 200))
     opportunity = request.args.get('opportunity', '')
 
     with get_db() as conn:
@@ -1901,7 +1949,7 @@ def get_market_reports():
         'reports': rows,
     })
 
-@data_bp.route('/api/actions', methods=['POST'])
+@data_bp.route('/api/legacy/actions', methods=['POST'])
 def create_action():
     """Create a new operation action"""
     data = request.get_json(force=True)
@@ -1919,7 +1967,7 @@ def create_action():
         action_id = conn.execute('SELECT last_insert_rowid()').fetchone()[0]
     return jsonify({'id': action_id, 'message': 'created'})
 
-@data_bp.route('/api/actions/<int:action_id>', methods=['PUT'])
+@data_bp.route('/api/legacy/actions/<int:action_id>', methods=['PUT'])
 def update_action(action_id):
     """Update an existing operation action"""
     data = request.get_json(force=True)
@@ -1936,7 +1984,7 @@ def update_action(action_id):
         conn.commit()
     return jsonify({'message': 'updated'})
 
-@data_bp.route('/api/actions/<int:action_id>', methods=['DELETE'])
+@data_bp.route('/api/legacy/actions/<int:action_id>', methods=['DELETE'])
 def delete_action(action_id):
     """Delete an operation action"""
     with get_db() as conn:
@@ -2380,8 +2428,8 @@ def set_shop_target():
 def get_lifecycle():
     """Get product lifecycle data - monthly GSV for each product"""
     product_id = request.args.get('product_id', '')
-    limit = request.args.get('limit', 50, type=int)
-    limit = min(limit, 500)
+    limit = request.args.get('limit', 500, type=int)
+    limit = max(1, min(limit or 500, 2000))
 
     with get_db() as conn:
         if product_id:
@@ -2464,12 +2512,11 @@ def upload_reviews():
         return jsonify({'error': 'No file'}), 400
 
     file = request.files['file']
-    if not file.filename.endswith(('.xlsx', '.xls', '.csv')):
+    if not file.filename.lower().endswith(('.xlsx', '.xls', '.csv')):
         return jsonify({'error': 'Unsupported file type'}), 400
 
     os.makedirs(UPLOAD_FOLDER, exist_ok=True)
-    filename = secure_filename(file.filename)
-    filepath = os.path.join(UPLOAD_FOLDER, filename)
+    filename, filepath = _unique_upload_path(file.filename)
     file.save(filepath)
 
     # 解析并导入
@@ -2626,8 +2673,8 @@ def get_reviews_list():
     """评价列表"""
     product_id = request.args.get('product_id', '')
     sentiment = request.args.get('sentiment', '')
-    limit = request.args.get('limit', 50, type=int)
-    offset = request.args.get('offset', 0, type=int)
+    limit = max(1, min(request.args.get('limit', 50, type=int) or 50, 200))
+    offset = max(0, request.args.get('offset', 0, type=int) or 0)
 
     with get_db() as conn:
         query = 'SELECT * FROM reviews WHERE 1=1'
@@ -2829,8 +2876,7 @@ def get_reviewed_products():
 @data_bp.route('/api/logs', methods=['GET'])
 def get_logs():
     """获取最近操作日志"""
-    limit = request.args.get('limit', 50, type=int)
-    limit = min(limit, 200)
+    limit = max(1, min(request.args.get('limit', 50, type=int) or 50, 200))
     with get_db() as conn:
         rows = [dict(r) for r in conn.execute(
             'SELECT * FROM operation_logs ORDER BY id DESC LIMIT ?', (limit,)
@@ -3586,6 +3632,8 @@ def update_scheduled_task(task_id):
 
         if 'enabled' in data:
             conn.execute('UPDATE scheduled_tasks SET enabled = ? WHERE id = ?', (1 if data['enabled'] else 0, task_id))
+            if data['enabled']:
+                conn.execute("UPDATE scheduled_tasks SET status = 'active' WHERE id = ? AND status = 'error'", (task_id,))
         if 'cron_expr' in data and data['cron_expr']:
             cron_expr = data['cron_expr']
             next_run = _parse_cron_expr(cron_expr)
@@ -3865,12 +3913,23 @@ def get_industry_benchmark():
     date_col = dim_cfg['date_col']
     visitors_col = dim_cfg['visitors_col']
 
+    # CTR fields differ between the imported report dimensions.
+    if dim == 'monthly':
+        shop_ctr_expr = 'click_rate'
+        industry_ctr_expr = 'industry_ctr'
+    elif dim == 'weekly':
+        shop_ctr_expr = 'search_click_rate'
+        industry_ctr_expr = 'industry_ctr'
+    else:
+        shop_ctr_expr = '0'
+        industry_ctr_expr = '0'
+
     with get_db() as conn:
         # 当期行业CTR均值
         row = conn.execute(f'''
             SELECT
-                AVG(industry_ctr) as industry_ctr,
-                AVG(click_rate) as shop_ctr
+                AVG({industry_ctr_expr}) as industry_ctr,
+                AVG({shop_ctr_expr}) as shop_ctr
             FROM {table} WHERE {date_col} = ?
         ''', (period,)).fetchone()
 
@@ -3882,8 +3941,8 @@ def get_industry_benchmark():
         # 趋势：最近6个周期
         trend_rows = conn.execute(f'''
             SELECT {date_col} as period,
-                   AVG(click_rate) as shop_ctr,
-                   AVG(industry_ctr) as industry_ctr
+                   AVG({shop_ctr_expr}) as shop_ctr,
+                   AVG({industry_ctr_expr}) as industry_ctr
             FROM {table}
             WHERE {date_col} <= ?
             GROUP BY {date_col}

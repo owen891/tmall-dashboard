@@ -137,7 +137,7 @@ async function loadHealthDashboard(period) {
         else if (score < 60) rowCls = 'row-warning';
 
         const productCell = img
-            ? `<div class="product-cell"><img src="${img}" alt=""><span class="title">${title}</span></div>`
+            ? `<div class="product-cell"><img src="${img}" alt="${title}" loading="lazy"><span class="title">${title}</span></div>`
             : `<div class="product-cell"><span class="title">${title}</span></div>`;
 
         // 12维度得分单元格
@@ -163,7 +163,7 @@ async function loadHealthDashboard(period) {
         else if (level === '良好') levelCls = 'level-good';
         else if (level === '关注') levelCls = 'level-watch';
 
-        return `<tr class="${rowCls}" onclick="showHealthDetail('${item.product_id}')" style="cursor:pointer">
+        return `<tr class="${rowCls}" role="button" tabindex="0" aria-label="查看${title}健康度详情" onclick="showHealthDetail('${item.product_id}')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();showHealthDetail('${item.product_id}')}" style="cursor:pointer">
             <td>${productCell}</td>
             <td><span class="health-score-badge ${scoreCls}">${score.toFixed(0)}</span></td>
             ${dimCells}
@@ -235,7 +235,7 @@ function showHealthDetail(product_id) {
 
     content.innerHTML = `
         <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;">
-            ${product.image_url ? `<img src="${escapeHtml(product.image_url)}" style="width:48px;height:48px;border-radius:8px;object-fit:cover;background:#1E293B;">` : ''}
+            ${product.image_url ? `<img src="${escapeHtml(product.image_url)}" alt="${escapeHtml(product.title || '')}" loading="lazy" style="width:48px;height:48px;border-radius:8px;object-fit:cover;background:#1E293B;">` : ''}
             <div style="flex:1;">
                 <div style="font-size:1rem;font-weight:600;color:#F1F5F9;">${escapeHtml(product.title || '--')}</div>
                 <div style="font-size:0.8rem;color:#64748B;">${escapeHtml(product.tier || '')} &middot; ${escapeHtml(product.style || '')}</div>
