@@ -14,13 +14,25 @@ from scripts.utils import clean_percentage, clean_number, clean_int, clean_month
 
 # 使用绝对路径
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-IMPORT_LOG = os.path.join(PROJECT_ROOT, 'data/import_log.json')
+
+
+def runtime_data_dir():
+    return os.path.dirname(os.path.abspath(get_db_path()))
+
+
+def runtime_backup_dir():
+    return os.path.join(runtime_data_dir(), 'backups')
+
+
+def runtime_import_log_path():
+    return os.path.join(runtime_data_dir(), 'import_log.json')
 
 def log_import(filename, status, rows=0, details=''):
-    os.makedirs(os.path.dirname(IMPORT_LOG), exist_ok=True)
+    import_log = runtime_import_log_path()
+    os.makedirs(os.path.dirname(import_log), exist_ok=True)
     logs = []
-    if os.path.exists(IMPORT_LOG):
-        with open(IMPORT_LOG, 'r') as f:
+    if os.path.exists(import_log):
+        with open(import_log, 'r') as f:
             logs = json.load(f)
     logs.append({
         'file': filename,
@@ -29,7 +41,7 @@ def log_import(filename, status, rows=0, details=''):
         'details': details,
         'time': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     })
-    with open(IMPORT_LOG, 'w') as f:
+    with open(import_log, 'w') as f:
         json.dump(logs, f, ensure_ascii=False, indent=2)
 
 def upsert_product(conn, product_id, title='', category='', tier='', style='', scene='',
@@ -90,9 +102,8 @@ def backup_database():
         config = yaml.safe_load(f)
 
     db_path = get_db_path()
-    backup_dir = config['data'].get('backup_folder', 'data/backups/')
-    if not os.path.isabs(backup_dir):
-        backup_dir = os.path.join(PROJECT_ROOT, backup_dir)
+    configured_backup_dir = config['data'].get('backup_folder')
+    backup_dir = configured_backup_dir if os.path.isabs(configured_backup_dir or '') else runtime_backup_dir()
     max_backups = config['data'].get('max_backups', 30)
 
     os.makedirs(backup_dir, exist_ok=True)
