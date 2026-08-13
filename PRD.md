@@ -4,6 +4,8 @@
 > **更新日期**: 2026-05-01
 > **技术栈**: Python Flask + SQLite + ECharts + 原生 JavaScript
 
+> **文档状态**: 历史能力参考，不作为当前迭代的执行或验收依据。当前唯一执行 PRD 为 [`docs/PRD_KEEP_EXISTING_ARCHITECTURE.md`](docs/PRD_KEEP_EXISTING_ARCHITECTURE.md)。
+
 ---
 
 ## 目录
