@@ -1,6 +1,6 @@
 from flask import Flask, jsonify, redirect, render_template, send_from_directory
 import os
-from db import get_db_path, init_db
+from db import get_db, get_db_path, init_db
 from api.data_api import data_bp
 from api.imports_api import imports_bp
 from api.overview_api import overview_bp
@@ -107,6 +107,21 @@ def create_app(config=None):
                 {'id': 'data-center', 'path': '/data-center', 'data': 'api', 'endpoint': '/api/imports/preview'},
                 {'id': 'settings', 'path': '/settings', 'data': 'api', 'endpoint': '/api/settings'},
             ],
+        })
+
+    @app.route('/healthz')
+    def health_check():
+        try:
+            with get_db() as connection:
+                connection.execute('SELECT 1').fetchone()
+        except Exception:
+            return jsonify({
+                'ok': False,
+                'data': {'service': 'tmall-dashboard', 'database': 'unavailable'},
+            }), 503
+        return jsonify({
+            'ok': True,
+            'data': {'service': 'tmall-dashboard', 'database': 'ok'},
         })
 
     return app
