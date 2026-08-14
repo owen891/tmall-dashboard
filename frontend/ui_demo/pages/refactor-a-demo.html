@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>A 方向三页重构 Demo</title>
+  <link rel="stylesheet" href="../assets/tokens.css">
+  <style>
+    :root { --demo-rail:220px; }
+    * { box-sizing:border-box; }
+    body { margin:0; min-width:320px; background:var(--page); color:var(--text); font-family:var(--font-sans); }
+    button { font:inherit; cursor:pointer; }
+    .demo-app { min-height:100vh; }
+    .demo-sidebar { position:fixed; inset:0 auto 0 0; width:var(--demo-rail); display:flex; flex-direction:column; border-right:1px solid var(--border); background:var(--surface); }
+    .brand { display:flex; align-items:center; gap:10px; min-height:56px; padding:10px 16px; border-bottom:1px solid var(--border); font-size:13px; font-weight:700; }
+    .brand-mark { display:grid; width:32px; height:32px; place-items:center; border-radius:var(--radius-lg); background:var(--brand); color:#fff; font-size:11px; }
+    .nav { display:grid; gap:2px; padding:12px 8px; }
+    .nav button { display:flex; align-items:center; gap:10px; min-height:38px; padding:8px 10px; border:0; border-radius:var(--radius-md); background:transparent; color:var(--text-muted); font-size:13px; text-align:left; }
+    .nav button:hover, .nav button.active { background:var(--brand-tint); color:var(--brand); font-weight:650; }
+    .nav-icon { width:18px; color:currentColor; font-size:14px; text-align:center; }
+    .sidebar-foot { margin-top:auto; padding:12px 16px; border-top:1px solid var(--border); color:var(--text-muted); font-size:11px; }
+    .dot { display:inline-block; width:7px; height:7px; margin-right:6px; border-radius:50%; background:var(--success); }
+    .main { min-height:100vh; margin-left:var(--demo-rail); }
+    .topbar { position:sticky; top:0; z-index:2; display:flex; align-items:center; gap:14px; min-height:56px; padding:8px 24px; border-bottom:1px solid var(--border); background:var(--surface); box-shadow:0 1px 0 rgb(15 23 42 / .03); }
+    .topbar-heading h1 { margin:0; font-size:20px; line-height:1.2; }
+    .topbar-heading p { margin:3px 0 0; color:var(--text-muted); font-size:11px; }
+    .topbar-meta { display:flex; align-items:center; gap:6px; margin-left:auto; }
+    .select, .button { min-height:32px; padding:6px 10px; border:1px solid var(--border); border-radius:var(--radius-md); background:var(--surface); color:var(--text-muted); font-size:12px; }
+    .button:hover { border-color:var(--brand); color:var(--brand); }
+    .button.primary { border-color:var(--brand); background:var(--brand); color:#fff; }
+    .button.primary:hover { border-color:var(--brand-hover); background:var(--brand-hover); color:#fff; }
+    .page { max-width:1320px; margin:0 auto; padding:24px; }
+    .view { display:none; }
+    .view.active { display:block; }
+    .metric-grid { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:12px; margin-bottom:16px; }
+    .metric-card { min-height:100px; padding:14px; border:1px solid var(--border); border-top:3px solid var(--brand); border-radius:var(--radius-lg); background:var(--surface); box-shadow:var(--shadow-sm); }
+    .metric-card:nth-child(2){border-top-color:#648fb0}.metric-card:nth-child(3){border-top-color:#72a45a}.metric-card:nth-child(4){border-top-color:#bd8a35}
+    .metric-card span { display:block; color:var(--text-muted); font-size:12px; }
+    .metric-card strong { display:block; margin-top:7px; color:var(--text); font-family:var(--font-mono); font-size:23px; }
+    .section-grid { display:grid; grid-template-columns:minmax(0,1.2fr) minmax(280px,.8fr); gap:16px; margin-bottom:16px; }
+    .panel { min-width:0; padding:18px; border:1px solid var(--border); border-radius:var(--radius-lg); background:var(--surface); box-shadow:var(--shadow-sm); }
+    .panel-head { display:flex; align-items:flex-start; justify-content:space-between; gap:12px; margin-bottom:12px; }
+    .panel-head h2 { margin:0; font-size:14px; }
+    .panel-head p { margin:3px 0 0; color:var(--text-muted); font-size:11px; }
+    .toolbar { display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:12px; }
+    .chip { min-height:30px; padding:6px 10px; border:1px solid var(--border); border-radius:var(--radius-md); background:var(--surface); color:var(--text-muted); font-size:11px; }
+    .chip.active { border-color:var(--brand); background:var(--brand-tint); color:var(--brand); font-weight:650; }
+    .table-wrap { max-width:100%; overflow:auto; border:1px solid var(--border); border-radius:var(--radius-md); }
+    table { width:100%; min-width:720px; border-collapse:collapse; font-size:12px; }
+    th { padding:9px 10px; border-bottom:1px solid var(--border); background:var(--surface-muted); color:var(--text-muted); font-size:11px; font-weight:650; text-align:left; white-space:nowrap; }
+    td { padding:11px 10px; border-bottom:1px solid var(--border); white-space:nowrap; }
+    tr:last-child td { border-bottom:0; }
+    .status { color:var(--warning); font-weight:650; }
+    .status.ok { color:var(--success); }
+    .status.bad { color:var(--danger); }
+    .stepper { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:6px; margin:12px 0 14px; }
+    .step { padding:9px 8px; border:1px solid var(--border); border-radius:var(--radius-md); background:var(--surface-muted); color:var(--text-muted); font-size:11px; text-align:center; }
+    .step.done { border-color:#bbebc8; background:var(--success-tint); color:var(--success); }
+    .step.current { border-color:#f2c68a; background:var(--warning-tint); color:var(--warning); font-weight:650; }
+    .quality { padding:12px; border-left:3px solid var(--warning); background:var(--warning-tint); color:#92400e; font-size:11px; line-height:1.6; }
+    .settings-layout { display:grid; grid-template-columns:220px minmax(0,1fr); gap:16px; }
+    .settings-tree { display:grid; align-content:start; gap:3px; padding:8px; border:1px solid var(--border); border-radius:var(--radius-lg); background:var(--surface); }
+    .settings-tree button { min-height:34px; padding:7px 9px; border:0; border-radius:var(--radius-md); background:transparent; color:var(--text-muted); font-size:12px; text-align:left; }
+    .settings-tree button.active { background:var(--brand-tint); color:var(--brand); font-weight:650; }
+    .form-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; }
+    .field { display:grid; gap:5px; }
+    .field label { color:var(--text-muted); font-size:11px; }
+    .field-value { min-height:34px; padding:8px 10px; border:1px solid var(--border); border-radius:var(--radius-md); background:var(--surface); font-size:12px; }
+    .impact { margin-top:14px; padding:10px 12px; border-left:3px solid var(--info); background:var(--info-tint); color:#1e40af; font-size:11px; line-height:1.6; }
+    @media (max-width:1000px) { .section-grid { grid-template-columns:1fr; } .metric-grid { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+    @media (max-width:700px) { .demo-sidebar { width:72px; } .brand { justify-content:center; padding-inline:0; } .brand span:last-child, .nav button span:last-child, .sidebar-foot span:last-child { display:none; } .nav button { justify-content:center; padding-inline:0; } .main { margin-left:72px; } .topbar { padding-inline:14px; } .topbar-meta .select { display:none; } .page { padding:16px 12px; } .settings-layout { grid-template-columns:1fr; } .settings-tree { grid-template-columns:repeat(3,minmax(0,1fr)); } .settings-tree button { text-align:center; } }
+  </style>
+</head>
+<body>
+  <div class="demo-app">
+    <aside class="demo-sidebar">
+      <div class="brand"><span class="brand-mark">TM</span><span>天猫数据仪表盘</span></div>
+      <nav class="nav" aria-label="页面切换">
+        <button class="active" data-view="overview"><span class="nav-icon">▦</span><span>数据概览</span></button>
+        <button data-view="reviews"><span class="nav-icon">▣</span><span>经营复盘</span></button>
+        <button data-view="data"><span class="nav-icon">◫</span><span>数据中心</span></button>
+        <button data-view="settings"><span class="nav-icon">⚙</span><span>设置</span></button>
+      </nav>
+      <div class="sidebar-foot"><span class="dot"></span><span>系统正常 · A 方向静态稿</span></div>
+    </aside>
+    <div class="main">
+      <header class="topbar"><div class="topbar-heading"><h1 id="page-title">数据概览</h1><p id="page-subtitle">今天先看结果、目标差额和待处理动作</p></div><div class="topbar-meta"><select class="select" aria-label="周期"><option>近 30 天</option></select><button class="button">刷新报告</button><button class="button primary" id="primary-action">查看待办</button></div></header>
+      <main class="page">
+        <section class="view active" data-page-view="overview">
+          <div class="metric-grid"><div class="metric-card"><span>净销售额</span><strong>¥148,586</strong></div><div class="metric-card"><span>目标完成率</span><strong>82.4%</strong></div><div class="metric-card"><span>待处理动作</span><strong>06</strong></div><div class="metric-card"><span>数据新鲜度</span><strong>98%</strong></div></div>
+          <div class="section-grid"><section class="panel"><div class="panel-head"><div><h2>本期经营结果</h2><p>净销售额与目标差额</p></div><span class="status ok">较上期 +12.8%</span></div><div style="display:grid;grid-template-columns:1fr .8fr;gap:18px;align-items:center"><div><div style="display:flex;align-items:end;gap:10px;height:130px;padding:0 4px;border-bottom:1px solid var(--border)"><span style="width:11%;height:36%;background:#d8e3ea;border-radius:4px 4px 0 0"></span><span style="width:11%;height:52%;background:#c6d6e0;border-radius:4px 4px 0 0"></span><span style="width:11%;height:44%;background:#b8ccd8;border-radius:4px 4px 0 0"></span><span style="width:11%;height:68%;background:#9fb8c8;border-radius:4px 4px 0 0"></span><span style="width:11%;height:60%;background:#86a5b8;border-radius:4px 4px 0 0"></span><span style="width:11%;height:82%;background:#e4400f;border-radius:4px 4px 0 0"></span><span style="width:11%;height:94%;background:#c7380d;border-radius:4px 4px 0 0"></span></div><div style="display:flex;justify-content:space-between;margin-top:6px;color:var(--text-soft);font-size:10px"><span>08-06</span><span>08-12</span></div></div><div><div style="color:var(--text-muted);font-size:11px">目标差额</div><div style="margin-top:5px;color:var(--text);font:700 24px var(--font-mono)">¥31,700</div><div style="height:8px;margin-top:12px;overflow:hidden;border-radius:4px;background:var(--surface-muted)"><div style="width:82.4%;height:100%;background:var(--brand)"></div></div><div style="margin-top:6px;color:var(--text-muted);font-size:10px">按当前日均，预计 08-29 达成</div></div></div></section><section class="panel"><div class="panel-head"><div><h2>今日先处理</h2><p>按逾期、待复盘、执行中排序</p></div><button class="button">查看全部</button></div><div class="table"><div class="tr head"><span>事项</span><span>截止</span><span>状态</span><span>入口</span></div><div class="tr"><span>轻户外收纳箱 · 提价复盘</span><span>今天</span><span class="status">待复盘</span><span>进入</span></div><div class="tr"><span>推广商品批次确认</span><span>今天</span><span class="status">待确认</span><span>进入</span></div><div class="tr"><span>折叠桌 · 观察窗口</span><span>逾期 1 天</span><span class="status bad">阻塞</span><span>查看</span></div></div></section></div>
+          <div class="section-grid"><section class="panel"><div class="panel-head"><div><h2>异常监控</h2><p>只显示需要动作的变化</p></div><button class="button">查看异常</button></div><div class="table"><div class="tr"><span>退款率</span><span>22.7%</span><span class="status bad">+4.8pp</span><span>商品页</span></div><div class="tr"><span>费比</span><span>17.8%</span><span class="status">+2.1pp</span><span>推广页</span></div><div class="tr"><span>支付转化率</span><span>5.7%</span><span class="status ok">+0.8pp</span><span>查看趋势</span></div></div></section><section class="panel"><div class="panel-head"><div><h2>重点商品</h2><p>本期支付金额 TOP 5</p></div><button class="button">商品运营</button></div><div class="table"><div class="tr head"><span>商品</span><span>支付金额</span><span>变化</span><span>状态</span></div><div class="tr"><span>中古风玄关装饰摆件</span><span>¥13,870</span><span class="status ok">+18%</span><span>稳定</span></div><div class="tr"><span>入户玄关镜面装饰</span><span>¥7,091</span><span class="status ok">+11%</span><span>观察</span></div><div class="tr"><span>海贝写生收纳盒</span><span>¥5,408</span><span class="status">-4%</span><span>关注</span></div></div></section></div>
+        </section>
+        <section class="view" data-page-view="reviews">
+          <div class="metric-grid"><div class="metric-card"><span>待复盘动作</span><strong>06</strong></div><div class="metric-card"><span>观察中</span><strong>03</strong></div><div class="metric-card"><span>阻塞</span><strong>01</strong></div><div class="metric-card"><span>数据覆盖</span><strong>98%</strong></div></div>
+          <div class="section-grid"><section class="panel"><div class="panel-head"><div><h2>待复盘动作</h2><p>默认进入需要结论的动作队列</p></div><button class="button primary">重新计算观察窗口</button></div><div class="toolbar"><button class="chip active">待复盘 06</button><button class="chip">观察中 03</button><button class="chip">阻塞 01</button><button class="chip">全部状态</button></div><div class="table-wrap"><table><thead><tr><th>商品 / 目的</th><th>动作前后指标</th><th>系统结果</th><th>状态</th></tr></thead><tbody><tr><td>轻户外收纳箱 · 提价</td><td>支付金额 +18%</td><td>有效 · 证据完整</td><td class="status">待复盘</td></tr><tr><td>防晒冰袖 · 换主图</td><td>转化率 +1.2pp</td><td>部分覆盖</td><td class="status">待补证据</td></tr><tr><td>折叠桌 · 调预算</td><td>ROI -0.4</td><td>缺日期</td><td class="status bad">阻塞</td></tr></tbody></table></div></section><section class="panel"><div class="panel-head"><div><h2>周期复盘</h2><p>记录结论，不自动生成决策</p></div><button class="button">新建复盘</button></div><div class="toolbar"><button class="chip active">2026-08</button><button class="chip">2026-W32</button><button class="chip">2026-08-14</button></div><div class="quality" style="border-left-color:var(--info);background:var(--info-tint);color:#1e40af">本期已沉淀 18 条动作结论，3 条需要补充来源批次。</div></section></div>
+        </section>
+        <section class="view" data-page-view="data">
+          <div class="metric-grid"><div class="metric-card"><span>可用数据域</span><strong>18</strong></div><div class="metric-card"><span>部分可用</span><strong>04</strong></div><div class="metric-card"><span>待确认批次</span><strong>02</strong></div><div class="metric-card"><span>最新数据日期</span><strong>08-12</strong></div></div>
+          <section class="panel"><div class="panel-head"><div><h2>经营报表导入</h2><p>预览阶段不写正式表，质量门禁通过后才能确认</p></div><button class="button primary">选择文件</button></div><div class="stepper"><div class="step done">1 上传</div><div class="step done">2 字段映射</div><div class="step current">3 质量校验</div><div class="step">4 确认入库</div></div><div class="section-grid"><div class="table-wrap"><table><thead><tr><th>源列</th><th>标准字段</th><th>匹配</th><th>样例</th></tr></thead><tbody><tr><td>支付金额</td><td>payment_amount</td><td class="status ok">精确</td><td>28,300</td></tr><tr><td>访客数</td><td>product_visitors</td><td class="status ok">别名</td><td>8,200</td></tr><tr><td>退款金额</td><td>successful_refund_amount</td><td class="status">缺失</td><td>--</td></tr></tbody></table></div><div class="quality"><strong>确认被阻断</strong><br>1 个必填字段未映射，2 行重复业务键。修复后才可确认导入。<br><button class="button" style="margin-top:8px">查看异常</button></div></div></section><section class="panel" style="margin-top:16px"><div class="panel-head"><div><h2>导入批次</h2><p>支持报告查看、撤销和审计跳转</p></div><button class="button">刷新</button></div><div class="table-wrap"><table><thead><tr><th>文件 / 类型</th><th>日期范围</th><th>质量</th><th>操作</th></tr></thead><tbody><tr><td>商品日度_0812.xlsx</td><td>08-01 ~ 08-12</td><td class="status ok">通过</td><td>查看报告</td></tr><tr><td>推广商品_0812.csv</td><td>08-01 ~ 08-12</td><td class="status">待确认</td><td>继续映射</td></tr></tbody></table></div></section>
+        </section>
+        <section class="view" data-page-view="settings">
+          <div class="metric-grid"><div class="metric-card"><span>已启用规则</span><strong>16</strong></div><div class="metric-card"><span>待保存变更</span><strong>03</strong></div><div class="metric-card"><span>模板复用率</span><strong>62%</strong></div><div class="metric-card"><span>受影响页面</span><strong>05</strong></div></div>
+          <div class="settings-layout"><aside class="settings-tree"><button class="active">店铺配置</button><button>字段映射模板</button><button>商品视图模板</button><button>分类字典</button><button>预警规则</button><button>操作审计</button></aside><section class="panel"><div class="panel-head"><div><h2>店铺配置</h2><p>基础口径和默认参数</p></div><div><button class="button">恢复默认</button> <button class="button primary">保存设置</button></div></div><div class="form-grid"><div class="field"><label>店铺名称</label><div class="field-value">旗舰店</div></div><div class="field"><label>时区</label><div class="field-value">Asia/Shanghai</div></div><div class="field"><label>货币</label><div class="field-value">CNY · 人民币</div></div><div class="field"><label>自然周起始日</label><div class="field-value">周一</div></div><div class="field"><label>年度目标</label><div class="field-value">¥ 12,000,000</div></div><div class="field"><label>生命周期判断窗口</label><div class="field-value">60 天</div></div></div><div class="impact">保存后影响：数据中心字段映射、商品列表视图、推广预警和经营复盘结果回算。</div></section></div>
+        </section>
+      </main>
+    </div>
+  </div>
+  <script>
+    const meta = { overview:['数据概览','今天先看结果、目标差额和待处理动作','查看待办'], reviews:['经营复盘','动作结果沉淀与周期复盘','重新计算观察窗口'], data:['数据中心','导入预览、质量门禁与批次审计','选择文件'], settings:['设置','店铺口径、模板和预警规则','保存设置'] };
+    document.querySelectorAll('[data-view]').forEach((button) => button.addEventListener('click', () => { const key = button.dataset.view; document.querySelectorAll('[data-view]').forEach((node) => node.classList.toggle('active', node === button)); document.querySelectorAll('[data-page-view]').forEach((node) => node.classList.toggle('active', node.dataset.pageView === key)); document.querySelector('#page-title').textContent = meta[key][0]; document.querySelector('#page-subtitle').textContent = meta[key][1]; document.querySelector('#primary-action').textContent = meta[key][2]; }));
+  </script>
+</body>
+</html>
