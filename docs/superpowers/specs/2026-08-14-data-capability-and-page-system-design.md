@@ -61,7 +61,7 @@ returning_buyer_ratio = sum(returning_payment_buyers) / sum(payment_buyers)
 
 状态层描述数据和经营对象当前能否支持操作：
 
-- 数据：`available`、`no-data`、`insufficient-data`、`missing-fields`、`partial`、`calculation-failed`。
+- 数据：`available`、`no-data`、`insufficient-data`、`missing-fields`、`partial`、`source-unavailable`、`calculation-failed`。
 - 商品：在线、下架、清退等业务状态。
 - 健康度：优秀、良好、关注、预警。
 - 生命周期：新品、成长、爆发、成熟、衰退、清退，以及数据积累中。
@@ -214,4 +214,3 @@ returning_buyer_ratio = sum(returning_payment_buyers) / sum(payment_buyers)
 - 多店和多源市场分析需要在后续补充事实表、店铺维度和权限模型后再进入设计。
 - 当前评价和市场数据样本有限，相关页面必须以样本量和数据状态为前提。
 - 旧接口保留兼容，但新页面不得依赖含义不明确的旧字段别名。
-
