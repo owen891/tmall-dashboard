@@ -1,8 +1,22 @@
 # 天猫数据仪表盘
 
-版本：`1.0.0`
+![Release](https://img.shields.io/badge/release-v1.0.0-167d4a)
+![Python](https://img.shields.io/badge/Python-3.14-3776ab)
+![Flask](https://img.shields.io/badge/Flask-SQLite-111111)
+
+当前版本：[`v1.0.0`](https://github.com/owen891/tmall-dashboard/releases/tag/v1.0.0) · [升级说明](https://github.com/owen891/tmall-dashboard/releases/tag/v1.0.0) · [发布状态](docs/RELEASE_STATUS.md)
 
 面向单店铺运营团队的数据分析和商品运营闭环工具。项目保持 Flask + SQLite + 原生 HTML/CSS/JavaScript，不引入第二套前端或数据库。
+
+## 1.0.0 核心能力
+
+- **数据治理**：统一生意参谋、推广工具和 DMP 字段，重复字段以前两者为准，DMP 提供参考、缺失补充和独有指标。
+- **商品运营**：覆盖总览、商品、推广、生命周期、目标、动作、复盘、数据中心和设置工作台。
+- **数据接入**：支持 Excel、旧版 HTML `.xls`、CSV、ZIP，以及受控目录 cron 扫描、质量阻塞和失败重试。
+- **可追溯性**：导入批次记录来源、字段映射、质量摘要、事实 observation、字段 lineage、审计和安全撤销。
+- **发布防护**：提供生产预检、数据库备份与恢复演练、店铺隔离和浏览器 PRD 门禁。
+
+> 上线数据提醒：当前生产库仍有 5,674 条历史或演示日事实缺少可验证的 observation/lineage。代码版本可部署验证，正式生产决策前需核实、隔离或补录真实来源，不能推测性回填。
 
 ## 快速开始
 
@@ -73,16 +87,15 @@ py -3 -c "from db import init_db; init_db()"
 
 ## 验证
 
-## Local Import Scanner
+## 本地定时导入扫描
 
-Automatic imports use the same `ImportService` engine as manual preview and
-confirm. Configure a local folder under `IMPORT_SCAN_ALLOWED_ROOTS` (the
-default is `data/import-inbox`), create a job through `/api/import-scans`, and
-schedule `python scripts/run_import_scanner.py --once` with Windows Task
-Scheduler. The worker scans direct children only, waits for two stable
-observations, blocks failed quality checks, and records scan files, runs, and
-the resulting import batch. The old `/api/manage/schedules*` and
-`/api/scheduled_tasks*` endpoints return `410 LEGACY_SCHEDULE_REMOVED`.
+自动导入与手动预览、确认共用同一个 `ImportService` 引擎。在
+`IMPORT_SCAN_ALLOWED_ROOTS` 中配置受控目录（默认是 `data/import-inbox`），
+通过 `/api/import-scans` 创建任务，再用 Windows 任务计划程序定时执行
+`python scripts/run_import_scanner.py --once`。扫描器只读取目录直接子文件，
+文件连续两次保持稳定后才进入导入；质量不通过的文件会标记为阻塞或失败，
+并记录扫描文件、运行结果和最终导入批次。旧 `/api/manage/schedules*` 和
+`/api/scheduled_tasks*` 接口固定返回 `410 LEGACY_SCHEDULE_REMOVED`。
 
 ```powershell
 py -3 -m unittest discover -s tests -v
