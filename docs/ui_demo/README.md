@@ -12,7 +12,7 @@
 | `compare.html` | 周期对比 | compare / targets |
 | `manage.html` | 管理工作台 | tasks / user_kpis / scheduled_tasks |
 
-设计约束来自 `docs/REFACTOR_PLAN.md` 和 `docs/refactor_demo/REFACTOR_GUIDE.md`：页面按业务域组织，数据结构对齐 API 拆分方向，所有 demo 使用本地 mock 数据，不修改真实 Flask 模板或 API。推广页使用 `E:\bi\bi\取数源` 的报表口径：计划报表作为总盘，其他报表按粒度独立展示，避免重复相加。
+设计约束来自 `docs/REFACTOR_PLAN.md`：页面按业务域组织，数据结构对齐 API 拆分方向，所有 demo 使用本地 mock 数据，不修改真实 Flask 模板或 API。推广页使用 `E:\bi\bi\取数源` 的报表口径：计划报表作为总盘，其他报表按粒度独立展示，避免重复相加。
 
 直接打开 `index.html`，或启动静态预览：
 
