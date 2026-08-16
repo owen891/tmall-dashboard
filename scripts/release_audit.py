@@ -17,6 +17,8 @@ SENSITIVE_TRACKED_PATHS = {
     'template.xlsx',
 }
 SENSITIVE_TRACKED_PREFIXES = ('data/raw/', 'data/uploads/', 'data/backups/')
+SENSITIVE_TRACKED_BASENAMES = {'import_log.json', 'source.xlsx', 'template.xlsx'}
+SENSITIVE_TRACKED_SUFFIXES = ('.db', '.sqlite', '.sqlite3')
 
 
 def _git_status(repo_root):
@@ -51,13 +53,19 @@ def _tracked_sensitive_artifacts(repo_root):
         capture_output=True,
     )
     tracked = result.stdout.decode('utf-8', errors='surrogateescape').split('\0')
-    return sorted(
-        path for path in tracked
-        if path and (
-            path in SENSITIVE_TRACKED_PATHS
-            or path.startswith(SENSITIVE_TRACKED_PREFIXES)
+    def is_sensitive(path):
+        normalized = path.replace('\\', '/')
+        basename = normalized.rsplit('/', 1)[-1]
+        segments = set(normalized.split('/'))
+        return (
+            normalized in SENSITIVE_TRACKED_PATHS
+            or normalized.startswith(SENSITIVE_TRACKED_PREFIXES)
+            or basename in SENSITIVE_TRACKED_BASENAMES
+            or basename.lower().endswith(SENSITIVE_TRACKED_SUFFIXES)
+            or bool(segments & {'raw', 'uploads', 'backups'})
         )
-    )
+
+    return sorted(path for path in tracked if path and is_sensitive(path))
 
 
 def _database_report(database_path):
