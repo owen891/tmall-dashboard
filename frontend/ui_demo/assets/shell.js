@@ -8,6 +8,8 @@
     document.head.appendChild(script);
   });
 
+  loadScript(new URL('table-controls.js', assetBase).href).catch(() => {});
+
   const liveAdapters = { overview: 'overview-live.js', products: 'products-live.js', promotion: 'promotion-live.js' };
   const liveAdapter = liveAdapters[document.body.dataset.page];
   const apiReady = window.DemoApi
@@ -18,6 +20,13 @@
     if (!api?.request) throw new Error('API 客户端不可用');
     return api.request(path, options);
   };
+  const requestDomainApi = async (path, options) => {
+    const api = await apiReady;
+    if (!api?.domainRequest) throw new Error('域 API 客户端不可用');
+    return api.domainRequest(path, options);
+  };
+  const DATA_STATES = ['loading', 'no-data', 'insufficient-data', 'missing-fields', 'calculation-failed', 'source-unavailable', 'partial'];
+  window.TmallDataStates = Object.freeze(DATA_STATES.slice());
   if (liveAdapter && !window.DemoApi) apiReady.then(() => loadScript(new URL(liveAdapter, assetBase).href)).catch(() => {});
   const nav = [
     ['overview', '数据概览', 'layout-dashboard', 'overview'],
@@ -51,60 +60,70 @@
   };
   let theme = getStoredTheme() === 'dark' ? 'dark' : 'light';
   document.documentElement.dataset.theme = theme;
+  const themeColorMeta = document.head.querySelector('meta[name="theme-color"]') || document.head.appendChild(Object.assign(document.createElement('meta'), { name: 'theme-color' }));
   const route = (page) => {
-    if (page === 'overview') return '/';
-    return `/${page}`;
+    const path = page === 'overview' ? '/' : `/${page}`;
+    return window.DemoNavigation?.fromCurrent ? window.DemoNavigation.fromCurrent(path) : path;
   };
   const sidebar = document.querySelector('[data-shell-sidebar]');
   const header = document.querySelector('[data-shell-header]');
   if (!sidebar || !header) return;
+  const main = document.querySelector('main.demo-page');
+  if (main && !main.id) main.id = 'main-content';
+  document.body.insertAdjacentHTML('afterbegin', '<a class="skip-link" data-skip-link href="#main-content">跳到主要内容</a>');
 
   sidebar.innerHTML = `
     <div class="demo-brand">
-      <div class="demo-brand__mark"><i data-lucide="bar-chart-3"></i></div>
+      <div class="demo-brand__mark" aria-hidden="true">TM</div>
       <div class="demo-brand__name"><strong>天猫数据</strong><strong>仪表盘</strong></div>
     </div>
     <nav class="demo-nav" aria-label="主导航"><div class="demo-nav__group">
-      ${nav.map(([id, label, icon, page]) => `<a class="demo-nav__item" data-page-link="${id}" href="${route(page)}"><i data-lucide="${icon}"></i><span>${label}</span></a>`).join('')}
+      ${nav.map(([id, label, icon, page]) => `<a class="demo-nav__item" data-page-link="${id}" href="${route(page)}" aria-label="${label}" title="${label}"><i data-lucide="${icon}"></i><span>${label}</span></a>`).join('')}
     </div></nav>
-    <button class="demo-sidebar__toolbox" type="button" data-open-toolbox><i data-lucide="wrench"></i><span>数据工具箱</span></button>
     <div class="demo-sidebar__status"><span class="status-dot"></span><span>系统正常</span></div>`;
 
   header.innerHTML = `
     <div class="demo-topbar__heading"><h1 class="demo-topbar__title">${currentMeta[0]}</h1><span class="demo-topbar__eyebrow">${currentMeta[1]}</span></div>
     <div class="demo-period" role="group" aria-label="统计时间">
       <select class="demo-period__select" data-date-preset aria-label="快捷时间范围">
-        <option value="today">今日</option><option value="yesterday">昨日</option><option value="7d">近7天</option><option value="30d" selected>近30天</option><option value="90d">近90天</option><option value="custom">自定义</option>
+        <option value="today">今日</option><option value="yesterday">昨日</option><option value="7d">近7天</option><option value="30d" selected>近30天</option><option value="90d">近90天</option><option value="this_week">本周</option><option value="last_week">上周</option><option value="this_month">本月</option><option value="last_month">上月</option><option value="custom">自定义</option>
       </select>
       <button type="button" class="demo-period__trigger tabular" data-date-trigger aria-expanded="false"><i data-lucide="calendar-days"></i><span data-period-range>数据库日期加载中</span></button>
-      <select class="demo-period__select demo-period__compare" data-compare-mode aria-label="对比方式">
-        <option value="none">不对比</option><option value="previous_period">环比</option><option value="year_over_year">同比</option>
-      </select>
+      ${currentPage === 'overview' ? '<select class="demo-period__select demo-period__compare" data-compare-mode aria-label="对比方式"><option value="none">不对比</option><option value="previous_period">环比</option><option value="year_over_year">同比</option></select>' : ''}
       <div class="demo-period__popover" data-period-popover hidden>
         <div class="demo-calendar__toolbar"><button type="button" data-calendar-nav="-1" aria-label="上两个月">‹</button><strong>自定义日期范围</strong><button type="button" data-calendar-nav="1" aria-label="下两个月">›</button></div>
         <div class="demo-calendar__months"><section data-calendar-month="0"></section><section data-calendar-month="1"></section></div>
         <div class="demo-calendar__footer"><span data-calendar-help>请选择开始日期</span><button class="button button--ghost" type="button" data-calendar-cancel>取消</button></div>
       </div>
     </div>
-    <div class="demo-topbar__tools"><button class="demo-tool demo-mobile-nav" type="button" title="打开导航" aria-label="打开导航" aria-expanded="false" data-mobile-nav><i data-lucide="menu"></i></button><button class="demo-tool" type="button" title="刷新" aria-label="刷新" data-demo-refresh><i data-lucide="refresh-cw"></i></button><button class="demo-tool" type="button" title="导出" aria-label="导出当前表格" data-demo-export><i data-lucide="download"></i></button><button class="demo-tool" type="button" title="切换深色主题" aria-label="切换深色主题" data-demo-theme><i data-lucide="moon"></i></button></div>`;
+    <div class="demo-topbar__tools"><button class="button demo-import-trigger" type="button" data-open-toolbox title="导入数据"><i data-lucide="upload"></i><span>导入数据</span></button><button class="demo-tool demo-mobile-nav" type="button" title="打开导航" aria-label="打开导航" aria-expanded="false" data-mobile-nav><i data-lucide="menu"></i></button><button class="demo-tool" type="button" title="刷新" aria-label="刷新" data-demo-refresh><i data-lucide="refresh-cw"></i></button><button class="demo-tool" type="button" title="导出" aria-label="导出当前表格" data-demo-export><i data-lucide="download"></i></button><button class="demo-tool" type="button" title="切换深色主题" aria-label="切换深色主题" data-demo-theme><i data-lucide="moon"></i></button></div>`;
 
   if (currentPage === 'lifecycle') header.querySelector('.demo-period').hidden = true;
+  if (currentPage === 'overview') {
+    header.querySelector('.demo-topbar__tools').insertAdjacentHTML('beforeend', `
+      <button class="button demo-overview-action" type="button" data-capability-key="overview.view_kpis" data-overview-report-refresh><i data-lucide="refresh-cw"></i><span>刷新报告</span></button>
+      <button class="button button--primary demo-overview-action" type="button" data-capability-key="overview.event_edit" data-overview-event-open><i data-lucide="plus"></i><span>新增事件</span></button>`);
+  }
 
   document.body.insertAdjacentHTML('beforeend', `
     <div class="demo-shell-status" data-demo-status role="status" aria-live="polite" aria-atomic="true"></div>
     <div class="demo-toast" data-demo-toast role="status" aria-live="polite" aria-atomic="true"></div>
-    <div class="toolbox-overlay" data-toolbox-overlay></div>
-    <aside class="toolbox-drawer" data-toolbox-drawer role="dialog" aria-modal="true" aria-labelledby="toolboxTitle" aria-hidden="true" inert tabindex="-1">
-      <div class="toolbox-drawer__header"><div><h2 id="toolboxTitle">数据工具箱</h2><span class="panel__hint">数据导入与自动任务</span></div><button class="button button--ghost" type="button" data-close-toolbox aria-label="关闭"><i data-lucide="x"></i></button></div>
-      <div class="toolbox-drawer__body">
-        <div class="toolbox-tools" role="group" aria-label="选择工具">
-          <button class="toolbox-tool" type="button" aria-pressed="true" data-tool="import"><strong>经营数据导入</strong><span>使用现有导入服务处理 Excel 工作簿</span></button>
-          <button class="toolbox-tool" type="button" aria-pressed="false" data-tool="schedule"><strong>定时导入任务</strong><span>按文件规则自动执行数据同步</span></button>
+    <dialog class="toolbox-dialog" data-toolbox-dialog data-modal-kind="flow" aria-labelledby="toolboxTitle">
+      <div class="toolbox-dialog__header"><div><h2 id="toolboxTitle">数据工具箱</h2><span class="panel__hint">数据导入与自动任务</span><span class="panel__hint" data-flow-impact>\u5f71\u54cd\u8303\u56f4\uff1a\u4ec5\u5f53\u524d\u5bfc\u5165\u6279\u6b21\u53ca\u5176\u5bfc\u5165\u8bb0\u5f55</span></div><button class="button button--ghost" type="button" data-close-toolbox aria-label="关闭"><i data-lucide="x"></i></button></div>
+      <div class="toolbox-dialog__body">
+        <div class="toolbox-tools" role="tablist" aria-label="选择工具">
+          <button class="toolbox-tool" id="toolbox-tab-import" role="tab" type="button" aria-selected="true" aria-pressed="true" aria-controls="toolbox-panel-import" data-tool="import"><strong>经营数据导入</strong><span>使用现有导入服务处理 Excel 工作簿</span></button>
+          <button class="toolbox-tool" id="toolbox-tab-schedule" role="tab" type="button" aria-selected="false" aria-pressed="false" aria-controls="toolbox-panel-schedule" data-tool="schedule"><strong>定时导入任务</strong><span>按文件规则自动执行数据同步</span></button>
         </div>
-        <section class="plain-panel panel" data-tool-panel="import"><div class="panel__header"><div><h3 class="panel__title">导入经营数据</h3><p class="panel__hint">文件将交给项目现有导入服务解析并写入数据库</p></div><span class="badge badge--info">Excel</span></div><label class="upload-zone" for="demoImportFile"><span><i data-lucide="file-up"></i><strong data-import-file-name>选择 Excel 文件</strong><span>支持 .xlsx / .xls，ID 字段按文本保留</span></span></label><input class="sr-only" id="demoImportFile" data-import-file type="file" accept=".xlsx,.xls"><div class="section-toolbar" style="margin-top:10px"><button class="button button--primary" type="button" data-start-import><i data-lucide="upload"></i>开始导入</button></div><div class="import-progress" aria-hidden="true"><span data-import-progress></span></div><div class="import-result" data-import-result>等待选择文件</div></section>
-        <section class="plain-panel panel" data-tool-panel="schedule" hidden><div class="panel__header"><div><h3 class="panel__title">定时导入任务</h3><p class="panel__hint">创建后写入数据库并由现有调度器执行</p></div></div><div class="modal-form__body"><label>任务名称<input class="input" data-schedule-name placeholder="例如：每日经营数据同步"></label><div class="filter-group"><select class="select" data-schedule-frequency aria-label="执行频率"><option value="daily">每天</option><option value="weekly">每周</option><option value="monthly">每月</option></select><input class="input" type="time" value="08:00" data-schedule-time aria-label="执行时间"></div><label>文件匹配模式<input class="input" data-schedule-pattern value="*.xlsx"></label><button class="button button--primary" type="button" data-add-schedule>添加任务</button><div class="import-result" data-schedule-result>等待创建任务</div></div><div class="data-table-wrap" style="margin-top:12px"><table class="data-table"><thead><tr><th>任务</th><th>计划</th><th>状态</th></tr></thead><tbody data-schedule-list><tr><td colspan="3">加载中</td></tr></tbody></table></div></section>
+        <section class="plain-panel panel" id="toolbox-panel-import" role="tabpanel" aria-labelledby="toolbox-tab-import" data-tool-panel="import"><div class="panel__header"><div><h3 class="panel__title">导入经营数据</h3><p class="panel__hint">先预览文件、确认字段映射和质量，再写入数据库</p></div><span class="badge badge--info">表格</span></div><label class="upload-zone" for="demoImportFile"><span><i data-lucide="file-up"></i><strong data-import-file-name>选择表格文件</strong><span>支持 .xlsx / .xls / .csv / .zip；可多选，文件选择器内可按 Ctrl+A 全选</span></span></label><input class="sr-only" id="demoImportFile" data-import-file type="file" accept=".xlsx,.xls,.csv,.zip" multiple><div class="section-toolbar toolbox-import-actions"><button class="button button--primary" type="button" data-import-preview><i data-lucide="scan-search"></i>预览并校验</button><button class="button button--primary" type="button" data-import-confirm disabled><i data-lucide="database"></i>确认导入</button></div><div class="import-progress" aria-hidden="true"><span data-import-progress></span></div><div class="import-result" data-import-result role="status" aria-live="polite">等待选择文件</div><section class="import-preview-panel" data-import-preview-panel hidden><div class="import-preview-panel__summary"><div class="toolbox-import-tabs" data-import-preview-tabs role="tablist" aria-label="预览文件"></div><p class="panel__hint" data-import-quality>选择文件后查看质量摘要</p><p class="panel__hint" data-import-quality-detail>未发现异常行</p></div><div class="data-table-wrap"><table class="data-table import-preview-table"><thead><tr><th>原始列</th><th>推断类型</th><th>标准字段映射</th><th>匹配状态</th><th>样例</th></tr></thead><tbody data-import-fields></tbody></table></div></section></section>
+        <section class="plain-panel panel" id="toolbox-panel-schedule" role="tabpanel" aria-labelledby="toolbox-tab-schedule" data-tool-panel="schedule" hidden><div class="panel__header"><div><h3 class="panel__title">定时导入任务</h3><p class="panel__hint">创建后写入数据库并由现有调度器执行</p></div></div><div class="modal-form__body"><label>任务名称<input class="input" name="schedule_name" data-schedule-name placeholder="例如：每日经营数据同步"></label><div class="filter-group"><select class="select" data-schedule-frequency aria-label="执行频率"><option value="daily">每天</option><option value="weekly">每周</option><option value="monthly">每月</option></select><input class="input" type="time" value="08:00" data-schedule-time aria-label="执行时间"></div><label>文件匹配模式<input class="input" data-schedule-pattern value="*.xlsx"></label><button class="button button--primary" type="button" data-add-schedule>添加任务</button><div class="import-result" data-schedule-result>等待创建任务</div></div><div class="data-table-wrap toolbox-schedule-table"><table class="data-table"><thead><tr><th>任务</th><th>计划</th><th>状态</th></tr></thead><tbody data-schedule-list><tr><td colspan="3">加载中</td></tr></tbody></table></div></section>
       </div>
-    </aside>`);
+    </dialog>`);
+
+  // Dynamic controls retain semantic attributes: name="schedule_name".
+  [['[data-import-file]', 'name', 'import_files'], ['[data-import-file]', 'autocomplete', 'off'], ['[data-schedule-name]', 'name', 'schedule_name'], ['[data-schedule-name]', 'autocomplete', 'off'], ['[data-schedule-frequency]', 'name', 'schedule_frequency'], ['[data-schedule-time]', 'name', 'schedule_time'], ['[data-schedule-time]', 'autocomplete', 'off'], ['[data-schedule-pattern]', 'name', 'schedule_pattern'], ['[data-schedule-pattern]', 'autocomplete', 'off']].forEach(([selector, attribute, value]) => {
+    document.querySelector(selector)?.setAttribute(attribute, value);
+  });
 
   const statusRegion = document.querySelector('[data-demo-status]');
   const toast = document.querySelector('[data-demo-toast]');
@@ -120,10 +139,23 @@
     window.clearTimeout(toastTimer);
     toastTimer = window.setTimeout(() => toast.classList.remove('is-visible'), options.duration || 2200);
   };
+  const unsupportedFiltersByPage = {
+    goals: ['promotion_channel'],
+  };
+  const filterLabels = { promotion_channel: '推广渠道' };
+  const discloseUnsupportedFilters = () => {
+    const unsupported = new Set(unsupportedFiltersByPage[currentPage] || []);
+    const active = [...new URLSearchParams(window.location.search).keys()]
+      .filter((key) => unsupported.has(key));
+    if (!active.length) return;
+    const labels = [...new Set(active.map((key) => filterLabels[key] || key))].join('、');
+    showToast(`当前页面不支持${labels}筛选，已保留在地址中`, { duration: 5000 });
+  };
+  discloseUnsupportedFilters();
   const visibleTables = () => Array.from(document.querySelectorAll('.data-table')).filter((table) => {
     if (table.closest('[hidden]')) return false;
-    const toolboxParent = table.closest('[data-toolbox-drawer]');
-    if (toolboxParent && !toolboxParent.classList.contains('is-open')) return false;
+    const toolboxParent = table.closest('[data-toolbox-dialog]');
+    if (toolboxParent && !toolboxParent.open) return false;
     const style = window.getComputedStyle(table);
     const rect = table.getBoundingClientRect();
     return style.display !== 'none' && style.visibility !== 'hidden' && rect.width > 0 && rect.height > 0;
@@ -169,10 +201,12 @@
   const setTheme = (nextTheme) => {
     theme = nextTheme === 'dark' ? 'dark' : 'light';
     document.documentElement.dataset.theme = theme;
+    themeColorMeta.content = getComputedStyle(document.documentElement).getPropertyValue('--surface-page').trim();
     setStoredTheme(theme);
     syncThemeButton();
     announce(theme === 'dark' ? '已切换深色主题' : '已切换浅色主题');
   };
+  themeColorMeta.content = getComputedStyle(document.documentElement).getPropertyValue('--surface-page').trim();
   syncThemeButton();
 
   const range = header.querySelector('[data-period-range]');
@@ -191,17 +225,30 @@
 
   const rangeForPreset = (preset) => {
     const offsets = { today: 0, yesterday: 1, '7d': 6, '30d': 29, '90d': 89 };
+    const startOfWeek = (date) => shiftDays(date, -((date.getDay() + 6) % 7));
+    if (preset === 'this_week') return { start: startOfWeek(anchorDate), end: new Date(anchorDate) };
+    if (preset === 'last_week') {
+      const end = shiftDays(startOfWeek(anchorDate), -1);
+      return { start: shiftDays(end, -6), end };
+    }
+    if (preset === 'this_month') return { start: new Date(anchorDate.getFullYear(), anchorDate.getMonth(), 1), end: new Date(anchorDate) };
+    if (preset === 'last_month') return { start: new Date(anchorDate.getFullYear(), anchorDate.getMonth() - 1, 1), end: new Date(anchorDate.getFullYear(), anchorDate.getMonth(), 0) };
     const end = preset === 'yesterday' ? shiftDays(anchorDate, -1) : new Date(anchorDate);
     return { start: shiftDays(end, -(offsets[preset] || 0)), end };
   };
-  const dispatchRange = () => {
+  const dispatchRange = (writeHistory = true) => {
     range.textContent = `${state.startDate} ~ ${state.endDate}`;
     const url = new URL(window.location.href);
-    url.searchParams.set('startDate', state.startDate);
-    url.searchParams.set('endDate', state.endDate);
+    if (['data-center', 'settings'].includes(currentPage)) {
+      url.searchParams.delete('start');
+      url.searchParams.delete('end');
+    } else {
+      url.searchParams.set('start', state.startDate);
+      url.searchParams.set('end', state.endDate);
+    }
     url.searchParams.set('preset', state.preset);
     url.searchParams.set('compare', state.compareMode);
-    history.replaceState(null, '', url);
+    if (writeHistory) history.pushState(null, '', url);
     window.dispatchEvent(new CustomEvent('tmall:date-range-change', { detail: { ...state } }));
   };
   const applyRange = (start, end, preset = 'custom') => {
@@ -210,6 +257,8 @@
     dispatchRange();
   };
   const renderCalendar = () => {
+    const startValue = draftStart ? formatDate(draftStart) : state.startDate;
+    const endValue = draftStart ? '' : state.endDate;
     [0, 1].forEach((offset) => {
       const month = new Date(calendarBase.getFullYear(), calendarBase.getMonth() + offset, 1);
       const year = month.getFullYear();
@@ -220,8 +269,8 @@
       for (let day = 1; day <= total; day += 1) {
         const date = new Date(year, monthIndex, day);
         const value = formatDate(date);
-        const inRange = state.startDate && state.endDate && value >= state.startDate && value <= state.endDate;
-        const selected = value === state.startDate || value === state.endDate;
+        const inRange = startValue && endValue && value >= startValue && value <= endValue;
+        const selected = value === startValue || value === endValue;
         cells.push(`<button type="button" data-calendar-date="${value}" class="${inRange ? 'is-in-range' : ''} ${selected ? 'is-selected' : ''}" ${date > anchorDate ? 'disabled' : ''}>${day}</button>`);
       }
       popover.querySelector(`[data-calendar-month="${offset}"]`).innerHTML = `<h3>${year}年${monthIndex + 1}月</h3><div class="demo-calendar__week"><span>日</span><span>一</span><span>二</span><span>三</span><span>四</span><span>五</span><span>六</span></div><div class="demo-calendar__grid">${cells.join('')}</div>`;
@@ -232,22 +281,38 @@
     trigger.setAttribute('aria-expanded', String(open));
     if (open) renderCalendar();
   };
+  const setCalendarHelp = () => {
+    popover.querySelector('[data-calendar-help]').textContent = state.startDate && state.endDate
+      ? `当前范围：${state.startDate} ~ ${state.endDate}；点击任意日期重新选择`
+      : '请选择开始日期';
+  };
   const resetDraftRange = () => {
     draftStart = null;
-    popover.querySelector('[data-calendar-help]').textContent = '请选择开始日期';
+    setCalendarHelp();
   };
   const closePopover = (resetDraft = false) => {
-    if (resetDraft) resetDraftRange();
+    if (resetDraft) {
+      resetDraftRange();
+      presetSelect.value = state.preset;
+    }
     setPopover(false);
   };
+  const openPopover = () => {
+    resetDraftRange();
+    setPopover(true);
+  };
   const selectPreset = (preset) => {
-    if (preset === 'custom') { setPopover(true); return; }
+    if (preset === 'custom') { openPopover(); return; }
+    closePopover(true);
     const next = rangeForPreset(preset);
     applyRange(next.start, next.end, preset);
   };
-  trigger.addEventListener('click', () => setPopover(popover.hasAttribute('hidden')));
+  trigger.addEventListener('click', () => {
+    if (popover.hasAttribute('hidden')) openPopover();
+    else closePopover(true);
+  });
   presetSelect.addEventListener('change', () => selectPreset(presetSelect.value));
-  compareSelect.addEventListener('change', () => { state.compareMode = compareSelect.value; dispatchRange(); });
+  compareSelect?.addEventListener('change', () => { state.compareMode = compareSelect.value; dispatchRange(); });
   popover.querySelector('[data-calendar-cancel]').addEventListener('click', () => closePopover(true));
   popover.querySelectorAll('[data-calendar-nav]').forEach((button) => button.addEventListener('click', () => {
     calendarBase = new Date(calendarBase.getFullYear(), calendarBase.getMonth() + Number(button.dataset.calendarNav) * 2, 1);
@@ -256,10 +321,12 @@
   popover.addEventListener('click', (event) => {
     const button = event.target.closest('[data-calendar-date]');
     if (!button) return;
+    event.stopPropagation();
     const chosen = parseDate(button.dataset.calendarDate);
     if (!draftStart) {
       draftStart = chosen;
       popover.querySelector('[data-calendar-help]').textContent = `${formatDate(chosen)}，请选择结束日期`;
+      renderCalendar();
       return;
     }
     const start = chosen < draftStart ? chosen : draftStart;
@@ -271,17 +338,40 @@
   document.addEventListener('click', (event) => {
     if (!popover.hasAttribute('hidden') && !popover.contains(event.target) && !trigger.contains(event.target) && event.target !== presetSelect) closePopover(true);
   });
-  compareSelect.value = state.compareMode;
+  document.addEventListener('keydown', (event) => {
+    if (event.key !== 'Escape' || popover.hasAttribute('hidden')) return;
+    event.preventDefault();
+    event.stopPropagation();
+    closePopover(true);
+    trigger.focus();
+  });
+  if (compareSelect) compareSelect.value = state.compareMode;
   window.TmallDateRange = { getState: () => ({ ...state }) };
-  apiReady.then((DemoApi) => DemoApi.request('/api/periods?dim=daily')).then((rows) => {
+  const restoreRangeFromUrl = () => {
+    const currentParams = new URLSearchParams(window.location.search);
+    const preset = currentParams.get('preset') || '30d';
+    const start = currentParams.get('start');
+    const end = currentParams.get('end');
+    state = { ...state, preset, compareMode: currentParams.get('compare') || 'none' };
+    if (start && end) {
+      state.startDate = start;
+      state.endDate = end;
+    } else {
+      const next = rangeForPreset(preset);
+      state.startDate = formatDate(next.start);
+      state.endDate = formatDate(next.end);
+    }
+    presetSelect.value = state.preset;
+    if (compareSelect) compareSelect.value = state.compareMode;
+    dispatchRange(false);
+  };
+  window.addEventListener('popstate', restoreRangeFromUrl);
+  apiReady.then((DemoApi) => DemoApi.request('/api/periods?dim=daily')).then(async (rows) => {
       const available = Array.isArray(rows) ? rows : (Array.isArray(rows?.value) ? rows.value : []);
       const latest = available[0]?.period || '';
       if (latest) anchorDate = parseDate(latest);
       calendarBase = new Date(anchorDate.getFullYear(), anchorDate.getMonth() - 1, 1);
-      const queryStart = params.get('startDate');
-      const queryEnd = params.get('endDate');
-      if (queryStart && queryEnd) applyRange(parseDate(queryStart), parseDate(queryEnd), state.preset);
-      else selectPreset(state.preset);
+      restoreRangeFromUrl();
     }).catch(() => { range.textContent = '数据库日期加载失败'; });
   header.querySelector('[data-demo-refresh]').addEventListener('click', (event) => {
     event.currentTarget.classList.add('is-spinning');
@@ -289,27 +379,54 @@
     showToast('正在刷新当前页面数据');
     window.setTimeout(() => event.currentTarget.classList.remove('is-spinning'), 500);
   });
-  header.querySelector('[data-demo-export]').addEventListener('click', exportTables);
+  header.querySelector('[data-overview-report-refresh]')?.addEventListener('click', (event) => {
+    event.currentTarget.classList.add('is-spinning');
+    window.dispatchEvent(new CustomEvent('tmall:refresh', { detail: { page: currentPage, source: 'report' } }));
+    showToast('正在刷新经营报告');
+    window.setTimeout(() => event.currentTarget.classList.remove('is-spinning'), 500);
+  });
+  header.querySelector('[data-demo-export]').addEventListener('click', () => {
+    if (!window.dispatchEvent(new CustomEvent('tmall:export', { cancelable: true, detail: { page: currentPage } }))) return;
+    exportTables();
+  });
   themeButton.addEventListener('click', () => {
     setTheme(theme === 'dark' ? 'light' : 'dark');
     showToast(theme === 'dark' ? '已切换深色主题' : '已切换浅色主题');
   });
   document.querySelectorAll('[data-page-link]').forEach((link) => {
     if (link.dataset.pageLink === currentPage) link.setAttribute('aria-current', 'page');
-    link.addEventListener('click', () => sidebar.classList.remove('is-open'));
+    link.addEventListener('click', () => closeMobileNavigation(false));
   });
   const mobileNav = header.querySelector('[data-mobile-nav]');
+  let mobileNavReturnFocus = null;
+  const closeMobileNavigation = (restoreFocus = true) => {
+    if (!sidebar.classList.contains('is-open')) return;
+    sidebar.classList.remove('is-open');
+    mobileNav.setAttribute('aria-expanded', 'false');
+    document.body.classList.remove('demo-scroll-lock');
+    if (restoreFocus) (mobileNavReturnFocus || mobileNav).focus();
+    mobileNavReturnFocus = null;
+  };
   mobileNav.addEventListener('click', () => {
-    const open = sidebar.classList.toggle('is-open');
-    mobileNav.setAttribute('aria-expanded', String(open));
+    if (sidebar.classList.contains('is-open')) { closeMobileNavigation(); return; }
+    mobileNavReturnFocus = mobileNav;
+    sidebar.classList.add('is-open');
+    mobileNav.setAttribute('aria-expanded', 'true');
+    document.body.classList.add('demo-scroll-lock');
+    window.setTimeout(() => sidebar.querySelector('[data-page-link]')?.focus(), 0);
+  });
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && sidebar.classList.contains('is-open')) {
+      event.preventDefault();
+      closeMobileNavigation();
+    }
   });
   document.querySelectorAll('.segmented button').forEach((button) => button.addEventListener('click', () => {
     const group = button.closest('.segmented');
     group?.querySelectorAll('button').forEach((item) => item.setAttribute('aria-pressed', String(item === button)));
   }));
-  const toolbox = document.querySelector('[data-toolbox-drawer]');
-  const toolboxOverlay = document.querySelector('[data-toolbox-overlay]');
-  const toolboxTrigger = sidebar.querySelector('[data-open-toolbox]');
+  const toolbox = document.querySelector('[data-toolbox-dialog]');
+  const toolboxTriggers = [...document.querySelectorAll('[data-open-toolbox]')];
   let toolboxReturnFocus = null;
   const focusableSelector = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
   const isVisible = (element) => {
@@ -328,26 +445,25 @@
     if (target && typeof target.focus === 'function') target.focus();
   };
   const closeToolbox = () => {
-    if (!toolbox.classList.contains('is-open')) return;
-    toolbox.classList.remove('is-open');
-    toolboxOverlay.classList.remove('is-open');
-    toolbox.setAttribute('aria-hidden', 'true');
-    toolbox.setAttribute('inert', '');
-    document.body.classList.remove('demo-scroll-lock');
-    restoreToolboxFocus();
-    toolboxReturnFocus = null;
+    if (toolbox?.open) toolbox.close();
   };
   const openToolbox = (triggerButton) => {
     toolboxReturnFocus = triggerButton || document.activeElement;
-    toolbox.removeAttribute('inert');
-    toolbox.setAttribute('aria-hidden', 'false');
-    toolbox.classList.add('is-open');
-    toolboxOverlay.classList.add('is-open');
+    toolbox.showModal();
     document.body.classList.add('demo-scroll-lock');
     sidebar.classList.remove('is-open');
     mobileNav.setAttribute('aria-expanded', 'false');
     window.setTimeout(() => (getToolboxFocusables()[0] || toolbox).focus(), 0);
   };
+  toolbox.addEventListener('close', () => {
+    document.body.classList.remove('demo-scroll-lock');
+    restoreToolboxFocus();
+    toolboxReturnFocus = null;
+  });
+  toolbox.addEventListener('cancel', (event) => {
+    event.preventDefault();
+    closeToolbox();
+  });
   toolbox.addEventListener('keydown', (event) => {
     if (event.key === 'Escape') {
       event.preventDefault();
@@ -372,48 +488,235 @@
     }
   });
   document.addEventListener('keydown', (event) => {
-    if (event.key === 'Escape') closeToolbox();
+    if (event.key === 'Escape' && toolbox.open) closeToolbox();
   });
-  toolboxTrigger.addEventListener('click', () => openToolbox(toolboxTrigger));
+  toolboxTriggers.forEach((trigger) => trigger.addEventListener('click', () => openToolbox(trigger)));
   document.querySelector('[data-close-toolbox]').addEventListener('click', closeToolbox);
-  toolboxOverlay.addEventListener('click', closeToolbox);
+  toolbox.addEventListener('click', (event) => { if (event.target === toolbox) closeToolbox(); });
   document.querySelectorAll('[data-tool]').forEach((button) => button.addEventListener('click', () => {
     document.querySelectorAll('[data-tool]').forEach((item) => item.setAttribute('aria-pressed', String(item === button)));
+    document.querySelectorAll('[data-tool]').forEach((item) => item.setAttribute('aria-selected', String(item === button)));
     document.querySelectorAll('[data-tool-panel]').forEach((panel) => { panel.hidden = panel.dataset.toolPanel !== button.dataset.tool; });
   }));
   const importFile = document.querySelector('[data-import-file]');
-  importFile.addEventListener('change', () => { document.querySelector('[data-import-file-name]').textContent = importFile.files[0]?.name || '选择 Excel 文件'; });
-  const pollImport = async (taskId) => {
-    const result = document.querySelector('[data-import-result]');
-    const progress = document.querySelector('[data-import-progress]');
-    for (let attempt = 0; attempt < 120; attempt += 1) {
-      const status = await requestApi(`/api/import_progress/${taskId}`);
-      progress.style.width = `${Number(status.progress || 0)}%`;
-      result.textContent = status.message || '导入处理中';
-      if (status.status === 'completed' || status.status === 'error') return;
-      await new Promise((resolve) => window.setTimeout(resolve, 1000));
-    }
-    result.textContent = '导入仍在后台运行，请稍后查看数据库状态';
+  const importPreviewButton = document.querySelector('[data-import-preview]');
+  const importConfirmButton = document.querySelector('[data-import-confirm]');
+  const importPreviewPanel = document.querySelector('[data-import-preview-panel]');
+  const importResult = document.querySelector('[data-import-result]');
+  const importProgress = document.querySelector('[data-import-progress]');
+  const importQuality = document.querySelector('[data-import-quality]');
+  const importQualityDetail = document.querySelector('[data-import-quality-detail]');
+  const importFields = document.querySelector('[data-import-fields]');
+  const setImportProgress = (value) => importProgress.style.setProperty('--progress', String(Math.max(0, Math.min(100, Number(value) || 0)) / 100));
+  let importPreviewQueue = [];
+  let importPreviewErrors = [];
+  let activeImportPreviewIndex = 0;
+  let importCapabilities = {};
+  const importSourceLabels = {
+    product_day: '商品日度', dmp_product_day: 'DMP商品日度', store_day: '店铺日度', product_week: '商品周度',
+    product_month: '商品月度', promotion_channel_day: '推广渠道日度',
+    promotion_campaign_day: '推广计划日度', promotion_unit_day: '推广单元日度',
+    promotion_product_day: '推广商品日度', refund_day: '退款日度', customer_day: '新老客日度',
   };
-  document.querySelector('[data-start-import]').addEventListener('click', async () => {
-    const result = document.querySelector('[data-import-result]');
-    const progress = document.querySelector('[data-import-progress]');
-    if (!importFile.files[0]) { result.textContent = '请先选择 Excel 文件'; return; }
-    const file = importFile.files[0];
-    const form = new FormData();
-    form.append('file', file);
-    progress.style.width = '5%';
-    result.textContent = '正在提交导入任务';
+  const importFieldLabel = (key) => window.DemoLabels?.label?.('field', key, key) || key;
+  const importMatchLabel = (key) => window.DemoLabels?.label?.('match', key, key) || key;
+  const setImportStatus = (message) => { importResult.textContent = message; };
+  const requiredMappings = (preview) => (preview.mapping_schema?.required || []).filter((key) => !preview.mapping?.[key]);
+  const importQualityMessage = (preview) => {
+    const source = importSourceLabels[preview.source_type] || preview.source_type || '未知报表';
+    const range = preview.date_range?.start ? `；日期 ${preview.date_range.start} 至 ${preview.date_range.end}` : '';
+    const estimate = preview.estimated_changes?.available
+      ? `；预计新增 ${preview.estimated_changes.inserted} / 更新 ${preview.estimated_changes.updated}`
+      : '';
+    const excluded = preview.excluded_summary_rows ? `；剔除汇总行 ${preview.excluded_summary_rows}` : '';
+    const governance = preview.source_resolution
+      ? `；字段治理：主源重叠 ${preview.source_resolution.primary_overlap_fields?.length || 0}，DMP独有 ${preview.source_resolution.dmp_unique_fields?.length || 0}`
+      : '';
+    return `已识别为${source}；有效 ${preview.valid_rows}/${preview.total_rows} 行；重复业务键 ${preview.duplicate_keys} 个${excluded}${range}${estimate}${governance}`;
+  };
+  const renderImportPreview = (preview) => {
+    if (!preview) {
+      importPreviewPanel.hidden = true;
+      importConfirmButton.disabled = true;
+      return;
+    }
+    importPreviewPanel.hidden = false;
+    document.querySelector('[data-import-preview-tabs]')?.replaceChildren(...importPreviewQueue.map((item, index) => {
+      const tab = document.createElement('button');
+      tab.type = 'button';
+      tab.className = 'button button--ghost toolbox-import-tab';
+      tab.role = 'tab';
+      tab.dataset.importPreviewFile = String(index);
+      tab.setAttribute('aria-selected', String(index === activeImportPreviewIndex));
+      tab.setAttribute('aria-controls', 'toolbox-panel-import');
+      tab.tabIndex = index === activeImportPreviewIndex ? 0 : -1;
+      tab.textContent = item.source_filename || `文件 ${index + 1}`;
+      tab.addEventListener('click', () => {
+        activeImportPreviewIndex = index;
+        renderImportPreview(importPreviewQueue[index]);
+      });
+      tab.addEventListener('keydown', (event) => {
+        if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+        event.preventDefault();
+        const tabs = [...document.querySelectorAll('[data-import-preview-file]')];
+        const current = tabs.indexOf(event.currentTarget);
+        const next = event.key === 'Home' ? 0 : event.key === 'End' ? tabs.length - 1 : (current + (event.key === 'ArrowRight' ? 1 : -1) + tabs.length) % tabs.length;
+        tabs[next]?.focus();
+        tabs[next]?.click();
+      });
+      return tab;
+    }));
+    importQuality.textContent = importQualityMessage(preview);
+    if (preview.invalid_field_count) {
+      importQuality.title = `${preview.invalid_field_count} field warnings; valid fields can still be imported`;
+      const warningDetailNode = document.querySelector('[data-import-quality-detail]');
+      if (warningDetailNode && !(preview.invalid_details || []).length) {
+        warningDetailNode.textContent = (preview.field_warnings || []).slice(0, 10)
+          .map((item) => `row ${item.row_number || '--'} / ${item.standard_field || '--'} / ${item.reason || 'invalid field'}`)
+          .join('; ');
+      }
+    } else {
+      importQuality.removeAttribute('title');
+    }
+    const invalidDetails = (preview.invalid_details || []).slice(0, 10)
+      .map((item) => `第 ${item.row_number || '--'} 行 · ${item.standard_field || '--'} · ${item.reason || item.message || '数据无效'}`)
+      .join('；');
+    importQualityDetail.textContent = invalidDetails || '未发现异常行';
+    importFields.replaceChildren(...(preview.fields || []).map((field) => {
+      const row = document.createElement('tr');
+      const sourceCell = document.createElement('td');
+      sourceCell.textContent = field.source_column;
+      row.appendChild(sourceCell);
+      const typeCell = document.createElement('td');
+      typeCell.textContent = importMatchLabel(field.inferred_type || 'empty');
+      row.appendChild(typeCell);
+      const mappingCell = document.createElement('td');
+      const select = document.createElement('select');
+      select.className = 'select';
+      select.dataset.importMapping = field.source_column;
+      select.setAttribute('aria-label', `字段映射：${field.source_column}`);
+      const currentKey = Object.entries(preview.mapping || {}).find(([, source]) => source === field.source_column)?.[0] || '';
+      ['', ...(preview.mapping_schema?.allowed || [])].forEach((key) => select.add(new Option(key ? importFieldLabel(key) : '未映射', key)));
+      select.value = currentKey;
+      select.addEventListener('change', () => {
+        Object.entries(preview.mapping || {}).forEach(([key, source]) => {
+          if (source === field.source_column || key === select.value) delete preview.mapping[key];
+        });
+        if (select.value) preview.mapping[select.value] = field.source_column;
+        preview.required_unmapped = requiredMappings(preview);
+        renderImportPreview(preview);
+      });
+      mappingCell.appendChild(select);
+      row.appendChild(mappingCell);
+      const matchCell = document.createElement('td');
+      matchCell.textContent = select.value ? (field.match_status === 'manual' ? '手动' : importMatchLabel(field.match_status || 'matched')) : '未匹配';
+      row.appendChild(matchCell);
+      const sampleCell = document.createElement('td');
+      sampleCell.textContent = field.sample_value || '--';
+      row.appendChild(sampleCell);
+      return row;
+    }));
+    const missing = requiredMappings(preview);
+    importConfirmButton.disabled = Boolean(missing.length || preview.invalid_rows || preview.duplicate_keys);
+    if (missing.length) setImportStatus(`缺少必填映射：${missing.map(importFieldLabel).join('、')}`);
+    else if (preview.invalid_rows || preview.duplicate_keys) setImportStatus('质量校验未通过，请修正文件后重新预览');
+    else setImportStatus('预览通过，可以确认导入');
+  };
+  importFile.addEventListener('change', () => {
+    const files = Array.from(importFile.files || []);
+    document.querySelector('[data-import-file-name]').textContent = files.length ? `已选择 ${files.length} 个表格文件` : '选择表格文件';
+    importPreviewQueue = [];
+    importPreviewErrors = [];
+    activeImportPreviewIndex = 0;
+    renderImportPreview(null);
+    setImportProgress(0);
+    setImportStatus(files.length ? `已选择 ${files.length} 个表格文件，请先预览并校验` : '等待选择文件');
+  });
+  importPreviewButton.addEventListener('click', async () => {
+    const files = Array.from(importFile.files || []);
+    if (!files.length) { setImportStatus('请先选择表格文件'); return; }
+    importPreviewButton.disabled = true;
+    importConfirmButton.disabled = true;
+    importPreviewQueue = [];
+    importPreviewErrors = [];
+    activeImportPreviewIndex = 0;
     try {
-      const payload = await requestApi('/api/upload/data', { method: 'POST', body: form, headers: {} });
-      await pollImport(payload.task_id);
+      for (const [index, file] of files.entries()) {
+        setImportProgress(Math.max(5, Math.round((index / files.length) * 80)));
+        setImportStatus(`正在预览 ${index + 1}/${files.length}：${file.name}`);
+        const form = new FormData();
+        form.append('file', file);
+        try {
+          const payload = await DemoApi.domainRequest('/api/imports/preview?source_type=auto', { method: 'POST', body: form });
+          importCapabilities = payload.capabilities || importCapabilities;
+          importPreviewQueue.push(payload.data);
+        } catch (error) {
+          importPreviewErrors.push(`${file.name}：${error.message || '预览失败'}`);
+        }
+      }
+      renderImportPreview(importPreviewQueue[0]);
+      setImportProgress(100);
+      const summary = `已预览 ${importPreviewQueue.length}/${files.length} 个文件`;
+      setImportStatus(importPreviewErrors.length ? `${summary}；失败：${importPreviewErrors.join('；')}` : `${summary}，请检查映射后确认导入`);
     } catch (error) {
-      progress.style.width = '0';
-      result.textContent = error.message || '导入失败';
+      setImportProgress(0);
+      setImportStatus(error.message || '预览失败');
+    } finally {
+      importPreviewButton.disabled = false;
+    }
+  });
+  importConfirmButton.addEventListener('click', async () => {
+    const pending = importPreviewQueue.slice();
+    if (!pending.length) { setImportStatus('请先预览文件'); return; }
+    if (Object.keys(importCapabilities).length && !DemoApi.can({ capabilities: importCapabilities }, 'can_import')) { setImportStatus('当前数据源不允许导入'); return; }
+    if (pending.some((preview) => requiredMappings(preview).length || preview.invalid_rows || preview.duplicate_keys)) {
+      setImportStatus('请先完成必填映射并通过质量校验');
+      return;
+    }
+    importConfirmButton.disabled = true;
+    const failures = [];
+    const results = [];
+    const completedPreviewIds = new Set();
+    try {
+      for (const [index, preview] of pending.entries()) {
+        setImportProgress(Math.max(5, Math.round((index / pending.length) * 95)));
+        setImportStatus(`正在导入 ${index + 1}/${pending.length}：${preview.source_filename || '表格文件'}`);
+        try {
+          const payload = await DemoApi.domainRequest('/api/imports', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ preview_id: preview.id, mapping: preview.mapping }),
+          });
+          results.push(payload.data);
+          completedPreviewIds.add(preview.id);
+        } catch (error) {
+          failures.push(`${preview.source_filename || '表格文件'}：${error.message || '导入失败'}`);
+        }
+      }
+      const inserted = results.reduce((sum, item) => sum + Number(item.inserted_count || 0), 0);
+      const updated = results.reduce((sum, item) => sum + Number(item.updated_count || 0), 0);
+      const resolution = results.reduce((sum, item) => {
+        const current = item.source_resolution || {};
+        return { fallback_filled: sum.fallback_filled + Number(current.fallback_filled || 0), reference_only: sum.reference_only + Number(current.reference_only || 0), conflicts: sum.conflicts + Number(current.conflicts || 0) };
+      }, { fallback_filled: 0, reference_only: 0, conflicts: 0 });
+      const resolutionSummary = `；DMP补齐 ${resolution.fallback_filled}，参考 ${resolution.reference_only}，冲突 ${resolution.conflicts}`;
+      importPreviewQueue = failures.length ? pending.filter((preview) => !completedPreviewIds.has(preview.id)) : [];
+      activeImportPreviewIndex = Math.min(activeImportPreviewIndex, Math.max(0, importPreviewQueue.length - 1));
+      setImportProgress(failures.length ? 0 : 100);
+      setImportStatus(failures.length
+        ? `已导入 ${results.length}/${pending.length} 个文件；新增 ${inserted}，更新 ${updated}${resolutionSummary}；失败：${failures.join('；')}`
+        : `已导入 ${results.length} 个文件；新增 ${inserted}，更新 ${updated}${resolutionSummary}`);
+      if (!failures.length) renderImportPreview(null);
+    } catch (error) {
+      setImportProgress(0);
+      setImportStatus(error.message || '导入失败');
+    } finally {
+      importConfirmButton.disabled = !failures.length;
     }
   });
   const loadSchedules = async () => {
-    const rows = await requestApi('/api/scheduled_tasks');
+    const payload = await requestDomainApi('/api/manage/schedules');
+    const rows = payload.data || [];
     const tbody = document.querySelector('[data-schedule-list]');
     tbody.replaceChildren();
     if (!rows.length) {
@@ -444,7 +747,7 @@
     const cron = frequency === 'weekly' ? `${minute} ${hour} * * 1` : frequency === 'monthly' ? `${minute} ${hour} 1 * *` : `${minute} ${hour} * * *`;
     if (!name) { result.textContent = '请输入任务名称'; return; }
     try {
-      await requestApi('/api/scheduled_tasks', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ task_name: name, cron_expr: cron, file_pattern: document.querySelector('[data-schedule-pattern]').value.trim() || '*.xlsx' }) });
+      await requestDomainApi('/api/manage/schedules', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ task_name: name, cron_expr: cron, file_pattern: document.querySelector('[data-schedule-pattern]').value.trim() || '*.xlsx', operator: '店长', reason: '创建定时导入任务' }) });
       result.textContent = '任务已创建';
       await loadSchedules();
     } catch (error) { result.textContent = error.message || '创建失败'; }

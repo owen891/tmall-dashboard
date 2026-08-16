@@ -7,7 +7,7 @@
   <link rel="stylesheet" href="../assets/tokens.css">
   <link rel="stylesheet" href="../assets/shell.css">
   <link rel="stylesheet" href="../assets/components.css">
-  <script src="https://unpkg.com/lucide@1.8.0/dist/umd/lucide.min.js"></script>
+  <script src="../assets/lucide-1.8.0.min.js"></script>
 </head>
 <body data-page="manage">
   <div class="demo-app">
@@ -53,32 +53,32 @@
     </div>
   </div>
 
-  <dialog class="modal-form" data-manage-task-dialog aria-labelledby="manage-task-title" hidden>
+  <dialog class="modal-form" data-manage-task-dialog data-modal-kind="edit" aria-labelledby="manage-task-title" hidden>
     <form method="dialog" data-manage-task-form>
       <div class="modal-form__header"><h3 id="manage-task-title">新建任务</h3><button class="button button--ghost" type="button" data-manage-dialog-close="task" aria-label="关闭"><i data-lucide="x"></i></button></div>
       <div class="modal-form__body">
         <label>任务名称<input class="input" name="title" required maxlength="120" autocomplete="off"></label>
         <label>任务说明<textarea class="input" name="description" rows="3" maxlength="500"></textarea></label>
-        <div class="filter-group"><label>状态<select class="select" name="status"><option value="todo">待处理</option><option value="in_progress">处理中</option><option value="done">已完成</option></select></label><label>优先级<select class="select" name="priority"><option value="P0">P0</option><option value="P1">P1</option><option value="P2" selected>P2</option><option value="P3">P3</option></select></label></div>
+        <div class="filter-group"><label>状态<select class="select" name="status"><option value="todo">待处理</option><option value="in_progress">处理中</option><option value="done">已完成</option></select></label><label>优先级<select class="select" name="priority"><option value="P0">紧急（P0）</option><option value="P1">高（P1）</option><option value="P2" selected>中（P2）</option><option value="P3">低（P3）</option></select></label></div>
         <div class="filter-group"><label>负责人<input class="input" name="assignee" maxlength="40" autocomplete="off"></label><label>截止日期<input class="input" type="date" name="due_date"></label></div>
       </div>
       <div class="modal-form__footer"><button class="button" type="button" data-manage-dialog-close="task">取消</button><button class="button button--primary" type="submit">保存任务</button></div>
     </form>
   </dialog>
 
-  <dialog class="modal-form" data-manage-kpi-dialog aria-labelledby="manage-kpi-title" hidden>
+  <dialog class="modal-form" data-manage-kpi-dialog data-modal-kind="edit" aria-labelledby="manage-kpi-title" hidden>
     <form method="dialog" data-manage-kpi-form>
       <div class="modal-form__header"><h3 id="manage-kpi-title">新增 KPI</h3><button class="button button--ghost" type="button" data-manage-dialog-close="kpi" aria-label="关闭"><i data-lucide="x"></i></button></div>
       <div class="modal-form__body">
         <div class="filter-group"><label>成员<input class="input" name="user_name" required maxlength="40" autocomplete="off"></label><label>周期<input class="input" type="month" name="period" required></label></div>
         <div class="filter-group"><label>目标 GMV<input class="input" type="number" name="target_gmv" min="0" step="0.01" required></label><label>实际 GMV<input class="input" type="number" name="actual_gmv" min="0" step="0.01" required></label></div>
-        <div class="filter-group"><label>达成率（%）<input class="input" type="number" name="achievement_rate" min="0" step="0.01" required></label><label>评级<select class="select" name="rating"><option value="A">A</option><option value="B">B</option><option value="C" selected>C</option><option value="D">D</option></select></label></div>
+        <div class="filter-group"><label>达成率（%）<input class="input" type="number" name="achievement_rate" min="0" step="0.01" required></label><label>评级<select class="select" name="rating"><option value="A">优秀（A）</option><option value="B">良好（B）</option><option value="C" selected>待提升（C）</option><option value="D">未达标（D）</option></select></label></div>
       </div>
       <div class="modal-form__footer"><button class="button" type="button" data-manage-dialog-close="kpi">取消</button><button class="button button--primary" type="submit">保存 KPI</button></div>
     </form>
   </dialog>
 
-  <dialog class="modal-form" data-manage-schedule-dialog aria-labelledby="manage-schedule-title" hidden>
+  <dialog class="modal-form" data-manage-schedule-dialog data-modal-kind="flow" aria-labelledby="manage-schedule-title" hidden>
     <form method="dialog" data-manage-schedule-form>
       <div class="modal-form__header"><h3 id="manage-schedule-title">新增调度</h3><button class="button button--ghost" type="button" data-manage-dialog-close="schedule" aria-label="关闭"><i data-lucide="x"></i></button></div>
       <div class="modal-form__body">
@@ -91,6 +91,7 @@
   </dialog>
 
   <script src="../assets/api.js"></script>
+  <script src="../assets/labels.js"></script>
   <script src="../assets/shell.js"></script>
   <script src="../assets/manage-live.js"></script>
 </body>

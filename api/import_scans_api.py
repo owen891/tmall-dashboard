@@ -65,3 +65,13 @@ def list_scan_files(job_id):
         ImportScanService.list_files(job_id, request.args.get('status')),
         evidence=[{'source': 'import_scan_files'}],
     )
+
+
+@import_scans_bp.route('/api/import-scans/<int:job_id>/files/<int:file_id>/retry', methods=['POST'])
+def retry_scan_file(job_id, file_id):
+    try:
+        return success(ImportScanService.retry_file(job_id, file_id))
+    except ImportScanConflictError as error:
+        return _error(error, 409)
+    except ImportScanValidationError as error:
+        return _error(error, 404)

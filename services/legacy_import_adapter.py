@@ -22,13 +22,11 @@ def import_file(filepath, *, source_type='auto', mapping_template=None):
         if selected_source == 'auto':
             frame = import_service._read_workbook(content, filename)
             mapping = import_service._mapping(frame.columns)
-            lowered = filename.lower()
-            if {'channel', 'product_id', 'ad_spend', 'attributed_payment_amount'} <= set(mapping):
-                selected_source = 'promotion_product_day'
-            elif 'dmp' in lowered:
-                selected_source = 'dmp_product_day'
-            else:
-                selected_source = 'product_day'
+            # Keep the historical entry point on the same source detector as
+            # the HTTP/import-scan paths. The old filename heuristic could
+            # misclassify channel/campaign/unit reports as product-day data
+            # and only recognized DMP files whose filename contained "dmp".
+            selected_source = import_service._detect_source_type(mapping)
         # Debugging aid intentionally kept silent in normal operation.
         preview = import_service.preview(filename, content, selected_source, mapping_template)
         if preview.get('required_unmapped'):

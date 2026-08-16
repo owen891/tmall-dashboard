@@ -7,58 +7,167 @@
   <link rel="stylesheet" href="../assets/tokens.css">
   <link rel="stylesheet" href="../assets/shell.css">
   <link rel="stylesheet" href="../assets/components.css">
-  <script src="https://unpkg.com/lucide@1.8.0/dist/umd/lucide.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.1/dist/echarts.min.js"></script>
+  <script src="../assets/lucide-1.8.0.min.js"></script>
+    <script src="../assets/echarts-5.5.1.min.js"></script>
+  <style>
+    .promotion-source-strip{display:flex;flex-wrap:wrap;gap:8px;margin:-8px 0 16px;padding:10px 12px;border:1px solid var(--border-default);border-radius:var(--radius-md);background:var(--surface-base)}
+    .promotion-source-strip__item{display:inline-flex;align-items:center;gap:6px;padding:4px 8px;border-radius:var(--radius-sm);font-size:var(--font-size-meta);font-weight:600}
+    .promotion-source-strip__item--real{background:var(--success-tint);color:var(--success)}
+    .promotion-source-strip__item--demo{background:var(--warning-tint);color:var(--warning)}
+    .promotion-source-strip__note{color:var(--text-secondary);font-size:var(--font-size-meta);line-height:var(--line-height-secondary)}
+    .promotion-table-mode{margin-left:auto}
+    .promotion-board-grid{display:grid;grid-template-columns:minmax(0,1.05fr) minmax(0,.95fr);gap:var(--space-4);margin-top:var(--space-4)}
+    .promotion-board-panel{min-width:0;padding:var(--space-4);border:1px solid var(--border-default);border-radius:var(--radius-md);background:var(--surface-base);box-shadow:var(--elevation-sm)}
+    .promotion-board-panel__header{display:flex;justify-content:space-between;align-items:flex-start;gap:var(--space-3);margin-bottom:var(--space-3)}
+    .promotion-board-panel__header h3{margin:0;font-size:var(--font-size-section);line-height:var(--line-height-section)}
+    .promotion-board-panel__header p{margin:4px 0 0;color:var(--text-secondary);font-size:var(--font-size-meta)}
+    .promotion-board-table{width:100%;border-collapse:collapse;font-size:var(--font-size-secondary)}
+    .promotion-board-table th{padding:8px 6px;border-bottom:1px solid var(--border-default);color:var(--text-secondary);font-size:var(--font-size-meta);font-weight:600;text-align:left;white-space:nowrap}
+    .promotion-board-table td{padding:10px 6px;border-bottom:1px solid var(--border-default);vertical-align:middle;white-space:nowrap}
+    .promotion-board-table tr:last-child td{border-bottom:0}.promotion-board-table .num{text-align:right;font-variant-numeric:tabular-nums}
+    .promotion-board-name{display:grid;grid-template-columns:32px minmax(0,1fr);align-items:center;gap:8px;min-width:180px}.promotion-board-name .product-thumb{width:32px;height:32px;border-radius:var(--radius-sm)}.promotion-board-name__copy{display:grid;gap:2px;min-width:0}.promotion-board-name__copy strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.promotion-board-name__copy span{color:var(--text-secondary);font-size:var(--font-size-meta)}
+    .promotion-plan-name{display:grid;gap:2px;min-width:180px}.promotion-plan-name strong,.promotion-plan-name span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.promotion-plan-name span{color:var(--text-secondary);font-size:var(--font-size-meta)}
+    .promotion-board-empty{padding:var(--space-5) var(--space-2);color:var(--text-secondary);text-align:center;font-size:var(--font-size-secondary)}
+    @media(max-width:960px){.promotion-board-grid{grid-template-columns:1fr}}
+    @media(max-width:640px){.promotion-board-panel{padding:var(--space-3);overflow-x:auto}.promotion-board-table{min-width:560px}}
+    .promotion-command{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(280px,.65fr);gap:var(--space-5);margin:0 0 var(--space-4);padding:var(--space-5);border:1px solid var(--border-default);border-radius:var(--radius-lg);background:var(--surface-base);box-shadow:var(--elevation-sm)}
+    .promotion-command__heading{display:flex;align-items:flex-start;justify-content:space-between;gap:var(--space-3);margin-bottom:var(--space-4)}
+    .promotion-command__heading h1{margin:0;font-size:var(--font-size-title);line-height:var(--line-height-title);letter-spacing:0;font-weight:700}
+    .promotion-command__heading p{margin:4px 0 0;color:var(--text-secondary);font-size:var(--font-size-secondary)}
+    .promotion-command__status{display:inline-flex;align-items:center;gap:6px;flex:0 0 auto;padding:5px 9px;border-radius:var(--radius-sm);background:var(--success-tint);color:var(--success);font-size:var(--font-size-meta);font-weight:700;white-space:nowrap}
+    .promotion-command__status[data-tone="warning"]{background:var(--warning-tint);color:var(--warning)}
+    .promotion-command__status[data-tone="danger"]{background:var(--danger-tint);color:var(--danger)}
+    .promotion-funnel{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:var(--space-3);align-items:stretch}
+    .promotion-funnel__step{position:relative;min-width:0;padding:var(--space-3);border:1px solid var(--border-default);border-radius:var(--radius-md);background:var(--surface-selected)}
+    .promotion-funnel__step:not(:last-child)::after{content:'→';position:absolute;right:-17px;top:50%;z-index:1;color:var(--text-tertiary);font-size:16px;transform:translateY(-50%)}
+    .promotion-funnel__label{display:flex;align-items:center;gap:6px;color:var(--text-secondary);font-size:var(--font-size-meta);font-weight:650}
+    .promotion-funnel__value{display:block;margin-top:4px;font-size:var(--font-size-kpi);line-height:var(--line-height-title);font-weight:700;font-variant-numeric:tabular-nums}
+    .promotion-funnel__meta{display:block;margin-top:2px;color:var(--text-secondary);font-size:var(--font-size-meta)}
+    .promotion-command__insight{display:flex;gap:10px;align-items:flex-start;margin-top:var(--space-4);padding-top:var(--space-3);border-top:1px solid var(--border-default)}
+    .promotion-command__insight .lucide{flex:0 0 auto;width:16px;height:16px;margin-top:2px;color:var(--brand)}
+    .promotion-command__insight strong{display:block;font-size:var(--font-size-secondary)}
+    .promotion-command__insight span{display:block;margin-top:2px;color:var(--text-secondary);font-size:var(--font-size-meta);line-height:var(--line-height-secondary)}
+    .promotion-command__signals{display:grid;align-content:start;gap:0;border-left:1px solid var(--border-default);padding-left:var(--space-5)}
+    .promotion-command__signals h3{margin:0 0 var(--space-2);font-size:var(--font-size-section)}
+    .promotion-signal{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:var(--space-3);padding:11px 0;border-bottom:1px solid var(--border-default)}
+    .promotion-signal:last-child{border-bottom:0}
+    .promotion-signal span{color:var(--text-secondary);font-size:var(--font-size-secondary)}
+    .promotion-signal strong{font-size:var(--font-size-secondary);font-variant-numeric:tabular-nums}
+    .promotion-signal strong[data-tone="success"]{color:var(--success)}
+    .promotion-signal strong[data-tone="warning"]{color:var(--warning)}
+    .promotion-signal strong[data-tone="danger"]{color:var(--danger)}
+    @media(max-width:960px){.promotion-command{grid-template-columns:1fr}.promotion-command__signals{border-left:0;border-top:1px solid var(--border-default);padding:var(--space-4) 0 0}}
+    @media(max-width:640px){.promotion-command{padding:var(--space-4)}.promotion-command__heading{display:block}.promotion-command__status{margin-top:var(--space-2)}.promotion-funnel{grid-template-columns:1fr}.promotion-funnel__step:not(:last-child)::after{content:'↓';right:50%;top:auto;bottom:-18px;transform:translateX(50%)}.promotion-funnel__step{padding:12px}.promotion-command__signals{padding-top:var(--space-3)}}
+    @media(min-width:761px){.promotion-subviews .product-section__heading>div:first-child{min-width:0;flex:1 1 auto}.promotion-subviews .product-section__heading>div:first-child p{max-width:min(58vw,720px);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}}
+    .promotion-detail-table-wrap{min-width:0;overflow-x:auto}
+    .promotion-detail-table{width:100%;min-width:620px;border-collapse:collapse}
+    .promotion-detail-table th,.promotion-detail-table td{padding:9px 8px;border-bottom:1px solid var(--border-default);font-size:var(--font-size-secondary);white-space:nowrap;text-align:left}
+    .promotion-detail-table th{color:var(--text-secondary);font-size:var(--font-size-meta);font-weight:600}
+    .promotion-detail-table td.num,.promotion-detail-table th.num{text-align:right;font-variant-numeric:tabular-nums}
+    .promotion-detail-table tr:last-child td{border-bottom:0}
+    .promotion-detail-table__name{display:grid;gap:2px;min-width:150px}
+    .promotion-detail-table__name span{color:var(--text-secondary);font-size:var(--font-size-meta)}
+    .promotion-detail-note{margin:0;color:var(--text-secondary);font-size:var(--font-size-meta);line-height:var(--line-height-secondary)}
+  </style>
 </head>
 <body data-page="promotion">
   <div class="demo-app">
     <aside class="demo-sidebar" data-shell-sidebar></aside>
     <div class="demo-main">
       <header class="demo-topbar" data-shell-header></header>
-      <main class="demo-page">
+      <main class="demo-page"><aside data-right-rail hidden aria-label="辅助信息"></aside>
         <div class="demo-page__intro">
           <div>
             <h2>推广分析</h2>
-            <p>按商品记录还原投入、成交与投产；关键词、人群和站内渠道仅展示各自的月度聚合口径。</p>
+            <p>先看整体投放状态，再分别查看渠道 / 计划、商品经营和补充维度；建议只作为参考，不直接操作推广平台。</p>
           </div>
           <div class="demo-page__actions">
-            <button class="button" type="button" data-promotion-refresh><i data-lucide="refresh-cw"></i>刷新数据</button>
-            <button class="button button--primary" type="button" data-promotion-info><i data-lucide="circle-help"></i>数据口径</button>
+            <button class="button button--primary" type="button" data-capability-key="promotion.drilldown" data-promotion-info><i data-lucide="circle-help"></i>数据口径</button>
           </div>
         </div>
 
+        <div class="promotion-source-strip" role="status" aria-label="推广数据来源说明">
+          <span class="promotion-source-strip__item promotion-source-strip__item--real" data-promotion-source-base>已接入：计划 + 商品</span>
+          <span class="promotion-source-strip__item promotion-source-strip__item--demo">演示：关键词 + 人群 + 创意</span>
+          <span class="promotion-source-strip__note" data-promotion-source-note>演示数据只补齐页面能力，不参与 KPI、趋势和预警汇总。</span>
+        </div>
+
+        <section class="promotion-command" aria-labelledby="promotionCommandTitle">
+          <div>
+            <div class="promotion-command__heading">
+              <div><h1 id="promotionCommandTitle">推广经营看板</h1><p>围绕商品经营看投入、流量和推广成交，计划与商品分别核算。</p></div>
+              <span class="promotion-command__status" data-promotion-health-badge data-tone="success"><i data-lucide="circle-check"></i><span>加载中</span></span>
+            </div>
+            <div class="promotion-funnel" aria-label="推广经营链路">
+              <div class="promotion-funnel__step"><span class="promotion-funnel__label"><i data-lucide="wallet-cards"></i>投入</span><strong class="promotion-funnel__value" data-promotion-funnel="spend">--</strong><span class="promotion-funnel__meta">推广花费</span></div>
+              <div class="promotion-funnel__step"><span class="promotion-funnel__label"><i data-lucide="mouse-pointer-click"></i>流量</span><strong class="promotion-funnel__value" data-promotion-funnel="clicks">--</strong><span class="promotion-funnel__meta" data-promotion-funnel-meta="clicks">点击量 / 展现量</span></div>
+              <div class="promotion-funnel__step"><span class="promotion-funnel__label"><i data-lucide="shopping-bag"></i>推广成交</span><strong class="promotion-funnel__value" data-promotion-funnel="gmv">--</strong><span class="promotion-funnel__meta" data-promotion-funnel-meta="gmv">推广成交 · 推广 ROI --</span></div>
+            </div>
+            <div class="promotion-command__insight"><i data-lucide="lightbulb"></i><div><strong data-promotion-insight-title>正在读取本期经营判断</strong><span data-promotion-insight-copy>判断将根据真实商品和计划数据动态生成；演示分项不会影响总盘。</span></div></div>
+          </div>
+          <aside class="promotion-command__signals" aria-label="推广经营信号">
+            <h3>本期信号</h3>
+            <div class="promotion-signal"><span>整体投产</span><strong data-promotion-signal="roi" data-tone="success">--</strong></div>
+            <div class="promotion-signal"><span>商品支付转化率</span><strong data-promotion-signal="cvr">--</strong></div>
+            <div class="promotion-signal"><span>付费成交占比</span><strong data-promotion-signal="paid_share">--</strong></div>
+            <div class="promotion-signal"><span>触发预警</span><strong data-promotion-signal="alerts" data-tone="success">--</strong></div>
+          </aside>
+        </section>
+
         <section class="metric-grid" aria-label="推广核心指标">
           <article class="metric-card"><div class="metric-card__label">推广花费</div><div class="metric-card__value" data-promotion-kpi="spend">--</div><div class="metric-card__meta"><i data-lucide="wallet-cards"></i><span data-promotion-kpi-note>按商品记录汇总</span></div></article>
-          <article class="metric-card"><div class="metric-card__label">成交金额</div><div class="metric-card__value" data-promotion-kpi="gmv">--</div><div class="metric-card__meta"><i data-lucide="shopping-bag"></i>商品当期成交</div></article>
-          <article class="metric-card"><div class="metric-card__label">整体 ROI</div><div class="metric-card__value" data-promotion-kpi="roi">--</div><div class="metric-card__meta"><i data-lucide="target"></i>成交金额 / 推广花费</div></article>
-          <article class="metric-card"><div class="metric-card__label">投放商品</div><div class="metric-card__value" data-promotion-kpi="products">--</div><div class="metric-card__meta"><i data-lucide="package"></i>花费大于 0 的商品</div></article>
+          <article class="metric-card"><div class="metric-card__label">推广成交</div><div class="metric-card__value" data-promotion-kpi="gmv">--</div><div class="metric-card__meta"><i data-lucide="shopping-bag"></i>商品当期推广成交</div></article>
+          <article class="metric-card"><div class="metric-card__label">推广 ROI</div><div class="metric-card__value" data-promotion-kpi="roi">--</div><div class="metric-card__meta"><i data-lucide="target"></i>推广成交 / 推广花费</div></article>
+          <article class="metric-card"><div class="metric-card__label">费比</div><div class="metric-card__value" data-promotion-kpi="expense_ratio">--</div></article>
+          <article class="metric-card"><div class="metric-card__label">点击率 / 商品支付转化率</div><div class="metric-card__value" data-promotion-kpi="ctr">--</div><div class="metric-card__meta"><span data-promotion-kpi="cvr">--</span></div></article>
+          <article class="metric-card"><div class="metric-card__label">直接 / 间接付费成交</div><div class="metric-card__value" data-promotion-kpi="direct">--</div><div class="metric-card__meta"><span data-promotion-kpi="indirect">--</span></div></article>
+          <article class="metric-card"><div class="metric-card__label">投放商品</div><div class="metric-card__value" data-promotion-kpi="products">--</div><div class="metric-card__meta"><i data-lucide="package"></i>推广花费大于 0 的商品</div></article>
+        </section>
+
+        <section class="promotion-board-grid" aria-label="推广经营看板分区">
+          <article class="promotion-board-panel">
+            <div class="promotion-board-panel__header"><div><h3>渠道 / 计划概览</h3><p>先定位推广花费与推广成交来源，再下钻到单元和商品。</p></div><span class="badge badge--info" data-promotion-plan-count>加载中</span></div>
+            <div data-promotion-plan-board><div class="promotion-board-empty">正在加载计划概览</div></div>
+          </article>
+          <article class="promotion-board-panel">
+            <div class="promotion-board-panel__header"><div><h3>商品推广经营概览</h3><p>推广成交与链接净销售并列，费比按推广花费 / 链接 GSV计算。</p></div><span class="badge badge--info" data-promotion-product-board-count>加载中</span></div>
+            <div data-promotion-product-board><div class="promotion-board-empty">正在加载商品概览</div></div>
+          </article>
         </section>
 
         <section class="section-grid">
           <article class="chart-panel panel">
-            <div class="panel__header"><div><h3 class="panel__title">推广趋势</h3><p class="panel__hint" data-promotion-period>加载中</p></div><span class="badge badge--brand">商品汇总</span></div>
-            <div class="chart-box chart-box--tall"><canvas id="promotionTrend"></canvas></div>
+            <div class="panel__header"><div><h3 class="panel__title">推广趋势</h3><p class="panel__hint" data-promotion-period>加载中</p></div><span class="badge badge--success">真实数据</span></div>
+            <div class="chart-box chart-box--tall"><div id="promotionTrend" class="chart-canvas" role="img" aria-label="推广花费、推广成交和推广 ROI 趋势"></div></div>
           </article>
           <article class="plain-panel panel">
-            <div class="panel__header"><div><h3 class="panel__title">投放预警</h3><p class="panel__hint">由当前月份商品表现自动识别</p></div><span class="badge badge--danger" data-promotion-alert-count>--</span></div>
+            <div class="panel__header"><div><h3 class="panel__title">投放预警</h3><p class="panel__hint">按已启用的推广商品规则自动识别</p></div><div class="panel__actions"><button class="button button--ghost" type="button" data-alert-rules-open data-alert-rules-scope="promotion_product"><i data-lucide="settings-2"></i>配置预警</button><span class="badge badge--danger" data-promotion-alert-count>--</span></div></div>
             <div class="alert-list" data-promotion-alerts aria-live="polite"><div class="empty-state"><span>加载中</span></div></div>
           </article>
         </section>
 
         <section class="product-section promotion-subviews">
           <div class="product-section__heading">
-            <div><h3>分粒度明细</h3><p data-promotion-grain>每个视图只使用对应数据口径，不与总盘相加。</p></div>
+            <div><h3>渠道 / 计划与商品明细</h3><p data-promotion-grain>各维度独立核算，明细不与总盘重复相加。</p></div>
             <div class="filter-group"><select class="select" data-promotion-drill-level aria-label="推广下钻层级"><option value="channel">渠道</option><option value="campaign">计划</option><option value="unit">单元</option><option value="product">商品</option></select><input class="input" data-promotion-channel placeholder="渠道（可选）" aria-label="推广渠道"><input class="input" data-promotion-campaign placeholder="计划 ID（可选）" aria-label="推广计划 ID"><input class="input" data-promotion-unit placeholder="单元 ID（可选）" aria-label="推广单元 ID"><button class="button" type="button" data-promotion-drill-load>查询下钻</button></div>
             <div class="segmented" role="group" aria-label="推广分析视图" data-promotion-tabs>
               <button type="button" aria-pressed="true" data-promotion-tab="products">商品表现</button>
               <button type="button" aria-pressed="false" data-promotion-tab="keywords">关键词汇总</button>
               <button type="button" aria-pressed="false" data-promotion-tab="crowd">人群汇总</button>
+              <button type="button" aria-pressed="false" data-promotion-tab="creative">创意汇总</button>
               <button type="button" aria-pressed="false" data-promotion-tab="site">站内渠道汇总</button>
               <button type="button" aria-pressed="false" data-promotion-tab="unavailable">未提供归因</button>
             </div>
           </div>
           <article class="table-panel panel">
-            <div class="panel__header"><div><h3 class="panel__title" data-promotion-table-title>商品推广表现</h3><p class="panel__hint" data-promotion-table-hint>加载中</p></div><span class="badge badge--info" data-promotion-row-count>--</span></div>
+            <div class="panel__header"><div><h3 class="panel__title" data-promotion-table-title>商品推广表现</h3><p class="panel__hint" data-promotion-table-hint>加载中</p></div><div class="panel__actions"><span class="badge badge--warning promotion-table-mode" data-promotion-data-mode hidden>演示数据</span><span class="badge badge--info" data-promotion-row-count>--</span></div></div>
+            <div class="promotion-template-bar" data-promotion-template-bar>
+              <div class="promotion-template-bar__status"><span>字段模板</span><strong data-promotion-active-template>经营诊断</strong><span data-promotion-visible-field-count>--</span></div>
+              <div class="promotion-template-bar__actions">
+                <select class="select" data-promotion-template-select aria-label="选择当前 TAB 字段模板"></select>
+                <button class="button" type="button" data-promotion-manage-fields><i data-lucide="columns-3"></i>字段设置</button>
+              </div>
+            </div>
             <div class="data-table-wrap">
               <table class="data-table" id="promotionTable" data-promotion-drill>
                 <thead data-promotion-head></thead>
@@ -71,18 +180,67 @@
     </div>
   </div>
 
-  <div class="demo-drawer__backdrop" data-promotion-backdrop></div>
-  <aside class="demo-drawer promotion-drawer" data-promotion-drawer role="dialog" aria-modal="true" aria-labelledby="promotionDrawerTitle" aria-hidden="true" inert tabindex="-1">
-    <div class="modal-form__header">
-      <div><h3 id="promotionDrawerTitle" data-promotion-drawer-title>推广详情</h3><p class="panel__hint" data-promotion-drawer-subtitle>--</p></div>
-      <button class="button button--ghost" type="button" data-promotion-drawer-close aria-label="关闭"><i data-lucide="x"></i></button>
+  <dialog class="promotion-dialog" data-promotion-dialog data-modal-kind="detail" aria-labelledby="promotionDialogTitle">
+    <div class="promotion-detail-dialog__shell">
+      <div class="lifecycle-detail__header promotion-detail-dialog__header">
+        <div class="lifecycle-detail__product">
+          <span class="lifecycle-detail__image promotion-detail-dialog__image" data-promotion-dialog-image aria-hidden="true"><i data-lucide="megaphone"></i></span>
+          <div>
+            <h2 id="promotionDialogTitle" class="panel__title" data-promotion-dialog-title>推广明细</h2>
+            <p class="panel__hint" data-promotion-dialog-subtitle>--</p>
+            <div class="lifecycle-detail__id" data-promotion-dialog-id>--</div>
+          </div>
+        </div>
+        <button class="button button--ghost" type="button" data-promotion-dialog-close aria-label="关闭推广详情"><i data-lucide="x"></i><span>关闭</span></button>
+      </div>
+      <div class="promotion-detail-dialog__body">
+        <div class="lifecycle-detail-tabs promotion-detail-dialog__tabs" data-promotion-dialog-tabs role="tablist" aria-label="推广详情分组">
+          <button class="lifecycle-detail-tab" id="promotion-detail-tab-overview" role="tab" type="button" data-promotion-detail-tab="overview" aria-selected="true" aria-controls="promotion-detail-panel-overview" tabindex="0">推广概览</button>
+          <button class="lifecycle-detail-tab" id="promotion-detail-tab-units" role="tab" type="button" data-promotion-detail-tab="units" aria-selected="false" aria-controls="promotion-detail-panel-units" tabindex="-1">计划 / 单元明细</button>
+        </div>
+        <div class="promotion-detail-dialog__panels" data-promotion-dialog-body></div>
+      </div>
     </div>
-    <div class="promotion-drawer__body" data-promotion-drawer-body></div>
-  </aside>
+  </dialog>
+
+    <dialog class="modal-form promotion-field-dialog" data-promotion-field-dialog data-modal-kind="config" aria-labelledby="promotionFieldDialogTitle">
+    <div class="modal-form__header">
+      <div><h3 id="promotionFieldDialogTitle">字段设置</h3><p data-promotion-field-dialog-scope>仅应用到当前 TAB</p></div>
+      <button class="button button--ghost" type="button" data-promotion-fields-close aria-label="关闭字段设置"><i data-lucide="x"></i></button>
+    </div>
+    <div class="modal-form__body">
+      <div class="field-template-bar">
+        <div class="field-template-bar__current"><strong data-promotion-field-selection-count>--</strong></div>
+        <div class="field-template-bar__controls">
+          <button class="button button--ghost" type="button" data-promotion-fields-select-all>全选</button>
+          <button class="button button--ghost" type="button" data-promotion-fields-clear-all>清空</button>
+        </div>
+      </div>
+      <div data-promotion-field-selector></div>
+      <div class="promotion-template-editor">
+        <strong>自定义模板</strong>
+        <div class="saved-template-list field-template-manager" data-promotion-template-manager aria-label="字段模板管理"></div>
+        <div class="promotion-template-save">
+          <input class="input" name="promotion_template_name" autocomplete="off" data-promotion-template-name placeholder="模板名称" aria-label="自定义字段模板名称">
+          <button class="button" type="button" data-promotion-template-save><i data-lucide="save"></i>保存为模板</button>
+        </div>
+      </div>
+      <p class="modal-form__status" data-promotion-field-status aria-live="polite"></p>
+    </div>
+    <div class="modal-form__footer">
+      <button class="button" type="button" data-promotion-fields-close>取消</button>
+      <button class="button button--primary" type="button" data-promotion-fields-apply><i data-lucide="check"></i>应用字段</button>
+    </div>
+  </dialog>
 
   <script src="../assets/api.js"></script>
+  <script src="../assets/navigation.js"></script>
   <script src="../assets/charts.js"></script>
   <script src="../assets/shell.js"></script>
+  <script src="../assets/field-selector.js"></script>
+  <script src="../assets/field-template-manager.js"></script>
+  <script src="../assets/alert-rules.js"></script>
+  <script src="../assets/product-detail-dialog.js"></script>
   <script src="../assets/promotion-live.js"></script>
 </body>
 </html>

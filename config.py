@@ -2,6 +2,7 @@ import os
 
 
 PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
+APP_VERSION = '1.0.0'
 
 
 class Config:
@@ -17,6 +18,10 @@ class Config:
     IMPORT_SCAN_ALLOWED_ROOTS = [
         item for item in os.environ.get(
             'IMPORT_SCAN_ALLOWED_ROOTS',
-            os.path.join(PROJECT_ROOT, 'data', 'import-inbox'),
+            os.pathsep.join([
+                os.path.join(PROJECT_ROOT, 'data', 'import-inbox'),
+                r'D:\桌面\0805\数据源',
+                r'E:\bi\bi\取数源',
+            ]),
         ).split(os.pathsep) if item.strip()
     ]

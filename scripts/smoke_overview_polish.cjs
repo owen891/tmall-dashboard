@@ -12,12 +12,12 @@ const shotDir = process.env.TMALL_SMOKE_SHOTS || 'E:/tm数据表格/tmall-dashbo
     page.on('pageerror', (error) => errors.push(error.message));
     page.on('response', (response) => { if (response.status() >= 400 && response.url().startsWith(base)) errors.push(`HTTP ${response.status()} ${response.url()}`); });
     await page.goto(`${base}/?startDate=2026-03-21&endDate=2026-04-19&preset=30d&compare=none`, { waitUntil: 'networkidle' });
-    await page.locator('[data-overview-report-kpis] .overview-report-kpi').first().waitFor();
+    await page.locator('[data-overview-home-report] .overview-v2-alert').first().waitFor();
     const report = {
-      kpis: await page.locator('[data-overview-report-kpis] .overview-report-kpi').count(),
-      products: await page.locator('[data-overview-report-products] .overview-report-product').count(),
-      risks: await page.locator('[data-overview-report-risks] .overview-report-risk').count(),
-      period: await page.locator('[data-overview-report-period]').innerText(),
+      rows: await page.locator('[data-overview-home-report] .overview-v2-alert').count(),
+      products: await page.locator('[data-overview-home-products] .overview-v2-report__row').count(),
+      risks: await page.locator('[data-overview-home-report] .overview-v2-alert--danger').count(),
+      period: await page.locator('[data-overview-home-report-period]').innerText(),
     };
     const open = page.locator('[data-overview-event-open]');
     await open.click();
@@ -33,7 +33,6 @@ const shotDir = process.env.TMALL_SMOKE_SHOTS || 'E:/tm数据表格/tmall-dashbo
       await page.locator('.overview-event-colors__list label').filter({ hasText: '活动' }).click();
       await page.locator('[data-overview-event-submit]').click();
       await dialog.waitFor({ state: 'hidden' });
-      await page.locator('[data-overview-events] .timeline__item').filter({ hasText: 'overview polish smoke' }).waitFor();
       const eventResponse = await page.request.get(`${base}/api/chart_events?chart_type=sales`);
       const eventPayload = await eventResponse.json();
       const created = (Array.isArray(eventPayload) ? eventPayload : eventPayload.events || []).find((item) => item.title === 'overview polish smoke');
@@ -50,5 +49,5 @@ const shotDir = process.env.TMALL_SMOKE_SHOTS || 'E:/tm数据表格/tmall-dashbo
   }
   console.log(JSON.stringify(results, null, 2));
   await browser.close();
-  if (results.some((row) => row.errors.length || row.overflow || row.report.kpis !== 8 || row.report.products !== 5 || row.report.risks < 1 || !row.focused || !row.focusRestored || row.swatches !== 5)) process.exitCode = 1;
+  if (results.some((row) => row.errors.length || row.overflow || row.report.rows < 1 || row.report.products !== 5 || row.report.risks < 1 || !row.focused || !row.focusRestored || row.swatches !== 5)) process.exitCode = 1;
 })();

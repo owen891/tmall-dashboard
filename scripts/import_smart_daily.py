@@ -90,12 +90,12 @@ def import_smart_selection_daily(filepath, conn):
                 continue
 
             conn.execute('''
-                INSERT INTO daily_data (product_id, date, payment_amount, refund_amount, net_sales,
+                INSERT INTO daily_data (shop_id, product_id, date, payment_amount, refund_amount, net_sales,
                     ipv, pv, payment_conversion, cart_rate, fav_rate, bounce_rate, avg_stay_duration,
                     ad_spend, ad_roi, avg_order_value, buyers, payment_qty, cart_qty, fav_users,
                     search_visitors, uv_value, data_source, imported_at)
-                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,datetime('now'))
-                ON CONFLICT(product_id, date) DO UPDATE SET
+                VALUES ('default',?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,datetime('now'))
+                ON CONFLICT(shop_id, product_id, date) DO UPDATE SET
                     payment_amount=excluded.payment_amount, refund_amount=excluded.refund_amount,
                     net_sales=excluded.net_sales, ipv=excluded.ipv, pv=excluded.pv,
                     payment_conversion=excluded.payment_conversion, cart_rate=excluded.cart_rate,

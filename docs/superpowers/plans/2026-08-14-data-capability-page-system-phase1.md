@@ -8,6 +8,8 @@
 
 **Tech Stack:** Python 3, Flask, SQLite, `unittest`, native JavaScript, ECharts, existing browser/static validation scripts.
 
+**Workspace note:** Implementation, focused verification, and release-gate steps are complete. Commit-only checklist steps remain unchecked intentionally because this worktree contains operator-owned changes and the task contract forbids staging or committing them.
+
 ---
 
 ## File Structure
@@ -50,7 +52,7 @@
 - Modify: `tests/test_api_response.py`
 - Create: `tests/test_capability_contract.py`
 
-- [ ] **Step 1: Write failing envelope tests**
+- [x] **Step 1: Write failing envelope tests**
 
 Add these cases to `tests/test_api_response.py`:
 
@@ -86,7 +88,7 @@ def test_success_preserves_declared_context(self):
     self.assertEqual(payload['missing_fields'], ['payment_buyers'])
 ```
 
-- [ ] **Step 2: Run tests and confirm failure**
+- [x] **Step 2: Run tests and confirm failure**
 
 Run:
 
@@ -96,7 +98,7 @@ Run:
 
 Expected: FAIL because the five context keys are absent or `success()` rejects the new keyword arguments.
 
-- [ ] **Step 3: Extend `success()` with explicit defaults**
+- [x] **Step 3: Extend `success()` with explicit defaults**
 
 Replace the current `success` signature and payload assembly in `api/api_response.py` with:
 
@@ -123,11 +125,11 @@ def success(data, availability='available', status=200, *, capabilities=None,
     }), status
 ```
 
-- [ ] **Step 4: Run the response tests**
+- [x] **Step 4: Run the response tests**
 
 Run the Step 2 command. Expected: all `ApiResponseTests` pass.
 
-- [ ] **Step 5: Add a domain contract test**
+- [x] **Step 5: Add a domain contract test**
 
 In `tests/test_capability_contract.py`, create an app with a temporary database, call `/api/overview`, `/api/promotion`, and `/api/lifecycle/assessments`, and assert all successful domain responses contain the five context keys and a non-empty `requestId`.
 
@@ -146,7 +148,7 @@ git commit -m "feat: standardize domain response context"
 - Modify: `services/metrics_service.py`
 - Modify: `api/product_detail_api.py`
 
-- [ ] **Step 1: Write exact formula tests**
+- [x] **Step 1: Write exact formula tests**
 
 Create `tests/test_metric_definitions.py` with cases for complete input, missing dependencies, and zero denominators:
 
@@ -185,7 +187,7 @@ class MetricDefinitionTests(unittest.TestCase):
         self.assertIsNone(result['values']['expense_ratio'])
 ```
 
-- [ ] **Step 2: Run the metric tests and confirm import failure**
+- [x] **Step 2: Run the metric tests and confirm import failure**
 
 ```powershell
 .\.venv\Scripts\python.exe -m unittest tests.test_metric_definitions -v
@@ -193,7 +195,7 @@ class MetricDefinitionTests(unittest.TestCase):
 
 Expected: ERROR because `services.metric_definitions` does not exist.
 
-- [ ] **Step 3: Implement the registry and derivation result**
+- [x] **Step 3: Implement the registry and derivation result**
 
 Create `services/metric_definitions.py` with immutable metric definitions for `net_sales`, `refund_rate`, `payment_conversion_rate`, `average_order_value`, `expense_ratio`, `ad_roi`, and `returning_buyer_ratio`. Implement `derive_metrics(totals)` to return:
 
@@ -207,11 +209,11 @@ Create `services/metric_definitions.py` with immutable metric definitions for `n
 
 Use a private `_ratio()` that returns `None` for `None` or zero denominators and rounds to six decimal places.
 
-- [ ] **Step 4: Replace duplicate formulas**
+- [x] **Step 4: Replace duplicate formulas**
 
 Update `services/metrics_service.py::build_overview()` and `api/product_detail_api.py::product_detail()` to call `derive_metrics()`. Preserve existing response keys and expose `metric_availability` from the registry.
 
-- [ ] **Step 5: Run focused metric and product-detail tests**
+- [x] **Step 5: Run focused metric and product-detail tests**
 
 ```powershell
 .\.venv\Scripts\python.exe -m unittest tests.test_metric_definitions tests.test_product_detail_api tests.test_api_contract -v
@@ -239,7 +241,7 @@ git commit -m "refactor: centralize operating metric formulas"
 - Modify: `tests/test_promotion_api.py`
 - Modify: `tests/test_lifecycle_api.py`
 
-- [ ] **Step 1: Write failing capability tests**
+- [x] **Step 1: Write failing capability tests**
 
 Cover these exact rules:
 
@@ -253,7 +255,7 @@ self.assertFalse(lifecycle_short_history['capabilities']['can_edit_stage'])
 self.assertEqual(lifecycle_short_history['availability'], 'insufficient-data')
 ```
 
-- [ ] **Step 2: Run the focused tests and confirm missing keys**
+- [x] **Step 2: Run the focused tests and confirm missing keys**
 
 ```powershell
 .\.venv\Scripts\python.exe -m unittest tests.test_capability_contract tests.test_promotion_api tests.test_lifecycle_api -v
@@ -261,7 +263,7 @@ self.assertEqual(lifecycle_short_history['availability'], 'insufficient-data')
 
 Expected: FAIL on missing `capabilities`, `filters`, or provenance fields.
 
-- [ ] **Step 3: Return domain-specific capabilities**
+- [x] **Step 3: Return domain-specific capabilities**
 
 Use these keys:
 
@@ -284,7 +286,7 @@ LIFECYCLE_CAPABILITIES = {
 
 Pass the accepted filters, missing dependencies, date gaps, and source batches through `success()` instead of embedding them in UI-specific strings.
 
-- [ ] **Step 4: Verify capability behavior**
+- [x] **Step 4: Verify capability behavior**
 
 Run the Step 2 command. Expected: all focused tests pass.
 
@@ -303,7 +305,7 @@ git commit -m "feat: expose data capabilities and provenance"
 - Modify: `tests/test_action_workflow.py`
 - Modify: `tests/test_api_contract.py`
 
-- [ ] **Step 1: Add failing legacy-write tests**
+- [x] **Step 1: Add failing legacy-write tests**
 
 Add tests asserting:
 
@@ -320,7 +322,7 @@ for method, path in (
 
 Also assert `GET /api/legacy/actions` remains available and `POST /api/actions` creates only a `product_actions` row.
 
-- [ ] **Step 2: Run action tests and confirm legacy writes still succeed or validate differently**
+- [x] **Step 2: Run action tests and confirm legacy writes still succeed or validate differently**
 
 ```powershell
 .\.venv\Scripts\python.exe -m unittest tests.test_action_workflow tests.test_api_contract -v
@@ -328,7 +330,7 @@ Also assert `GET /api/legacy/actions` remains available and `POST /api/actions` 
 
 Expected: FAIL on legacy mutation status/code.
 
-- [ ] **Step 3: Reject legacy mutations without deleting history**
+- [x] **Step 3: Reject legacy mutations without deleting history**
 
 Replace the three legacy mutation route bodies with:
 
@@ -343,11 +345,11 @@ return failure(
 
 Keep the legacy GET response unchanged. Do not migrate or delete the 99 historical rows in this phase.
 
-- [ ] **Step 4: Align transition constants with the design**
+- [x] **Step 4: Align transition constants with the design**
 
 Keep the existing legal chain and exceptional states. Add a unit assertion that `completed` can only be reached through `ActionsService.review()` and that observation-window failures never set `completed`.
 
-- [ ] **Step 5: Run action tests**
+- [x] **Step 5: Run action tests**
 
 Run the Step 2 command. Expected: all action and API contract tests pass.
 
@@ -375,7 +377,7 @@ git commit -m "fix: make legacy actions read only"
 - Modify: `frontend/ui_demo/assets/manage-live.js`
 - Modify: `tests/test_frontend_prd_contract.py`
 
-- [ ] **Step 1: Add failing static frontend contracts**
+- [x] **Step 1: Add failing static frontend contracts**
 
 Require the shared client to expose these helpers:
 
@@ -387,7 +389,7 @@ DemoApi.renderDataState(container, payload.availability, details)
 
 Require product action controls, promotion drilldowns, lifecycle editing, goal adjustment/locking, import confirmation/revert, settings save, task/schedule operations, and export buttons to check `DemoApi.can(...)` before enabling the action.
 
-- [ ] **Step 2: Run frontend contract tests**
+- [x] **Step 2: Run frontend contract tests**
 
 ```powershell
 .\.venv\Scripts\python.exe -m unittest tests.test_frontend_prd_contract -v
@@ -395,7 +397,7 @@ Require product action controls, promotion drilldowns, lifecycle editing, goal a
 
 Expected: FAIL because `can` and `context` do not exist and page adapters do not gate controls.
 
-- [ ] **Step 3: Implement shared normalization**
+- [x] **Step 3: Implement shared normalization**
 
 Add to `frontend/ui_demo/assets/api.js`:
 
@@ -417,11 +419,11 @@ function can(payload, name) {
 
 Export both functions on `window.DemoApi`.
 
-- [ ] **Step 4: Gate page operations**
+- [x] **Step 4: Gate page operations**
 
 For each adapter, set `disabled`, `hidden`, and an explanatory state message from the response contract. Do not infer support from row count or optional fields when a capability key exists. Preserve the existing row-count behavior only as a fallback for legacy endpoints.
 
-- [ ] **Step 5: Run JavaScript syntax and contract tests**
+- [x] **Step 5: Run JavaScript syntax and contract tests**
 
 ```powershell
 node --check frontend/ui_demo/assets/api.js
@@ -464,7 +466,7 @@ git commit -m "feat: gate page operations by data capability"
 - Modify: `frontend/ui_demo/pages/data-center.html`
 - Modify: `frontend/ui_demo/pages/settings.html`
 
-- [ ] **Step 1: Write navigation and modal contract tests**
+- [x] **Step 1: Write navigation and modal contract tests**
 
 Assert that `navigation.js` serializes only supported filter keys and that every dialog/drawer declares one of:
 
@@ -477,7 +479,7 @@ data-modal-kind="flow"
 
 Assert that the primary nav remains exactly: overview, products, promotion, lifecycle, reviews, data-center, settings.
 
-- [ ] **Step 2: Run navigation tests and confirm failure**
+- [x] **Step 2: Run navigation tests and confirm failure**
 
 ```powershell
 .\.venv\Scripts\python.exe -m unittest tests.test_navigation_contract -v
@@ -485,7 +487,7 @@ Assert that the primary nav remains exactly: overview, products, promotion, life
 
 Expected: FAIL because the helper and modal-kind attributes do not exist.
 
-- [ ] **Step 3: Implement the navigation helper**
+- [x] **Step 3: Implement the navigation helper**
 
 Create `frontend/ui_demo/assets/navigation.js`:
 
@@ -503,15 +505,15 @@ Create `frontend/ui_demo/assets/navigation.js`:
 })();
 ```
 
-- [ ] **Step 4: Wire contextual links**
+- [x] **Step 4: Wire contextual links**
 
 Use `DemoNavigation.build()` for overview-to-products, products-to-promotion, products-to-lifecycle, product-detail-to-reviews, and target-to-overview links. Preserve incoming query parameters when a context page returns to its source.
 
-- [ ] **Step 5: Add modal-kind declarations**
+- [x] **Step 5: Add modal-kind declarations**
 
 Classify existing product/lifecycle/promotion detail drawers as `detail`; column/field settings as `config`; lifecycle/event edits as `edit`; imports, target locks, transitions, and reviews as `flow`.
 
-- [ ] **Step 6: Run navigation, frontend contract, and syntax tests**
+- [x] **Step 6: Run navigation, frontend contract, and syntax tests**
 
 ```powershell
 .\.venv\Scripts\python.exe -m unittest tests.test_navigation_contract tests.test_frontend_prd_contract -v
@@ -535,7 +537,7 @@ git commit -m "feat: preserve drilldown context across pages"
 - Modify: `tests/test_release_gates.py`
 - Modify: `docs/RELEASE_NOTES.md`
 
-- [ ] **Step 1: Add release-gate assertions**
+- [x] **Step 1: Add release-gate assertions**
 
 Add browser assertions for:
 
@@ -545,7 +547,7 @@ Add browser assertions for:
 - flow modals expose their impact text;
 - all seven primary pages render `available`, `no-data`, and `partial` without console errors.
 
-- [ ] **Step 2: Run the new gate and confirm any missing behavior**
+- [x] **Step 2: Run the new gate and confirm any missing behavior**
 
 ```powershell
 node scripts/browser_prd_gates.cjs
@@ -553,11 +555,11 @@ node scripts/browser_prd_gates.cjs
 
 Expected before final fixes: the script identifies any page that does not retain filters or explain a disabled capability.
 
-- [ ] **Step 3: Fix only failures introduced or exposed by this phase**
+- [x] **Step 3: Fix only failures introduced or exposed by this phase**
 
 Update the adapter or page named by each assertion. Do not add new product capabilities or dependencies.
 
-- [ ] **Step 4: Run the complete backend suite**
+- [x] **Step 4: Run the complete backend suite**
 
 ```powershell
 .\.venv\Scripts\python.exe -m unittest discover -s tests -p "test_*.py" -v
@@ -565,7 +567,7 @@ Update the adapter or page named by each assertion. Do not add new product capab
 
 Expected: exit 0, zero failures and zero errors.
 
-- [ ] **Step 5: Run static and browser verification**
+- [x] **Step 5: Run static and browser verification**
 
 ```powershell
 node scripts/validate_ui_demos.cjs
@@ -575,7 +577,7 @@ node scripts/smoke_core_pages.cjs
 
 Expected: every command exits 0 and reports all configured pages checked.
 
-- [ ] **Step 6: Run the production preflight**
+- [x] **Step 6: Run the production preflight**
 
 ```powershell
 .\.venv\Scripts\python.exe scripts/production_preflight.py
@@ -583,7 +585,7 @@ Expected: every command exits 0 and reports all configured pages checked.
 
 Expected: exit 0 with database integrity, migration, API, browser, and release-gate checks passing.
 
-- [ ] **Step 7: Record the delivered scope**
+- [x] **Step 7: Record the delivered scope**
 
 Add one release-note entry stating that Phase 1 standardizes metric formulas, capability/provenance contracts, action write ownership, data states, cross-page context, and modal classification. State explicitly that profit, inventory, user cohort, strict attribution, and full market opportunity analysis remain out of scope.
 

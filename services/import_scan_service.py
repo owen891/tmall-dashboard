@@ -16,10 +16,11 @@ from uuid import uuid4
 from flask import current_app, has_app_context
 
 from db import get_db
-from services.import_service import ImportValidationError, import_service
+from services.import_service import import_service
 
 
 SUPPORTED_SUFFIXES = {'.xlsx', '.xls', '.csv', '.zip'}
+DEFAULT_FILE_PATTERN = '*.xlsx;*.xls;*.csv;*.zip'
 LEASE_SECONDS = 120
 
 
@@ -101,19 +102,87 @@ def _validate_folder(value):
 
 
 def _validate_pattern(value):
-    pattern = str(value or '*').strip()
-    if not pattern or pattern in {'.', '..'} or '/' in pattern or '\\' in pattern:
-        raise ImportScanValidationError('file_pattern must match direct children only')
-    if '..' in pattern:
-        raise ImportScanValidationError('file_pattern cannot contain ..')
-    return pattern
+    raw = str(value or DEFAULT_FILE_PATTERN).strip()
+    patterns = [item.strip() for item in re.split(r'[;,]', raw) if item.strip()]
+    if not patterns:
+        raise ImportScanValidationError('file_pattern must contain at least one pattern')
+    for pattern in patterns:
+        if pattern in {'.', '..'} or '/' in pattern or '\\' in pattern:
+            raise ImportScanValidationError('file_pattern must match direct children only')
+        if '..' in pattern:
+            raise ImportScanValidationError('file_pattern cannot contain ..')
+    return ';'.join(patterns)
+
+
+def _matches_pattern(filename, pattern):
+    patterns = [item.strip() for item in re.split(r'[;,]', str(pattern or DEFAULT_FILE_PATTERN)) if item.strip()]
+    return any(fnmatch.fnmatch(filename, item) for item in patterns)
 
 
 def _validate_cron(value):
     cron = str(value or '').strip()
     if len(cron.split()) != 5 or not re.fullmatch(r'[0-9*/?,\-]+(?:\s+[0-9*/?,\-]+){4}', cron):
         raise ImportScanValidationError('cron_expr must contain five cron fields')
+    minute, hour, day, month, weekday = cron.split()
+    _cron_values(minute, 0, 59)
+    _cron_values(hour, 0, 23)
+    _cron_values(day, 1, 31)
+    _cron_values(month, 1, 12)
+    _cron_values(weekday, 0, 7, normalize_sunday=True)
     return cron
+
+
+def _cron_values(field, minimum, maximum, normalize_sunday=False):
+    values = set()
+    for item in field.split(','):
+        base, separator, step_text = item.partition('/')
+        step = int(step_text) if separator else 1
+        if step <= 0:
+            raise ImportScanValidationError('cron step must be positive')
+        if base in {'*', '?'}:
+            start, end = minimum, maximum
+        elif '-' in base:
+            start_text, end_text = base.split('-', 1)
+            start, end = int(start_text), int(end_text)
+        else:
+            start = end = int(base)
+        if start < minimum or end > maximum or start > end:
+            raise ImportScanValidationError('cron field is outside the supported range')
+        values.update(range(start, end + 1, step))
+    if normalize_sunday and 7 in values:
+        values.remove(7)
+        values.add(0)
+    return values
+
+
+def _next_cron_run(cron_expr, after):
+    minute_field, hour_field, day_field, month_field, weekday_field = _validate_cron(cron_expr).split()
+    minutes = _cron_values(minute_field, 0, 59)
+    hours = _cron_values(hour_field, 0, 23)
+    days = _cron_values(day_field, 1, 31)
+    months = _cron_values(month_field, 1, 12)
+    weekdays = _cron_values(weekday_field, 0, 7, normalize_sunday=True)
+    day_wildcard = day_field in {'*', '?'}
+    weekday_wildcard = weekday_field in {'*', '?'}
+    candidate = after.astimezone(timezone.utc).replace(second=0, microsecond=0) + timedelta(minutes=1)
+    for _ in range(366 * 24 * 60 * 2):
+        day_match = candidate.day in days
+        weekday_match = ((candidate.weekday() + 1) % 7) in weekdays
+        if day_wildcard:
+            calendar_match = weekday_match
+        elif weekday_wildcard:
+            calendar_match = day_match
+        else:
+            calendar_match = day_match or weekday_match
+        if (
+            candidate.minute in minutes
+            and candidate.hour in hours
+            and candidate.month in months
+            and calendar_match
+        ):
+            return candidate
+        candidate += timedelta(minutes=1)
+    raise ImportScanValidationError('cron expression has no run time within two years')
 
 
 def _validate_source(source_type):
@@ -140,12 +209,13 @@ class ImportScanService:
         if not task_name:
             raise ImportScanValidationError('task_name is required')
         folder = _validate_folder(payload.get('folder_path'))
-        pattern = _validate_pattern(payload.get('file_pattern', '*'))
+        pattern = _validate_pattern(payload.get('file_pattern', DEFAULT_FILE_PATTERN))
         source_type = _validate_source(payload.get('source_type', 'auto'))
         mapping = _validate_mapping(payload.get('mapping_template'))
         cron = _validate_cron(payload.get('cron_expr', '* * * * *'))
         enabled = 1 if payload.get('enabled', True) else 0
         now = _utc_now()
+        next_run = _next_cron_run(cron, now)
         with get_db() as conn:
             cursor = conn.execute(
                 '''INSERT INTO import_scan_jobs
@@ -154,7 +224,7 @@ class ImportScanService:
                     created_at, updated_at)
                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
                 (task_name, folder, pattern, source_type, json.dumps(mapping, ensure_ascii=False),
-                 cron, enabled, 'active' if enabled else 'disabled', _iso(now), _iso(now), _iso(now)),
+                 cron, enabled, 'active' if enabled else 'disabled', _iso(next_run), _iso(now), _iso(now)),
             )
             job_id = cursor.lastrowid
             conn.commit()
@@ -189,16 +259,18 @@ class ImportScanService:
         cron = _validate_cron(merged.get('cron_expr'))
         enabled = 1 if merged.get('enabled', True) else 0
         status = 'active' if enabled else 'disabled'
-        now = _iso(_utc_now())
+        now_dt = _utc_now()
+        next_run = _next_cron_run(cron, now_dt)
+        now = _iso(now_dt)
         with get_db() as conn:
             conn.execute(
                 '''UPDATE import_scan_jobs
                    SET task_name=?, folder_path=?, file_pattern=?, source_type=?,
                        mapping_template_json=?, cron_expr=?, enabled=?, status=?,
-                       lease_token=NULL, lease_until=NULL, updated_at=?
+                       next_run=?, lease_token=NULL, lease_until=NULL, updated_at=?
                    WHERE id=?''',
                 (str(merged.get('task_name') or '').strip(), folder, pattern, source_type,
-                 json.dumps(mapping, ensure_ascii=False), cron, enabled, status, now, job_id),
+                 json.dumps(mapping, ensure_ascii=False), cron, enabled, status, _iso(next_run), now, job_id),
             )
             conn.commit()
         return cls.get_job(job_id)
@@ -251,7 +323,7 @@ class ImportScanService:
         for entry in os.scandir(folder):
             if not entry.is_file(follow_symlinks=False) or entry.is_symlink():
                 continue
-            if not fnmatch.fnmatch(entry.name, pattern):
+            if not _matches_pattern(entry.name, pattern):
                 continue
             suffix = Path(entry.name).suffix.lower()
             if suffix not in SUPPORTED_SUFFIXES:
@@ -321,7 +393,9 @@ class ImportScanService:
                     conn.commit()
                     return {**dict(existing), 'source_hash': source_hash, 'status': 'discovered'}, True
             if existing:
-                if existing['status'] in {'imported', 'blocked', 'failed'}:
+                if existing['batch_id']:
+                    return dict(existing), False
+                if existing['status'] in {'imported', 'blocked', 'failed', 'importing'}:
                     return dict(existing), False
                 conn.execute('UPDATE import_scan_files SET updated_at=? WHERE id=?', (now, existing['id']))
                 conn.commit()
@@ -337,6 +411,19 @@ class ImportScanService:
             return {'id': cursor.lastrowid, 'status': 'discovered', 'source_hash': source_hash}, True
 
     @classmethod
+    def _claim_discovered_file(cls, file_id):
+        now = _iso(_utc_now())
+        with get_db() as conn:
+            result = conn.execute(
+                '''UPDATE import_scan_files
+                   SET status='importing', updated_at=?
+                   WHERE id=? AND status='discovered' AND batch_id IS NULL''',
+                (now, file_id),
+            )
+            conn.commit()
+            return result.rowcount == 1
+
+    @classmethod
     def _update_file(cls, file_id, **values):
         if not values:
             return
@@ -345,6 +432,37 @@ class ImportScanService:
         with get_db() as conn:
             conn.execute(f'UPDATE import_scan_files SET {assignments} WHERE id=?', (*values.values(), file_id))
             conn.commit()
+
+    @classmethod
+    def retry_file(cls, job_id, file_id):
+        now = _iso(_utc_now())
+        with get_db() as conn:
+            row = conn.execute(
+                'SELECT * FROM import_scan_files WHERE id=? AND job_id=?',
+                (file_id, job_id),
+            ).fetchone()
+            if row is None:
+                raise ImportScanValidationError('scan file not found')
+            if row['status'] not in {'blocked', 'failed'}:
+                raise ImportScanConflictError('only blocked or failed files can be retried')
+            conn.execute(
+                '''UPDATE import_scan_files
+                   SET status='discovered', preview_id=NULL,
+                       error_code=NULL, error_message=NULL, imported_at=NULL, updated_at=?
+                   WHERE id=? AND job_id=?''',
+                (now, file_id, job_id),
+            )
+            conn.execute(
+                '''UPDATE import_scan_jobs
+                   SET next_run=?, updated_at=?
+                   WHERE id=? AND enabled=1''',
+                (now, now, job_id),
+            )
+            conn.commit()
+            return dict(conn.execute(
+                'SELECT * FROM import_scan_files WHERE id=? AND job_id=?',
+                (file_id, job_id),
+            ).fetchone())
 
     @classmethod
     def _acquire_lease(cls, job_id):
@@ -397,8 +515,10 @@ class ImportScanService:
                 scan_file, should_process = cls._upsert_discovered(job_id, item)
                 if not should_process:
                     continue
-                counters['discovered_count'] += 1
                 file_id = scan_file['id']
+                if not cls._claim_discovered_file(file_id):
+                    continue
+                counters['discovered_count'] += 1
                 canonical, filename, _, _, _ = item
                 try:
                     with open(canonical, 'rb') as handle:
@@ -416,7 +536,7 @@ class ImportScanService:
                     result = import_service.confirm(preview['id'], preview.get('mapping') or {})
                     cls._update_file(file_id, status='imported', preview_id=preview.get('id'), batch_id=result.get('id'), imported_at=_iso(_utc_now()))
                     counters['imported_count'] += 1
-                except (ImportValidationError, OSError, ValueError) as error:
+                except Exception as error:
                     cls._update_file(file_id, status='failed', error_code='IMPORT_FAILED', error_message=str(error))
                     counters['failed_count'] += 1
             status = 'completed' if not (counters['failed_count'] or counters['blocked_count']) else 'partial'
@@ -427,7 +547,10 @@ class ImportScanService:
                     (_iso(finished), status, counters['discovered_count'], counters['imported_count'], counters['blocked_count'], counters['failed_count'], run_id),
                 )
                 conn.commit()
-            cls._release_lease(job_id, token, last_run=_iso(finished), next_run=_iso(finished + timedelta(minutes=1)), last_error=None)
+            next_run = _next_cron_run(job['cron_expr'], finished)
+            cls._release_lease(
+                job_id, token, last_run=_iso(finished), next_run=_iso(next_run), last_error=None,
+            )
             return {'id': run_id, 'job_id': job_id, 'status': status, **counters}
         except Exception as error:
             with get_db() as conn:
@@ -451,6 +574,6 @@ class ImportScanService:
         for row in rows:
             try:
                 results.append(cls.run_job_once(row['id']))
-            except ImportScanConflictError:
+            except Exception:
                 continue
         return results

@@ -44,7 +44,7 @@ class ActionsService:
             'planned_at': payload['planned_at'], 'observer_window_days': int(payload['observer_window_days']),
             'assigned_to': payload.get('assigned_to'),
         }
-        ActionsRepo.create(action)
+        ActionsRepo.create(action, payload.get('operator'), payload.get('reason'))
         return ActionsRepo.get(action['id'])
 
     def create_batch(self, payload):
@@ -67,7 +67,7 @@ class ActionsService:
                 'target_metric': item['target_metric'], 'expected_change': item.get('expected_change'), 'status': 'draft',
                 'planned_at': item['planned_at'], 'observer_window_days': int(item['observer_window_days']), 'assigned_to': item.get('assigned_to'),
             })
-        ActionsRepo.create_many(actions)
+        ActionsRepo.create_many(actions, payload.get('operator'), payload.get('reason'))
         return {'action_group_id': group_id, 'actions': [ActionsRepo.get(action['id']) for action in actions]}
 
     def transition(self, action_id, target, payload):
@@ -89,7 +89,10 @@ class ActionsService:
             values.update({'blocked_reason': payload['blocked_reason'], 'expected_recovery_at': payload['expected_recovery_at']})
         if target == 'observing':
             values['executed_at'] = payload.get('executed_at') or action['planned_at']
-        if not ActionsRepo.update(action_id, values, expected_version=action['version']):
+        if not ActionsRepo.update(
+            action_id, values, expected_version=action['version'],
+            operator=payload.get('operator'), reason=payload.get('reason'),
+        ):
             raise ActionConflictError('动作版本已更新，请刷新后重试')
         return ActionsRepo.get(action_id)
 
@@ -110,7 +113,7 @@ class ActionsService:
                         f'观察窗口数据不完整：动作前 {len(before)}/{window} 天，'
                         f'动作后 {len(after)}/{window} 天；等待数据补齐后重新计算。'
                     ),
-                }, expected_version=action['version'])
+                }, expected_version=action['version'], operator='system', reason='观察窗口数据不足')
                 continue
             before_value = sum(row['payment_amount'] for row in before) / window
             after_value = sum(row['payment_amount'] for row in after) / window
@@ -119,7 +122,7 @@ class ActionsService:
                 'after_metric_value': after_value, 'result_change': after_value - before_value,
                 'calculation_note': f'动作前后各 {window} 天完整覆盖，按日均支付金额计算',
                 'version': action['version'] + 1,
-            }, expected_version=action['version']):
+            }, expected_version=action['version'], operator='system', reason='自动回算观察窗口'):
                 continue
             updated.append(ActionsRepo.get(action['id']))
         return {'updated_count': len(updated), 'actions': updated}
@@ -139,7 +142,8 @@ class ActionsService:
             'review_reason': payload['reason'], 'review_conclusion': payload['conclusion'],
             'review_next_action': payload['next_action'], 'reviewed_by': payload['reviewer'],
             'reviewed_at': date.today().isoformat(), 'version': action['version'] + 1,
-        }, expected_version=action['version']):
+        }, expected_version=action['version'], operator=payload.get('operator') or payload.get('reviewer'),
+           reason=payload.get('audit_reason') or payload.get('reason') or '提交动作复盘'):
             raise ActionConflictError('动作版本已更新，请刷新后重试')
         return ActionsRepo.get(action_id)
 

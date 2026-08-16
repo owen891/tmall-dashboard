@@ -46,3 +46,15 @@ Thumbs.db
 *.log
 .tmp/
 .test-tmp/
+
+# Local agent and visual review artifacts
+.tmp-*
+.superpowers/
+.planning/
+.impeccable/
+Program
+audit-*.png
+lifecycle-dialog-*.png
+overview-polish-*.png
+products-columns-*.png
+ui-manage-toolbox-check.png

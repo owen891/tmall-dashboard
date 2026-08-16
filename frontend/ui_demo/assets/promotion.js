@@ -128,7 +128,7 @@
 
   const operatorLabels = { lt: '<', lte: '≤', gt: '>', gte: '≥', eq: '=', neq: '≠', between: '介于' };
   const alertFields = {
-    roi: { label: 'ROI', type: 'number' }, spend: { label: '花费', type: 'currency' }, impressions: { label: '展现量', type: 'integer' }, clicks: { label: '点击量', type: 'integer' }, ctr: { label: 'CTR', type: 'percent' }, cpc: { label: 'CPC', type: 'currency' }, transactionAmount: { label: '成交金额', type: 'currency' }, transactionCount: { label: '成交笔数', type: 'integer' }, conversionRate: { label: '转化率', type: 'percent' },
+    roi: { label: '推广 ROI', type: 'number' }, spend: { label: '推广花费', type: 'currency' }, impressions: { label: '展现量', type: 'integer' }, clicks: { label: '点击量', type: 'integer' }, ctr: { label: '点击率', type: 'percent' }, cpc: { label: '平均点击花费', type: 'currency' }, transactionAmount: { label: '推广成交金额', type: 'currency' }, transactionCount: { label: '推广成交笔数', type: 'integer' }, conversionRate: { label: '商品支付转化率', type: 'percent' },
   };
   const operators = Object.keys(operatorLabels);
   const createCondition = (field = 'roi', operator = 'lt', value = '') => ({ id: uid(), type: 'condition', field, operator, value: String(value), secondValue: '' });

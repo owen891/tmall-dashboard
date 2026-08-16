@@ -94,6 +94,18 @@ _LEGACY_SINGLE_SHOP_PATHS = {
 }
 
 
+def _aov_expression(dimension):
+    """Return the canonical AOV formula for a legacy dimension endpoint."""
+    if dimension == 'weekly':
+        # weekly_data predates the canonical buyer field; retain its imported
+        # AOV rather than dividing GMV by visitors.
+        return 'AVG(avg_order_value)'
+    return (
+        'CASE WHEN SUM(buyers) > 0 '
+        'THEN SUM(payment_amount) * 1.0 / SUM(buyers) ELSE NULL END'
+    )
+
+
 @data_bp.before_request
 def reject_legacy_single_shop_scope():
     if request.path not in _LEGACY_SINGLE_SHOP_PATHS:
@@ -163,7 +175,7 @@ def get_kpi():
                     COALESCE(SUM(refund_amount),0) as refund_amount,
                     COALESCE(SUM(payment_amount),0) - COALESCE(SUM(refund_amount),0) as net_sales,
                     COALESCE(SUM({visitors_col}),0) as visitors,
-                    CASE WHEN SUM({visitors_col}) > 0 THEN SUM(payment_amount) * 1.0 / SUM({visitors_col}) ELSE 0 END as aov,
+                    {_aov_expression(dimension)} as aov,
                     CASE WHEN SUM(payment_amount) > 0 THEN SUM(refund_amount) * 1.0 / SUM(payment_amount) ELSE 0 END as refund_rate,
                     COALESCE(SUM(ad_spend),0) as ad_spend,
                     CASE WHEN SUM(ad_spend) > 0 THEN SUM(payment_amount) * 1.0 / SUM(ad_spend) ELSE 0 END as roi,
@@ -389,7 +401,7 @@ def compare_periods():
                     COALESCE(SUM(refund_amount),0) as refund,
                     COALESCE(SUM(payment_amount),0) - COALESCE(SUM(refund_amount),0) as net_sales,
                     COALESCE(SUM({visitors_col}),0) as visitors,
-                    CASE WHEN SUM({visitors_col}) > 0 THEN SUM(payment_amount) * 1.0 / SUM({visitors_col}) ELSE 0 END as aov,
+                    {_aov_expression(dim)} as aov,
                     CASE WHEN SUM(payment_amount) > 0 THEN SUM(refund_amount) * 1.0 / SUM(payment_amount) ELSE 0 END as refund_rate,
                     COALESCE(SUM(ad_spend),0) as ad_spend,
                     CASE WHEN SUM(ad_spend) > 0 THEN SUM(payment_amount) * 1.0 / SUM(ad_spend) ELSE 0 END as roi,
@@ -2412,7 +2424,7 @@ def get_anomalies():
                     COALESCE(SUM(refund_amount),0) as refund,
                     COALESCE(SUM(payment_amount),0) - COALESCE(SUM(refund_amount),0) as net_sales,
                     COALESCE(SUM({visitors_col}),0) as visitors,
-                    CASE WHEN SUM({visitors_col}) > 0 THEN SUM(payment_amount) * 1.0 / SUM({visitors_col}) ELSE 0 END as aov,
+                    {_aov_expression(dimension)} as aov,
                     CASE WHEN SUM(payment_amount) > 0 THEN SUM(refund_amount) * 1.0 / SUM(payment_amount) ELSE 0 END as refund_rate,
                     COALESCE(SUM(ad_spend),0) as ad_spend,
                     CASE WHEN SUM(ad_spend) > 0 THEN SUM(payment_amount) * 1.0 / SUM(ad_spend) ELSE 0 END as roi
@@ -3357,7 +3369,7 @@ def get_review_data():
                 {click_rate_expr},
                 AVG(cart_rate) as cart_rate,
                 AVG(fav_rate) as fav_rate,
-                SUM(payment_amount) / NULLIF(SUM({visitors_col}), 0) as avg_order_value,
+                {_aov_expression(dim)} as avg_order_value,
                 COUNT(DISTINCT product_id) as product_count,
                 {buyers_expr}
             FROM {table} WHERE {period_col} = ?
@@ -3395,7 +3407,7 @@ def get_review_data():
                     {click_rate_expr},
                     AVG(cart_rate) as cart_rate,
                     AVG(fav_rate) as fav_rate,
-                    SUM(payment_amount) / NULLIF(SUM({visitors_col}), 0) as avg_order_value,
+                    {_aov_expression(dim)} as avg_order_value,
                     COUNT(DISTINCT product_id) as product_count,
                     {buyers_expr}
                 FROM {table} WHERE {period_col} = ?
@@ -3424,7 +3436,7 @@ def get_review_data():
                     {click_rate_expr},
                     AVG(cart_rate) as cart_rate,
                     AVG(fav_rate) as fav_rate,
-                    SUM(payment_amount) / NULLIF(SUM({visitors_col}), 0) as avg_order_value,
+                    {_aov_expression(dim)} as avg_order_value,
                     COUNT(DISTINCT product_id) as product_count,
                     {buyers_expr}
                 FROM {table} WHERE {period_col} = ?
@@ -3554,7 +3566,7 @@ def generate_report():
                 COALESCE(SUM(refund_amount),0) as refund_amount,
                 COALESCE(SUM(payment_amount),0) - COALESCE(SUM(refund_amount),0) as net_sales,
                 COALESCE(SUM({visitors_col}),0) as visitors,
-                CASE WHEN SUM({visitors_col}) > 0 THEN SUM(payment_amount) * 1.0 / SUM({visitors_col}) ELSE 0 END as aov,
+                {_aov_expression(dim)} as aov,
                 CASE WHEN SUM(payment_amount) > 0 THEN SUM(refund_amount) * 1.0 / SUM(payment_amount) ELSE 0 END as refund_rate,
                 COALESCE(SUM(ad_spend),0) as ad_spend,
                 CASE WHEN SUM(ad_spend) > 0 THEN SUM(payment_amount) * 1.0 / SUM(ad_spend) ELSE 0 END as roi,

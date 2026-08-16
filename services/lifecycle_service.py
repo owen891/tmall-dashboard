@@ -1,6 +1,8 @@
 from datetime import date, timedelta
 
 from repos.lifecycle_repo import LifecycleRepo
+from services.classification_service import enabled_values, label_for
+from services.settings_service import settings_service
 
 
 class LifecycleConflictError(ValueError):
@@ -28,10 +30,11 @@ def _continuous_days(rows):
 
 
 def _seasonality(monthly):
-    if len({row['month'] for row in monthly}) < 12:
+    complete = [row for row in monthly if int(row.get('covered_days') or 0) >= int(row.get('expected_days') or 0)]
+    if len({row['month'] for row in complete}) < 12:
         return None, None
     values = {}
-    for row in monthly:
+    for row in complete:
         values.setdefault(int(str(row['month'])[-2:]), []).append(float(row['payment_amount'] or 0))
     averages = {month: sum(items) / len(items) for month, items in values.items()}
     baseline = sum(averages.values()) / len(averages)
@@ -52,10 +55,18 @@ def _seasonality(monthly):
 
 
 class LifecycleService:
-    def assessment(self, product):
-        daily = LifecycleRepo.daily_rows(product['product_id'])
-        monthly = LifecycleRepo.monthly_rows(product['product_id'])
-        profile = LifecycleRepo.get_profile(product['product_id']) or {'version': 0}
+    def assessment(self, product, context=None, dictionaries=None):
+        product_id = product['product_id']
+        if context is None:
+            daily = LifecycleRepo.daily_rows(product_id)
+            monthly = LifecycleRepo.monthly_rows(product_id)
+            profile = LifecycleRepo.get_profile(product_id) or {'version': 0}
+            history = LifecycleRepo.history(product_id)
+        else:
+            daily = context['daily'].get(product_id, [])
+            monthly = context['monthly'].get(product_id, [])
+            profile = context['profiles'].get(product_id) or {'version': 0}
+            history = context['history'].get(product_id, [])
         continuous = _continuous_days(daily)
         listed_at = product.get('list_date')
         listed_days = None
@@ -86,7 +97,7 @@ class LifecycleService:
             rationale = (f'连续有效日 {continuous}；最近 30 天支付金额 {recent:.2f}，前 30 天 {before:.2f}；'
                          f'转化率 {recent_cvr:.4f}' if recent_cvr is not None else
                          f'连续有效日 {continuous}；最近 30 天支付金额 {recent:.2f}，前 30 天 {before:.2f}；转化率数据不足')
-        complete_months = len({row['month'] for row in monthly})
+        complete_months = len({row['month'] for row in monthly if int(row.get('covered_days') or 0) >= int(row.get('expected_days') or 0)})
         seasonal, seasonal_source = _seasonality(monthly)
         latest_date = date.fromisoformat(str(daily[-1]['date'])[:10]) if daily else date.today()
         next_key_date = profile.get('next_key_date')
@@ -100,22 +111,36 @@ class LifecycleService:
             stage = profile['manual_stage']
         else:
             stage = profile.get('manual_stage') or recommended
+        dictionaries = dictionaries or settings_service.get()['classification_dictionaries']
+        seasonal_value = profile.get('seasonal_attribute') or seasonal
         return {
             'product_id': product['product_id'], 'title': product['title'], 'stage': stage,
+            'stage_label': label_for(dictionaries, 'lifecycle_stages', stage, stage),
             'recommended_stage': recommended, 'manual_stage': profile.get('manual_stage'),
-            'locked': bool(profile.get('stage_locked')), 'seasonal_attribute': profile.get('seasonal_attribute') or seasonal,
+            'locked': bool(profile.get('stage_locked')), 'seasonal_attribute': seasonal_value,
+            'seasonal_label': label_for(
+                dictionaries, 'seasonal_attributes', seasonal_value,
+                '数据不足' if seasonal_value is None else seasonal_value,
+            ),
             'seasonal_source': profile.get('seasonal_source') or seasonal_source,
             'confidence': profile.get('confidence') or confidence, 'rationale': profile.get('rationale') or rationale,
             'next_key_date': next_key_date, 'continuous_valid_days': continuous,
+            'data_cutoff_date': daily[-1]['date'] if daily else None,
             'listed_days': listed_days, 'conversion_trend': {
                 'recent': locals().get('recent_cvr'), 'prior': locals().get('prior_cvr')},
             'promotion_dependency': locals().get('ad_dependency'),
-            'history': LifecycleRepo.history(product['product_id']),
+            'history': history,
             'complete_months': complete_months, 'version': profile.get('version', 0),
         }
 
     def list(self):
-        return [self.assessment(product) for product in LifecycleRepo.product_rows()]
+        context = LifecycleRepo.assessment_context()
+        dictionaries = settings_service.get()['classification_dictionaries']
+        return [self.assessment(product, context, dictionaries) for product in LifecycleRepo.product_rows()]
+
+    def get(self, product_id):
+        product = LifecycleRepo.product_row(product_id)
+        return self.assessment(product) if product else None
 
     def update(self, product_id, payload):
         product = next((item for item in LifecycleRepo.product_rows() if item['product_id'] == product_id), None)
@@ -126,9 +151,11 @@ class LifecycleService:
             raise LifecycleConflictError('生命周期版本已更新，请刷新后重试')
         manual = payload.get('manual_stage')
         seasonal = payload.get('seasonal_attribute')
-        if manual and manual not in STAGES:
+        dictionaries = settings_service.get()['classification_dictionaries']
+        manual_stages = enabled_values(dictionaries, 'lifecycle_stages') - {'data_accumulating'}
+        if manual and manual not in manual_stages:
             raise LifecycleValidationError('生命周期阶段不合法')
-        if seasonal not in SEASONAL:
+        if seasonal is not None and seasonal not in enabled_values(dictionaries, 'seasonal_attributes'):
             raise LifecycleValidationError('季节属性不合法')
         if not payload.get('reason') or not payload.get('operator'):
             raise LifecycleValidationError('调整必须填写原因和操作者')

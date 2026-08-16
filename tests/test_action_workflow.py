@@ -77,6 +77,83 @@ class ActionWorkflowTests(unittest.TestCase):
         self.assertTrue(payload['ok'])
         self.assertIsInstance(payload['data'], list)
 
+    def test_action_list_supports_pending_review_filter_and_includes_history(self):
+        action_id = self.create_action()
+        status, listed = self.request('GET', '/api/actions?status=pending_review')
+        self.assertEqual(status, 200)
+        self.assertEqual(listed['data'], [])
+        for target in ('pending_execution', 'executing', 'observing'):
+            self.transition(action_id, target)
+        status, listed = self.request('GET', '/api/actions?status=observing')
+        self.assertEqual(status, 200)
+        self.assertTrue(listed['data'][0]['action_detail'])
+        self.assertGreaterEqual(len(listed['data'][0]['history']), 2)
+
+    def test_unfiltered_action_list_preserves_legacy_all_status_contract(self):
+        action_id = self.create_action()
+        status, listed = self.request('GET', '/api/actions')
+        self.assertEqual(status, 200)
+        self.assertEqual([item['id'] for item in listed['data']], [action_id])
+
+    def test_legacy_action_mutations_are_read_only(self):
+        for method, path in (
+            ('POST', '/api/legacy/actions'),
+            ('PUT', '/api/legacy/actions/1'),
+            ('DELETE', '/api/legacy/actions/1'),
+        ):
+            status, payload = self.request(method, path, json={})
+            self.assertEqual(status, 409)
+            self.assertEqual(payload['code'], 'LEGACY_READ_ONLY')
+
+        response = self.client.get('/api/legacy/actions')
+        self.assertEqual(response.status_code, 200)
+        response.close()
+
+    def test_new_action_writes_only_product_actions(self):
+        action_id = self.create_action()
+        with self.get_db(self.database_path) as connection:
+            product_count = connection.execute('SELECT COUNT(*) FROM product_actions WHERE id = ?', (action_id,)).fetchone()[0]
+            legacy_count = connection.execute('SELECT COUNT(*) FROM operation_actions').fetchone()[0]
+        self.assertEqual(product_count, 1)
+        self.assertEqual(legacy_count, 0)
+
+    def test_formal_action_boundary_rejects_unknown_product_and_capability(self):
+        payload = {
+            'product_id': 'missing-product', 'purpose_type': 'increase_sales', 'purpose_note': 'x',
+            'action_type': 'image_change', 'action_detail': 'x', 'target_metric': 'payment_amount',
+            'planned_at': '2026-04-03', 'observer_window_days': 7,
+        }
+        status, result = self.request('POST', '/api/actions', json=payload)
+        self.assertEqual(status, 404)
+        self.assertEqual(result['code'], 'NOT_FOUND')
+        payload['product_id'] = 'action-a'; payload['capability_key'] = 'settings.configure_templates'
+        status, result = self.request('POST', '/api/actions', json=payload)
+        self.assertEqual(status, 403)
+        self.assertEqual(result['code'], 'FORBIDDEN')
+
+    def test_workflow_mutations_reject_wrong_capability(self):
+        action_id = self.create_action()
+        status, result = self.request('POST', f'/api/actions/{action_id}/transition', json={
+            'status': 'pending_execution', 'version': 1, 'capability_key': 'settings.configure_templates',
+        })
+        self.assertEqual(status, 403)
+        self.assertEqual(result['code'], 'FORBIDDEN')
+        status, result = self.request('POST', '/api/actions/recalculate', json={
+            'capability_key': 'settings.configure_templates',
+        })
+        self.assertEqual(status, 403)
+        self.assertEqual(result['code'], 'FORBIDDEN')
+        self.transition(action_id, 'pending_execution')
+        self.transition(action_id, 'executing')
+        self.transition(action_id, 'observing')
+        self.transition(action_id, 'pending_review')
+        status, result = self.request('POST', f'/api/actions/{action_id}/review', json={
+            'version': 5, 'effective': True, 'reason': 'x', 'conclusion': 'x', 'next_action': 'x', 'reviewer': 'x',
+            'capability_key': 'settings.configure_templates',
+        })
+        self.assertEqual(status, 403)
+        self.assertEqual(result['code'], 'FORBIDDEN')
+
     def test_batch_creation_shares_group_and_history_tracks_transitions(self):
         status, created = self.request('POST', '/api/actions/batch', json={
             'product_ids': ['action-a'], 'purpose_type': 'increase_sales', 'purpose_note': '批量验证',

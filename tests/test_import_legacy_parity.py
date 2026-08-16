@@ -323,6 +323,35 @@ class ImportLegacyParityTests(unittest.TestCase):
             self._quality_summary(self.legacy_db),
         )
 
+    def test_legacy_auto_detection_uses_canonical_promotion_channel_spec(self):
+        """The historical file entry point must support non-product promotion grains."""
+        from services.legacy_import_adapter import import_file
+
+        filename = 'promotion-channel-auto.xlsx'
+        headers = [
+            '\u65e5\u671f', '\u6e20\u9053', '\u63a8\u5e7f\u82b1\u8d39',
+            '\u63a8\u5e7f\u6210\u4ea4\u91d1\u989d',
+        ]
+        path = os.path.join(self.temp_dir.name, filename)
+        with open(path, 'wb') as output:
+            output.write(_workbook_bytes(
+                headers, [['2026-04-01', 'search', '12', '60']]
+            ).read())
+
+        with self.legacy_app.app_context():
+            result = import_file(path)
+
+        self.assertEqual(result['source_type'], 'promotion_channel_day')
+        with self.legacy_app.app_context():
+            from db import get_db
+            with get_db() as connection:
+                fact = connection.execute(
+                    '''SELECT channel, product_id, ad_spend,
+                              attributed_payment_amount
+                       FROM promotion_daily_facts'''
+                ).fetchone()
+        self.assertEqual(tuple(fact), ('search', '', 12.0, 60.0))
+
 
 if __name__ == '__main__':
     unittest.main()

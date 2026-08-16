@@ -6,6 +6,7 @@ import json
 from collections import Counter
 from flask import Blueprint, jsonify, request
 from db import get_db
+from services.shop_scope_service import reject_legacy_shop_scope
 
 tool_bp = Blueprint('tool', __name__)
 
@@ -170,6 +171,11 @@ def execute_tool():
             "tool_id": tool_id,
         })
 
+    if tool_id in {'product_diagnose', 'main_image_suggest'}:
+        denied = reject_legacy_shop_scope('商品工具')
+        if denied:
+            return denied
+
     # 分发到具体工具处理器
     try:
         if tool_id == 'main_image_suggest':
@@ -184,6 +190,8 @@ def execute_tool():
                 "message": f"「{tool['name']}」请通过前端上传文件",
                 "tool_id": tool_id,
             })
+        if isinstance(result, dict) and result.get('code') == 'UNSUPPORTED_SCOPE':
+            return jsonify(result), 422
         return jsonify({"result": result, "status": "success"})
     except Exception as e:
         return jsonify({"error": "exec_error", "message": f"执行失败: {str(e)}"}), 500
