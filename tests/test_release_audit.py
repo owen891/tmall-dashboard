@@ -91,6 +91,9 @@ class ReleaseAuditTests(unittest.TestCase):
             'data/dashboard.db',
             'data/import_log.json',
             'data/raw/shop-export.xlsx',
+            'backend/data/db/dashboard.db',
+            'legacy/data/import_log.json',
+            'archive/backup.sqlite3',
             'source.xlsx',
             'template.xlsx',
         ]
