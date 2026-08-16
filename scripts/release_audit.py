@@ -10,6 +10,15 @@ from contextlib import closing
 from pathlib import Path
 
 
+SENSITIVE_TRACKED_PATHS = {
+    'data/dashboard.db',
+    'data/import_log.json',
+    'source.xlsx',
+    'template.xlsx',
+}
+SENSITIVE_TRACKED_PREFIXES = ('data/raw/', 'data/uploads/', 'data/backups/')
+
+
 def _git_status(repo_root):
     result = subprocess.run(
         ['git', 'status', '--porcelain=v1'],
@@ -32,6 +41,23 @@ def _worktree_report(repo_root):
         else:
             changed += 1
     return {'changed': changed, 'untracked': untracked, 'deleted': deleted}
+
+
+def _tracked_sensitive_artifacts(repo_root):
+    result = subprocess.run(
+        ['git', 'ls-files', '-z'],
+        cwd=repo_root,
+        check=True,
+        capture_output=True,
+    )
+    tracked = result.stdout.decode('utf-8', errors='surrogateescape').split('\0')
+    return sorted(
+        path for path in tracked
+        if path and (
+            path in SENSITIVE_TRACKED_PATHS
+            or path.startswith(SENSITIVE_TRACKED_PREFIXES)
+        )
+    )
 
 
 def _database_report(database_path):
@@ -106,11 +132,16 @@ def _database_report(database_path):
 
 def build_report(repo_root, database_path):
     worktree = _worktree_report(repo_root)
+    repository = {
+        'tracked_sensitive_artifacts': _tracked_sensitive_artifacts(repo_root),
+    }
     database = _database_report(database_path)
     blockers = []
     warnings = []
     if any(worktree.values()):
         blockers.append('dirty_worktree')
+    if repository['tracked_sensitive_artifacts']:
+        blockers.append('tracked_sensitive_artifacts')
     if database['integrity'] != 'ok':
         blockers.append('database_integrity_not_ok')
     provenance = database.get('provenance', {})
@@ -122,6 +153,7 @@ def build_report(repo_root, database_path):
         warnings.append('mixed_demo_and_real_batches')
     return {
         'worktree': worktree,
+        'repository': repository,
         'database': database,
         'blockers': blockers,
         'warnings': warnings,

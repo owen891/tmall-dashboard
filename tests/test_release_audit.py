@@ -34,7 +34,9 @@ class ReleaseAuditTests(unittest.TestCase):
     def test_report_surfaces_dirty_worktree_and_mixed_batches(self):
         from scripts.release_audit import build_report
 
-        with patch('scripts.release_audit._git_status', return_value=[' M app.py', '?? scratch.txt']):
+        with patch('scripts.release_audit._git_status', return_value=[' M app.py', '?? scratch.txt']), patch(
+            'scripts.release_audit._tracked_sensitive_artifacts', return_value=[]
+        ):
             report = build_report(self.temp_dir.name, self.database_path)
 
         self.assertEqual(report['worktree'], {'changed': 1, 'untracked': 1, 'deleted': 0})
@@ -70,7 +72,9 @@ class ReleaseAuditTests(unittest.TestCase):
         connection.commit()
         connection.close()
 
-        with patch('scripts.release_audit._git_status', return_value=[]):
+        with patch('scripts.release_audit._git_status', return_value=[]), patch(
+            'scripts.release_audit._tracked_sensitive_artifacts', return_value=[]
+        ):
             report = build_report(self.temp_dir.name, self.database_path)
 
         self.assertEqual(report['database']['provenance'], {
@@ -80,11 +84,31 @@ class ReleaseAuditTests(unittest.TestCase):
         })
         self.assertIn('untraceable_daily_facts', report['blockers'])
 
+    def test_report_blocks_tracked_runtime_and_source_data(self):
+        from scripts.release_audit import build_report
+
+        tracked = [
+            'data/dashboard.db',
+            'data/import_log.json',
+            'data/raw/shop-export.xlsx',
+            'source.xlsx',
+            'template.xlsx',
+        ]
+        with patch('scripts.release_audit._git_status', return_value=[]), patch(
+            'scripts.release_audit._tracked_sensitive_artifacts', return_value=tracked
+        ):
+            report = build_report(self.temp_dir.name, self.database_path)
+
+        self.assertEqual(report['repository']['tracked_sensitive_artifacts'], tracked)
+        self.assertIn('tracked_sensitive_artifacts', report['blockers'])
+
     def test_main_strict_returns_nonzero_without_mutating_database(self):
         from scripts.release_audit import main
 
         before = Path(self.database_path).read_bytes()
-        with patch('scripts.release_audit._git_status', return_value=[]), patch('sys.argv', [
+        with patch('scripts.release_audit._git_status', return_value=[]), patch(
+            'scripts.release_audit._tracked_sensitive_artifacts', return_value=[]
+        ), patch('sys.argv', [
             'release_audit.py', '--database', self.database_path, '--strict',
         ]):
             with self.assertRaises(SystemExit) as raised:
@@ -96,7 +120,9 @@ class ReleaseAuditTests(unittest.TestCase):
     def test_main_non_strict_emits_json_and_succeeds(self):
         from scripts.release_audit import main
 
-        with patch('scripts.release_audit._git_status', return_value=[]), patch('sys.argv', [
+        with patch('scripts.release_audit._git_status', return_value=[]), patch(
+            'scripts.release_audit._tracked_sensitive_artifacts', return_value=[]
+        ), patch('sys.argv', [
             'release_audit.py', '--database', self.database_path,
         ]), patch('builtins.print') as printed:
             with self.assertRaises(SystemExit) as raised:

@@ -17,6 +17,8 @@ data/backups/
 data/raw/
 data/uploads/
 data/import_log.json
+/source.xlsx
+/template.xlsx
 
 # 输出目录
 output*/
