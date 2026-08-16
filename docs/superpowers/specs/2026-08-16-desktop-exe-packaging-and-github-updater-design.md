@@ -12,6 +12,10 @@ The distribution uses a fully bundled WebView2 installer so first-run setup does
 - Running scheduled imports while the application process is fully closed without an explicit Windows Task Scheduler integration.
 - Downloading or executing arbitrary GitHub source archives as updates.
 
+## Language and Windows integration
+
+The delivered product is Chinese-first. The installer wizard, desktop shortcut, Start Menu entry, uninstall entry, startup diagnostics, update notifications, release notes link text, checksum errors, and rollback errors use Simplified Chinese. The existing dashboard pages remain the source of truth for business terminology and are not translated or duplicated in the desktop shell. The executable and installer metadata use the product name `天猫数据仪表盘`.
+
 ## Architecture
 
 The existing application remains the business runtime:
