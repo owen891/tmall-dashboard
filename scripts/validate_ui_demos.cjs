@@ -7,7 +7,7 @@ const pagesDir = path.join(root, 'pages');
 const required = ['overview', 'products', 'promotion', 'lifecycle', 'reviews', 'data-center', 'settings'];
 const errors = [];
 const read = (file) => {
-  try { return fs.readFileSync(file, 'utf8'); }
+  try { return fs.readFileSync(file, 'utf8').replace(/\r\n?/g, '\n'); }
   catch { errors.push(`missing file: ${path.relative(root, file)}`); return ''; }
 };
 const assert = (condition, message) => { if (!condition) errors.push(message); };

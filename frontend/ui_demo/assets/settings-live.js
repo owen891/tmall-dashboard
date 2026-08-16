@@ -127,7 +127,7 @@
     const button = document.createElement('button'); button.type = 'button'; button.className = 'button button--ghost'; button.title = label; button.setAttribute('aria-label', label);
     const glyph = document.createElement('i'); glyph.dataset.lucide = icon; button.appendChild(glyph); button.addEventListener('click', handler); return button;
   };
-  const formatScanTime = (value) => value ? String(value).replace('T', ' ').replace('+00:00', '') : '--';
+  const formatScanTime = (value) => value ? new Intl.DateTimeFormat('zh-CN', { dateStyle: 'medium', timeStyle: 'medium', hour12: false, timeZone: 'Asia/Shanghai' }).format(new Date(value)) : '--';
   function renderScanJobs() {
     if (!scanBody) return;
     scanBody.replaceChildren();
@@ -176,14 +176,29 @@
     if (!rows.length) { const row = document.createElement('tr'); const cell = appendTextCell(row, emptyText); cell.colSpan = columns.length; body.appendChild(row); return; }
     rows.slice(0, 20).forEach((item) => { const row = document.createElement('tr'); columns.forEach((column) => appendTextCell(row, column(item))); body.appendChild(row); });
   };
-  async function openScanDetails(job) {
-    document.querySelector('#scanDetailTitle').textContent = `${job.task_name || '扫描任务'}记录`; scanDetailDialog.showModal();
-    renderScanDetailRows('[data-scan-runs]', [], Array.from({ length: 5 }, () => () => ''), '加载中'); renderScanDetailRows('[data-scan-files]', [], Array.from({ length: 4 }, () => () => ''), '加载中');
+  async function loadScanDetails(job) {
+    renderScanDetailRows('[data-scan-runs]', [], Array.from({ length: 5 }, () => () => ''), '加载中'); renderScanDetailRows('[data-scan-files]', [], Array.from({ length: 5 }, () => () => ''), '加载中');
     try {
       const [runs, files] = await Promise.all([DemoApi.domainRequest(`/api/import-scans/${Number(job.id)}/runs`), DemoApi.domainRequest(`/api/import-scans/${Number(job.id)}/files`)]);
       renderScanDetailRows('[data-scan-runs]', runs.data || [], [(item) => formatScanTime(item.started_at), (item) => item.status, (item) => item.imported_count, (item) => item.blocked_count, (item) => item.failed_count], '暂无运行记录');
-      renderScanDetailRows('[data-scan-files]', files.data || [], [(item) => item.source_filename, (item) => item.status, (item) => item.batch_id || '--', (item) => formatScanTime(item.updated_at)], '暂无文件记录');
+      const body = document.querySelector('[data-scan-files]'); body.replaceChildren();
+      if (!(files.data || []).length) { const row = document.createElement('tr'); const cell = appendTextCell(row, '暂无文件记录'); cell.colSpan = 5; body.appendChild(row); return; }
+      (files.data || []).slice(0, 20).forEach((item) => {
+        const row = document.createElement('tr');
+        appendTextCell(row, item.source_filename); appendTextCell(row, item.status); appendTextCell(row, item.batch_id || '--'); appendTextCell(row, formatScanTime(item.updated_at));
+        const actions = document.createElement('td'); actions.className = 'table-actions';
+        if (['blocked', 'failed'].includes(item.status)) actions.append(scanAction('rotate-ccw', '重新排队', async () => {
+          try { await DemoApi.domainRequest(`/api/import-scans/${Number(job.id)}/files/${Number(item.id)}/retry`, { method: 'POST' }); setScanStatus('文件已重新排队'); await loadScanDetails(job); await loadScanJobs(); }
+          catch (error) { setScanStatus(error.message || '重新排队失败'); }
+        }));
+        row.appendChild(actions); body.appendChild(row);
+      });
+      window.lucide?.createIcons();
     } catch (error) { setScanStatus(error.message || '扫描记录加载失败'); }
+  }
+  async function openScanDetails(job) {
+    document.querySelector('#scanDetailTitle').textContent = `${job.task_name || '扫描任务'}记录`; scanDetailDialog.showModal();
+    await loadScanDetails(job);
   }
   document.querySelector('[data-scan-create]')?.addEventListener('click', () => openScanDialog());
   document.querySelectorAll('[data-scan-close]').forEach((button) => button.addEventListener('click', () => scanDialog.close()));
