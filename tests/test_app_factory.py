@@ -4,6 +4,7 @@ import tempfile
 import unittest
 import sqlite3
 import atexit
+import subprocess
 
 from flask import Flask
 
@@ -17,6 +18,21 @@ os.environ.setdefault('TMALL_DB_PATH', os.path.join(_TEST_DATA_DIR.name, 'dashbo
 
 
 class AppFactoryTests(unittest.TestCase):
+    def test_importing_app_factory_does_not_initialize_database(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            database_path = os.path.join(temp_dir, 'lazy.db')
+            environment = os.environ.copy()
+            environment['TMALL_DB_PATH'] = database_path
+            subprocess.run(
+                [sys.executable, '-c', 'import app'],
+                check=True,
+                cwd=PROJECT_ROOT,
+                env=environment,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            )
+            self.assertFalse(os.path.exists(database_path))
+
     def test_existing_goal_lock_table_is_migrated_for_year_and_quarter_locks(self):
         path = os.path.join(_TEST_DATA_DIR.name, 'legacy-locks.db')
         conn = sqlite3.connect(path)
@@ -42,6 +58,51 @@ class AppFactoryTests(unittest.TestCase):
 
         self.assertEqual(app.config['DATABASE_PATH'], database_path)
         self.assertEqual(os.environ.get('TMALL_DB_PATH'), original_path)
+
+    def test_lan_requests_require_configured_basic_authentication(self):
+        from app import create_app
+
+        app = create_app({
+            'TESTING': True,
+            'DASHBOARD_USERNAME': 'operator',
+            'DASHBOARD_PASSWORD': 'correct-horse',
+        })
+        client = app.test_client()
+        denied = client.get('/api/status', environ_overrides={'REMOTE_ADDR': '192.168.10.20'})
+        allowed = client.get(
+            '/api/status',
+            headers={'Authorization': 'Basic b3BlcmF0b3I6Y29ycmVjdC1ob3JzZQ=='},
+            environ_overrides={'REMOTE_ADDR': '192.168.10.20'},
+        )
+
+        self.assertEqual(denied.status_code, 401)
+        self.assertEqual(denied.headers['WWW-Authenticate'], 'Basic realm="tmall-dashboard"')
+        self.assertEqual(allowed.status_code, 200)
+
+    def test_lan_requests_are_denied_when_credentials_are_not_configured(self):
+        from app import create_app
+
+        app = create_app({
+            'TESTING': True,
+            'DASHBOARD_USERNAME': None,
+            'DASHBOARD_PASSWORD': None,
+        })
+        response = app.test_client().get('/healthz', environ_overrides={'REMOTE_ADDR': '192.168.10.20'})
+
+        self.assertEqual(response.status_code, 503)
+        self.assertEqual(response.get_json()['code'], 'AUTH_CONFIGURATION_REQUIRED')
+
+    def test_loopback_request_with_forwarded_client_header_does_not_bypass_auth(self):
+        from app import create_app
+
+        app = create_app({'TESTING': True, 'DASHBOARD_USERNAME': None, 'DASHBOARD_PASSWORD': None})
+        response = app.test_client().get(
+            '/healthz',
+            headers={'X-Forwarded-For': '192.168.10.20'},
+            environ_overrides={'REMOTE_ADDR': '127.0.0.1'},
+        )
+        self.assertEqual(response.status_code, 503)
+        self.assertEqual(response.get_json()['code'], 'AUTH_CONFIGURATION_REQUIRED')
 
     def test_create_app_returns_configurable_flask_app(self):
         from app import create_app
@@ -91,6 +152,7 @@ class AppFactoryTests(unittest.TestCase):
         self.assertEqual(products['data'], 'api')
         promotion = next(page for page in payload['pages'] if page['id'] == 'promotion')
         self.assertEqual(promotion['data'], 'api')
+        self.assertEqual(payload['version'], '1.0.0')
 
     def test_factory_serves_the_streamlined_frontend_pages(self):
         from app import create_app
@@ -102,6 +164,26 @@ class AppFactoryTests(unittest.TestCase):
                     self.assertEqual(response.status_code, 200)
                     self.assertIn(b'<!doctype html>', response.data.lower())
                     response.close()
+
+    def test_dashboard_pages_and_assets_do_not_serve_stale_frontend_code(self):
+        from app import create_app
+
+        with create_app({'TESTING': True}).test_client() as client:
+            for path in ('/promotion', '/assets/shell.js', '/assets/promotion-live.js'):
+                with self.subTest(path=path):
+                    response = client.get(path)
+                    self.assertEqual(response.status_code, 200)
+                    self.assertIn('no-store', response.headers.get('Cache-Control', ''))
+                    response.close()
+
+    def test_security_headers_are_present_on_dashboard_responses(self):
+        from app import create_app
+
+        with create_app({'TESTING': True}).test_client() as client:
+            response = client.get('/healthz')
+        self.assertEqual(response.headers.get('X-Content-Type-Options'), 'nosniff')
+        self.assertEqual(response.headers.get('X-Frame-Options'), 'SAMEORIGIN')
+        self.assertEqual(response.headers.get('Referrer-Policy'), 'strict-origin-when-cross-origin')
 
     def test_legacy_workbench_routes_redirect_to_their_prd_owners(self):
         from app import create_app

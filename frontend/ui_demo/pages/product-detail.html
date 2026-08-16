@@ -1,1 +1,100 @@
-<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>商品详情 | 天猫数据仪表盘</title><link rel="stylesheet" href="../assets/tokens.css"><link rel="stylesheet" href="../assets/shell.css"><link rel="stylesheet" href="../assets/components.css"><script src="https://unpkg.com/lucide@1.8.0/dist/umd/lucide.min.js"></script></head><body data-page="products"><div class="demo-app"><aside class="demo-sidebar" data-shell-sidebar></aside><div class="demo-main"><header class="demo-topbar" data-shell-header></header><main class="demo-page"><div class="demo-page__intro"><div><h2 data-product-detail-title>商品详情</h2><p data-product-detail-meta>加载中</p></div><a href="/products" class="button">返回商品经营</a></div><section class="metric-grid"><article class="metric-card"><div class="metric-card__label">生命周期</div><div class="metric-card__value" data-product-detail-stage>--</div></article><article class="metric-card"><div class="metric-card__label">连续有效日</div><div class="metric-card__value" data-product-detail-days>--</div></article></section><section class="plain-panel panel"><div class="panel__header"><h3 class="panel__title">日度经营趋势</h3></div><div class="data-table-wrap"><table class="data-table"><thead><tr><th>日期</th><th class="num">支付金额</th><th class="num">净销售额</th><th class="num">访客</th><th class="num">推广花费</th></tr></thead><tbody data-product-detail-trend></tbody></table></div></section><section class="plain-panel panel"><div class="panel__header"><h3 class="panel__title">历史动作</h3></div><div class="status-list" data-product-detail-actions></div></section><section class="plain-panel panel"><form class="modal-form__body" data-product-detail-action-form><h3 class="panel__title">新建运营动作</h3><label>类型<input class="input" name="action_type" required></label><label>详情<input class="input" name="action_detail" required></label><label>目的<input class="input" name="purpose_note" required></label><label>计划日期<input class="input" name="planned_at" type="date" required></label><button class="button button--primary" type="submit">创建草稿</button><p data-product-detail-action-status role="status"></p></form></section></main></div></div><script src="../assets/api.js"></script><script src="../assets/shell.js"></script><script src="../assets/product-detail-live.js"></script></body></html>
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>商品详情 | 天猫数据仪表盘</title>
+  <link rel="stylesheet" href="../assets/tokens.css">
+  <link rel="stylesheet" href="../assets/shell.css">
+  <link rel="stylesheet" href="../assets/components.css">
+  <script src="../assets/lucide-1.8.0.min.js"></script>
+</head>
+<body data-page="product-detail">
+  <div class="demo-app">
+    <aside class="demo-sidebar" data-shell-sidebar></aside>
+    <div class="demo-main">
+      <header class="demo-topbar" data-shell-header></header>
+      <main class="demo-page product-workbench">
+        <div class="product-workbench__crumb" data-product-detail-breadcrumb>
+          商品经营 / 商品列表 / 商品详情
+        </div>
+
+        <header class="product-workbench__header">
+          <div class="product-workbench__identity">
+            <div class="product-workbench__eyebrow">单品经营工作台</div>
+            <h1 class="product-workbench__title" data-product-detail-title>商品详情</h1>
+            <p class="product-workbench__meta" data-product-detail-meta>加载中</p>
+            <p class="product-workbench__status" data-product-detail-status role="status">等待加载</p>
+          </div>
+          <div class="product-workbench__actions">
+            <a class="button button--ghost" data-product-detail-back href="/products"><i data-lucide="arrow-left"></i><span>返回列表</span></a>
+            <a class="button button--ghost" data-product-detail-export data-capability-key="product-detail.export" href="#" download><i data-lucide="download"></i><span>导出详情</span></a>
+            <a class="button button--primary" href="#actions"><i data-lucide="plus"></i><span>新建运营动作</span></a>
+          </div>
+        </header>
+
+        <section class="metric-grid product-workbench__kpis" aria-label="商品核心指标">
+          <article class="metric-card"><div class="metric-card__label">净销售额</div><div class="metric-card__value" data-product-detail-kpi="net_sales">--</div><div class="metric-card__hint">当前日期范围</div></article>
+          <article class="metric-card"><div class="metric-card__label">支付金额</div><div class="metric-card__value" data-product-detail-kpi="payment_amount">--</div><div class="metric-card__hint">成交规模</div></article>
+          <article class="metric-card"><div class="metric-card__label">支付转化率</div><div class="metric-card__value" data-product-detail-kpi="payment_conversion_rate">--</div><div class="metric-card__hint">访客到支付</div></article>
+          <article class="metric-card"><div class="metric-card__label">费比</div><div class="metric-card__value" data-product-detail-kpi="expense_ratio">--</div><div class="metric-card__hint">推广花费 / 支付</div></article>
+          <article class="metric-card"><div class="metric-card__label">客单价</div><div class="metric-card__value" data-product-detail-kpi="average_order_value">--</div><div class="metric-card__hint">支付金额 / 买家</div></article>
+        </section>
+
+        <nav class="product-workbench__tabs" role="tablist" aria-label="商品详情分组">
+          <button class="product-workbench__tab" type="button" role="tab" data-product-detail-tab="overview" aria-selected="true" aria-controls="product-detail-panel-overview">经营概览</button>
+          <button class="product-workbench__tab" type="button" role="tab" data-product-detail-tab="trend" aria-selected="false" aria-controls="product-detail-panel-trend">日度趋势</button>
+          <button class="product-workbench__tab" type="button" role="tab" data-product-detail-tab="lifecycle" aria-selected="false" aria-controls="product-detail-panel-lifecycle">生命周期</button>
+          <button class="product-workbench__tab" type="button" role="tab" data-product-detail-tab="actions" aria-selected="false" aria-controls="product-detail-panel-actions">运营动作</button>
+          <button class="product-workbench__tab" type="button" role="tab" data-product-detail-tab="evidence" aria-selected="false" aria-controls="product-detail-panel-evidence">数据证据</button>
+        </nav>
+
+        <section class="product-workbench__panel" data-product-detail-panel="overview" id="product-detail-panel-overview" role="tabpanel" aria-labelledby="product-detail-tab-overview">
+          <div class="product-workbench__grid product-workbench__grid--overview">
+            <section class="plain-panel panel">
+              <div class="panel__header"><div><h2 class="panel__title">商品信息</h2><p class="panel__hint">当前商品的基础属性与经营归属</p></div></div>
+              <div class="status-list" data-product-detail-info></div>
+            </section>
+            <section class="plain-panel panel">
+              <div class="panel__header"><div><h2 class="panel__title">当前判断</h2><p class="panel__hint" data-product-detail-confidence>--</p></div></div>
+              <div class="status-list">
+                <div class="status-list__item"><span class="status-list__label">生命周期阶段</span><span class="status-list__value" data-product-detail-stage>--</span></div>
+                <div class="status-list__item"><span class="status-list__label">连续有效日</span><span class="status-list__value" data-product-detail-days>--</span></div>
+                <div class="status-list__item"><span class="status-list__label">判断依据</span><span class="status-list__value" data-product-detail-rationale>--</span></div>
+              </div>
+            </section>
+          </div>
+          <section class="plain-panel panel product-workbench__callout">
+            <div class="panel__header"><div><h2 class="panel__title">下一步建议</h2><p class="panel__hint">从趋势和生命周期判断中提取当前最值得执行的动作</p></div><a class="button button--ghost" href="#actions"><i data-lucide="arrow-up-right"></i><span>查看动作闭环</span></a></div>
+            <div class="product-workbench__suggestions"><div><strong>先看异常</strong><span>切换到日度趋势，确认访客、转化和推广花费是否同向变化。</span></div><div><strong>再做动作</strong><span>将验证过的判断记录为运营动作，并在观察窗口后复盘。</span></div></div>
+          </section>
+        </section>
+
+        <section class="product-workbench__panel" data-product-detail-panel="trend" id="product-detail-panel-trend" role="tabpanel" aria-labelledby="product-detail-tab-trend" hidden>
+          <section class="plain-panel panel"><div class="panel__header"><div><h2 class="panel__title">日度经营趋势</h2><p class="panel__hint">当前日期范围内的支付、净销售、访客和推广花费</p></div></div><div class="data-table-wrap"><table class="data-table"><thead><tr><th>日期</th><th class="num">支付金额</th><th class="num">净销售额</th><th class="num">商品访客数</th><th class="num">推广花费</th></tr></thead><tbody data-product-detail-trend><tr><td colspan="5">加载中</td></tr></tbody></table></div></section>
+          <section class="plain-panel panel"><div class="panel__header"><div><h2 class="panel__title">周期对比</h2><p class="panel__hint">按月聚合，异常阈值为环比 20%</p></div></div><div class="data-table-wrap"><table class="data-table"><thead><tr><th>月份</th><th class="num">净销售额</th><th class="num">环比</th><th class="num">访客环比</th><th>异常变化</th></tr></thead><tbody data-product-detail-period-comparison><tr><td colspan="5">加载中</td></tr></tbody></table></div><div class="status-list" data-product-detail-contribution></div></section>
+        </section>
+
+        <section class="product-workbench__panel" data-product-detail-panel="lifecycle" id="product-detail-panel-lifecycle" role="tabpanel" aria-labelledby="product-detail-tab-lifecycle" hidden>
+          <section class="plain-panel panel"><div class="panel__header"><div><h2 class="panel__title">生命周期判断</h2><p class="panel__hint" data-product-detail-confidence>--</p></div></div><div class="status-list"><div class="status-list__item"><span class="status-list__label">当前阶段</span><span class="status-list__value" data-product-detail-stage>--</span></div><div class="status-list__item"><span class="status-list__label">连续有效日</span><span class="status-list__value" data-product-detail-days>--</span></div><div class="status-list__item"><span class="status-list__label">判断依据</span><span class="status-list__value" data-product-detail-rationale>--</span></div></div></section>
+          <section class="plain-panel panel"><div class="panel__header"><div><h2 class="panel__title">生命周期历史</h2><p class="panel__hint">阶段推荐、人工调整和操作记录</p></div></div><div class="data-table-wrap"><table class="data-table"><thead><tr><th>时间</th><th>推荐阶段</th><th>人工阶段</th><th>变更原因</th><th>操作人</th><th>版本</th></tr></thead><tbody data-product-detail-lifecycle-history><tr><td colspan="6">加载中</td></tr></tbody></table></div></section>
+        </section>
+
+        <section class="product-workbench__panel" data-product-detail-panel="actions" id="product-detail-panel-actions" role="tabpanel" aria-labelledby="product-detail-tab-actions" hidden>
+          <section class="plain-panel panel"><div class="panel__header"><div><h2 class="panel__title">运营动作闭环</h2><p class="panel__hint">目的、动作、结果、复盘和历史版本</p></div></div><div class="status-list" data-product-detail-actions></div></section>
+          <section class="plain-panel panel"><form class="product-workbench__action-form" data-product-detail-action-form><div><h2 class="panel__title">新建运营动作</h2><p class="panel__hint">先记录可验证的动作，再在观察窗口结束后复盘。</p></div><div class="product-workbench__form-grid"><label>类型<input class="input" name="action_type" required></label><label>详情<input class="input" name="action_detail" required></label><label>目的<input class="input" name="purpose_note" required></label><label>计划日期<input class="input" name="planned_at" type="date" required></label></div><div class="product-workbench__form-actions"><button class="button button--primary" type="submit"><i data-lucide="check"></i><span>创建草稿</span></button><p data-product-detail-action-status role="status"></p></div></form></section>
+        </section>
+
+        <section class="product-workbench__panel" data-product-detail-panel="evidence" id="product-detail-panel-evidence" role="tabpanel" aria-labelledby="product-detail-tab-evidence" hidden>
+          <section class="plain-panel panel"><div class="panel__header"><div><h2 class="panel__title">数据证据</h2><p class="panel__hint">来源、覆盖范围、缺失字段和证据等级</p></div><a class="button button--ghost" data-product-detail-export data-capability-key="product-detail.export" href="#" download><i data-lucide="download"></i><span>导出详情</span></a></div><div class="status-list" data-product-detail-evidence></div></section>
+        </section>
+      </main>
+    </div>
+  </div>
+  <script src="../assets/api.js"></script>
+  <script src="../assets/navigation.js"></script>
+  <script src="../assets/labels.js"></script>
+  <script src="../assets/shell.js"></script>
+  <script src="../assets/product-detail-live.js"></script>
+</body>
+</html>

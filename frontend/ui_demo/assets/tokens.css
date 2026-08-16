@@ -1,66 +1,212 @@
 :root {
-  --brand: #e4400f;
-  --brand-hover: #c7380d;
-  --brand-tint: #fff1ec;
-  --page: #f7f8fa;
-  --surface: #ffffff;
-  --surface-muted: #f0f1f4;
-  --text: #1a1d23;
-  --text-muted: #6b7280;
-  --text-soft: #9ca3af;
-  --border: #e5e7eb;
-  --border-strong: #d1d5db;
-  --success: #16a34a;
-  --success-tint: #ecfdf3;
-  --warning: #d97706;
-  --warning-tint: #fff7e8;
-  --danger: #dc2626;
-  --danger-tint: #fef2f2;
-  --info: #2563eb;
-  --info-tint: #eff6ff;
-  --purple: #7c3aed;
-  --purple-tint: #f5f3ff;
+  color-scheme: light;
+
+  /* Primitives: raw values only. */
+  --color-white: #ffffff;
+  --color-gray-25: #fbfcfd;
+  --color-gray-50: #f6f7f9;
+  --color-gray-100: #eef0f3;
+  --color-gray-200: #e3e7eb;
+  --color-gray-300: #cbd3dc;
+  --color-gray-400: #98a2b3;
+  --color-gray-500: #677384;
+  --color-gray-700: #343a45;
+  --color-gray-900: #181c22;
+  --color-orange-100: #fff1ec;
+  --color-orange-400: #f35b2b;
+  --color-orange-500: #e4400f;
+  --color-orange-600: #c7380d;
+  --color-green-100: #ecfdf3;
+  --color-green-600: #16a34a;
+  --color-amber-100: #fff7e8;
+  --color-amber-600: #d97706;
+  --color-red-100: #fef2f2;
+  --color-red-200: #fecaca;
+  --color-red-600: #dc2626;
+  --color-blue-100: #eff6ff;
+  --color-blue-600: #2563eb;
+  --color-purple-100: #f5f3ff;
+  --color-purple-600: #7c3aed;
+  --color-success-border: #bbebc8;
+  --color-warning-border: #fed7aa;
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+
+  --font-sans: "Inter", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", "SFMono-Regular", Consolas, monospace;
+  --font-size-meta: 11px;
+  --font-size-secondary: 12px;
+  --font-size-body: 13px;
+  --font-size-label: 14px;
+  --font-size-section: 16px;
+  --font-size-title: 20px;
+  --font-size-kpi: 24px;
+  --line-height-meta: 18px;
+  --line-height-secondary: 20px;
+  --line-height-body: 22px;
+  --line-height-label: 22px;
+  --line-height-section: 24px;
+  --line-height-title: 28px;
+
+  --icon-inline: 14px;
+  --icon-nav: 16px;
+  --icon-control: 18px;
+  --icon-emphasis: 20px;
+  --icon-empty: 24px;
+
   --radius-sm: 4px;
   --radius-md: 6px;
   --radius-lg: 8px;
-  --shadow-sm: 0 1px 2px rgb(15 23 42 / 0.05);
-  --shadow-md: 0 10px 28px rgb(15 23 42 / 0.1);
-  --shadow-lg: 0 18px 44px rgb(15 23 42 / 0.16);
-  --font-sans: "Inter", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
-  --font-mono: "JetBrains Mono", "SFMono-Regular", Consolas, monospace;
+  --radius-full: 999px;
+  --shadow-sm-raw: 0 1px 2px rgb(15 23 42 / 0.05);
+  --shadow-md-raw: 0 8px 24px rgb(15 23 42 / 0.12);
+  --shadow-lg-raw: 0 18px 44px rgb(15 23 42 / 0.18);
+  --duration-fast: 160ms;
+  --duration-normal: 240ms;
+
+  /* Semantics: assign meaning to primitives. */
+  --surface-page: var(--color-gray-50);
+  --surface-base: var(--color-white);
+  --surface-raised: var(--color-white);
+  --surface-muted: var(--color-gray-100);
+  --surface-selected: var(--color-gray-25);
+  --text-primary: var(--color-gray-900);
+  --text-secondary: var(--color-gray-500);
+  --text-tertiary: var(--color-gray-400);
+  --text-on-brand: var(--color-white);
+  --border-default: var(--color-gray-200);
+  --border-strong: var(--color-gray-300);
+  --border-success-subtle: var(--color-success-border);
+  --border-warning-subtle: var(--color-warning-border);
+  --border-info-subtle: var(--color-blue-100);
+  --border-danger-subtle: var(--color-red-200);
+  --brand: var(--color-orange-500);
+  --brand-hover: var(--color-orange-600);
+  --brand-tint: var(--color-orange-100);
+  --success: var(--color-green-600);
+  --success-tint: var(--color-green-100);
+  --warning: var(--color-amber-600);
+  --warning-tint: var(--color-amber-100);
+  --danger: var(--color-red-600);
+  --danger-tint: var(--color-red-100);
+  --info: var(--color-blue-600);
+  --info-tint: var(--color-blue-100);
+  --purple: var(--color-purple-600);
+  --purple-tint: var(--color-purple-100);
+  --focus-ring: color-mix(in srgb, var(--brand) 30%, transparent);
+  --overlay-backdrop: rgb(15 23 42 / 0.42);
+  --chart-brand-fill: rgb(228 64 15 / 0.65);
+  --chart-info-fill: rgb(37 99 235 / 0.58);
+  --chart-success-fill: rgb(22 163 74 / 0.52);
+  --chart-warning-fill: rgb(217 119 6 / 0.62);
+  --chart-danger-fill: rgb(220 38 38 / 0.48);
+  --chart-radius: 4px;
+  --chart-line-width: 2px;
+  --chart-point-radius: 3px;
+  --chart-legend-box: 12px;
+  --chart-legend-height: 8px;
+  --selected-border: var(--color-gray-300);
+  --selected-shadow: inset 0 0 0 1px var(--color-gray-300), 0 2px 8px rgb(55 78 92 / 0.08);
+  --elevation-sm: var(--shadow-sm-raw);
+  --elevation-md: var(--shadow-md-raw);
+  --elevation-lg: var(--shadow-lg-raw);
+
+  /* Component tokens: shared component contracts. */
+  --control-height: 36px;
+  --control-height-touch: 44px;
+  --control-height-sm: 28px;
+  --icon-button-size: 36px;
+  --icon-button-size-touch: 44px;
+  --sidebar-width: 220px;
+  --topbar-height: 56px;
+  --nav-item-height: 40px;
+  --button-height: var(--control-height);
+  --badge-height: 22px;
+  --chip-height: 24px;
+  --progress-height: 8px;
+  --button-primary-bg: var(--brand);
+  --button-primary-bg-hover: var(--brand-hover);
+  --button-secondary-bg: var(--surface-base);
+  --button-border: var(--border-default);
+  --input-height: var(--control-height);
+  --input-bg: var(--surface-base);
+  --input-border: var(--border-default);
+  --panel-bg: var(--surface-raised);
+  --panel-border: var(--border-default);
+  --panel-radius: var(--radius-lg);
+  --panel-shadow: var(--elevation-sm);
+  --dialog-bg: var(--surface-base);
+  --dialog-radius: var(--radius-lg);
+  --dialog-shadow: var(--elevation-lg);
+  --ring-brand: 0 0 0 1px var(--brand);
+  --ring-info: 0 0 0 1px var(--info);
+  --ring-success: 0 0 0 1px var(--success);
+  --swatch-inset-shadow: inset 0 0 0 1px var(--border-strong);
+
+  /* Compatibility aliases used by existing pages. */
+  --page: var(--surface-page);
+  --surface: var(--surface-base);
+  --text: var(--text-primary);
+  --text-muted: var(--text-secondary);
+  --text-soft: var(--text-tertiary);
+  --border: var(--border-default);
+  --shadow-sm: var(--elevation-sm);
+  --shadow-md: var(--elevation-md);
+  --shadow-lg: var(--elevation-lg);
+  --font-size-xs: var(--font-size-meta);
+  --font-size-sm: var(--font-size-secondary);
 }
 
 :root[data-theme="dark"] {
-  --brand: #ff6a3d;
+  color-scheme: dark;
+  --surface-page: #101318;
+  --surface-base: #171b22;
+  --surface-raised: #1c222b;
+  --surface-muted: #252c36;
+  --surface-selected: #222a34;
+  --text-primary: #f4f6f8;
+  --text-secondary: #a4adbb;
+  --text-tertiary: #747f8f;
+  --border-default: #303744;
+  --border-strong: #465061;
+  --brand: var(--color-orange-400);
   --brand-hover: #ff815c;
   --brand-tint: #3a1d15;
-  --page: #101318;
-  --surface: #171b22;
-  --surface-muted: #222832;
-  --text: #f4f6f8;
-  --text-muted: #a4adbb;
-  --text-soft: #747f8f;
-  --border: #303744;
-  --border-strong: #465061;
   --success-tint: #123323;
   --warning-tint: #37240d;
   --danger-tint: #3a1518;
   --info-tint: #142747;
   --purple-tint: #271d43;
-  --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.24);
-  --shadow-md: 0 10px 28px rgb(0 0 0 / 0.34);
-  --shadow-lg: 0 18px 44px rgb(0 0 0 / 0.46);
+  --focus-ring: color-mix(in srgb, var(--brand) 42%, transparent);
+  --overlay-backdrop: rgb(0 0 0 / 0.52);
+  --chart-brand-fill: rgb(243 91 43 / 0.68);
+  --chart-info-fill: rgb(96 165 250 / 0.62);
+  --chart-success-fill: rgb(74 222 128 / 0.58);
+  --chart-warning-fill: rgb(251 191 36 / 0.68);
+  --chart-danger-fill: rgb(248 113 113 / 0.58);
+  --selected-border: #526170;
+  --selected-shadow: inset 0 0 0 1px var(--selected-border), 0 2px 8px rgb(0 0 0 / 0.24);
+  --elevation-sm: 0 1px 2px rgb(0 0 0 / 0.24);
+  --elevation-md: 0 8px 24px rgb(0 0 0 / 0.34);
+  --elevation-lg: 0 18px 44px rgb(0 0 0 / 0.46);
 }
 
 * { box-sizing: border-box; }
-html { min-width: 320px; background: var(--page); }
+html { min-width: 320px; background: var(--surface-page); }
 body {
   margin: 0;
   min-width: 320px;
-  background: var(--page);
-  color: var(--text);
+  background: var(--surface-page);
+  color: var(--text-primary);
   font-family: var(--font-sans);
-  line-height: 1.5;
+  font-size: var(--font-size-body);
+  line-height: var(--line-height-body);
   -webkit-font-smoothing: antialiased;
 }
 button, input, select, textarea { font: inherit; }

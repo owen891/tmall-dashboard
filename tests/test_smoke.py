@@ -181,8 +181,8 @@ class TestProductEndpoints(SmokeTestBase):
         })
         self.assertEqual(response.status_code, 200)
         payload = response.get_json()
-        self.assertGreater(payload['total'], 0)
-        self.assertTrue(any(row['payment_amount'] > 0 for row in payload['data']))
+        self.assertGreater(payload['data']['total'], 0)
+        self.assertTrue(any(row['payment_amount'] > 0 for row in payload['data']['rows']))
 
     def test_star_route(self):
         self.assertMutationNoCrash('POST', '/api/star', json={'product_id': 'nonexistent'})
@@ -251,10 +251,10 @@ class TestProductEndpoints(SmokeTestBase):
         })
         self.assertEqual(response.status_code, 200)
         payload = response.get_json()
-        ids = [row['product_id'] for row in payload['data']]
-        self.assertEqual(payload['total'], 1)
+        ids = [row['product_id'] for row in payload['data']['rows']]
+        self.assertEqual(payload['data']['total'], 1)
         self.assertEqual(ids, [inactive_id])
-        self.assertTrue(all(row['status'] == 'inactive' for row in payload['data']))
+        self.assertTrue(all(row['status'] == 'inactive' for row in payload['data']['rows']))
 
     def test_products_all_status_includes_active_and_inactive(self):
         active_id, inactive_id = _insert_contract_products()
@@ -269,8 +269,8 @@ class TestProductEndpoints(SmokeTestBase):
         })
         self.assertEqual(response.status_code, 200)
         payload = response.get_json()
-        self.assertEqual(payload['total'], 2)
-        self.assertEqual({row['product_id'] for row in payload['data']}, {active_id, inactive_id})
+        self.assertEqual(payload['data']['total'], 2)
+        self.assertEqual({row['product_id'] for row in payload['data']['rows']}, {active_id, inactive_id})
 
     def test_products_all_status_without_other_filters_is_valid_sql(self):
         response = self.client.get('/api/products', query_string={
@@ -290,13 +290,13 @@ class TestProductEndpoints(SmokeTestBase):
         })
         self.assertEqual(response.status_code, 200)
         payload = response.get_json()
-        self.assertIn('facets', payload)
-        self.assertIn('Contract Tier A', payload['facets']['tiers'])
-        self.assertIn('Contract Tier B', payload['facets']['tiers'])
-        self.assertIn('Contract Style A', payload['facets']['styles'])
-        self.assertIn('Contract Style B', payload['facets']['styles'])
-        self.assertIn('active', payload['facets']['statuses'])
-        self.assertIn('inactive', payload['facets']['statuses'])
+        self.assertIn('facets', payload['data'])
+        self.assertIn('Contract Tier A', payload['data']['facets']['tiers'])
+        self.assertIn('Contract Tier B', payload['data']['facets']['tiers'])
+        self.assertIn('Contract Style A', payload['data']['facets']['styles'])
+        self.assertIn('Contract Style B', payload['data']['facets']['styles'])
+        self.assertIn('active', payload['data']['facets']['statuses'])
+        self.assertIn('inactive', payload['data']['facets']['statuses'])
 
 
 class TestAdEndpoints(SmokeTestBase):
@@ -445,6 +445,13 @@ class TestCompareEndpoints(SmokeTestBase):
 
     def test_compare(self):
         self.assertGetNoCrash('/api/compare', params={'dim': 'weekly'})
+
+    def test_compare_rejects_unknown_dimension(self):
+        response = self.client.get('/api/compare', query_string={
+            'dim': 'not-real', 'period_a': '2026-07', 'period_b': '2026-08',
+        })
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.get_json()['code'], 'VALIDATION_ERROR')
 
     def test_lifecycle(self):
         self.assertGetNoCrash('/api/lifecycle')

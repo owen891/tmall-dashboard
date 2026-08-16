@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>数据概览重构 V2 | 天猫数据仪表盘</title>
+  <link rel="stylesheet" href="../assets/tokens.css">
+  <link rel="stylesheet" href="../assets/shell.css">
+  <link rel="stylesheet" href="../assets/components.css">
+  <script src="../assets/echarts-5.5.1.min.js"></script>
+  <style>
+    .overview-v2-context { display:flex; align-items:center; justify-content:space-between; gap:var(--space-4); padding:var(--space-3) var(--space-4); border:1px solid var(--border-default); border-radius:var(--panel-radius); background:var(--panel-bg); box-shadow:var(--panel-shadow); }
+    .overview-v2-context__copy { display:grid; gap:var(--space-1); }
+    .overview-v2-context__copy strong { font-size:var(--font-size-body); }
+    .overview-v2-context__copy span { color:var(--text-secondary); font-size:var(--font-size-meta); }
+    .overview-v2-context__meta { display:flex; align-items:center; gap:var(--space-2); color:var(--text-secondary); font-size:var(--font-size-meta); text-align:right; }
+    .overview-v2-status { display:inline-flex; align-items:center; gap:var(--space-1); padding:var(--space-1) var(--space-2); border-radius:var(--radius-sm); background:var(--success-tint); color:var(--success); font-size:var(--font-size-meta); font-weight:600; }
+    .overview-v2-status::before { content:''; width:var(--space-1); height:var(--space-1); border-radius:var(--radius-full); background:currentColor; }
+    .overview-v2-kpis { grid-template-columns:repeat(4,minmax(0,1fr)); }
+    .overview-v2-kpi { min-height:112px; border-top:1px solid var(--border); }
+    .overview-v2-kpi__delta { display:flex; align-items:center; gap:var(--space-1); margin-top:var(--space-2); color:var(--text-secondary); font-size:var(--font-size-meta); line-height:var(--line-height-meta); }
+    .overview-v2-kpi__delta.is-up { color:var(--success); }
+    .overview-v2-kpi__delta.is-down { color:var(--danger); }
+    .overview-v2-kpi__delta em { font-style:normal; }
+    .overview-v2-main-grid { grid-template-columns:minmax(0,1.45fr) minmax(320px,.55fr); }
+    .overview-v2-chart { height:290px; min-height:290px; }
+    .overview-v2-targets { display:grid; gap:var(--space-3); }
+    .overview-v2-target { display:grid; gap:var(--space-2); }
+    .overview-v2-target__head { display:flex; align-items:center; justify-content:space-between; gap:var(--space-2); font-size:var(--font-size-meta); }
+    .overview-v2-target__head span { color:var(--text-secondary); }
+    .overview-v2-target__head strong { font-family:var(--font-mono); font-size:var(--font-size-secondary); }
+    .overview-v2-progress { height:var(--progress-height); overflow:hidden; border-radius:var(--radius-full); background:var(--surface-muted); }
+    .overview-v2-progress span { display:block; height:100%; border-radius:inherit; background:var(--brand); }
+    .overview-v2-target__meta { color:var(--text-secondary); font-size:var(--font-size-meta); line-height:var(--line-height-meta); }
+    .overview-v2-action-list { display:grid; gap:var(--space-2); }
+    .overview-v2-action { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:var(--space-2); align-items:center; padding:var(--space-2); border:1px solid var(--border-default); border-radius:var(--radius-md); background:var(--surface-base); }
+    .overview-v2-action__copy { min-width:0; }
+    .overview-v2-action__copy strong { display:block; overflow:hidden; font-size:var(--font-size-meta); text-overflow:ellipsis; white-space:nowrap; }
+    .overview-v2-action__copy span { display:block; margin-top:var(--space-1); color:var(--text-secondary); font-size:var(--font-size-meta); line-height:var(--line-height-meta); }
+    .overview-v2-action__state { white-space:nowrap; font-size:var(--font-size-meta); font-weight:600; }
+    .overview-v2-alerts { display:grid; gap:var(--space-2); }
+    .overview-v2-alert { display:grid; grid-template-columns:var(--space-1) minmax(0,1fr) auto; gap:var(--space-2); align-items:start; padding:var(--space-2) var(--space-3); background:var(--warning-tint); }
+    .overview-v2-alert--danger { background:var(--danger-tint); }
+    .overview-v2-alert::before { content:''; width:var(--space-1); min-height:34px; border-radius:var(--radius-sm); background:var(--warning); }
+    .overview-v2-alert--danger::before { background:var(--danger); }
+    .overview-v2-alert strong { display:block; font-size:var(--font-size-meta); }
+    .overview-v2-alert span { display:block; margin-top:var(--space-1); color:var(--text-secondary); font-size:var(--font-size-meta); line-height:var(--line-height-secondary); }
+    .overview-v2-alert b { color:var(--text-primary); font:700 var(--font-size-meta) var(--font-mono); white-space:nowrap; }
+    .overview-v2-report { overflow:hidden; }
+    .overview-v2-report__grid { display:grid; grid-template-columns:minmax(0,1.15fr) minmax(300px,.85fr); gap:var(--space-3); }
+    .overview-v2-report__section { min-width:0; border:1px solid var(--border); border-radius:var(--radius-md); overflow:hidden; }
+    .overview-v2-report__head { display:flex; align-items:center; justify-content:space-between; gap:var(--space-2); padding:var(--space-2) var(--space-3); border-bottom:1px solid var(--border-default); background:var(--surface-muted); }
+    .overview-v2-report__head h4 { margin:0; font-size:var(--font-size-secondary); }
+    .overview-v2-report__head p { margin:var(--space-1) 0 0; color:var(--text-secondary); font-size:var(--font-size-meta); }
+    .overview-v2-report__rows { display:grid; padding:var(--space-1) var(--space-3); }
+    .overview-v2-report__row { display:grid; grid-template-columns:36px 24px minmax(0,1fr) auto; gap:var(--space-2); align-items:center; min-height:58px; border-bottom:1px solid var(--border-default); }
+    .overview-v2-report__row:last-child { border-bottom:0; }
+    .overview-v2-report__rank { display:grid; width:var(--badge-height); height:var(--badge-height); place-items:center; border-radius:var(--radius-full); background:var(--surface-muted); color:var(--text-secondary); font:700 var(--font-size-meta) var(--font-mono); }
+    .overview-v2-report__row:nth-child(-n+3) .overview-v2-report__rank { background:var(--warning-tint); color:var(--warning); }
+    .overview-v2-report__copy strong { display:block; overflow:hidden; font-size:var(--font-size-meta); text-overflow:ellipsis; white-space:nowrap; }
+    .overview-v2-product-id { color:var(--text-secondary); font:500 var(--font-size-meta) var(--font-mono); }
+    .overview-v2-report__copy span { display:block; margin-top:var(--space-1); color:var(--text-secondary); font-size:var(--font-size-meta); }
+    .overview-v2-product-metrics { display:flex !important; align-items:center; gap:var(--space-2); min-width:0; max-width:100%; overflow-x:auto; overflow-y:hidden; flex-wrap:nowrap; line-height:var(--line-height-secondary); scrollbar-width:thin; }
+    .overview-v2-product-metrics span { display:inline-flex; flex:0 0 auto; gap:2px; margin:0; white-space:nowrap; }
+    .overview-v2-product-metrics > span:nth-of-type(n+4) { display:inline-flex; }
+    .overview-v2-metrics-toggle { display:inline-flex; flex:0 0 auto; align-items:center; justify-content:center; min-width:var(--badge-height); min-height:var(--badge-height); padding:0 var(--space-1); border:1px solid var(--border-strong); border-radius:var(--radius-sm); background:var(--surface-muted); color:var(--text-secondary); font:600 var(--font-size-meta) var(--font-mono); cursor:pointer; }
+    .overview-v2-metrics-toggle:hover { border-color:var(--brand); color:var(--brand); }
+    .overview-v2-product-metrics.is-collapsed > span:nth-of-type(n+4) { display:none; }
+    .overview-v2-product-metrics.is-collapsed .overview-v2-metrics-toggle { color:var(--text-muted); }
+    .overview-v2-metrics-toggle[hidden] { display:none; }
+    .overview-v2-product-metrics b { color:var(--text-primary); font-family:var(--font-mono); font-weight:600; }
+    .overview-v2-report__value { color:var(--brand); font:700 var(--font-size-meta) var(--font-mono); white-space:nowrap; }
+    .overview-v2-product-image { display:grid; width:36px; height:36px; place-items:center; border:1px solid var(--border); border-radius:var(--radius-md); object-fit:cover; background:var(--surface-muted); color:var(--text-secondary); font:600 var(--font-size-meta) var(--font-mono); }
+    @media (max-width:1000px) { .overview-v2-main-grid, .overview-v2-report__grid { grid-template-columns:1fr; } }
+    @media (max-width:900px) { .overview-v2-kpis { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+    @media (max-width:560px) { .overview-v2-context { align-items:flex-start; flex-direction:column; } .overview-v2-context__meta { align-items:flex-start; flex-direction:column; text-align:left; } .overview-v2-kpis { gap:var(--space-2); } .overview-v2-kpi { min-height:100px; padding:var(--space-3); } .overview-v2-kpi .metric-card__value { font-size:var(--font-size-title); } }
+  </style>
+</head>
+<body data-page="overview">
+  <div class="demo-app">
+    <aside class="demo-sidebar">
+      <div class="demo-brand"><span class="demo-brand__mark">TM</span><span class="demo-brand__name">天猫数据<br>仪表盘</span></div>
+      <nav class="demo-nav"><div class="demo-nav__group">
+        <a class="demo-nav__item" aria-current="page"><i>▦</i><span>数据概览</span></a><a class="demo-nav__item"><i>□</i><span>商品运营</span></a><a class="demo-nav__item"><i>⌁</i><span>推广分析</span></a><a class="demo-nav__item"><i>↻</i><span>生命周期</span></a><a class="demo-nav__item"><i>✓</i><span>经营复盘</span></a><a class="demo-nav__item"><i>◫</i><span>数据中心</span></a><a class="demo-nav__item"><i>⚙</i><span>设置</span></a>
+      </div></nav>
+      <div class="demo-sidebar__status"><span class="status-dot"></span><span>系统正常</span></div>
+    </aside>
+    <div class="demo-main">
+      <header class="demo-topbar"><div class="demo-topbar__heading"><h1 class="demo-topbar__title">数据概览</h1><span class="demo-topbar__eyebrow">店铺经营核心指标与趋势</span></div><div class="demo-period"><span class="demo-period__range">2026-03-21 ~ 2026-04-19</span><select class="demo-period__select" aria-label="时间范围"><option>近30天</option></select></div><div class="demo-topbar__tools"><button class="demo-tool" aria-label="刷新"><span>↻</span></button><button class="button">刷新报告</button><button class="button button--primary">新增事件</button></div></header>
+      <main class="demo-page">
+        <div class="demo-page__intro"><div><h2>数据概览</h2><p>先看当前经营结果，再处理目标差额与待办动作。</p></div><div class="panel__tools"><span class="badge badge--success">数据截至 2026-04-19</span><span class="badge badge--info">覆盖 30 天</span></div></div>
+        <div class="overview-v2-context"><div class="overview-v2-context__copy"><strong>数据上下文</strong><span>已覆盖 2026-03-21 至 2026-04-19 · 最近导入：生意参谋商品日度_2026-04-19.xlsx</span></div><div class="overview-v2-context__meta"><span class="overview-v2-status">质量通过</span><span>最近更新 10 分钟前</span></div></div>
+
+        <section class="metric-grid overview-v2-kpis" aria-label="经营指标">
+          <article class="metric-card overview-v2-kpi" data-overview-kpi-select="net_sales" tabindex="0"><div class="metric-card__label">净销售额</div><div class="metric-card__value">¥148,586</div><div class="overview-v2-kpi__delta is-up"><em>↑ 12.8%</em><span>较上期</span></div></article>
+          <article class="metric-card overview-v2-kpi" data-overview-kpi-select="payment_amount" tabindex="0"><div class="metric-card__label">支付金额</div><div class="metric-card__value">¥177,785</div><div class="overview-v2-kpi__delta is-up"><em>↑ 8.4%</em><span>较上期</span></div></article>
+          <article class="metric-card overview-v2-kpi" data-overview-kpi-select="payment_conversion_rate" tabindex="0"><div class="metric-card__label">商品支付转化率</div><div class="metric-card__value">5.7%</div><div class="overview-v2-kpi__delta is-up"><em>↑ 0.8pp</em><span>较上期</span></div></article>
+          <article class="metric-card overview-v2-kpi" data-overview-kpi-select="visitors" tabindex="0"><div class="metric-card__label">商品访客数</div><div class="metric-card__value">347,110</div><div class="overview-v2-kpi__delta is-down"><em>↓ 24.7%</em><span>较上期</span></div></article>
+          <article class="metric-card overview-v2-kpi" data-overview-kpi-select="ad_spend" tabindex="0"><div class="metric-card__label">推广花费</div><div class="metric-card__value">¥7.4万</div><div class="overview-v2-kpi__delta is-down"><em>↑ 6.1%</em><span>较上期</span></div></article>
+          <article class="metric-card overview-v2-kpi" data-overview-kpi-select="ad_roi" tabindex="0"><div class="metric-card__label">推广 ROI</div><div class="metric-card__value">12.17</div><div class="overview-v2-kpi__delta is-up"><em>↑ 1.4</em><span>较上期</span></div></article>
+          <article class="metric-card overview-v2-kpi" data-overview-kpi-select="refund_rate" tabindex="0"><div class="metric-card__label">退款率</div><div class="metric-card__value">22.7%</div><div class="overview-v2-kpi__delta is-down"><em>↑ 4.8pp</em><span>需关注</span></div></article>
+          <article class="metric-card overview-v2-kpi" data-overview-kpi-select="expense_ratio" tabindex="0"><div class="metric-card__label">费比</div><div class="metric-card__value">13.0%</div><div class="overview-v2-kpi__delta is-up"><em>↑ 3.2%</em><span>较上期</span></div></article>
+        </section>
+
+        <section class="section-grid overview-v2-main-grid"><article class="chart-panel panel"><div class="panel__header"><div><h3 class="panel__title" data-overview-v2-trend-title>指标对比 · 趋势</h3><p class="panel__hint" data-overview-v2-trend-hint>按日对比净销售额、支付金额和推广花费</p></div><div class="trend-picker" data-overview-v2-trend-control><button class="button trend-picker__trigger" type="button" data-overview-v2-trend-trigger aria-expanded="false"><span>指标对比</span><span class="trend-picker__selection" data-overview-v2-trend-selection>已选 3 项</span><span aria-hidden="true">⌄</span></button><div class="trend-picker__menu" data-overview-v2-trend-menu role="group" aria-label="选择对比指标" hidden><label class="trend-picker__option"><input type="checkbox" value="net_sales" data-overview-v2-trend-mode checked><span>净销售额</span></label><label class="trend-picker__option"><input type="checkbox" value="payment_amount" data-overview-v2-trend-mode checked><span>支付金额</span></label><label class="trend-picker__option"><input type="checkbox" value="payment_conversion_rate" data-overview-v2-trend-mode><span>商品支付转化率</span></label><label class="trend-picker__option"><input type="checkbox" value="visitors" data-overview-v2-trend-mode><span>商品访客数</span></label><label class="trend-picker__option"><input type="checkbox" value="ad_spend" data-overview-v2-trend-mode checked><span>推广花费</span></label><label class="trend-picker__option"><input type="checkbox" value="ad_roi" data-overview-v2-trend-mode><span>推广 ROI</span></label><label class="trend-picker__option"><input type="checkbox" value="refund_rate" data-overview-v2-trend-mode><span>退款率</span></label><label class="trend-picker__option"><input type="checkbox" value="expense_ratio" data-overview-v2-trend-mode><span>费比</span></label><p class="trend-picker__hint">最多同时对比 3 个指标</p></div></div></div><div id="overviewV2Trend" class="chart-box overview-v2-chart" data-overview-v2-trend-chart role="img" aria-label="指标对比趋势"></div></article><article class="plain-panel panel"><div class="panel__header"><div><h3 class="panel__title">目标进度</h3><p class="panel__hint">按经营周期从近到远 · 截止 04-19</p></div><a class="button" href="goals.html">目标详情</a></div><div class="overview-v2-targets"><div class="overview-v2-target"><div class="overview-v2-target__head"><span>本周净销售目标</span><strong>68.3%</strong></div><div class="overview-v2-progress"><span style="width:68.3%;background:var(--warning)"></span></div><div class="overview-v2-target__meta">¥32,840 / ¥48,100 · 需要关注周末转化</div></div><div class="overview-v2-target"><div class="overview-v2-target__head"><span>本月净销售目标</span><strong>76.8%</strong></div><div class="overview-v2-progress"><span style="width:76.8%;background:var(--success)"></span></div><div class="overview-v2-target__meta">¥148,586 / ¥193,500 · 还差 ¥44,914</div></div><div class="overview-v2-target"><div class="overview-v2-target__head"><span>季度净销售目标</span><strong>91.2%</strong></div><div class="overview-v2-progress"><span style="width:91.2%;background:var(--info)"></span></div><div class="overview-v2-target__meta">¥520,000 / ¥570,000 · 领先计划 3 天</div></div><div class="overview-v2-target"><div class="overview-v2-target__head"><span>年度净销售目标</span><strong>82.4%</strong></div><div class="overview-v2-progress"><span style="width:82.4%"></span></div><div class="overview-v2-target__meta">¥1,482,000 / ¥1,800,000 · 预计 04-29 达成</div></div></div></article></section>
+
+        <section class="section-grid"><article class="plain-panel panel"><div class="panel__header"><div><h3 class="panel__title">运营动作待办</h3><p class="panel__hint">只展示已存在的动作，不自动从异常生成任务</p></div><button class="button">查看全部</button></div><div class="overview-v2-action-list"><div class="overview-v2-action"><div class="overview-v2-action__copy"><strong>轻户外收纳箱 · 提价动作</strong><span>计划 04-20 · 观察窗口已结束 · 商品运营</span></div><span class="overview-v2-action__state status">待复盘</span></div><div class="overview-v2-action"><div class="overview-v2-action__copy"><strong>防晒冰袖 · 主图调整</strong><span>计划 04-21 · 已执行 4 天 · 商品运营</span></div><span class="overview-v2-action__state status ok">观察中</span></div><div class="overview-v2-action"><div class="overview-v2-action__copy"><strong>折叠桌 · 调整预算</strong><span>计划 04-18 · 缺少 04-19 来源批次</span></div><span class="overview-v2-action__state status bad">阻塞</span></div></div></article><article class="plain-panel panel"><div class="panel__header"><div><h3 class="panel__title">异常监控</h3><p class="panel__hint">与上个自然月对比，需要动作的变化</p></div><button class="button">查看异常</button></div><div class="overview-v2-alerts"><div class="overview-v2-alert overview-v2-alert--danger"><div><strong>退款率上升</strong><span>较上期 +4.8pp · 重点商品 3 个</span></div><b>22.7%</b></div><div class="overview-v2-alert"><div><strong>商品访客数下降</strong><span>较上期 -24.7% · 数据覆盖完整</span></div><b>347,110</b></div><div class="overview-v2-alert"><div><strong>费比抬升</strong><span>较上期 +2.1pp · 推广页可下钻</span></div><b>17.8%</b></div></div></article></section>
+
+        <section class="plain-panel panel"><div class="panel__header"><div><h3 class="panel__title">日度经营矩阵</h3><p class="panel__hint">指标为行、日期为列；缺失字段显示不可计算，支持横向滚动和来源追溯</p></div><button class="button">导出当前结果</button></div><div class="data-table-wrap"><table class="data-table"><thead><tr><th>日期</th><th class="num">净销售额</th><th class="num">支付金额</th><th class="num">退款率</th><th class="num">商品访客数</th><th class="num">商品支付转化率</th><th class="num">推广花费</th><th class="num">费比</th><th>来源批次</th></tr></thead><tbody><tr><td>2026-04-19</td><td class="num">¥144,080</td><td class="num">¥177,785</td><td class="num status bad">19.0%</td><td class="num">84,401</td><td class="num">2.5%</td><td class="num">¥0</td><td class="num">0.0%</td><td>生意参谋</td></tr><tr><td>2026-04-18</td><td class="num">¥139,450</td><td class="num">¥168,230</td><td class="num">14.8%</td><td class="num">79,210</td><td class="num">3.1%</td><td class="num">¥2,840</td><td class="num">1.7%</td><td>生意参谋</td></tr><tr><td>2026-04-17</td><td class="num">¥132,880</td><td class="num">¥160,110</td><td class="num">13.6%</td><td class="num">82,640</td><td class="num">3.0%</td><td class="num">¥3,120</td><td class="num">1.9%</td><td>生意参谋</td></tr></tbody></table></div></section>
+
+        <section class="section-grid overview-v2-report__grid"><article class="plain-panel panel overview-v2-report"><div class="panel__header"><div><h3 class="panel__title">重点商品</h3><p class="panel__hint">本期支付金额排序，点击进入商品详情</p></div><button class="button">商品运营</button></div><div class="overview-v2-report__rows"><div class="overview-v2-report__row"><img class="overview-v2-product-image" src="https://img.alicdn.com/bao/uploaded/i2/722890712/O1CN013jNCqR1H8961CauaK_!!4611686018427383768-0-item_pic.jpg" alt="中古风玄关装饰摆件"><span class="overview-v2-report__rank">1</span><div class="overview-v2-report__copy"><strong>中古风玄关装饰摆件 <small class="overview-v2-product-id">· ID 985897754523</small></strong><span class="overview-v2-product-metrics is-expanded"><span>支付件数 <b>98</b></span><span>商品支付转化率 <b>5.7%</b></span><span>客单价 <b>¥141.5</b></span><span>推广花费 <b>¥2,840</b></span><span>费比 <b>1.9%</b></span><span>推广 ROI <b>4.9</b></span><span>退款率 <b>18.2%</b></span><button class="overview-v2-metrics-toggle" type="button" aria-expanded="true" aria-label="收起更多指标">−4</button></span></div><span class="overview-v2-report__value">¥13,870</span></div><div class="overview-v2-report__row"><img class="overview-v2-product-image" src="https://img.alicdn.com/bao/uploaded/i2/722890712/O1CN01U7SywT1H897HEO1vp_!!4611686018427383768-0-item_pic.jpg" alt="入户玄关装饰品"><span class="overview-v2-report__rank">2</span><div class="overview-v2-report__copy"><strong>入户玄关镜面装饰 <small class="overview-v2-product-id">· ID 1011889511510</small></strong><span class="overview-v2-product-metrics is-expanded"><span>支付件数 <b>61</b></span><span>商品支付转化率 <b>5.1%</b></span><span>客单价 <b>¥116.2</b></span><span>推广花费 <b>¥1,960</b></span><span>费比 <b>2.4%</b></span><span>推广 ROI <b>3.6</b></span><span>退款率 <b>17.3%</b></span><button class="overview-v2-metrics-toggle" type="button" aria-expanded="true" aria-label="收起更多指标">−4</button></span></div><span class="overview-v2-report__value">¥7,091</span></div><div class="overview-v2-report__row"><img class="overview-v2-product-image" src="https://img.alicdn.com/bao/uploaded/i3/722890712/O1CN01WDDEF11H893pgonfQ_!!4611686018427383768-0-item_pic.jpg" alt="海贝海五路财神爷摆件"><span class="overview-v2-report__rank">3</span><div class="overview-v2-report__copy"><strong>海贝写生收纳盒 <small class="overview-v2-product-id">· ID 934483834684</small></strong><span class="overview-v2-product-metrics is-expanded"><span>支付件数 <b>32</b></span><span>商品支付转化率 <b>3.8%</b></span><span>客单价 <b>¥169.0</b></span><span>推广花费 <b>¥1,520</b></span><span>费比 <b>3.1%</b></span><span>推广 ROI <b>2.8</b></span><span>退款率 <b>20.5%</b></span><button class="overview-v2-metrics-toggle" type="button" aria-expanded="true" aria-label="收起更多指标">−4</button></span></div><span class="overview-v2-report__value">¥5,408</span></div><div class="overview-v2-report__row"><img class="overview-v2-product-image" src="https://img.alicdn.com/bao/uploaded/i4/722890712/O1CN01hsNtzf1H896esD3XX_!!4611686018427383768-0-item_pic.jpg" alt="乔迁之喜装饰摆件"><span class="overview-v2-report__rank">4</span><div class="overview-v2-report__copy"><strong>乔迁之喜装饰摆件 <small class="overview-v2-product-id">· ID 994728590561</small></strong><span class="overview-v2-product-metrics is-expanded"><span>支付件数 <b>44</b></span><span>商品支付转化率 <b>6.4%</b></span><span>客单价 <b>¥111.1</b></span><span>推广花费 <b>¥980</b></span><span>费比 <b>2.0%</b></span><span>推广 ROI <b>4.1</b></span><span>退款率 <b>11.8%</b></span><button class="overview-v2-metrics-toggle" type="button" aria-expanded="true" aria-label="收起更多指标">−4</button></span></div><span class="overview-v2-report__value">¥4,887</span></div></div></article><article class="plain-panel panel overview-v2-report"><div class="panel__header"><div><h3 class="panel__title">经营报告</h3><p class="panel__hint">本期结论和风险摘要</p></div><span class="badge badge--info">2026-04</span></div><div class="overview-v2-alerts"><div class="overview-v2-alert"><div><strong>规模</strong><span>净销售额较上期增长 12.8%，目标完成 82.4%。</span></div></div><div class="overview-v2-alert overview-v2-alert--danger"><div><strong>风险</strong><span>退款率连续 3 日高于阈值，优先查看 3 个重点商品。</span></div></div><div class="overview-v2-alert"><div><strong>下一步</strong><span>完成 6 条动作复盘，补齐 1 个阻塞批次。</span></div></div></div></article></section>
+      </main>
+    </div>
+  </div>
+  <script>
+    const chart = echarts.init(document.getElementById('overviewV2Trend'));
+    const css = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+    const px = (name, fallback) => Number.parseFloat(css(name)) || fallback;
+    const trendPalette = ['--brand', '--info', '--success', '--warning', '--purple', '--danger'];
+    const trendLabels = { net_sales:'净销售额', payment_amount:'支付金额', payment_conversion_rate:'商品支付转化率', visitors:'商品访客数', ad_spend:'推广花费', ad_roi:'推广 ROI', refund_rate:'退款率', expense_ratio:'费比' };
+    const trendData = {
+      net_sales:[12800,15300,14100,16900,13200,13900,14400], payment_amount:[15800,18600,17200,20500,16100,16800,17700],
+      payment_conversion_rate:[.045,.051,.049,.055,.052,.058,.057], visitors:[31000,35400,33800,37200,32600,34400,34700],
+      ad_spend:[820,940,900,1120,980,1360,1240], ad_roi:[15.6,16.2,15.1,16.7,16.4,12.4,14.3],
+      refund_rate:[.062,.059,.064,.061,.069,.071,.068], expense_ratio:[.052,.049,.053,.055,.061,.081,.070]
+    };
+    const selectedTrendModes = new Set(['net_sales','payment_amount','ad_spend']);
+    const normalizeTrend = (values) => { const base = values.find((value) => Number.isFinite(value) && value !== 0); return base ? values.map((value) => Number(((value / base) * 100).toFixed(1))) : values; };
+    const renderTrend = () => {
+      const modes = [...selectedTrendModes];
+      const labels = modes.map((mode) => trendLabels[mode]);
+      const single = modes.length === 1;
+      const compare = modes.length > 1;
+      const title = single ? `${labels[0]} · 趋势` : '指标对比 · 趋势';
+      document.querySelector('[data-overview-v2-trend-title]').textContent = title;
+      document.querySelector('[data-overview-v2-trend-hint]').textContent = single ? `按日查看${labels[0]}变化` : `按日对比${labels.join('、')}（起始值=100）`;
+      document.querySelector('[data-overview-v2-trend-selection]').textContent = single ? labels[0] : `已选 ${modes.length} 项`;
+      document.querySelectorAll('[data-overview-v2-trend-mode]').forEach((input) => { input.checked = selectedTrendModes.has(input.value); });
+      document.querySelectorAll('[data-overview-kpi-select]').forEach((card) => card.classList.toggle('is-selected', single && card.dataset.overviewKpiSelect === modes[0]));
+      chart.setOption({ animation:false, grid:{left:44,right:18,top:24,bottom:compare ? 48 : 30}, tooltip:{trigger:'axis'}, legend:{show:compare,bottom:4,textStyle:{color:css('--text-secondary'),fontSize:px('--font-size-meta',11)}}, xAxis:{type:'category', boundaryGap:false, data:['04-13','04-14','04-15','04-16','04-17','04-18','04-19'], axisLine:{lineStyle:{color:css('--border-default')}}, axisLabel:{color:css('--text-secondary'),fontSize:px('--font-size-meta',11)}}, yAxis:{type:'value', axisLabel:{color:css('--text-secondary'),fontSize:px('--font-size-meta',11)}, splitLine:{lineStyle:{color:css('--border-default')}}}, series:modes.map((mode,index) => ({name:trendLabels[mode],type:'line',smooth:true,symbol:'circle',symbolSize:6,data:compare ? normalizeTrend(trendData[mode]) : trendData[mode],lineStyle:{color:css(trendPalette[index % trendPalette.length]),width:px('--chart-line-width',2)},itemStyle:{color:css(trendPalette[index % trendPalette.length])}})) });
+    };
+    renderTrend();
+    document.querySelector('[data-overview-v2-trend-trigger]')?.addEventListener('click', () => { const menu = document.querySelector('[data-overview-v2-trend-menu]'); const open = menu.hidden; menu.hidden = !open; document.querySelector('[data-overview-v2-trend-trigger]').setAttribute('aria-expanded', String(open)); });
+    document.querySelectorAll('[data-overview-v2-trend-mode]').forEach((input) => input.addEventListener('change', () => { if (input.checked && selectedTrendModes.size >= 3) { input.checked = false; return; } if (input.checked) selectedTrendModes.add(input.value); else selectedTrendModes.delete(input.value); if (!selectedTrendModes.size) selectedTrendModes.add('net_sales'); renderTrend(); }));
+    document.querySelectorAll('[data-overview-kpi-select]').forEach((card) => { const activate = () => { selectedTrendModes.clear(); selectedTrendModes.add(card.dataset.overviewKpiSelect); renderTrend(); }; card.addEventListener('click', activate); card.addEventListener('keydown', (event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); activate(); } }); });
+    document.addEventListener('click', (event) => { const control = document.querySelector('[data-overview-v2-trend-control]'); const menu = document.querySelector('[data-overview-v2-trend-menu]'); if (menu && !menu.hidden && !control.contains(event.target)) { menu.hidden = true; document.querySelector('[data-overview-v2-trend-trigger]').setAttribute('aria-expanded', 'false'); } });
+    const setMetricState = (metrics, expanded, showToggle = true) => {
+      const button = metrics.querySelector('.overview-v2-metrics-toggle');
+      metrics.classList.toggle('is-expanded', expanded);
+      metrics.classList.toggle('is-collapsed', !expanded);
+      button.hidden = !showToggle;
+      button.textContent = expanded ? '−4' : '+4';
+      button.setAttribute('aria-expanded', String(expanded));
+      button.setAttribute('aria-label', expanded ? '收起更多指标' : '展开更多指标');
+    };
+    const syncMetricOverflow = () => {
+      document.querySelectorAll('.overview-v2-product-metrics').forEach((metrics) => {
+        setMetricState(metrics, true, false);
+        const overflowing = metrics.scrollWidth > metrics.clientWidth + 1;
+        if (overflowing) setMetricState(metrics, false, true);
+      });
+    };
+    document.querySelectorAll('.overview-v2-metrics-toggle').forEach((button) => {
+      button.addEventListener('click', () => {
+        const metrics = button.closest('.overview-v2-product-metrics');
+        setMetricState(metrics, metrics.classList.contains('is-collapsed'), true);
+      });
+    });
+    syncMetricOverflow();
+    window.addEventListener('resize', () => { chart.resize(); syncMetricOverflow(); });
+  </script>
+</body>
+</html>

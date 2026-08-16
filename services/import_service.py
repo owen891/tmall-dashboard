@@ -1,7 +1,9 @@
 import hashlib
 import io
 import json
+import math
 import os
+from html.parser import HTMLParser
 from zipfile import BadZipFile, ZipFile
 from datetime import date
 from uuid import uuid4
@@ -200,6 +202,39 @@ class ImportScopeError(ImportValidationError):
     """Raised when a legacy single-shop import is attempted for another shop."""
 
 
+class _HtmlTableParser(HTMLParser):
+    def __init__(self):
+        super().__init__()
+        self.tables = []
+        self.table = None
+        self.row = None
+        self.cell = None
+
+    def handle_starttag(self, tag, attrs):
+        if tag == 'table':
+            self.table = []
+        elif tag == 'tr' and self.table is not None:
+            self.row = []
+        elif tag in {'td', 'th'} and self.row is not None:
+            self.cell = []
+
+    def handle_data(self, data):
+        if self.cell is not None:
+            self.cell.append(data)
+
+    def handle_endtag(self, tag):
+        if tag in {'td', 'th'} and self.cell is not None:
+            self.row.append(''.join(self.cell).strip())
+            self.cell = None
+        elif tag == 'tr' and self.row is not None:
+            self.table.append(self.row)
+            self.row = None
+        elif tag == 'table' and self.table is not None:
+            if self.table:
+                self.tables.append(self.table)
+            self.table = None
+
+
 class ImportService:
     PREVIEW_TTL_SECONDS = 24 * 60 * 60
 
@@ -357,6 +392,21 @@ class ImportService:
         raise ImportValidationError('无法识别 CSV 文件编码')
 
     @staticmethod
+    def _read_html_xls(content):
+        for encoding in ('utf-8-sig', 'gb18030', 'gbk'):
+            try:
+                parser = _HtmlTableParser()
+                parser.feed(content.decode(encoding))
+            except UnicodeDecodeError:
+                continue
+            if not parser.tables:
+                continue
+            header, *rows = parser.tables[0]
+            if header:
+                return pd.DataFrame(rows, columns=header, dtype=object)
+        raise ImportValidationError('无法读取表格文件')
+
+    @staticmethod
     def _promote_header(frame):
         """Business-advisor exports often put title rows before the real header."""
         aliases = set().union(*FIELD_ALIASES.values())
@@ -394,7 +444,12 @@ class ImportService:
                     entry = entries[0]
                     return ImportService._read_workbook(archive.read(entry), entry.filename)
             else:
-                frame = pd.read_excel(io.BytesIO(content), dtype=object)
+                try:
+                    frame = pd.read_excel(io.BytesIO(content), dtype=object)
+                except Exception:
+                    if suffix != '.xls':
+                        raise
+                    frame = ImportService._read_html_xls(content)
         except ImportValidationError:
             raise
         except BadZipFile as error:
@@ -429,6 +484,7 @@ class ImportService:
                     if pd.isna(value) or (isinstance(value, str) and not value.strip()):
                         raise ValueError(f'{field} 不能为空')
                     if field in NUMERIC_FIELDS:
+                        ImportService._number(value, field)
                         float(str(value).replace(',', '').replace('，', '').strip())
                     values[field] = str(value).strip()
                 for field, column in mapping.items():
@@ -490,7 +546,7 @@ class ImportService:
             'invalid_field_rows': invalid_field_rows,
         }
 
-    def _source_comparisons(self, frame, mapping, source_type, limit=100):
+    def _source_comparisons(self, frame, mapping, source_type, limit=100, shop_id='default'):
         if source_type != 'dmp_product_day':
             return []
         from services.source_resolution_service import DAILY_FIELD_COLUMNS, _choose, _load_candidates
@@ -513,7 +569,9 @@ class ImportService:
                             dmp_value = self._optional_number(raw, percentage=field in PERCENTAGE_FIELDS)
                         except (TypeError, ValueError):
                             dmp_value = str(raw)
-                    candidates = _load_candidates(connection, product_id, stat_date, field)
+                    candidates = _load_candidates(
+                        connection, product_id, stat_date, field, shop_id=shop_id,
+                    )
                     if dmp_value is not None:
                         candidates.append(('dmp_product_day', 'dmp_product_day', None, dmp_value))
                     chosen = _choose(field, candidates)
@@ -551,6 +609,7 @@ class ImportService:
                 and len(set(mapping) & {'paid_visitors', 'organic_visitors', 'recommend_visitors', 'repurchase_rate', 'presale_amount', 'search_click_rate'}) >= 2
             ) else source_type
         from db import get_shop_id
+        shop_id = get_shop_id()
         if source_type in {'product_week', 'product_month'} and get_shop_id() != 'default':
             raise ImportScopeError(
                 f'{source_type} 当前仍使用单店旧表，不支持非 default 店铺；请先完成周/月表店铺迁移'
@@ -647,7 +706,9 @@ class ImportService:
             }
         with get_db() as connection:
             if source_type == 'dmp_product_day':
-                quality['source_resolution']['field_comparisons'] = self._source_comparisons(frame, mapping, source_type)
+                quality['source_resolution']['field_comparisons'] = self._source_comparisons(
+                    frame, mapping, source_type, shop_id=shop_id,
+                )
             connection.execute(
                 'UPDATE import_previews SET quality_summary = ? WHERE id = ?',
                 (json.dumps(quality, ensure_ascii=False), preview_id),
@@ -728,18 +789,28 @@ class ImportService:
 
     @staticmethod
     def _number(value, field):
+        if str(value).strip().lower() in {
+            'nan', '+nan', '-nan', 'inf', '+inf', '-inf',
+            'infinity', '+infinity', '-infinity',
+        }:
+            raise ImportValidationError(f'{field} must be a finite number')
         try:
-            return float(str(value).replace(',', '').replace('，', '').strip())
+            number = float(str(value).replace(',', '').replace('，', '').strip())
         except (TypeError, ValueError) as error:
             raise ImportValidationError(f'{field} 必须是数字') from error
+        if not math.isfinite(number):
+            raise ImportValidationError(f'{field} must be a finite number')
+        return number
 
     @staticmethod
     def _optional_number(value, percentage=False):
-        if value is None or pd.isna(value) or str(value).strip() in {'', '-', '--'}:
+        if value is None or pd.isna(value) or str(value).strip().lower() in {'', '-', '--', 'nan', 'none'}:
             return None
         text = str(value).replace(',', '').replace('，', '').strip()
         has_percent = text.endswith('%')
         number = float(text.rstrip('%'))
+        if not math.isfinite(number):
+            raise ValueError('numeric value must be finite')
         if percentage:
             return number / 100 if has_percent or abs(number) > 1 else number
         return number

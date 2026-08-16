@@ -1,6 +1,6 @@
 (function () {
   const $ = (selector, root = document) => root.querySelector(selector);
-  const state = { tasks: [], kpis: [], schedules: [], logs: [], token: 0, taskId: null, kpiId: null, scheduleId: null };
+  const state = { tasks: [], kpis: [], schedules: [], logs: [], capabilities: {}, token: 0, taskId: null, kpiId: null, scheduleId: null };
   const dialogReturnFocus = new WeakMap();
   const doneStates = new Set(['done', 'completed']);
   const statusLabels = { todo: '待处理', in_progress: '处理中', done: '已完成', completed: '已完成', active: '正常', running: '执行中', error: '异常' };
@@ -17,6 +17,7 @@
   const setStatus = (message) => { const target = $('[data-manage-status]'); if (target) target.textContent = message; window.DemoShell?.setStatus?.(message); };
   const badgeClass = (value) => value === 'error' ? 'badge--danger' : (doneStates.has(value) || value === 'active' ? 'badge--success' : (value === 'running' || value === 'in_progress' ? 'badge--warning' : 'badge--muted'));
   const period = () => String((window.TmallDateRange?.getState?.().endDate || new Date().toISOString()).slice(0, 7));
+  const canManage = (name) => !Object.keys(state.capabilities).length || DemoApi.can({ capabilities: state.capabilities }, name);
 
   function tableMessage(selector, colspan, message) {
     const body = $(selector); body.replaceChildren();
@@ -29,7 +30,7 @@
     item.addEventListener('click', handler); return item;
   }
   function actionGroup(actions) { const wrap = document.createElement('div'); wrap.className = 'filter-group'; actions.forEach((action) => wrap.appendChild(action)); return wrap; }
-  function badge(value) { const item = document.createElement('span'); const ratingClass = { A: 'badge--success', B: 'badge--info', C: 'badge--warning', D: 'badge--danger' }[value]; item.className = `badge ${ratingClass || badgeClass(value)}`; item.textContent = statusLabels[value] || value || '--'; return item; }
+  function badge(value, label) { const item = document.createElement('span'); const ratingClass = { A: 'badge--success', B: 'badge--info', C: 'badge--warning', D: 'badge--danger' }[value]; item.className = `badge ${ratingClass || badgeClass(value)}`; item.textContent = label || DemoLabels.label('status', value, statusLabels[value] || '--'); return item; }
 
   function renderMetrics() {
     const pending = state.tasks.filter((row) => !doneStates.has(row.status)).length;
@@ -43,7 +44,7 @@
     state.tasks.forEach((item) => {
       const row = document.createElement('tr');
       const name = document.createElement('div'); name.className = 'table-name'; const title = document.createElement('strong'); title.textContent = item.title || '未命名任务'; const detail = document.createElement('span'); detail.textContent = item.description || '无任务说明'; name.append(title, detail);
-      appendCell(row, name); appendCell(row, badge(item.status || 'todo')); appendCell(row, item.priority || '--'); appendCell(row, item.assignee || '未分配'); appendCell(row, item.due_date || '--');
+      appendCell(row, name); appendCell(row, badge(item.status || 'todo')); appendCell(row, DemoLabels.label('priority', item.priority)); appendCell(row, item.assignee || '未分配'); appendCell(row, item.due_date || '--');
       appendCell(row, actionGroup([
         button('', 'pencil', () => openTask(item), '编辑任务'),
         button('', doneStates.has(item.status) ? 'rotate-ccw' : 'check', () => updateTaskStatus(item), doneStates.has(item.status) ? '标记待处理' : '标记完成'),
@@ -55,7 +56,7 @@
     const body = $('[data-manage-kpis]'); body.replaceChildren();
     if (!state.kpis.length) return tableMessage('[data-manage-kpis]', 6, `当前周期 ${period()} 暂无 KPI`);
     state.kpis.forEach((item) => {
-      const row = document.createElement('tr'); appendCell(row, item.user_name || '--'); appendCell(row, money(item.target_gmv)); appendCell(row, money(item.actual_gmv)); appendCell(row, percent(item.achievement_rate)); appendCell(row, badge(item.rating || 'C'));
+      const row = document.createElement('tr'); appendCell(row, item.user_name || '--'); appendCell(row, money(item.target_gmv)); appendCell(row, money(item.actual_gmv)); appendCell(row, percent(item.achievement_rate)); appendCell(row, badge(item.rating || 'C', DemoLabels.label('rating', item.rating || 'C')));
       appendCell(row, actionGroup([button('', 'pencil', () => openKpi(item), '编辑 KPI'), button('', 'trash-2', () => removeKpi(item), '删除 KPI')])); body.appendChild(row);
     });
   }
@@ -86,10 +87,10 @@
     setStatus('正在加载管理工作台数据');
     try {
       const [tasks, kpis, schedules, logs] = await Promise.all([
-        DemoApi.request('/api/tasks'), DemoApi.request(`/api/user_kpis?period=${encodeURIComponent(selectedPeriod)}`), DemoApi.request('/api/scheduled_tasks'), DemoApi.request('/api/logs?limit=20'),
+        DemoApi.domainRequest('/api/manage/tasks'), DemoApi.domainRequest(`/api/manage/kpis?period=${encodeURIComponent(selectedPeriod)}`), DemoApi.domainRequest('/api/manage/schedules'), DemoApi.request('/api/logs?limit=20'),
       ]);
       if (token !== state.token) return;
-      state.tasks = asArray(tasks); state.kpis = asArray(kpis); state.schedules = asArray(schedules); state.logs = asArray(logs); renderAll();
+      state.tasks = tasks.data || asArray(tasks); state.kpis = kpis.data || asArray(kpis); state.schedules = schedules.data || asArray(schedules); state.logs = asArray(logs); renderAll();
       $('[data-manage-kpi-period]').textContent = `当前周期：${selectedPeriod}`;
       setStatus('管理工作台数据已更新');
     } catch (error) {
@@ -100,6 +101,7 @@
   }
   async function log(action, detail) { await DemoApi.request('/api/logs', json({ action, detail })); }
   async function mutate(action, detail, request) {
+    if (!canManage('can_edit')) { setStatus('当前管理操作不可用'); return; }
     try {
       await request();
       let logFailed = false;
@@ -139,17 +141,17 @@
     if (item) ['task_name', 'cron_expr', 'file_pattern'].forEach((key) => { if (form.elements[key]) form.elements[key].value = item[key] || ''; });
     showDialog(dialog);
   }
-  function updateTaskStatus(item) { const next = doneStates.has(item.status) ? 'todo' : 'done'; mutate('更新任务状态', `${item.title || item.id}：${statusLabels[next]}`, () => DemoApi.request(`/api/tasks/${Number(item.id)}`, json({ status: next }, 'PUT'))); }
-  function removeTask(item) { if (window.confirm(`删除任务“${item.title || item.id}”？`)) mutate('删除任务', item.title || String(item.id), () => DemoApi.request(`/api/tasks/${Number(item.id)}`, { method: 'DELETE' })); }
-  function removeKpi(item) { if (window.confirm(`删除 ${item.user_name || '该成员'} 的 KPI？`)) mutate('删除 KPI', item.user_name || String(item.id), () => DemoApi.request(`/api/user_kpis/${Number(item.id)}`, { method: 'DELETE' })); }
-  function toggleSchedule(item) { const enabled = Number(item.enabled) !== 1; mutate(enabled ? '启用调度' : '停用调度', item.task_name || String(item.id), () => DemoApi.request(`/api/scheduled_tasks/${Number(item.id)}`, json({ enabled }, 'PUT'))); }
-  function runSchedule(item) { mutate('执行调度', item.task_name || String(item.id), () => DemoApi.request(`/api/scheduled_tasks/${Number(item.id)}/run`, json({}))); }
-  function removeSchedule(item) { if (window.confirm(`删除调度“${item.task_name || item.id}”？`)) mutate('删除调度', item.task_name || String(item.id), () => DemoApi.request(`/api/scheduled_tasks/${Number(item.id)}`, { method: 'DELETE' })); }
+  function updateTaskStatus(item) { const next = doneStates.has(item.status) ? 'todo' : 'done'; mutate('更新任务状态', `${item.title || item.id}：${statusLabels[next]}`, () => DemoApi.domainRequest(`/api/manage/tasks/${Number(item.id)}`, json({ status: next, operator: '店长', reason: '更新任务状态' }, 'PUT'))); }
+  function removeTask(item) { if (window.confirm(`删除任务“${item.title || item.id}”？`)) mutate('删除任务', item.title || String(item.id), () => DemoApi.domainRequest(`/api/manage/tasks/${Number(item.id)}`, { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ operator: '店长', reason: '删除管理任务' }) })); }
+  function removeKpi(item) { if (window.confirm(`删除 ${item.user_name || '该成员'} 的 KPI？`)) mutate('删除 KPI', item.user_name || String(item.id), () => DemoApi.domainRequest(`/api/manage/kpis/${Number(item.id)}`, { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ operator: '店长', reason: '删除用户 KPI' }) })); }
+  function toggleSchedule(item) { const enabled = Number(item.enabled) !== 1; mutate(enabled ? '启用调度' : '停用调度', item.task_name || String(item.id), () => DemoApi.domainRequest(`/api/manage/schedules/${Number(item.id)}`, json({ enabled, operator: '店长', reason: enabled ? '启用定时任务' : '停用定时任务' }, 'PUT'))); }
+  function runSchedule(item) { mutate('执行调度', item.task_name || String(item.id), () => DemoApi.domainRequest(`/api/manage/schedules/${Number(item.id)}/run`, json({ operator: '店长', reason: '手动执行定时任务' }))); }
+  function removeSchedule(item) { if (window.confirm(`删除调度“${item.task_name || item.id}”？`)) mutate('删除调度', item.task_name || String(item.id), () => DemoApi.domainRequest(`/api/manage/schedules/${Number(item.id)}`, { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ operator: '店长', reason: '删除定时任务' }) })); }
 
   function bindForms() {
-    $('[data-manage-task-form]').addEventListener('submit', (event) => { event.preventDefault(); const values = formValues(event.currentTarget); const id = state.taskId; mutate(id ? '更新任务' : '创建任务', values.title, async () => { await DemoApi.request(id ? `/api/tasks/${Number(id)}` : '/api/tasks', json(values, id ? 'PUT' : 'POST')); resetDialog($('[data-manage-task-dialog]')); }); });
-    $('[data-manage-kpi-form]').addEventListener('submit', (event) => { event.preventDefault(); const values = formValues(event.currentTarget); ['target_gmv', 'actual_gmv', 'achievement_rate'].forEach((key) => { values[key] = Number(values[key] || 0); }); const id = state.kpiId; mutate(id ? '更新 KPI' : '创建 KPI', values.user_name, async () => { await DemoApi.request(id ? `/api/user_kpis/${Number(id)}` : '/api/user_kpis', json(values, id ? 'PUT' : 'POST')); resetDialog($('[data-manage-kpi-dialog]')); }); });
-    $('[data-manage-schedule-form]').addEventListener('submit', (event) => { event.preventDefault(); const values = formValues(event.currentTarget); const id = state.scheduleId; mutate(id ? '更新调度' : '创建调度', values.task_name, async () => { await DemoApi.request(id ? `/api/scheduled_tasks/${Number(id)}` : '/api/scheduled_tasks', json(values, id ? 'PUT' : 'POST')); resetDialog($('[data-manage-schedule-dialog]')); }); });
+    $('[data-manage-task-form]').addEventListener('submit', (event) => { event.preventDefault(); const values = formValues(event.currentTarget); const id = state.taskId; values.operator = '店长'; values.reason = id ? '编辑管理任务' : '创建管理任务'; mutate(id ? '更新任务' : '创建任务', values.title, async () => { await DemoApi.domainRequest(id ? `/api/manage/tasks/${Number(id)}` : '/api/manage/tasks', json(values, id ? 'PUT' : 'POST')); resetDialog($('[data-manage-task-dialog]')); }); });
+    $('[data-manage-kpi-form]').addEventListener('submit', (event) => { event.preventDefault(); const values = formValues(event.currentTarget); ['target_gmv', 'actual_gmv', 'achievement_rate'].forEach((key) => { values[key] = Number(values[key] || 0); }); const id = state.kpiId; values.operator = '店长'; values.reason = id ? '编辑用户 KPI' : '创建用户 KPI'; mutate(id ? '更新 KPI' : '创建 KPI', values.user_name, async () => { await DemoApi.domainRequest(id ? `/api/manage/kpis/${Number(id)}` : '/api/manage/kpis', json(values, id ? 'PUT' : 'POST')); resetDialog($('[data-manage-kpi-dialog]')); }); });
+    $('[data-manage-schedule-form]').addEventListener('submit', (event) => { event.preventDefault(); const values = formValues(event.currentTarget); const id = state.scheduleId; values.operator = '店长'; values.reason = id ? '编辑定时任务' : '创建定时任务'; mutate(id ? '更新调度' : '创建调度', values.task_name, async () => { await DemoApi.domainRequest(id ? `/api/manage/schedules/${Number(id)}` : '/api/manage/schedules', json(values, id ? 'PUT' : 'POST')); resetDialog($('[data-manage-schedule-dialog]')); }); });
   }
   function bind() {
     $('[data-manage-refresh]').addEventListener('click', load); $('[data-manage-create-task]').addEventListener('click', () => openTask()); $('[data-manage-create-kpi]').addEventListener('click', () => openKpi()); $('[data-manage-create-schedule]').addEventListener('click', () => openSchedule());

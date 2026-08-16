@@ -6,11 +6,11 @@
   const metricDefs = [
     ['支付金额', 'gmv', money, true],
     ['净销售额', 'net_sales', money, true],
-    ['访客数', 'visitors', number, true],
+    ['商品访客数', 'visitors', number, true],
     ['客单价', 'aov', money, true],
     ['推广花费', 'ad_spend', money, false],
-    ['ROI', 'roi', (value) => Number(value || 0).toFixed(2), true],
-    ['支付转化率', 'conversion', percent, true],
+    ['推广 ROI', 'roi', (value) => Number(value || 0).toFixed(2), true],
+    ['商品支付转化率', 'conversion', percent, true],
     ['退款率', 'refund_rate', percent, false]
   ];
   const trendLabels = { gmv: 'GMV', visitors: '访客', net_sales: '净销售' };

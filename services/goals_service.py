@@ -42,12 +42,23 @@ def _allocate(annual_target, days, weights=None):
 
 
 class GoalsService:
-    def create_or_replace(self, year, annual_target, expected_version=None):
+    def create_or_replace(self, year, annual_target=None, expected_version=None, growth_multiplier=None,
+                          operator='admin', reason='创建或更新年度目标'):
         if not isinstance(year, int) or year < 2000 or year > 2100:
             raise GoalValidationError('年份不合法')
+        prior_year_net_sales = GoalsRepo.prior_year_net_sales(year)
+        multiplier = float(growth_multiplier) if growth_multiplier is not None else None
+        if annual_target is None:
+            if multiplier is None or multiplier <= 0:
+                raise GoalValidationError('年度目标或增长倍率至少提供一项')
+            annual_target = prior_year_net_sales * multiplier
+        if float(annual_target) < 0:
+            raise GoalValidationError('年度目标不能为负数')
         days = _days_for_year(year)
         allocation = _allocate(annual_target, days, GoalsRepo.prior_year_daily_weights(year))
-        version = GoalsRepo.replace_year(year, float(annual_target), expected_version, allocation)
+        version = GoalsRepo.replace_year(
+            year, float(annual_target), expected_version, allocation, operator, reason,
+        )
         if version == 'locked':
             raise GoalConflictError('该年度存在已锁定周期，不能覆盖重算年度目标')
         if version is None:
@@ -55,7 +66,20 @@ class GoalsService:
         return {
             'year': year, 'version': version, 'annual_total': round(float(annual_target), 2),
             'day_count': len(days), 'leap_year': isleap(year),
+            'prior_year_net_sales': prior_year_net_sales,
+            'growth_multiplier': multiplier,
+            'suggested_annual_target': round(prior_year_net_sales * multiplier, 2) if multiplier is not None else None,
         }
+
+    def suggest(self, year, growth_multiplier=1.0):
+        if not isinstance(year, int) or year < 2000 or year > 2100:
+            raise GoalValidationError('年份不合法')
+        multiplier = float(growth_multiplier)
+        if multiplier <= 0:
+            raise GoalValidationError('增长倍率必须大于 0')
+        prior = GoalsRepo.prior_year_net_sales(year)
+        return {'year': year, 'prior_year_net_sales': prior, 'growth_multiplier': multiplier,
+                'suggested_annual_target': round(prior * multiplier, 2)}
 
     def get_year(self, year):
         version, days = GoalsRepo.get_year(year)
@@ -82,10 +106,19 @@ class GoalsService:
             if period_key not in {f'{year}-Q1', f'{year}-Q2', f'{year}-Q3', f'{year}-Q4'}:
                 raise GoalValidationError('季度格式必须为 YYYY-Qn')
         elif period_type == 'date':
-            if not period_key.startswith(f'{year:04d}-'):
+            try:
+                parsed_date = date.fromisoformat(str(period_key))
+            except (TypeError, ValueError):
+                raise GoalValidationError('日期格式必须为 YYYY-MM-DD')
+            if parsed_date.year != year:
                 raise GoalValidationError('日期格式必须为 YYYY-MM-DD')
         elif period_type == 'month':
-            if period_key != f'{year:04d}-{int(period_key[-2:]):02d}':
+            try:
+                month_key = str(period_key)
+                month_date = date.fromisoformat(f'{month_key}-01')
+            except (TypeError, ValueError):
+                raise GoalValidationError('月份格式必须为 YYYY-MM')
+            if month_date.year != year or month_key != f'{year:04d}-{month_date.month:02d}':
                 raise GoalValidationError('月份格式必须为 YYYY-MM')
         elif not period_key.startswith(f'{year:04d}-W'):
             raise GoalValidationError('周格式必须为 YYYY-Www')

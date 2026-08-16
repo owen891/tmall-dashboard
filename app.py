@@ -25,7 +25,7 @@ from api.overview_events_api import overview_events_bp
 from api.schedules_api import schedules_bp
 from api.import_scans_api import import_scans_bp
 from api.manage_api import manage_bp
-from config import Config
+from config import APP_VERSION, Config
 from models import db as orm_db
 
 # 获取项目根目录的绝对路径
@@ -166,7 +166,7 @@ def create_app(config=None):
     def demo_manifest():
         return jsonify({
             'name': 'tmall-dashboard',
-            'version': '0.1.0',
+            'version': APP_VERSION,
             'data_mode': 'api',
             'pages': [
                 {'id': 'overview', 'path': '/', 'data': 'api', 'endpoint': '/api/overview'},

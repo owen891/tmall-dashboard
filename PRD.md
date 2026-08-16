@@ -832,7 +832,7 @@ operation_logs (操作日志)        独立表
 | Sheet名/特征 | 导入目标 | 说明 |
 |-------------|---------|------|
 | `单品总表` | monthly_data | 月度数据 |
-| `DMP` | weekly_data | DMP周度数据（含流量来源细分） |
+| `DMP`/`全店单品列表` | daily_data + daily_data_observations | DMP 商品日度数据；重复字段按来源裁决，独有字段生效，异常比例字段级隔离 |
 | `付费` | paid_detail | 付费推广明细 |
 | `Sheet2`/`备注` | products | 更新商品备注 |
 | `生意参谋` | daily_data | 日度数据 |
@@ -851,6 +851,8 @@ operation_logs (操作日志)        独立表
 
 - **月度版** (`import_smart.py`)：从文件名提取月份，导入 monthly_data
 - **日度版** (`import_smart_daily.py`)：从文件名提取日期，导入 daily_data
+
+> **店铺边界**：当前 `daily_data`、`store_daily_facts`、`promotion_daily_facts`、来源观测和导入批次支持 `shop_id` 隔离；周/月事实、推广明细、生命周期、动作和目标仍是单店结构。非 `default` 店铺访问这些旧表依赖接口或尝试周/月导入时必须返回 `UNSUPPORTED_SCOPE`，不得返回混合数据；导入列表、审计和撤销只能访问当前店铺批次。扩展多店前必须完成这些表的店铺键迁移和全链路查询隔离。
 
 ### 6.3 市场分析数据导入
 

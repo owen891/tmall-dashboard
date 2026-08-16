@@ -1,7 +1,59 @@
 <!doctype html>
-<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>经营复盘 | 天猫数据仪表盘</title><link rel="stylesheet" href="../assets/tokens.css"><link rel="stylesheet" href="../assets/shell.css"><link rel="stylesheet" href="../assets/components.css"><script src="https://unpkg.com/lucide@1.8.0/dist/umd/lucide.min.js"></script></head>
-<body data-page="reviews"><div class="demo-app"><aside class="demo-sidebar" data-shell-sidebar></aside><div class="demo-main"><header class="demo-topbar" data-shell-header></header><main class="demo-page">
-<div class="demo-page__intro"><div><h2>经营复盘</h2><p>查看动作全状态机、重新计算观察窗口，并填写动作与日/周/月周期复盘。</p></div><button type="button" class="button" data-reviews-refresh><i data-lucide="refresh-cw"></i><span>刷新</span></button></div>
-<section class="plain-panel panel"><div class="panel__header"><div><h3 class="panel__title">动作状态机</h3><p class="panel__hint" data-reviews-status>加载中</p></div><button type="button" class="button button--primary" data-actions-recalculate>重新计算观察窗口</button></div><div class="section-toolbar"><select class="select" data-actions-status-filter aria-label="动作状态筛选"><option value="">全部状态</option><option value="draft">草稿</option><option value="pending_execution">待执行</option><option value="executing">执行中</option><option value="observing">观察中</option><option value="blocked">阻塞</option><option value="calculation_failed">计算失败</option><option value="pending_review">待复盘</option><option value="completed">已完成</option><option value="cancelled">已取消</option></select></div><div data-reviews-list></div></section>
-<section class="plain-panel panel"><div class="panel__header"><div><h3 class="panel__title">周期复盘</h3><p class="panel__hint">支持日、周、月；记录结论而非自动生成经营决策。</p></div></div><form class="modal-form__body" data-period-review-form><label>周期<select class="select" name="period_type"><option value="day">日</option><option value="week">周</option><option value="month" selected>月</option></select></label><label>周期键<input class="input" name="period_key" value="2026-04" required></label><label>摘要<textarea class="input" name="summary" required></textarea></label><label>结论<textarea class="input" name="conclusions" required></textarea></label><label>后续动作<input class="input" name="next_actions" required></label><label>复盘人<input class="input" name="reviewer" value="operator" required></label><button class="button button--primary" type="submit">保存周期复盘</button><p data-period-review-status role="status"></p></form><div class="status-list" data-period-review-list></div></section>
-</main></div></div><script src="../assets/api.js"></script><script src="../assets/shell.js"></script><script src="../assets/reviews-live.js"></script></body></html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>经营复盘 | 天猫数据仪表盘</title>
+  <link rel="stylesheet" href="../assets/tokens.css">
+  <link rel="stylesheet" href="../assets/shell.css">
+  <link rel="stylesheet" href="../assets/components.css">
+  <script src="../assets/lucide-1.8.0.min.js"></script>
+</head>
+<body data-page="reviews">
+  <div class="demo-app">
+    <aside class="demo-sidebar" data-shell-sidebar></aside>
+    <div class="demo-main">
+      <header class="demo-topbar" data-shell-header></header>
+      <main class="demo-page">
+        <aside data-right-rail hidden aria-label="辅助信息"></aside>
+        <div class="demo-page__intro">
+          <div><h2>经营复盘</h2><p>先看动作状态，再处理待复盘结论和日、周、月周期复盘。</p></div>
+          <button type="button" class="button" data-reviews-refresh><i data-lucide="refresh-cw"></i><span>刷新</span></button>
+        </div>
+        <section class="metric-grid review-summary-grid" aria-label="复盘摘要">
+          <article class="metric-card"><div class="metric-card__label">待复盘</div><div class="metric-card__value" data-reviews-summary="pending_review">--</div><div class="metric-card__meta">观察窗口已结束</div></article>
+          <article class="metric-card"><div class="metric-card__label">观察中</div><div class="metric-card__value" data-reviews-summary="observing">--</div><div class="metric-card__meta">等待窗口结束</div></article>
+          <article class="metric-card"><div class="metric-card__label">阻塞</div><div class="metric-card__value" data-reviews-summary="blocked">--</div><div class="metric-card__meta">需要补齐数据或处理</div></article>
+          <article class="metric-card"><div class="metric-card__label">已完成</div><div class="metric-card__value" data-reviews-summary="completed">--</div><div class="metric-card__meta">已沉淀复盘结论</div></article>
+        </section>
+        <div class="reviews-workspace">
+        <section class="plain-panel panel">
+          <div class="panel__header"><div><h3 class="panel__title">动作状态机</h3><p class="panel__hint" data-reviews-status>加载中…</p></div><button type="button" class="button button--primary" data-actions-recalculate>重新计算观察窗口</button></div>
+          <div class="section-toolbar"><select class="select" data-actions-status-filter aria-label="动作状态筛选"><option value="">全部状态</option><option value="draft">草稿</option><option value="pending_execution">待执行</option><option value="executing">执行中</option><option value="observing">观察中</option><option value="blocked">阻塞</option><option value="calculation_failed">计算失败</option><option value="pending_review">待复盘</option><option value="completed">已完成</option><option value="cancelled">已取消</option></select></div>
+          <div data-reviews-list></div>
+        </section>
+        <section class="plain-panel panel">
+          <div class="panel__header"><div><h3 class="panel__title">周期复盘</h3><p class="panel__hint">记录结论，不自动生成经营决策。</p></div></div>
+          <form class="modal-form__body" data-period-review-form>
+            <label>周期<select class="select" name="period_type"><option value="day">日</option><option value="week">周</option><option value="month" selected>月</option></select></label>
+            <label>周期键<input class="input" name="period_key" value="2026-04" required></label>
+            <label>摘要<textarea class="input" name="summary" required></textarea></label>
+            <label>结论<textarea class="input" name="conclusions" required></textarea></label>
+            <label>后续动作<input class="input" name="next_actions" required></label>
+            <label>复盘人<input class="input" name="reviewer" value="运营人员" required></label>
+            <button class="button button--primary" type="submit">保存周期复盘</button>
+            <p data-period-review-status role="status"></p>
+          </form>
+          <div class="status-list" data-period-review-list></div>
+        </section>
+        </div>
+      </main>
+    </div>
+  </div>
+  <script src="../assets/api.js"></script>
+  <script src="../assets/labels.js"></script>
+  <script src="../assets/shell.js"></script>
+  <script src="../assets/reviews-live.js"></script>
+  <script src="../assets/navigation.js"></script>
+</body>
+</html>

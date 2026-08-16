@@ -1,4 +1,6 @@
 import os
+import csv
+import io
 import sys
 import tempfile
 import unittest
@@ -103,6 +105,55 @@ class OverviewContractTests(unittest.TestCase):
         self.assertEqual(matrix['data']['rows'][0]['payment_amount'], 500.0)
         self.assertEqual(matrix['data']['rows'][0]['buyers'], 25)
         self.assertEqual(matrix['data']['rows'][0]['data_source'], 'store_daily_facts')
+
+    def test_daily_matrix_exposes_returning_ratio_changes_missing_range_and_batch(self):
+        from db import get_db
+        with get_db(self.database_path) as connection:
+            connection.execute('INSERT INTO store_daily_facts (date,payment_amount,successful_refund_amount,ad_spend,product_visitors,payment_buyers,returning_payment_buyers,source_batch_id) VALUES (?,?,?,?,?,?,?,?)', ('2026-04-01', 500, 50, 60, 100, 25, 8, 'batch-a'))
+            connection.execute('INSERT INTO store_daily_facts (date,payment_amount,successful_refund_amount,ad_spend,product_visitors,payment_buyers,returning_payment_buyers,source_batch_id) VALUES (?,?,?,?,?,?,?,?)', ('2026-04-03', 300, 30, 30, 100, 30, 10, 'batch-b'))
+            connection.commit()
+        matrix = self.client.get('/api/overview/daily-matrix?start=2026-04-01&end=2026-04-03').get_json()['data']
+        first, third = matrix['rows'][0], matrix['rows'][-1]
+        self.assertAlmostEqual(first['returning_buyer_ratio'], 8 / 25)
+        self.assertEqual(first['source_batch_id'], 'batch-a')
+        self.assertIsNotNone(third['changes']['payment_amount'])
+        self.assertEqual(matrix['missing_date_ranges'], [{'start': '2026-04-02', 'end': '2026-04-02'}])
+
+    def test_daily_matrix_export_returns_all_filtered_rows_and_source_fields(self):
+        response = self.client.get('/api/overview/daily-matrix/export?start=2026-04-01&end=2026-04-02')
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('text/csv', response.content_type)
+        rows = list(csv.DictReader(io.StringIO(response.get_data(as_text=True).lstrip('\ufeff'))))
+        response.close()
+
+        self.assertEqual(len(rows), 2)
+        self.assertIn('returning_buyer_ratio', rows[0])
+        self.assertIn('source_batch_id', rows[0])
+
+    def test_overview_and_matrix_apply_product_tier_lifecycle_and_channel_filters(self):
+        from db import get_db
+        with get_db(self.database_path) as connection:
+            connection.execute("UPDATE products SET tier = 'A' WHERE product_id = 'overview-a'")
+            connection.execute("UPDATE products SET tier = 'B' WHERE product_id = 'overview-b'")
+            connection.execute(
+                "INSERT INTO lifecycle_profiles (product_id, recommended_stage) VALUES ('overview-a', 'growth')"
+            )
+            connection.execute(
+                '''INSERT INTO promotion_daily_facts
+                   (date, channel, product_id, campaign_id, unit_id, ad_spend, attributed_payment_amount)
+                   VALUES ('2026-04-01', 'search', 'overview-a', '', '', 20, 100)'''
+            )
+            connection.commit()
+
+        query = ('start=2026-04-01&end=2026-04-02&product_id=overview-a&tier=A'
+                 '&lifecycle_stage=growth&promotion_channel=search')
+        overview = self.client.get(f'/api/overview?{query}').get_json()
+        matrix = self.client.get(f'/api/overview/daily-matrix?{query}').get_json()
+
+        self.assertEqual(overview['data']['payment_amount'], 100.0)
+        self.assertEqual(overview['data']['net_sales'], 90.0)
+        self.assertEqual(len(matrix['data']['rows']), 1)
+        self.assertEqual(matrix['data']['rows'][0]['date'], '2026-04-01')
 
 
 if __name__ == '__main__':

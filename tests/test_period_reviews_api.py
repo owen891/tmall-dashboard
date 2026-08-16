@@ -25,6 +25,8 @@ class PeriodReviewsTests(unittest.TestCase):
         response = self.client.get('/api/period-reviews?period_type=month')
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.get_json()['data'][0]['period_key'], '2026-04')
+        self.assertIn('created_at', response.get_json()['data'][0])
+        self.assertIn('updated_at', response.get_json()['data'][0])
         response.close()
 
 

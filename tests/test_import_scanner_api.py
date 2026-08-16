@@ -2,6 +2,21 @@ import os
 import tempfile
 import unittest
 
+from openpyxl import Workbook
+
+
+def workbook_bytes(headers, rows):
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.append(headers)
+    for row in rows:
+        sheet.append(row)
+    from io import BytesIO
+    output = BytesIO()
+    workbook.save(output)
+    output.seek(0)
+    return output
+
 
 class ImportScannerApiTests(unittest.TestCase):
     def setUp(self):
@@ -15,9 +30,12 @@ class ImportScannerApiTests(unittest.TestCase):
             'DATABASE_PATH': self.db_path,
             'IMPORT_SCAN_ALLOWED_ROOTS': [self.inbox],
         })
+        self.ctx = self.app.app_context()
+        self.ctx.push()
         self.client = self.app.test_client()
 
     def tearDown(self):
+        self.ctx.pop()
         self.tmp.cleanup()
 
     def test_crud_and_legacy_schedule_migration_contract(self):
@@ -45,3 +63,62 @@ class ImportScannerApiTests(unittest.TestCase):
         })
         self.assertEqual(response.status_code, 422)
 
+    def test_blocked_scan_file_can_be_requeued_through_an_explicit_api(self):
+        from datetime import datetime, timedelta, timezone
+        from services.import_scan_service import ImportScanService
+
+        path = os.path.join(self.inbox, 'blocked.xlsx')
+        with open(path, 'wb') as handle:
+            handle.write(workbook_bytes(['date', 'product_id', 'payment_amount', 'product_visitors'], [
+                ['2026-08-01', '', 100, 10],
+            ]).getvalue())
+        old = (datetime.now(timezone.utc) - timedelta(minutes=2)).timestamp()
+        os.utime(path, (old, old))
+        job = ImportScanService.create_job({
+            'task_name': 'blocked-retry',
+            'folder_path': self.inbox,
+            'file_pattern': '*.xlsx',
+            'source_type': 'product_day',
+            'cron_expr': '* * * * *',
+        })
+        ImportScanService.run_job_once(job['id'])
+        ImportScanService.run_job_once(job['id'])
+        file_row = ImportScanService.list_files(job['id'])[0]
+        self.assertEqual(file_row['status'], 'blocked')
+
+        response = self.client.post(f"/api/import-scans/{job['id']}/files/{file_row['id']}/retry")
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()['data']
+        self.assertEqual(payload['status'], 'discovered')
+        self.assertIsNone(payload['preview_id'])
+        self.assertIsNone(payload['error_code'])
+        self.assertLessEqual(ImportScanService.get_job(job['id'])['next_run'], datetime.now(timezone.utc).isoformat())
+
+    def test_failed_scan_file_can_be_requeued_through_an_explicit_api(self):
+        from datetime import datetime, timedelta, timezone
+        from services.import_scan_service import ImportScanService
+
+        path = os.path.join(self.inbox, 'failed.xlsx')
+        with open(path, 'wb') as handle:
+            handle.write(b'not an excel workbook')
+        old = (datetime.now(timezone.utc) - timedelta(minutes=2)).timestamp()
+        os.utime(path, (old, old))
+        job = ImportScanService.create_job({
+            'task_name': 'failed-retry',
+            'folder_path': self.inbox,
+            'file_pattern': '*.xlsx',
+            'source_type': 'product_day',
+            'cron_expr': '* * * * *',
+        })
+        ImportScanService.run_job_once(job['id'])
+        ImportScanService.run_job_once(job['id'])
+        file_row = ImportScanService.list_files(job['id'])[0]
+        self.assertEqual(file_row['status'], 'failed')
+
+        response = self.client.post(f"/api/import-scans/{job['id']}/files/{file_row['id']}/retry")
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()['data']
+        self.assertEqual(payload['status'], 'discovered')
+        self.assertIsNone(payload['error_code'])

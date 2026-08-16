@@ -38,6 +38,30 @@ R1 不要求立刻把 SQLite 全部改成新表，但新增接口必须返回标
 
 `standard_key`、`label`、`domain`、`type`、`unit`、`grain`、`aggregation`、`status`、`source_status`、`source_columns`、`nullable`、`formula`、`depends_on`、`pages`、`notes`。
 
+### 1.3 来源优先级元数据
+
+涉及多个报表的字段还必须声明：`source_systems`、`primary_source`、`fallback_sources`、`dmp_role`、`conflict_threshold` 和 `lineage_required`。
+
+来源系统统一使用：
+
+| source_system | 中文名 | 默认职责 |
+|---|---|---|
+| `business_advisor` | 生意参谋 | 商品身份、交易和商品主流量主来源 |
+| `promotion_tool` | 推广工具 | 推广消耗、付费流量和推广归因主来源 |
+| `dmp_product_day` | DMP 全店单品日度 | 参考来源、字段缺失回退来源和独有字段来源 |
+| `other_report` | 其他明确报表 | 只对来源注册中声明的字段负责 |
+
+来源状态统一使用：
+
+| dmp_role | 含义 |
+|---|---|
+| `reference_only` | 有更高优先级值时只保留原始参考值 |
+| `fallback_effective` | 主来源缺失时 DMP 值可成为最终值 |
+| `effective_unique` | 当前没有其他稳定来源，DMP 值可直接生效 |
+| `unsupported` | DMP 不提供该字段，不得推算 |
+
+字段优先级按字段而不是按文件裁决。`0` 是有效值；空白、`-`、`--` 和解析失败才是缺失。最终值必须能追溯到来源批次和裁决原因，比例、ROI 和单价必须优先使用依赖字段计算。
+
 ## 2. 粒度和聚合枚举
 
 | 粒度 | 含义 | 业务唯一键 |
@@ -251,7 +275,15 @@ R1 不要求立刻把 SQLite 全部改成新表，但新增接口必须返回标
 
 ### 9.2 商品经营模板 R1
 
-必填：`stat_date`、`product_id`、`product_name`、`payment_amount`、`successful_refund_amount`、`product_visitors`、`payment_buyers`、`ad_spend`。
+基础事实必填：`stat_date`、`product_id`、`payment_amount`、`product_visitors`。
+
+可选增强：`product_name`、`payment_conversion_rate`、`successful_refund_amount`、`payment_buyers`、`ad_spend`。可选字段按文件实际提供的列稀疏写入；再次导入缺失列时不得覆盖已有事实。
+
+全店单品列表扩展列可映射为：`IPV -> product_visitors`、`营销推广IPV -> paid_visitors`、`非推广IPV -> organic_visitors`、`搜索IPV -> search_visitors`、`推荐IPV -> recommend_visitors`、`营销推广ROI -> ad_roi`、`收加率 -> favorite_cart_rate`、`复购率 -> repurchase_rate`、`预售支付金额/预售销量 -> presale_amount/presale_qty`、`免费搜索点击率 -> search_click_rate`、`笔单价 -> payment_unit_price`、`连带购买量/率/叶子类目宽度 -> cross_sell_qty/cross_sell_rate/cross_sell_categories`、`复购用户数 -> repurchase_users`。
+
+DMP 重复字段的裁决规则：`payment_amount`、`product_visitors` 优先使用 `business_advisor`；`paid_visitors`、`ad_spend`、`ad_roi` 优先使用 `promotion_tool`；主来源缺失时才使用 DMP。`search_visitors`、`recommend_visitors`、`organic_visitors`、`presale_amount`、`presale_qty`、`repurchase_rate`、`repurchase_users`、`cross_sell_qty`、`cross_sell_rate`、`cross_sell_categories` 和 `search_click_rate` 在没有更高等级来源时可由 DMP 生效，并必须标记 `dmp_product_day` 来源。
+
+DMP 文件的 `总计` 行、空商品 ID 行和空日期行不属于 `product_day` 事实；`-` 和 `--` 为空值。可选比例字段超出 `0..1` 或无法解析时按字段隔离，记录行号、标准字段、原始值和原因；不得截断、写成 0、拒绝同一行的其他有效字段或让异常值进入观测与有效血缘。必填字段错误和重复业务键仍阻断导入。
 
 建议：`category`、`product_status`、`payment_qty`、`payment_conversion_rate`、`average_order_value`、`search_visitors`、`search_rate`、`new_buyers`、`returning_buyers`。
 
@@ -295,3 +327,6 @@ R1 不要求立刻把 SQLite 全部改成新表，但新增接口必须返回标
 4. 原始列名变化只修改映射模板，不修改业务标准键。
 5. 每种来源报表必须记录来源类型、来源粒度、业务唯一键、字段映射版本和导入批次。
 6. 1.0 和 2.0 都引用这份字段定义；1.0 的原生前端使用 snake_case，2.0 迁入 DS 时由 adapter 转为 camelCase。
+7. 运行时字段目录由 `services/field_catalog.py` 以 `{key, label, domain, source_type, group, format, aliases}` 返回到 `/api/settings.field_catalog`；设置、商品和推广模板只允许引用该目录中的字段。
+8. `conversion`、`refund_amount`、`attributed_payment_amount` 等历史兼容键只能在导入/API adapter 边界映射，新增模板和规则不得继续扩散别名。
+9. 推广模板定义统一存放在 `/api/settings.promotion_view_templates`，浏览器本地存储不是字段定义真相源。

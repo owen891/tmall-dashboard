@@ -140,6 +140,41 @@ class GoalsWorkflowTests(unittest.TestCase):
         self.assertEqual(status, 201)
         self.assertTrue(locked['data']['locked'])
 
+    def test_lock_rejects_impossible_calendar_date_and_month(self):
+        _, created = self.request('POST', '/api/goals', json={'year': 2026, 'annual_target': 36500})
+        version = created['data']['version']
+
+        status, response = self.request('POST', '/api/goals/2026/locks', json={
+            'version': version, 'period_type': 'date', 'period_key': '2026-99-99',
+        })
+        self.assertEqual(status, 422)
+        self.assertEqual(response['code'], 'VALIDATION_ERROR')
+
+        status, response = self.request('POST', '/api/goals/2026/locks', json={
+            'version': version, 'period_type': 'month', 'period_key': '2026-13',
+        })
+        self.assertEqual(status, 422)
+        self.assertEqual(response['code'], 'VALIDATION_ERROR')
+
+    def test_growth_multiplier_generates_suggested_and_annual_target_from_prior_net_sales(self):
+        from db import get_db
+        with get_db(self.database_path) as connection:
+            connection.executemany(
+                "INSERT INTO daily_data (product_id, date, payment_amount, refund_amount) VALUES ('growth-a', ?, ?, ?)",
+                [('2025-01-01', 100, 10), ('2025-01-02', 200, 20)],
+            )
+            connection.commit()
+
+        status, payload = self.request(
+            'POST', '/api/goals',
+            json={'year': 2026, 'growth_multiplier': 1.25},
+        )
+        self.assertEqual(status, 201)
+        self.assertEqual(payload['data']['prior_year_net_sales'], 270.0)
+        self.assertEqual(payload['data']['growth_multiplier'], 1.25)
+        self.assertEqual(payload['data']['suggested_annual_target'], 337.5)
+        self.assertEqual(payload['data']['annual_total'], 337.5)
+
 
 if __name__ == '__main__':
     unittest.main(verbosity=2)

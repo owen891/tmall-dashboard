@@ -1,17 +1,34 @@
 import sqlite3
 from datetime import date, timedelta
 
-from db import get_db
+from db import get_db, get_shop_id
+from repos.audit_repo import AuditRepo
 
 
 class GoalsRepo:
     @staticmethod
+    def prior_year_net_sales(year):
+        shop_id = get_shop_id()
+        with get_db() as connection:
+            store = connection.execute(
+                "SELECT SUM(payment_amount - successful_refund_amount) AS total FROM store_daily_facts WHERE shop_id = ? AND substr(date, 1, 4) = ?",
+                (shop_id, str(year - 1)),
+            ).fetchone()
+            if store and store['total'] is not None:
+                return round(float(store['total']), 2)
+            row = connection.execute(
+                "SELECT SUM(payment_amount - refund_amount) AS total FROM daily_data WHERE shop_id = ? AND substr(date, 1, 4) = ?",
+                (shop_id, str(year - 1)),
+            ).fetchone()
+        return round(float(row['total'] or 0), 2)
+    @staticmethod
     def prior_year_daily_weights(year):
+        shop_id = get_shop_id()
         with get_db() as connection:
             rows = connection.execute(
                 '''SELECT substr(date, 6, 5) AS month_day, SUM(MAX(payment_amount - refund_amount, 0)) AS weight
-                   FROM daily_data WHERE substr(date, 1, 4) = ? GROUP BY substr(date, 6, 5)''',
-                (str(year - 1),),
+                   FROM daily_data WHERE shop_id = ? AND substr(date, 1, 4) = ? GROUP BY substr(date, 6, 5)''',
+                (shop_id, str(year - 1)),
             ).fetchall()
         return {row['month_day']: float(row['weight'] or 0) for row in rows}
     @staticmethod
@@ -24,11 +41,11 @@ class GoalsRepo:
         return dict(row) if row else None
 
     @staticmethod
-    def replace_year(year, annual_target, expected_version, days):
+    def replace_year(year, annual_target, expected_version, days, operator='admin', reason='创建或更新年度目标'):
         with get_db() as connection:
             try:
                 current = connection.execute(
-                    'SELECT version FROM goal_versions WHERE year = ?', (year,)
+                    'SELECT * FROM goal_versions WHERE year = ?', (year,)
                 ).fetchone()
                 if current and expected_version is not None and current['version'] != expected_version:
                     return None
@@ -53,6 +70,13 @@ class GoalsRepo:
                     '''INSERT INTO daily_goals (year, goal_date, target_amount, version)
                        VALUES (?, ?, ?, ?)''',
                     [(year, day, amount, version) for day, amount in days],
+                )
+                after = connection.execute(
+                    'SELECT * FROM goal_versions WHERE year = ?', (year,)
+                ).fetchone()
+                AuditRepo.record(
+                    'goal', year, 'replace', operator, reason,
+                    dict(current) if current else None, dict(after), connection=connection,
                 )
                 connection.commit()
                 return version
@@ -118,22 +142,23 @@ class GoalsRepo:
 
     @staticmethod
     def actual_summaries(year):
+        shop_id = get_shop_id()
         with get_db() as connection:
             store_count = connection.execute(
-                "SELECT COUNT(*) AS count FROM store_daily_facts WHERE substr(date, 1, 4) = ?",
-                (str(year),),
+                "SELECT COUNT(*) AS count FROM store_daily_facts WHERE shop_id = ? AND substr(date, 1, 4) = ?",
+                (shop_id, str(year)),
             ).fetchone()['count']
             if store_count:
                 rows = connection.execute(
-                    '''SELECT date, payment_amount, successful_refund_amount
-                       FROM store_daily_facts WHERE substr(date, 1, 4) = ? ORDER BY date''',
-                    (str(year),),
+                    '''SELECT date, payment_amount - successful_refund_amount AS net_sales
+                       FROM store_daily_facts WHERE shop_id = ? AND substr(date, 1, 4) = ? ORDER BY date''',
+                    (shop_id, str(year)),
                 ).fetchall()
             else:
                 rows = connection.execute(
                 '''SELECT date, SUM(payment_amount - refund_amount) AS net_sales
-                   FROM daily_data WHERE substr(date, 1, 4) = ? GROUP BY date ORDER BY date''',
-                (str(year),),
+                   FROM daily_data WHERE shop_id = ? AND substr(date, 1, 4) = ? GROUP BY date ORDER BY date''',
+                (shop_id, str(year)),
                 ).fetchall()
         result = {'year': 0.0, 'quarter': {}, 'month': {}, 'week': {}, 'date': {}}
         for row in rows:
