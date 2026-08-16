@@ -434,9 +434,9 @@ class ImportService:
                     for entry in entries:
                         archive_name = entry.filename.replace('\\', '/')
                         if archive_name.startswith('/') or any(part == '..' for part in archive_name.split('/')):
-                            raise ImportValidationError('ZIP 鍘嬬缉鍖呭寘鍚笉瀹夊叏璺緞')
+                            raise ImportValidationError('ZIP 内部文件路径不安全')
                         if entry.file_size > 25 * 1024 * 1024:
-                            raise ImportValidationError('ZIP 鍘嬬缉鍖呭唴鏂囦欢瓒呭嚭澶у皬闄愬埗')
+                            raise ImportValidationError('ZIP 内部文件解压后超过 25 MB 限制')
                     if not entries:
                         raise ImportValidationError('ZIP 压缩包中没有 .xlsx、.xls 或 .csv 文件')
                     if len(entries) != 1:
