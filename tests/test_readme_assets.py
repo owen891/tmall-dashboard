@@ -4,6 +4,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 README = ROOT / 'README.md'
+CAPTURE_SCRIPT = ROOT / 'scripts' / 'capture_readme_screenshots.cjs'
 ASSET_DIR = ROOT / 'docs' / 'assets' / 'readme'
 SCREENSHOTS = ('overview.png', 'products.png', 'data-center.png')
 
@@ -29,3 +30,12 @@ def test_readme_references_fixed_size_product_screenshots():
         assert asset.is_file()
         assert asset.stat().st_size > 50_000
         assert _png_dimensions(asset) == (1440, 900)
+
+
+def test_capture_script_rejects_non_demo_data_sources():
+    script = CAPTURE_SCRIPT.read_text(encoding='utf-8')
+
+    assert '/api/products?' in script
+    assert "startsWith('DEMO-')" in script
+    assert "remark === '演示数据'" in script
+    assert 'TMALL_PLAYWRIGHT_MODULE' in script
