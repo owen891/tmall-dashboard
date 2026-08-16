@@ -61,18 +61,6 @@ py -3 app.py
 
 打开 `http://127.0.0.1:5000/`。主工作台包括总览、商品运营、推广分析、生命周期、经营复盘、数据中心和设置。
 
-## Windows 桌面版
-
-桌面版将 Electron 窗口、Chromium 和 PyInstaller Flask/Waitress 后端一起打包，目标电脑不需要预装 Python、Node.js、浏览器或 WebView2。首次安装包可离线运行；在线更新从公开 GitHub Releases 下载。
-
-本地构建 Windows x64 安装包：
-
-```powershell
-.\scripts\build_desktop.ps1
-```
-
-产物位于 `desktop/release/`，包含 NSIS 安装器、blockmap 和 `latest.yml`。发布新版本时，先修改根目录 `VERSION`，然后推送同版本标签，例如 `v1.0.1`。GitHub Actions 会构建并上传在线升级所需的全部文件。
-
 ## 生产启动
 
 本机生产运行使用 Waitress。先备份 SQLite 数据库并配置 Basic Auth，再启动服务：
