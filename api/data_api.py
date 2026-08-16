@@ -9,10 +9,14 @@ import time
 import threading
 import calendar
 import glob as _glob
+import ntpath
 import openpyxl
 from werkzeug.utils import secure_filename
 from datetime import datetime, timedelta
-from db import get_db, get_connection, init_db, load_config
+from db import get_db, get_connection, get_shop_id, init_db, load_config
+from api.api_response import evidence_level_for, failure, limitations_for, success
+from repos.audit_repo import AuditRepo
+from services.shop_scope_service import reject_legacy_shop_scope
 
 # 获取项目根目录的绝对路径
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -26,6 +30,37 @@ DIMENSION_MAP = {
 }
 
 UPLOAD_FOLDER = os.path.join(project_root, 'data/uploads/')
+
+
+def _reject_legacy_shop_scope(dimension):
+    """Weekly/monthly facts and targets are still single-shop legacy tables."""
+    configured_shop = str(current_app.config.get('SHOP_ID') or os.environ.get('TMALL_SHOP_ID') or '').strip()
+    requested_shop = (request.args.get('shop_id') or '').strip() or configured_shop
+    if dimension in {'weekly', 'monthly'} and requested_shop and requested_shop != 'default':
+        return failure(
+            'UNSUPPORTED_SCOPE',
+            f'{dimension} 维度当前不支持 shop_id；请使用日度事实，或先完成周/月表店铺迁移',
+            status=422,
+        )
+    return None
+
+
+def _validate_file_pattern(pattern):
+    value = str(pattern or '*.xlsx').strip()
+    normalized = value.replace('\\', '/')
+    if not value or ntpath.isabs(value) or any(part == '..' for part in normalized.split('/')):
+        raise ValueError('file_pattern 只能匹配 data/uploads 内的相对路径')
+    return value
+
+
+def _scheduled_matches(pattern):
+    safe_pattern = _validate_file_pattern(pattern)
+    upload_root = os.path.abspath(UPLOAD_FOLDER)
+    matches = _glob.glob(os.path.join(upload_root, safe_pattern))
+    return [
+        path for path in matches
+        if os.path.commonpath([upload_root, os.path.abspath(path)]) == upload_root
+    ]
 
 
 def _unique_upload_path(filename):
@@ -42,6 +77,28 @@ def _unique_upload_path(filename):
 _import_progress = {}
 
 data_bp = Blueprint('data', __name__)
+
+
+# These compatibility endpoints read tables that have no shop_id. Keep them
+# available for the default single-shop deployment, but never let a named
+# shop receive a silently mixed response.
+_LEGACY_SINGLE_SHOP_PATHS = {
+    '/api/refund_alert', '/api/ad_performance', '/api/ad_alerts', '/api/ad_trend',
+    '/api/traffic_structure', '/api/action_stats', '/api/anomalies',
+    '/api/health', '/api/reviews/summary', '/api/reviews/list', '/api/reviews/products',
+    '/api/review', '/api/customer_analysis', '/api/funnel', '/api/industry_benchmark',
+    '/api/report', '/api/legacy/actions',
+    '/api/market/summary', '/api/market/keywords', '/api/market/need_stats',
+    '/api/market/rankings', '/api/market/histograms', '/api/market/opportunities',
+    '/api/market/reports', '/api/upload/reviews', '/api/upload/data',
+}
+
+
+@data_bp.before_request
+def reject_legacy_single_shop_scope():
+    if request.path not in _LEGACY_SINGLE_SHOP_PATHS:
+        return None
+    return reject_legacy_shop_scope('历史兼容数据')
 
 
 def get_prev_period(period, dim):
@@ -82,7 +139,10 @@ def get_kpi():
     dimension = request.args.get('dim', 'weekly')
     period = request.args.get('period', '')
     prev_period = request.args.get('prev_period', '')
-
+    unsupported = _reject_legacy_shop_scope(dimension)
+    if unsupported:
+        return unsupported
+    shop_id = get_shop_id()
     with get_db() as conn:
 
         dim_cfg = DIMENSION_MAP.get(dimension)
@@ -95,6 +155,8 @@ def get_kpi():
         def query_period(p):
             if not p:
                 return None
+            scope_sql = 'shop_id = ? AND ' if table == 'daily_data' else ''
+            scope_params = (shop_id,) if table == 'daily_data' else ()
             row = conn.execute(f'''
                 SELECT
                     COALESCE(SUM(payment_amount),0) as gmv,
@@ -106,8 +168,8 @@ def get_kpi():
                     COALESCE(SUM(ad_spend),0) as ad_spend,
                     CASE WHEN SUM(ad_spend) > 0 THEN SUM(payment_amount) * 1.0 / SUM(ad_spend) ELSE 0 END as roi,
                     AVG(payment_conversion) as conversion
-                FROM {table} WHERE {date_col} = ?
-            ''', (p,)).fetchone()
+                FROM {table} WHERE {scope_sql}{date_col} = ?
+            ''', (*scope_params, p)).fetchone()
             return dict(row) if row else None
 
         current = query_period(period)
@@ -159,6 +221,10 @@ def get_trend():
     dimension = request.args.get('dim', 'weekly')
     start = request.args.get('start', '')
     end = request.args.get('end', '')
+    unsupported = _reject_legacy_shop_scope(dimension)
+    if unsupported:
+        return unsupported
+    shop_id = get_shop_id()
 
     dim_cfg = DIMENSION_MAP.get(dimension)
     if not dim_cfg:
@@ -169,6 +235,7 @@ def get_trend():
     with get_db() as conn:
         visitors_col = dim_cfg['visitors_col']
         payment_qty_expr = 'SUM(payment_qty)' if dimension == 'monthly' else '0'
+        scope_sql = ' AND shop_id = ?' if table == 'daily_data' else ''
         query = f'''
             SELECT {date_col} as period,
                    SUM(payment_amount) as gmv,
@@ -181,9 +248,9 @@ def get_trend():
                    AVG(cart_rate) as cart_rate,
                    AVG(fav_rate) as fav_rate
             FROM {table}
-            WHERE 1=1
-        '''
-        params = []
+             WHERE 1=1{scope_sql}
+         '''
+        params = [shop_id] if table == 'daily_data' else []
         if start:
             query += f' AND {date_col} >= ?'
             params.append(start)
@@ -246,12 +313,14 @@ def update_product_field(product_id):
             f'UPDATE products SET {field} = ?, updated_at = CURRENT_TIMESTAMP WHERE product_id = ?',
             (value, product_id)
         )
-        conn.commit()
-
-        # 记录操作日志
         conn.execute(
             'INSERT INTO operation_logs (action, detail, operator) VALUES (?, ?, ?)',
             (f'修改{field}', f'商品 {product_id}: {field}「{old_value}」→「{value}」', 'admin')
+        )
+        AuditRepo.record(
+            'product', product_id, 'update_field', data.get('operator') or 'admin',
+            data.get('reason') or f'修改商品{field}', {field: old_value}, {field: value},
+            connection=conn,
         )
         conn.commit()
 
@@ -286,6 +355,9 @@ def compare_periods():
     dim = request.args.get('dim', 'monthly')
     period_a = request.args.get('period_a', '')
     period_b = request.args.get('period_b', '')
+    unsupported = _reject_legacy_shop_scope(dim)
+    if unsupported:
+        return unsupported
 
     if not period_a or not period_b:
         return jsonify({'error': 'period_a and period_b are required'}), 400
@@ -296,9 +368,15 @@ def compare_periods():
     elif dim == 'daily':
         table, date_col = 'daily_data', 'date'
         visitors_col = 'ipv'
-    else:
+    elif dim == 'weekly':
         table, date_col = 'weekly_data', 'week_start'
         visitors_col = 'ipv'
+    else:
+        return failure('VALIDATION_ERROR', 'dim must be monthly, weekly, or daily', status=400)
+
+    shop_id = get_shop_id()
+    scope_sql = 'shop_id = ? AND ' if table == 'daily_data' else ''
+    scope_params = (shop_id,) if table == 'daily_data' else ()
 
     with get_db() as conn:
 
@@ -316,8 +394,8 @@ def compare_periods():
                     COALESCE(SUM(ad_spend),0) as ad_spend,
                     CASE WHEN SUM(ad_spend) > 0 THEN SUM(payment_amount) * 1.0 / SUM(ad_spend) ELSE 0 END as roi,
                     AVG(payment_conversion) as conversion
-                FROM {table} WHERE {date_col} = ?
-            ''', (p,)).fetchone()
+                FROM {table} WHERE {scope_sql}{date_col} = ?
+            ''', (*scope_params, p)).fetchone()
             return dict(row) if row else None
 
         def query_products(p):
@@ -330,10 +408,11 @@ def compare_periods():
                        COALESCE({payment_qty_col}, 0) as payment_count,
                        COALESCE(d.ad_spend, 0) as ad_spend
                 FROM products p
-                LEFT JOIN {table} d ON p.product_id = d.product_id AND d.{date_col} = ?
+                LEFT JOIN {table} d ON p.product_id = d.product_id
+                    AND {scope_sql.replace('shop_id', 'd.shop_id') if table == 'daily_data' else ''}d.{date_col} = ?
                 WHERE p.status = 'active'
                 ORDER BY d.payment_amount DESC
-            ''', (p,)).fetchall()
+            ''', (*scope_params, p)).fetchall()
             return [dict(r) for r in rows]
 
         kpi_a = query_kpi(period_a)
@@ -431,17 +510,17 @@ def compare_periods():
             SELECT {date_col} as period, SUM(payment_amount) as gmv, SUM(refund_amount) as refund,
                    SUM(payment_amount) - SUM(refund_amount) as net_sales, SUM({visitors_col}) as visitors
             FROM {table}
-            WHERE {date_col} = ?
+            WHERE {scope_sql}{date_col} = ?
             GROUP BY product_id ORDER BY product_id
-        ''', (period_a,)).fetchall()
+        ''', (*scope_params, period_a)).fetchall()
 
         trend_rows_b = conn.execute(f'''
             SELECT {date_col} as period, SUM(payment_amount) as gmv, SUM(refund_amount) as refund,
                    SUM(payment_amount) - SUM(refund_amount) as net_sales, SUM({visitors_col}) as visitors
             FROM {table}
-            WHERE {date_col} = ?
+            WHERE {scope_sql}{date_col} = ?
             GROUP BY product_id ORDER BY product_id
-        ''', (period_b,)).fetchall()
+        ''', (*scope_params, period_b)).fetchall()
 
         trend_compare = {
             'labels': [period_a, period_b],
@@ -466,6 +545,14 @@ def export_data():
     export_type = data.get('type', 'products')
     period = data.get('period', '')
     dim = data.get('dim', 'monthly')
+    export_shop = str(data.get('shop_id') or request.args.get('shop_id') or current_app.config.get('SHOP_ID') or os.environ.get('TMALL_SHOP_ID') or '').strip()
+    if dim in {'weekly', 'monthly'} and export_shop and export_shop != 'default':
+        return failure(
+            'UNSUPPORTED_SCOPE',
+            f'{dim} 维度当前不支持 shop_id；请先完成周/月表店铺迁移',
+            status=422,
+        )
+    shop_id = get_shop_id()
 
     output = io.BytesIO()
     wb = openpyxl.Workbook()
@@ -483,8 +570,39 @@ def export_data():
         tier = data.get('tier', '')
         style = data.get('style', '')
         status = data.get('status', '')
+        lifecycle_stage = data.get('lifecycle_stage', '')
+        seasonality = data.get('seasonality', '')
+        has_pending_action = data.get('has_pending_action', '')
+        product_id = data.get('product_id', '')
         star_only = data.get('star_only', False)
         export_cols = data.get('columns', [])
+        start = data.get('start', '')
+        end = data.get('end', '')
+        sort_by = data.get('sort', 'payment_amount')
+        order = data.get('order', 'desc')
+
+        if shop_id != 'default' and (lifecycle_stage or seasonality or has_pending_action not in ('', None, False, 'false', '0', 0)):
+            return failure('UNSUPPORTED_SCOPE', '非 default 店铺暂不支持生命周期/动作旧表筛选', status=422)
+        legacy_lifecycle_join = (
+            'LEFT JOIN lifecycle_profiles lp ON lp.product_id = p.product_id'
+            if shop_id == 'default' else
+            'LEFT JOIN (SELECT NULL AS product_id, NULL AS manual_stage, NULL AS recommended_stage, NULL AS seasonal_attribute) lp ON 1=0'
+        )
+        legacy_paid_join = (
+            '''LEFT JOIN (
+                SELECT pd.* FROM paid_detail pd
+                INNER JOIN (
+                    SELECT product_id, MAX(imported_at) as max_imported
+                    FROM paid_detail GROUP BY product_id
+                ) pd_max ON pd.product_id = pd_max.product_id AND pd.imported_at = pd_max.max_imported
+            ) pd_latest ON p.product_id = pd_latest.product_id'''
+            if shop_id == 'default' else
+            'LEFT JOIN paid_detail pd_latest ON 1=0'
+        )
+        legacy_pending_action_expr = (
+            "CASE WHEN EXISTS (SELECT 1 FROM product_actions pa WHERE pa.product_id = p.product_id AND pa.status IN ('pending_execution','executing','observing','pending_review','blocked')) THEN 1 ELSE 0 END"
+            if shop_id == 'default' else '0'
+        )
 
         where_clauses = []
         params = []
@@ -498,12 +616,103 @@ def export_data():
         if style:
             where_clauses.append("p.style = ?")
             params.append(style)
-        if status:
+        if status and status != 'all':
             where_clauses.append("p.status = ?")
             params.append(status)
         if star_only:
             where_clauses.append("p.starred = 1")
+        if lifecycle_stage:
+            where_clauses.append("COALESCE(lp.manual_stage, lp.recommended_stage, '') = ?")
+            params.append(lifecycle_stage)
+        if seasonality:
+            where_clauses.append("COALESCE(lp.seasonal_attribute, '') = ?")
+            params.append(seasonality)
+        if has_pending_action in (True, 'true', '1', 1):
+            where_clauses.append("EXISTS (SELECT 1 FROM product_actions pa WHERE pa.product_id = p.product_id AND pa.status IN ('pending_execution','executing','observing','pending_review','blocked'))")
+        elif has_pending_action in (False, 'false', '0', 0):
+            where_clauses.append("NOT EXISTS (SELECT 1 FROM product_actions pa WHERE pa.product_id = p.product_id AND pa.status IN ('pending_execution','executing','observing','pending_review','blocked'))")
+        if product_id:
+            where_clauses.append("p.product_id = ?")
+            params.append(product_id)
         where_sql = (' AND ' + ' AND '.join(where_clauses)) if where_clauses else ''
+
+        data_relation = table
+        join_clause = f'p.product_id = d.product_id AND d.{date_col} = ?'
+        join_params = [period]
+        if dim == 'daily':
+            join_clause = f'p.product_id = d.product_id AND d.shop_id = ? AND d.{date_col} = ?'
+            join_params = [shop_id, period]
+        if dim == 'daily' and start and end:
+            data_relation = '''(
+                SELECT current.product_id,
+                       current.payment_amount,
+                       current.refund_amount,
+                       current.net_sales,
+                       current.ipv,
+                       current.payment_conversion,
+                       current.cart_rate,
+                       current.fav_rate,
+                       current.bounce_rate,
+                       current.avg_stay_duration,
+                       current.ad_spend,
+                       current.ad_roi,
+                       current.buyers,
+                       current.avg_order_value,
+                       current.paid_ipv,
+                       current.organic_ipv,
+                       current.search_ipv,
+                       current.recommend_ipv,
+                       current.repurchase_rate,
+                       current.repurchase_users,
+                       current.presale_amount,
+                       current.presale_qty,
+                       current.search_click_rate,
+                       current.cross_sell_qty,
+                       current.cross_sell_rate,
+                       current.category_width,
+                       CASE WHEN previous.payment_amount != 0
+                            THEN (current.payment_amount - previous.payment_amount) * 1.0 / previous.payment_amount
+                            ELSE NULL END AS trend_change
+                FROM (
+                    SELECT product_id,
+                           SUM(payment_amount) AS payment_amount,
+                           SUM(refund_amount) AS refund_amount,
+                           SUM(net_sales) AS net_sales,
+                           SUM(ipv) AS ipv,
+                           AVG(payment_conversion) AS payment_conversion,
+                           AVG(cart_rate) AS cart_rate,
+                           AVG(fav_rate) AS fav_rate,
+                           AVG(bounce_rate) AS bounce_rate,
+                           AVG(avg_stay_duration) AS avg_stay_duration,
+                           SUM(ad_spend) AS ad_spend,
+                           CASE WHEN SUM(ad_spend) > 0 THEN SUM(payment_amount) / SUM(ad_spend) ELSE 0 END AS ad_roi,
+                           SUM(buyers) AS buyers,
+                           CASE WHEN SUM(buyers) > 0 THEN SUM(payment_amount) / SUM(buyers) ELSE AVG(avg_order_value) END AS avg_order_value,
+                           SUM(paid_ipv) AS paid_ipv,
+                           SUM(organic_ipv) AS organic_ipv,
+                           SUM(search_ipv) AS search_ipv,
+                           SUM(recommend_ipv) AS recommend_ipv,
+                           AVG(repurchase_rate) AS repurchase_rate,
+                           SUM(repurchase_users) AS repurchase_users,
+                           SUM(presale_amount) AS presale_amount,
+                           SUM(presale_qty) AS presale_qty,
+                           AVG(search_click_rate) AS search_click_rate,
+                           SUM(cross_sell_qty) AS cross_sell_qty,
+                           AVG(cross_sell_rate) AS cross_sell_rate,
+                           AVG(category_width) AS category_width
+                     FROM daily_data
+                     WHERE shop_id = ? AND date BETWEEN ? AND ?
+                    GROUP BY product_id
+                ) current
+                LEFT JOIN (
+                    SELECT product_id, SUM(payment_amount) AS payment_amount
+                     FROM daily_data
+                     WHERE shop_id = ? AND date BETWEEN date(?, '-' || CAST((julianday(?) - julianday(?) + 1) AS INTEGER) || ' days') AND date(?, '-1 day')
+                    GROUP BY product_id
+                ) previous ON previous.product_id = current.product_id
+            )'''
+            join_clause = 'p.product_id = d.product_id'
+            join_params = [shop_id, start, end, shop_id, start, end, start, start]
 
         # 如果指定了导出列，动态构建SELECT
         if export_cols:
@@ -512,7 +721,10 @@ def export_data():
             base_cols = {
                 'product_id': 'p.product_id', 'title': 'p.title', 'tier': 'p.tier',
                 'style': 'p.style', 'scene': 'p.scene', 'status': 'p.status',
-                'list_date': 'p.list_date',
+                'list_date': 'p.list_date', 'manager': 'p.manager', 'remark': 'p.remark',
+                'lifecycle_stage': 'COALESCE(lp.manual_stage, lp.recommended_stage)',
+                'seasonality': 'lp.seasonal_attribute',
+                'has_pending_action': legacy_pending_action_expr,
             }
             visitors_col = dim_cfg['visitors_col']
             _monthly_only = dim == 'monthly'
@@ -522,29 +734,66 @@ def export_data():
                 'uv_value': 'COALESCE(d.uv_value,0)' if _monthly_only else '0',
                 'search_visitors': 'COALESCE(d.search_visitors,0)' if _monthly_only else '0',
                 'search_ratio': 'COALESCE(d.search_ratio,0)' if _monthly_only else '0',
+                'search_conversion': 'COALESCE(d.search_conversion,0)' if _monthly_only else '0',
+                'paid_ipv': 'COALESCE(d.paid_ipv,0)', 'organic_ipv': 'COALESCE(d.organic_ipv,0)',
+                'search_ipv': 'COALESCE(d.search_ipv,0)', 'recommend_ipv': 'COALESCE(d.recommend_ipv,0)',
                 'payment_conversion': 'COALESCE(d.payment_conversion,0)',
+                'conversion': 'COALESCE(d.payment_conversion,0)',
+                'cart_rate': 'COALESCE(d.cart_rate,0)',
+                'fav_rate': 'COALESCE(d.fav_rate,0)',
                 'bounce_rate': 'COALESCE(d.bounce_rate,0)', 'avg_stay_duration': 'COALESCE(d.avg_stay_duration,0)',
                 'ad_spend': 'COALESCE(d.ad_spend,0)', 'ad_roi': 'COALESCE(d.ad_roi,0)',
+                'roi': 'COALESCE(d.ad_roi,0)',
                 'overall_roi': 'COALESCE(d.overall_roi,0)' if _monthly_only else '0',
+                'paid_ratio': 'COALESCE(d.paid_ratio,0)' if _monthly_only else '0',
+                'expense_ratio': 'CASE WHEN COALESCE(d.payment_amount,0) > 0 THEN COALESCE(d.ad_spend,0) * 1.0 / d.payment_amount ELSE NULL END',
                 'refund_rate': 'COALESCE(d.refund_rate,0)' if _monthly_only else '0',
+                'repurchase_rate': 'COALESCE(d.repurchase_rate,0)', 'repurchase_users': 'COALESCE(d.repurchase_users,0)',
+                'presale_amount': 'COALESCE(d.presale_amount,0)' if not _monthly_only else '0',
+                'presale_qty': 'COALESCE(d.presale_qty,0)' if not _monthly_only else '0',
+                'search_click_rate': 'COALESCE(d.search_click_rate,0)' if not _monthly_only else '0',
+                'cross_sell_qty': 'COALESCE(d.cross_sell_qty,0)', 'cross_sell_rate': 'COALESCE(d.cross_sell_rate,0)',
+                'category_width': 'COALESCE(d.category_width,0)' if not _monthly_only else '0',
                 'buyers': f"COALESCE(d.buyers,0)" if dim != 'weekly' else '0',
                 'avg_order_value': 'COALESCE(d.avg_order_value,0)',
                 'payment_qty': f"COALESCE(d.payment_qty,0)" if dim == 'monthly' else '0',
+                'payment_count': f"COALESCE(d.payment_qty,0)" if dim == 'monthly' else '0',
                 'cart_qty': f"COALESCE(d.cart_qty,0)" if _monthly_only else '0',
                 'fav_users': f"COALESCE(d.fav_users,0)" if _monthly_only else '0',
                 'score': f"COALESCE(d.score,0)" if _monthly_only else '0',
+                'keyword_spend': 'COALESCE(d.keyword_spend,0)' if _monthly_only else '0',
+                'keyword_roi': 'COALESCE(d.keyword_roi,0)' if _monthly_only else '0',
+                'crowd_spend': 'COALESCE(d.crowd_spend,0)' if _monthly_only else '0',
+                'crowd_roi': 'COALESCE(d.crowd_roi,0)' if _monthly_only else '0',
+                'impressions': 'COALESCE(pd_latest.impressions,0)',
+                'ctr': 'COALESCE(pd_latest.ctr,0)',
+                'trend_change': 'd.trend_change' if dim == 'daily' and start and end else 'NULL',
             }
             col_labels = {
                 'product_id': '商品ID', 'title': '商品名称', 'tier': '分层', 'style': '风格',
                 'scene': '场景', 'status': '状态', 'list_date': '上架时间',
+                'manager': '负责人', 'remark': '备注', 'lifecycle_stage': '生命周期阶段',
+                'seasonality': '季节属性', 'has_pending_action': '待办动作',
                 'payment_amount': '销售额', 'refund_amount': '退款金额', 'net_sales': '净销售额',
                 'visitors': '访客数', 'uv_value': '客单价值', 'search_visitors': '搜索访客',
                 'search_ratio': '搜索占比', 'payment_conversion': '转化率', 'bounce_rate': '跳出率',
+                'conversion': '转化率',
                 'avg_stay_duration': '停留时长', 'ad_spend': '推广花费', 'ad_roi': 'ROI',
+                'roi': 'ROI',
                 'overall_roi': '综合ROI', 'refund_rate': '退款率', 'buyers': '买家数',
-                'avg_order_value': '客单价', 'payment_qty': '支付件数', 'cart_qty': '加购件数',
+                'avg_order_value': '客单价', 'payment_qty': '支付件数', 'payment_count': '支付件数', 'cart_qty': '加购件数',
                 'fav_users': '收藏人数', 'score': '综合评分',
+                'trend_change': '销售趋势变化',
             }
+            col_labels.update({
+                'paid_ipv': '\u4ed8\u8d39 IPV', 'organic_ipv': '\u81ea\u7136 IPV',
+                'search_ipv': '\u641c\u7d22 IPV', 'recommend_ipv': '\u63a8\u8350 IPV',
+                'repurchase_rate': '\u590d\u8d2d\u7387', 'repurchase_users': '\u590d\u8d2d\u7528\u6237\u6570',
+                'presale_amount': '\u9884\u552e\u652f\u4ed8\u91d1\u989d', 'presale_qty': '\u9884\u552e\u9500\u91cf',
+                'search_click_rate': '\u514d\u8d39\u641c\u7d22\u70b9\u51fb\u7387',
+                'cross_sell_qty': '\u8fde\u5e26\u8d2d\u4e70\u91cf', 'cross_sell_rate': '\u8fde\u5e26\u8d2d\u4e70\u7387',
+                'category_width': '\u8fde\u5e26\u8d2d\u4e70\u53f6\u5b50\u7c7b\u76ee\u5bbd\u5ea6',
+            })
             for c in export_cols:
                 if c in base_cols:
                     safe_cols.append(f"{base_cols[c]} as {c}")
@@ -569,13 +818,26 @@ def export_data():
                        '销售额', '退款金额', '支付件数', '退款率', '推广花费', 'ROI']
 
         with get_db() as conn:
+            sort_whitelist = {
+                'product_id', 'title', 'tier', 'style', 'scene', 'status',
+                'payment_amount', 'refund_amount', 'payment_count', 'refund_rate',
+                'ad_spend', 'roi',
+            }
+            if export_cols:
+                sort_whitelist.update(base_cols.keys())
+                sort_whitelist.update(data_cols.keys())
+            sort_col = sort_by if sort_by in sort_whitelist else 'payment_amount'
+            order_sql = 'DESC' if order == 'desc' else 'ASC'
+            sort_expression = 'p.product_id' if sort_col == 'product_id' else sort_col
             rows = conn.execute(f'''
-                SELECT {select_clause}
+            SELECT {select_clause}
                 FROM products p
-                LEFT JOIN {table} d ON p.product_id = d.product_id AND d.{date_col} = ?
+                {legacy_lifecycle_join}
+                LEFT JOIN {data_relation} d ON {join_clause}
+                {legacy_paid_join}
                 WHERE 1=1{where_sql}
-                ORDER BY d.payment_amount DESC
-            ''', [period] + params).fetchall()
+                ORDER BY {sort_expression} {order_sql}
+            ''', join_params + params).fetchall()
         ws.append(headers)
         for r in rows:
             ws.append(list(r))
@@ -662,7 +924,14 @@ def get_products():
     tier = request.args.get('tier', '')
     style = request.args.get('style', '')
     search = request.args.get('search', '')
+    product_id = request.args.get('product_id', '')
     status_filter = request.args.get('status', '')
+    lifecycle_stage = request.args.get('lifecycle_stage', '')
+    seasonality = request.args.get('seasonality', '')
+    has_pending_action = request.args.get('has_pending_action', '')
+    unsupported = _reject_legacy_shop_scope(dimension)
+    if unsupported:
+        return unsupported
 
     dim_cfg = DIMENSION_MAP.get(dimension)
     if not dim_cfg:
@@ -670,6 +939,30 @@ def get_products():
     table = dim_cfg['table']
     date_col = dim_cfg['date_col']
     visitors_col = dim_cfg['visitors_col']
+    shop_id = get_shop_id()
+
+    if shop_id != 'default' and (lifecycle_stage or seasonality or has_pending_action not in ('', None, False, 'false', '0', 0)):
+        return failure('UNSUPPORTED_SCOPE', '非 default 店铺暂不支持生命周期/动作旧表筛选', status=422)
+    legacy_lifecycle_join = (
+        'LEFT JOIN lifecycle_profiles lp ON lp.product_id = p.product_id'
+        if shop_id == 'default' else
+        'LEFT JOIN (SELECT NULL AS product_id, NULL AS manual_stage, NULL AS recommended_stage, NULL AS seasonal_attribute) lp ON 1=0'
+    )
+    legacy_paid_join = (
+        '''LEFT JOIN (
+            SELECT pd.* FROM paid_detail pd
+            INNER JOIN (
+                SELECT product_id, MAX(imported_at) as max_imported
+                FROM paid_detail GROUP BY product_id
+            ) pd_max ON pd.product_id = pd_max.product_id AND pd.imported_at = pd_max.max_imported
+        ) pd_latest ON p.product_id = pd_latest.product_id'''
+        if shop_id == 'default' else
+        'LEFT JOIN paid_detail pd_latest ON 1=0'
+    )
+    legacy_pending_action_expr = (
+        "CASE WHEN EXISTS (SELECT 1 FROM product_actions pa WHERE pa.product_id = p.product_id AND pa.status IN ('pending_execution','executing','observing','pending_review','blocked')) THEN 1 ELSE 0 END"
+        if shop_id == 'default' else '0'
+    )
 
     with get_db() as conn:
 
@@ -711,40 +1004,102 @@ def get_products():
 
         _zero_ad = ',\n               '.join([f'0 as {c}' for c in ['overall_roi','paid_ratio','refund_paid_ratio','keyword_spend','keyword_sales','keyword_roi','keyword_visitors','keyword_ppc','crowd_spend','crowd_sales','crowd_roi','crowd_visitors','crowd_ppc','site_spend','site_sales','site_roi','site_visitors','site_ppc']]) + ','
         _zero_traffic = ',\n               '.join([f'0 as {c}' for c in ['paid_ipv','organic_ipv','search_ipv','recommend_ipv']]) + ','
-        _zero_extra = ',\n               '.join([f'0 as {c}' for c in ['industry_ctr','cross_sell_qty','cross_sell_categories','repurchase_users','guide_visits','guide_visitors','guide_potential','guide_potential_ratio','new_buyers','new_buyer_ratio']]) + ','
+        _zero_extra = ',\n               '.join([f'0 as {c}' for c in ['industry_ctr','cross_sell_categories','guide_visits','guide_visitors','guide_potential','guide_potential_ratio','new_buyers','new_buyer_ratio']]) + ','
 
         monthly_only_cols = _monthly_ad_cols if dimension == 'monthly' else _zero_ad
-        monthly_traffic_cols = _monthly_traffic_cols if dimension == 'monthly' else _zero_traffic
+        monthly_traffic_cols = _monthly_traffic_cols if dimension in {'monthly', 'daily', 'weekly'} else _zero_traffic
         monthly_extra_cols = _monthly_extra_cols if dimension == 'monthly' else _zero_extra
-        repurchase_cross_cols = "COALESCE(d.repurchase_rate, 0) as repurchase_rate,\n               COALESCE(d.cross_sell_rate, 0) as cross_sell_rate," if dimension == 'monthly' else "0 as repurchase_rate,\n               0 as cross_sell_rate,"
+        dmp_cols = '''COALESCE(d.repurchase_users, 0) as repurchase_users,
+                   COALESCE(d.presale_amount, 0) as presale_amount,
+                   COALESCE(d.presale_qty, 0) as presale_qty,
+                   COALESCE(d.search_click_rate, 0) as search_click_rate,
+                   COALESCE(d.cross_sell_qty, 0) as cross_sell_qty,
+                   COALESCE(d.category_width, 0) as category_width,'''
+        dmp_zero_cols = '''0 as presale_amount, 0 as presale_qty,
+                   0 as search_click_rate, 0 as category_width,'''
+        dmp_metric_cols = dmp_cols if dimension in {'daily', 'weekly'} else dmp_zero_cols
+        repurchase_cross_cols = "COALESCE(d.repurchase_rate, 0) as repurchase_rate,\n               COALESCE(d.cross_sell_rate, 0) as cross_sell_rate," if dimension in {'monthly', 'daily', 'weekly'} else "0 as repurchase_rate,\n               0 as cross_sell_rate,"
         click_score_cols = "COALESCE(d.click_rate, 0) as click_rate,\n               COALESCE(d.score, 0) as score," if dimension == 'monthly' else "0 as click_rate,\n               0 as score,"
 
         data_relation = table
         join_clause = f'p.product_id = d.product_id AND d.{date_col} = ?'
         params = [period]
+        if dimension == 'daily':
+            join_clause = f'p.product_id = d.product_id AND d.shop_id = ? AND d.{date_col} = ?'
+            params = [shop_id, period]
         if dimension == 'daily' and start and end:
             data_relation = '''(
-                SELECT product_id,
-                       SUM(payment_amount) AS payment_amount,
-                       SUM(refund_amount) AS refund_amount,
-                       SUM(net_sales) AS net_sales,
-                       SUM(ipv) AS ipv,
-                       SUM(pv) AS pv,
-                       AVG(payment_conversion) AS payment_conversion,
-                       AVG(cart_rate) AS cart_rate,
-                       AVG(fav_rate) AS fav_rate,
-                       AVG(bounce_rate) AS bounce_rate,
-                       AVG(avg_stay_duration) AS avg_stay_duration,
-                       SUM(ad_spend) AS ad_spend,
-                       CASE WHEN SUM(ad_spend) > 0 THEN SUM(payment_amount) / SUM(ad_spend) ELSE 0 END AS ad_roi,
-                       SUM(buyers) AS buyers,
-                       CASE WHEN SUM(buyers) > 0 THEN SUM(payment_amount) / SUM(buyers) ELSE 0 END AS avg_order_value
-                FROM daily_data
-                WHERE date BETWEEN ? AND ?
-                GROUP BY product_id
+                SELECT current.product_id,
+                       current.payment_amount,
+                       current.refund_amount,
+                       current.net_sales,
+                       current.ipv,
+                       current.pv,
+                       current.payment_conversion,
+                       current.cart_rate,
+                       current.fav_rate,
+                       current.bounce_rate,
+                       current.avg_stay_duration,
+                       current.ad_spend,
+                       current.ad_roi,
+                       current.buyers,
+                       current.avg_order_value,
+                       current.paid_ipv,
+                       current.organic_ipv,
+                       current.search_ipv,
+                       current.recommend_ipv,
+                       current.repurchase_rate,
+                       current.repurchase_users,
+                       current.presale_amount,
+                       current.presale_qty,
+                       current.search_click_rate,
+                       current.cross_sell_qty,
+                       current.cross_sell_rate,
+                       current.category_width,
+                       CASE WHEN previous.payment_amount != 0
+                            THEN (current.payment_amount - previous.payment_amount) * 1.0 / previous.payment_amount
+                            ELSE NULL END AS trend_change
+                FROM (
+                    SELECT product_id,
+                           SUM(payment_amount) AS payment_amount,
+                           SUM(refund_amount) AS refund_amount,
+                           SUM(net_sales) AS net_sales,
+                           SUM(ipv) AS ipv,
+                           SUM(pv) AS pv,
+                           AVG(payment_conversion) AS payment_conversion,
+                           AVG(cart_rate) AS cart_rate,
+                           AVG(fav_rate) AS fav_rate,
+                           AVG(bounce_rate) AS bounce_rate,
+                           AVG(avg_stay_duration) AS avg_stay_duration,
+                           SUM(ad_spend) AS ad_spend,
+                           CASE WHEN SUM(ad_spend) > 0 THEN SUM(payment_amount) / SUM(ad_spend) ELSE 0 END AS ad_roi,
+                           SUM(buyers) AS buyers,
+                           CASE WHEN SUM(buyers) > 0 THEN SUM(payment_amount) / SUM(buyers) ELSE AVG(avg_order_value) END AS avg_order_value,
+                           SUM(paid_ipv) AS paid_ipv,
+                           SUM(organic_ipv) AS organic_ipv,
+                           SUM(search_ipv) AS search_ipv,
+                           SUM(recommend_ipv) AS recommend_ipv,
+                           AVG(repurchase_rate) AS repurchase_rate,
+                           SUM(repurchase_users) AS repurchase_users,
+                           SUM(presale_amount) AS presale_amount,
+                           SUM(presale_qty) AS presale_qty,
+                           AVG(search_click_rate) AS search_click_rate,
+                           SUM(cross_sell_qty) AS cross_sell_qty,
+                           AVG(cross_sell_rate) AS cross_sell_rate,
+                           AVG(category_width) AS category_width
+                     FROM daily_data
+                     WHERE shop_id = ? AND date BETWEEN ? AND ?
+                    GROUP BY product_id
+                ) current
+                LEFT JOIN (
+                    SELECT product_id, SUM(payment_amount) AS payment_amount
+                     FROM daily_data
+                     WHERE shop_id = ? AND date BETWEEN date(?, '-' || CAST((julianday(?) - julianday(?) + 1) AS INTEGER) || ' days') AND date(?, '-1 day')
+                    GROUP BY product_id
+                ) previous ON previous.product_id = current.product_id
             )'''
             join_clause = 'p.product_id = d.product_id'
-            params = [start, end]
+            params = [shop_id, start, end, shop_id, start, end, start, start]
 
         where_clauses = []
         where_params = []
@@ -759,17 +1114,34 @@ def get_products():
         if style:
             where_clauses.append('p.style = ?')
             where_params.append(style)
+        if lifecycle_stage:
+            where_clauses.append("COALESCE(lp.manual_stage, lp.recommended_stage, '') = ?")
+            where_params.append(lifecycle_stage)
+        if seasonality:
+            where_clauses.append("COALESCE(lp.seasonal_attribute, '') = ?")
+            where_params.append(seasonality)
+        if has_pending_action.lower() in {'true', '1', 'yes'}:
+            where_clauses.append("EXISTS (SELECT 1 FROM product_actions pa WHERE pa.product_id = p.product_id AND pa.status IN ('pending_execution','executing','observing','pending_review','blocked'))")
+        elif has_pending_action.lower() in {'false', '0', 'no'}:
+            where_clauses.append("NOT EXISTS (SELECT 1 FROM product_actions pa WHERE pa.product_id = p.product_id AND pa.status IN ('pending_execution','executing','observing','pending_review','blocked'))")
         if search:
             search_safe = search.replace('%', '\\%').replace('_', '\\_')
             where_clauses.append("(p.title LIKE ? ESCAPE '\\' OR p.product_id LIKE ? ESCAPE '\\')")
             where_params.append(f'%{search_safe}%')
             where_params.append(f'%{search_safe}%')
+        if product_id:
+            where_clauses.append('p.product_id = ?')
+            where_params.append(product_id)
         where_sql = ' AND '.join(where_clauses) or '1=1'
 
         query = f'''
             SELECT p.product_id, p.title, p.tier, p.style, p.scene, p.status, p.image_url,
                    p.category, p.list_date, p.remark, p.manager,
+                   CASE WHEN d.product_id IS NOT NULL THEN 1 ELSE 0 END as has_data,
                    COALESCE(p.starred, 0) as starred,
+                   COALESCE(lp.manual_stage, lp.recommended_stage) as lifecycle_stage,
+                   lp.seasonal_attribute as seasonality,
+                       {legacy_pending_action_expr} as has_pending_action,
                    COALESCE(d.payment_amount, 0) as payment_amount,
                    COALESCE(d.refund_amount, 0) as refund_amount,
                    COALESCE(d.payment_conversion, 0) as conversion,
@@ -795,7 +1167,10 @@ def get_products():
                    {('COALESCE(d.fav_users, 0)' if dimension=='monthly' else '0')} as fav_users,
                    {click_score_cols}
                    COALESCE(d.net_sales, 0) as net_sales,
+                   CASE WHEN COALESCE(d.payment_amount, 0) > 0 THEN COALESCE(d.ad_spend, 0) * 1.0 / d.payment_amount ELSE NULL END as expense_ratio,
+                   {('d.trend_change' if dimension == 'daily' and start and end else 'NULL')} as trend_change,
                    {monthly_traffic_cols}
+                   {dmp_metric_cols}
                    {('COALESCE(d.cart_users, 0)' if dimension=='monthly' else '0')} as cart_users,
                    {monthly_extra_cols}
                    COALESCE(pd_latest.impressions, 0) as impressions,
@@ -828,14 +1203,9 @@ def get_products():
                    COALESCE(pd_latest.item_fav_rate, 0) as item_fav_rate,
                    COALESCE(pd_latest.cart_cost, 0) as cart_cost
             FROM products p
+            {legacy_lifecycle_join}
             LEFT JOIN {data_relation} d ON {join_clause}
-            LEFT JOIN (
-                SELECT pd.* FROM paid_detail pd
-                INNER JOIN (
-                    SELECT product_id, MAX(imported_at) as max_imported
-                    FROM paid_detail GROUP BY product_id
-                ) pd_max ON pd.product_id = pd_max.product_id AND pd.imported_at = pd_max.max_imported
-            ) pd_latest ON p.product_id = pd_latest.product_id
+            {legacy_paid_join}
             WHERE {where_sql}
         '''
         params.extend(where_params)
@@ -852,6 +1222,7 @@ def get_products():
             'repurchase_rate','cross_sell_rate','buyers','avg_order_value',
             'cart_qty','fav_users','click_rate','score','net_sales',
             'category','list_date','product_id',
+            'presale_amount','presale_qty','search_click_rate','category_width',
             'paid_ipv','organic_ipv','search_ipv','recommend_ipv',
             'cart_users','industry_ctr','cross_sell_qty','cross_sell_categories',
             'repurchase_users','guide_visits','guide_visitors','guide_potential',
@@ -863,16 +1234,22 @@ def get_products():
             'favs','store_favs','store_fav_cost','total_fav_cart','total_fav_cart_cost',
             'item_fav_cart','item_fav_cart_cost','total_favs','item_fav_cost',
             'item_fav_rate','cart_cost','manager',
+            'expense_ratio','trend_change','lifecycle_stage','seasonality','has_pending_action',
         ]
         sort_col = sort_by if sort_by in sort_whitelist else 'payment_amount'
-        query += f' ORDER BY {sort_col} {"DESC" if order=="desc" else "ASC"} LIMIT ? OFFSET ?'
+        # product_id exists on both products and the daily/monthly relation.
+        # Qualify it so the public sort option cannot produce an ambiguous SQL error.
+        sort_expression = 'p.product_id' if sort_col == 'product_id' else sort_col
+        query += f' ORDER BY {sort_expression} {"DESC" if order=="desc" else "ASC"} LIMIT ? OFFSET ?'
         params.append(limit)
         params.append(offset)
 
         rows = [dict(r) for r in conn.execute(query, params).fetchall()]
 
         # 获取总数（用于服务端分页）- 与主查询使用完全相同的WHERE条件
-        count_query = f'SELECT COUNT(*) as total FROM products p WHERE {where_sql}'
+        count_query = f'''SELECT COUNT(*) as total FROM products p
+            LEFT JOIN lifecycle_profiles lp ON lp.product_id = p.product_id
+            WHERE {where_sql}'''
         count_params = list(where_params)
         total_row = conn.execute(count_query, count_params).fetchone()
         total_count = total_row['total'] if total_row else 0
@@ -926,7 +1303,19 @@ def get_products():
             for row in rows:
                     row['changes'] = {}
 
-    return jsonify({'data': rows, 'total': total_count, 'limit': limit, 'offset': offset, 'facets': facets})
+    result = {'rows': rows, 'total': total_count, 'limit': limit, 'offset': offset, 'facets': facets}
+    observed_rows = sum(int(row.get('has_data') or 0) for row in rows)
+    availability = 'no-data' if not rows else 'available' if observed_rows == len(rows) else 'partial'
+    missing_inputs = [] if observed_rows == len(rows) else ['product_daily']
+    return success(
+        result,
+        availability=availability,
+        evidence_level=evidence_level_for(availability, missing_inputs=missing_inputs),
+        missing_inputs=missing_inputs,
+        limitations=limitations_for(availability, missing_inputs=missing_inputs),
+        freshness={'period': period or None, 'start': start or None, 'end': end or None},
+        evidence=[{'source': 'products', 'row_count': len(rows), 'observed_fact_rows': observed_rows, 'total': total_count}],
+    )
 
 @data_bp.route('/api/refund_alert', methods=['GET'])
 def get_refund_alert():
@@ -1199,6 +1588,9 @@ def get_ad_trend():
 def get_periods():
     """获取可选的时间周期列表"""
     dimension = request.args.get('dim', 'weekly')
+    unsupported = _reject_legacy_shop_scope(dimension)
+    if unsupported:
+        return unsupported
     dim_cfg = DIMENSION_MAP.get(dimension)
     if not dim_cfg:
         return jsonify({'error': 'invalid dimension'}), 400
@@ -1208,7 +1600,8 @@ def get_periods():
     with get_db() as conn:
         if dimension == 'daily':
             rows = [dict(r) for r in conn.execute(
-                f'SELECT DISTINCT {date_col} as period FROM {table} ORDER BY {date_col} DESC LIMIT 90').fetchall()]
+                f'SELECT DISTINCT {date_col} as period FROM {table} WHERE shop_id = ? ORDER BY {date_col} DESC LIMIT 90',
+                (get_shop_id(),)).fetchall()]
         else:
             rows = [dict(r) for r in conn.execute(
                 f'SELECT DISTINCT {date_col} as period FROM {table} ORDER BY {date_col} DESC').fetchall()]
@@ -1951,46 +2344,30 @@ def get_market_reports():
 
 @data_bp.route('/api/legacy/actions', methods=['POST'])
 def create_action():
-    """Create a new operation action"""
-    data = request.get_json(force=True)
-    if not data.get('product_id') or not data.get('action_type'):
-        return jsonify({'error': 'product_id和action_type为必填字段'}), 400
-    with get_db() as conn:
-        conn.execute('''INSERT INTO operation_actions
-            (product_id, action_date, action_type, action_detail,
-             before_payment, before_visitors, before_conversion, before_roi)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)''',
-            (data.get('product_id'), data.get('action_date'), data.get('action_type'),
-             data.get('action_detail'), data.get('before_payment'), data.get('before_visitors'),
-             data.get('before_conversion'), data.get('before_roi')))
-        conn.commit()
-        action_id = conn.execute('SELECT last_insert_rowid()').fetchone()[0]
-    return jsonify({'id': action_id, 'message': 'created'})
+    return failure(
+        'LEGACY_READ_ONLY',
+        'Legacy actions are read-only; use /api/actions.',
+        details={'replacement': '/api/actions'},
+        status=409,
+    )
 
 @data_bp.route('/api/legacy/actions/<int:action_id>', methods=['PUT'])
 def update_action(action_id):
-    """Update an existing operation action"""
-    data = request.get_json(force=True)
-    if not data or not data.get('action_type'):
-        return jsonify({'error': 'action_type为必填字段'}), 400
-    with get_db() as conn:
-        conn.execute('''UPDATE operation_actions SET
-            action_date=?, action_type=?, action_detail=?,
-            before_payment=?, before_visitors=?, before_conversion=?, before_roi=?
-            WHERE id=?''',
-            (data.get('action_date'), data.get('action_type'), data.get('action_detail'),
-             data.get('before_payment'), data.get('before_visitors'),
-             data.get('before_conversion'), data.get('before_roi'), action_id))
-        conn.commit()
-    return jsonify({'message': 'updated'})
+    return failure(
+        'LEGACY_READ_ONLY',
+        'Legacy actions are read-only; use /api/actions.',
+        details={'replacement': '/api/actions'},
+        status=409,
+    )
 
 @data_bp.route('/api/legacy/actions/<int:action_id>', methods=['DELETE'])
 def delete_action(action_id):
-    """Delete an operation action"""
-    with get_db() as conn:
-        conn.execute('DELETE FROM operation_actions WHERE id=?', (action_id,))
-        conn.commit()
-    return jsonify({'message': 'deleted'})
+    return failure(
+        'LEGACY_READ_ONLY',
+        'Legacy actions are read-only; use /api/actions.',
+        details={'replacement': '/api/actions'},
+        status=409,
+    )
 
 @data_bp.route('/api/action_stats', methods=['GET'])
 def get_action_stats():
@@ -2185,9 +2562,15 @@ def generate_alerts(conn, period):
 
 @data_bp.route('/api/target_progress', methods=['GET'])
 def get_target_progress():
+    if request.args.get('dim', 'monthly') == 'daily' and (denied := reject_legacy_shop_scope('店铺目标')):
+        return denied
     """目标完成进度 — 支持日/周/月维度"""
     period = request.args.get('period', '')
     dim = request.args.get('dim', 'monthly')
+    unsupported = _reject_legacy_shop_scope(dim)
+    if unsupported:
+        return unsupported
+    shop_id = get_shop_id()
     with get_db() as conn:
 
         # 获取店铺目标（period字段兼容月/周/日格式）
@@ -2205,8 +2588,8 @@ def get_target_progress():
                     AVG(payment_conversion) as conversion,
                     SUM(ad_spend) as ad_spend,
                     COUNT(DISTINCT product_id) as product_count
-                FROM daily_data WHERE date = ?
-            ''', (period,)).fetchone()
+                FROM daily_data WHERE shop_id = ? AND date = ?
+            ''', (shop_id, period)).fetchone()
         elif dim == 'weekly':
             actual = conn.execute('''
                 SELECT
@@ -2329,8 +2712,8 @@ def get_target_progress():
                     prev_date = (datetime.strptime(period, '%Y-%m-%d') - timedelta(days=1)).strftime('%Y-%m-%d')
                     prev = conn.execute('''
                         SELECT SUM(payment_amount) as gsv, SUM(ad_spend) as ad_spend
-                        FROM daily_data WHERE date = ?
-                    ''', (prev_date,)).fetchone()
+                        FROM daily_data WHERE shop_id = ? AND date = ?
+                    ''', (shop_id, prev_date)).fetchone()
                     prev = dict(prev) if prev else None
                     if prev:
                         result['yoy_gsv'] = round((gsv_actual - (prev['gsv'] or 0)) / (prev['gsv'] or 1) * 100, 1)
@@ -2359,7 +2742,12 @@ def get_target_progress():
 @data_bp.route('/api/product_target_progress', methods=['GET'])
 def get_product_target_progress():
     """商品/分层目标进度"""
+    if (denied := reject_legacy_shop_scope('商品目标')):
+        return denied
     period = request.args.get('period', '')
+    target_shop = (request.args.get('shop_id') or '').strip() or str(current_app.config.get('SHOP_ID') or os.environ.get('TMALL_SHOP_ID') or '').strip()
+    if target_shop and target_shop != 'default':
+        return failure('UNSUPPORTED_SCOPE', '商品目标当前不支持 shop_id；请先完成目标表店铺迁移', status=422)
     with get_db() as conn:
 
         rows = [dict(r) for r in conn.execute('''
@@ -2386,6 +2774,8 @@ def get_product_target_progress():
 @data_bp.route('/api/alerts', methods=['GET'])
 def get_alerts():
     """获取预警列表"""
+    if (denied := reject_legacy_shop_scope('经营预警')):
+        return denied
     period = request.args.get('period', '')
     with get_db() as conn:
 
@@ -2402,6 +2792,8 @@ def get_alerts():
 
 @data_bp.route('/api/alerts/<int:alert_id>/dismiss', methods=['POST'])
 def dismiss_alert(alert_id):
+    if (denied := reject_legacy_shop_scope('经营预警')):
+        return denied
     with get_db() as conn:
         conn.execute('UPDATE alerts SET dismissed = 1 WHERE id = ?', (alert_id,))
         conn.commit()
@@ -2411,12 +2803,19 @@ def dismiss_alert(alert_id):
 @data_bp.route('/api/targets/shop', methods=['POST'])
 def set_shop_target():
     """手动设置店铺目标"""
-    data = request.json
+    if (denied := reject_legacy_shop_scope('店铺目标')):
+        return denied
+    data = request.get_json(silent=True) or {}
+    period = str(data.get('period') or '').strip()
+    try:
+        datetime.strptime(period, '%Y-%m')
+    except (TypeError, ValueError):
+        return failure('VALIDATION_ERROR', 'period must use YYYY-MM format', status=422)
     with get_db() as conn:
         conn.execute('''
             INSERT OR REPLACE INTO shop_targets (period, target_gsv, target_ad_spend, target_ad_ratio, target_conversion, target_refund_rate, remark)
             VALUES (?, ?, ?, ?, ?, ?, ?)
-        ''', (data.get('period'), data.get('target_gsv'), data.get('target_ad_spend'),
+        ''', (period, data.get('target_gsv'), data.get('target_ad_spend'),
               data.get('target_ad_ratio'), data.get('target_conversion'), data.get('target_refund_rate'),
               data.get('remark')))
         conn.commit()
@@ -2427,6 +2826,8 @@ def set_shop_target():
 @data_bp.route('/api/lifecycle', methods=['GET'])
 def get_lifecycle():
     """Get product lifecycle data - monthly GSV for each product"""
+    if (denied := reject_legacy_shop_scope('生命周期')):
+        return denied
     product_id = request.args.get('product_id', '')
     limit = request.args.get('limit', 500, type=int)
     limit = max(1, min(limit or 500, 2000))
@@ -2534,14 +2935,15 @@ def upload_business_data():
         return jsonify({'error': 'No file uploaded'}), 400
 
     file = request.files['file']
-    if not file.filename.endswith(('.xlsx', '.xls')):
-        return jsonify({'error': 'Only Excel files supported'}), 400
+    suffix = os.path.splitext(file.filename or '')[1].lower()
+    if suffix not in {'.xlsx', '.xls', '.csv', '.zip'}:
+        return jsonify({'error': 'Only .xlsx, .xls, .csv, and .zip files are supported'}), 400
 
     import tempfile
     from scripts.import_data import import_excel_file
 
     # 保存到临时文件
-    with tempfile.NamedTemporaryFile(suffix='.xlsx', delete=False) as tmp:
+    with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
         file.save(tmp.name)
         tmp_path = tmp.name
 
@@ -2770,7 +3172,7 @@ def check_alerts():
 
         # 获取所有启用的规则
         rules = [dict(r) for r in conn.execute(
-            'SELECT * FROM alert_rules WHERE enabled = 1'
+            "SELECT * FROM alert_rules WHERE enabled = 1 AND COALESCE(scope, 'store') = 'store'"
         ).fetchall()]
 
     # 逐条检查规则
@@ -3263,6 +3665,7 @@ def get_multi_trend():
     dim = request.args.get('dim', 'monthly')
     periods_str = request.args.get('periods', '')
     metric = request.args.get('metric', 'payment_amount')
+    shop_id = get_shop_id()
 
     if not periods_str:
         return jsonify({'error': '请选择至少一个周期'}), 400
@@ -3303,9 +3706,9 @@ def get_multi_trend():
                            AVG(payment_conversion) as payment_conversion,
                            CASE WHEN SUM(payment_amount) > 0 THEN SUM(refund_amount) * 1.0 / SUM(payment_amount) ELSE 0 END as refund_rate
                     FROM daily_data
-                    WHERE date >= ? AND date <= ?
+                     WHERE shop_id = ? AND date >= ? AND date <= ?
                     GROUP BY date ORDER BY date
-                ''', (month_start, month_end)).fetchall()
+                ''', (shop_id, month_start, month_end)).fetchall()
 
                 # 按周聚合
                 weekly_data = {}
@@ -3349,9 +3752,9 @@ def get_multi_trend():
                                AVG(payment_conversion) as payment_conversion,
                                CASE WHEN SUM(payment_amount) > 0 THEN SUM(refund_amount) * 1.0 / SUM(payment_amount) ELSE 0 END as refund_rate
                         FROM daily_data
-                        WHERE date >= ? AND date <= ?
+                         WHERE shop_id = ? AND date >= ? AND date <= ?
                         GROUP BY date ORDER BY date
-                    ''', (week_start, week_end)).fetchall()
+                    ''', (shop_id, week_start, week_end)).fetchall()
 
                     data = []
                     for row in rows:
@@ -3366,9 +3769,9 @@ def get_multi_trend():
                            AVG(payment_conversion) as payment_conversion,
                            CASE WHEN SUM(payment_amount) > 0 THEN SUM(refund_amount) * 1.0 / SUM(payment_amount) ELSE 0 END as refund_rate
                     FROM daily_data
-                    WHERE date = ?
+                     WHERE shop_id = ? AND date = ?
                     GROUP BY date
-                ''', (period,)).fetchall()
+                ''', (shop_id, period)).fetchall()
                 data = []
                 for row in rows:
                     val = row[metric] if metric != 'refund_rate' else row['refund_rate']
@@ -3507,6 +3910,8 @@ def _cron_to_label(cron_expr):
 
 
 def _check_and_run_scheduled_tasks():
+    # Deprecated: the standalone scanner owns all scheduled imports.
+    return []
     """检查并执行到期的定时任务"""
     with _scheduler_lock:
         with get_db() as conn:
@@ -3546,20 +3951,14 @@ def _check_and_run_scheduled_tasks():
                     # 模拟执行导入（实际环境中会读取文件）
                     try:
                         # 这里可以调用实际的导入逻辑
-                        upload_dir = 'data/uploads/'
                         pattern = task['file_pattern'] or '*.xlsx'
-                        matched_files = []
-                        if os.path.exists(upload_dir):
-                            matched_files = _glob.glob(os.path.join(upload_dir, pattern))
+                        matched_files = _scheduled_matches(pattern)
 
                         if matched_files:
                             # 执行导入
-                            from scripts.import_data import import_excel
+                            from scripts.import_data import import_excel_file
                             for fpath in matched_files[:1]:  # 每次最多导入一个文件
-                                try:
-                                    import_excel(fpath)
-                                except Exception:
-                                    pass
+                                import_excel_file(fpath)
 
                         status = 'active'
                     except Exception:
@@ -3579,7 +3978,15 @@ def _check_and_run_scheduled_tasks():
 # 在每个请求前检查定时任务
 @data_bp.before_request
 def _scheduler_check():
-    _check_and_run_scheduled_tasks()
+    if request.path == '/api/scheduled_tasks' or request.path.startswith('/api/scheduled_tasks/'):
+        return failure(
+            'LEGACY_SCHEDULE_REMOVED',
+            '旧定时任务已下线，请使用 /api/import-scans',
+            status=410,
+        )
+    # Scheduling is intentionally performed by scripts/run_import_scanner.py.
+    # Flask requests must never execute imports as a side effect.
+    return None
 
 
 @data_bp.route('/api/scheduled_tasks', methods=['GET'])
@@ -3603,7 +4010,10 @@ def create_scheduled_task():
     data = request.get_json(force=True) or {}
     task_name = data.get('task_name', '')
     cron_expr = data.get('cron_expr', '')
-    file_pattern = data.get('file_pattern', '*.xlsx')
+    try:
+        file_pattern = _validate_file_pattern(data.get('file_pattern', '*.xlsx'))
+    except ValueError as error:
+        return jsonify({'success': False, 'error': str(error)}), 422
 
     if not task_name or not cron_expr:
         return jsonify({'error': '任务名称和调度表达式不能为空'}), 400
@@ -3642,7 +4052,11 @@ def update_scheduled_task(task_id):
         if 'task_name' in data:
             conn.execute('UPDATE scheduled_tasks SET task_name = ? WHERE id = ?', (data['task_name'], task_id))
         if 'file_pattern' in data:
-            conn.execute('UPDATE scheduled_tasks SET file_pattern = ? WHERE id = ?', (data['file_pattern'], task_id))
+            try:
+                file_pattern = _validate_file_pattern(data['file_pattern'])
+            except ValueError as error:
+                return jsonify({'success': False, 'error': str(error)}), 422
+            conn.execute('UPDATE scheduled_tasks SET file_pattern = ? WHERE id = ?', (file_pattern, task_id))
 
         conn.commit()
     return jsonify({'success': True, 'message': '任务已更新'})
@@ -3671,17 +4085,11 @@ def run_scheduled_task(task_id):
 
         # 模拟执行
         try:
-            upload_dir = 'data/uploads/'
             pattern = row['file_pattern'] or '*.xlsx'
-            if os.path.exists(upload_dir):
-                matched_files = _glob.glob(os.path.join(upload_dir, pattern))
-                if matched_files:
-                    from scripts.import_data import import_excel
-                    for fpath in matched_files[:1]:
-                        try:
-                            import_excel(fpath)
-                        except Exception:
-                            pass
+            matched_files = _scheduled_matches(pattern)
+            if matched_files:
+                from scripts.import_data import import_excel_file
+                import_excel_file(matched_files[0])
             status = 'active'
             message = f'任务 "{row["task_name"]}" 执行完成'
         except Exception as e:
@@ -3902,69 +4310,70 @@ def get_funnel_analysis():
 
 @data_bp.route('/api/industry_benchmark', methods=['GET'])
 def get_industry_benchmark():
-    """行业基准对比：店铺CTR vs 行业均值CTR"""
+    """Return conditional benchmark evidence without inventing zero values."""
     dim = request.args.get('dim', 'monthly')
     period = request.args.get('period', '')
-
     dim_cfg = DIMENSION_MAP.get(dim)
     if not dim_cfg:
-        return jsonify({'error': 'invalid dimension'}), 400
+        return failure('VALIDATION_ERROR', 'invalid dimension', {'dim': dim}, status=422)
     table = dim_cfg['table']
     date_col = dim_cfg['date_col']
-    visitors_col = dim_cfg['visitors_col']
-
-    # CTR fields differ between the imported report dimensions.
-    if dim == 'monthly':
-        shop_ctr_expr = 'click_rate'
-        industry_ctr_expr = 'industry_ctr'
-    elif dim == 'weekly':
-        shop_ctr_expr = 'search_click_rate'
-        industry_ctr_expr = 'industry_ctr'
-    else:
-        shop_ctr_expr = '0'
-        industry_ctr_expr = '0'
+    shop_ctr_expr = 'click_rate' if dim == 'monthly' else 'search_click_rate'
+    industry_ctr_expr = 'industry_ctr'
 
     with get_db() as conn:
-        # 当期行业CTR均值
+        table_columns = {row['name'] for row in conn.execute(f'PRAGMA table_info("{table}")')}
+        shop_available = shop_ctr_expr in table_columns
+        industry_available = industry_ctr_expr in table_columns
+        shop_sql = f'NULLIF({shop_ctr_expr}, 0)' if shop_available else 'NULL'
+        industry_sql = f'NULLIF({industry_ctr_expr}, 0)' if industry_available else 'NULL'
         row = conn.execute(f'''
-            SELECT
-                AVG({industry_ctr_expr}) as industry_ctr,
-                AVG({shop_ctr_expr}) as shop_ctr
+            SELECT COUNT(*) AS row_count,
+                   AVG({industry_sql}) AS industry_ctr,
+                   AVG({shop_sql}) AS shop_ctr
             FROM {table} WHERE {date_col} = ?
         ''', (period,)).fetchone()
-
-        shop_ctr = (row['shop_ctr'] or 0) if row else 0
-        industry_ctr = (row['industry_ctr'] or 0) if row else 0
-        gap = shop_ctr - industry_ctr
-        gap_pct = (gap / industry_ctr * 100) if industry_ctr > 0 else 0
-
-        # 趋势：最近6个周期
+        row_count = int(row['row_count'] or 0) if row else 0
+        shop_ctr = row['shop_ctr'] if row else None
+        industry_ctr = row['industry_ctr'] if row else None
+        missing_inputs = ['industry_benchmark'] if row_count == 0 else []
+        if row_count and (not shop_available or shop_ctr is None):
+            missing_inputs.append('shop_ctr')
+        if row_count and (not industry_available or industry_ctr is None):
+            missing_inputs.append('industry_ctr')
+        gap = shop_ctr - industry_ctr if not missing_inputs else None
+        gap_pct = gap / industry_ctr * 100 if gap is not None and industry_ctr else None
         trend_rows = conn.execute(f'''
-            SELECT {date_col} as period,
-                   AVG({shop_ctr_expr}) as shop_ctr,
-                   AVG({industry_ctr_expr}) as industry_ctr
-            FROM {table}
-            WHERE {date_col} <= ?
-            GROUP BY {date_col}
-            ORDER BY {date_col} DESC
-            LIMIT 6
+            SELECT {date_col} AS period,
+                   AVG({shop_sql}) AS shop_ctr,
+                   AVG({industry_sql}) AS industry_ctr
+            FROM {table} WHERE {date_col} <= ?
+            GROUP BY {date_col} ORDER BY {date_col} DESC LIMIT 6
         ''', (period,)).fetchall()
-        trend = []
-        for r in reversed(list(trend_rows)):
-            rd = dict(r)
-            trend.append({
-                'period': rd['period'],
-                'shop_ctr': rd['shop_ctr'] or 0,
-                'industry_ctr': rd['industry_ctr'] or 0,
-            })
+        trend = [
+            {'period': item['period'], 'shop_ctr': item['shop_ctr'], 'industry_ctr': item['industry_ctr']}
+            for item in reversed(trend_rows)
+            if item['shop_ctr'] is not None and item['industry_ctr'] is not None
+        ]
 
-    return jsonify({
-        'shop_ctr': round(shop_ctr, 6),
-        'industry_ctr': round(industry_ctr, 6),
-        'gap': round(gap, 6),
-        'gap_pct': round(gap_pct, 2),
-        'trend': trend,
-    })
+    availability = 'no-data' if row_count == 0 else 'available' if not missing_inputs else 'missing-fields'
+    return success(
+        {
+            'shop_ctr': round(shop_ctr, 6) if shop_ctr is not None else None,
+            'industry_ctr': round(industry_ctr, 6) if industry_ctr is not None else None,
+            'gap': round(gap, 6) if gap is not None else None,
+            'gap_pct': round(gap_pct, 2) if gap_pct is not None else None,
+            'trend': trend,
+        },
+        availability=availability,
+        capabilities={'can_view': availability == 'available'},
+        filters={'dim': dim, 'period': period},
+        missing_inputs=missing_inputs,
+        limitations=limitations_for(availability, missing_inputs=missing_inputs),
+        freshness={'period': period, 'latest_period': trend[-1]['period'] if trend else None},
+        evidence=[{'source': table, 'row_count': row_count}],
+        evidence_level=evidence_level_for(availability, missing_inputs=missing_inputs),
+    )
 
 
 # ==================== 商品画像标签 API ====================

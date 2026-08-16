@@ -30,6 +30,22 @@ def get_db_path():
     configured_path = config['data']['db_path']
     return configured_path if os.path.isabs(configured_path) else os.path.join(PROJECT_ROOT, configured_path)
 
+
+def get_shop_id(default='default'):
+    """Return the request-scoped shop without breaking legacy single-shop callers."""
+    if has_app_context():
+        try:
+            from flask import request
+            requested = (request.args.get('shop_id') or '').strip()
+        except RuntimeError:
+            requested = ''
+        if requested:
+            return requested
+        configured = str(current_app.config.get('SHOP_ID') or '').strip()
+        if configured:
+            return configured
+    return os.environ.get('TMALL_SHOP_ID', default) or default
+
 def get_connection(db_path=None):
     if db_path is None:
         db_path = get_db_path()
@@ -72,6 +88,7 @@ def init_db(db_path=None):
 
     CREATE TABLE IF NOT EXISTS daily_data (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
+        shop_id TEXT NOT NULL DEFAULT 'default',
         product_id TEXT NOT NULL,
         date DATE NOT NULL,
         payment_amount REAL DEFAULT 0,
@@ -93,9 +110,17 @@ def init_db(db_path=None):
         ad_roi REAL DEFAULT 0,
         buyers INTEGER DEFAULT 0,
         avg_order_value REAL DEFAULT 0,
+        repurchase_rate REAL DEFAULT 0,
+        repurchase_users INTEGER DEFAULT 0,
+        presale_amount REAL DEFAULT 0,
+        presale_qty INTEGER DEFAULT 0,
+        search_click_rate REAL DEFAULT 0,
+        cross_sell_qty INTEGER DEFAULT 0,
+        cross_sell_rate REAL DEFAULT 0,
+        category_width INTEGER DEFAULT 0,
         data_source TEXT,
         imported_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        UNIQUE(product_id, date)
+        UNIQUE(shop_id, product_id, date)
     );
 
     CREATE TABLE IF NOT EXISTS weekly_data (
@@ -213,6 +238,68 @@ def init_db(db_path=None):
 
     CREATE INDEX IF NOT EXISTS idx_daily_product ON daily_data(product_id);
     CREATE INDEX IF NOT EXISTS idx_daily_date ON daily_data(date);
+
+    CREATE TABLE IF NOT EXISTS daily_data_observations (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        shop_id TEXT NOT NULL DEFAULT 'default',
+        product_id TEXT NOT NULL,
+        date DATE NOT NULL,
+        source_system TEXT NOT NULL,
+        source_type TEXT NOT NULL,
+        source_batch_id TEXT,
+        source_filename TEXT,
+        payload_json TEXT NOT NULL,
+        field_presence_json TEXT NOT NULL DEFAULT '{}',
+        quality_status TEXT NOT NULL DEFAULT 'passed',
+        observed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(shop_id, product_id, date, source_system, source_type, source_batch_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_daily_observations_key
+        ON daily_data_observations(shop_id, product_id, date);
+    CREATE INDEX IF NOT EXISTS idx_daily_observations_source
+        ON daily_data_observations(source_system, source_type, observed_at DESC);
+
+    CREATE TABLE IF NOT EXISTS fact_field_lineage (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        shop_id TEXT NOT NULL DEFAULT 'default',
+        product_id TEXT NOT NULL,
+        date DATE NOT NULL,
+        field_key TEXT NOT NULL,
+        effective_source_system TEXT NOT NULL,
+        effective_source_type TEXT NOT NULL,
+        source_batch_id TEXT,
+        source_role TEXT NOT NULL,
+        fallback_used INTEGER NOT NULL DEFAULT 0,
+        conflict_status TEXT NOT NULL DEFAULT 'none',
+        observed_sources_json TEXT NOT NULL DEFAULT '[]',
+        effective_value_json TEXT,
+        reason TEXT NOT NULL DEFAULT '',
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(shop_id, product_id, date, field_key)
+    );
+    CREATE INDEX IF NOT EXISTS idx_fact_lineage_product_date
+        ON fact_field_lineage(shop_id, product_id, date);
+    CREATE INDEX IF NOT EXISTS idx_fact_lineage_source
+        ON fact_field_lineage(effective_source_system, field_key);
+
+    CREATE TABLE IF NOT EXISTS reconciliation_results (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        shop_id TEXT NOT NULL DEFAULT 'default',
+        product_id TEXT NOT NULL,
+        date DATE NOT NULL,
+        field_key TEXT NOT NULL,
+        status TEXT NOT NULL,
+        primary_source TEXT,
+        effective_source_system TEXT NOT NULL,
+        values_json TEXT NOT NULL DEFAULT '[]',
+        delta REAL,
+        threshold REAL,
+        details_json TEXT NOT NULL DEFAULT '{}',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(shop_id, product_id, date, field_key)
+    );
+    CREATE INDEX IF NOT EXISTS idx_reconciliation_status
+        ON reconciliation_results(status, date DESC);
     CREATE INDEX IF NOT EXISTS idx_weekly_product ON weekly_data(product_id);
     CREATE INDEX IF NOT EXISTS idx_weekly_date ON weekly_data(week_start);
     CREATE INDEX IF NOT EXISTS idx_monthly_product ON monthly_data(product_id);
@@ -245,6 +332,7 @@ def init_db(db_path=None):
 
     CREATE TABLE IF NOT EXISTS import_batches (
         id TEXT PRIMARY KEY,
+        shop_id TEXT NOT NULL DEFAULT 'default',
         source_type TEXT NOT NULL,
         source_filename TEXT NOT NULL,
         source_hash TEXT NOT NULL,
@@ -271,6 +359,76 @@ def init_db(db_path=None):
         FOREIGN KEY (batch_id) REFERENCES import_batches(id)
     );
     CREATE INDEX IF NOT EXISTS idx_import_batch_changes_batch ON import_batch_changes(batch_id);
+
+    CREATE TABLE IF NOT EXISTS import_previews (
+        id TEXT PRIMARY KEY,
+        source_type TEXT NOT NULL,
+        source_filename TEXT NOT NULL,
+        source_hash TEXT NOT NULL,
+        content BLOB NOT NULL,
+        mapping_json TEXT NOT NULL,
+        quality_summary TEXT NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE INDEX IF NOT EXISTS idx_import_previews_created_at ON import_previews(created_at);
+
+    CREATE TABLE IF NOT EXISTS import_scan_jobs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        task_name TEXT NOT NULL,
+        folder_path TEXT NOT NULL,
+        file_pattern TEXT NOT NULL DEFAULT '*',
+        source_type TEXT NOT NULL DEFAULT 'auto',
+        mapping_template_json TEXT NOT NULL DEFAULT '{}',
+        cron_expr TEXT NOT NULL,
+        enabled INTEGER NOT NULL DEFAULT 1,
+        status TEXT NOT NULL DEFAULT 'active',
+        last_run TEXT,
+        next_run TEXT,
+        lease_token TEXT,
+        lease_until TEXT,
+        last_error TEXT,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE INDEX IF NOT EXISTS idx_import_scan_jobs_due
+        ON import_scan_jobs(enabled, status, next_run);
+
+    CREATE TABLE IF NOT EXISTS import_scan_files (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        job_id INTEGER NOT NULL,
+        canonical_path TEXT NOT NULL,
+        source_filename TEXT NOT NULL,
+        size_bytes INTEGER NOT NULL,
+        mtime_ns INTEGER NOT NULL,
+        source_hash TEXT NOT NULL,
+        status TEXT NOT NULL,
+        preview_id TEXT,
+        batch_id TEXT,
+        error_code TEXT,
+        error_message TEXT,
+        discovered_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        imported_at TEXT,
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(job_id, canonical_path, source_hash),
+        FOREIGN KEY (job_id) REFERENCES import_scan_jobs(id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_import_scan_files_job ON import_scan_files(job_id, updated_at);
+    CREATE INDEX IF NOT EXISTS idx_import_scan_files_status ON import_scan_files(job_id, status);
+
+    CREATE TABLE IF NOT EXISTS import_scan_runs (
+        id TEXT PRIMARY KEY,
+        job_id INTEGER NOT NULL,
+        started_at TEXT NOT NULL,
+        completed_at TEXT,
+        status TEXT NOT NULL,
+        discovered_count INTEGER NOT NULL DEFAULT 0,
+        imported_count INTEGER NOT NULL DEFAULT 0,
+        blocked_count INTEGER NOT NULL DEFAULT 0,
+        failed_count INTEGER NOT NULL DEFAULT 0,
+        error_message TEXT,
+        FOREIGN KEY (job_id) REFERENCES import_scan_jobs(id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_import_scan_runs_job ON import_scan_runs(job_id, started_at DESC);
 
     CREATE TABLE IF NOT EXISTS store_daily_facts (
         shop_id TEXT NOT NULL DEFAULT 'default',
@@ -552,6 +710,8 @@ def init_db(db_path=None):
 
     CREATE TABLE IF NOT EXISTS alert_rules (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL DEFAULT '',
+        scope TEXT NOT NULL DEFAULT 'store',
         metric TEXT NOT NULL,
         operator TEXT NOT NULL CHECK(operator IN ('gt','lt','gte','lte')),
         threshold REAL NOT NULL,
@@ -625,6 +785,21 @@ def init_db(db_path=None):
         operator TEXT DEFAULT 'admin',
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
+
+    CREATE TABLE IF NOT EXISTS audit_logs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        entity_type TEXT NOT NULL,
+        entity_id TEXT NOT NULL,
+        action TEXT NOT NULL,
+        operator TEXT NOT NULL,
+        reason TEXT NOT NULL,
+        before_value TEXT,
+        after_value TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_audit_logs_entity
+      ON audit_logs(entity_type, entity_id, id);
 
     CREATE TABLE IF NOT EXISTS chart_events (
         id INTEGER PRIMARY KEY,
@@ -715,6 +890,26 @@ def init_db(db_path=None):
         cursor.execute("ALTER TABLE import_batch_changes ADD COLUMN written_by TEXT NOT NULL DEFAULT ''")
         cursor.execute("UPDATE import_batch_changes SET written_by = batch_id WHERE written_by = ''")
         conn.commit()
+    if 'reverted_at' not in batch_change_columns:
+        cursor.execute("ALTER TABLE import_batch_changes ADD COLUMN reverted_at TIMESTAMP")
+        conn.commit()
+
+    alert_rule_columns = {row[1] for row in cursor.execute('PRAGMA table_info(alert_rules)').fetchall()}
+    if 'name' not in alert_rule_columns:
+        cursor.execute("ALTER TABLE alert_rules ADD COLUMN name TEXT NOT NULL DEFAULT ''")
+    if 'scope' not in alert_rule_columns:
+        cursor.execute("ALTER TABLE alert_rules ADD COLUMN scope TEXT NOT NULL DEFAULT 'store'")
+    cursor.execute("UPDATE alert_rules SET name = metric || ' 预警' WHERE name = ''")
+    promotion_rule_count = cursor.execute(
+        "SELECT COUNT(*) FROM alert_rules WHERE scope = 'promotion_product'"
+    ).fetchone()[0]
+    if promotion_rule_count == 0:
+        cursor.executemany(
+            '''INSERT INTO alert_rules (name, scope, metric, operator, threshold, level, enabled)
+               VALUES (?, 'promotion_product', 'roi', 'lt', ?, ?, 1)''',
+            [('ROI 低于安全线', 3.0, 'warning'), ('ROI 严重偏低', 1.5, 'danger')],
+        )
+    conn.commit()
 
     # SQLite cannot alter CHECK constraints in place; extend pre-existing goal lock tables.
     goal_locks_sql = cursor.execute(
@@ -740,6 +935,16 @@ def init_db(db_path=None):
         ''')
         conn.commit()
 
+    # Migration: bind import batches to the shop that produced them. Existing
+    # single-shop history remains owned by the default shop.
+    cursor.execute("PRAGMA table_info(import_batches)")
+    import_batch_columns = {row[1] for row in cursor.fetchall()}
+    if 'shop_id' not in import_batch_columns:
+        cursor.execute("ALTER TABLE import_batches ADD COLUMN shop_id TEXT NOT NULL DEFAULT 'default'")
+    cursor.execute('DROP INDEX IF EXISTS idx_import_batches_shop_status')
+    cursor.execute('CREATE INDEX idx_import_batches_shop_status ON import_batches(shop_id, status, created_at DESC)')
+    conn.commit()
+
     # Migration: add new health dimension columns if they don't exist
     new_health_cols = [
         'gmv_change_score', 'ad_spend_change_score', 'roi_change_score',
@@ -763,6 +968,12 @@ def init_db(db_path=None):
     new_product_cols = {
         'manager': 'TEXT DEFAULT \'\'',
         'starred': 'INTEGER DEFAULT 0',
+        'parent_product_id': 'TEXT DEFAULT \'\'',
+        'product_type': 'TEXT DEFAULT \'\'',
+        'sku_code': 'TEXT DEFAULT \'\'',
+        'source_status': 'TEXT DEFAULT \'\'',
+        'product_tags': 'TEXT DEFAULT \'\'',
+        'product_growth_stage': 'TEXT DEFAULT \'\'',
     }
     cursor.execute("PRAGMA table_info(products)")
     existing_product_cols = {row[1] for row in cursor.fetchall()}
@@ -838,6 +1049,35 @@ def init_db(db_path=None):
         'search_conversion': 'REAL DEFAULT 0',
         'search_visitors': 'INTEGER DEFAULT 0',
         'cart_users': 'INTEGER DEFAULT 0',
+        'order_buyers': 'INTEGER DEFAULT 0',
+        'order_items': 'INTEGER DEFAULT 0',
+        'order_amount': 'REAL DEFAULT 0',
+        'order_conversion': 'REAL DEFAULT 0',
+        'new_payment_buyers': 'INTEGER DEFAULT 0',
+        'returning_payment_buyers': 'INTEGER DEFAULT 0',
+        'returning_payment_amount': 'REAL DEFAULT 0',
+        'juhuasuan_payment_amount': 'REAL DEFAULT 0',
+        'competitiveness_score': 'REAL DEFAULT 0',
+        'year_to_date_payment_amount': 'REAL DEFAULT 0',
+        'month_to_date_payment_amount': 'REAL DEFAULT 0',
+        'month_to_date_payment_items': 'INTEGER DEFAULT 0',
+        'search_payment_buyers': 'INTEGER DEFAULT 0',
+        'structured_detail_conversion': 'REAL DEFAULT 0',
+        'structured_detail_payment_ratio': 'REAL DEFAULT 0',
+        'paid_ipv': 'INTEGER DEFAULT 0',
+        'organic_ipv': 'INTEGER DEFAULT 0',
+        'search_ipv': 'INTEGER DEFAULT 0',
+        'recommend_ipv': 'INTEGER DEFAULT 0',
+        'favorite_cart_rate': 'REAL DEFAULT 0',
+        'repurchase_rate': 'REAL DEFAULT 0',
+        'presale_amount': 'REAL DEFAULT 0',
+        'presale_qty': 'INTEGER DEFAULT 0',
+        'search_click_rate': 'REAL DEFAULT 0',
+        'cross_sell_qty': 'INTEGER DEFAULT 0',
+        'cross_sell_rate': 'REAL DEFAULT 0',
+        'cross_sell_categories': 'INTEGER DEFAULT 0',
+        'category_width': 'INTEGER DEFAULT 0',
+        'repurchase_users': 'INTEGER DEFAULT 0',
     }
     cursor.execute("PRAGMA table_info(daily_data)")
     existing_daily_cols = {row[1] for row in cursor.fetchall()}
@@ -847,6 +1087,59 @@ def init_db(db_path=None):
                 cursor.execute(f'ALTER TABLE daily_data ADD COLUMN {col} {col_def}')
             except Exception:
                 pass
+
+    # Migrate the product-day fact grain from product/date to
+    # shop/product/date. SQLite cannot drop an inline UNIQUE constraint, so
+    # existing databases need a one-time table rebuild.
+    cursor.execute("PRAGMA table_info(daily_data)")
+    daily_info = cursor.fetchall()
+    daily_column_names = {row[1] for row in daily_info}
+    if 'shop_id' not in daily_column_names:
+        cursor.execute("ALTER TABLE daily_data ADD COLUMN shop_id TEXT NOT NULL DEFAULT 'default'")
+        cursor.execute("PRAGMA table_info(daily_data)")
+        daily_info = cursor.fetchall()
+
+    unique_indexes = []
+    for index_row in cursor.execute("PRAGMA index_list(daily_data)").fetchall():
+        if index_row[2]:
+            index_name = index_row[1]
+            unique_indexes.append(tuple(
+                column[2] for column in cursor.execute(f'PRAGMA index_info("{index_name}")').fetchall()
+            ))
+    if ('shop_id', 'product_id', 'date') not in unique_indexes:
+        legacy_table = 'daily_data_legacy_shop_migration'
+        if cursor.execute(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?", (legacy_table,)
+        ).fetchone():
+            raise RuntimeError(f'Cannot migrate daily_data while {legacy_table} already exists')
+        cursor.execute('ALTER TABLE daily_data RENAME TO daily_data_legacy_shop_migration')
+        definitions = []
+        column_names = []
+        for column in daily_info:
+            name, column_type, not_null, default_value, primary_key = (
+                column[1], column[2] or '', column[3], column[4], column[5]
+            )
+            column_names.append(name)
+            if name == 'id' and primary_key:
+                definitions.append('"id" INTEGER PRIMARY KEY AUTOINCREMENT')
+                continue
+            definition = f'"{name}" {column_type}'.rstrip()
+            if not_null:
+                definition += ' NOT NULL'
+            if default_value is not None:
+                definition += f' DEFAULT {default_value}'
+            definitions.append(definition)
+        definitions.append('UNIQUE(shop_id, product_id, date)')
+        cursor.execute(f'CREATE TABLE daily_data ({", ".join(definitions)})')
+        quoted_columns = ', '.join(f'"{name}"' for name in column_names)
+        cursor.execute(
+            f'INSERT INTO daily_data ({quoted_columns}) SELECT {quoted_columns} FROM {legacy_table}'
+        )
+        cursor.execute(f'DROP TABLE {legacy_table}')
+    cursor.execute('DROP INDEX IF EXISTS idx_daily_product')
+    cursor.execute('DROP INDEX IF EXISTS idx_daily_date')
+    cursor.execute('CREATE INDEX idx_daily_product ON daily_data(shop_id, product_id)')
+    cursor.execute('CREATE INDEX idx_daily_date ON daily_data(shop_id, date)')
 
     # Migration: add new columns to weekly_data table
     new_weekly_cols = {
