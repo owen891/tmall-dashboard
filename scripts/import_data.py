@@ -3,6 +3,9 @@ import os
 import json
 import glob
 import shutil
+import io
+from html.parser import HTMLParser
+from zipfile import ZipFile
 from datetime import datetime
 import pandas as pd
 import sqlite3
@@ -11,6 +14,15 @@ import yaml
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from db import get_connection, get_db_path, init_db
 from scripts.utils import clean_percentage, clean_number, clean_int, clean_month, parse_date_range, is_valid_row, classify_action
+from services.source_resolution_service import record_daily_observation
+from services.import_service import import_service
+
+
+def _legacy_optional(cleaner, value):
+    """Keep legacy blank cells missing instead of manufacturing zero observations."""
+    if value is None or pd.isna(value) or str(value).strip() in {'', '-', '--', 'nan', 'None'}:
+        return None
+    return cleaner(value)
 
 # 使用绝对路径
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -20,7 +32,7 @@ def log_import(filename, status, rows=0, details=''):
     os.makedirs(os.path.dirname(IMPORT_LOG), exist_ok=True)
     logs = []
     if os.path.exists(IMPORT_LOG):
-        with open(IMPORT_LOG, 'r') as f:
+        with open(IMPORT_LOG, 'r', encoding='utf-8') as f:
             logs = json.load(f)
     logs.append({
         'file': filename,
@@ -29,7 +41,7 @@ def log_import(filename, status, rows=0, details=''):
         'details': details,
         'time': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     })
-    with open(IMPORT_LOG, 'w') as f:
+    with open(IMPORT_LOG, 'w', encoding='utf-8') as f:
         json.dump(logs, f, ensure_ascii=False, indent=2)
 
 def upsert_product(conn, product_id, title='', category='', tier='', style='', scene='',
@@ -83,6 +95,175 @@ def extract_week_start_from_paid(xls):
         pass
     return None
 
+
+SUPPORTED_IMPORT_SUFFIXES = {'.xlsx', '.xls', '.csv', '.zip'}
+
+
+def find_id_col(df):
+    """Recognize both legacy mojibake headers and native Chinese exports."""
+    headers = {'\u5546\u54c1ID', '\u5b9d\u8d1dID', '\u4e3b\u4f53ID', 'product_id'}
+    for column in df.columns:
+        text = str(column).strip()
+        if text in headers or ('\u5546\u54c1' in text and 'ID' in text) or ('鍟嗗搧' in text and 'ID' in text):
+            return column
+    return None
+
+
+def _prepare_dmp_daily_frame(raw_frame):
+    """Return a normalized daily DMP frame when the export uses a non-DMP sheet name."""
+    required = {'\u5b9d\u8d1dID', '\u65e5\u671f', '\u652f\u4ed8\u91d1\u989d', 'IPV', '\u8425\u9500\u63a8\u5e7fIPV'}
+    for index in range(min(12, len(raw_frame))):
+        headers = [str(value).strip() for value in raw_frame.iloc[index].tolist()]
+        if required.issubset(set(headers)):
+            frame = raw_frame.iloc[index + 1:].copy()
+            frame.columns = headers
+            return frame.reset_index(drop=True)
+    return None
+
+
+def _is_dmp_daily_frame(df):
+    headers = {str(column).strip() for column in df.columns}
+    return {'\u5b9d\u8d1dID', '\u65e5\u671f', '\u652f\u4ed8\u91d1\u989d', 'IPV', '\u8425\u9500\u63a8\u5e7fIPV'}.issubset(headers)
+
+
+def _dmp_date(value):
+    if pd.isna(value):
+        return ''
+    text = str(value).strip()
+    if text.endswith('.0'):
+        text = text[:-2]
+    if len(text) == 8 and text.isdigit():
+        return f'{text[:4]}-{text[4:6]}-{text[6:8]}'
+    try:
+        return pd.to_datetime(value).date().isoformat()
+    except (TypeError, ValueError):
+        return ''
+
+
+def _read_excel_sheets(source):
+    workbook = pd.ExcelFile(source)
+    return [(sheet_name, pd.read_excel(workbook, sheet_name=sheet_name, header=None))
+            for sheet_name in workbook.sheet_names]
+
+
+def _read_csv_sheets(content):
+    for encoding in ('utf-8-sig', 'gb18030', 'gbk'):
+        try:
+            return [('Sheet1', pd.read_csv(io.BytesIO(content), header=None, dtype=object, encoding=encoding))]
+        except UnicodeDecodeError:
+            continue
+    raise ValueError('CSV 文件编码无法识别')
+
+
+def _read_html_export_sheets(content, excel_error):
+    for encoding in ('utf-8-sig', 'gb18030', 'gbk'):
+        try:
+            tables = _read_html_tables(content.decode(encoding))
+        except (UnicodeDecodeError, ValueError):
+            continue
+        if tables:
+            return [(f'Sheet{index + 1}', table) for index, table in enumerate(tables)]
+    raise excel_error
+
+
+def _read_sheets_from_bytes(filename, content):
+    suffix = os.path.splitext(filename)[1].lower()
+    if suffix == '.csv':
+        return _read_csv_sheets(content)
+    if suffix not in {'.xlsx', '.xls'}:
+        raise ValueError(f'压缩包内不支持 {filename} 文件')
+    try:
+        return _read_excel_sheets(io.BytesIO(content))
+    except (UnicodeDecodeError, ValueError) as error:
+        if suffix == '.xls':
+            return _read_html_export_sheets(content, error)
+        raise
+
+
+def _read_zip_sheets(filepath):
+    sheets = []
+    with ZipFile(filepath) as archive:
+        entries = [entry for entry in archive.infolist()
+                   if not entry.is_dir() and os.path.splitext(entry.filename)[1].lower() in SUPPORTED_IMPORT_SUFFIXES - {'.zip'}]
+        if not entries:
+            raise ValueError('ZIP 压缩包中没有 .xlsx、.xls 或 .csv 文件')
+        for entry in entries:
+            for sheet_name, frame in _read_sheets_from_bytes(entry.filename, archive.read(entry)):
+                sheets.append((f'{entry.filename}:{sheet_name}', frame))
+    return sheets
+
+
+def _open_excel_for_metadata(filepath):
+    if os.path.splitext(filepath)[1].lower() not in {'.xlsx', '.xls'}:
+        return None
+    try:
+        return pd.ExcelFile(filepath)
+    except (UnicodeDecodeError, ValueError):
+        return None
+
+
+def read_workbook_sheets(filepath):
+    """Read Excel, CSV, and ZIP archives containing supported table files."""
+    suffix = os.path.splitext(filepath)[1].lower()
+    if suffix == '.csv':
+        with open(filepath, 'rb') as source:
+            return _read_csv_sheets(source.read())
+    if suffix == '.zip':
+        return _read_zip_sheets(filepath)
+    try:
+        return _read_excel_sheets(filepath)
+    except (UnicodeDecodeError, ValueError) as excel_error:
+        if suffix != '.xls':
+            raise
+
+        with open(filepath, 'rb') as source:
+            raw = source.read()
+        return _read_html_export_sheets(raw, excel_error)
+
+
+class _HtmlTableParser(HTMLParser):
+    def __init__(self):
+        super().__init__()
+        self.tables = []
+        self.table = None
+        self.row = None
+        self.cell = None
+
+    def handle_starttag(self, tag, attrs):
+        if tag == 'table':
+            self.table = []
+        elif tag == 'tr' and self.table is not None:
+            self.row = []
+        elif tag in {'td', 'th'} and self.row is not None:
+            self.cell = []
+
+    def handle_data(self, data):
+        if self.cell is not None:
+            self.cell.append(data)
+
+    def handle_endtag(self, tag):
+        if tag in {'td', 'th'} and self.cell is not None:
+            self.row.append(''.join(self.cell).strip())
+            self.cell = None
+        elif tag == 'tr' and self.row is not None:
+            self.table.append(self.row)
+            self.row = None
+        elif tag == 'table' and self.table is not None:
+            if self.table:
+                self.tables.append(self.table)
+            self.table = None
+
+
+def _read_html_tables(content):
+    parser = _HtmlTableParser()
+    parser.feed(content)
+    frames = []
+    for rows in parser.tables:
+        header, *data = rows
+        if header:
+            frames.append(pd.DataFrame(data, columns=header))
+    return frames
+
 def backup_database():
     """自动备份数据库"""
     config_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'config.yaml')
@@ -125,7 +306,13 @@ def backup_database():
     print(f"  Backup: {backup_path}")
     return True
 
-def import_excel_file(filepath):
+def _legacy_import_excel_file_entry(filepath):
+    """Retained only as a rollback reference for one release."""
+    from services.legacy_import_adapter import import_file_legacy_response
+    return import_file_legacy_response(filepath)
+
+
+def _legacy_import_excel_file(filepath):
     """通过Web上传导入Excel文件，返回导入结果摘要"""
     init_db()
     conn = get_connection()
@@ -133,14 +320,14 @@ def import_excel_file(filepath):
     results = []
 
     try:
-        xls = pd.ExcelFile(filepath)
-        sheet_names = xls.sheet_names
+        sheets = read_workbook_sheets(filepath)
+        xls = _open_excel_for_metadata(filepath)
+        sheet_names = [name for name, _ in sheets]
 
         # 尝试从付费-源 Sheet 提取周起始日期
-        default_week_start = extract_week_start_from_paid(xls)
+        default_week_start = extract_week_start_from_paid(xls) if xls is not None else None
 
-        for sheet in sheet_names:
-            df = pd.read_excel(xls, sheet_name=sheet, header=None)
+        for sheet, df in sheets:
             if df.empty or len(df) < 2:
                 results.append({'sheet': sheet, 'status': 'skipped', 'reason': '空表或行数不足'})
                 continue
@@ -194,6 +381,47 @@ def import_excel_file(filepath):
         'details': results
     }
 
+def import_excel_file(filepath):
+    """Keep the historical file-entry API on the canonical import path."""
+    from services.legacy_import_adapter import import_file_legacy_response
+    return import_file_legacy_response(filepath)
+    # The rollback implementation below remains in this file for one release.
+    filename = os.path.basename(filepath)
+    with open(filepath, 'rb') as source:
+        content = source.read()
+
+    try:
+        preview = import_service.preview(filename, content, source_type='auto')
+        if preview.get('required_unmapped'):
+            raise ValueError('缺少必要字段映射: ' + ', '.join(preview['required_unmapped']))
+        report = import_service.confirm(preview['id'], preview['mapping'])
+        total_rows = int(report.get('total_rows') or 0)
+        results = [{'sheet': 'canonical', 'status': 'success', 'rows': total_rows}]
+        log_import(filename, 'success', total_rows)
+    except Exception as error:
+        log_import(filename, 'failed', 0, str(error))
+        raise
+
+    try:
+        backup_database()
+    except Exception as error:
+        results.append({'sheet': '_backup', 'status': 'warning', 'reason': str(error)})
+    try:
+        recalc_action_effects()
+    except Exception as error:
+        results.append({'sheet': '_recalc', 'status': 'warning', 'reason': str(error)})
+
+    return {
+        'success': True,
+        'total_rows': total_rows,
+        'details': results,
+        'batch_id': report.get('id'),
+        'source_type': report.get('source_type'),
+        'source_filename': report.get('source_filename'),
+        'quality_summary': report.get('quality_summary', {}),
+    }
+
+
 def import_single_file(filepath):
     """导入单个Excel文件"""
     filename = os.path.basename(filepath)
@@ -206,17 +434,24 @@ def import_single_file(filepath):
     total_rows = 0
 
     try:
-        xls = pd.ExcelFile(filepath)
-        sheet_names = xls.sheet_names
+        sheets = read_workbook_sheets(filepath)
+        xls = _open_excel_for_metadata(filepath)
+        sheet_names = [name for name, _ in sheets]
 
         # 尝试从付费-源 Sheet 提取周起始日期（供没有日期列的 Sheet 使用）
-        default_week_start = extract_week_start_from_paid(xls)
+        default_week_start = extract_week_start_from_paid(xls) if xls is not None else None
         if default_week_start:
             print(f"  Detected week start from paid sheet: {default_week_start}")
 
-        for sheet in sheet_names:
-            df = pd.read_excel(xls, sheet_name=sheet, header=None)
+        for sheet, df in sheets:
             if df.empty or len(df) < 2:
+                continue
+
+            dmp_frame = _prepare_dmp_daily_frame(df)
+            if dmp_frame is not None:
+                rows_imported = import_dmp_daily(conn, dmp_frame, filename)
+                total_rows += rows_imported
+                print(f"  Sheet '{sheet}': {rows_imported} DMP daily rows imported")
                 continue
 
             # 查找表头行
@@ -271,6 +506,10 @@ def process_sheet(conn, df, sheet_name, id_col, filename, default_week_start=Non
 
     if '单品总表' in sheet_name:
         rows = import_monthly(conn, df, id_col)
+    if any(pd.isna(column) for column in df.columns) and not _is_dmp_daily_frame(df):
+        return 0
+    if _is_dmp_daily_frame(df):
+        rows = import_dmp_daily(conn, df, filename)
     elif 'DMP' in sheet_name:
         rows = import_weekly_dmp(conn, df, id_col, default_week_start)
     elif '付费' in sheet_name:
@@ -278,7 +517,7 @@ def process_sheet(conn, df, sheet_name, id_col, filename, default_week_start=Non
     elif sheet_name == 'Sheet2' or '备注' in sheet_name:
         rows = import_product_remarks(conn, df, id_col)
     elif '生意参谋' in sheet_name:
-        rows = import_shengyi_canmou(conn, df, id_col)
+        rows = import_shengyi_canmou(conn, df, id_col, filename)
     elif '单品' in sheet_name:
         rows = import_weekly(conn, df, id_col, default_week_start)
     elif '目标' in sheet_name or 'target' in sheet_name.lower():
@@ -286,7 +525,7 @@ def process_sheet(conn, df, sheet_name, id_col, filename, default_week_start=Non
     else:
         # 尝试按文件名判断日度/周度
         if '日' in filename:
-            rows = import_daily(conn, df, id_col)
+            rows = import_daily(conn, df, id_col, filename)
         else:
             rows = import_weekly(conn, df, id_col, default_week_start)
 
@@ -449,7 +688,44 @@ def import_weekly(conn, df, id_col, default_week_start=None):
         rows += 1
     return rows
 
-def import_daily(conn, df, id_col):
+def _record_legacy_daily_observation(conn, row, product_id, date_value, source_filename, business=False):
+    def value(*names):
+        for name in names:
+            if name in row:
+                return row.get(name)
+        return None
+
+    payment = _legacy_optional(clean_number, value('\u652f\u4ed8\u91d1\u989d'))
+    refund = _legacy_optional(clean_number, value('\u6210\u529f\u9000\u6b3e\u91d1\u989d', '\u9000\u6b3e\u91d1\u989d'))
+    observation = {
+        'product_id': product_id, 'date': date_value,
+        'payment_amount': payment, 'successful_refund_amount': refund,
+        'payment_items': _legacy_optional(clean_int, value('\u652f\u4ed8\u4ef6\u6570')),
+        'product_visitors': _legacy_optional(clean_int, value('\u5546\u54c1\u8bbf\u5ba2\u6570', '\u8bbf\u5ba2\u6570')),
+        'page_views': _legacy_optional(clean_int, value('\u5546\u54c1\u6d4f\u89c8\u91cf', '\u6d4f\u89c8\u91cf')),
+        'payment_conversion': _legacy_optional(clean_percentage, value('\u5546\u54c1\u652f\u4ed8\u8f6c\u5316\u7387', '\u652f\u4ed8\u8f6c\u5316\u7387')),
+        'favorite_cart_rate': _legacy_optional(clean_percentage, value('\u5546\u54c1\u52a0\u8d2d\u7387', '\u52a0\u8d2d\u7387')),
+        'bounce_rate': _legacy_optional(clean_percentage, value('\u5546\u54c1\u8be6\u60c5\u9875\u8df3\u51fa\u7387', '\u8df3\u5931\u7387')),
+        'avg_stay_duration': _legacy_optional(clean_number, value('\u5e73\u5747\u505c\u7559\u65f6\u957f')),
+        'payment_buyers': _legacy_optional(clean_int, value('\u652f\u4ed8\u4e70\u5bb6\u6570', '\u652f\u4ed8\u4eba\u6570')),
+        'payment_unit_price': _legacy_optional(clean_number, value('\u5ba2\u5355\u4ef7')),
+    }
+    if business:
+        observation.update({
+            'uv_value': _legacy_optional(clean_number, value('\u8bbf\u5ba2\u5e73\u5747\u4ef7\u503c')),
+            'cart_items': _legacy_optional(clean_int, value('\u5546\u54c1\u52a0\u8d2d\u4ef6\u6570')),
+            'favorite_users': _legacy_optional(clean_int, value('\u5546\u54c1\u6536\u85cf\u4eba\u6570')),
+            'search_conversion': _legacy_optional(clean_percentage, value('\u641c\u7d22\u5f15\u5bfc\u652f\u4ed8\u8f6c\u5316\u7387')),
+            'search_visitors': _legacy_optional(clean_int, value('\u641c\u7d22\u5f15\u5bfc\u652f\u4ed8\u4e70\u5bb6\u6570')),
+            'cart_users': _legacy_optional(clean_int, value('\u5546\u54c1\u52a0\u8d2d\u4eba\u6570')),
+        })
+    if payment is not None and refund is not None:
+        observation['net_sales'] = payment - refund
+    record_daily_observation(conn, observation, source_type='product_day',
+                             source_filename=source_filename, source_batch_id=source_filename)
+
+
+def import_daily(conn, df, id_col, source_filename='legacy-daily'):
     """导入日度数据"""
     rows = 0
     for _, row in df.iterrows():
@@ -467,12 +743,41 @@ def import_daily(conn, df, id_col):
         if not date_val:
             continue
 
+        _record_legacy_daily_observation(conn, row, pid, date_val, source_filename, business=False)
+        rows += 1
+        continue
+        """
+
+        payment = _legacy_optional(clean_number, row.get('鏀粯閲戦'))
+        refund = _legacy_optional(clean_number, row.get('閫€娆鹃噾棰?))
+        observation = {
+            'product_id': pid, 'date': date_val,
+            'payment_amount': payment, 'successful_refund_amount': refund,
+            'payment_items': _legacy_optional(clean_int, row.get('鏀粯浠舵暟')),
+            'product_visitors': _legacy_optional(clean_int, row.get('璁垮鏁?)),
+            'page_views': _legacy_optional(clean_int, row.get('娴忚閲?)),
+            'payment_conversion': _legacy_optional(clean_percentage, row.get('鏀粯杞寲鐜?)),
+            'favorite_cart_rate': _legacy_optional(clean_percentage, row.get('鍔犺喘鐜?)),
+            'bounce_rate': _legacy_optional(clean_percentage, row.get('璺冲け鐜?)),
+            'avg_stay_duration': _legacy_optional(clean_number, row.get('骞冲潎鍋滅暀鏃堕暱')),
+            'ad_spend': _legacy_optional(clean_number, row.get('钀ラ攢鎺ㄥ箍娑堣€?)),
+            'ad_roi': _legacy_optional(clean_number, row.get('钀ラ攢鎺ㄥ箍ROI')),
+            'payment_buyers': _legacy_optional(clean_int, row.get('鏀粯浜烘暟')),
+            'payment_unit_price': _legacy_optional(clean_number, row.get('瀹㈠崟浠?)),
+        }
+        if payment is not None and refund is not None:
+            observation['net_sales'] = payment - refund
+        record_daily_observation(conn, observation, source_type='product_day',
+                                 source_filename=source_filename, source_batch_id=source_filename)
+        rows += 1
+        continue
+
         conn.execute('''
             INSERT INTO daily_data (product_id, date, payment_amount, refund_amount, net_sales,
                 payment_qty, ipv, pv, payment_conversion, cart_rate, fav_rate, bounce_rate,
                 avg_stay_duration, ad_spend, ad_roi, buyers, avg_order_value, data_source)
             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-            ON CONFLICT(product_id, date) DO UPDATE SET
+            ON CONFLICT(shop_id, product_id, date) DO UPDATE SET
                 payment_amount=excluded.payment_amount, refund_amount=excluded.refund_amount,
                 ipv=excluded.ipv, payment_conversion=excluded.payment_conversion,
                 ad_spend=excluded.ad_spend, ad_roi=excluded.ad_roi,
@@ -490,7 +795,77 @@ def import_daily(conn, df, id_col):
             '日度数据'
         ))
         rows += 1
+        """
     return rows
+
+def import_dmp_daily(conn, df, source_filename='DMP-daily', source_batch_id='legacy-dmp-daily'):
+    """Import the daily DMP product-list export into the daily fact table."""
+    columns = {
+        'product_id': '\u5b9d\u8d1dID', 'title': '\u5b9d\u8d1d\u540d\u79f0', 'date': '\u65e5\u671f',
+        'growth_stage': '\u8d27\u54c1\u6210\u957f\u9636\u6bb5', 'payment_amount': '\u652f\u4ed8\u91d1\u989d',
+        'ipv': 'IPV', 'paid_ipv': '\u8425\u9500\u63a8\u5e7fIPV', 'ad_spend': '\u8425\u9500\u63a8\u5e7f\u6d88\u8017',
+        'ad_roi': '\u8425\u9500\u63a8\u5e7fROI', 'fav_rate': '\u6536\u85cf\u7387',
+        'payment_conversion': '\u652f\u4ed8\u8f6c\u5316\u7387', 'repurchase_rate': '\u590d\u8d2d\u7387',
+        'presale_amount': '\u9884\u552e\u652f\u4ed8\u91d1\u989d', 'presale_qty': '\u9884\u552e\u9500\u91cf',
+        'organic_ipv': '\u975e\u63a8\u5e7fIPV', 'search_ipv': '\u641c\u7d22IPV',
+        'recommend_ipv': '\u63a8\u8350IPV', 'search_click_rate': '\u514d\u8d39\u641c\u7d22\u70b9\u51fb\u7387',
+        'avg_order_value': '\u7b14\u5355\u4ef7', 'cross_sell_qty': '\u8fde\u5e26\u8d2d\u4e70\u91cf',
+        'cross_sell_rate': '\u8fde\u5e26\u8d2d\u4e70\u7387', 'category_width': '\u8fde\u5e26\u8d2d\u4e70\u53f6\u5b50\u7c7b\u76ee\u5bbd\u5ea6',
+        'repurchase_users': '\u590d\u8d2d\u7528\u6237\u6570',
+    }
+    required = {columns[key] for key in ('product_id', 'date', 'payment_amount', 'ipv')}
+    if not required.issubset(set(df.columns)):
+        return 0
+    rows = 0
+    for _, source in df.iterrows():
+        pid = str(source.get(columns['product_id'], '')).strip()
+        if not pid or pid in {'\u603b\u8ba1', '\u5408\u8ba1'}:
+            continue
+        date_value = _dmp_date(source.get(columns['date']))
+        if not date_value:
+            continue
+        title = str(source.get(columns['title'], '')).strip()
+        conn.execute('''
+            INSERT INTO products (product_id, title, status, updated_at)
+            VALUES (?, ?, 'active', CURRENT_TIMESTAMP)
+            ON CONFLICT(product_id) DO UPDATE SET
+                title=COALESCE(NULLIF(excluded.title, ''), products.title), updated_at=CURRENT_TIMESTAMP
+        ''', (pid, title))
+        number = lambda key: _legacy_optional(clean_number, source.get(columns[key])) if columns[key] in source else None
+        integer = lambda key: _legacy_optional(clean_int, source.get(columns[key])) if columns[key] in source else None
+        percent = lambda key: _legacy_optional(clean_percentage, source.get(columns[key])) if columns[key] in source else None
+        record_daily_observation(
+            conn,
+            {
+                'product_id': pid,
+                'date': date_value,
+                'payment_amount': number('payment_amount'),
+                'product_visitors': integer('ipv'),
+                'paid_visitors': integer('paid_ipv'),
+                'organic_visitors': integer('organic_ipv'),
+                'search_visitors': integer('search_ipv'),
+                'recommend_visitors': integer('recommend_ipv'),
+                'payment_conversion': percent('payment_conversion'),
+                'favorite_cart_rate': percent('fav_rate'),
+                'repurchase_rate': percent('repurchase_rate'),
+                'presale_amount': number('presale_amount'),
+                'presale_qty': integer('presale_qty'),
+                'search_click_rate': percent('search_click_rate'),
+                'payment_unit_price': number('avg_order_value'),
+                'cross_sell_qty': integer('cross_sell_qty'),
+                'cross_sell_rate': percent('cross_sell_rate'),
+                'category_width': integer('category_width'),
+                'repurchase_users': integer('repurchase_users'),
+                'ad_spend': number('ad_spend'),
+                'ad_roi': number('ad_roi'),
+            },
+            source_type='dmp_product_day',
+            source_filename=source_filename,
+            source_batch_id=source_batch_id,
+        )
+        rows += 1
+    return rows
+
 
 def import_weekly_dmp(conn, df, id_col, default_week_start=None):
     """导入DMP周度数据"""
@@ -695,7 +1070,7 @@ def import_targets(conn, df, sheet_name):
         rows += 1
     return rows
 
-def import_shengyi_canmou(conn, df, id_col):
+def import_shengyi_canmou(conn, df, id_col, source_filename='business-advisor-daily'):
     """导入生意参谋数据（日度）"""
     rows = 0
     for _, row in df.iterrows():
@@ -716,13 +1091,46 @@ def import_shengyi_canmou(conn, df, id_col):
         if not date_val:
             continue
 
+        _record_legacy_daily_observation(conn, row, pid, date_val, source_filename, business=True)
+        rows += 1
+        continue
+        """
+
+        payment = _legacy_optional(clean_number, row.get('鏀粯閲戦'))
+        refund = _legacy_optional(clean_number, row.get('鎴愬姛閫€娆鹃噾棰?))
+        observation = {
+            'product_id': pid, 'date': date_val,
+            'payment_amount': payment, 'successful_refund_amount': refund,
+            'payment_items': _legacy_optional(clean_int, row.get('鏀粯浠舵暟')),
+            'product_visitors': _legacy_optional(clean_int, row.get('鍟嗗搧璁垮鏁?)),
+            'page_views': _legacy_optional(clean_int, row.get('鍟嗗搧娴忚閲?)),
+            'payment_conversion': _legacy_optional(clean_percentage, row.get('鍟嗗搧鏀粯杞寲鐜?)),
+            'favorite_cart_rate': _legacy_optional(clean_percentage, row.get('鍟嗗搧鍔犺喘鐜?)),
+            'bounce_rate': _legacy_optional(clean_percentage, row.get('鍟嗗搧璇︽儏椤佃烦鍑虹巼')),
+            'avg_stay_duration': _legacy_optional(clean_number, row.get('骞冲潎鍋滅暀鏃堕暱')),
+            'payment_buyers': _legacy_optional(clean_int, row.get('鏀粯涔板鏁?)),
+            'payment_unit_price': _legacy_optional(clean_number, row.get('瀹㈠崟浠?)),
+            'uv_value': _legacy_optional(clean_number, row.get('璁垮骞冲潎浠峰€?)),
+            'cart_items': _legacy_optional(clean_int, row.get('鍟嗗搧鍔犺喘浠舵暟')),
+            'favorite_users': _legacy_optional(clean_int, row.get('鍟嗗搧鏀惰棌浜烘暟')),
+            'search_conversion': _legacy_optional(clean_percentage, row.get('鎼滅储寮曞鏀粯杞寲鐜?)),
+            'search_visitors': _legacy_optional(clean_int, row.get('鎼滅储寮曞鏀粯涔板鏁?)),
+            'cart_users': _legacy_optional(clean_int, row.get('鍟嗗搧鍔犺喘浜烘暟')),
+        }
+        if payment is not None and refund is not None:
+            observation['net_sales'] = payment - refund
+        record_daily_observation(conn, observation, source_type='product_day',
+                                 source_filename=source_filename, source_batch_id=source_filename)
+        rows += 1
+        continue
+
         conn.execute('''
             INSERT INTO daily_data (product_id, date, payment_amount, refund_amount, net_sales,
                 payment_qty, ipv, pv, payment_conversion, cart_rate, fav_rate, bounce_rate,
                 avg_stay_duration, buyers, avg_order_value, uv_value, cart_qty, fav_users,
                 search_conversion, search_visitors, cart_users, data_source)
             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-            ON CONFLICT(product_id, date) DO UPDATE SET
+            ON CONFLICT(shop_id, product_id, date) DO UPDATE SET
                 payment_amount=excluded.payment_amount, refund_amount=excluded.refund_amount,
                 ipv=excluded.ipv, payment_conversion=excluded.payment_conversion,
                 uv_value=excluded.uv_value, cart_qty=excluded.cart_qty,
@@ -750,6 +1158,7 @@ def import_shengyi_canmou(conn, df, id_col):
             '生意参谋'
         ))
         rows += 1
+        """
     return rows
 
 def import_reviews_from_file(filepath):

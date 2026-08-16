@@ -1,11 +1,9 @@
 """Behavior locks for the two business-import entry points.
 
-These tests deliberately execute the canonical HTTP flow and the historical
-``scripts.import_data.import_excel_file`` flow against separate databases.
-The legacy function does not create import batches, so metadata assertions
-make that difference explicit instead of accidentally treating it as parity.
-The promotion case also records the currently proven gap: the old dispatcher
-does not write promotion facts at all.
+The canonical HTTP flow and historical ``import_excel_file`` flow must produce
+the same persisted business facts and lineage metadata.  These tests are
+intentionally red until the legacy adapter routes the old entry point through
+the canonical engine.
 """
 
 import gc
@@ -79,6 +77,21 @@ class ImportLegacyParityTests(unittest.TestCase):
             key: quality.get(key)
             for key in ('total_rows', 'valid_rows', 'invalid_rows', 'duplicate_keys')
         }
+
+    @staticmethod
+    def _batch(database_path):
+        from db import get_db
+
+        with get_db(database_path) as connection:
+            row = connection.execute(
+                '''SELECT id, source_type, source_filename, quality_summary
+                   FROM import_batches ORDER BY created_at DESC LIMIT 1'''
+            ).fetchone()
+        if row is None:
+            return None
+        item = dict(row)
+        item['quality_summary'] = json.loads(item['quality_summary'])
+        return item
 
     @staticmethod
     def _observation(database_path, product_id):
@@ -182,14 +195,25 @@ class ImportLegacyParityTests(unittest.TestCase):
             self._legacy_quality(legacy),
         )
 
-        # The canonical batch id is persisted and linked to the observation;
-        # legacy behavior uses the filename as its source batch id and has no
-        # import_batches row. This is the metadata migration lock for Task 6.
-        self.assertTrue(canonical_observation['source_batch_id'])
-        self.assertEqual(legacy_observation['source_batch_id'], filename)
-        self.assertNotEqual(
-            canonical_observation['source_batch_id'],
-            legacy_observation['source_batch_id'],
+        canonical_batch = self._batch(self.canonical_db)
+        legacy_batch = self._batch(self.legacy_db)
+        self.assertIsNotNone(canonical_batch)
+        self.assertIsNotNone(legacy_batch)
+        self.assertEqual(canonical_batch['source_type'], 'product_day')
+        self.assertEqual(legacy_batch['source_type'], 'product_day')
+        self.assertEqual(canonical_batch['source_filename'], filename)
+        self.assertEqual(legacy_batch['source_filename'], filename)
+        self.assertEqual(
+            canonical_observation['source_batch_id'], canonical_batch['id']
+        )
+        self.assertEqual(
+            legacy_observation['source_batch_id'], legacy_batch['id']
+        )
+        self.assertNotEqual(canonical_observation['source_batch_id'], filename)
+        self.assertNotEqual(legacy_observation['source_batch_id'], filename)
+        self.assertEqual(
+            self._quality_summary(self.canonical_db),
+            self._quality_summary(self.legacy_db),
         )
         self.assertEqual(report['quality_conclusion'], 'passed')
 
@@ -229,16 +253,29 @@ class ImportLegacyParityTests(unittest.TestCase):
             self._quality_summary(self.canonical_db),
             self._legacy_quality(legacy),
         )
-        self.assertTrue(canonical_observation['source_batch_id'])
-        self.assertEqual(legacy_observation['source_batch_id'], 'legacy-dmp-daily')
-        self.assertNotEqual(
-            canonical_observation['source_batch_id'],
-            legacy_observation['source_batch_id'],
+        canonical_batch = self._batch(self.canonical_db)
+        legacy_batch = self._batch(self.legacy_db)
+        self.assertIsNotNone(canonical_batch)
+        self.assertIsNotNone(legacy_batch)
+        self.assertEqual(canonical_batch['source_type'], 'dmp_product_day')
+        self.assertEqual(legacy_batch['source_type'], 'dmp_product_day')
+        self.assertEqual(canonical_batch['source_filename'], filename)
+        self.assertEqual(legacy_batch['source_filename'], filename)
+        self.assertEqual(
+            canonical_observation['source_batch_id'], canonical_batch['id']
+        )
+        self.assertEqual(
+            legacy_observation['source_batch_id'], legacy_batch['id']
+        )
+        self.assertNotEqual(canonical_observation['source_batch_id'], filename)
+        self.assertNotEqual(legacy_observation['source_batch_id'], filename)
+        self.assertEqual(
+            self._quality_summary(self.canonical_db),
+            self._quality_summary(self.legacy_db),
         )
         self.assertEqual(report['quality_conclusion'], 'passed')
 
-    def test_promotion_product_day_records_the_legacy_dispatcher_gap(self):
-        """The old dispatcher has no promotion target and silently drops it."""
+    def test_promotion_product_day_core_values_and_lineage_match_legacy(self):
         filename = 'promotion-\u65e5.xlsx'
         headers = [
             '\u65e5\u671f', '\u6e20\u9053', '\u5546\u54c1ID',
@@ -259,13 +296,9 @@ class ImportLegacyParityTests(unittest.TestCase):
             ).fetchone()
         with get_db(self.legacy_db) as connection:
             legacy_fact = connection.execute(
-                'SELECT 1 FROM promotion_daily_facts LIMIT 1'
-            ).fetchone()
-            legacy_observation = connection.execute(
-                'SELECT 1 FROM daily_data_observations LIMIT 1'
-            ).fetchone()
-            legacy_batch = connection.execute(
-                'SELECT 1 FROM import_batches LIMIT 1'
+                '''SELECT shop_id, date, channel, product_id, ad_spend,
+                          attributed_payment_amount, source_batch_id
+                   FROM promotion_daily_facts'''
             ).fetchone()
 
         self.assertEqual(legacy['total_rows'], 1)
@@ -274,15 +307,20 @@ class ImportLegacyParityTests(unittest.TestCase):
             'default', '2026-04-01', 'search', 'promotion-parity', 12.0, 60.0,
         ))
         self.assertTrue(canonical_fact['source_batch_id'])
-        # Proven baseline divergence: legacy import_excel_file reports a row,
-        # but its date/product fallback has no promotion branch, so no
-        # promotion fact, observation lineage, or quality batch is created.
-        self.assertIsNone(legacy_fact)
-        self.assertIsNone(legacy_observation)
-        self.assertIsNone(legacy_batch)
+        self.assertIsNotNone(legacy_fact)
+        self.assertEqual(tuple(legacy_fact[:6]), tuple(canonical_fact[:6]))
+        legacy_batch = self._batch(self.legacy_db)
+        self.assertIsNotNone(legacy_batch)
+        self.assertEqual(legacy_batch['source_type'], 'promotion_product_day')
+        self.assertEqual(legacy_batch['source_filename'], filename)
+        self.assertEqual(legacy_fact['source_batch_id'], legacy_batch['id'])
+        self.assertEqual(
+            canonical_fact['source_batch_id'], self._batch(self.canonical_db)['id']
+        )
+        self.assertNotEqual(legacy_fact['source_batch_id'], filename)
         self.assertEqual(
             self._quality_summary(self.canonical_db),
-            self._legacy_quality(legacy),
+            self._quality_summary(self.legacy_db),
         )
 
 
