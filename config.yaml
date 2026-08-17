@@ -1,0 +1,29 @@
+app:
+  host: "127.0.0.1"
+  port: 5000
+  debug: false
+
+data:
+  db_path: "data/dashboard.db"
+  watch_folder: "~/Downloads/tmall_data/"
+  backup_folder: "data/backups/"
+  backup_on_import: true
+  max_backups: 30
+
+thresholds:
+  refund_warning: 0.20
+  refund_consecutive_weeks: 2
+  anomaly_decline: 0.20
+  ppc_warning: null
+  health_warning: 40
+
+health_score_weights:
+  sales: 0.25
+  conversion: 0.20
+  roi: 0.15
+  refund: 0.15
+  growth: 0.10
+  review: 0.15
+
+refresh:
+  auto_refresh_interval: 300

@@ -1,0 +1,22 @@
+{
+  "name": "tmall-dashboard-desktop",
+  "version": "1.0.4",
+  "private": true,
+  "description": "天猫数据仪表盘 Windows 桌面版",
+  "main": "dist/main.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "dist": "npm run build && electron-builder --config electron-builder.yml --win nsis --x64 --publish never"
+  },
+  "dependencies": {
+    "electron-updater": "6.3.9"
+  },
+  "devDependencies": {
+    "@types/node": "24.12.2",
+    "electron": "42.3.0",
+    "electron-builder": "26.15.3",
+    "typescript": "5.6.3",
+    "vitest": "3.2.4"
+  }
+}

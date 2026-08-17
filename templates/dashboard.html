@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="天猫经营数据分析仪表盘">
+    <title>天猫数据仪表盘</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="preload" href="/static/css/dashboard.css" as="style">
+    <link rel="preload" href="/static/js/bundle.min.js" as="script">
+    <script>
+        (function () {
+            try {
+                if (localStorage.getItem('theme') !== 'dark') {
+                    document.documentElement.classList.add('light');
+                }
+            } catch (e) {}
+        })();
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
+    <link rel="stylesheet" href="/static/css/dashboard.css">
+</head>
+<body>
+
+<!-- ==================== 首次访问引导 ==================== -->
+<div class="onboarding-overlay" id="onboardingOverlay">
+    <div class="onboarding-card">
+        <div class="onboarding-icon">&#127978;</div>
+        <h2>欢迎使用天猫数据仪表盘</h2>
+        <p class="onboarding-desc">天猫全渠道数据分析工具，支持日/周/月多维度分析</p>
+        <div class="onboarding-steps">
+            <div class="onboarding-step">
+                <div class="step-num">1</div>
+                <div class="step-text">
+                    <strong>导入数据</strong>
+                    <span>上传天猫生意参谋导出的 Excel 数据文件</span>
+                </div>
+            </div>
+            <div class="onboarding-step">
+                <div class="step-num">2</div>
+                <div class="step-text">
+                    <strong>分析数据</strong>
+                    <span>KPI、趋势、商品、推广、退款等多维度分析</span>
+                </div>
+            </div>
+            <div class="onboarding-step">
+                <div class="step-num">3</div>
+                <div class="step-text">
+                    <strong>深度洞察</strong>
+                    <span>评价分析、市场分析、健康度预警</span>
+                </div>
+            </div>
+        </div>
+        <button class="onboarding-btn" onclick="closeOnboarding()">开始使用</button>
+        <label class="onboarding-skip">
+            <input type="checkbox" id="dontShowAgain"> 不再显示
+        </label>
+    </div>
+</div>
+
+<!-- ==================== 左侧侧边栏 ==================== -->
+<aside class="sidebar" id="sidebar">
+    <div class="sidebar-logo">
+        <div class="sidebar-logo-icon">
+            <svg viewBox="0 0 24 24"><path d="M3 13h8V3H3v10zm0 8h8v-6H3v6zm10 0h8V11h-8v10zm0-18v6h8V3h-8z"/></svg>
+        </div>
+        <span class="sidebar-logo-text"><strong>天猫数据</strong><strong>仪表盘</strong></span>
+    </div>
+    <nav class="sidebar-nav" role="tablist" aria-label="主导航">
+        <button class="sidebar-nav-item tab-btn active" role="tab" data-tab="tab-overview" aria-selected="true" aria-controls="tab-overview" onclick="switchTab('tab-overview')">
+            <span class="sidebar-nav-icon">
+                <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
+            </span>
+            <span class="sidebar-nav-label">概览</span>
+        </button>
+        <button class="sidebar-nav-item tab-btn" role="tab" data-tab="tab-ops" aria-selected="false" aria-controls="tab-ops" onclick="switchTab('tab-ops')">
+            <span class="sidebar-nav-icon">
+                <svg viewBox="0 0 24 24"><path d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"/></svg>
+            </span>
+            <span class="sidebar-nav-label">商品运营</span>
+        </button>
+        <button class="sidebar-nav-item tab-btn" role="tab" data-tab="tab-health" aria-selected="false" aria-controls="tab-health" onclick="switchTab('tab-health')">
+            <span class="sidebar-nav-icon">
+                <svg viewBox="0 0 24 24"><path d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
+            </span>
+            <span class="sidebar-nav-label">健康度</span>
+        </button>
+        <button class="sidebar-nav-item tab-btn" role="tab" data-tab="tab-review" aria-selected="false" aria-controls="tab-review" onclick="switchTab('tab-review')">
+            <span class="sidebar-nav-icon">
+                <svg viewBox="0 0 24 24"><path d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/></svg>
+            </span>
+            <span class="sidebar-nav-label">评价</span>
+        </button>
+        <button class="sidebar-nav-item tab-btn" role="tab" data-tab="tab-market" aria-selected="false" aria-controls="tab-market" onclick="switchTab('tab-market')">
+            <span class="sidebar-nav-icon">
+                <svg viewBox="0 0 24 24"><path d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+            </span>
+            <span class="sidebar-nav-label">市场</span>
+        </button>
+        <button class="sidebar-nav-item tab-btn" role="tab" data-tab="tab-lifecycle" aria-selected="false" aria-controls="tab-lifecycle" onclick="switchTab('tab-lifecycle')">
+            <span class="sidebar-nav-icon">
+                <svg viewBox="0 0 24 24"><path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+            </span>
+            <span class="sidebar-nav-label">生命周期</span>
+        </button>
+        <button class="sidebar-nav-item tab-btn" role="tab" data-tab="tab-compare" aria-selected="false" aria-controls="tab-compare" onclick="switchTab('tab-compare')">
+            <span class="sidebar-nav-icon">
+                <svg viewBox="0 0 24 24"><path d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
+            </span>
+            <span class="sidebar-nav-label">对比分析</span>
+        </button>
+        <button class="sidebar-nav-item tab-btn" role="tab" data-tab="tab-postmortem" aria-selected="false" aria-controls="tab-postmortem" onclick="switchTab('tab-postmortem')">
+            <span class="sidebar-nav-icon">
+                <svg viewBox="0 0 24 24"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/></svg>
+            </span>
+            <span class="sidebar-nav-label">复盘</span>
+        </button>
+        <button class="sidebar-nav-item tab-btn" role="tab" data-tab="tab-keywords" aria-selected="false" aria-controls="tab-keywords" onclick="switchTab('tab-keywords')">
+            <span class="sidebar-nav-icon">
+                <svg viewBox="0 0 24 24"><path d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </span>
+            <span class="sidebar-nav-label">搜索词</span>
+        </button>
+        <button class="sidebar-nav-item tab-btn" role="tab" data-tab="tab-traffic" aria-selected="false" aria-controls="tab-traffic" onclick="switchTab('tab-traffic')">
+            <span class="sidebar-nav-icon">
+                <svg viewBox="0 0 24 24"><path d="M3 3h18v18H3zM9 3v18M15 3v18M3 9h18M3 15h18" fill="none" stroke="currentColor" stroke-width="2"/></svg>
+            </span>
+            <span class="sidebar-nav-label">流量</span>
+        </button>
+        <button class="sidebar-nav-item tab-btn" role="tab" data-tab="tab-manage" aria-selected="false" aria-controls="tab-manage" onclick="switchTab('tab-manage')">
+            <span class="sidebar-nav-icon">
+                <svg viewBox="0 0 24 24"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </span>
+            <span class="sidebar-nav-label">管理</span>
+        </button>
+    </nav>
+    <div class="sidebar-bottom">
+        <button class="sidebar-toolbox-btn" onclick="openToolbox()" title="运营工具箱">
+            <span class="sidebar-nav-icon">
+                <svg viewBox="0 0 24 24"><path d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><circle cx="12" cy="12" r="3"/></svg>
+            </span>
+            <span class="sidebar-nav-label">工具箱</span>
+        </button>
+    </div>
+</aside>
+<div id="mobileOverlay" class="mobile-overlay" onclick="toggleMobileSidebar()"></div>
+
+<!-- ==================== 顶部控制栏 ==================== -->
+<div class="top-bar" role="banner">
+    <div class="top-bar-left">
+        <button class="sidebar-toggle" id="sidebarToggle" onclick="toggleSidebar()" title="折叠侧边栏" aria-label="折叠侧边栏">
+            <svg viewBox="0 0 24 24"><path d="M11 19l-7-7 7-7m8 14l-7-7 7-7"/></svg>
+        </button>
+        <button class="mobile-menu-btn" id="mobileMenuBtn" onclick="toggleMobileSidebar()" title="菜单" aria-label="打开导航菜单" style="display:none;">
+            <svg viewBox="0 0 24 24" width="22" height="22"><path d="M3 12h18M3 6h18M3 18h18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        </button>
+        <div class="page-heading">
+            <h1 class="page-title">数据概览</h1>
+            <span class="page-subtitle" id="pagePeriodStatus">经营总览</span>
+        </div>
+        <div class="time-control" role="group" aria-label="统计时间">
+            <div class="time-range-group">
+                <span class="time-caption">统计时间</span>
+                <span class="time-range-label tabular" id="timeRangeLabel" aria-live="polite">--</span>
+            </div>
+            <span class="time-separator" aria-hidden="true"></span>
+            <div class="time-quick-list" role="group" aria-label="快捷时间范围">
+                <button type="button" class="time-quick" data-preset="yesterday" onclick="selectTimePreset('yesterday')" aria-pressed="false">昨天</button>
+                <button type="button" class="time-quick" data-preset="seven" onclick="selectTimePreset('seven')" aria-pressed="false">7天</button>
+                <button type="button" class="time-quick" data-preset="thirty" onclick="selectTimePreset('thirty')" aria-pressed="false">30天</button>
+                <button type="button" class="time-quick" data-preset="sixty" onclick="selectTimePreset('sixty')" aria-pressed="false">60天</button>
+            </div>
+            <span class="time-separator" aria-hidden="true"></span>
+            <div class="dim-switcher" role="radiogroup" aria-label="时间维度">
+                <button class="dim-btn" role="radio" aria-checked="false" data-dim="daily" onclick="switchDimension('daily')">日</button>
+                <button class="dim-btn" role="radio" aria-checked="false" data-dim="weekly" onclick="switchDimension('weekly')">周</button>
+                <button class="dim-btn active" role="radio" aria-checked="true" data-dim="monthly" onclick="switchDimension('monthly')">月</button>
+            </div>
+            <span class="time-separator" aria-hidden="true"></span>
+            <button class="time-custom-btn" onclick="openCustomPeriod(event)" aria-label="自定义统计周期" aria-expanded="false" aria-controls="timeCustomPopover">
+                自定义
+                <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18"/></svg>
+            </button>
+            <div class="time-nav-group" aria-label="切换统计周期">
+                <button class="time-nav-btn" type="button" onclick="shiftPeriod(-1)" aria-label="上一个统计周期">‹</button>
+                <button class="time-nav-btn" type="button" onclick="shiftPeriod(1)" aria-label="下一个统计周期">›</button>
+            </div>
+            <div class="time-custom-popover" id="timeCustomPopover" hidden>
+                <label for="periodSelect">选择统计周期</label>
+                <select class="period-select" id="periodSelect" aria-label="选择统计周期">
+                    <option value="">加载中...</option>
+                </select>
+                <div class="time-custom-actions">
+                    <button class="time-custom-cancel" onclick="closeCustomPeriod()">取消</button>
+                    <button class="time-custom-apply" onclick="applyCustomPeriod()">确定</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="top-bar-right">
+        <button class="refresh-btn" id="refreshBtn" onclick="manualRefresh()" title="手动刷新" aria-label="刷新数据">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8.1 8.1 0 0 0-14.5-4.9L4 8m0-4v4h4M4 13a8.1 8.1 0 0 0 14.5 4.9L20 16m0 4v-4h-4"/></svg>
+            <span>刷新</span>
+        </button>
+        <span class="last-update" id="lastUpdate"></span>
+        <button class="auto-refresh-btn" id="autoRefreshBtn" onclick="toggleAutoRefresh()" title="自动刷新(5分钟)">AUTO</button>
+        <button class="theme-toggle-btn" id="themeToggle" onclick="toggleTheme()" title="切换主题" aria-label="切换主题">
+            <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg>
+        </button>
+        <button class="fullscreen-btn" onclick="toggleFullscreen()" title="全屏模式" aria-label="进入全屏模式">
+            <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4"/></svg>
+        </button>
+    </div>
+</div>
+
+<!-- ==================== 主容器 ==================== -->
+<div class="main-container">
+
+    <!-- Tab: 概览 -->
+    <div class="tab-content active" id="tab-overview">
+        {% include 'partials/tab-overview.html' %}
+    </div>
+
+    <!-- Tab: 商品运营 -->
+    <div class="tab-content" id="tab-ops">
+        {% include 'partials/tab-ops.html' %}
+    </div>
+
+    <!-- Tab: 健康度 -->
+    <div class="tab-content" id="tab-health">
+        {% include 'partials/tab-health.html' %}
+    </div>
+
+    <!-- Tab: 评价 -->
+    <div class="tab-content" id="tab-review">
+        {% include 'partials/tab-review.html' %}
+    </div>
+
+    <!-- Tab: 市场 -->
+    <div class="tab-content" id="tab-market">
+        {% include 'partials/tab-market.html' %}
+    </div>
+
+    <!-- Tab: 生命周期 -->
+    <div class="tab-content" id="tab-lifecycle">
+        {% include 'partials/tab-lifecycle.html' %}
+    </div>
+
+    <!-- Tab: 对比分析 -->
+    <div class="tab-content" id="tab-compare">
+        {% include 'partials/tab-compare.html' %}
+    </div>
+
+    <!-- Tab: 数据复盘 -->
+    <div class="tab-content" id="tab-postmortem">
+        {% include 'partials/tab-postmortem.html' %}
+    </div>
+
+    <!-- Tab: 搜索词效能 -->
+    <div class="tab-content" id="tab-keywords">
+        {% include 'partials/tab-keywords.html' %}
+    </div>
+
+    <!-- Tab: 流量结构 -->
+    <div class="tab-content" id="tab-traffic">
+        {% include 'partials/tab-traffic.html' %}
+    </div>
+
+    <!-- Tab: 管理（任务看板+用户KPI） -->
+    <div class="tab-content" id="tab-manage">
+        {% include 'partials/tab-manage.html' %}
+    </div>
+
+</div><!-- /main-container -->
+
+<!-- ==================== 工具箱 ==================== -->
+{% include 'partials/toolbox.html' %}
+
+<!-- ==================== Scripts ==================== -->
+<script src="/static/js/bundle.min.js"></script>
+<script>
+// 侧边栏折叠切换
+function toggleSidebar() {
+    document.body.classList.toggle('sidebar-collapsed');
+    document.getElementById('sidebar').classList.toggle('collapsed');
+    try { localStorage.setItem('dashboard_sidebar_collapsed', document.body.classList.contains('sidebar-collapsed')); } catch(e) {}
+    // 触发图表 resize
+    setTimeout(() => {
+        Object.values(CHARTS).forEach(c => { try { c.resize(); } catch(e) {} });
+    }, 300);
+}
+
+// 移动端侧边栏切换
+function toggleMobileSidebar() {
+    const sidebar = document.getElementById('sidebar');
+    const overlay = document.getElementById('mobileOverlay');
+    sidebar.classList.toggle('mobile-open');
+    overlay.classList.toggle('active');
+}
+
+// 恢复侧边栏状态
+(function() {
+    try {
+        const collapsed = localStorage.getItem('dashboard_sidebar_collapsed');
+        if (collapsed === 'true') {
+            document.body.classList.add('sidebar-collapsed');
+            document.getElementById('sidebar').classList.add('collapsed');
+        }
+    } catch(e) {}
+})();
+
+document.addEventListener('DOMContentLoaded', () => {
+    checkOnboarding();
+    restoreFromURL();
+    loadPeriods().then(() => {
+        restoreTab();
+    });
+    setupReviewUpload();
+    setupMarketUpload();
+    initToolbox();
+    restoreAutoRefresh();
+    loadLifecycleData();
+    if (typeof initCompareTab === 'function') initCompareTab();
+});
+
+// Keep the reference-style segmented controls readable to assistive technology
+// while the legacy bundle continues to own the active-class state.
+(function syncTimeControlAria() {
+    const sync = () => {
+        document.querySelectorAll('.time-quick').forEach((button) => {
+            button.setAttribute('aria-pressed', button.classList.contains('active') ? 'true' : 'false');
+        });
+    };
+    sync();
+    const observer = new MutationObserver(sync);
+    document.querySelectorAll('.time-quick').forEach((button) => observer.observe(button, { attributes: true, attributeFilter: ['class'] }));
+})();
+</script>
+<!-- Toast容器 -->
+<div id="toastContainer" style="position:fixed;top:20px;right:20px;z-index:10000;display:flex;flex-direction:column;gap:8px;"></div>
+</body>
+</html>

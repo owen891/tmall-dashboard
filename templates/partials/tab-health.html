@@ -1,0 +1,24 @@
+    <!-- ========== 空状态占位 ========== -->
+    <div class="empty-state" id="emptyStateHealth" style="display:none;">
+        <div class="empty-icon">&#10084;&#65039;</div>
+        <h3>暂无数据</h3>
+        <p>请先上传天猫生意参谋的 Excel 数据文件</p>
+        <button class="empty-action-btn" onclick="switchTab('tab-market')">前往市场分析上传数据</button>
+    </div>
+
+    <!-- ========== 模块8: 商品健康度看板 ========== -->
+    <div class="section-title">商品健康度看板</div>
+    <div class="health-grid">
+        <div class="health-pie-panel" style="position:relative;">
+            <div class="loading-mask" id="loading-health-pie"><div class="spinner"></div></div>
+            <div class="panel-title">健康等级分布</div>
+            <div class="health-pie-box" id="chartHealthPie"></div>
+        </div>
+        <div class="health-table-panel" style="position:relative;">
+            <div class="loading-mask" id="loading-health-table"><div class="spinner"></div></div>
+            <div class="panel-title">预警商品列表</div>
+            <div class="health-table-wrapper" id="healthTableWrapper">
+                <div style="text-align:center;color:#64748B;padding:40px;">暂无数据</div>
+            </div>
+        </div>
+    </div>
