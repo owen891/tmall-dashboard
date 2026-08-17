@@ -388,7 +388,7 @@
     dialog.querySelector('[data-shared-product-id]').textContent = `商品 ID ${product.product_id || current.productId} · 当前范围 ${selectedRange} · 数据截止 ${text(detail.summary?.data_cutoff_date)}`;
     const imageRoot = dialog.querySelector('[data-shared-product-image]');
     imageRoot.replaceChildren();
-    const thumbnailUrl = localThumbnailUrl(product.product_id || current.productId);
+    const thumbnailUrl = String(product.image_url || '').trim() || localThumbnailUrl(product.product_id || current.productId);
     if (thumbnailUrl) {
       const image = new Image(52, 52);
       image.loading = 'lazy';
@@ -454,3 +454,4 @@
 
   window.ProductDetailDialog = { open, close };
 })();
+

@@ -1000,7 +1000,7 @@
     const imageRoot = $('[data-promotion-dialog-image]');
     if (!imageRoot) return;
     imageRoot.replaceChildren();
-    const thumbnailUrl = localThumbnailUrl(productId(product));
+    const thumbnailUrl = String(product?.image_url || '').trim() || localThumbnailUrl(productId(product));
     if (thumbnailUrl) {
       const image = new Image(52, 52);
       image.loading = 'lazy';
@@ -1404,3 +1404,4 @@
   });
   if (!window.TmallDateRange) load();
 })();
+

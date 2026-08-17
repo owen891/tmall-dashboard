@@ -21,6 +21,9 @@ def build_overview(totals, start_date, end_date):
                 'returning_buyer_ratio': None,
                 'metric_availability': {},
                 'missing_fields': [],
+                'data_grain': totals.get('data_grain'),
+                'fallback_reason': totals.get('fallback_reason'),
+                'fact_count': totals.get('fact_count', 0),
             },
         }
 
@@ -60,5 +63,8 @@ def build_overview(totals, start_date, end_date):
             **derived,
             'metric_availability': derived_result['metric_availability'],
             'missing_fields': derived_result['missing_fields'],
+            'data_grain': totals.get('data_grain'),
+            'fallback_reason': totals.get('fallback_reason'),
+            'fact_count': totals.get('fact_count', 0),
         },
     }

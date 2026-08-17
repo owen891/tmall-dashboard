@@ -343,7 +343,7 @@
       card.className = 'lifecycle-card';
       card.dataset.lifecycleCard = record.product_id;
       card.setAttribute('aria-label', `查看 ${record.title || record.product_id} 的生命周期详情`);
-      const thumbnailUrl = localThumbnailUrl(record.product_id);
+      const thumbnailUrl = String(record.image_url || '').trim() || localThumbnailUrl(record.product_id);
       const image = thumbnailUrl ? `<img src="${thumbnailUrl}" alt="" width="42" height="42" loading="lazy">` : '<span class="product-thumb product-thumb--placeholder" aria-hidden="true"><i data-lucide="image"></i></span>';
       const trend = growth === null ? '无环比' : `${growth >= 0 ? '上升' : '下降'} ${percent(Math.abs(growth))}`;
       card.innerHTML = `<span class="lifecycle-card__header">${image}<span><span class="lifecycle-card__title">${escapeHtml(record.title || '未命名商品')}</span><span class="lifecycle-card__meta"><span class="badge ${tierClass(record.tier)}">${escapeHtml(DemoLabels.classification('tiers', record.tier, '未分层'))}</span><span class="badge badge--muted">${escapeHtml(DemoLabels.classification('styles', record.style, '未分类'))}</span></span></span></span><span class="lifecycle-card__stats"><span class="lifecycle-card__stat"><strong>${money(sum(rows, 'gsv'))}</strong><span>累计 GSV</span></span><span class="lifecycle-card__stat"><strong>${count(rows.length)}</strong><span>活跃月数</span></span><span class="lifecycle-card__stat"><strong class="lifecycle-card__trend ${growth > 0.05 ? 'is-up' : growth < -0.05 ? 'is-down' : ''}">${trend}</strong><span>最近月环比</span></span></span>`;
@@ -684,7 +684,7 @@
     $('[data-detail-id]').textContent = `商品 ID ${record.product_id} · ${rows[0].month} 至 ${latest.month}`;
     const imageRoot = $('[data-detail-image]');
     imageRoot.replaceChildren();
-    const thumbnailUrl = localThumbnailUrl(record.product_id);
+    const thumbnailUrl = String(record.image_url || '').trim() || localThumbnailUrl(record.product_id);
     if (thumbnailUrl) {
       const image = new Image(52, 52);
       image.loading = 'lazy';
@@ -812,3 +812,4 @@
   window.addEventListener('tmall:refresh', () => load());
   DemoLabels.load().then(() => { fillAssessmentOptions(); load(); });
 })();
+

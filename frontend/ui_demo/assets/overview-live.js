@@ -206,11 +206,13 @@
     const missing_date_ranges = overview.missing_date_ranges || [];
     const source_batches = overview.source_batches || [];
     const changes = overview.changes || [];
-    text($('[data-overview-context]'), batch ? `数据覆盖 ${context.start_date || '--'} 至 ${context.end_date || '--'}；最近导入 ${batch.source_filename}（${batch.completed_at || '--'}）` : '当前没有成功导入批次。');
+    const grain = overview.data_grain || context.data_grain;
+    const grainLabel = grain === 'monthly' ? '月度派米数据' : '日度事实';
+    text($('[data-overview-context]'), batch ? `${grainLabel}覆盖 ${context.start_date || '--'} 至 ${context.end_date || '--'}；最近导入 ${batch.source_filename}（${batch.completed_at || '--'}）` : `当前没有导入的${grainLabel}。`);
     const start = context.start_date;
     const end = context.end_date;
-    const coverage = start && end ? Math.max(1, Math.round((new Date(`${end}T00:00:00`) - new Date(`${start}T00:00:00`)) / 86400000) + 1) : null;
-    text($('[data-overview-coverage]'), coverage ? `覆盖 ${coverage} 天` : '覆盖 -- 天');
+    const coverage = start && end ? (grain === 'monthly' ? Math.max(1, (new Date(`${end}-01T00:00:00`).getFullYear() - new Date(`${start}-01T00:00:00`).getFullYear()) * 12 + new Date(`${end}-01T00:00:00`).getMonth() - new Date(`${start}-01T00:00:00`).getMonth() + 1) : Math.max(1, Math.round((new Date(`${end}T00:00:00`) - new Date(`${start}T00:00:00`)) / 86400000) + 1)) : null;
+    text($('[data-overview-coverage]'), coverage ? `覆盖 ${coverage} ${grain === 'monthly' ? '个月' : '天'}` : `覆盖 -- ${grain === 'monthly' ? '个月' : '天'}`);
     const todos = overview.action_todos || [];
     const rows = todos.length ? todos.map((todo) => {
       const row = document.createElement('div'); row.className = 'status-list__item';
@@ -362,7 +364,7 @@
     if (!products.length) return setStatus('[data-overview-home-products]', '当前日期范围暂无商品数据');
     root.replaceChildren(...products.map((product, index) => {
       const row = document.createElement('div'); row.className = 'overview-v2-report__row';
-      const localThumbnail = localThumbnailUrl(product.product_id);
+      const localThumbnail = String(product.image_url || '').trim() || localThumbnailUrl(product.product_id);
       const image = localThumbnail ? document.createElement('img') : document.createElement('span'); image.className = 'overview-v2-product-image';
       if (localThumbnail) { image.src = localThumbnail; image.alt = product.title || product.product_id || ''; image.loading = 'eager'; image.decoding = 'async'; }
       else { image.classList.add('overview-v2-product-image--placeholder'); image.setAttribute('aria-hidden', 'true'); image.textContent = String(product.title || product.product_id || '商品').trim().slice(0, 1); }
@@ -389,7 +391,7 @@
     latestMatrix = matrix || { rows: [] };
     const rows = [...(matrix?.rows || [])].reverse();
     renderMatrixHeader();
-    if (!rows.length) return setTableStatus(body, '当前日期范围暂无日度事实', matrixVisibleColumns.length);
+    if (!rows.length) return setTableStatus(body, '当前未导入日度明细；月度派米数据已用于上方指标和趋势', matrixVisibleColumns.length);
     body.replaceChildren(...rows.map((row) => {
       const tr = document.createElement('tr');
       matrixVisibleColumns.forEach((key) => {
@@ -473,8 +475,8 @@
     const overviewParams = new URLSearchParams({ start: state.startDate, end: state.endDate });
     const requests = [
       DemoApi.domainRequest('/api/overview?' + overviewParams.toString()),
-      DemoApi.request(`/api/trend?dim=daily${range}`),
-      DemoApi.request(`/api/products?dim=daily&limit=5&sort=payment_amount&order=desc${range}`),
+      Promise.resolve(monthlyTrend),
+      DemoApi.request(`/api/products?dim=monthly&period=${encodeURIComponent(period)}&limit=5&sort=payment_amount&order=desc`),
       DemoApi.request(`/api/target_progress?dim=monthly&period=${encodeURIComponent(period)}`),
       DemoApi.request(`/api/anomalies?dim=monthly&period=${encodeURIComponent(period)}&prev_period=${encodeURIComponent(prev)}`),
       DemoApi.request(`/api/compare?dim=monthly&period_a=${encodeURIComponent(comparePeriod)}&period_b=${encodeURIComponent(period)}`),
@@ -482,7 +484,7 @@
     const [overviewResponse, trend, products, targets, anomalies, comparison] = await Promise.all(requests);
     overviewPayload = overviewResponse;
     let matrix = { data: { rows: [] } };
-    try { matrix = await DemoApi.domainRequest('/api/overview/daily-matrix?' + overviewParams.toString()); } catch (error) { setTableStatus($('[data-overview-home-matrix]'), '日度矩阵加载失败', 9, () => guardedLoad(state)); }
+    try { matrix = await DemoApi.domainRequest('/api/overview/daily-matrix?' + overviewParams.toString()); } catch (error) { setTableStatus($('[data-overview-home-matrix]'), '日度矩阵暂无数据；请导入日度明细后重试', 9, () => guardedLoad(state)); }
     if (token !== requestToken) return;
     const rows = unwrap(trend, 'data');
     renderKpis(overviewResponse.data, comparison); renderContext(overviewResponse.data); renderTrend(rows); renderHomeProducts(products); renderTargets(targets); await loadGoalLayers(state); renderAnomalies(anomalies); renderHomeMatrix(matrix.data || {});
@@ -650,3 +652,4 @@
   if (!window.TmallDateRange) guardedLoad();
   function normalizeMonthlyTrend(payload) { return unwrap(payload, 'data'); }
 })();
+
