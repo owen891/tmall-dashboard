@@ -84,7 +84,7 @@
     lifecycle: [['[data-lifecycle-export]', 'lifecycle.assessment']],
     reviews: [['[data-reviews-refresh]', 'reviews.list_actions'], ['[data-actions-recalculate]', 'reviews.review_action']],
     settings: [['[data-settings-form]', 'settings.configure_templates'], ['[data-alert-rules-open]', 'settings.configure_alerts']],
-    goals: [['[data-goals-form]', 'goals.view'], ['[data-goals-months]', 'goals.adjust']],
+    goals: [['[data-goals-form]', 'goals.view'], ['[data-goals-save]', 'goals.adjust'], ['[data-goals-suggest]', 'goals.adjust'], ['[data-goals-months]', 'goals.adjust']],
     manage: [['[data-manage-create-task]', 'manage.view'], ['[data-manage-create-schedule]', 'manage.schedule']],
     'data-center': [['[data-import-confirm]', 'data-center.import'], ['[data-import-preview]', 'data-center.import']],
     'product-detail': [['[data-product-detail-action-form]', 'product-detail.create_action']],

@@ -323,6 +323,37 @@ class GoalsWorkflowTests(unittest.TestCase):
         self.assertEqual(payload['data']['suggested_annual_target'], 337.5)
         self.assertEqual(payload['data']['annual_total'], 337.5)
 
+    def test_goal_inputs_reject_non_finite_numbers(self):
+        for payload in (
+            {'year': 2026, 'annual_target': 'NaN'},
+            {'year': 2026, 'annual_target': 'Infinity'},
+            {'year': 2026, 'growth_multiplier': 'NaN'},
+        ):
+            with self.subTest(payload=payload):
+                status, response = self.request('POST', '/api/goals', json=payload)
+                self.assertEqual(status, 422)
+                self.assertEqual(response['code'], 'VALIDATION_ERROR')
+
+        status, response = self.request(
+            'GET', '/api/goals/2026/suggestion?growth_multiplier=Infinity'
+        )
+        self.assertEqual(status, 422)
+        self.assertEqual(response['code'], 'VALIDATION_ERROR')
+
+        status, response = self.request(
+            'GET', '/api/goals/2026/allocation-preview?annual_target=NaN'
+        )
+        self.assertEqual(status, 422)
+        self.assertEqual(response['code'], 'VALIDATION_ERROR')
+
+        self.request('POST', '/api/goals', json={'year': 2026, 'annual_target': 36500})
+        status, response = self.request('POST', '/api/goals/2026/adjustments', json={
+            'version': 1, 'period_type': 'month', 'period_key': '2026-01',
+            'target_amount': 'NaN', 'operator': 'operator', 'reason': 'invalid',
+        })
+        self.assertEqual(status, 422)
+        self.assertEqual(response['code'], 'VALIDATION_ERROR')
+
 
 if __name__ == '__main__':
     unittest.main(verbosity=2)

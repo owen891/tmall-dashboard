@@ -1,3 +1,4 @@
+from datetime import date
 from flask import Blueprint, request
 
 from api.api_response import failure, success
@@ -6,6 +7,8 @@ from repos.audit_repo import AuditRepo
 
 
 manage_bp = Blueprint('manage', __name__)
+TASK_STATUSES = {'todo', 'in_progress', 'done', 'completed'}
+TASK_PRIORITIES = {'P0', 'P1', 'P2', 'P3'}
 
 
 def _payload():
@@ -14,6 +17,27 @@ def _payload():
 
 def _operator_reason(data, default_reason):
     return data.get('operator') or data.get('actor') or 'admin', data.get('reason') or default_reason
+
+
+def _validate_task_fields(fields, *, partial=False):
+    if not partial or 'status' in fields:
+        status = str(fields.get('status') or '')
+        if status not in TASK_STATUSES:
+            raise ValueError('status 必须是 todo、in_progress 或 done')
+    if not partial or 'priority' in fields:
+        priority = str(fields.get('priority') or '')
+        if priority not in TASK_PRIORITIES:
+            raise ValueError('priority 必须是 P0-P3')
+    if not partial or 'due_date' in fields:
+        due_date = str(fields.get('due_date') or '')
+        if due_date:
+            try:
+                date.fromisoformat(due_date)
+            except ValueError as error:
+                raise ValueError('due_date 必须是 YYYY-MM-DD') from error
+    for field in ('title', 'description', 'assignee'):
+        if field in fields and len(str(fields.get(field) or '')) > 2000:
+            raise ValueError(f'{field} 长度不能超过 2000 个字符')
 
 
 def _success(data, *, source, action, row_count=1, status=200, unknowns=None):
@@ -66,6 +90,10 @@ def create_task():
         'assignee': str(data.get('assignee') or ''),
         'due_date': str(data.get('due_date') or ''),
     }
+    try:
+        _validate_task_fields(fields)
+    except ValueError as error:
+        return failure('VALIDATION_ERROR', str(error), status=422)
     operator, reason = _operator_reason(data, '创建管理任务')
     with get_db() as connection:
         cursor = connection.execute(
@@ -89,6 +117,10 @@ def update_task(task_id):
     values = [data[field] for field in allowed if field in data]
     if not assignments:
         return failure('VALIDATION_ERROR', '没有可更新的任务字段', status=422)
+    try:
+        _validate_task_fields(data, partial=True)
+    except ValueError as error:
+        return failure('VALIDATION_ERROR', str(error), status=422)
     with get_db() as connection:
         before_row = _row(connection, 'task_items', task_id)
         if before_row is None:

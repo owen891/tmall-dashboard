@@ -74,6 +74,22 @@ class ImportWorkflowTests(unittest.TestCase):
         self.assertTrue(completed.wait(timeout=2))
         self.assertEqual(Path(captured[0]).suffix, '.xls')
 
+    def test_preview_cannot_be_confirmed_from_another_shop(self):
+        status, payload = self.preview(['date', 'product_id', 'payment_amount', 'product_visitors'], [
+            ['2026-04-01', 'cross-shop-product', 100, 10],
+        ])
+        self.assertEqual(status, 200)
+        preview_id = payload['data']['id']
+        mapping = payload['data']['mapping']
+
+        response = self.client.post(
+            f'/api/imports?shop_id=shop-b',
+            json={'preview_id': preview_id, 'mapping': mapping},
+        )
+        self.assertEqual(response.status_code, 422)
+        self.assertEqual(response.get_json()['code'], 'UNSUPPORTED_SCOPE')
+        response.close()
+
     def test_legacy_import_reads_gb18030_html_export_with_an_xls_extension(self):
         from scripts.import_data import read_workbook_sheets
 

@@ -267,12 +267,15 @@ class ImportService:
         return len(set(expired_ids) | stale_memory_ids)
 
     @staticmethod
-    def _load_preview(preview_id):
+    def _load_preview(preview_id, shop_id=None):
+        if shop_id is None:
+            from db import get_shop_id
+            shop_id = get_shop_id()
         with get_db() as connection:
             row = connection.execute(
-                '''SELECT id, source_type, source_filename, source_hash, content, mapping_json, quality_summary
-                   FROM import_previews WHERE id = ?''',
-                (preview_id,),
+                '''SELECT id, shop_id, source_type, source_filename, source_hash, content, mapping_json, quality_summary
+                   FROM import_previews WHERE id = ? AND shop_id = ?''',
+                (preview_id, shop_id),
             ).fetchone()
         if row is None:
             return None
@@ -283,9 +286,12 @@ class ImportService:
         return preview
 
     @staticmethod
-    def _delete_preview(preview_id):
+    def _delete_preview(preview_id, shop_id=None):
+        if shop_id is None:
+            from db import get_shop_id
+            shop_id = get_shop_id()
         with get_db() as connection:
-            connection.execute('DELETE FROM import_previews WHERE id = ?', (preview_id,))
+            connection.execute('DELETE FROM import_previews WHERE id = ? AND shop_id = ?', (preview_id, shop_id))
             connection.commit()
 
     @staticmethod
@@ -633,6 +639,7 @@ class ImportService:
         source_hash = hashlib.sha256(content).hexdigest()
         self.previews[preview_id] = {
             'id': preview_id,
+            'shop_id': shop_id,
             'source_type': source_type,
             'source_filename': filename,
             'source_hash': source_hash,
@@ -643,10 +650,10 @@ class ImportService:
         with get_db() as connection:
             connection.execute(
                 '''INSERT INTO import_previews (
-                       id, source_type, source_filename, source_hash, content, mapping_json, quality_summary
-                   ) VALUES (?, ?, ?, ?, ?, ?, ?)''',
+                       id, shop_id, source_type, source_filename, source_hash, content, mapping_json, quality_summary
+                   ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)''',
                 (
-                    preview_id, source_type, filename, source_hash, content,
+                    preview_id, shop_id, source_type, filename, source_hash, content,
                     json.dumps(mapping, ensure_ascii=False), json.dumps(quality, ensure_ascii=False),
                 ),
             )
@@ -817,14 +824,17 @@ class ImportService:
 
     def confirm(self, preview_id, mapping):
         self.cleanup_expired_previews()
-        preview = self.previews.get(preview_id) or self._load_preview(preview_id)
+        from db import get_shop_id
+        shop_id = get_shop_id()
+        preview = self.previews.get(preview_id)
+        if preview is not None and str(preview.get('shop_id') or 'default') != shop_id:
+            raise ImportScopeError('导入预览不属于当前店铺')
+        preview = preview or self._load_preview(preview_id, shop_id)
         if preview is None:
             raise ImportValidationError('导入预览不存在或已过期')
         if not isinstance(mapping, dict):
             raise ImportValidationError('字段映射格式错误')
         source_type = preview['source_type']
-        from db import get_shop_id
-        shop_id = get_shop_id()
         if source_type in {'product_week', 'product_month'} and shop_id != 'default':
             raise ImportScopeError(
                 f'{source_type} 当前仍使用单店旧表，不支持 shop_id={shop_id}；请先完成周/月表店铺迁移'
@@ -918,7 +928,7 @@ class ImportService:
         }
         inserted_count, updated_count = ImportRepo.complete_product_daily_batch(batch, rows)
         self.previews.pop(preview_id, None)
-        self._delete_preview(preview_id)
+        self._delete_preview(preview_id, shop_id)
         return self._report(batch, inserted_count, updated_count)
 
     def _confirm_generic(self, preview, mapping, shop_id=None):
@@ -991,7 +1001,7 @@ class ImportService:
                 row['source_batch_id'] = batch['id']
         inserted_count, updated_count = ImportRepo.complete_generic_batch(batch, table_name, key_columns, rows)
         self.previews.pop(preview['id'], None)
-        self._delete_preview(preview['id'])
+        self._delete_preview(preview['id'], shop_id)
         return self._report(batch, inserted_count, updated_count)
 
     @staticmethod

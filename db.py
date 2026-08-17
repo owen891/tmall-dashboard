@@ -945,6 +945,16 @@ def init_db(db_path=None):
     cursor.execute('CREATE INDEX idx_import_batches_shop_status ON import_batches(shop_id, status, created_at DESC)')
     conn.commit()
 
+    # Migration: bind persisted import previews to the shop that created them.
+    # Existing previews belong to the legacy default shop.
+    cursor.execute("PRAGMA table_info(import_previews)")
+    import_preview_columns = {row[1] for row in cursor.fetchall()}
+    if 'shop_id' not in import_preview_columns:
+        cursor.execute("ALTER TABLE import_previews ADD COLUMN shop_id TEXT NOT NULL DEFAULT 'default'")
+    cursor.execute('DROP INDEX IF EXISTS idx_import_previews_shop_created')
+    cursor.execute('CREATE INDEX idx_import_previews_shop_created ON import_previews(shop_id, created_at DESC)')
+    conn.commit()
+
     # Migration: add new health dimension columns if they don't exist
     new_health_cols = [
         'gmv_change_score', 'ad_spend_change_score', 'roi_change_score',

@@ -7,7 +7,7 @@
     <form class="goals-config-form" data-goals-form>
       <div class="goals-config-form__row"><label>目标年份<input class="input" name="year" type="number" min="2000" max="2100" value="2026" required></label><label>增长倍率<input class="input" name="growth_multiplier" type="number" min="0.01" step="0.01" value="1.10" required></label></div>
       <div class="goals-config-form__row"><label>年度总目标（元）<input class="input" name="annual_target" type="number" min="0" step="0.01" inputmode="decimal" required></label><div class="goals-suggestion"><label>建议年度目标（元）<input class="input" name="suggested_annual_target" type="number" readonly aria-readonly="true"></label><button class="button button--ghost" type="button" data-goals-suggest><i data-lucide="sparkles"></i><span>生成建议</span></button><span data-goals-suggestion-source>等待读取上一年度净销售额</span></div></div>
-      <div class="goals-config-form__actions"><button class="button button--primary" type="submit"><i data-lucide="save"></i><span>保存年度目标</span></button><p class="panel__hint" data-goals-version>尚未加载年度目标</p></div>
+      <div class="goals-config-form__actions"><button class="button button--primary" type="submit" data-goals-save><i data-lucide="save"></i><span>保存年度目标</span></button><p class="panel__hint" data-goals-version>尚未加载年度目标</p></div>
       <p data-goals-status role="status" aria-live="polite"></p>
     </form>
   </section>

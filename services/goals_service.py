@@ -1,5 +1,6 @@
 from calendar import isleap
 from datetime import date, timedelta
+import math
 
 from repos.goals_repo import GoalsRepo
 from utils.goal_allocation import allocate_cents
@@ -11,6 +12,16 @@ class GoalConflictError(ValueError):
 
 class GoalValidationError(ValueError):
     pass
+
+
+def _finite_number(value, label):
+    try:
+        number = float(value)
+    except (TypeError, ValueError) as error:
+        raise GoalValidationError(f'{label}必须为数字') from error
+    if not math.isfinite(number):
+        raise GoalValidationError(f'{label}必须为有限数字')
+    return number
 
 
 def _days_for_year(year):
@@ -62,7 +73,7 @@ def _validate_period_key(year, period_type, period_key):
 
 
 def _allocate(annual_target, days, weights=None):
-    cents = round(float(annual_target) * 100)
+    cents = round(_finite_number(annual_target, '年度目标') * 100)
     if cents < 0:
         raise GoalValidationError('年度目标不能为负数')
     weights = weights or {}
@@ -108,12 +119,12 @@ class GoalsService:
         if not isinstance(year, int) or year < 2000 or year > 2100:
             raise GoalValidationError('年份不合法')
         prior_year_net_sales = GoalsRepo.prior_year_net_sales(year)
-        multiplier = float(growth_multiplier) if growth_multiplier is not None else None
+        multiplier = _finite_number(growth_multiplier, '增长倍率') if growth_multiplier is not None else None
         if annual_target is None:
             if multiplier is None or multiplier <= 0:
                 raise GoalValidationError('年度目标或增长倍率至少提供一项')
             annual_target = prior_year_net_sales * multiplier
-        annual_target = round(float(annual_target), 2)
+        annual_target = round(_finite_number(annual_target, '年度目标'), 2)
         if annual_target < 0:
             raise GoalValidationError('年度目标不能为负数')
         days = _days_for_year(year)
@@ -136,7 +147,7 @@ class GoalsService:
     def suggest(self, year, growth_multiplier=1.0):
         if not isinstance(year, int) or year < 2000 or year > 2100:
             raise GoalValidationError('年份不合法')
-        multiplier = float(growth_multiplier)
+        multiplier = _finite_number(growth_multiplier, '增长倍率')
         if multiplier <= 0:
             raise GoalValidationError('增长倍率必须大于 0')
         prior = GoalsRepo.prior_year_net_sales(year)
@@ -148,7 +159,7 @@ class GoalsService:
             raise GoalValidationError('年份不合法')
         if annual_target is None:
             raise GoalValidationError('年度目标不能为负数')
-        annual_target = round(float(annual_target), 2)
+        annual_target = round(_finite_number(annual_target, '年度目标'), 2)
         if annual_target < 0:
             raise GoalValidationError('年度目标不能为负数')
         days = _days_for_year(year)
@@ -214,7 +225,8 @@ class GoalsService:
         if period_type not in {'year', 'quarter', 'month', 'week', 'date'}:
             raise GoalValidationError('不支持的目标周期')
         _validate_period_key(year, period_type, period_key)
-        if float(target_amount) < 0:
+        target_amount = _finite_number(target_amount, '目标值')
+        if target_amount < 0:
             raise GoalValidationError('目标值不能为负数')
         if not operator or not reason:
             raise GoalValidationError('调整必须填写操作者和原因')

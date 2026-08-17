@@ -71,6 +71,22 @@ class ManageMutationApiTests(unittest.TestCase):
         self.assertEqual(deleted.status_code, 200)
         self.assertEqual(deleted.get_json()['data']['deleted_count'], 1)
 
+    def test_task_fields_are_validated_before_write(self):
+        for payload in (
+            {'title': 'bad status', 'status': 'finished'},
+            {'title': 'bad priority', 'priority': 'P9'},
+            {'title': 'bad date', 'due_date': '2026/08/01'},
+        ):
+            with self.subTest(payload=payload):
+                response = self.client.post('/api/manage/tasks', json=payload)
+                self.assertEqual(response.status_code, 422)
+                self.assertEqual(response.get_json()['code'], 'VALIDATION_ERROR')
+
+    def test_ad_trend_rejects_invalid_count_without_server_error(self):
+        response = self.client.get('/api/ad_trend?count=abc')
+        self.assertEqual(response.status_code, 422)
+        self.assertEqual(response.get_json()['code'], 'VALIDATION_ERROR')
+
 
 if __name__ == '__main__':
     unittest.main()

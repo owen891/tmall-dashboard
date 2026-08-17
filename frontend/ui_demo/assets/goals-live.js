@@ -22,6 +22,12 @@
   const setTableMessage = (body, colspan, message) => { body.replaceChildren(); const row = body.insertRow(); const cell = row.insertCell(); cell.colSpan = colspan; cell.textContent = message; };
   const canEdit = () => !Object.keys(capabilities).length || DemoApi.can({ capabilities }, 'can_edit');
   const canLock = () => !Object.keys(capabilities).length || DemoApi.can({ capabilities }, 'can_lock');
+  const updateAnnualControls = () => {
+    const editable = canEdit();
+    ['year', 'growth_multiplier', 'annual_target'].forEach((name) => { form.elements[name].disabled = !editable; });
+    suggestButton.disabled = !editable;
+    form.querySelector('[data-goals-save]').disabled = !editable;
+  };
 
   function makeIconButton(icon, label, action) {
     const button = document.createElement('button');
@@ -128,6 +134,7 @@
       const goal = await DemoApi.domainRequest(`/api/goals/${year}`);
       current = goal.data;
       capabilities = goal.capabilities || {};
+      updateAnnualControls();
       const periods = await DemoApi.domainRequest(`/api/goals/${year}/periods`);
       renderMonths(periods.data);
       versionLabel.textContent = `当前版本 ${current.version}，年度合计 ¥${money(current.annual_total)}`;
@@ -185,10 +192,14 @@
 
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
+    if (!canEdit()) { setStatus('当前目标不允许编辑'); return; }
     const year = Number(form.elements.year.value);
+    const multiplier = Number(form.elements.growth_multiplier.value);
     const annualTarget = Number(form.elements.annual_target.value);
+    if (!Number.isInteger(year) || year < 2000 || year > 2100) { setStatus('年份必须是 2000-2100 的整数'); return; }
+    if (!Number.isFinite(multiplier) || multiplier <= 0) { setStatus('增长倍率必须为大于 0 的有限数字'); return; }
     if (!Number.isFinite(annualTarget) || annualTarget < 0) { setStatus('请输入有效的年度总目标'); return; }
-    const payload = { year, annual_target: annualTarget, growth_multiplier: Number(form.elements.growth_multiplier.value), operator: '运营人员', reason: '按去年同期销售占比生成年度目标' };
+    const payload = { year, annual_target: annualTarget, growth_multiplier: multiplier, operator: '运营人员', reason: '按去年同期销售占比生成年度目标' };
     if (current?.year === year) payload.version = current.version;
     try {
       const response = await DemoApi.domainRequest('/api/goals', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
@@ -199,8 +210,11 @@
   });
 
   suggestButton.addEventListener('click', async () => {
+    if (!canEdit()) { setStatus('当前目标不允许编辑'); return; }
     const year = Number(form.elements.year.value);
     const multiplier = Number(form.elements.growth_multiplier.value);
+    if (!Number.isInteger(year) || year < 2000 || year > 2100) { setStatus('年份必须是 2000-2100 的整数'); return; }
+    if (!Number.isFinite(multiplier) || multiplier <= 0) { setStatus('增长倍率必须为大于 0 的有限数字'); return; }
     try {
       const response = await DemoApi.domainRequest(`/api/goals/${year}/suggestion?growth_multiplier=${encodeURIComponent(multiplier)}`);
       form.elements.suggested_annual_target.value = Number(response.data.suggested_annual_target).toFixed(2);

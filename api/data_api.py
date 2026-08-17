@@ -1544,7 +1544,10 @@ def get_ad_trend():
     """推广趋势分析 — 最近N个周期的推广核心指标"""
     dim = request.args.get('dim', 'monthly')
     period = request.args.get('period', '')
-    periods_count = int(request.args.get('count', 6))
+    try:
+        periods_count = max(1, min(int(request.args.get('count', 6)), 24))
+    except (TypeError, ValueError):
+        return failure('VALIDATION_ERROR', 'count 必须是 1-24 的整数', status=422)
     
     dim_cfg = DIMENSION_MAP.get(dim)
     if not dim_cfg:
