@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>管理工作台 | 天猫数据仪表盘</title>
+  <link rel="stylesheet" href="../assets/tokens.css">
+  <link rel="stylesheet" href="../assets/shell.css">
+  <link rel="stylesheet" href="../assets/components.css">
+  <script src="../assets/lucide-1.8.0.min.js"></script>
+</head>
+<body data-page="manage">
+  <div class="demo-app">
+    <aside class="demo-sidebar" data-shell-sidebar></aside>
+    <div class="demo-main">
+      <header class="demo-topbar" data-shell-header></header>
+      <main class="demo-page">
+        <div class="demo-page__intro">
+          <div><h2>管理工作台</h2><p>任务、人员目标和文件夹扫描集中处理</p></div>
+          <div class="demo-page__actions"><button class="button" type="button" data-manage-refresh><i data-lucide="refresh-cw"></i>刷新</button></div>
+        </div>
+
+        <section class="metric-grid" aria-label="工作台概览">
+          <article class="metric-card"><div class="metric-card__label">任务总数</div><div class="metric-card__value" data-manage-kpi="tasks">--</div></article>
+          <article class="metric-card"><div class="metric-card__label">待处理</div><div class="metric-card__value" data-manage-kpi="pending">--</div></article>
+          <article class="metric-card"><div class="metric-card__label">已完成</div><div class="metric-card__value" data-manage-kpi="done">--</div></article>
+          <article class="metric-card"><div class="metric-card__label">启用扫描</div><div class="metric-card__value" data-manage-kpi="scheduled">--</div></article>
+        </section>
+
+        <section class="plain-panel panel">
+          <div class="panel__header"><div><h3 class="panel__title">任务列表</h3><p class="panel__hint" data-manage-task-period>任务不按经营周期筛选</p></div><button class="button button--primary" type="button" data-manage-create-task><i data-lucide="plus"></i>新建任务</button></div>
+          <div class="data-table-wrap"><table class="data-table"><thead><tr><th>任务</th><th>状态</th><th>优先级</th><th>负责人</th><th>截止日期</th><th>操作</th></tr></thead><tbody data-manage-tasks><tr><td colspan="6">加载中</td></tr></tbody></table></div>
+        </section>
+
+        <section class="section-grid section-grid--wide">
+          <article class="plain-panel panel">
+            <div class="panel__header"><div><h3 class="panel__title">人员 KPI</h3><p class="panel__hint" data-manage-kpi-period>按当前自然月筛选</p></div><button class="button" type="button" data-manage-create-kpi><i data-lucide="plus"></i>新增 KPI</button></div>
+            <div class="data-table-wrap"><table class="data-table"><thead><tr><th>成员</th><th>目标 GMV</th><th>实际 GMV</th><th>达成率</th><th>评级</th><th>操作</th></tr></thead><tbody data-manage-kpis><tr><td colspan="6">加载中</td></tr></tbody></table></div>
+          </article>
+          <article class="plain-panel panel">
+            <div class="panel__header"><div><h3 class="panel__title">文件夹扫描任务</h3><p class="panel__hint">扫描本机文件夹并自动导入新报表</p></div><button class="button" type="button" data-manage-create-schedule><i data-lucide="folder-plus"></i>新增扫描</button></div>
+            <div class="data-table-wrap"><table class="data-table"><thead><tr><th>任务与文件夹</th><th>计划</th><th>状态</th><th>下次执行</th><th>操作</th></tr></thead><tbody data-manage-scheduled><tr><td colspan="5">加载中</td></tr></tbody></table></div>
+            <div data-manage-schedule-actions class="sr-only" aria-live="polite"></div>
+          </article>
+        </section>
+
+        <section class="plain-panel panel">
+          <div class="panel__header"><div><h3 class="panel__title">操作日志</h3><p class="panel__hint">显示最近 20 条数据库操作记录</p></div></div>
+          <div class="data-table-wrap"><table class="data-table"><thead><tr><th>时间</th><th>操作</th><th>详情</th><th>执行人</th></tr></thead><tbody data-manage-logs><tr><td colspan="4">加载中</td></tr></tbody></table></div>
+        </section>
+        <p class="sr-only" data-manage-status role="status" aria-live="polite"></p>
+      </main>
+    </div>
+  </div>
+
+  <dialog class="modal-form" data-manage-task-dialog data-modal-kind="edit" aria-labelledby="manage-task-title" hidden>
+    <form method="dialog" data-manage-task-form>
+      <div class="modal-form__header"><h3 id="manage-task-title">新建任务</h3><button class="button button--ghost" type="button" data-manage-dialog-close="task" aria-label="关闭"><i data-lucide="x"></i></button></div>
+      <div class="modal-form__body">
+        <label>任务名称<input class="input" name="title" required maxlength="120" autocomplete="off"></label>
+        <label>任务说明<textarea class="input" name="description" rows="3" maxlength="500"></textarea></label>
+        <div class="filter-group"><label>状态<select class="select" name="status"><option value="todo">待处理</option><option value="in_progress">处理中</option><option value="done">已完成</option></select></label><label>优先级<select class="select" name="priority"><option value="P0">紧急（P0）</option><option value="P1">高（P1）</option><option value="P2" selected>中（P2）</option><option value="P3">低（P3）</option></select></label></div>
+        <div class="filter-group"><label>负责人<input class="input" name="assignee" maxlength="40" autocomplete="off"></label><label>截止日期<input class="input" type="date" name="due_date"></label></div>
+      </div>
+      <div class="modal-form__footer"><button class="button" type="button" data-manage-dialog-close="task">取消</button><button class="button button--primary" type="submit">保存任务</button></div>
+    </form>
+  </dialog>
+
+  <dialog class="modal-form" data-manage-kpi-dialog data-modal-kind="edit" aria-labelledby="manage-kpi-title" hidden>
+    <form method="dialog" data-manage-kpi-form>
+      <div class="modal-form__header"><h3 id="manage-kpi-title">新增 KPI</h3><button class="button button--ghost" type="button" data-manage-dialog-close="kpi" aria-label="关闭"><i data-lucide="x"></i></button></div>
+      <div class="modal-form__body">
+        <div class="filter-group"><label>成员<input class="input" name="user_name" required maxlength="40" autocomplete="off"></label><label>周期<input class="input" type="month" name="period" required></label></div>
+        <div class="filter-group"><label>目标 GMV<input class="input" type="number" name="target_gmv" min="0" step="0.01" required></label><label>实际 GMV<input class="input" type="number" name="actual_gmv" min="0" step="0.01" required></label></div>
+        <div class="filter-group"><label>达成率（%）<input class="input" type="number" name="achievement_rate" min="0" step="0.01" required></label><label>评级<select class="select" name="rating"><option value="A">优秀（A）</option><option value="B">良好（B）</option><option value="C" selected>待提升（C）</option><option value="D">未达标（D）</option></select></label></div>
+      </div>
+      <div class="modal-form__footer"><button class="button" type="button" data-manage-dialog-close="kpi">取消</button><button class="button button--primary" type="submit">保存 KPI</button></div>
+    </form>
+  </dialog>
+
+  <dialog class="modal-form" data-manage-schedule-dialog data-modal-kind="flow" aria-labelledby="manage-schedule-title" hidden>
+    <form method="dialog" data-manage-schedule-form>
+      <div class="modal-form__header"><h3 id="manage-schedule-title">新增文件夹扫描</h3><button class="button button--ghost" type="button" data-manage-dialog-close="schedule" aria-label="关闭"><i data-lucide="x"></i></button></div>
+      <div class="modal-form__body">
+        <label>任务名称<input class="input" name="task_name" required maxlength="120" autocomplete="off"></label>
+        <label>扫描文件夹<span class="toolbox-scan-folder"><input class="input" name="folder_path" required placeholder="本机文件夹绝对路径" autocomplete="off"><button class="button" type="button" data-manage-select-scan-folder hidden><i data-lucide="folder-open"></i>选择文件夹</button></span></label>
+        <label>文件匹配规则<input class="input" name="file_pattern" value="*.xlsx;*.xls;*.csv;*.zip" required autocomplete="off"></label>
+        <label>报表来源<select class="select" name="source_type"><option value="auto">自动识别</option><option value="product_day">商品日度</option><option value="dmp_product_day">DMP 商品日度</option><option value="store_day">店铺日度</option><option value="refund_day">退款日度</option><option value="customer_day">客户日度</option><option value="product_week">商品周度</option><option value="product_month">商品月度</option><option value="promotion_channel_day">推广渠道日度</option><option value="promotion_campaign_day">推广计划日度</option><option value="promotion_unit_day">推广单元日度</option><option value="promotion_product_day">推广商品日度</option></select></label>
+        <label>扫描计划（cron）<input class="input" name="cron_expr" required value="0 8 * * *" autocomplete="off"></label>
+        <label><input type="checkbox" name="enabled" checked> 启用扫描任务</label>
+      </div>
+      <div class="modal-form__footer"><button class="button" type="button" data-manage-dialog-close="schedule">取消</button><button class="button button--primary" type="submit">保存扫描任务</button></div>
+    </form>
+  </dialog>
+
+  <script src="../assets/api.js"></script>
+  <script src="../assets/labels.js"></script>
+  <script src="../assets/shell.js"></script>
+  <script src="../assets/manage-live.js"></script>
+</body>
+</html>

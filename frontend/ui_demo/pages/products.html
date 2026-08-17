@@ -1,0 +1,193 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>商品运营 | 天猫数据仪表盘</title>
+  <link rel="stylesheet" href="../assets/tokens.css">
+  <link rel="stylesheet" href="../assets/shell.css">
+  <link rel="stylesheet" href="../assets/components.css">
+  <script src="../assets/lucide-1.8.0.min.js"></script>
+  <script src="../assets/echarts-5.5.1.min.js"></script>
+</head>
+<body data-page="products">
+  <div class="demo-app">
+    <aside class="demo-sidebar" data-shell-sidebar></aside>
+    <div class="demo-main">
+      <header class="demo-topbar" data-shell-header></header>
+      <main class="demo-page"><aside data-right-rail hidden aria-label="辅助信息"></aside>
+        <div class="demo-page__intro">
+          <div>
+            <h2>商品运营</h2>
+            <p>数据库商品经营表现</p>
+          </div>
+          <div class="demo-page__actions">
+            <button class="button" type="button" data-capability-key="products.list" data-products-reset><i data-lucide="rotate-ccw"></i>重置</button>
+          </div>
+        </div>
+
+        <section class="metric-grid">
+          <article class="metric-card"><div class="metric-card__label">数据库商品总数</div><div class="metric-card__value" data-products-kpi="total">--</div></article>
+          <article class="metric-card"><div class="metric-card__label">当前页销售额</div><div class="metric-card__value" data-products-kpi="sales">--</div></article>
+          <article class="metric-card"><div class="metric-card__label">当前页推广花费</div><div class="metric-card__value" data-products-kpi="spend">--</div></article>
+          <article class="metric-card"><div class="metric-card__label">当前页 ROI</div><div class="metric-card__value" data-products-kpi="roi">--</div></article>
+        </section>
+
+        <section class="products-ops-summary" data-products-ops-summary aria-live="polite">
+          <div class="products-alert panel" data-products-alert>
+            <div class="products-alert__main"><span class="products-alert__icon" data-products-health aria-hidden="true"><i data-lucide="triangle-alert"></i></span><div><strong data-products-alert-title>正在计算待处理事项</strong><p data-products-alert-message>商品事实和覆盖状态加载后显示。</p></div></div>
+            <button class="button button--ghost" type="button" data-products-alert-action hidden>查看待处理</button>
+          </div>
+          <div class="products-ops-grid">
+            <section class="plain-panel panel products-issues" data-products-issues>
+              <div class="panel__header"><div><h3 class="panel__title">待处理事项</h3><p class="panel__hint">仅展示有明确依据的商品问题</p></div><span class="badge badge--warning" data-products-action>--</span></div>
+              <div class="products-issues__list" data-products-issues-list><p class="panel__hint">等待商品数据</p></div>
+            </section>
+            <section class="plain-panel panel products-coverage" data-products-coverage>
+              <div class="panel__header"><div><h3 class="panel__title">数据覆盖</h3><p class="panel__hint">缺失事实不会被填充为 0</p></div></div>
+              <div class="products-coverage__list" data-products-coverage-list><p class="panel__hint">等待商品数据</p></div>
+            </section>
+          </div>
+        </section>
+
+        <section class="plain-panel panel">
+          <div class="panel__header product-list__header">
+            <div>
+              <h3 class="panel__title">商品列表</h3>
+              <p class="panel__hint" data-products-status>等待加载</p>
+            </div>
+            <div class="product-field-controls">
+              <div class="segmented" role="group" aria-label="字段模板">
+                <button type="button" data-products-view="operate" aria-pressed="true">经营</button>
+                <button type="button" data-products-view="select" aria-pressed="false">选款</button>
+                <button type="button" data-products-view="paid" aria-pressed="false">投放</button>
+                <button type="button" data-products-view="refund" aria-pressed="false">退款</button>
+                <button type="button" data-products-view="lifecycle" aria-pressed="false">生命周期</button>
+              </div>
+              <button class="button" type="button" data-products-columns-open><i data-lucide="settings-2"></i>列设置</button>
+            </div>
+          </div>
+
+          <div class="section-toolbar product-filters" data-products-filter-toolbar>
+            <div class="product-filters__main">
+              <label class="product-filters__search">
+                <span class="sr-only">搜索商品</span>
+                <i data-lucide="search" aria-hidden="true"></i>
+                <input class="input" data-products-search placeholder="搜索商品名称或 ID" aria-label="搜索商品">
+              </label>
+              <div class="product-filters__core" aria-label="核心筛选">
+                <select class="select" data-products-tier aria-label="筛选分层"><option value="">全部分层</option></select>
+                <select class="select" data-products-lifecycle-stage aria-label="筛选生命周期"><option value="">全部生命周期</option></select>
+                <select class="select" data-products-status-filter aria-label="筛选状态"><option value="active">在售</option><option value="all">全部状态</option><option value="inactive">下架</option></select>
+              </div>
+              <div class="product-filters__sort" aria-label="排序">
+                <select class="select" data-products-sort aria-label="排序字段">
+                  <option value="payment_amount">支付金额</option>
+                  <option value="net_sales">净销售额</option>
+                  <option value="visitors">商品访客数</option>
+                  <option value="conversion">转化</option>
+                  <option value="refund_rate">退款</option>
+                  <option value="expense_ratio">费比</option>
+                  <option value="trend_change">趋势变化</option>
+                  <option value="ad_spend">花费</option>
+                  <option value="roi">ROI</option>
+                </select>
+                <select class="select" data-products-order aria-label="排序方向"><option value="desc">降序</option><option value="asc">升序</option></select>
+              </div>
+            </div>
+            <div class="product-filters__actions">
+              <button class="button" type="button" data-products-more-filters-toggle aria-controls="products-more-filters" aria-expanded="false"><i data-lucide="sliders-horizontal"></i><span>更多筛选</span></button>
+              <button class="button" type="button" data-capability-key="products.catalog_edit" data-products-starred aria-pressed="false"><i data-lucide="star"></i><span>当前页收藏</span></button>
+            </div>
+            <div id="products-more-filters" class="product-filters__advanced" data-products-more-filters hidden>
+              <select class="select" data-products-style aria-label="筛选风格"><option value="">全部风格</option></select>
+              <select class="select" data-products-seasonality aria-label="筛选季节属性"><option value="">全部季节属性</option></select>
+              <select class="select" data-products-pending-action aria-label="筛选待办动作"><option value="">全部待办动作</option><option value="true">有待办动作</option><option value="false">无待办动作</option></select>
+            </div>
+          </div>
+
+          <div class="batch-bar" data-products-batch>
+            <strong data-products-selected>已选 0 件</strong>
+            <select class="select" data-products-batch-field aria-label="批量字段"><option value="tier">批量分层</option><option value="style">批量风格</option></select>
+            <input class="input" data-products-batch-value list="products-tier-options" placeholder="输入或选择分层/风格" aria-label="批量字段值">
+            <datalist id="products-tier-options" data-products-batch-options></datalist>
+            <button class="button button--primary" type="button" data-capability-key="products.catalog_edit" data-products-batch-apply><i data-lucide="check"></i>应用</button>
+            <input class="input" data-products-batch-tag placeholder="批量新增标签" aria-label="批量新增标签">
+            <button class="button" type="button" data-capability-key="products.catalog_edit" data-products-batch-tag-apply><i data-lucide="tag"></i>打标</button>
+            <button class="button" type="button" data-capability-key="products.catalog_edit" data-products-batch-star><i data-lucide="star"></i>收藏</button>
+          </div>
+
+          <div class="data-table-wrap data-table-wrap--discoverable">
+            <table class="data-table product-table" data-table-pagination="server">
+              <thead><tr data-products-head></tr></thead>
+              <tbody data-products-body>
+                <tr><td colspan="13">加载中</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="products-mobile-summary" data-products-mobile-summary aria-label="商品摘要" hidden></div>
+          <div class="section-toolbar table-controls table-controls--server" data-products-pagination>
+            <span class="panel__hint table-controls__summary" data-products-page-summary>--</span>
+            <label class="table-controls__page-size">每页
+              <select class="select" data-products-page-size aria-label="商品列表每页显示行数">
+                <option value="20">20</option>
+                <option value="50">50</option>
+                <option value="100">100</option>
+                <option value="200">200</option>
+              </select>
+              行
+            </label>
+            <div class="table-controls__nav">
+              <button class="button table-controls__button" type="button" data-products-prev><i data-lucide="chevron-left"></i>上一页</button>
+              <button class="button table-controls__button" type="button" data-products-next>下一页<i data-lucide="chevron-right"></i></button>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+  </div>
+
+  <dialog class="modal-form panel products-columns-dialog" data-products-columns-dialog data-modal-kind="config" aria-labelledby="productsColumnsTitle" hidden>
+    <div class="modal-form__header">
+      <div>
+        <h3 id="productsColumnsTitle">列设置</h3>
+        <p class="panel__hint">选择商品列表中需要展示的字段</p>
+      </div>
+      <button class="button button--ghost" type="button" data-products-columns-close aria-label="关闭列设置"><i data-lucide="x"></i></button>
+    </div>
+    <div class="products-columns-dialog__body">
+      <div class="field-template-bar">
+        <div class="field-template-bar__current">当前显示 <strong data-products-visible-count>--</strong> 个字段</div>
+        <div class="field-template-bar__controls">
+          <select class="select" data-products-template-select aria-label="选择字段模板"></select>
+          <button class="button" type="button" data-products-template-apply>使用模板</button>
+          <button class="button" type="button" data-products-columns-select-all>全选</button>
+          <button class="button" type="button" data-products-columns-clear-all>清空</button>
+          <button class="button" type="button" data-products-columns-reset><i data-lucide="rotate-ccw"></i>恢复经营模板</button>
+        </div>
+      </div>
+      <div data-products-field-selector></div>
+      <div class="products-template-save">
+        <input class="input" name="products_template_name" autocomplete="off" data-products-template-name placeholder="自定义模板名称" aria-label="自定义模板名称">
+        <button class="button" type="button" data-products-template-save><i data-lucide="save"></i>保存为模板</button>
+      </div>
+      <div class="saved-template-list field-template-manager" data-products-template-manager aria-label="字段模板管理"></div>
+      <p class="products-columns-dialog__status" data-products-columns-status aria-live="polite"></p>
+    </div>
+    <div class="modal-form__footer">
+      <button class="button" type="button" data-products-columns-close>取消</button>
+      <button class="button button--primary" type="button" data-products-columns-apply><i data-lucide="check"></i>应用字段</button>
+    </div>
+  </dialog>
+
+  <script src="../assets/api.js"></script>
+  <script src="../assets/navigation.js"></script>
+  <script src="../assets/labels.js"></script>
+  <script src="../assets/charts.js"></script>
+  <script src="../assets/shell.js"></script>
+  <script src="../assets/field-selector.js"></script>
+  <script src="../assets/field-template-manager.js"></script>
+  <script src="../assets/product-detail-dialog.js"></script>
+  <script src="../assets/products-live.js"></script>
+</body>
+</html>

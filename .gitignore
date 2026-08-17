@@ -1,0 +1,67 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.venv/
+venv/
+
+# 数据库
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+
+# 数据目录（运行时数据，不入版本库）
+data/backups/
+data/raw/
+data/uploads/
+data/import_log.json
+/source.xlsx
+/template.xlsx
+
+# 输出目录
+output*/
+incoming/
+
+# 前端构建产物
+frontend/dist/
+frontend/node_modules/
+static/dist/
+build/desktop/
+build/pyinstaller/
+desktop/release/
+desktop/node_modules/
+desktop/dist/
+
+# 环境配置
+.env
+
+# 系统文件
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# 临时文件
+*.tmp
+*.bak
+*.log
+.tmp/
+.test-tmp/
+
+# Local agent and visual review artifacts
+.tmp-*
+.superpowers/
+.planning/
+.impeccable/
+Program
+audit-*.png
+lifecycle-dialog-*.png
+overview-polish-*.png
+products-columns-*.png
+ui-manage-toolbox-check.png

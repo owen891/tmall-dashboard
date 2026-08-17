@@ -1,0 +1,36 @@
+appId: com.owen891.tmalldashboard
+productName: 天猫数据仪表盘
+
+directories:
+  output: release
+
+icon: assets/tmall-dashboard.ico
+
+publish:
+  provider: generic
+  url: https://github.com/owen891/tmall-dashboard/releases/latest/download
+
+files:
+  - dist/**/*
+  - package.json
+
+extraResources:
+  - from: ../build/desktop/backend
+    to: backend
+    filter:
+      - "**/*"
+
+win:
+  target:
+    - target: nsis
+      arch: [x64]
+  artifactName: "TmallDashboard-Setup-${version}-${arch}.${ext}"
+
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  perMachine: false
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: 天猫数据仪表盘
+  language: "2052"

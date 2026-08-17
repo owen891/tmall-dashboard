@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>天猫数据仪表盘 预览</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0F172A; color: #E2E8F0; padding: 20px; }
+.header { text-align: center; padding: 30px 0 20px; border-bottom: 1px solid #1E293B; margin-bottom: 30px; }
+.header h1 { font-size: 1.8rem; color: #F1F5F9; }
+.header p { color: #64748B; margin-top: 8px; font-size: 0.9rem; }
+.status { display: inline-block; padding: 4px 16px; border-radius: 20px; background: #10B98122; color: #34D399; font-size: 0.8rem; margin-top: 12px; border: 1px solid #10B98144; }
+.module-list { max-width: 900px; margin: 0 auto; }
+.module { background: #1E293B; border: 1px solid #334155; border-radius: 12px; padding: 20px; margin-bottom: 16px; }
+.module-header { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+.module-icon { font-size: 1.5rem; }
+.module-name { font-size: 1.05rem; font-weight: 700; color: #F1F5F9; }
+.module-tag { padding: 2px 10px; border-radius: 4px; font-size: 0.7rem; font-weight: 600; }
+.tag-done { background: #10B98122; color: #34D399; border: 1px solid #10B98144; }
+.tag-soon { background: #F59E0B22; color: #FCD34D; border: 1px solid #F59E0B44; }
+.module-desc { color: #94A3B8; font-size: 0.85rem; line-height: 1.6; }
+.module-features { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.feature { padding: 4px 12px; border-radius: 6px; background: #0F172A; border: 1px solid #334155; font-size: 0.78rem; color: #CBD5E1; }
+.stats-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; max-width: 900px; margin: 0 auto 30px; }
+.stat-card { background: #1E293B; border: 1px solid #334155; border-radius: 12px; padding: 20px; text-align: center; }
+.stat-value { font-size: 2rem; font-weight: 800; color: #3B82F6; }
+.stat-label { font-size: 0.82rem; color: #64748B; margin-top: 4px; }
+.tech-stack { max-width: 900px; margin: 30px auto; padding: 20px; background: #1E293B; border: 1px solid #334155; border-radius: 12px; }
+.tech-stack h3 { font-size: 0.95rem; color: #94A3B8; margin-bottom: 12px; }
+.tech-tags { display: flex; flex-wrap: wrap; gap: 8px; }
+.tech-tag { padding: 6px 14px; border-radius: 8px; background: #0F172A; border: 1px solid #334155; font-size: 0.82rem; color: #CBD5E1; }
+.note { max-width: 900px; margin: 20px auto; padding: 16px 20px; background: rgba(59,130,246,0.08); border: 1px solid rgba(59,130,246,0.2); border-radius: 10px; color: #93C5FD; font-size: 0.85rem; line-height: 1.6; }
+</style>
+</head>
+<body>
+<div class="header">
+    <h1>🏪 天猫数据仪表盘</h1>
+    <p>全渠道数据分析 · 日/周/月多维度 · 目标管理 · 智能预警</p>
+    <span class="status">✅ P0-P6 全部开发完成</span>
+</div>
+
+<div class="stats-row">
+    <div class="stat-card">
+        <div class="stat-value">12</div>
+        <div class="stat-label">功能模块</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value">30+</div>
+        <div class="stat-label">API 端点</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-value">14</div>
+        <div class="stat-label">数据表</div>
+    </div>
+</div>
+
+<div class="module-list">
+
+<div class="module">
+    <div class="module-header">
+        <span class="module-icon">📊</span>
+        <span class="module-name">KPI 核心指标</span>
+        <span class="module-tag tag-done">P0</span>
+    </div>
+    <div class="module-desc">8大核心指标卡片，含同比/环比变化、异常高亮</div>
+    <div class="module-features">
+        <span class="feature">总销售额</span><span class="feature">净销售额</span><span class="feature">总访客</span>
+        <span class="feature">转化率</span><span class="feature">推广花费</span><span class="feature">ROI</span>
+        <span class="feature">退款率</span><span class="feature">客单价</span><span class="feature">异常检测</span>
+    </div>
+</div>
+
+<div class="module">
+    <div class="module-header">
+        <span class="module-icon">🎯</span>
+        <span class="module-name">目标完成进度</span>
+        <span class="module-tag tag-done">P2</span>
+    </div>
+    <div class="module-desc">GSV/费用/费比环形进度图 + 智能预测 + 4类预警系统</div>
+    <div class="module-features">
+        <span class="feature">GSV进度</span><span class="feature">费用预算</span><span class="feature">费比监控</span>
+        <span class="feature">时间进度</span><span class="feature">智能预测</span><span class="feature">进度落后预警</span>
+        <span class="feature">费比超标预警</span><span class="feature">同比异常预警</span>
+    </div>
+</div>
+
+<div class="module">
+    <div class="module-header">
+        <span class="module-icon">📈</span>
+        <span class="module-name">销售趋势</span>
+        <span class="module-tag tag-done">P0</span>
+    </div>
+    <div class="module-desc">双Y轴折线图：支付金额 + 净销售额 + 件数趋势</div>
+    <div class="module-features">
+        <span class="feature">日/周/月切换</span><span class="feature">自定义时间范围</span><span class="feature">双Y轴</span>
+    </div>
+</div>
+
+<div class="module">
+    <div class="module-header">
+        <span class="module-icon">👥</span>
+        <span class="module-name">流量与转化</span>
+        <span class="module-tag tag-done">P0</span>
+    </div>
+    <div class="module-desc">UV趋势 + 转化率/加购率/收藏率多线对比</div>
+    <div class="module-features">
+        <span class="feature">访客趋势</span><span class="feature">转化率</span><span class="feature">加购率</span><span class="feature">收藏率</span>
+    </div>
+</div>
+
+<div class="module">
+    <div class="module-header">
+        <span class="module-icon">🏪</span>
+        <span class="module-name">商品分析</span>
+        <span class="module-tag tag-done">P0</span>
+    </div>
+    <div class="module-desc">TOP20商品柱状图 + 风格分布饼图 + 商品明细表格（含图片）</div>
+    <div class="module-features">
+        <span class="feature">TOP20排行</span><span class="feature">风格分布</span><span class="feature">商品图片</span><span class="feature">明细表格</span>
+    </div>
+</div>
+
+<div class="module">
+    <div class="module-header">
+        <span class="module-icon">📢</span>
+        <span class="module-name">推广分析</span>
+        <span class="module-tag tag-done">P0</span>
+    </div>
+    <div class="module-desc">花费vsROI散点图 + 推广方式对比 + 蓝海关键词推荐（联动②）</div>
+    <div class="module-features">
+        <span class="feature">散点图</span><span class="feature">推广对比</span><span class="feature">🌊蓝海词推荐</span>
+    </div>
+</div>
+
+<div class="module">
+    <div class="module-header">
+        <span class="module-icon">💰</span>
+        <span class="module-name">退款售后</span>
+        <span class="module-tag tag-done">P0</span>
+    </div>
+    <div class="module-desc">退款趋势双轴图 + 高退款率商品预警列表</div>
+    <div class="module-features">
+        <span class="feature">退款趋势</span><span class="feature">退款金额</span><span class="feature">预警列表</span>
+    </div>
+</div>
+
+<div class="module">
+    <div class="module-header">
+        <span class="module-icon">🔧</span>
+        <span class="module-name">运营动作追踪</span>
+        <span class="module-tag tag-done">P1</span>
+    </div>
+    <div class="module-desc">记录运营操作（加价/减价/换图等）并衡量效果</div>
+    <div class="module-features">
+        <span class="feature">动作记录</span><span class="feature">效果排行</span><span class="feature">自动提取</span>
+    </div>
+</div>
+
+<div class="module">
+    <div class="module-header">
+        <span class="module-icon">❤️</span>
+        <span class="module-name">商品健康度</span>
+        <span class="module-tag tag-done">P2</span>
+    </div>
+    <div class="module-desc">6维度百分位评分 + 等级分布 + 预警商品（联动①评价分数）</div>
+    <div class="module-features">
+        <span class="feature">销售25%</span><span class="feature">转化20%</span><span class="feature">ROI15%</span>
+        <span class="feature">退款15%</span><span class="feature">增长10%</span><span class="feature">评价15%</span>
+    </div>
+</div>
+
+<div class="module">
+    <div class="module-header">
+        <span class="module-icon">💬</span>
+        <span class="module-name">评价分析</span>
+        <span class="module-tag tag-done">P3</span>
+    </div>
+    <div class="module-desc">评价上传 + 情感分析 + 8维度需求 + 高频词 + 场景提取 + 星级分布</div>
+    <div class="module-features">
+        <span class="feature">拖拽上传</span><span class="feature">情感分布</span><span class="feature">8维度分析</span>
+        <span class="feature">高频词TOP20</span><span class="feature">场景标签</span><span class="feature">评价列表</span>
+        <span class="feature">商品筛选</span>
+    </div>
+</div>
+
+<div class="module">
+    <div class="module-header">
+        <span class="module-icon">🌍</span>
+        <span class="module-name">市场分析</span>
+        <span class="module-tag tag-done">P4</span>
+    </div>
+    <div class="module-desc">关键词洞察 + 8维度需求分析 + 4大行业榜单 + 蓝海机会词</div>
+    <div class="module-features">
+        <span class="feature">关键词TOP50</span><span class="feature">直方图分布</span><span class="feature">需求分析</span>
+        <span class="feature">增长潜力榜</span><span class="feature">综合实力榜</span><span class="feature">头部精选榜</span>
+        <span class="feature">稳定表现榜</span><span class="feature">蓝海词</span>
+    </div>
+</div>
+
+<div class="module">
+    <div class="module-header">
+        <span class="module-icon">🛠</span>
+        <span class="module-name">运营工具箱</span>
+        <span class="module-tag tag-soon">P5 预留</span>
+    </div>
+    <div class="module-desc">右下角浮动按钮 → 抽屉面板，7个创意工具预留接口</div>
+    <div class="module-features">
+        <span class="feature">主图生成</span><span class="feature">详情页复刻</span><span class="feature">详情页优化</span>
+        <span class="feature">评价仿写</span><span class="feature">获取评价</span><span class="feature">获取属性</span><span class="feature">获取详情</span>
+    </div>
+</div>
+
+</div>
+
+<div class="tech-stack">
+    <h3>技术栈</h3>
+    <div class="tech-tags">
+        <span class="tech-tag">Python 3.10</span>
+        <span class="tech-tag">Flask</span>
+        <span class="tech-tag">SQLite (WAL)</span>
+        <span class="tech-tag">ECharts 5.5</span>
+        <span class="tech-tag">jieba 分词</span>
+        <span class="tech-tag">pandas</span>
+        <span class="tech-tag">openpyxl</span>
+        <span class="tech-tag">暗色主题</span>
+        <span class="tech-tag">响应式4断点</span>
+        <span class="tech-tag">UPSERT增量导入</span>
+    </div>
+</div>
+
+<div class="note">
+    💡 <strong>使用说明</strong>：下载项目包后，安装依赖（<code>pip install flask pandas openpyxl jieba pyyaml</code>），
+    运行 <code>python app.py</code>，浏览器打开 <code>http://localhost:5000</code> 即可使用。
+    首次启动数据库为空，需上传 Excel 数据文件导入。
+</div>
+
+</body>
+</html>

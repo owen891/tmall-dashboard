@@ -1,0 +1,136 @@
+    <!-- ========== 空状态占位 ========== -->
+    <div class="empty-state" id="emptyStateMarket" style="display:none;">
+        <div class="empty-icon">&#127758;</div>
+        <h3>暂无市场分析数据</h3>
+        <p>请上传市场分析数据文件（30天搜索 + 7天搜索 + 趋势分析）</p>
+    </div>
+
+    <!-- ========== 模块10: 市场分析 (P4) ========== -->
+    <div class="market-module" id="marketModule">
+        <div class="section-title">市场分析</div>
+
+        <!-- 上传区域（无数据时显示） -->
+        <div class="market-upload-area" id="marketUploadArea">
+            <span class="upload-icon">&#128194;</span>
+            <span class="upload-hint">上传市场分析数据（30天搜索 + 7天搜索 + 趋势分析）</span>
+            <span class="upload-sub">支持拖拽或点击上传，需同时选择3个Excel文件</span>
+            <input type="file" id="marketFileInput" aria-label="上传市场分析 Excel 文件" accept=".xlsx,.xls,.csv" multiple>
+        </div>
+
+        <!-- 报告选择器 + 重新上传（有数据时显示） -->
+        <div class="market-report-selector" id="marketReportSelector" style="display:none;">
+            <select id="marketReportSelect" onchange="onMarketReportChange(this.value)">
+                <option value="">选择分析报告...</option>
+            </select>
+            <button class="re-upload-btn" onclick="triggerMarketReUpload()">&#128228; 重新上传</button>
+            <span id="marketCategoryInfo" style="font-size:0.82rem;color:#64748B;"></span>
+        </div>
+
+        <!-- 概览卡片 -->
+        <div class="market-summary-row" id="marketSummaryRow" style="display:none;">
+            <div class="loading-placeholder" id="marketSummaryLoading">加载中...</div>
+            <div class="market-summary-card">
+                <div class="ms-label">总关键词数</div>
+                <div class="ms-value" id="ms-total-keywords">--</div>
+                <div class="ms-sub" id="ms-top5-keywords"></div>
+            </div>
+            <div class="market-summary-card">
+                <div class="ms-label">上升关键词</div>
+                <div class="ms-value" id="ms-growing" style="color:#10B981;">--</div>
+                <div class="ms-sub" id="ms-top-keyword"></div>
+            </div>
+            <div class="market-summary-card">
+                <div class="ms-label">下降关键词</div>
+                <div class="ms-value" id="ms-declining" style="color:#EF4444;">--</div>
+                <div class="ms-sub" id="ms-periods"></div>
+            </div>
+            <div class="market-summary-card">
+                <div class="ms-label">主要需求维度</div>
+                <div class="ms-value" id="ms-main-dim">--</div>
+                <div class="ms-sub" id="ms-main-dim-count"></div>
+            </div>
+        </div>
+
+        <!-- Tab 导航 -->
+        <div class="market-tabs" id="marketTabs" style="display:none;">
+            <button class="market-tab-btn active" data-tab="keywords" onclick="switchMarketTab('keywords')">关键词洞察</button>
+            <button class="market-tab-btn" data-tab="needs" onclick="switchMarketTab('needs')">需求分析</button>
+            <button class="market-tab-btn" data-tab="rankings" onclick="switchMarketTab('rankings')">行业榜单</button>
+        </div>
+
+        <!-- Tab 1: 关键词洞察 -->
+        <div class="market-tab-content active" id="marketTab-keywords">
+            <div class="market-histogram-grid" id="marketHistogramGrid">
+                <div class="market-histogram-box">
+                    <div class="panel-title">搜索人气分布</div>
+                    <div id="chartMarketHistPop" style="width:100%;height:170px;"></div>
+                </div>
+                <div class="market-histogram-box">
+                    <div class="panel-title">点击率分布</div>
+                    <div id="chartMarketHistCtr" style="width:100%;height:170px;"></div>
+                </div>
+                <div class="market-histogram-box">
+                    <div class="panel-title">支付转化率分布</div>
+                    <div id="chartMarketHistCvr" style="width:100%;height:170px;"></div>
+                </div>
+                <div class="market-histogram-box">
+                    <div class="panel-title">价格分布</div>
+                    <div id="chartMarketHistPrice" style="width:100%;height:170px;"></div>
+                </div>
+            </div>
+            <div class="table-wrapper">
+                <table class="market-keyword-table" id="marketKeywordTable">
+                    <thead>
+                        <tr>
+                            <th data-key="rank" onclick="sortMarketTable('rank')">排名 <span class="sort-icon">--</span></th>
+                            <th data-key="keyword" onclick="sortMarketTable('keyword')">关键词 <span class="sort-icon">--</span></th>
+                            <th data-key="pop_30d" onclick="sortMarketTable('pop_30d')">搜索人气(30天) <span class="sort-icon">--</span></th>
+                            <th data-key="pop_7d" onclick="sortMarketTable('pop_7d')">搜索人气(7天) <span class="sort-icon">--</span></th>
+                            <th data-key="change_pct" onclick="sortMarketTable('change_pct')">变化趋势 <span class="sort-icon">--</span></th>
+                            <th data-key="ctr_7d" onclick="sortMarketTable('ctr_7d')">点击率 <span class="sort-icon">--</span></th>
+                            <th data-key="cvr_30d" onclick="sortMarketTable('cvr_30d')">转化率 <span class="sort-icon">--</span></th>
+                            <th>需求标签</th>
+                            <th>机会分类</th>
+                        </tr>
+                    </thead>
+                    <tbody id="marketKeywordBody">
+                        <tr><td colspan="9" class="market-no-data">暂无数据</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Tab 2: 需求分析 -->
+        <div class="market-tab-content" id="marketTab-needs">
+            <div class="market-need-grid">
+                <div class="market-need-pie-box">
+                    <div class="panel-title">需求维度分布</div>
+                    <div id="chartMarketNeedPie" style="width:100%;height:260px;"></div>
+                </div>
+                <div class="market-dimension-list" id="marketDimensionList">
+                    <div class="market-no-data">暂无数据</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tab 3: 行业榜单 -->
+        <div class="market-tab-content" id="marketTab-rankings">
+            <div class="market-ranking-tabs">
+                <button class="market-ranking-tab-btn active" data-rank="growth" onclick="switchRankingTab('growth')">增长潜力榜</button>
+                <button class="market-ranking-tab-btn" data-rank="overall" onclick="switchRankingTab('overall')">综合实力榜</button>
+                <button class="market-ranking-tab-btn" data-rank="top" onclick="switchRankingTab('top')">头部精选榜</button>
+                <button class="market-ranking-tab-btn" data-rank="stab" onclick="switchRankingTab('stab')">稳定表现榜</button>
+            </div>
+            <div class="market-ranking-cards" id="marketRankingCards">
+                <div class="market-no-data" style="grid-column:1/-1;">暂无数据</div>
+            </div>
+        </div>
+
+        <!-- 蓝海机会 -->
+        <div style="margin-top:16px;">
+            <div class="section-title">蓝海机会词</div>
+            <div class="market-opportunity-list" id="marketOpportunityList">
+                <div class="market-no-data">暂无数据</div>
+            </div>
+        </div>
+    </div>

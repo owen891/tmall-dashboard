@@ -1,0 +1,271 @@
+import os
+import sys
+import tempfile
+import unittest
+import sqlite3
+import atexit
+import subprocess
+
+from flask import Flask
+
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
+
+_TEST_DATA_DIR = tempfile.TemporaryDirectory(prefix='tmall-dashboard-factory-tests-')
+atexit.register(_TEST_DATA_DIR.cleanup)
+os.environ.setdefault('TMALL_DB_PATH', os.path.join(_TEST_DATA_DIR.name, 'dashboard.db'))
+
+
+class AppFactoryTests(unittest.TestCase):
+    def test_importing_app_factory_does_not_initialize_database(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            database_path = os.path.join(temp_dir, 'lazy.db')
+            environment = os.environ.copy()
+            environment['TMALL_DB_PATH'] = database_path
+            subprocess.run(
+                [sys.executable, '-c', 'import app'],
+                check=True,
+                cwd=PROJECT_ROOT,
+                env=environment,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            )
+            self.assertFalse(os.path.exists(database_path))
+
+    def test_existing_goal_lock_table_is_migrated_for_year_and_quarter_locks(self):
+        path = os.path.join(_TEST_DATA_DIR.name, 'legacy-locks.db')
+        conn = sqlite3.connect(path)
+        conn.execute("CREATE TABLE goal_locks (id INTEGER PRIMARY KEY AUTOINCREMENT, year INTEGER NOT NULL, period_type TEXT NOT NULL CHECK(period_type IN ('month','week','date')), period_key TEXT NOT NULL, version INTEGER NOT NULL, locked_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, UNIQUE(year, period_type, period_key))")
+        conn.commit(); conn.close()
+        from db import init_db
+        init_db(path)
+        conn = sqlite3.connect(path)
+        ddl = conn.execute("SELECT sql FROM sqlite_master WHERE name='goal_locks'").fetchone()[0]
+        conn.close()
+        self.assertIn("'quarter'", ddl)
+        self.assertIn("'year'", ddl)
+    def test_factory_database_path_does_not_mutate_process_environment(self):
+        from app import create_app
+
+        original_path = os.environ.get('TMALL_DB_PATH')
+        with tempfile.TemporaryDirectory() as temp_dir:
+            database_path = os.path.join(temp_dir, 'factory-test.db')
+            app = create_app({
+                'TESTING': True,
+                'DATABASE_PATH': database_path,
+            })
+
+        self.assertEqual(app.config['DATABASE_PATH'], database_path)
+        self.assertEqual(os.environ.get('TMALL_DB_PATH'), original_path)
+
+    def test_explicit_sqlalchemy_sqlite_uri_is_the_single_database_source(self):
+        from app import create_app
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            uri_path = os.path.join(temp_dir, 'orm.db')
+            stale_path = os.path.join(temp_dir, 'stale.db')
+            app = create_app({
+                'TESTING': True,
+                'DATABASE_PATH': stale_path,
+                'SQLALCHEMY_DATABASE_URI': f"sqlite:///{uri_path.replace(os.sep, '/')}",
+            })
+
+            self.assertEqual(app.config['DATABASE_PATH'], os.path.abspath(uri_path))
+            self.assertTrue(os.path.exists(uri_path))
+            self.assertFalse(os.path.exists(stale_path))
+
+    def test_explicit_relative_sqlalchemy_uri_stays_relative_to_working_directory(self):
+        from app import create_app
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            original_cwd = os.getcwd()
+            os.chdir(temp_dir)
+            try:
+                app = create_app({
+                    'TESTING': True,
+                    'SQLALCHEMY_DATABASE_URI': 'sqlite:///relative.db',
+                })
+            finally:
+                os.chdir(original_cwd)
+
+            expected = os.path.abspath(os.path.join(temp_dir, 'relative.db'))
+            self.assertEqual(app.config['DATABASE_PATH'], expected)
+            self.assertTrue(os.path.exists(expected))
+
+    def test_lan_requests_require_configured_basic_authentication(self):
+        from app import create_app
+
+        app = create_app({
+            'TESTING': True,
+            'DASHBOARD_USERNAME': 'operator',
+            'DASHBOARD_PASSWORD': 'correct-horse',
+        })
+        client = app.test_client()
+        denied = client.get('/api/status', environ_overrides={'REMOTE_ADDR': '192.168.10.20'})
+        allowed = client.get(
+            '/api/status',
+            headers={'Authorization': 'Basic b3BlcmF0b3I6Y29ycmVjdC1ob3JzZQ=='},
+            environ_overrides={'REMOTE_ADDR': '192.168.10.20'},
+        )
+
+        self.assertEqual(denied.status_code, 401)
+        self.assertEqual(denied.headers['WWW-Authenticate'], 'Basic realm="tmall-dashboard"')
+        self.assertEqual(allowed.status_code, 200)
+
+    def test_lan_requests_are_denied_when_credentials_are_not_configured(self):
+        from app import create_app
+
+        app = create_app({
+            'TESTING': True,
+            'DASHBOARD_USERNAME': None,
+            'DASHBOARD_PASSWORD': None,
+        })
+        response = app.test_client().get('/healthz', environ_overrides={'REMOTE_ADDR': '192.168.10.20'})
+
+        self.assertEqual(response.status_code, 503)
+        self.assertEqual(response.get_json()['code'], 'AUTH_CONFIGURATION_REQUIRED')
+
+    def test_loopback_request_with_forwarded_client_header_does_not_bypass_auth(self):
+        from app import create_app
+
+        app = create_app({'TESTING': True, 'DASHBOARD_USERNAME': None, 'DASHBOARD_PASSWORD': None})
+        response = app.test_client().get(
+            '/healthz',
+            headers={'X-Forwarded-For': '192.168.10.20'},
+            environ_overrides={'REMOTE_ADDR': '127.0.0.1'},
+        )
+        self.assertEqual(response.status_code, 503)
+        self.assertEqual(response.get_json()['code'], 'AUTH_CONFIGURATION_REQUIRED')
+
+    def test_create_app_returns_configurable_flask_app(self):
+        from app import create_app
+
+        app = create_app({'TESTING': True})
+
+        self.assertIsInstance(app, Flask)
+        self.assertTrue(app.testing)
+
+    def test_factory_keeps_dashboard_entrypoint(self):
+        from app import create_app
+
+        with create_app({'TESTING': True}).test_client() as client:
+            response = client.get('/')
+            self.assertEqual(response.status_code, 200)
+            self.assertIn('天猫'.encode('utf-8'), response.data)
+            response.close()
+
+
+    def test_legacy_dashboard_remains_available(self):
+        from app import create_app
+        with create_app({'TESTING': True}).test_client() as client:
+            response = client.get('/legacy/')
+            self.assertEqual(response.status_code, 200)
+            response.close()
+
+    def test_demo_manifest_lists_active_pages(self):
+        from app import create_app
+        with create_app({'TESTING': True}).test_client() as client:
+            response = client.get('/api/demo/manifest')
+            payload = response.get_json()
+            response.close()
+        self.assertEqual(payload['data_mode'], 'api')
+        self.assertEqual(
+            {page['id'] for page in payload['pages']},
+            {'overview', 'products', 'promotion', 'lifecycle', 'reviews', 'data-center', 'settings'},
+        )
+        lifecycle = next(page for page in payload['pages'] if page['id'] == 'lifecycle')
+        self.assertEqual(lifecycle['data'], 'api')
+        reviews = next(page for page in payload['pages'] if page['id'] == 'reviews')
+        self.assertEqual(reviews['data'], 'api')
+        data_center = next(page for page in payload['pages'] if page['id'] == 'data-center')
+        self.assertEqual(data_center['data'], 'api')
+        settings = next(page for page in payload['pages'] if page['id'] == 'settings')
+        self.assertEqual(settings['data'], 'api')
+        products = next(page for page in payload['pages'] if page['id'] == 'products')
+        self.assertEqual(products['data'], 'api')
+        promotion = next(page for page in payload['pages'] if page['id'] == 'promotion')
+        self.assertEqual(promotion['data'], 'api')
+        self.assertEqual(payload['version'], '1.0.0')
+
+    def test_factory_serves_the_streamlined_frontend_pages(self):
+        from app import create_app
+
+        with create_app({'TESTING': True}).test_client() as client:
+            for path in ('/', '/products', '/promotion', '/lifecycle', '/reviews', '/data-center', '/settings'):
+                with self.subTest(path=path):
+                    response = client.get(path)
+                    self.assertEqual(response.status_code, 200)
+                    self.assertIn(b'<!doctype html>', response.data.lower())
+                    response.close()
+
+    def test_dashboard_pages_and_assets_do_not_serve_stale_frontend_code(self):
+        from app import create_app
+
+        with create_app({'TESTING': True}).test_client() as client:
+            for path in ('/promotion', '/assets/shell.js', '/assets/promotion-live.js'):
+                with self.subTest(path=path):
+                    response = client.get(path)
+                    self.assertEqual(response.status_code, 200)
+                    self.assertIn('no-store', response.headers.get('Cache-Control', ''))
+                    response.close()
+
+    def test_security_headers_are_present_on_dashboard_responses(self):
+        from app import create_app
+
+        with create_app({'TESTING': True}).test_client() as client:
+            response = client.get('/healthz')
+        self.assertEqual(response.headers.get('X-Content-Type-Options'), 'nosniff')
+        self.assertEqual(response.headers.get('X-Frame-Options'), 'SAMEORIGIN')
+        self.assertEqual(response.headers.get('Referrer-Policy'), 'strict-origin-when-cross-origin')
+
+    def test_legacy_workbench_routes_redirect_to_their_prd_owners(self):
+        from app import create_app
+
+        with create_app({'TESTING': True}).test_client() as client:
+            compare_response = client.get('/compare', follow_redirects=False)
+            manage_response = client.get('/manage', follow_redirects=False)
+            self.assertIn(compare_response.status_code, {301, 302, 307, 308})
+            self.assertEqual(compare_response.headers['Location'], '/reviews')
+            self.assertIn(manage_response.status_code, {301, 302, 307, 308})
+            self.assertEqual(manage_response.headers['Location'], '/settings')
+            compare_response.close()
+            manage_response.close()
+
+    def test_manifest_uses_formal_routes(self):
+        from app import create_app
+
+        with create_app({'TESTING': True}).test_client() as client:
+            response = client.get('/api/demo/manifest')
+            payload = response.get_json()
+            response.close()
+        self.assertEqual(
+            [page['path'] for page in payload['pages']],
+            ['/', '/products', '/promotion', '/lifecycle', '/reviews', '/data-center', '/settings'],
+        )
+
+    def test_health_check_confirms_database_connectivity(self):
+        from app import create_app
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            database_path = os.path.join(temp_dir, 'health-check.db')
+            app = create_app({'TESTING': False, 'DATABASE_PATH': database_path})
+            with app.test_client() as client:
+                response = client.get('/healthz')
+                payload = response.get_json()
+                response.close()
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(payload['ok'])
+        self.assertEqual(payload['data']['database'], 'ok')
+        self.assertEqual(payload['data']['service'], 'tmall-dashboard')
+
+    def test_wsgi_module_exposes_factory_application(self):
+        from wsgi import application
+
+        self.assertIsInstance(application, Flask)
+        self.assertFalse(application.debug)
+
+
+if __name__ == '__main__':
+    unittest.main(verbosity=2)
