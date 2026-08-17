@@ -498,8 +498,8 @@
     const overviewParams = new URLSearchParams({ start: state.startDate, end: state.endDate });
     const requests = [
       DemoApi.domainRequest('/api/overview?' + overviewParams.toString()),
-      Promise.resolve(monthlyTrend),
-      DemoApi.request(`/api/products?dim=monthly&period=${encodeURIComponent(period)}&limit=5&sort=payment_amount&order=desc`),
+      DemoApi.request(`/api/trend?dim=daily${range}`),
+      DemoApi.request(`/api/products?dim=daily&limit=5&sort=payment_amount&order=desc${range}`),
       DemoApi.request(`/api/target_progress?dim=monthly&period=${encodeURIComponent(period)}`),
       DemoApi.request(`/api/anomalies?dim=monthly&period=${encodeURIComponent(period)}&prev_period=${encodeURIComponent(prev)}`)
         .catch((error) => { console.error(error); return []; }),
