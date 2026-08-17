@@ -810,3 +810,4 @@
   window.addEventListener('tmall:refresh', () => load());
   DemoLabels.load().then(() => { fillAssessmentOptions(); load(); });
 })();
+

@@ -935,6 +935,9 @@ def get_products():
     offset = max(0, request.args.get('offset', 0, type=int) or 0)
     tier = request.args.get('tier', '')
     style = request.args.get('style', '')
+    product_type = request.args.get('product_type', '')
+    product_time_node = request.args.get('product_time_node', '')
+    product_growth_stage = request.args.get('product_growth_stage', '')
     search = request.args.get('search', '')
     product_id = request.args.get('product_id', '')
     status_filter = request.args.get('status', '')
@@ -976,7 +979,31 @@ def get_products():
         if shop_id == 'default' else '0'
     )
 
+    requested_period = period
     with get_db() as conn:
+        # 当前派米数据源提供的是月度事实。未指定月份时，使用最新可用月。
+        # 对于当前月或历史月份，若该月尚未导入，则回退到不晚于请求月份的最新可用月；
+        # 对明显未来的月份不回退，保留无事实数据的 partial 语义，避免把旧数据伪装成未来数据。
+        if dimension == 'monthly':
+            latest_period_row = conn.execute('SELECT MAX(month) AS latest_period FROM monthly_data').fetchone()
+            latest_period = (latest_period_row['latest_period'] if latest_period_row else '') or ''
+            if not period:
+                period = latest_period
+            elif not conn.execute('SELECT 1 FROM monthly_data WHERE month = ? LIMIT 1', (period,)).fetchone():
+                try:
+                    requested_month = datetime.strptime(period, '%Y-%m')
+                    current_month = datetime.now().replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+                except (TypeError, ValueError):
+                    requested_month = None
+                    current_month = None
+                if requested_month is not None and requested_month <= current_month:
+                    fallback_row = conn.execute(
+                        'SELECT MAX(month) AS latest_period FROM monthly_data WHERE month <= ?',
+                        (period,),
+                    ).fetchone()
+                    fallback_period = (fallback_row['latest_period'] if fallback_row else '') or ''
+                    if fallback_period:
+                        period = fallback_period
 
         # monthly_data 独有的列（daily/weekly表不存在）
         _monthly_ad_cols = '''COALESCE(d.overall_roi, 0) as overall_roi,
@@ -1126,6 +1153,15 @@ def get_products():
         if style:
             where_clauses.append('p.style = ?')
             where_params.append(style)
+        if product_type:
+            where_clauses.append('p.product_type = ?')
+            where_params.append(product_type)
+        if product_time_node:
+            where_clauses.append('p.product_time_node = ?')
+            where_params.append(product_time_node)
+        if product_growth_stage:
+            where_clauses.append('p.product_growth_stage = ?')
+            where_params.append(product_growth_stage)
         if lifecycle_stage:
             where_clauses.append("COALESCE(lp.manual_stage, lp.recommended_stage, '') = ?")
             where_params.append(lifecycle_stage)
@@ -1149,6 +1185,7 @@ def get_products():
         query = f'''
             SELECT p.product_id, p.title, p.tier, p.style, p.scene, p.status, p.image_url,
                    p.category, p.list_date, p.remark, p.manager,
+                   p.product_type, p.product_tags, p.product_growth_stage, p.product_time_node,
                    CASE WHEN d.product_id IS NOT NULL THEN 1 ELSE 0 END as has_data,
                    COALESCE(p.starred, 0) as starred,
                    COALESCE(lp.manual_stage, lp.recommended_stage) as lifecycle_stage,
@@ -1267,7 +1304,11 @@ def get_products():
         total_count = total_row['total'] if total_row else 0
 
         facets = {}
-        for facet_name, column in [('tiers', 'tier'), ('styles', 'style'), ('statuses', 'status')]:
+        for facet_name, column in [
+            ('tiers', 'tier'), ('styles', 'style'), ('statuses', 'status'),
+            ('product_types', 'product_type'), ('product_time_nodes', 'product_time_node'),
+            ('product_growth_stages', 'product_growth_stage'),
+        ]:
             facets[facet_name] = [
                 r[column] for r in conn.execute(
                     f"SELECT DISTINCT {column} FROM products WHERE {column} IS NOT NULL AND TRIM({column}) != '' ORDER BY {column}"
@@ -1315,7 +1356,7 @@ def get_products():
             for row in rows:
                     row['changes'] = {}
 
-    result = {'rows': rows, 'total': total_count, 'limit': limit, 'offset': offset, 'facets': facets}
+    result = {'rows': rows, 'total': total_count, 'limit': limit, 'offset': offset, 'facets': facets, 'period': period or None, 'requested_period': requested_period or None}
     observed_rows = sum(int(row.get('has_data') or 0) for row in rows)
     availability = 'no-data' if not rows else 'available' if observed_rows == len(rows) else 'partial'
     missing_inputs = [] if observed_rows == len(rows) else ['product_daily']

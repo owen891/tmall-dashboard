@@ -452,3 +452,4 @@
 
   window.ProductDetailDialog = { open, close };
 })();
+
