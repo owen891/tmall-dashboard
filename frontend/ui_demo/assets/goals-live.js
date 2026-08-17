@@ -1,184 +1,218 @@
 (function () {
   const form = document.querySelector('[data-goals-form]');
-  const adjustForm = document.querySelector('[data-goals-adjust-form]');
   const status = document.querySelector('[data-goals-status]');
-  const months = document.querySelector('[data-goals-months]');
-  const levels = document.querySelector('[data-goals-levels]');
+  const previewBody = document.querySelector('[data-goals-allocation-preview]');
+  const monthsBody = document.querySelector('[data-goals-months]');
   const versionLabel = document.querySelector('[data-goals-version]');
+  const previewBasis = document.querySelector('[data-goals-allocation-basis]');
   const suggestButton = document.querySelector('[data-goals-suggest]');
-  const levelFilter = document.querySelector('[data-goals-level-filter]');
-  const periodPicker = document.querySelector('[data-goals-period-picker]');
-  const adjustGate = document.querySelector('[data-goals-adjust-gate]');
-  const adjustHelp = document.querySelector('[data-goals-adjust-help]');
-  const suggestionSource = document.querySelector('[data-goals-suggestion-source]');
   let current = null;
-  let goalCapabilities = {};
+  let capabilities = {};
   let settings = { annual_target_default: 0, growth_multiplier: 1.1 };
-  let loadToken = 0;
+  let previewToken = 0;
+  let previewTimer = null;
+  let annualTargetDirty = false;
 
   const money = (value) => Number(value || 0).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-  const setStatus = (message) => { if (status) status.textContent = message || ''; };
+  const setStatus = (message) => {
+    status.classList.remove('data-state');
+    status.textContent = message || '';
+  };
   const renderDataState = (state, details = {}) => DemoApi.renderDataState(status, state, details);
+  const setTableMessage = (body, colspan, message) => { body.replaceChildren(); const row = body.insertRow(); const cell = row.insertCell(); cell.colSpan = colspan; cell.textContent = message; };
+  const canEdit = () => !Object.keys(capabilities).length || DemoApi.can({ capabilities }, 'can_edit');
+  const canLock = () => !Object.keys(capabilities).length || DemoApi.can({ capabilities }, 'can_lock');
 
-  function renderSettingsSummary() {
-    const configuredTarget = Number(settings.annual_target_default || 0);
-    document.querySelector('[data-goals-settings-summary="annual_target"]')?.replaceChildren(document.createTextNode(configuredTarget > 0 ? `¥${money(configuredTarget)}` : '未配置'));
-    document.querySelector('[data-goals-settings-summary="growth_multiplier"]')?.replaceChildren(document.createTextNode(`${Number(settings.growth_multiplier || 1).toFixed(2)} 倍`));
+  function makeIconButton(icon, label, action) {
+    const button = document.createElement('button');
+    button.className = 'button button--ghost button--icon';
+    button.type = 'button';
+    button.title = label;
+    button.setAttribute('aria-label', label);
+    button.innerHTML = `<i data-lucide="${icon}"></i>`;
+    button.addEventListener('click', action);
+    return button;
   }
 
-  function setAdjustEnabled(enabled) {
-    adjustForm?.querySelectorAll('input, select, button').forEach((control) => { control.disabled = !enabled; });
-    if (adjustGate) { adjustGate.textContent = enabled ? '可调整' : '等待年度目标'; adjustGate.className = `badge ${enabled ? 'badge--success' : 'badge--muted'}`; }
-    if (adjustHelp) adjustHelp.textContent = enabled ? '调整只会重新分配未锁定日期' : '请先生成该年度目标';
-  }
-
-  function renderLevels(payload) {
-    if (!levels) return;
-    const actual = payload.actual || {};
-    const locked = new Set((current?.locks || []).map((item) => `${item.period_type}:${item.period_key}`));
-    const selectedGrain = levelFilter?.value || 'month';
-    const rows = Object.entries(payload.levels || {}).flatMap(([grain, values]) => grain === 'year'
-      ? [[grain, String(payload.year), values]]
-      : Object.entries(values).map(([key, amount]) => [grain, key, amount])).filter(([grain]) => grain === selectedGrain);
-    levels.replaceChildren(...rows.map(([grain, key, target]) => {
+  function renderPreview(data) {
+    const basis = data.allocation_basis || '等待年度目标';
+    previewBasis.textContent = basis;
+    previewBasis.className = `badge ${basis === '去年同期销售占比' ? 'badge--success' : 'badge--muted'}`;
+    previewBody.replaceChildren(...(data.months || []).map((month) => {
       const row = document.createElement('tr');
-      const done = grain === 'year' ? Number(actual?.year || 0) : Number(actual?.[grain]?.[key] || 0);
-      const rate = Number(target) ? `${(done / Number(target) * 100).toFixed(1)}%` : '--';
-      [({ year: '年', quarter: '季', month: '月', week: '周', date: '日' }[grain] || grain), key, money(target), money(done), rate, locked.has(`${grain}:${key}`) ? '是' : '否']
-        .forEach((value, index) => { const cell = row.insertCell(); cell.textContent = value; if (index > 1) cell.className = 'num'; });
+      [month.period_key, money(month.prior_year_net_sales), month.allocation_ratio == null ? '--' : `${(month.allocation_ratio * 100).toFixed(2)}%`, money(month.suggested_target)]
+        .forEach((value, index) => { const cell = row.insertCell(); cell.textContent = value; if (index > 0) cell.className = 'num'; });
       return row;
     }));
-    if (!rows.length) levels.innerHTML = '<tr><td colspan="6">暂无目标数据</td></tr>';
+    if (!data.months?.length) setTableMessage(previewBody, 4, '没有可用于预览的月份');
   }
 
-  function configurePeriodPicker() {
-    if (!periodPicker || !adjustForm) return;
-    const type = adjustForm.elements.period_type.value;
-    const inputType = { date: 'date', week: 'week', month: 'month' }[type] || 'text';
-    periodPicker.type = inputType;
-    periodPicker.placeholder = inputType === 'text' ? (type === 'quarter' ? 'YYYY-Qn，例如 2026-Q3' : 'YYYY，例如 2026') : '';
-    periodPicker.pattern = type === 'quarter' ? '\\d{4}-Q[1-4]' : type === 'year' ? '\\d{4}' : '';
-    periodPicker.value = '';
+  async function loadPreview() {
+    const annualTarget = Number(form.elements.annual_target.value);
+    const year = Number(form.elements.year.value);
+    if (!Number.isFinite(annualTarget) || annualTarget < 0 || !Number.isInteger(year)) {
+      previewBasis.textContent = '等待年度目标';
+      previewBasis.className = 'badge badge--muted';
+      setTableMessage(previewBody, 4, '输入年度总目标后显示分配预览');
+      return;
+    }
+    const token = ++previewToken;
+    setTableMessage(previewBody, 4, '正在计算分配预览');
+    try {
+      const response = await DemoApi.domainRequest(`/api/goals/${year}/allocation-preview?annual_target=${encodeURIComponent(annualTarget)}`);
+      if (token !== previewToken) return;
+      renderPreview(response.data);
+    } catch (error) {
+      if (token !== previewToken) return;
+      previewBasis.textContent = '预览失败';
+      previewBasis.className = 'badge badge--danger';
+      setTableMessage(previewBody, 4, error.message || '分配预览失败');
+    }
   }
 
-  function prepareMonthAdjustment(month) {
-    if (!adjustForm || !current) return;
-    adjustForm.elements.period_type.value = 'month';
-    configurePeriodPicker();
-    periodPicker.value = month.period_key;
-    adjustForm.elements.target_amount.value = Number(month.target_amount).toFixed(2);
-    adjustForm.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    adjustForm.elements.target_amount.focus();
+  function queuePreview() {
+    window.clearTimeout(previewTimer);
+    previewTimer = window.setTimeout(loadPreview, 180);
+  }
+
+  function renderMonths(periods) {
+    const locked = new Set(periods.locked_months || []);
+    monthsBody.replaceChildren(...(periods.months || []).map((month) => {
+      const row = document.createElement('tr');
+      const completeLocked = locked.has(month.period_key);
+      const monthCell = row.insertCell(); monthCell.textContent = month.period_key;
+      const targetCell = row.insertCell(); targetCell.className = 'num';
+      const input = document.createElement('input');
+      input.className = 'input goals-month-target';
+      input.name = 'target_amount';
+      input.type = 'number';
+      input.min = '0';
+      input.step = '0.01';
+      input.inputMode = 'decimal';
+      input.value = Number(month.target_amount).toFixed(2);
+      input.setAttribute('data-goals-month-target', month.period_key);
+      input.disabled = completeLocked || !canEdit();
+      input.setAttribute('aria-label', `${month.period_key}月度目标`);
+      targetCell.append(input);
+      const sourceCell = row.insertCell();
+      const source = document.createElement('span');
+      source.className = `badge ${month.source === 'manual' ? 'badge--warning' : 'badge--muted'}`;
+      source.textContent = month.source === 'manual' ? '手动调整' : '自动分配';
+      sourceCell.append(source);
+      const stateCell = row.insertCell();
+      const state = document.createElement('span');
+      state.className = `badge ${completeLocked ? 'badge--muted' : 'badge--success'}`;
+      state.textContent = completeLocked ? '已锁定' : '可编辑';
+      stateCell.append(state);
+      const actionsCell = row.insertCell();
+      if (completeLocked) {
+        actionsCell.textContent = '--';
+      } else {
+        const actions = document.createElement('div'); actions.className = 'goals-month-actions';
+        const save = makeIconButton('save', '保存本月目标', () => saveMonth(month.period_key, input));
+        const lock = makeIconButton('lock', '锁定本月目标', () => lockMonth(month.period_key));
+        save.disabled = !canEdit();
+        lock.disabled = !canLock();
+        actions.append(save, lock); actionsCell.append(actions);
+      }
+      return row;
+    }));
+    if (!periods.months?.length) setTableMessage(monthsBody, 5, '该年度尚未创建目标');
+    window.lucide?.createIcons();
+  }
+
+  async function load(year, replaceAnnualTarget = false) {
+    renderDataState('loading', { message: '正在加载年度目标' });
+    setTableMessage(monthsBody, 5, '正在加载月度执行计划');
+    try {
+      const goal = await DemoApi.domainRequest(`/api/goals/${year}`);
+      current = goal.data;
+      capabilities = goal.capabilities || {};
+      const periods = await DemoApi.domainRequest(`/api/goals/${year}/periods`);
+      renderMonths(periods.data);
+      versionLabel.textContent = `当前版本 ${current.version}，年度合计 ¥${money(current.annual_total)}`;
+      if (replaceAnnualTarget || !annualTargetDirty) form.elements.annual_target.value = Number(current.annual_total).toFixed(2);
+      queuePreview();
+    } catch (error) {
+      current = null; capabilities = {};
+      versionLabel.textContent = '该年度尚未创建目标';
+      if (error.status === 404) {
+        renderDataState('no-data', { message: '保存年度目标后显示月度执行计划' });
+        setTableMessage(monthsBody, 5, '保存年度目标后显示月度执行计划');
+      } else {
+        renderDataState('calculation-failed', { message: error.message || '目标加载失败', retry: () => load(year, replaceAnnualTarget) });
+        setTableMessage(monthsBody, 5, error.message || '目标加载失败');
+      }
+      queuePreview();
+    }
+  }
+
+  async function saveMonth(periodKey, input) {
+    if (!current || input.disabled) return;
+    const targetAmount = Number(input.value);
+    if (!Number.isFinite(targetAmount) || targetAmount < 0) { setStatus('请输入有效的月度目标金额'); input.focus(); return; }
+    input.disabled = true;
+    try {
+      const response = await DemoApi.domainRequest(`/api/goals/${current.year}/adjustments`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ version: current.version, period_type: 'month', period_key: periodKey, target_amount: targetAmount, operator: '运营人员', reason: `月度目标调整：${periodKey}` }),
+      });
+      setStatus(`已保存 ${periodKey}，当前版本 ${response.data.version}`);
+      await load(current.year);
+    } catch (error) { input.disabled = false; setStatus(error.message || '月度目标保存失败'); }
+  }
+
+  async function lockMonth(periodKey) {
+    if (!current || !canLock()) { setStatus('当前目标不允许锁定'); return; }
+    try {
+      const response = await DemoApi.domainRequest(`/api/goals/${current.year}/locks`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ version: current.version, period_type: 'month', period_key: periodKey }),
+      });
+      setStatus(`已锁定 ${periodKey}，当前版本 ${response.data.version}`);
+      await load(current.year);
+    } catch (error) { setStatus(error.message || '月份锁定失败'); }
   }
 
   async function loadSettings() {
     try {
       const response = await DemoApi.domainRequest('/api/settings');
       settings = { ...settings, ...(response.data || {}) };
-    } catch (error) {
-      setStatus(`设置默认值加载失败，已使用页面默认值：${error.message}`);
-    }
-    form.elements.growth_multiplier.value = settings.growth_multiplier || 1.1;
+    } catch (_) { setStatus('未能读取设置默认值，已使用页面默认值'); }
+    form.elements.growth_multiplier.value = Number(settings.growth_multiplier || 1.1).toFixed(2);
     if (!form.elements.annual_target.value && Number(settings.annual_target_default) > 0) form.elements.annual_target.value = settings.annual_target_default;
-    renderSettingsSummary();
-  }
-
-  async function load(year) {
-    const token = ++loadToken;
-    setAdjustEnabled(false);
-    renderDataState('loading');
-    try {
-      const response = await DemoApi.domainRequest(`/api/goals/${year}`);
-      if (token !== loadToken) return;
-      current = response.data;
-      goalCapabilities = response.capabilities || {};
-      const periodResponse = await DemoApi.domainRequest(`/api/goals/${year}/periods`);
-      if (token !== loadToken) return;
-      const availability = response.availability || periodResponse.availability || 'available';
-      if (availability !== 'available') renderDataState(availability, { message: '部分目标数据不可用，请检查目标来源和周期配置。' });
-      renderLevels(periodResponse.data);
-      const locked = new Set(current.locks.filter((item) => item.period_type === 'month').map((item) => item.period_key));
-      months.replaceChildren(...periodResponse.data.months.map((month) => {
-        const row = document.createElement('tr');
-        row.innerHTML = `<td>${month.period_key}</td><td class="num">${money(month.target_amount)}</td>`;
-        const cell = row.insertCell();
-        if (locked.has(month.period_key)) {
-          const badge = document.createElement('span'); badge.className = 'badge badge--muted'; badge.textContent = '已锁定'; cell.appendChild(badge);
-        } else {
-          const actions = document.createElement('div'); actions.className = 'goals-month-actions';
-          const editButton = document.createElement('button'); editButton.className = 'button button--ghost'; editButton.type = 'button'; editButton.textContent = '调整'; editButton.addEventListener('click', () => prepareMonthAdjustment(month));
-          const lockButton = document.createElement('button'); lockButton.className = 'button button--ghost'; lockButton.type = 'button'; lockButton.textContent = '锁定'; lockButton.addEventListener('click', () => lockMonth(month.period_key));
-          actions.append(editButton, lockButton); cell.appendChild(actions);
-        }
-        return row;
-      }));
-      versionLabel.textContent = `版本 ${current.version}，年度合计 ¥${money(current.annual_total)}`;
-      form.elements.annual_target.value = current.annual_total;
-      setAdjustEnabled(true);
-      if (availability === 'available') setStatus('');
-    } catch (error) {
-      if (token !== loadToken) return;
-      current = null; goalCapabilities = {};
-      months.innerHTML = '<tr><td colspan="3">该年度尚未创建目标</td></tr>';
-      levels.innerHTML = '<tr><td colspan="6">生成年度目标后显示周期目标</td></tr>';
-      versionLabel.textContent = '该年度尚未创建目标';
-      renderDataState(error.status === 404 ? 'no-data' : 'calculation-failed', {
-        message: error.message || '目标加载失败',
-        retry: () => load(Number(form.elements.year.value)),
-      });
-    }
-  }
-
-  async function lockMonth(periodKey) {
-    if (!current) return;
-    if (Object.keys(goalCapabilities).length && !DemoApi.can({ capabilities: goalCapabilities }, 'can_lock')) { setStatus('当前目标不允许锁定'); return; }
-    try {
-      await DemoApi.domainRequest(`/api/goals/${current.year}/locks`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ version: current.version, period_type: 'month', period_key: periodKey }) });
-      await load(current.year);
-    } catch (error) { setStatus(error.message); }
   }
 
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
-    if (Object.keys(goalCapabilities).length && !DemoApi.can({ capabilities: goalCapabilities }, 'can_edit')) { setStatus('当前目标不允许修改'); return; }
-    const data = new FormData(form);
-    const payload = { year: Number(data.get('year')), annual_target: Number(data.get('annual_target')), growth_multiplier: Number(data.get('growth_multiplier')), operator: '运营人员', reason: '按年度配置生成目标' };
-    if (current?.year === payload.year) payload.version = current.version;
+    const year = Number(form.elements.year.value);
+    const annualTarget = Number(form.elements.annual_target.value);
+    if (!Number.isFinite(annualTarget) || annualTarget < 0) { setStatus('请输入有效的年度总目标'); return; }
+    const payload = { year, annual_target: annualTarget, growth_multiplier: Number(form.elements.growth_multiplier.value), operator: '运营人员', reason: '按去年同期销售占比生成年度目标' };
+    if (current?.year === year) payload.version = current.version;
     try {
       const response = await DemoApi.domainRequest('/api/goals', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-      setStatus(`已生成版本 ${response.data.version}，按去年同期销售占比拆解到日`);
-      await load(payload.year);
-    } catch (error) { setStatus(error.message); }
+      setStatus(`年度目标已保存，当前版本 ${response.data.version}`);
+      annualTargetDirty = false;
+      await load(year, true);
+    } catch (error) { setStatus(error.message || '年度目标保存失败'); }
   });
 
-  suggestButton?.addEventListener('click', async () => {
+  suggestButton.addEventListener('click', async () => {
+    const year = Number(form.elements.year.value);
+    const multiplier = Number(form.elements.growth_multiplier.value);
     try {
-      const year = Number(form.elements.year.value);
-      const multiplier = Number(form.elements.growth_multiplier.value);
-      const response = await DemoApi.domainRequest(`/api/goals/${year}/suggestion?growth_multiplier=${multiplier}`);
+      const response = await DemoApi.domainRequest(`/api/goals/${year}/suggestion?growth_multiplier=${encodeURIComponent(multiplier)}`);
       form.elements.suggested_annual_target.value = Number(response.data.suggested_annual_target).toFixed(2);
-      form.elements.annual_target.value = response.data.suggested_annual_target;
-      if (suggestionSource) suggestionSource.textContent = `去年净销售额 ¥${money(response.data.prior_year_net_sales)} × ${multiplier.toFixed(2)} 倍`;
-      setStatus('建议值已带入年度目标，请确认后生成');
-    } catch (error) { setStatus(error.message); }
+      form.elements.annual_target.value = Number(response.data.suggested_annual_target).toFixed(2);
+      annualTargetDirty = true;
+      document.querySelector('[data-goals-suggestion-source]').textContent = `去年净销售额 ¥${money(response.data.prior_year_net_sales)} × ${multiplier.toFixed(2)} 倍`;
+      queuePreview();
+    } catch (error) { setStatus(error.message || '建议值生成失败'); }
   });
 
-  adjustForm?.addEventListener('submit', async (event) => {
-    event.preventDefault();
-    if (!current) { setStatus('请先生成该年度目标'); return; }
-    if (Object.keys(goalCapabilities).length && !DemoApi.can({ capabilities: goalCapabilities }, 'can_edit')) { setStatus('当前目标不允许调整'); return; }
-    const data = new FormData(adjustForm);
-    try {
-      const response = await DemoApi.domainRequest(`/api/goals/${current.year}/adjustments`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ version: current.version, period_type: data.get('period_type'), period_key: data.get('period_key'), target_amount: Number(data.get('target_amount')), operator: data.get('operator'), reason: data.get('reason'), lock: data.get('lock') === 'on' }) });
-      setStatus(`调整已保存，版本 ${response.data.version}`);
-      await load(current.year);
-    } catch (error) { setStatus(error.message); }
-  });
-
-  form.elements.year.addEventListener('change', () => load(Number(form.elements.year.value)));
-  levelFilter?.addEventListener('change', () => { if (current) load(current.year); });
-  adjustForm?.elements.period_type.addEventListener('change', configurePeriodPicker);
-  configurePeriodPicker();
-  setAdjustEnabled(false);
-  loadSettings().finally(() => load(Number(form.elements.year.value)));
+  form.elements.year.addEventListener('change', () => { annualTargetDirty = false; load(Number(form.elements.year.value)); });
+  form.elements.annual_target.addEventListener('input', () => { annualTargetDirty = true; queuePreview(); });
+  form.elements.growth_multiplier.addEventListener('change', () => { form.elements.suggested_annual_target.value = ''; });
+  loadSettings().finally(() => { window.lucide?.createIcons(); load(Number(form.elements.year.value)); });
 })();

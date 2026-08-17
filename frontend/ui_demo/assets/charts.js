@@ -40,7 +40,15 @@
     const legendPosition = legendConfig.position || 'bottom';
     const legendOffset = legendVisible && (legendPosition === 'bottom' || legendPosition === 'top') ? 34 : 0;
     return {
-      animation: reducedMotion ? false : { duration: 220 }, tooltip: { trigger: 'axis', confine: true },
+      animation: reducedMotion ? false : { duration: 220 },
+      tooltip: {
+        trigger: 'axis',
+        confine: true,
+        axisPointer: {
+          type: 'line',
+          lineStyle: { color: css('--border-strong'), width: 1, type: 'dashed' },
+        },
+      },
       legend: legendVisible ? { show: true, bottom: 4, top: legendPosition === 'top' ? 4 : undefined, left: legendPosition === 'left' ? 6 : legendPosition === 'right' ? undefined : 'center', right: legendPosition === 'right' ? 6 : undefined, textStyle: { color: legendConfig.labels?.color || css('--text-muted'), fontSize: legendConfig.labels?.font?.size || chartMetaSize() }, itemWidth: legendConfig.labels?.boxWidth || chartLegendBox(), itemHeight: chartLegendHeight(), type: 'scroll' } : { show: false },
       grid: { left: 56, right: yAxis.length > 1 ? 56 : 24, top: 20 + (legendPosition === 'top' ? legendOffset : 0), bottom: 30 + (legendPosition === 'bottom' ? legendOffset : 0), containLabel: true },
       xAxis: horizontal ? axisFromScale(scales.x || {}) : { type: 'category', data: labels, axisLabel: { color: scales.x?.ticks?.color || css('--text-muted'), fontSize: scales.x?.ticks?.font?.size || chartMetaSize(), hideOverlap: true }, splitLine: { show: false }, axisLine: { lineStyle: { color: css('--border') } }, axisTick: { show: false } },
@@ -51,7 +59,21 @@
         const valueFormatter = typeof item.valueFormatter === 'function'
           ? item.valueFormatter
           : typeof axisFormatter === 'function' ? axisFormatter : formatChartValue;
-        return { name: item.label || '', type: item.type === 'line' ? 'line' : 'bar', data: item.data || [], yAxisIndex: Math.max(0, yKeys.indexOf(axisKey)), smooth: item.type === 'line' ? item.tension !== 0 : false, showSymbol: item.pointRadius !== 0, symbolSize: item.pointRadius || chartPointRadius(), lineStyle: { width: item.borderWidth || chartLineWidth(), color: item.borderColor, type: item.borderDash ? 'dashed' : 'solid' }, itemStyle: { color: item.backgroundColor || item.borderColor, borderRadius: item.borderRadius || 0 }, barMaxWidth: item.maxBarThickness || item.barThickness || 28, tooltip: { valueFormatter } };
+        const isBar = item.type !== 'line';
+        return {
+          name: item.label || '',
+          type: isBar ? 'bar' : 'line',
+          data: item.data || [],
+          yAxisIndex: Math.max(0, yKeys.indexOf(axisKey)),
+          smooth: !isBar && item.tension !== 0,
+          showSymbol: item.pointRadius !== 0,
+          symbolSize: item.pointRadius || chartPointRadius(),
+          lineStyle: { width: item.borderWidth || chartLineWidth(), color: item.borderColor, type: item.borderDash ? 'dashed' : 'solid' },
+          itemStyle: { color: item.backgroundColor || item.borderColor, borderRadius: item.borderRadius || 0 },
+          barMaxWidth: item.maxBarThickness || item.barThickness || 28,
+          tooltip: { valueFormatter },
+          ...(isBar ? { emphasis: { disabled: true } } : {}),
+        };
       })
     };
   }

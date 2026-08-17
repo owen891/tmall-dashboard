@@ -3,6 +3,7 @@ from datetime import date, timedelta
 
 from db import get_db, get_shop_id
 from repos.audit_repo import AuditRepo
+from utils.goal_allocation import allocate_cents
 
 
 class GoalsRepo:
@@ -25,11 +26,29 @@ class GoalsRepo:
     def prior_year_daily_weights(year):
         shop_id = get_shop_id()
         with get_db() as connection:
-            rows = connection.execute(
-                '''SELECT substr(date, 6, 5) AS month_day, SUM(MAX(payment_amount - refund_amount, 0)) AS weight
-                   FROM daily_data WHERE shop_id = ? AND substr(date, 1, 4) = ? GROUP BY substr(date, 6, 5)''',
+            store_total = connection.execute(
+                '''SELECT SUM(payment_amount - successful_refund_amount) AS total
+                   FROM store_daily_facts WHERE shop_id = ? AND substr(date, 1, 4) = ?''',
                 (shop_id, str(year - 1)),
-            ).fetchall()
+            ).fetchone()
+            if store_total and store_total['total'] is not None:
+                rows = connection.execute(
+                    '''SELECT substr(date, 6, 5) AS month_day,
+                              SUM(MAX(payment_amount - successful_refund_amount, 0)) AS weight
+                       FROM store_daily_facts
+                       WHERE shop_id = ? AND substr(date, 1, 4) = ?
+                       GROUP BY substr(date, 6, 5)''',
+                    (shop_id, str(year - 1)),
+                ).fetchall()
+            else:
+                rows = connection.execute(
+                    '''SELECT substr(date, 6, 5) AS month_day,
+                              SUM(MAX(payment_amount - refund_amount, 0)) AS weight
+                       FROM daily_data
+                       WHERE shop_id = ? AND substr(date, 1, 4) = ?
+                       GROUP BY substr(date, 6, 5)''',
+                    (shop_id, str(year - 1)),
+                ).fetchall()
         return {row['month_day']: float(row['weight'] or 0) for row in rows}
     @staticmethod
     def get_version(year):
@@ -44,18 +63,28 @@ class GoalsRepo:
     def replace_year(year, annual_target, expected_version, days, operator='admin', reason='创建或更新年度目标'):
         with get_db() as connection:
             try:
+                connection.execute('BEGIN IMMEDIATE')
                 current = connection.execute(
                     'SELECT * FROM goal_versions WHERE year = ?', (year,)
                 ).fetchone()
                 if current and expected_version is not None and current['version'] != expected_version:
+                    connection.rollback()
                     return None
                 if not current and expected_version not in (None, 0):
+                    connection.rollback()
                     return None
                 locked = connection.execute(
                     'SELECT 1 FROM goal_locks WHERE year = ? LIMIT 1', (year,)
                 ).fetchone()
-                if locked:
+                daily_exists = connection.execute(
+                    'SELECT 1 FROM daily_goals WHERE year = ? LIMIT 1', (year,)
+                ).fetchone()
+                if locked and daily_exists:
                     return 'locked'
+                if locked:
+                    # A partially initialized year can retain locks without any
+                    # daily targets; those locks cannot protect real data.
+                    connection.execute('DELETE FROM goal_locks WHERE year = ?', (year,))
                 version = (current['version'] if current else 0) + 1
                 connection.execute(
                     '''INSERT INTO goal_versions (year, version, annual_target)
@@ -91,14 +120,16 @@ class GoalsRepo:
                 'SELECT year, version, annual_target FROM goal_versions WHERE year = ?', (year,)
             ).fetchone()
             days = connection.execute(
-                '''SELECT d.goal_date, d.target_amount, d.source, d.reason, d.version,
-                          EXISTS(SELECT 1 FROM goal_locks l
-                                 WHERE l.year = d.year AND l.period_type = 'date'
-                                   AND l.period_key = d.goal_date) AS locked
-                   FROM daily_goals d WHERE d.year = ? ORDER BY d.goal_date''',
+                '''SELECT goal_date, target_amount, source, reason, version
+                   FROM daily_goals WHERE year = ? ORDER BY goal_date''',
                 (year,),
             ).fetchall()
-        return (dict(version) if version else None, [dict(day) for day in days])
+            locks = connection.execute(
+                'SELECT period_type, period_key FROM goal_locks WHERE year = ?', (year,)
+            ).fetchall()
+        locked_dates = GoalsRepo._locked_dates(year, locks)
+        result_days = [{**dict(day), 'locked': int(day['goal_date'] in locked_dates)} for day in days]
+        return (dict(version) if version else None, result_days)
 
     @staticmethod
     def list_locks(year):
@@ -112,11 +143,29 @@ class GoalsRepo:
     def periods(year):
         with get_db() as connection:
             rows = connection.execute(
-                '''SELECT substr(goal_date, 1, 7) AS period_key, SUM(target_amount) AS target_amount
+                '''SELECT substr(goal_date, 1, 7) AS period_key, SUM(target_amount) AS target_amount,
+                          MAX(CASE WHEN source = 'manual' THEN 1 ELSE 0 END) AS has_manual_source
                    FROM daily_goals WHERE year = ? GROUP BY substr(goal_date, 1, 7) ORDER BY period_key''',
                 (year,),
             ).fetchall()
-        return [dict(row) for row in rows]
+            goal_dates = connection.execute(
+                'SELECT goal_date FROM daily_goals WHERE year = ?', (year,)
+            ).fetchall()
+            locks = connection.execute(
+                'SELECT period_type, period_key FROM goal_locks WHERE year = ?', (year,)
+            ).fetchall()
+        locked_dates = GoalsRepo._locked_dates(year, locks)
+        month_days = {}
+        for row in goal_dates:
+            month_days.setdefault(row['goal_date'][:7], set()).add(row['goal_date'])
+        locked_months = sorted(month for month, days in month_days.items()
+                               if days and days <= locked_dates)
+        months = []
+        for row in rows:
+            month = dict(row)
+            month['source'] = 'manual' if month.pop('has_manual_source') else 'automatic'
+            months.append(month)
+        return {'months': months, 'locked_months': locked_months}
 
     @staticmethod
     def period_summaries(year):
@@ -199,8 +248,10 @@ class GoalsRepo:
     def adjust_period(year, expected_version, period_type, period_key, target_amount, operator, reason, lock):
         with get_db() as connection:
             try:
+                connection.execute('BEGIN IMMEDIATE')
                 current = connection.execute('SELECT version FROM goal_versions WHERE year = ?', (year,)).fetchone()
                 if not current or current['version'] != expected_version:
+                    connection.rollback()
                     return None
                 all_rows = connection.execute(
                     'SELECT goal_date, target_amount FROM daily_goals WHERE year = ? ORDER BY goal_date', (year,)
@@ -213,11 +264,7 @@ class GoalsRepo:
                 lock_rows = connection.execute(
                     'SELECT period_type, period_key FROM goal_locks WHERE year = ?', (year,)
                 ).fetchall()
-                locked = set()
-                for lock_row in lock_rows:
-                    locked.update(item.isoformat() for item in GoalsRepo._period_dates(
-                        year, lock_row['period_type'], lock_row['period_key'],
-                    ))
+                locked = GoalsRepo._locked_dates(year, lock_rows)
                 unlocked = [row for row in selected if row['goal_date'] not in locked]
                 locked_total = sum(float(row['target_amount']) for row in selected if row['goal_date'] in locked)
                 remainder = float(target_amount) - locked_total
@@ -276,17 +323,22 @@ class GoalsRepo:
         return [start + timedelta(days=index) for index in range((end - start).days) if (start + timedelta(days=index)).year == year]
 
     @staticmethod
+    def _locked_dates(year, lock_rows):
+        locked = set()
+        for lock_row in lock_rows:
+            locked.update(item.isoformat() for item in GoalsRepo._period_dates(
+                year, lock_row['period_type'], lock_row['period_key'],
+            ))
+        return locked
+
+    @staticmethod
     def _allocate_rows(rows, target, version, year, reason):
-        total = sum(float(row['target_amount']) for row in rows)
         cents = round(float(target) * 100)
         if not rows:
             return []
-        values, consumed = [], 0
-        for index, row in enumerate(rows):
-            allocated = cents - consumed if index == len(rows) - 1 else round(cents * float(row['target_amount']) / total) if total else cents // len(rows)
-            consumed += allocated
-            values.append((allocated / 100, reason, reason, version, year, row['goal_date']))
-        return values
+        allocated = allocate_cents(cents, [row['target_amount'] for row in rows])
+        return [(amount / 100, reason, reason, version, year, row['goal_date'])
+                for row, amount in zip(rows, allocated)]
 
     @staticmethod
     def list_adjustments(year):

@@ -40,6 +40,8 @@ const option = window.DemoCharts.toEchartsOption({
 assert.equal(option.yAxis[0].axisLabel.formatter(12.013150999999999), '12.01');
 assert.equal(option.series[0].tooltip.valueFormatter(12.013150999999999), '12.01');
 assert.equal(option.series[1].tooltip.valueFormatter(1886), '1,886');
+assert.equal(option.tooltip.axisPointer.type, 'line');
+assert.equal(option.series[1].emphasis.disabled, true);
 
 const percentOption = window.DemoCharts.toEchartsOption({
   data: {

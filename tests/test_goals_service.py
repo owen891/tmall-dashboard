@@ -60,6 +60,88 @@ class GoalsWorkflowTests(unittest.TestCase):
         values = {row['goal_date']: row['target_amount'] for row in details['data']['days']}
         self.assertGreater(values['2026-01-02'], values['2026-01-01'])
 
+    def test_allocation_uses_store_daily_weights_when_store_facts_are_authoritative(self):
+        from db import get_db
+        with get_db(self.database_path) as connection:
+            connection.executemany(
+                "INSERT INTO store_daily_facts (shop_id, date, payment_amount, successful_refund_amount) VALUES ('default', ?, ?, ?)",
+                [('2025-01-01', 100, 0), ('2025-01-02', 300, 0)],
+            )
+            connection.executemany(
+                "INSERT INTO daily_data (product_id, date, payment_amount, refund_amount) VALUES ('weight-conflict', ?, ?, 0)",
+                [('2025-01-01', 900), ('2025-01-02', 100)],
+            )
+            connection.commit()
+
+        status, _ = self.request('POST', '/api/goals', json={'year': 2026, 'annual_target': 1000})
+        self.assertEqual(status, 201)
+        _, details = self.request('GET', '/api/goals/2026')
+        values = {row['goal_date']: row['target_amount'] for row in details['data']['days']}
+        self.assertEqual(values['2026-01-01'], 250.0)
+        self.assertEqual(values['2026-01-02'], 750.0)
+        self.assertEqual(values['2026-01-03'], 0.0)
+
+    def test_allocation_preview_uses_store_daily_sales_proportion(self):
+        from db import get_db
+        with get_db(self.database_path) as connection:
+            connection.executemany(
+                "INSERT INTO store_daily_facts (shop_id, date, payment_amount, successful_refund_amount) VALUES ('default', ?, ?, 0)",
+                [('2025-01-01', 100), ('2025-02-01', 300)],
+            )
+            connection.executemany(
+                "INSERT INTO daily_data (product_id, date, payment_amount, refund_amount) VALUES ('preview-conflict', ?, ?, 0)",
+                [('2025-01-01', 900), ('2025-02-01', 100)],
+            )
+            connection.commit()
+
+        status, preview = self.request('GET', '/api/goals/2026/allocation-preview?annual_target=1200')
+
+        self.assertEqual(status, 200)
+        months = preview['data']['months']
+        self.assertEqual(months[0]['suggested_target'], 300.0)
+        self.assertEqual(months[1]['suggested_target'], 900.0)
+        self.assertEqual(months[0]['prior_year_net_sales'], 100.0)
+        self.assertEqual(months[1]['prior_year_net_sales'], 300.0)
+        self.assertEqual(preview['data']['allocation_basis'], '去年同期销售占比')
+
+    def test_allocation_preview_matches_saved_month_totals_without_history(self):
+        status, preview = self.request('GET', '/api/goals/2026/allocation-preview?annual_target=36500')
+        self.assertEqual(status, 200)
+        status, _ = self.request('POST', '/api/goals', json={'year': 2026, 'annual_target': 36500})
+        self.assertEqual(status, 201)
+        status, periods = self.request('GET', '/api/goals/2026/periods')
+        self.assertEqual(status, 200)
+        self.assertEqual(
+            [row['suggested_target'] for row in preview['data']['months']],
+            [row['target_amount'] for row in periods['data']['months']],
+        )
+        self.assertEqual(preview['data']['allocation_basis'], '按天均分兜底')
+
+    def test_weighted_allocation_never_creates_negative_day_target(self):
+        from services.goals_service import _allocate
+        from repos.goals_repo import GoalsRepo
+        days = [date(2026, 1, index) for index in range(1, 5)]
+        weights = {'01-01': 51, '01-02': 51, '01-03': 51, '01-04': 47}
+
+        allocation = _allocate(0.02, days, weights)
+        rows = [{'goal_date': day.isoformat(), 'target_amount': weight / 100} for day, weight in zip(days, (51, 51, 51, 47))]
+        adjusted = GoalsRepo._allocate_rows(rows, 0.02, 2, 2026, '边界测试')
+
+        self.assertEqual(sum(amount for _, amount in allocation), 0.02)
+        self.assertGreaterEqual(min(amount for _, amount in allocation), 0)
+        self.assertEqual(round(sum(value[0] for value in adjusted), 2), 0.02)
+        self.assertGreaterEqual(min(value[0] for value in adjusted), 0)
+
+    def test_goal_amounts_are_normalized_to_cents(self):
+        status, payload = self.request('POST', '/api/goals', json={'year': 2026, 'annual_target': 0.001})
+
+        self.assertEqual(status, 201)
+        self.assertEqual(payload['data']['annual_total'], 0.0)
+        status, details = self.request('GET', '/api/goals/2026')
+        self.assertEqual(status, 200)
+        self.assertEqual(details['data']['annual_total'], 0.0)
+        self.assertEqual(details['data']['annual_target'], 0.0)
+
     def test_stale_version_and_cross_month_week_lock_are_rejected(self):
         status, created = self.request(
             'POST', '/api/goals', json={'year': 2026, 'annual_target': 36500},
@@ -95,6 +177,18 @@ class GoalsWorkflowTests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertEqual(sum(row['target_amount'] for row in periods['data']['months']), 36500.0)
         self.assertEqual(len(periods['data']['months']), 12)
+        self.assertEqual({row['source'] for row in periods['data']['months']}, {'automatic'})
+
+    def test_periods_marks_adjusted_month_as_manual(self):
+        _, created = self.request('POST', '/api/goals', json={'year': 2026, 'annual_target': 36500})
+        status, _ = self.request('POST', '/api/goals/2026/adjustments', json={
+            'version': created['data']['version'], 'period_type': 'month', 'period_key': '2026-01',
+            'target_amount': 4000, 'operator': '运营人员', 'reason': '月度调整',
+        })
+        self.assertEqual(status, 200)
+        status, periods = self.request('GET', '/api/goals/2026/periods')
+        self.assertEqual(status, 200)
+        self.assertEqual(periods['data']['months'][0]['source'], 'manual')
 
     def test_locked_year_cannot_be_reallocated(self):
         _, created = self.request('POST', '/api/goals', json={'year': 2026, 'annual_target': 36500})
@@ -107,6 +201,30 @@ class GoalsWorkflowTests(unittest.TestCase):
         })
         self.assertEqual(status, 409)
         self.assertEqual(response['code'], 'CONFLICT')
+
+    def test_orphan_locks_do_not_block_initializing_missing_daily_goals(self):
+        from db import get_db
+        with get_db(self.database_path) as connection:
+            connection.execute(
+                'INSERT INTO goal_versions (year, version, annual_target) VALUES (?, ?, ?)',
+                (2026, 1, 8800000),
+            )
+            connection.executemany(
+                'INSERT INTO goal_locks (year, period_type, period_key, version) VALUES (?, ?, ?, ?)',
+                [(2026, 'month', '2026-01', 1), (2026, 'month', '2026-08', 1)],
+            )
+            connection.commit()
+
+        status, payload = self.request('POST', '/api/goals', json={
+            'year': 2026, 'annual_target': 2000000, 'version': 1,
+        })
+
+        self.assertEqual(status, 201)
+        self.assertEqual(payload['data']['annual_total'], 2000000.0)
+        status, periods = self.request('GET', '/api/goals/2026/periods')
+        self.assertEqual(status, 200)
+        self.assertEqual(len(periods['data']['months']), 12)
+        self.assertEqual(periods['data']['locked_months'], [])
 
     def test_adjust_period_redistributes_only_unlocked_days_and_keeps_audit(self):
         _, created = self.request('POST', '/api/goals', json={'year': 2026, 'annual_target': 36500})
@@ -151,6 +269,24 @@ class GoalsWorkflowTests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertEqual(round(details['data']['annual_total'], 2), 36500)
         self.assertIn({'period_type': 'month', 'period_key': '2026-03', 'version': adjusted['data']['version']}, details['data']['locks'])
+
+    def test_period_lock_marks_all_covered_days_and_months_as_locked(self):
+        _, created = self.request('POST', '/api/goals', json={'year': 2026, 'annual_target': 36500})
+        status, _ = self.request('POST', '/api/goals/2026/locks', json={
+            'version': created['data']['version'], 'period_type': 'quarter', 'period_key': '2026-Q1',
+        })
+        self.assertEqual(status, 201)
+
+        status, details = self.request('GET', '/api/goals/2026')
+        self.assertEqual(status, 200)
+        days = {row['goal_date']: row for row in details['data']['days']}
+        self.assertTrue(days['2026-01-01']['locked'])
+        self.assertTrue(days['2026-03-31']['locked'])
+        self.assertFalse(days['2026-04-01']['locked'])
+
+        status, periods = self.request('GET', '/api/goals/2026/periods')
+        self.assertEqual(status, 200)
+        self.assertEqual(periods['data']['locked_months'], ['2026-01', '2026-02', '2026-03'])
 
     def test_lock_rejects_impossible_calendar_date_and_month(self):
         _, created = self.request('POST', '/api/goals', json={'year': 2026, 'annual_target': 36500})

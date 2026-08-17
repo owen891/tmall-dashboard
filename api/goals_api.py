@@ -53,6 +53,17 @@ def suggest_goals(year):
     return success(result)
 
 
+@goals_bp.route('/api/goals/<int:year>/allocation-preview', methods=['GET'])
+def allocation_preview(year):
+    if (denied := _legacy_scope_denied()):
+        return denied
+    try:
+        result = goals_service.allocation_preview(year, request.args.get('annual_target'))
+    except (GoalValidationError, TypeError, ValueError) as error:
+        return failure('VALIDATION_ERROR', str(error), status=422)
+    return success(result)
+
+
 @goals_bp.route('/api/goals/<int:year>', methods=['GET'])
 def get_goals(year):
     if (denied := _legacy_scope_denied()):

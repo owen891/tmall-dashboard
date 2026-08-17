@@ -2,6 +2,7 @@ from calendar import isleap
 from datetime import date, timedelta
 
 from repos.goals_repo import GoalsRepo
+from utils.goal_allocation import allocate_cents
 
 
 class GoalConflictError(ValueError):
@@ -66,17 +67,39 @@ def _allocate(annual_target, days, weights=None):
         raise GoalValidationError('年度目标不能为负数')
     weights = weights or {}
     values = [max(0, float(weights.get(day.strftime('%m-%d'), 0))) for day in days]
-    total_weight = sum(values)
-    if not total_weight:
-        base, remainder = divmod(cents, len(days))
-        return [(day.isoformat(), (base + (1 if index < remainder else 0)) / 100)
-                for index, day in enumerate(days)]
-    allocated, consumed = [], 0
-    for index, (day, weight) in enumerate(zip(days, values)):
-        amount = cents - consumed if index == len(days) - 1 else round(cents * weight / total_weight)
-        consumed += amount
-        allocated.append((day.isoformat(), amount / 100))
-    return allocated
+    allocated = allocate_cents(cents, values)
+    return [(day.isoformat(), amount / 100) for day, amount in zip(days, allocated)]
+
+
+def _monthly_preview(year, annual_target, allocation, weights):
+    """Aggregate the exact daily allocation used by annual goal generation."""
+    months = {}
+    for day, amount in allocation:
+        period_key = day[:7]
+        month = months.setdefault(period_key, {
+            'period_key': period_key,
+            'prior_year_net_sales': 0.0,
+            'suggested_target': 0.0,
+        })
+        month['prior_year_net_sales'] += max(0, float(weights.get(day[5:], 0)))
+        month['suggested_target'] += float(amount)
+
+    total_weight = sum(month['prior_year_net_sales'] for month in months.values())
+    result = []
+    for month in months.values():
+        historical_sales = round(month['prior_year_net_sales'], 2)
+        result.append({
+            'period_key': month['period_key'],
+            'prior_year_net_sales': historical_sales,
+            'allocation_ratio': round(historical_sales / total_weight, 6) if total_weight else None,
+            'suggested_target': round(month['suggested_target'], 2),
+        })
+    return {
+        'year': year,
+        'annual_target': round(float(annual_target), 2),
+        'allocation_basis': '去年同期销售占比' if total_weight else '按天均分兜底',
+        'months': result,
+    }
 
 
 class GoalsService:
@@ -90,7 +113,8 @@ class GoalsService:
             if multiplier is None or multiplier <= 0:
                 raise GoalValidationError('年度目标或增长倍率至少提供一项')
             annual_target = prior_year_net_sales * multiplier
-        if float(annual_target) < 0:
+        annual_target = round(float(annual_target), 2)
+        if annual_target < 0:
             raise GoalValidationError('年度目标不能为负数')
         days = _days_for_year(year)
         allocation = _allocate(annual_target, days, GoalsRepo.prior_year_daily_weights(year))
@@ -118,6 +142,19 @@ class GoalsService:
         prior = GoalsRepo.prior_year_net_sales(year)
         return {'year': year, 'prior_year_net_sales': prior, 'growth_multiplier': multiplier,
                 'suggested_annual_target': round(prior * multiplier, 2)}
+
+    def allocation_preview(self, year, annual_target):
+        if not isinstance(year, int) or year < 2000 or year > 2100:
+            raise GoalValidationError('年份不合法')
+        if annual_target is None:
+            raise GoalValidationError('年度目标不能为负数')
+        annual_target = round(float(annual_target), 2)
+        if annual_target < 0:
+            raise GoalValidationError('年度目标不能为负数')
+        days = _days_for_year(year)
+        weights = GoalsRepo.prior_year_daily_weights(year)
+        allocation = _allocate(float(annual_target), days, weights)
+        return _monthly_preview(year, annual_target, allocation, weights)
 
     def get_year(self, year):
         version, days = GoalsRepo.get_year(year)
@@ -168,8 +205,10 @@ class GoalsService:
         record = GoalsRepo.get_version(year)
         if not record:
             return None
-        return {'year': year, 'version': record['version'], 'months': GoalsRepo.periods(year),
-                'levels': GoalsRepo.period_summaries(year), 'actual': GoalsRepo.actual_summaries(year)}
+        period_data = GoalsRepo.periods(year)
+        return {'year': year, 'version': record['version'], 'months': period_data['months'],
+                'locked_months': period_data['locked_months'], 'levels': GoalsRepo.period_summaries(year),
+                'actual': GoalsRepo.actual_summaries(year)}
 
     def adjust_period(self, year, version, period_type, period_key, target_amount, operator, reason, lock=False):
         if period_type not in {'year', 'quarter', 'month', 'week', 'date'}:

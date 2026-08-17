@@ -1,25 +1,22 @@
 <!doctype html>
-<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>经营目标 | 天猫数据仪表盘</title><link rel="stylesheet" href="../assets/tokens.css"><link rel="stylesheet" href="../assets/shell.css"><link rel="stylesheet" href="../assets/components.css"><script src="../assets/lucide-1.8.0.min.js"></script></head>
-<body data-page="goals"><div class="demo-app"><aside class="demo-sidebar" data-shell-sidebar></aside><div class="demo-main"><header class="demo-topbar" data-shell-header></header><main class="demo-page">
-<div class="demo-page__intro"><div><h2>经营目标</h2><p>年度配置决定年度总额，系统按去年同期销售占比拆解到日；周期目标只用于经营中的例外调整和锁定。</p></div></div>
-<section class="goals-config-summary" aria-label="目标配置摘要">
-  <article><span>年度默认值</span><strong data-goals-settings-summary="annual_target">--</strong><small>来自设置页</small></article>
-  <article><span>增长倍率</span><strong data-goals-settings-summary="growth_multiplier">--</strong><small>用于生成建议值</small></article>
-  <article><span>拆解规则</span><strong data-goals-settings-summary="allocation_rule">去年同期</strong><small>销售占比加权到日</small></article>
-</section>
-<section class="plain-panel panel"><div class="panel__header"><div><h3 class="panel__title">生成年度目标</h3><p class="panel__hint">年度目标是唯一主目标。建议值只读，来源为上一年度净销售额 × 增长倍率。</p></div></div><form class="modal-form__body goals-config-form" data-goals-form>
-  <div class="goals-config-form__row"><label>目标年份<input class="input" name="year" type="number" min="2000" max="2100" value="2026" required></label><label>增长倍率（本次生成）<input class="input" name="growth_multiplier" type="number" min="0.01" step="0.01" value="1.1" required></label></div>
-  <div class="goals-suggestion"><label>建议年度目标（元）<input class="input" name="suggested_annual_target" type="number" readonly aria-readonly="true"></label><button class="button button--ghost" type="button" data-goals-suggest>生成建议</button><span data-goals-suggestion-source>尚未读取上一年度销售数据</span></div>
-  <label>年度目标（元）<input class="input" name="annual_target" type="number" min="0" step="0.01" required></label>
-  <div class="goals-config-form__actions"><button class="button button--primary" type="submit">生成年度目标</button><span class="panel__hint">生成后才可以调整和锁定周期目标</span></div>
-  <p data-goals-status role="status" aria-live="polite"></p>
-</form></section>
-<section class="plain-panel panel"><div class="panel__header"><div><h3 class="panel__title">周期调整与锁定</h3><p class="panel__hint">调整会在未锁定日期之间重新分配，锁定后该周期不再被年度重算覆盖，并保留版本审计。</p></div><span class="badge badge--muted" data-goals-adjust-gate>等待年度目标</span></div><form class="modal-form__body goals-adjustment-form" data-goals-adjust-form>
-  <div class="goals-config-form__row"><label>周期<select class="select" name="period_type"><option value="date">日</option><option value="week">周</option><option value="month" selected>月</option><option value="quarter">季</option><option value="year">年</option></select></label><label>目标周期<input class="input" name="period_key" data-goals-period-picker type="month" required></label></div>
-  <label>目标金额（元）<input class="input" name="target_amount" type="number" min="0" step="0.01" required></label>
-  <div class="goals-config-form__row"><label>操作人<input class="input" name="operator" value="运营人员" required></label><label>调整原因<input class="input" name="reason" required></label></div>
-  <label class="goals-lock-toggle"><input type="checkbox" name="lock">保存后锁定该周期</label><div class="goals-config-form__actions"><button class="button" type="submit">保存调整</button><span class="panel__hint" data-goals-adjust-help>请先生成该年度目标</span></div>
-</form></section>
-<section class="plain-panel panel"><div class="panel__header"><div><h3 class="panel__title">完成率与目标</h3><p class="panel__hint" data-goals-version>尚未加载</p></div><label>查看层级<select class="select" data-goals-level-filter><option value="year">年</option><option value="quarter">季</option><option value="month" selected>月</option><option value="week">周</option><option value="date">日</option></select></label></div><div class="data-table-wrap"><table class="data-table"><thead><tr><th>层级</th><th>周期键</th><th class="num">目标金额</th><th class="num">已完成金额</th><th class="num">完成率</th><th>锁定</th></tr></thead><tbody data-goals-levels><tr><td colspan="6">请选择年份</td></tr></tbody></table></div></section>
-<section class="plain-panel panel"><div class="panel__header"><div><h3 class="panel__title">月度目标明细</h3><p class="panel__hint">点击“调整”会带入上方表单；保存后仍保持年度目标总额不变。</p></div></div><div class="data-table-wrap"><table class="data-table"><thead><tr><th>月份</th><th class="num">目标金额</th><th>操作</th></tr></thead><tbody data-goals-months><tr><td colspan="3">请选择年份</td></tr></tbody></table></div></section>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>经营目标 | 天猫经营数据</title><link rel="stylesheet" href="../assets/tokens.css"><link rel="stylesheet" href="../assets/shell.css"><link rel="stylesheet" href="../assets/components.css"><script src="../assets/lucide-1.8.0.min.js"></script></head>
+<body data-page="goals"><div class="demo-app"><aside class="demo-sidebar" data-shell-sidebar></aside><div class="demo-main"><header class="demo-topbar" data-shell-header></header><main class="demo-page goals-page">
+  <div class="demo-page__intro"><div><h2>经营目标</h2><p>先设定年度总额，再按去年同期净销售额占比拆分；月度目标可直接编辑，始终保持年度总额不变。</p></div></div>
+  <section class="plain-panel panel goals-stage" aria-labelledby="goals-annual-title">
+    <div class="panel__header"><div><p class="goals-stage__eyebrow">第一步</p><h3 class="panel__title" id="goals-annual-title">年度配置</h3><p class="panel__hint">年度总目标是唯一总额输入。增长倍率仅用于生成建议值，不会覆盖手工填写的目标。</p></div></div>
+    <form class="goals-config-form" data-goals-form>
+      <div class="goals-config-form__row"><label>目标年份<input class="input" name="year" type="number" min="2000" max="2100" value="2026" required></label><label>增长倍率<input class="input" name="growth_multiplier" type="number" min="0.01" step="0.01" value="1.10" required></label></div>
+      <div class="goals-config-form__row"><label>年度总目标（元）<input class="input" name="annual_target" type="number" min="0" step="0.01" inputmode="decimal" required></label><div class="goals-suggestion"><label>建议年度目标（元）<input class="input" name="suggested_annual_target" type="number" readonly aria-readonly="true"></label><button class="button button--ghost" type="button" data-goals-suggest><i data-lucide="sparkles"></i><span>生成建议</span></button><span data-goals-suggestion-source>等待读取上一年度净销售额</span></div></div>
+      <div class="goals-config-form__actions"><button class="button button--primary" type="submit"><i data-lucide="save"></i><span>保存年度目标</span></button><p class="panel__hint" data-goals-version>尚未加载年度目标</p></div>
+      <p data-goals-status role="status" aria-live="polite"></p>
+    </form>
+  </section>
+  <section class="plain-panel panel goals-stage" aria-labelledby="goals-allocation-title">
+    <div class="panel__header"><div><p class="goals-stage__eyebrow">第二步</p><h3 class="panel__title" id="goals-allocation-title">自动分配依据</h3><p class="panel__hint">保存前可核对去年同期净销售额、占比和建议目标。预览与保存使用同一套日级分配算法。</p></div><span class="badge badge--muted" data-goals-allocation-basis>等待年度目标</span></div>
+    <div class="data-table-wrap goals-table-wrap"><table class="data-table goals-allocation-table"><thead><tr><th>月份</th><th class="num">去年同期净销售额</th><th class="num">销售占比</th><th class="num">建议目标</th></tr></thead><tbody data-goals-allocation-preview><tr><td colspan="4">输入年度总目标后显示分配预览</td></tr></tbody></table></div>
+  </section>
+  <section class="plain-panel panel goals-stage" aria-labelledby="goals-monthly-title">
+    <div class="panel__header"><div><p class="goals-stage__eyebrow">第三步</p><h3 class="panel__title" id="goals-monthly-title">月度执行</h3><p class="panel__hint">直接修改未完整锁定的月份。保存会从其他未锁定日期重新分配，年度总额保持不变。</p></div></div>
+    <div class="data-table-wrap goals-table-wrap"><table class="data-table goals-monthly-table"><thead><tr><th>月份</th><th class="num">月度目标（元）</th><th>来源</th><th>状态</th><th>操作</th></tr></thead><tbody data-goals-months><tr><td colspan="5">加载年度目标后显示月度执行计划</td></tr></tbody></table></div>
+  </section>
 </main></div></div><script src="../assets/api.js"></script><script src="../assets/navigation.js"></script><script src="../assets/shell.js"></script><script src="../assets/goals-live.js"></script></body></html>
