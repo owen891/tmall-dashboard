@@ -4,7 +4,7 @@ app:
   debug: false
 
 data:
-  db_path: "data/dashboard.db"
+  db_path: "data/demo/dashboard.db"
   watch_folder: "~/Downloads/tmall_data/"
   backup_folder: "data/backups/"
   backup_on_import: true

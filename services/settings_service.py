@@ -72,7 +72,7 @@ DEFAULTS = {
 }
 
 VIEW_COLUMNS = {
-    'product_id', 'title', 'tier', 'style', 'scene', 'status', 'manager', 'remark',
+    'product_id', 'title', 'tier', 'style', 'product_type', 'product_time_node', 'product_growth_stage', 'scene', 'product_tags', 'status', 'manager', 'remark',
     'category', 'list_date', 'payment_amount', 'payment_count', 'net_sales',
     'conversion', 'refund_amount', 'refund_rate', 'ad_spend', 'roi', 'overall_roi',
     'paid_ratio', 'refund_paid_ratio', 'expense_ratio', 'score', 'lifecycle_stage',

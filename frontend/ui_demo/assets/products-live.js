@@ -11,9 +11,10 @@
   const columnsPreferenceStorageKey = 'tmall-products-field-preference-v1';
   const columnGroups = [
     { label: '基础信息', columns: [
-      { key: 'tier', label: '分层' }, { key: 'style', label: '风格' }, { key: 'status', label: '状态' },
+      { key: 'tier', label: '分层' }, { key: 'style', label: '风格' }, { key: 'product_type', label: '标品属性' },
+      { key: 'product_time_node', label: '款期' }, { key: 'product_growth_stage', label: '成长阶段' }, { key: 'status', label: '状态' },
       { key: 'category', label: '类目' }, { key: 'list_date', label: '上架日期' },
-      { key: 'scene', label: '场景' }, { key: 'manager', label: '负责人' }, { key: 'remark', label: '备注' }
+      { key: 'scene', label: '场景' }, { key: 'product_tags', label: '款式属性' }, { key: 'manager', label: '负责人' }, { key: 'remark', label: '备注' }
     ] },
     { label: '流量与转化', columns: [
       { key: 'visitors', label: '商品访客数', format: 'number' }, { key: 'conversion', label: '商品支付转化率', format: 'percent' },
@@ -81,11 +82,11 @@
   const columns = [...new Map(columnGroups.flatMap((group) => group.columns).map((column) => [column.key, column])).values()];
   const columnsByKey = new Map(columns.map((column) => [column.key, column]));
   const templates = {
-    operate: ['tier', 'style', 'status', 'payment_amount', 'net_sales', 'conversion', 'refund_rate', 'ad_spend', 'roi', 'paid_ipv', 'organic_ipv', 'search_ipv', 'recommend_ipv', 'repurchase_rate'],
-    select: ['tier', 'style', 'category', 'status', 'visitors', 'conversion', 'cart_rate', 'fav_rate', 'payment_amount', 'buyers', 'avg_order_value', 'score'],
+    operate: ['tier', 'style', 'product_type', 'product_time_node', 'status', 'payment_amount', 'net_sales', 'conversion', 'refund_rate', 'ad_spend', 'roi', 'paid_ipv', 'organic_ipv', 'search_ipv', 'recommend_ipv', 'repurchase_rate'],
+    select: ['tier', 'style', 'product_type', 'product_time_node', 'category', 'status', 'visitors', 'conversion', 'cart_rate', 'fav_rate', 'payment_amount', 'buyers', 'avg_order_value', 'score'],
     paid: ['status', 'ad_spend', 'expense_ratio', 'roi', 'paid_ratio', 'keyword_spend', 'keyword_roi', 'crowd_spend', 'crowd_roi', 'impressions', 'clicks', 'ctr'],
     refund: ['status', 'payment_amount', 'net_sales', 'refund_amount', 'refund_rate', 'buyers', 'avg_order_value', 'new_buyers', 'new_buyer_ratio', 'repurchase_users', 'repurchase_rate', 'score'],
-    lifecycle: ['lifecycle_stage', 'seasonality', 'has_pending_action', 'list_date', 'tier', 'style', 'status', 'payment_amount', 'trend_change'],
+    lifecycle: ['lifecycle_stage', 'seasonality', 'has_pending_action', 'list_date', 'tier', 'style', 'product_type', 'product_time_node', 'product_growth_stage', 'status', 'payment_amount', 'trend_change'],
     traffic: ['tier', 'style', 'visitors', 'page_views', 'uv_value', 'paid_ipv', 'organic_ipv', 'conversion', 'cart_rate', 'fav_rate', 'bounce_rate', 'avg_stay_duration', 'click_rate'],
     transaction: ['tier', 'style', 'payment_amount', 'payment_count', 'buyers', 'avg_order_value', 'net_sales', 'refund_amount', 'refund_rate', 'trend_change', 'cart_qty', 'score'],
     promotion: ['status', 'ad_spend', 'expense_ratio', 'roi', 'paid_ratio', 'keyword_spend', 'keyword_roi', 'crowd_spend', 'crowd_roi', 'site_spend', 'site_sales', 'site_roi']
@@ -119,7 +120,7 @@
     visibleColumns: [...templates.operate],
     serverDefaultView: null,
     searchTimer: null,
-    facets: { tiers: [], styles: [], statuses: [] },
+    facets: { tiers: [], styles: [], statuses: [], product_types: [], product_time_nodes: [], product_growth_stages: [] },
     settings: null,
     capabilities: {},
     availability: 'calculation-failed',
@@ -150,7 +151,7 @@
 
   // missing facts are not zero: status and issue copy must stay explainable.
   function productHealth(item) {
-    if (!Number(item?.has_data || 0)) return { label: '不可分析', tone: 'muted', reason: '缺少商品日事实', sortValue: 2 };
+    if (!Number(item?.has_data || 0)) return { label: '不可分析', tone: 'muted', reason: '缺少商品月度事实', sortValue: 2 };
     if (Number(item?.has_pending_action || 0)) return { label: '需处理', tone: 'warning', reason: '存在待执行运营动作', sortValue: 1 };
     return { label: '健康', tone: 'success', reason: '当前范围内暂无待处理规则', sortValue: 0 };
   }
@@ -186,13 +187,13 @@
     const totalIssues = pending.length + missing.length;
     alertTitle.textContent = totalIssues ? `${totalIssues} 个商品需要关注` : '当前筛选范围暂无待处理事项';
     alertMessage.textContent = totalIssues
-      ? `${pending.length} 个有待办动作 · ${missing.length} 个缺少商品日事实`
+      ? `${pending.length} 个有待办动作 · ${missing.length} 个缺少商品月度事实`
       : '商品主档和当前事实覆盖没有触发可解释规则。';
     issueCount.textContent = totalIssues ? `${totalIssues} 项` : '无事项';
     alertAction.hidden = !totalIssues;
     alertAction.onclick = () => issueList.closest('.products-issues')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     issueList.replaceChildren();
-    const issues = [...pending.map((item) => ({ item, label: '待执行动作', reason: '存在待执行运营动作', tone: 'warning' })), ...missing.map((item) => ({ item, label: '数据覆盖不足', reason: '缺少商品日事实，指标不参与判断', tone: 'muted' }))].slice(0, 3);
+    const issues = [...pending.map((item) => ({ item, label: '待执行动作', reason: '存在待执行运营动作', tone: 'warning' })), ...missing.map((item) => ({ item, label: '数据覆盖不足', reason: '缺少商品月度事实，指标不参与判断', tone: 'muted' }))].slice(0, 3);
     if (!issues.length) {
       const empty = document.createElement('p');
       empty.className = 'panel__hint';
@@ -217,7 +218,7 @@
     const observed = Number(evidence.observed_fact_rows || rows.filter((item) => Number(item.has_data || 0)).length);
     const total = Number(evidence.row_count || rows.length);
     coverageList.replaceChildren();
-    [['商品主档', total ? 100 : 0, '已加载商品'], ['商品日事实', total ? observed / total * 100 : 0, `${observed} / ${total || 0} 件可分析`], ['推广日事实', null, '当前接口未提供覆盖证据']].forEach(([label, ratio, note]) => {
+    [['商品主档', total ? 100 : 0, '已加载商品'], ['商品月度事实', total ? observed / total * 100 : 0, `${observed} / ${total || 0} 件可分析`], ['推广日事实', null, '当前接口未提供覆盖证据']].forEach(([label, ratio, note]) => {
       const item = document.createElement('div'); item.className = 'products-coverage__item';
       const line = document.createElement('div'); line.className = 'products-coverage__line';
       const title = document.createElement('strong'); title.textContent = label;
@@ -254,12 +255,12 @@
   }
 
   function optionValues(key) {
-    const facetKey = key === 'tier' ? 'tiers' : key === 'style' ? 'styles' : 'statuses';
+    const facetKey = ({ tier: 'tiers', style: 'styles', status: 'statuses', product_type: 'product_types', product_time_node: 'product_time_nodes', product_growth_stage: 'product_growth_stages' })[key] || `${key}s`;
     return [...new Set((state.facets[facetKey] || []).map((item) => DemoLabels.clean(item, '')).filter(Boolean))].sort();
   }
 
   function classificationValues(key) {
-    const group = key === 'tier' ? 'tiers' : 'styles';
+    const group = key === 'tier' ? 'tiers' : key === 'style' ? 'styles' : null;
     const configured = (DemoLabels.dictionaries?.[group] || []).map((item) => DemoLabels.clean(item.value, ''));
     return [...new Set([...configured, ...optionValues(key)])]
       .filter(Boolean)
@@ -289,6 +290,9 @@
       search: $('[data-products-search]').value.trim(),
       tier: $('[data-products-tier]').value,
       style: $('[data-products-style]').value,
+      product_type: $('[data-products-type]')?.value || '',
+      product_time_node: $('[data-products-time-node]')?.value || '',
+      product_growth_stage: $('[data-products-growth-stage]')?.value || '',
       status: $('[data-products-status-filter]').value,
       sort: $('[data-products-sort]').value || 'payment_amount',
       order: $('[data-products-order]').value || 'desc',
@@ -299,12 +303,11 @@
   }
 
   function buildProductsUrl() {
-    const params = new URLSearchParams({ dim: 'daily', limit: String(state.pageSize), offset: String((state.page - 1) * state.pageSize) });
-    const range = currentRange();
-    if (range.startDate) params.set('start', range.startDate);
-    if (range.endDate) params.set('end', range.endDate);
+    // 当前导入源是商品月度事实，商品页按月度口径读取，避免日表为空时整页指标变成 0。
+    const params = new URLSearchParams({ dim: 'monthly', limit: String(state.pageSize), offset: String((state.page - 1) * state.pageSize) });
+    params.set('period', currentMonthPeriod());
     const current = filters();
-    ['search', 'tier', 'style', 'status', 'sort', 'order', 'lifecycle_stage', 'seasonality', 'has_pending_action'].forEach((key) => {
+    ['search', 'tier', 'style', 'product_type', 'product_time_node', 'product_growth_stage', 'status', 'sort', 'order', 'lifecycle_stage', 'seasonality', 'has_pending_action'].forEach((key) => {
       if (current[key]) params.set(key, current[key]);
     });
     return `/api/products?${params.toString()}`;
@@ -551,7 +554,10 @@
            const classificationCell = addCell(row, editableSelect(item, key), '', key);
            classificationCell.dataset.sortValue = DemoLabels.clean(item[key], '');
          }
-        else if (key === 'status') addCell(row, badge(DemoLabels.label('status', item.status, item.status), '未知'), '', key);
+        else if (key === 'product_type') addCell(row, badge(item.product_type || '待复核', item.product_type || '待复核'), '', key);
+         else if (key === 'product_growth_stage') addCell(row, item.product_growth_stage || '--', '', key);
+         else if (key === 'product_time_node') addCell(row, item.product_time_node || '--', '', key);
+         else if (key === 'status') addCell(row, badge(DemoLabels.label('status', item.status, item.status), '未知'), '', key);
         else if (key === 'lifecycle_stage') addCell(row, DemoLabels.classification('lifecycle_stages', item.lifecycle_stage, item.lifecycle_stage || '--'), '', key);
         else if (key === 'seasonality') addCell(row, DemoLabels.classification('seasonal_attributes', item.seasonality, item.seasonality || '--'), '', key);
         else if (key === 'has_pending_action') addCell(row, badge(item.has_pending_action ? '有待办' : '无待办', '无待办'), '', key);
@@ -892,7 +898,7 @@
       }
       renderTable();
       if (!state.rows.length) renderDataState('no-data', { message: '当前筛选条件没有商品。' });
-      else setStatus(`已加载 ${state.rows.length} 件商品，每页 ${state.pageSize} 件`);
+      else setStatus(`已按月度口径加载 ${state.rows.length} 件商品，每页 ${state.pageSize} 件${payload?.period ? `；数据月份 ${payload.period}` : ''}`);
     } catch (error) {
       if (token !== state.token) return;
       state.rows = [];
@@ -993,6 +999,9 @@
     $('[data-products-search]').value = '';
     $('[data-products-tier]').value = '';
     $('[data-products-style]').value = '';
+    if ($('[data-products-type]')) $('[data-products-type]').value = '';
+    if ($('[data-products-time-node]')) $('[data-products-time-node]').value = '';
+    if ($('[data-products-growth-stage]')) $('[data-products-growth-stage]').value = '';
     $('[data-products-status-filter]').value = 'active';
     $('[data-products-sort]').value = 'payment_amount';
     $('[data-products-order]').value = 'desc';
@@ -1012,7 +1021,7 @@
       window.clearTimeout(state.searchTimer);
       state.searchTimer = window.setTimeout(firstPageLoad, 300);
     });
-    ['[data-products-tier]', '[data-products-style]', '[data-products-status-filter]', '[data-products-sort]', '[data-products-order]', '[data-products-lifecycle-stage]', '[data-products-seasonality]', '[data-products-pending-action]'].forEach((selector) => {
+    ['[data-products-tier]', '[data-products-style]', '[data-products-type]', '[data-products-time-node]', '[data-products-growth-stage]', '[data-products-status-filter]', '[data-products-sort]', '[data-products-order]', '[data-products-lifecycle-stage]', '[data-products-seasonality]', '[data-products-pending-action]'].forEach((selector) => {
       $(selector).addEventListener('change', firstPageLoad);
     });
     const moreFilters = $('[data-products-more-filters]');

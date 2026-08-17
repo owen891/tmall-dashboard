@@ -23,6 +23,7 @@ class MetricsRepo:
 
     @staticmethod
     def get_product_daily_totals(start_date, end_date, filters=None):
+        # Prefer real daily facts. Only fall back to a clearly marked monthly rollup.
         shop_id = get_shop_id()
         with get_db() as connection:
             filters = {key: value for key, value in (filters or {}).items() if value}
@@ -39,28 +40,70 @@ class MetricsRepo:
                 (shop_id, start_date, end_date),
             ).fetchone()
             if store_row['fact_count'] and not filters:
-                return dict(store_row)
+                return {**dict(store_row), 'data_grain': 'daily'}
             clauses, filter_params = MetricsRepo._product_filter_sql(filters)
             where = ' AND '.join(['d.shop_id = ?', 'd.date BETWEEN ? AND ?', *clauses])
-            row = connection.execute(
-                '''
-                SELECT
-                    SUM(d.payment_amount) AS payment_amount,
-                    SUM(d.refund_amount) AS successful_refund_amount,
-                    SUM(d.ad_spend) AS ad_spend,
-                    NULL AS product_visitors,
-                    NULL AS payment_buyers,
-                    NULL AS returning_payment_buyers,
-                    MIN(d.date) AS data_start_date,
-                    MAX(d.date) AS data_end_date,
-                    COUNT(*) AS fact_count
-                FROM daily_data d
-                JOIN products p ON p.product_id = d.product_id
-                LEFT JOIN lifecycle_profiles lp ON lp.product_id = d.product_id
-                WHERE ''' + where,
+            daily_row = connection.execute(
+                '''SELECT SUM(d.payment_amount) AS payment_amount,
+                          SUM(d.refund_amount) AS successful_refund_amount,
+                          SUM(d.ad_spend) AS ad_spend,
+                          NULL AS product_visitors,
+                          NULL AS payment_buyers,
+                          NULL AS returning_payment_buyers,
+                          MIN(d.date) AS data_start_date, MAX(d.date) AS data_end_date,
+                          COUNT(*) AS fact_count
+                   FROM daily_data d
+                   JOIN products p ON p.product_id = d.product_id
+                   LEFT JOIN lifecycle_profiles lp ON lp.product_id = d.product_id
+                   WHERE ''' + where,
                 [shop_id, start_date, end_date, *filter_params],
             ).fetchone()
-        return dict(row)
+            if daily_row['fact_count']:
+                return {**dict(daily_row), 'data_grain': 'daily'}
+
+            start_month, end_month = start_date[:7], end_date[:7]
+            month_exists = connection.execute(
+                'SELECT COUNT(*) AS count FROM monthly_data WHERE month BETWEEN ? AND ?',
+                (start_month, end_month),
+            ).fetchone()['count']
+            selected_sql = ('m.month BETWEEN ? AND ?' if month_exists
+                            else 'm.month = (SELECT MAX(month) FROM monthly_data WHERE month <= ?)')
+            month_params = [start_month, end_month] if month_exists else [end_month]
+            monthly_clauses = []
+            monthly_filter_params = []
+            if filters.get('product_id'):
+                monthly_clauses.append('m.product_id = ?')
+                monthly_filter_params.append(filters['product_id'])
+            if filters.get('tier'):
+                monthly_clauses.append('p.tier = ?')
+                monthly_filter_params.append(filters['tier'])
+            if filters.get('lifecycle_stage'):
+                monthly_clauses.append("COALESCE(lp.manual_stage, lp.recommended_stage, '') = ?")
+                monthly_filter_params.append(filters['lifecycle_stage'])
+            # Promotion-channel filtering requires daily promotion facts, so do not
+            # pretend a monthly rollup answers that more granular filter.
+            if filters.get('promotion_channel'):
+                return {**dict(daily_row), 'data_grain': 'daily'}
+            monthly_where = ' AND '.join([selected_sql, *monthly_clauses])
+            monthly_row = connection.execute(
+                '''SELECT SUM(m.payment_amount) AS payment_amount,
+                          SUM(m.refund_amount) AS successful_refund_amount,
+                          SUM(m.ad_spend) AS ad_spend,
+                          SUM(m.visitors) AS product_visitors,
+                          SUM(m.buyers) AS payment_buyers,
+                          SUM(m.repurchase_users) AS returning_payment_buyers,
+                          MIN(m.month) AS data_start_date, MAX(m.month) AS data_end_date,
+                          COUNT(*) AS fact_count
+                   FROM monthly_data m
+                   JOIN products p ON p.product_id = m.product_id
+                   LEFT JOIN lifecycle_profiles lp ON lp.product_id = m.product_id
+                   WHERE ''' + monthly_where,
+                [*month_params, *monthly_filter_params],
+            ).fetchone()
+        if monthly_row['fact_count']:
+            return {**dict(monthly_row), 'data_grain': 'monthly',
+                    'fallback_reason': 'daily_facts_unavailable'}
+        return {**dict(daily_row), 'data_grain': 'daily'}
 
     @staticmethod
     def get_daily_matrix(start_date, end_date, filters=None):
@@ -174,19 +217,35 @@ class MetricsRepo:
             batch = connection.execute(
                 '''SELECT id, source_type, source_filename, source_hash, completed_at, quality_summary FROM import_batches
                    WHERE status = 'completed'
-                     AND (
-                       EXISTS (SELECT 1 FROM store_daily_facts f
-                              WHERE f.source_batch_id = import_batches.id AND f.shop_id = ?)
-                       OR EXISTS (SELECT 1 FROM promotion_daily_facts pf
-                                  WHERE pf.source_batch_id = import_batches.id AND pf.shop_id = ?)
-                       OR EXISTS (SELECT 1 FROM daily_data_observations o
-                                  WHERE o.source_batch_id = import_batches.id AND o.shop_id = ?)
-                     )
+                     AND (EXISTS (SELECT 1 FROM store_daily_facts f WHERE f.source_batch_id = import_batches.id AND f.shop_id = ?)
+                       OR EXISTS (SELECT 1 FROM promotion_daily_facts pf WHERE pf.source_batch_id = import_batches.id AND pf.shop_id = ?)
+                       OR EXISTS (SELECT 1 FROM daily_data_observations o WHERE o.source_batch_id = import_batches.id AND o.shop_id = ?))
                    ORDER BY completed_at DESC LIMIT 1''',
                 (shop_id, shop_id, shop_id),
             ).fetchone()
-            latest = connection.execute('SELECT MIN(date) AS start_date, MAX(date) AS end_date FROM daily_data WHERE shop_id = ?', (shop_id,)).fetchone()
-        return {**dict(latest), 'latest_import': dict(batch) if batch else None}
+            daily = connection.execute(
+                'SELECT MIN(date) AS start_date, MAX(date) AS end_date FROM daily_data WHERE shop_id = ?',
+                (shop_id,),
+            ).fetchone()
+            if daily['start_date'] and daily['end_date']:
+                return {**dict(daily), 'data_grain': 'daily', 'latest_import': dict(batch) if batch else None}
+            monthly = connection.execute(
+                '''SELECT MIN(month) AS start_date, MAX(month) AS end_date,
+                          MAX(imported_at) AS imported_at,
+                          (SELECT data_source FROM monthly_data ORDER BY month DESC, id DESC LIMIT 1) AS data_source
+                   FROM monthly_data''',
+            ).fetchone()
+        latest_import = dict(batch) if batch else None
+        if monthly['start_date']:
+            source = str(monthly['data_source'] or '')
+            filename = source.split(':', 2)[-1] if ':' in source else source
+            latest_import = latest_import or {
+                'id': None, 'source_type': 'paimi_monthly',
+                'source_filename': filename or '派米月度数据', 'source_hash': None,
+                'completed_at': monthly['imported_at'], 'quality_summary': None,
+            }
+            return {**dict(monthly), 'data_grain': 'monthly', 'latest_import': latest_import}
+        return {'start_date': None, 'end_date': None, 'data_grain': None, 'latest_import': latest_import}
 
     @staticmethod
     def action_todos():

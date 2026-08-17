@@ -52,7 +52,8 @@ def get_overview():
     result['data']['action_todos'] = MetricsRepo.action_todos()
     result['data']['missing_fields'] = result['data'].get('missing_fields', [])
     missing_inputs = result['data']['missing_fields']
-    missing_ranges = matrix.get('missing_date_ranges', [])
+    data_grain = result['data'].get('data_grain') or context.get('data_grain')
+    missing_ranges = [] if data_grain == 'monthly' else matrix.get('missing_date_ranges', [])
     source_batches = matrix.get('source_batches', []) or ([latest_import] if latest_import else [])
     evidence_level = evidence_level_for(
         result['availability'], missing_inputs=missing_inputs, missing_ranges=missing_ranges,
@@ -75,12 +76,14 @@ def get_overview():
         evidence_level=evidence_level,
         missing_inputs=missing_inputs,
         limitations=limitations_for(result['availability'], missing_inputs=missing_inputs, missing_ranges=missing_ranges),
-        freshness={'start': start_date, 'end': result['data'].get('data_cutoff_date')},
+        freshness={'start': start_date, 'end': result['data'].get('data_cutoff_date'), 'data_grain': data_grain},
         evidence=[{
-            'source': 'store_daily_facts',
-            'row_count': len(matrix.get('rows', [])),
+            'source': 'monthly_data' if data_grain == 'monthly' else 'store_daily_facts',
+            'row_count': result['data'].get('fact_count') or len(matrix.get('rows', [])),
             'start': start_date,
             'end': result['data'].get('data_cutoff_date'),
+            'data_grain': data_grain,
+            'fallback_reason': result['data'].get('fallback_reason'),
         }],
     )
 
