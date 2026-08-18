@@ -77,6 +77,7 @@
   }
 
   const pageCapabilityCache = new Map();
+  const pageCapabilityPayloadCache = new Map();
   const pageCapabilityTargets = {
     overview: [['[data-overview-report-refresh]', 'overview.view_kpis'], ['[data-overview-event-open]', 'overview.event_edit']],
     products: [['[data-products-reset]', 'products.list'], ['[data-demo-refresh]', 'products.list'], ['[data-products-starred]', 'products.catalog_edit'], ['[data-products-batch-apply]', 'products.catalog_edit'], ['[data-products-batch-tag-apply]', 'products.catalog_edit'], ['[data-products-batch-star]', 'products.catalog_edit']],
@@ -119,10 +120,11 @@
       pageCapabilityCache.set(pageKey, domainRequest(`/api/page-capabilities${query}`));
     }
     const payload = await pageCapabilityCache.get(pageKey);
+    pageCapabilityPayloadCache.set(pageKey, payload);
     return applyPageCapabilityGates(payload);
   }
   function canPage(pageKey, capabilityKey) {
-    const cached = pageCapabilityCache.get(pageKey);
+    const cached = pageCapabilityPayloadCache.get(pageKey);
     const pages = cached?.data?.pages || [];
     const capability = pages.flatMap((page) => page.capabilities || []).find((item) => item.key === capabilityKey);
     return capability?.interaction_state === 'enabled';
