@@ -1,5 +1,6 @@
 import sqlite3
 from datetime import date, timedelta
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 
 from db import get_db, get_shop_id
 from repos.audit_repo import AuditRepo
@@ -7,6 +8,15 @@ from utils.goal_allocation import allocate_cents
 
 
 class GoalsRepo:
+    @staticmethod
+    def _money_cents(value):
+        """Normalize persisted/input money to integer cents before arithmetic."""
+        try:
+            amount = Decimal(str(value or 0)).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+        except (InvalidOperation, ValueError, TypeError) as error:
+            raise ValueError('金额必须为有效数字') from error
+        return int(amount * 100)
+
     @staticmethod
     def prior_year_net_sales(year):
         shop_id = get_shop_id()
@@ -266,21 +276,33 @@ class GoalsRepo:
                 ).fetchall()
                 locked = GoalsRepo._locked_dates(year, lock_rows)
                 unlocked = [row for row in selected if row['goal_date'] not in locked]
-                locked_total = sum(float(row['target_amount']) for row in selected if row['goal_date'] in locked)
-                remainder = float(target_amount) - locked_total
-                if remainder < -1e-9:
+                target_cents = GoalsRepo._money_cents(target_amount)
+                locked_total_cents = sum(
+                    GoalsRepo._money_cents(row['target_amount'])
+                    for row in selected if row['goal_date'] in locked
+                )
+                remainder_cents = target_cents - locked_total_cents
+                if remainder_cents < 0:
                     raise ValueError('目标小于已锁定日期合计')
                 if not unlocked:
                     raise ValueError('周期内没有可重分配日期')
-                current_unlocked_total = sum(float(row['target_amount']) for row in unlocked)
-                delta = remainder - current_unlocked_total
+                current_unlocked_total_cents = sum(
+                    GoalsRepo._money_cents(row['target_amount']) for row in unlocked
+                )
+                delta_cents = remainder_cents - current_unlocked_total_cents
                 other_unlocked = [row for row in all_rows if row['goal_date'] not in target_dates and row['goal_date'] not in locked]
-                if delta > 0 and sum(float(row['target_amount']) for row in other_unlocked) + 1e-9 < delta:
+                other_unlocked_total_cents = sum(
+                    GoalsRepo._money_cents(row['target_amount']) for row in other_unlocked
+                )
+                if delta_cents > 0 and other_unlocked_total_cents < delta_cents:
                     raise ValueError('未锁定日期的可分配额度不足')
                 new_version = expected_version + 1
-                values = GoalsRepo._allocate_rows(unlocked, remainder, new_version, year, reason)
-                if delta:
-                    values += GoalsRepo._allocate_rows(other_unlocked, sum(float(row['target_amount']) for row in other_unlocked) - delta, new_version, year, None)
+                values = GoalsRepo._allocate_rows_cents(unlocked, remainder_cents, new_version, year, reason)
+                if delta_cents:
+                    values += GoalsRepo._allocate_rows_cents(
+                        other_unlocked, other_unlocked_total_cents - delta_cents,
+                        new_version, year, None,
+                    )
                 connection.executemany(
                     '''UPDATE daily_goals SET target_amount = ?, source = CASE WHEN ? IS NULL THEN source ELSE 'manual' END,
                        reason = COALESCE(?, reason), version = ? WHERE year = ? AND goal_date = ?''', values
@@ -294,7 +316,7 @@ class GoalsRepo:
                 connection.execute(
                     '''INSERT INTO goal_adjustments (year, period_type, period_key, target_amount, operator, reason, version)
                        VALUES (?, ?, ?, ?, ?, ?, ?)''',
-                    (year, period_type, period_key, target_amount, operator, reason, new_version),
+                    (year, period_type, period_key, target_cents / 100, operator, reason, new_version),
                 )
                 connection.commit()
                 return new_version
@@ -333,7 +355,11 @@ class GoalsRepo:
 
     @staticmethod
     def _allocate_rows(rows, target, version, year, reason):
-        cents = round(float(target) * 100)
+        cents = GoalsRepo._money_cents(target)
+        return GoalsRepo._allocate_rows_cents(rows, cents, version, year, reason)
+
+    @staticmethod
+    def _allocate_rows_cents(rows, cents, version, year, reason):
         if not rows:
             return []
         allocated = allocate_cents(cents, [row['target_amount'] for row in rows])

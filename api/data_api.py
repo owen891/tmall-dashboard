@@ -2077,10 +2077,14 @@ def get_keywords():
     sort = request.args.get('sort', 'efficacy')
     order = request.args.get('order', 'desc')
     try:
-        page = max(1, int(request.args.get('page', 1)))
-        per_page = max(1, min(int(request.args.get('per_page', 50)), 200))
+        raw_page = request.args.get('page', '1')
+        raw_per_page = request.args.get('per_page', '50')
+        page = int(raw_page)
+        per_page = int(raw_per_page)
     except (TypeError, ValueError):
-        return jsonify({'error': 'page and per_page must be positive integers'}), 400
+        return failure('VALIDATION_ERROR', 'page 和 per_page 必须是正整数', status=422)
+    if page < 1 or per_page < 1 or per_page > 200:
+        return failure('VALIDATION_ERROR', 'page 和 per_page 必须是正整数，per_page 最大为 200', status=422)
     
     with get_db() as conn:
         # Get available dates

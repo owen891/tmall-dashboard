@@ -1,4 +1,5 @@
 from datetime import date
+import math
 import re
 from flask import Blueprint, request
 
@@ -18,6 +19,38 @@ def _payload():
 
 def _operator_reason(data, default_reason):
     return data.get('operator') or data.get('actor') or 'admin', data.get('reason') or default_reason
+
+
+def _kpi_number(value, label, *, default=0.0):
+    if value is None or value == '':
+        value = default
+    try:
+        number = float(value)
+    except (TypeError, ValueError) as error:
+        raise ValueError(f'{label}必须是数字') from error
+    if not math.isfinite(number) or number < 0:
+        raise ValueError(f'{label}必须是大于等于 0 的有限数字')
+    return number
+
+
+def _validate_kpi_fields(fields, *, partial=False):
+    if not partial or 'user_name' in fields:
+        if not str(fields.get('user_name') or '').strip():
+            raise ValueError('KPI 负责人不能为空')
+    if not partial or 'period' in fields:
+        period = str(fields.get('period') or '')
+        if not re.fullmatch(r'\d{4}-(0[1-9]|1[0-2])', period):
+            raise ValueError('KPI 周期必须是 YYYY-MM')
+    for field, label in (('target_gmv', '目标 GMV'), ('actual_gmv', '实际 GMV')):
+        if not partial or field in fields:
+            _kpi_number(fields.get(field), label)
+    if not partial or 'achievement_rate' in fields:
+        rate = _kpi_number(fields.get('achievement_rate'), '达成率')
+        if rate > 1:
+            raise ValueError('达成率必须在 0 到 1 之间')
+    if not partial or 'rating' in fields:
+        if str(fields.get('rating') or '') not in {'A', 'B', 'C', 'D'}:
+            raise ValueError('评级必须是 A、B、C 或 D')
 
 
 def _validate_task_fields(fields, *, partial=False):
@@ -180,13 +213,20 @@ def list_kpis():
 def create_kpi():
     data = _payload()
     user_name = str(data.get('user_name') or '').strip()
-    if not user_name:
-        return failure('VALIDATION_ERROR', 'KPI 负责人不能为空', status=422)
-    values = (
-        user_name, str(data.get('period') or ''), float(data.get('target_gmv') or 0),
-        float(data.get('actual_gmv') or 0), float(data.get('achievement_rate') or 0),
-        str(data.get('rating') or 'C'),
-    )
+    fields = {
+        'user_name': user_name, 'period': str(data.get('period') or ''),
+        'target_gmv': data.get('target_gmv'), 'actual_gmv': data.get('actual_gmv'),
+        'achievement_rate': data.get('achievement_rate'), 'rating': str(data.get('rating') or 'C'),
+    }
+    try:
+        _validate_kpi_fields(fields)
+        values = (
+            user_name, fields['period'], _kpi_number(fields['target_gmv'], '目标 GMV'),
+            _kpi_number(fields['actual_gmv'], '实际 GMV'), _kpi_number(fields['achievement_rate'], '达成率'),
+            fields['rating'],
+        )
+    except ValueError as error:
+        return failure('VALIDATION_ERROR', str(error), status=422)
     operator, reason = _operator_reason(data, '创建用户 KPI')
     with get_db() as connection:
         cursor = connection.execute(
@@ -206,9 +246,24 @@ def update_kpi(kpi_id):
     operator, reason = _operator_reason(data, '更新用户 KPI')
     allowed = ('user_name', 'period', 'target_gmv', 'actual_gmv', 'achievement_rate', 'rating')
     assignments = [f'{field} = ?' for field in allowed if field in data]
-    values = [data[field] for field in allowed if field in data]
+    normalized = dict(data)
+    if 'user_name' in normalized:
+        normalized['user_name'] = str(normalized['user_name'] or '').strip()
+    if 'period' in normalized:
+        normalized['period'] = str(normalized['period'] or '').strip()
+    if 'rating' in normalized:
+        normalized['rating'] = str(normalized['rating'] or '').strip()
     if not assignments:
         return failure('VALIDATION_ERROR', '没有可更新的 KPI 字段', status=422)
+    try:
+        _validate_kpi_fields(normalized, partial=True)
+        for field in ('target_gmv', 'actual_gmv', 'achievement_rate'):
+            if field in normalized:
+                normalized[field] = _kpi_number(normalized[field], field)
+    except ValueError as error:
+        return failure('VALIDATION_ERROR', str(error), status=422)
+    assignments = [f'{field} = ?' for field in allowed if field in normalized]
+    values = [normalized[field] for field in allowed if field in normalized]
     with get_db() as connection:
         before_row = _row(connection, 'user_kpis', kpi_id)
         if before_row is None:

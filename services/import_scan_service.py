@@ -16,7 +16,7 @@ from zoneinfo import ZoneInfo
 
 from flask import current_app, has_app_context
 
-from db import get_db
+from db import get_db, get_shop_id
 from services.import_service import import_service
 
 
@@ -218,9 +218,14 @@ def _validate_mapping(value):
 
 
 class ImportScanService:
+    @staticmethod
+    def _shop_id(shop_id=None):
+        return str(shop_id or get_shop_id() or 'default')
+
     @classmethod
     def create_job(cls, payload):
         payload = payload or {}
+        shop_id = cls._shop_id()
         task_name = str(payload.get('task_name') or '').strip()
         if not task_name:
             raise ImportScanValidationError('task_name is required')
@@ -235,26 +240,28 @@ class ImportScanService:
         with get_db() as conn:
             cursor = conn.execute(
                 '''INSERT INTO import_scan_jobs
-                   (task_name, folder_path, file_pattern, source_type,
+                   (shop_id, task_name, folder_path, file_pattern, source_type,
                     mapping_template_json, cron_expr, enabled, status, next_run,
                     created_at, updated_at)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
-                (task_name, folder, pattern, source_type, json.dumps(mapping, ensure_ascii=False),
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+                (shop_id, task_name, folder, pattern, source_type, json.dumps(mapping, ensure_ascii=False),
                  cron, enabled, 'active' if enabled else 'disabled', _iso(next_run), _iso(now), _iso(now)),
             )
             job_id = cursor.lastrowid
             conn.commit()
-        return cls.get_job(job_id)
+        return cls.get_job(job_id, shop_id)
 
     @classmethod
-    def get_job(cls, job_id):
+    def get_job(cls, job_id, shop_id=None):
+        shop_id = cls._shop_id(shop_id)
         with get_db() as conn:
-            return _row(conn.execute('SELECT * FROM import_scan_jobs WHERE id = ?', (job_id,)).fetchone())
+            return _row(conn.execute('SELECT * FROM import_scan_jobs WHERE id = ? AND shop_id = ?', (job_id, shop_id)).fetchone())
 
     @classmethod
-    def list_jobs(cls):
+    def list_jobs(cls, shop_id=None):
+        shop_id = cls._shop_id(shop_id)
         with get_db() as conn:
-            rows = conn.execute('SELECT * FROM import_scan_jobs ORDER BY id DESC').fetchall()
+            rows = conn.execute('SELECT * FROM import_scan_jobs WHERE shop_id = ? ORDER BY id DESC', (shop_id,)).fetchall()
             jobs = [_row(item) for item in rows]
             for job in jobs:
                 job['file_count'] = conn.execute(
@@ -264,7 +271,8 @@ class ImportScanService:
 
     @classmethod
     def update_job(cls, job_id, payload):
-        current = cls.get_job(job_id)
+        shop_id = cls._shop_id()
+        current = cls.get_job(job_id, shop_id)
         if current is None:
             raise ImportScanValidationError('scan job not found')
         merged = {**current, **(payload or {})}
@@ -284,37 +292,48 @@ class ImportScanService:
                    SET task_name=?, folder_path=?, file_pattern=?, source_type=?,
                        mapping_template_json=?, cron_expr=?, enabled=?, status=?,
                        next_run=?, lease_token=NULL, lease_until=NULL, updated_at=?
-                   WHERE id=?''',
+                   WHERE id=? AND shop_id=?''',
                 (str(merged.get('task_name') or '').strip(), folder, pattern, source_type,
-                 json.dumps(mapping, ensure_ascii=False), cron, enabled, status, _iso(next_run), now, job_id),
+                 json.dumps(mapping, ensure_ascii=False), cron, enabled, status, _iso(next_run), now, job_id, shop_id),
             )
             conn.commit()
-        return cls.get_job(job_id)
+        return cls.get_job(job_id, shop_id)
 
     @classmethod
     def disable_job(cls, job_id):
+        shop_id = cls._shop_id()
         with get_db() as conn:
             result = conn.execute(
-                "UPDATE import_scan_jobs SET enabled=0, status='disabled', lease_token=NULL, lease_until=NULL, updated_at=? WHERE id=?",
-                (_iso(_utc_now()), job_id),
+                "UPDATE import_scan_jobs SET enabled=0, status='disabled', lease_token=NULL, lease_until=NULL, updated_at=? WHERE id=? AND shop_id=?",
+                (_iso(_utc_now()), job_id, shop_id),
             )
             conn.commit()
         if not result.rowcount:
             raise ImportScanValidationError('scan job not found')
-        return cls.get_job(job_id)
+        return cls.get_job(job_id, shop_id)
 
     @classmethod
     def list_runs(cls, job_id):
+        shop_id = cls._shop_id()
+        if cls.get_job(job_id, shop_id) is None:
+            return []
         with get_db() as conn:
             return [dict(row) for row in conn.execute(
-                'SELECT * FROM import_scan_runs WHERE job_id=? ORDER BY started_at DESC', (job_id,)
+                '''SELECT r.* FROM import_scan_runs r
+                   JOIN import_scan_jobs j ON j.id = r.job_id
+                   WHERE r.job_id=? AND j.shop_id=? ORDER BY r.started_at DESC''', (job_id, shop_id)
             ).fetchall()]
 
     @classmethod
     def list_files(cls, job_id, status=None):
+        shop_id = cls._shop_id()
+        if cls.get_job(job_id, shop_id) is None:
+            return []
         with get_db() as conn:
-            query = 'SELECT * FROM import_scan_files WHERE job_id=?'
-            params = [job_id]
+            query = '''SELECT f.* FROM import_scan_files f
+                       JOIN import_scan_jobs j ON j.id = f.job_id
+                       WHERE f.job_id=? AND j.shop_id=?'''
+            params = [job_id, shop_id]
             if status:
                 query += ' AND status=?'
                 params.append(status)
@@ -462,11 +481,16 @@ class ImportScanService:
 
     @classmethod
     def retry_file(cls, job_id, file_id):
+        shop_id = cls._shop_id()
+        if cls.get_job(job_id, shop_id) is None:
+            raise ImportScanValidationError('scan job not found')
         now = _iso(_utc_now())
         with get_db() as conn:
             row = conn.execute(
-                'SELECT * FROM import_scan_files WHERE id=? AND job_id=?',
-                (file_id, job_id),
+                '''SELECT f.* FROM import_scan_files f
+                   JOIN import_scan_jobs j ON j.id = f.job_id
+                   WHERE f.id=? AND f.job_id=? AND j.shop_id=?''',
+                (file_id, job_id, shop_id),
             ).fetchone()
             if row is None:
                 raise ImportScanValidationError('scan file not found')
@@ -482,36 +506,39 @@ class ImportScanService:
             conn.execute(
                 '''UPDATE import_scan_jobs
                    SET next_run=?, updated_at=?
-                   WHERE id=? AND enabled=1''',
-                (now, now, job_id),
+                   WHERE id=? AND shop_id=? AND enabled=1''',
+                (now, now, job_id, shop_id),
             )
             conn.commit()
             return dict(conn.execute(
-                'SELECT * FROM import_scan_files WHERE id=? AND job_id=?',
-                (file_id, job_id),
+                '''SELECT f.* FROM import_scan_files f
+                   JOIN import_scan_jobs j ON j.id = f.job_id
+                   WHERE f.id=? AND f.job_id=? AND j.shop_id=?''',
+                (file_id, job_id, shop_id),
             ).fetchone())
 
     @classmethod
     def _acquire_lease(cls, job_id):
+        shop_id = cls._shop_id()
         now = _utc_now()
         token = uuid4().hex
         until = _iso(now + timedelta(seconds=LEASE_SECONDS))
         with get_db() as conn:
-            exists = conn.execute('SELECT id FROM import_scan_jobs WHERE id=?', (job_id,)).fetchone()
+            exists = conn.execute('SELECT id FROM import_scan_jobs WHERE id=? AND shop_id=?', (job_id, shop_id)).fetchone()
             if exists is None:
                 raise ImportScanValidationError('scan job not found')
             result = conn.execute(
                 '''UPDATE import_scan_jobs SET lease_token=?, lease_until=?, updated_at=?
                    , status='running'
-                   WHERE id=? AND enabled=1 AND status IN ('active', 'running')
+                   WHERE id=? AND shop_id=? AND enabled=1 AND status IN ('active', 'running')
                    AND (lease_until IS NULL OR lease_until < ?)''',
-                (token, until, _iso(now), job_id, _iso(now)),
+                (token, until, _iso(now), job_id, shop_id, _iso(now)),
             )
             conn.commit()
         if result.rowcount != 1:
             with get_db() as conn:
                 current = conn.execute(
-                    'SELECT enabled, status, lease_until FROM import_scan_jobs WHERE id=?', (job_id,)
+                    'SELECT enabled, status, lease_until FROM import_scan_jobs WHERE id=? AND shop_id=?', (job_id, shop_id)
                 ).fetchone()
             if current is not None and not current['enabled']:
                 raise ImportScanConflictError('扫描任务已停用', 'SCAN_DISABLED')
@@ -519,19 +546,21 @@ class ImportScanService:
         return token
 
     @classmethod
-    def _release_lease(cls, job_id, token, **fields):
+    def _release_lease(cls, job_id, token, shop_id=None, **fields):
+        shop_id = cls._shop_id(shop_id)
         fields.setdefault('status', 'active')
         fields.update({'lease_token': None, 'lease_until': None, 'updated_at': _iso(_utc_now())})
         assignments = ', '.join(f'{key}=?' for key in fields)
         with get_db() as conn:
             conn.execute(
-                f'UPDATE import_scan_jobs SET {assignments} WHERE id=? AND lease_token=?',
-                (*fields.values(), job_id, token),
+                f'UPDATE import_scan_jobs SET {assignments} WHERE id=? AND shop_id=? AND lease_token=?',
+                (*fields.values(), job_id, shop_id, token),
             )
             conn.commit()
 
     @classmethod
     def run_job_once(cls, job_id, force=False):
+        shop_id = cls._shop_id()
         token = cls._acquire_lease(job_id)
         run_id = uuid4().hex
         started = _utc_now()
@@ -543,7 +572,7 @@ class ImportScanService:
             )
             conn.commit()
         try:
-            job = cls.get_job(job_id)
+            job = cls.get_job(job_id, shop_id)
             if not job:
                 raise ImportScanValidationError('scan job not found')
             for item in cls._discover(job, force=force):
@@ -584,7 +613,7 @@ class ImportScanService:
                 conn.commit()
             next_run = _next_cron_run(job['cron_expr'], finished)
             cls._release_lease(
-                job_id, token, last_run=_iso(finished), next_run=_iso(next_run), last_error=None,
+                job_id, token, shop_id=shop_id, last_run=_iso(finished), next_run=_iso(next_run), last_error=None,
             )
             return {'id': run_id, 'job_id': job_id, 'status': status, **counters}
         except Exception as error:
@@ -594,16 +623,17 @@ class ImportScanService:
                     (_iso(_utc_now()), str(error), run_id),
                 )
                 conn.commit()
-            cls._release_lease(job_id, token, last_run=_iso(_utc_now()), last_error=str(error))
+            cls._release_lease(job_id, token, shop_id=shop_id, last_run=_iso(_utc_now()), last_error=str(error))
             raise
 
     @classmethod
-    def run_due_jobs(cls, now=None):
+    def run_due_jobs(cls, now=None, shop_id=None):
+        shop_id = cls._shop_id(shop_id)
         current = now or _utc_now()
         with get_db() as conn:
             rows = conn.execute(
-                "SELECT id FROM import_scan_jobs WHERE enabled=1 AND status='active' AND (next_run IS NULL OR next_run <= ?)",
-                (_iso(current),),
+                "SELECT id FROM import_scan_jobs WHERE shop_id=? AND enabled=1 AND status='active' AND (next_run IS NULL OR next_run <= ?)",
+                (shop_id, _iso(current)),
             ).fetchall()
         results = []
         for row in rows:

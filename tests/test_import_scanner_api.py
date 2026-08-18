@@ -56,6 +56,25 @@ class ImportScannerApiTests(unittest.TestCase):
         self.assertEqual(old.status_code, 410)
         self.assertEqual(old.get_json()['code'], 'LEGACY_SCHEDULE_REMOVED')
 
+    def test_scan_jobs_are_isolated_by_shop(self):
+        created = self.client.post('/api/import-scans?shop_id=shop-a', json={
+            'task_name': 'shop-a-daily', 'folder_path': self.inbox,
+            'source_type': 'product_day', 'cron_expr': '* * * * *',
+        })
+        self.assertEqual(created.status_code, 201)
+        job_id = created.get_json()['data']['id']
+
+        listed = self.client.get('/api/import-scans?shop_id=shop-b')
+        self.assertEqual(listed.status_code, 200)
+        self.assertEqual(listed.get_json()['data'], [])
+
+        updated = self.client.put(f'/api/import-scans/{job_id}?shop_id=shop-b', json={'enabled': False})
+        self.assertEqual(updated.status_code, 422)
+        deleted = self.client.delete(f'/api/import-scans/{job_id}?shop_id=shop-b')
+        self.assertEqual(deleted.status_code, 404)
+        run = self.client.post(f'/api/import-scans/{job_id}/run?shop_id=shop-b', json={'force': True})
+        self.assertEqual(run.status_code, 422)
+
     def test_invalid_local_path_returns_422(self):
         response = self.client.post('/api/import-scans', json={
             'task_name': 'bad', 'folder_path': os.path.dirname(self.inbox),

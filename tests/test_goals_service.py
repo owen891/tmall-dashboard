@@ -241,6 +241,18 @@ class GoalsWorkflowTests(unittest.TestCase):
         self.assertEqual(round(details['data']['annual_total'], 2), 36500)
         self.assertEqual(len(details['data']['adjustments']), 1)
 
+    def test_adjustment_uses_integer_cents_for_decimal_targets(self):
+        _, created = self.request('POST', '/api/goals', json={'year': 2026, 'annual_target': 365.01})
+        status, _ = self.request('POST', '/api/goals/2026/adjustments', json={
+            'version': created['data']['version'], 'period_type': 'date', 'period_key': '2026-01-01',
+            'target_amount': 0.005, 'operator': 'operator', 'reason': '小数边界',
+        })
+        self.assertEqual(status, 200)
+        status, details = self.request('GET', '/api/goals/2026')
+        self.assertEqual(status, 200)
+        self.assertEqual(round(sum(row['target_amount'] for row in details['data']['days']), 2), 365.01)
+        self.assertEqual(details['data']['adjustments'][0]['target_amount'], 0.01)
+
     def test_all_five_period_levels_can_be_adjusted_or_locked(self):
         _, created = self.request('POST', '/api/goals', json={'year': 2026, 'annual_target': 36500})
         version = created['data']['version']

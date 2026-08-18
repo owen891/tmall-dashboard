@@ -955,6 +955,16 @@ def init_db(db_path=None):
     cursor.execute('CREATE INDEX idx_import_previews_shop_created ON import_previews(shop_id, created_at DESC)')
     conn.commit()
 
+    # Migration: bind scheduled import scans to their owning shop. Existing
+    # single-shop jobs remain owned by the legacy default shop.
+    cursor.execute("PRAGMA table_info(import_scan_jobs)")
+    import_scan_job_columns = {row[1] for row in cursor.fetchall()}
+    if 'shop_id' not in import_scan_job_columns:
+        cursor.execute("ALTER TABLE import_scan_jobs ADD COLUMN shop_id TEXT NOT NULL DEFAULT 'default'")
+    cursor.execute('DROP INDEX IF EXISTS idx_import_scan_jobs_shop_due')
+    cursor.execute('CREATE INDEX idx_import_scan_jobs_shop_due ON import_scan_jobs(shop_id, enabled, status, next_run)')
+    conn.commit()
+
     # Migration: add new health dimension columns if they don't exist
     new_health_cols = [
         'gmv_change_score', 'ad_spend_change_score', 'roi_change_score',

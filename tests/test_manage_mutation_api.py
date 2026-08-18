@@ -104,6 +104,20 @@ class ManageMutationApiTests(unittest.TestCase):
             self.assertEqual(response.status_code, 422)
             self.assertEqual(response.get_json()['code'], 'VALIDATION_ERROR')
 
+    def test_kpi_rejects_non_finite_and_out_of_range_values(self):
+        for field, value in (('target_gmv', 'NaN'), ('actual_gmv', 'Infinity'), ('achievement_rate', 1.1)):
+            response = self.client.post('/api/manage/kpis', json={
+                'user_name': '运营A', 'period': '2026-08', field: value,
+            })
+            self.assertEqual(response.status_code, 422)
+            self.assertEqual(response.get_json()['code'], 'VALIDATION_ERROR')
+
+    def test_keyword_pagination_rejects_invalid_values(self):
+        for query in ('page=0', 'page=abc', 'per_page=-1', 'per_page=201'):
+            response = self.client.get(f'/api/keywords?{query}')
+            self.assertEqual(response.status_code, 422)
+            self.assertEqual(response.get_json()['code'], 'VALIDATION_ERROR')
+
 
 if __name__ == '__main__':
     unittest.main()
