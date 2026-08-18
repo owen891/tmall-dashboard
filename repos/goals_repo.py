@@ -137,6 +137,8 @@ class GoalsRepo:
             locks = connection.execute(
                 'SELECT period_type, period_key FROM goal_locks WHERE year = ?', (year,)
             ).fetchall()
+        # Only explicit date locks freeze individual daily values. Period locks
+        # are aggregate constraints and are handled during reallocation.
         locked_dates = GoalsRepo._locked_dates(year, locks)
         result_days = [{**dict(day), 'locked': int(day['goal_date'] in locked_dates)} for day in days]
         return (dict(version) if version else None, result_days)
@@ -164,12 +166,13 @@ class GoalsRepo:
             locks = connection.execute(
                 'SELECT period_type, period_key FROM goal_locks WHERE year = ?', (year,)
             ).fetchall()
-        locked_dates = GoalsRepo._locked_dates(year, locks)
         month_days = {}
         for row in goal_dates:
             month_days.setdefault(row['goal_date'][:7], set()).add(row['goal_date'])
-        locked_months = sorted(month for month, days in month_days.items()
-                               if days and days <= locked_dates)
+        locked_months = sorted(
+            lock['period_key'] for lock in locks
+            if lock['period_type'] == 'month' and lock['period_key'] in month_days
+        )
         months = []
         for row in rows:
             month = dict(row)
@@ -275,11 +278,13 @@ class GoalsRepo:
                     'SELECT period_type, period_key FROM goal_locks WHERE year = ?', (year,)
                 ).fetchall()
                 locked = GoalsRepo._locked_dates(year, lock_rows)
-                unlocked = [row for row in selected if row['goal_date'] not in locked]
+                aggregate_locked = GoalsRepo._aggregate_locked_dates(year, lock_rows)
+                protected = locked | aggregate_locked
+                unlocked = [row for row in selected if row['goal_date'] not in protected]
                 target_cents = GoalsRepo._money_cents(target_amount)
                 locked_total_cents = sum(
                     GoalsRepo._money_cents(row['target_amount'])
-                    for row in selected if row['goal_date'] in locked
+                    for row in selected if row['goal_date'] in protected
                 )
                 remainder_cents = target_cents - locked_total_cents
                 if remainder_cents < 0:
@@ -290,11 +295,16 @@ class GoalsRepo:
                     GoalsRepo._money_cents(row['target_amount']) for row in unlocked
                 )
                 delta_cents = remainder_cents - current_unlocked_total_cents
-                other_unlocked = [row for row in all_rows if row['goal_date'] not in target_dates and row['goal_date'] not in locked]
+                other_unlocked = [
+                    row for row in all_rows
+                    if row['goal_date'] not in target_dates and row['goal_date'] not in protected
+                ]
                 other_unlocked_total_cents = sum(
                     GoalsRepo._money_cents(row['target_amount']) for row in other_unlocked
                 )
-                if delta_cents > 0 and other_unlocked_total_cents < delta_cents:
+                if period_type != 'year' and delta_cents and not other_unlocked:
+                    raise ValueError('未锁定日期不足，无法保持年度总额')
+                if period_type != 'year' and delta_cents > 0 and other_unlocked_total_cents < delta_cents:
                     raise ValueError('未锁定日期的可分配额度不足')
                 new_version = expected_version + 1
                 values = GoalsRepo._allocate_rows_cents(unlocked, remainder_cents, new_version, year, reason)
@@ -313,6 +323,11 @@ class GoalsRepo:
                            VALUES (?, ?, ?, ?)''', (year, period_type, period_key, new_version)
                     )
                 connection.execute('UPDATE goal_versions SET version = ?, updated_at = CURRENT_TIMESTAMP WHERE year = ?', (new_version, year))
+                if period_type == 'year':
+                    connection.execute(
+                        'UPDATE goal_versions SET annual_target = ? WHERE year = ?',
+                        (target_cents / 100, year),
+                    )
                 connection.execute(
                     '''INSERT INTO goal_adjustments (year, period_type, period_key, target_amount, operator, reason, version)
                        VALUES (?, ?, ?, ?, ?, ?, ?)''',
@@ -348,6 +363,19 @@ class GoalsRepo:
     def _locked_dates(year, lock_rows):
         locked = set()
         for lock_row in lock_rows:
+            if lock_row['period_type'] != 'date':
+                continue
+            locked.update(item.isoformat() for item in GoalsRepo._period_dates(
+                year, lock_row['period_type'], lock_row['period_key'],
+            ))
+        return locked
+
+    @staticmethod
+    def _aggregate_locked_dates(year, lock_rows):
+        locked = set()
+        for lock_row in lock_rows:
+            if lock_row['period_type'] == 'date':
+                continue
             locked.update(item.isoformat() for item in GoalsRepo._period_dates(
                 year, lock_row['period_type'], lock_row['period_key'],
             ))

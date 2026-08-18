@@ -62,6 +62,18 @@ class SettingsApiTests(unittest.TestCase):
         self.assertEqual(rejected['code'], 'VALIDATION_ERROR')
         self.assertEqual(rejected['message'], '增长倍率必须大于 0')
 
+    def test_settings_reject_non_finite_numbers_and_malformed_thresholds(self):
+        for payload in (
+            {'annual_target_default': 'NaN'},
+            {'growth_multiplier': 'Infinity'},
+            {'overachievement_threshold': '-Infinity'},
+            {'growth_multiplier': True},
+            {'lifecycle_thresholds': {'continuous_days': 'abc', 'seasonal_months': 12}},
+        ):
+            status, rejected = self.request('PUT', '/api/settings', json=payload)
+            self.assertEqual(status, 422)
+            self.assertEqual(rejected['code'], 'VALIDATION_ERROR')
+
     def test_settings_validation_messages_are_user_facing_chinese(self):
         cases = [
             ({'annual_target_default': -1}, '年度目标默认值不能为负数'),

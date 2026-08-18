@@ -18,6 +18,16 @@ def _operator_reason(data, default_reason):
     return data.get('operator') or data.get('actor') or 'admin', data.get('reason') or default_reason
 
 
+def _starred(value):
+    if isinstance(value, bool):
+        return int(value)
+    if isinstance(value, int) and value in {0, 1}:
+        return value
+    if isinstance(value, str) and value.strip() in {'0', '1'}:
+        return int(value.strip())
+    raise ValueError('starred 必须是布尔值或 0/1')
+
+
 def _success(data, *, source, action, row_count=1, status=200, unknowns=None):
     return success(
         data,
@@ -79,7 +89,10 @@ def set_product_star(product_id):
             return failure('NOT_FOUND', '商品不存在', status=404)
         current = int(row['starred'] or 0)
         if 'starred' in data:
-            starred = 1 if int(data.get('starred') or 0) else 0
+            try:
+                starred = _starred(data.get('starred'))
+            except ValueError as error:
+                return failure('VALIDATION_ERROR', str(error), status=422)
         else:
             starred = 0 if current else 1
         connection.execute(

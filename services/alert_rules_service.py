@@ -33,6 +33,16 @@ COMPARATORS = {
 
 
 class AlertRulesService:
+    @staticmethod
+    def _enabled(value):
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, str) and value.strip().lower() in {'true', 'false'}:
+            return value.strip().lower() == 'true'
+        if isinstance(value, int) and value in {0, 1}:
+            return bool(value)
+        raise AlertRuleValidationError('启用状态必须是布尔值')
+
     def list(self, scope=None):
         if scope and scope not in SCOPES:
             raise AlertRuleValidationError('不支持的预警作用域')
@@ -111,6 +121,9 @@ class AlertRulesService:
         metric = str(payload.get('metric', '')).strip()
         operator_name = str(payload.get('operator', '')).strip()
         level = str(payload.get('level', '')).strip()
+        name = str(payload.get('name', '')).strip()
+        if not name:
+            raise AlertRuleValidationError('预警规则名称不能为空')
         if scope not in SCOPES:
             raise AlertRuleValidationError('不支持的预警作用域')
         if metric not in SCOPES[scope]:
@@ -126,13 +139,13 @@ class AlertRulesService:
         if not math.isfinite(threshold):
             raise AlertRuleValidationError('预警阈值必须是有限数字')
         return {
-            'name': str(payload.get('name', '')).strip(),
+            'name': name,
             'scope': scope,
             'metric': metric,
             'operator': operator_name,
             'threshold': threshold,
             'level': level,
-            'enabled': bool(payload.get('enabled', True)),
+            'enabled': self._enabled(payload.get('enabled', True)),
         }
 
     @staticmethod

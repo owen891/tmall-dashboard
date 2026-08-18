@@ -203,6 +203,15 @@ class PromotionApiTests(unittest.TestCase):
             self.assertEqual(response.status_code, 422, payload)
             self.assertEqual(response.get_json()['code'], 'VALIDATION_ERROR')
 
+    def test_alert_rule_rejects_empty_name_and_malformed_enabled_value(self):
+        for payload in (
+            {'name': '  ', 'scope': 'promotion_product', 'metric': 'roi', 'operator': 'lt', 'threshold': 3, 'level': 'warning'},
+            {'name': 'bad enabled', 'scope': 'promotion_product', 'metric': 'roi', 'operator': 'lt', 'threshold': 3, 'level': 'warning', 'enabled': 'maybe'},
+        ):
+            response = self.client.post('/api/alert-rules', json=payload)
+            self.assertEqual(response.status_code, 422)
+            self.assertEqual(response.get_json()['code'], 'VALIDATION_ERROR')
+
     def test_invalid_or_reversed_dates_return_structured_validation_error(self):
         for query in (
             'start=2026-04-01&end=bad',

@@ -29,5 +29,15 @@ class PeriodReviewsTests(unittest.TestCase):
         self.assertIn('updated_at', response.get_json()['data'][0])
         response.close()
 
+    def test_invalid_period_keys_are_rejected(self):
+        for path in ('/api/period-reviews/day/2026-02-30', '/api/period-reviews/month/2026-13', '/api/period-reviews/week/2026-W99'):
+            response = self.client.put(path, json={
+                'summary': 'x', 'conclusions': 'x', 'next_actions': 'x', 'reviewer': 'operator',
+            })
+            self.assertEqual(response.status_code, 422)
+            self.assertEqual(response.get_json()['code'], 'VALIDATION_ERROR')
+        response = self.client.get('/api/period-reviews?period_type=invalid')
+        self.assertEqual(response.status_code, 422)
+
 
 if __name__ == '__main__': unittest.main(verbosity=2)

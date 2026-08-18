@@ -89,6 +89,11 @@ class FormalMutationApiTests(unittest.TestCase):
         self.assertEqual(payload['data'], {'product_id': 'formal-001', 'starred': 1})
         self.assertEqual(payload['evidence'][0]['source'], 'products')
 
+    def test_product_star_rejects_malformed_boolean(self):
+        response = self.client.post('/api/products/formal-001/star', json={'starred': 'maybe'})
+        self.assertEqual(response.status_code, 422)
+        self.assertEqual(response.get_json()['code'], 'VALIDATION_ERROR')
+
     def test_overview_event_mutations_return_structured_evidence(self):
         created = self.client.post('/api/overview/events', json={
             'event_date': '2026-08-10', 'title': '活动开始',

@@ -1,4 +1,5 @@
 from copy import deepcopy
+import math
 
 from repos.settings_repo import SettingsRepo
 from repos.audit_repo import AuditRepo
@@ -102,6 +103,35 @@ class SettingsValidationError(ValueError):
 
 
 class SettingsService:
+    @staticmethod
+    def _number(value, label, *, minimum=None, strict=False):
+        if isinstance(value, bool):
+            raise SettingsValidationError(f'{label}必须是数字')
+        try:
+            number = float(value)
+        except (TypeError, ValueError) as error:
+            raise SettingsValidationError(f'{label}必须是数字') from error
+        if not math.isfinite(number):
+            raise SettingsValidationError(f'{label}必须是有限数字')
+        if minimum is not None and (number <= minimum if strict else number < minimum):
+            operator = '大于' if strict else '大于等于'
+            raise SettingsValidationError(f'{label}必须{operator} {minimum}')
+        return number
+
+    @staticmethod
+    def _integer(value, label, *, minimum=None):
+        if isinstance(value, bool):
+            raise SettingsValidationError(f'{label}必须是整数')
+        try:
+            number = int(value)
+        except (TypeError, ValueError) as error:
+            raise SettingsValidationError(f'{label}必须是整数') from error
+        if str(value).strip() != str(number):
+            raise SettingsValidationError(f'{label}必须是整数')
+        if minimum is not None and number < minimum:
+            raise SettingsValidationError(f'{label}不能小于 {minimum}')
+        return number
+
     def get(self):
         values = deepcopy(DEFAULTS)
         persisted = SettingsRepo.get_all()
@@ -160,21 +190,13 @@ class SettingsService:
         if 'week_starts_on' in values and values['week_starts_on'] not in {'monday', 'sunday'}:
             raise SettingsValidationError('周起始日必须为 monday 或 sunday')
         if 'annual_target_default' in values:
-            try:
-                values['annual_target_default'] = float(values['annual_target_default'])
-            except (TypeError, ValueError) as error:
-                raise SettingsValidationError('年度目标默认值必须是数字') from error
-        if 'annual_target_default' in values and values['annual_target_default'] < 0:
-            raise SettingsValidationError('年度目标默认值不能为负数')
+            values['annual_target_default'] = self._number(values['annual_target_default'], '年度目标默认值')
+            if values['annual_target_default'] < 0:
+                raise SettingsValidationError('年度目标默认值不能为负数')
         for key in ('growth_multiplier', 'overachievement_threshold'):
             label = {'growth_multiplier': '增长倍率', 'overachievement_threshold': '超额完成阈值'}[key]
             if key in values:
-                try:
-                    values[key] = float(values[key])
-                except (TypeError, ValueError) as error:
-                    raise SettingsValidationError(f'{label}必须是数字') from error
-                if values[key] <= 0:
-                    raise SettingsValidationError(f'{label}必须大于 0')
+                values[key] = self._number(values[key], label, minimum=0, strict=True)
         for key in ('lifecycle_thresholds', 'field_mappings', 'mapping_templates', 'view_templates', 'promotion_view_templates', 'lifecycle_view_templates'):
             if key in values and not isinstance(values[key], dict):
                 raise SettingsValidationError('设置项格式错误')
@@ -262,8 +284,15 @@ class SettingsService:
             values['lifecycle_view_templates'] = normalized
         if 'lifecycle_thresholds' in values:
             thresholds = values['lifecycle_thresholds']
-            if int(thresholds.get('continuous_days', 60)) < 60 or int(thresholds.get('seasonal_months', 12)) < 12:
+            if not isinstance(thresholds, dict):
+                raise SettingsValidationError('设置项格式错误')
+            continuous_days = self._integer(thresholds.get('continuous_days', 60), '连续有效天数')
+            seasonal_months = self._integer(thresholds.get('seasonal_months', 12), '完整月份数')
+            if continuous_days < 60 or seasonal_months < 12:
                 raise SettingsValidationError('生命周期阈值不能低于系统安全下限')
+            values['lifecycle_thresholds'] = {
+                **thresholds, 'continuous_days': continuous_days, 'seasonal_months': seasonal_months,
+            }
         with get_db() as connection:
             try:
                 SettingsRepo.upsert(values, connection=connection)

@@ -70,6 +70,38 @@ class ActionWorkflowTests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertEqual(blocked['data']['status'], 'blocked')
 
+    def test_invalid_action_dates_and_windows_return_validation_error(self):
+        base = {
+            'product_id': 'action-a', 'purpose_type': 'increase_sales', 'purpose_note': '测试',
+            'action_type': 'image_change', 'action_detail': '测试', 'target_metric': 'payment_amount',
+            'planned_at': '2026-04-03', 'observer_window_days': 2,
+        }
+        for field, value in (('planned_at', '2026/04/03'), ('observer_window_days', 'abc'), ('observer_window_days', 366)):
+            response = self.client.post('/api/actions', json={**base, field: value})
+            self.assertEqual(response.status_code, 422)
+            self.assertEqual(response.get_json()['code'], 'VALIDATION_ERROR')
+
+    def test_review_false_string_is_not_treated_as_true(self):
+        action_id = self.create_action(window=1)
+        for target in ('pending_execution', 'executing', 'observing'):
+            self.transition(action_id, target)
+        with self.get_db(self.database_path) as connection:
+            connection.executemany(
+                '''INSERT INTO daily_data (product_id, date, payment_amount)
+                   VALUES (?, ?, ?)''',
+                [('action-a', '2026-04-02', 10), ('action-a', '2026-04-04', 20)],
+            )
+            connection.commit()
+        status, recalculated = self.request('POST', '/api/actions/recalculate')
+        self.assertEqual(status, 200)
+        current = recalculated['data']['actions'][0]
+        status, reviewed = self.request('POST', f'/api/actions/{action_id}/review', json={
+            'version': current['version'], 'effective': 'false', 'reason': '无效',
+            'conclusion': '无效', 'next_action': '停止', 'reviewer': 'operator',
+        })
+        self.assertEqual(status, 200)
+        self.assertEqual(reviewed['data']['review_effective'], 0)
+
     def test_action_list_uses_standard_envelope(self):
         self.create_action()
         status, payload = self.request('GET', '/api/actions?product_id=action-a')

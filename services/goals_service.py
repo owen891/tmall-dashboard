@@ -1,6 +1,7 @@
 from calendar import isleap
 from datetime import date, timedelta
 import math
+import re
 
 from repos.goals_repo import GoalsRepo
 from utils.goal_allocation import allocate_cents
@@ -62,7 +63,7 @@ def _validate_period_key(year, period_type, period_key):
             raise GoalValidationError('月份格式必须为 YYYY-MM')
         return
     if period_type == 'week':
-        if not key.startswith(f'{year:04d}-W'):
+        if not re.fullmatch(r'\d{4}-W\d{2}', key) or not key.startswith(f'{year:04d}-W'):
             raise GoalValidationError('周格式必须为 YYYY-Www')
         try:
             date.fromisocalendar(year, int(key[-2:]), 1)
@@ -76,7 +77,11 @@ def _allocate(annual_target, days, weights=None):
     cents = round(_finite_number(annual_target, '年度目标') * 100)
     if cents < 0:
         raise GoalValidationError('年度目标不能为负数')
-    weights = weights or {}
+    weights = dict(weights or {})
+    # A leap-year plan has one extra day. Use the adjacent prior-year dates
+    # for 02-29 so the day is not silently treated as zero weight.
+    if any(day.month == 2 and day.day == 29 for day in days):
+        weights['02-29'] = (float(weights.get('02-28', 0)) + float(weights.get('03-01', 0))) / 2
     values = [max(0, float(weights.get(day.strftime('%m-%d'), 0))) for day in days]
     allocated = allocate_cents(cents, values)
     return [(day.isoformat(), amount / 100) for day, amount in zip(days, allocated)]
@@ -166,8 +171,13 @@ class GoalsService:
             raise GoalValidationError('年度目标不能为负数')
         days = _days_for_year(year)
         weights = GoalsRepo.prior_year_daily_weights(year)
-        allocation = _allocate(float(annual_target), days, weights)
-        return _monthly_preview(year, annual_target, allocation, weights)
+        effective_weights = dict(weights)
+        if any(day.month == 2 and day.day == 29 for day in days):
+            effective_weights['02-29'] = (
+                float(effective_weights.get('02-28', 0)) + float(effective_weights.get('03-01', 0))
+            ) / 2
+        allocation = _allocate(float(annual_target), days, effective_weights)
+        return _monthly_preview(year, annual_target, allocation, effective_weights)
 
     def get_year(self, year):
         version, days = GoalsRepo.get_year(year)
