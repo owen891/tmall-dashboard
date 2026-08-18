@@ -341,6 +341,12 @@ class GoalsWorkflowTests(unittest.TestCase):
         self.assertEqual(response['code'], 'VALIDATION_ERROR')
 
         status, response = self.request(
+            'POST', '/api/goals', json={'year': 2026, 'annual_target': 100, 'growth_multiplier': -1}
+        )
+        self.assertEqual(status, 422)
+        self.assertEqual(response['code'], 'VALIDATION_ERROR')
+
+        status, response = self.request(
             'GET', '/api/goals/2026/allocation-preview?annual_target=NaN'
         )
         self.assertEqual(status, 422)

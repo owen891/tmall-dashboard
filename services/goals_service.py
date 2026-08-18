@@ -120,8 +120,10 @@ class GoalsService:
             raise GoalValidationError('年份不合法')
         prior_year_net_sales = GoalsRepo.prior_year_net_sales(year)
         multiplier = _finite_number(growth_multiplier, '增长倍率') if growth_multiplier is not None else None
+        if multiplier is not None and multiplier <= 0:
+            raise GoalValidationError('增长倍率必须大于 0')
         if annual_target is None:
-            if multiplier is None or multiplier <= 0:
+            if multiplier is None:
                 raise GoalValidationError('年度目标或增长倍率至少提供一项')
             annual_target = prior_year_net_sales * multiplier
         annual_target = round(_finite_number(annual_target, '年度目标'), 2)

@@ -66,7 +66,7 @@ PAGE_DEFINITIONS = (
         'key': 'goals', 'label': '经营目标', 'page_type': 'context', 'route': '/goals',
         'core_question': '目标是否按计划推进',
         'data_domains': ('goals', 'store_daily'),
-        'capability_keys': ('goals.view', 'goals.adjust', 'goals.lock'),
+        'capability_keys': ('goals.view', 'goals.bootstrap', 'goals.adjust', 'goals.lock'),
     },
     {
         'key': 'compare', 'label': '周期对比', 'page_type': 'context', 'route': '/compare',
@@ -118,6 +118,7 @@ CAPABILITY_DEFINITIONS = (
     {'key': 'product-detail.review_action', 'page_key': 'product-detail', 'label': '从详情完成复盘', 'mode': 'workflow', 'support_level': 'conditional', 'data_domains': ('actions',), 'metric_keys': (), 'api_endpoints': ('POST /api/actions/:id/review',)},
     {'key': 'product-detail.export', 'page_key': 'product-detail', 'label': '导出商品详情', 'mode': 'export', 'support_level': 'conditional', 'data_domains': ('product_master', 'product_daily', 'actions'), 'metric_keys': (), 'api_endpoints': ('GET /api/products/:product_id/detail/export',)},
     {'key': 'goals.view', 'page_key': 'goals', 'label': '查看目标进度', 'mode': 'observe', 'support_level': 'supported', 'data_domains': ('goals',), 'metric_keys': (), 'api_endpoints': ('GET /api/goals/:year',)},
+    {'key': 'goals.bootstrap', 'page_key': 'goals', 'label': '创建首个年度目标', 'mode': 'workflow', 'support_level': 'supported', 'data_domains': (), 'metric_keys': (), 'api_endpoints': ('POST /api/goals',)},
     {'key': 'goals.adjust', 'page_key': 'goals', 'label': '调整经营目标', 'mode': 'workflow', 'support_level': 'conditional', 'data_domains': ('goals',), 'metric_keys': (), 'api_endpoints': ('POST /api/goals/:year/adjustments',)},
     {'key': 'goals.lock', 'page_key': 'goals', 'label': '锁定经营目标', 'mode': 'workflow', 'support_level': 'conditional', 'data_domains': ('goals',), 'metric_keys': (), 'api_endpoints': ('POST /api/goals/:year/locks',)},
     {'key': 'compare.view', 'page_key': 'compare', 'label': '比较两个周期', 'mode': 'analyze', 'support_level': 'conditional', 'data_domains': ('product_weekly',), 'metric_keys': ('net_sales',), 'api_endpoints': ('GET /api/period-reviews',)},

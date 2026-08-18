@@ -1,4 +1,5 @@
 from datetime import date
+import re
 from flask import Blueprint, request
 
 from api.api_response import failure, success
@@ -31,6 +32,8 @@ def _validate_task_fields(fields, *, partial=False):
     if not partial or 'due_date' in fields:
         due_date = str(fields.get('due_date') or '')
         if due_date:
+            if not re.fullmatch(r'\d{4}-\d{2}-\d{2}', due_date):
+                raise ValueError('due_date 必须是 YYYY-MM-DD')
             try:
                 date.fromisoformat(due_date)
             except ValueError as error:
@@ -38,6 +41,8 @@ def _validate_task_fields(fields, *, partial=False):
     for field in ('title', 'description', 'assignee'):
         if field in fields and len(str(fields.get(field) or '')) > 2000:
             raise ValueError(f'{field} 长度不能超过 2000 个字符')
+    if 'title' in fields and not str(fields.get('title') or '').strip():
+        raise ValueError('任务标题不能为空')
 
 
 def _success(data, *, source, action, row_count=1, status=200, unknowns=None):
@@ -59,6 +64,10 @@ def _row(connection, table, item_id):
 def list_tasks():
     status = request.args.get('status', '')
     priority = request.args.get('priority', '')
+    if status and status not in TASK_STATUSES:
+        return failure('VALIDATION_ERROR', 'status 参数不合法', status=422)
+    if priority and priority not in TASK_PRIORITIES:
+        return failure('VALIDATION_ERROR', 'priority 参数不合法', status=422)
     clauses, params = ['1=1'], []
     if status:
         clauses.append('status = ?')
@@ -91,7 +100,7 @@ def create_task():
         'due_date': str(data.get('due_date') or ''),
     }
     try:
-        _validate_task_fields(fields)
+        _validate_task_fields({**fields, 'title': title})
     except ValueError as error:
         return failure('VALIDATION_ERROR', str(error), status=422)
     operator, reason = _operator_reason(data, '创建管理任务')
@@ -111,14 +120,20 @@ def create_task():
 @manage_bp.route('/api/manage/tasks/<int:task_id>', methods=['PUT'])
 def update_task(task_id):
     data = _payload()
+    normalized = dict(data)
+    if 'title' in normalized:
+        normalized['title'] = str(normalized.get('title') or '').strip()
+    for field in ('description', 'status', 'priority', 'assignee', 'due_date'):
+        if field in normalized:
+            normalized[field] = str(normalized.get(field) or '').strip()
     operator, reason = _operator_reason(data, '更新管理任务')
     allowed = ('title', 'description', 'status', 'priority', 'assignee', 'due_date')
-    assignments = [f'{field} = ?' for field in allowed if field in data]
-    values = [data[field] for field in allowed if field in data]
+    assignments = [f'{field} = ?' for field in allowed if field in normalized]
+    values = [normalized[field] for field in allowed if field in normalized]
     if not assignments:
         return failure('VALIDATION_ERROR', '没有可更新的任务字段', status=422)
     try:
-        _validate_task_fields(data, partial=True)
+        _validate_task_fields(normalized, partial=True)
     except ValueError as error:
         return failure('VALIDATION_ERROR', str(error), status=422)
     with get_db() as connection:

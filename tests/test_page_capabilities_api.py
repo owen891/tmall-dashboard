@@ -40,6 +40,12 @@ class PageCapabilitiesApiTests(unittest.TestCase):
         self.assertEqual(invalid.status_code, 422)
         self.assertEqual(invalid.get_json()['code'], 'VALIDATION_ERROR')
 
+    def test_goals_exposes_bootstrap_creation_capability_without_existing_data(self):
+        response = self.client.get('/api/page-capabilities?page=goals')
+        self.assertEqual(response.status_code, 200)
+        capabilities = {item['key']: item for item in response.get_json()['data']['pages'][0]['capabilities']}
+        self.assertEqual(capabilities['goals.bootstrap']['interaction_state'], 'enabled')
+
 
 if __name__ == '__main__':
     unittest.main()

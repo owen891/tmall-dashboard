@@ -12,6 +12,7 @@
   let previewToken = 0;
   let previewTimer = null;
   let annualTargetDirty = false;
+  let pageCapabilitiesReady = false;
 
   const money = (value) => Number(value || 0).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   const setStatus = (message) => {
@@ -20,7 +21,10 @@
   };
   const renderDataState = (state, details = {}) => DemoApi.renderDataState(status, state, details);
   const setTableMessage = (body, colspan, message) => { body.replaceChildren(); const row = body.insertRow(); const cell = row.insertCell(); cell.colSpan = colspan; cell.textContent = message; };
-  const canEdit = () => !Object.keys(capabilities).length || DemoApi.can({ capabilities }, 'can_edit');
+  const canEdit = () => {
+    if (!pageCapabilitiesReady) return true;
+    return DemoApi.canPage('goals', current ? 'goals.adjust' : 'goals.bootstrap');
+  };
   const canLock = () => !Object.keys(capabilities).length || DemoApi.can({ capabilities }, 'can_lock');
   const updateAnnualControls = () => {
     const editable = canEdit();
@@ -28,6 +32,10 @@
     suggestButton.disabled = !editable;
     form.querySelector('[data-goals-save]').disabled = !editable;
   };
+
+  DemoApi.loadPageCapabilities('goals')
+    .catch(() => null)
+    .finally(() => { pageCapabilitiesReady = true; updateAnnualControls(); });
 
   function makeIconButton(icon, label, action) {
     const button = document.createElement('button');

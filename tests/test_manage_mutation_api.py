@@ -82,10 +82,27 @@ class ManageMutationApiTests(unittest.TestCase):
                 self.assertEqual(response.status_code, 422)
                 self.assertEqual(response.get_json()['code'], 'VALIDATION_ERROR')
 
+        for payload in ({'title': None}, {'title': '   '}, {'title': 'bad compact date', 'due_date': '20260801'}):
+            response = self.client.post('/api/manage/tasks', json=payload)
+            self.assertEqual(response.status_code, 422)
+            self.assertEqual(response.get_json()['code'], 'VALIDATION_ERROR')
+
+        created = self.client.post('/api/manage/tasks', json={'title': 'valid'}).get_json()['data']['id']
+        for payload in ({'title': None}, {'title': '   '}):
+            response = self.client.put(f'/api/manage/tasks/{created}', json=payload)
+            self.assertEqual(response.status_code, 422)
+            self.assertEqual(response.get_json()['code'], 'VALIDATION_ERROR')
+
+        for query in ('status=bad', 'priority=P9'):
+            response = self.client.get(f'/api/manage/tasks?{query}')
+            self.assertEqual(response.status_code, 422)
+            self.assertEqual(response.get_json()['code'], 'VALIDATION_ERROR')
+
     def test_ad_trend_rejects_invalid_count_without_server_error(self):
-        response = self.client.get('/api/ad_trend?count=abc')
-        self.assertEqual(response.status_code, 422)
-        self.assertEqual(response.get_json()['code'], 'VALIDATION_ERROR')
+        for count in ('abc', '0', '-5', '25'):
+            response = self.client.get(f'/api/ad_trend?count={count}')
+            self.assertEqual(response.status_code, 422)
+            self.assertEqual(response.get_json()['code'], 'VALIDATION_ERROR')
 
 
 if __name__ == '__main__':
