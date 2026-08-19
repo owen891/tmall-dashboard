@@ -5,7 +5,7 @@ describe('desktop backend launch', () => {
   it('spawns only the packaged loopback backend', () => {
     const launch = backendLaunchOptions('C:\\Program Files\\TmallDashboard\\resources', 49152, 123, {
       TMALL_BACKEND_EXE: 'C:\\malicious\\Server.exe',
-    })
+    }, 'win32')
 
     expect(launch.command).toBe('C:\\Program Files\\TmallDashboard\\resources\\backend\\TmallDashboardServer.exe')
     expect(launch.args).toEqual(['--port', '49152', '--parent-pid', '123'])

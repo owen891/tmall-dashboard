@@ -28,9 +28,16 @@ describe('desktop updater contract', () => {
     expect(pendingUpdateDirectories({
       LOCALAPPDATA: 'C:\\Local',
       APPDATA: 'C:\\Roaming',
-    })).toEqual([
+    }, 'win32')).toEqual([
       'C:\\Local\\TmallDashboard-updater\\pending',
       'C:\\Roaming\\TmallDashboard\\updater\\pending',
     ])
+  })
+
+  it('does not target Windows update directories on macOS', () => {
+    expect(pendingUpdateDirectories({
+      LOCALAPPDATA: 'C:\\Local',
+      APPDATA: 'C:\\Roaming',
+    }, 'darwin')).toEqual([])
   })
 })
