@@ -101,6 +101,7 @@ class ReleaseGateTests(unittest.TestCase):
         self.assertIn('*.dmg', workflow)
         self.assertIn('*.zip', workflow)
         self.assertIn('merge_mac_update_metadata.py', workflow)
+        self.assertIn('pip install -r requirements.txt', workflow)
 
     def test_mac_update_metadata_merges_both_architectures(self):
         from scripts.merge_mac_update_metadata import merge_metadata
