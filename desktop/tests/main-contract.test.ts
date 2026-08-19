@@ -52,9 +52,16 @@ describe('desktop main process contract', () => {
   it('defines signed-ready macOS dmg and zip targets for both architectures', () => {
     expect(builderConfig).toContain('target: dmg')
     expect(builderConfig).toContain('target: zip')
-    expect(builderConfig).toContain('icon: assets/tmall-dashboard-logo.png')
+    expect(builderConfig).toContain('icon: assets/tmall-dashboard-logo-1024.png')
     expect(builderConfig).toContain('category: public.app-category.business')
     expect(builderConfig).toContain('arm64')
     expect(builderConfig).toContain('x64')
+  })
+
+  it('packages a macOS icon at the minimum supported resolution', () => {
+    const icon = readFileSync(resolve('assets/tmall-dashboard-logo-1024.png'))
+    expect(icon.subarray(0, 8).toString('hex')).toBe('89504e470d0a1a0a')
+    expect(icon.readUInt32BE(16)).toBeGreaterThanOrEqual(512)
+    expect(icon.readUInt32BE(20)).toBeGreaterThanOrEqual(512)
   })
 })

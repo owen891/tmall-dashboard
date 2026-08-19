@@ -27,7 +27,7 @@ win:
   artifactName: "TmallDashboard-Setup-${version}-${arch}.${ext}"
 
 mac:
-  icon: assets/tmall-dashboard-logo.png
+  icon: assets/tmall-dashboard-logo-1024.png
   category: public.app-category.business
   target:
     - target: dmg
