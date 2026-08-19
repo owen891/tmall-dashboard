@@ -1,13 +1,14 @@
 {
   "name": "tmall-dashboard-desktop",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "private": true,
-  "description": "天猫数据仪表盘 Windows 桌面版",
+  "description": "天猫数据仪表盘桌面版",
   "main": "dist/main.js",
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "test": "vitest run",
-    "dist": "npm run build && electron-builder --config electron-builder.yml --win nsis --x64 --publish never"
+    "dist": "npm run build && electron-builder --config electron-builder.yml --win nsis --x64 --publish never",
+    "dist:mac": "npm run build && electron-builder --config electron-builder.yml --mac dmg zip --publish never"
   },
   "dependencies": {
     "electron-updater": "6.3.9"

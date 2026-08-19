@@ -26,6 +26,16 @@ win:
       arch: [x64]
   artifactName: "TmallDashboard-Setup-${version}-${arch}.${ext}"
 
+mac:
+  icon: assets/tmall-dashboard-logo.png
+  category: public.app-category.business
+  target:
+    - target: dmg
+      arch: [x64, arm64]
+    - target: zip
+      arch: [x64, arm64]
+  artifactName: "TmallDashboard-${version}-${arch}.${ext}"
+
 nsis:
   oneClick: false
   allowToChangeInstallationDirectory: true

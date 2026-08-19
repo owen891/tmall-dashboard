@@ -14,11 +14,16 @@ export interface BackendHandle {
   stop: () => Promise<void>
 }
 
+export function backendExecutableName(platform: NodeJS.Platform = process.platform): string {
+  return platform === 'win32' ? 'TmallDashboardServer.exe' : 'TmallDashboardServer'
+}
+
 export function backendLaunchOptions(
   resourcesPath: string,
   port: number,
   parentPid: number,
   environment: NodeJS.ProcessEnv = process.env,
+  platform: NodeJS.Platform = process.platform,
 ): BackendLaunchOptions {
   if (!Number.isInteger(port) || port < 1024 || port > 65535) {
     throw new RangeError('桌面后端端口必须在 1024 到 65535 之间')
@@ -27,7 +32,7 @@ export function backendLaunchOptions(
     throw new RangeError('桌面父进程 PID 必须是正整数')
   }
   return {
-    command: join(resourcesPath, 'backend', 'TmallDashboardServer.exe'),
+    command: join(resourcesPath, 'backend', backendExecutableName(platform)),
     args: ['--port', String(port), '--parent-pid', String(parentPid)],
     env: {
       ...environment,

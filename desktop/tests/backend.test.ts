@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { backendLaunchOptions, backendUrl } from '../src/backend'
+import { backendExecutableName, backendLaunchOptions, backendUrl } from '../src/backend'
 
 describe('desktop backend launch', () => {
   it('spawns only the packaged loopback backend', () => {
@@ -10,6 +10,14 @@ describe('desktop backend launch', () => {
     expect(launch.command).toBe('C:\\Program Files\\TmallDashboard\\resources\\backend\\TmallDashboardServer.exe')
     expect(launch.args).toEqual(['--port', '49152', '--parent-pid', '123'])
     expect(launch.env.TMALL_DESKTOP_MODE).toBe('1')
+  })
+
+  it('uses the platform executable name for Windows and macOS', () => {
+    expect(backendExecutableName('win32')).toBe('TmallDashboardServer.exe')
+    expect(backendExecutableName('darwin')).toBe('TmallDashboardServer')
+    const macCommand = backendLaunchOptions('/Applications/TmallDashboard.app/Contents/Resources', 49152, 123, {}, 'darwin').command
+    expect(macCommand).toMatch(/backend[\\/]+TmallDashboardServer$/)
+    expect(macCommand).not.toMatch(/\.exe$/)
   })
 
   it('constructs only loopback backend urls', () => {

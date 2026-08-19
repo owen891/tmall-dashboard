@@ -48,4 +48,13 @@ describe('desktop main process contract', () => {
   it('packages the current TM logo as the Windows application icon', () => {
     expect(builderConfig).toContain('icon: assets/tmall-dashboard.ico')
   })
+
+  it('defines signed-ready macOS dmg and zip targets for both architectures', () => {
+    expect(builderConfig).toContain('target: dmg')
+    expect(builderConfig).toContain('target: zip')
+    expect(builderConfig).toContain('icon: assets/tmall-dashboard-logo.png')
+    expect(builderConfig).toContain('category: public.app-category.business')
+    expect(builderConfig).toContain('arm64')
+    expect(builderConfig).toContain('x64')
+  })
 })

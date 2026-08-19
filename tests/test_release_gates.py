@@ -95,6 +95,24 @@ class ReleaseGateTests(unittest.TestCase):
         self.assertIn('*.exe.blockmap', workflow)
         self.assertIn('softprops/action-gh-release', workflow)
         self.assertIn('contents: write', workflow)
+        self.assertIn('macos-13', workflow)
+        self.assertIn('macos-14', workflow)
+        self.assertIn('scripts/build_backend.py', workflow)
+        self.assertIn('*.dmg', workflow)
+        self.assertIn('*.zip', workflow)
+        self.assertIn('merge_mac_update_metadata.py', workflow)
+
+    def test_mac_update_metadata_merges_both_architectures(self):
+        from scripts.merge_mac_update_metadata import merge_metadata
+
+        merged = merge_metadata([
+            {'version': '1.0.5', 'files': [{'url': 'TmallDashboard-1.0.5-x64.zip', 'sha512': 'x', 'size': 1}]},
+            {'version': '1.0.5', 'files': [{'url': 'TmallDashboard-1.0.5-arm64.zip', 'sha512': 'a', 'size': 2}]},
+        ])
+        self.assertEqual(merged['version'], '1.0.5')
+        self.assertEqual({item['url'] for item in merged['files']}, {
+            'TmallDashboard-1.0.5-x64.zip', 'TmallDashboard-1.0.5-arm64.zip',
+        })
 
     def test_desktop_build_uses_the_root_version_and_complete_pipeline(self):
         script = pathlib.Path(PROJECT_ROOT, 'scripts', 'build_desktop.ps1').read_text(encoding='utf-8')

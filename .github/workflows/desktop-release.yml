@@ -10,7 +10,7 @@ permissions:
   contents: write
 
 jobs:
-  build-and-release:
+  build-windows:
     runs-on: windows-latest
     steps:
       - name: Checkout source
@@ -40,3 +40,99 @@ jobs:
             desktop/release/*.exe
             desktop/release/*.exe.blockmap
             desktop/release/latest.yml
+
+  build-macos:
+    needs: build-windows
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-13
+            arch: x64
+          - runner: macos-14
+            arch: arm64
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.14'
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+
+      - name: Install desktop dependencies
+        shell: bash
+        run: |
+          python -m pip install -r requirements-desktop.txt
+          npm ci --prefix desktop
+
+      - name: Build macOS backend
+        shell: bash
+        run: python scripts/build_backend.py
+
+      - name: Verify desktop contracts
+        shell: bash
+        run: |
+          npm test --prefix desktop
+          npm run build --prefix desktop
+
+      - name: Build macOS package
+        shell: bash
+        run: npm run dist:mac --prefix desktop -- --${{ matrix.arch }}
+
+      - name: Publish macOS package
+        uses: actions/upload-artifact@v4
+        with:
+          name: mac-${{ matrix.arch }}
+          path: |
+            desktop/release/*.dmg
+            desktop/release/*.zip
+            desktop/release/*.dmg.blockmap
+            desktop/release/*.zip.blockmap
+            desktop/release/latest-mac.yml
+
+  publish-macos:
+    needs: build-macos
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.14'
+
+      - name: Download macOS build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: mac-*
+          path: mac-artifacts
+
+      - name: Merge macOS updater metadata
+        shell: bash
+        run: |
+          python scripts/merge_mac_update_metadata.py \
+            mac-artifacts/mac-x64/latest-mac.yml \
+            mac-artifacts/mac-arm64/latest-mac.yml \
+            --output mac-release/latest-mac.yml
+          mkdir -p mac-release
+          find mac-artifacts -type f \( -name '*.dmg' -o -name '*.zip' -o -name '*.blockmap' \) -exec cp {} mac-release/ \;
+
+      - name: Publish macOS installers and updater assets
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: false
+          files: |
+            mac-release/*.dmg
+            mac-release/*.zip
+            mac-release/*.blockmap
+            mac-release/latest-mac.yml
