@@ -42,7 +42,6 @@ jobs:
             desktop/release/latest.yml
 
   build-macos:
-    needs: build-windows
     strategy:
       fail-fast: false
       matrix:
