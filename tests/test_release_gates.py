@@ -95,7 +95,7 @@ class ReleaseGateTests(unittest.TestCase):
         self.assertIn('*.exe.blockmap', workflow)
         self.assertIn('softprops/action-gh-release', workflow)
         self.assertIn('contents: write', workflow)
-        self.assertIn('macos-13', workflow)
+        self.assertIn('macos-15-intel', workflow)
         self.assertIn('macos-14', workflow)
         self.assertIn('scripts/build_backend.py', workflow)
         self.assertIn('*.dmg', workflow)
