@@ -1,6 +1,6 @@
 import { type ChildProcess, execFile, spawn } from 'node:child_process'
 import { createServer } from 'node:net'
-import { join } from 'node:path'
+import { posix, win32 } from 'node:path'
 
 export interface BackendLaunchOptions {
   command: string
@@ -31,6 +31,7 @@ export function backendLaunchOptions(
   if (!Number.isInteger(parentPid) || parentPid <= 0) {
     throw new RangeError('桌面父进程 PID 必须是正整数')
   }
+  const join = platform === 'win32' ? win32.join : posix.join
   return {
     command: join(resourcesPath, 'backend', backendExecutableName(platform)),
     args: ['--port', String(port), '--parent-pid', String(parentPid)],

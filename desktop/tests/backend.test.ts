@@ -16,8 +16,7 @@ describe('desktop backend launch', () => {
     expect(backendExecutableName('win32')).toBe('TmallDashboardServer.exe')
     expect(backendExecutableName('darwin')).toBe('TmallDashboardServer')
     const macCommand = backendLaunchOptions('/Applications/TmallDashboard.app/Contents/Resources', 49152, 123, {}, 'darwin').command
-    expect(macCommand).toMatch(/backend[\\/]+TmallDashboardServer$/)
-    expect(macCommand).not.toMatch(/\.exe$/)
+    expect(macCommand).toBe('/Applications/TmallDashboard.app/Contents/Resources/backend/TmallDashboardServer')
   })
 
   it('constructs only loopback backend urls', () => {
