@@ -1,6 +1,6 @@
 {
   "name": "tmall-dashboard-desktop",
-  "version": "1.0.8",
+  "version": "1.0.9",
   "private": true,
   "description": "天猫数据仪表盘桌面版",
   "main": "dist/main.js",
