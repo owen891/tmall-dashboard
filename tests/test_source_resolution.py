@@ -13,6 +13,18 @@ class SourceResolutionTests(unittest.TestCase):
     def tearDown(self):
         self.tmp.cleanup()
 
+    def test_smart_selection_filename_is_a_dmp_supplement_not_paid_media(self):
+        from services.source_resolution_service import source_system_for
+
+        self.assertEqual(
+            source_system_for('product_day', '智能选款_2026-08-18~2026-08-18.csv'),
+            'dmp_product_day',
+        )
+        self.assertEqual(
+            source_system_for('promotion_product_day', '商品报表_20260819.csv'),
+            'promotion_tool',
+        )
+
     def test_business_advisor_wins_and_dmp_is_kept_as_reference_with_conflict(self):
         from services.source_resolution_service import SourceResolutionService
 

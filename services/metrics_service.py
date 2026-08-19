@@ -50,8 +50,15 @@ def build_overview(totals, start_date, end_date):
         key: state for key, state in derived_result['metric_availability'].items()
         if state != 'available'
     }
+    # Returning-buyer data is an optional product-day enrichment.  It should
+    # leave only its own KPI unavailable, not invalidate otherwise complete
+    # sales, traffic, conversion, refund, and spend totals.
+    blocking_unavailable = {
+        key: state for key, state in unavailable.items()
+        if key != 'returning_buyer_ratio'
+    }
     return {
-        'availability': 'available' if not unavailable else 'insufficient-data',
+        'availability': 'available' if not blocking_unavailable else 'insufficient-data',
         'data': {
             'start_date': start_date,
             'end_date': end_date,

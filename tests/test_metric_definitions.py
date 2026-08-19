@@ -59,6 +59,27 @@ class MetricDefinitionTests(unittest.TestCase):
         self.assertEqual(result['data']['ad_roi'], 3.0)
         self.assertEqual(result['data']['metric_availability']['refund_rate'], 'available')
 
+    def test_overview_keeps_returning_buyer_kpi_optional(self):
+        from services.metrics_service import build_overview
+
+        result = build_overview({
+            'fact_count': 1,
+            'data_end_date': '2026-08-02',
+            'payment_amount': 100,
+            'successful_refund_amount': 10,
+            'product_visitors': 20,
+            'payment_buyers': 2,
+            'returning_payment_buyers': None,
+            'ad_spend': 5,
+        }, '2026-08-01', '2026-08-02')
+
+        self.assertEqual(result['availability'], 'available')
+        self.assertIsNone(result['data']['returning_buyer_ratio'])
+        self.assertEqual(
+            result['data']['metric_availability']['returning_buyer_ratio'],
+            'missing-fields',
+        )
+
     def test_overview_keeps_missing_refund_and_spend_unavailable(self):
         from services.metrics_service import build_overview
 

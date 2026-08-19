@@ -98,7 +98,12 @@ SOURCE_PRIORITY = {
 
 def source_system_for(source_type, source_filename=''):
     text = f'{source_type} {source_filename}'.lower()
-    if source_type == 'dmp_product_day' or 'dmp' in text or '全店单品' in source_filename:
+    # 智能选款 exports are full-shop, product-day performance snapshots.  They
+    # include promotion fields, but are not a paid-media report: classifying
+    # them as promotion_tool would incorrectly give their sales/refund fields
+    # promotion-source precedence.  Treat them as the DMP supplement instead.
+    if (source_type == 'dmp_product_day' or 'dmp' in text
+            or '全店单品' in source_filename or '智能选款' in source_filename):
         return 'dmp_product_day'
     if source_type.startswith('promotion_') or any(token in text for token in ('推广', 'paid', 'promotion')):
         return 'promotion_tool'

@@ -40,26 +40,58 @@ class MetricsRepo:
                 (shop_id, start_date, end_date),
             ).fetchone()
             if store_row['fact_count'] and not filters:
-                return {**dict(store_row), 'data_grain': 'daily'}
+                return {**dict(store_row), 'data_grain': 'daily', 'data_source': 'store_daily_facts'}
             clauses, filter_params = MetricsRepo._product_filter_sql(filters)
             where = ' AND '.join(['d.shop_id = ?', 'd.date BETWEEN ? AND ?', *clauses])
             daily_row = connection.execute(
-                '''SELECT SUM(d.payment_amount) AS payment_amount,
-                          SUM(d.refund_amount) AS successful_refund_amount,
-                          SUM(d.ad_spend) AS ad_spend,
-                          NULL AS product_visitors,
-                          NULL AS payment_buyers,
-                          NULL AS returning_payment_buyers,
-                          MIN(d.date) AS data_start_date, MAX(d.date) AS data_end_date,
+                '''WITH selected AS (
+                       SELECT d.*,
+                              o.source_system AS observation_source_system,
+                              o.field_presence_json AS observation_fields
+                       FROM daily_data d
+                       LEFT JOIN daily_data_observations o
+                         ON o.shop_id = d.shop_id
+                        AND o.product_id = d.product_id
+                        AND o.date = d.date
+                        AND o.source_filename = d.data_source
+                        AND o.id = (
+                            SELECT o2.id
+                            FROM daily_data_observations o2
+                            WHERE o2.shop_id = d.shop_id
+                              AND o2.product_id = d.product_id
+                              AND o2.date = d.date
+                              AND o2.source_filename = d.data_source
+                            ORDER BY o2.observed_at DESC, o2.id DESC LIMIT 1
+                        )
+                       LEFT JOIN products p ON p.product_id = d.product_id
+                       LEFT JOIN lifecycle_profiles lp ON lp.product_id = d.product_id
+                       WHERE ''' + where + '''
+                   )
+                   SELECT SUM(payment_amount) AS payment_amount,
+                          SUM(refund_amount) AS successful_refund_amount,
+                          SUM(ad_spend) AS ad_spend,
+                          CASE WHEN SUM(CASE WHEN observation_source_system IS NOT NULL
+                                                   AND (observation_source_system = 'promotion_tool'
+                                                        OR observation_fields LIKE '%\"product_visitors\": true%')
+                                              THEN 0 ELSE 1 END) = 0
+                               THEN SUM(ipv) END AS product_visitors,
+                          CASE WHEN SUM(CASE WHEN observation_source_system IS NOT NULL
+                                                   AND (observation_source_system = 'promotion_tool'
+                                                        OR observation_fields LIKE '%\"payment_buyers\": true%')
+                                              THEN 0 ELSE 1 END) = 0
+                               THEN SUM(buyers) END AS payment_buyers,
+                          CASE WHEN SUM(CASE WHEN observation_source_system IS NOT NULL
+                                                   AND (observation_source_system = 'promotion_tool'
+                                                        OR observation_fields LIKE '%\"returning_payment_buyers\": true%')
+                                              THEN 0 ELSE 1 END) = 0
+                               THEN SUM(returning_payment_buyers) END AS returning_payment_buyers,
+                          MIN(date) AS data_start_date, MAX(date) AS data_end_date,
                           COUNT(*) AS fact_count
-                   FROM daily_data d
-                   JOIN products p ON p.product_id = d.product_id
-                   LEFT JOIN lifecycle_profiles lp ON lp.product_id = d.product_id
-                   WHERE ''' + where,
+                   FROM selected''',
                 [shop_id, start_date, end_date, *filter_params],
             ).fetchone()
             if daily_row['fact_count']:
-                return {**dict(daily_row), 'data_grain': 'daily'}
+                return {**dict(daily_row), 'data_grain': 'daily', 'data_source': 'daily_data'}
 
             start_month, end_month = start_date[:7], end_date[:7]
             month_exists = connection.execute(
@@ -83,7 +115,7 @@ class MetricsRepo:
             # Promotion-channel filtering requires daily promotion facts, so do not
             # pretend a monthly rollup answers that more granular filter.
             if filters.get('promotion_channel'):
-                return {**dict(daily_row), 'data_grain': 'daily'}
+                return {**dict(daily_row), 'data_grain': 'daily', 'data_source': 'daily_data'}
             monthly_where = ' AND '.join([selected_sql, *monthly_clauses])
             monthly_row = connection.execute(
                 '''SELECT SUM(m.payment_amount) AS payment_amount,
@@ -101,9 +133,9 @@ class MetricsRepo:
                 [*month_params, *monthly_filter_params],
             ).fetchone()
         if monthly_row['fact_count']:
-            return {**dict(monthly_row), 'data_grain': 'monthly',
+            return {**dict(monthly_row), 'data_grain': 'monthly', 'data_source': 'monthly_data',
                     'fallback_reason': 'daily_facts_unavailable'}
-        return {**dict(daily_row), 'data_grain': 'daily'}
+        return {**dict(daily_row), 'data_grain': 'daily', 'data_source': 'daily_data'}
 
     @staticmethod
     def get_daily_matrix(start_date, end_date, filters=None):
@@ -131,7 +163,7 @@ class MetricsRepo:
                 rows = connection.execute(
                 '''WITH source_meta AS (
                        SELECT shop_id, product_id, date, source_filename,
-                              source_batch_id, source_type,
+                              source_batch_id, source_type, source_system, field_presence_json,
                               ROW_NUMBER() OVER (
                                   PARTITION BY shop_id, product_id, date, source_filename
                                   ORDER BY observed_at DESC, id DESC
@@ -142,7 +174,11 @@ class MetricsRepo:
                           SUM(d.refund_amount) AS successful_refund_amount,
                           SUM(d.ad_spend) AS ad_spend,
                           SUM(d.ipv) AS visitors, SUM(d.buyers) AS buyers,
-                          SUM(d.returning_payment_buyers) AS returning_payment_buyers,
+                          CASE WHEN SUM(CASE WHEN sm.source_system IS NOT NULL
+                                                   AND (sm.source_system = 'promotion_tool'
+                                                        OR sm.field_presence_json LIKE '%\"returning_payment_buyers\": true%')
+                                              THEN 0 ELSE 1 END) = 0
+                               THEN SUM(d.returning_payment_buyers) END AS returning_payment_buyers,
                           SUM(d.payment_qty) AS payment_qty,
                           GROUP_CONCAT(DISTINCT d.data_source) AS data_source,
                           GROUP_CONCAT(DISTINCT d.data_source) AS source_filename,
@@ -150,7 +186,7 @@ class MetricsRepo:
                           GROUP_CONCAT(DISTINCT sm.source_type) AS source_type,
                           MAX(b.completed_at) AS completed_at,
                           MAX(b.quality_summary) AS quality_summary
-                   FROM daily_data d JOIN products p ON p.product_id = d.product_id
+                   FROM daily_data d LEFT JOIN products p ON p.product_id = d.product_id
                    LEFT JOIN lifecycle_profiles lp ON lp.product_id = d.product_id
                    LEFT JOIN source_meta sm
                      ON sm.shop_id = d.shop_id AND sm.product_id = d.product_id

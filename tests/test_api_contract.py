@@ -71,6 +71,40 @@ class OverviewContractTests(unittest.TestCase):
             'missing-fields',
         )
 
+    def test_overview_uses_lineage_confirmed_product_day_traffic_and_buyers(self):
+        from db import get_db
+
+        with get_db(self.database_path) as connection:
+            connection.execute("UPDATE daily_data SET data_source = 'product-day.csv'")
+            connection.executemany(
+                '''INSERT INTO daily_data_observations (
+                    shop_id, product_id, date, source_system, source_type,
+                    source_batch_id, source_filename, payload_json, field_presence_json,
+                    quality_status
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+                [
+                    ('default', 'overview-a', '2026-04-01', 'dmp_product_day', 'dmp_product_day',
+                     'product-day-batch', 'product-day.csv', '{}',
+                     '{"product_visitors": true, "payment_buyers": true}', 'passed'),
+                    ('default', 'overview-b', '2026-04-02', 'dmp_product_day', 'dmp_product_day',
+                     'product-day-batch', 'product-day.csv', '{}',
+                     '{"product_visitors": true, "payment_buyers": true}', 'passed'),
+                ],
+            )
+            connection.commit()
+
+        response = self.client.get('/api/overview?start=2026-04-01&end=2026-04-02')
+        payload = response.get_json()
+        response.close()
+
+        self.assertEqual(payload['availability'], 'available')
+        self.assertEqual(payload['data']['visitors'], 40)
+        self.assertEqual(payload['data']['payment_conversion_rate'], 0.25)
+        self.assertEqual(payload['data']['average_order_value'], 20.0)
+        self.assertEqual(payload['data']['fact_count'], 2)
+        self.assertEqual(payload['evidence'][0]['source'], 'daily_data')
+        self.assertEqual(payload['data']['missing_fields'], ['returning_payment_buyers'])
+
     def test_overview_returns_no_data_without_inventing_zero_metrics(self):
         response = self.client.get('/api/overview?start=2026-05-01&end=2026-05-02')
         self.assertEqual(response.status_code, 200)

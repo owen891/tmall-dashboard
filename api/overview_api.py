@@ -78,7 +78,7 @@ def get_overview():
         limitations=limitations_for(result['availability'], missing_inputs=missing_inputs, missing_ranges=missing_ranges),
         freshness={'start': start_date, 'end': result['data'].get('data_cutoff_date'), 'data_grain': data_grain},
         evidence=[{
-            'source': 'monthly_data' if data_grain == 'monthly' else 'store_daily_facts',
+            'source': result['data'].get('data_source') or ('monthly_data' if data_grain == 'monthly' else 'daily_data'),
             'row_count': result['data'].get('fact_count') or len(matrix.get('rows', [])),
             'start': start_date,
             'end': result['data'].get('data_cutoff_date'),
