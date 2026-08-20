@@ -5,10 +5,12 @@ import unittest
 import sqlite3
 import atexit
 import subprocess
+from pathlib import Path
 
 from flask import Flask
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+VERSION = Path(PROJECT_ROOT, 'VERSION').read_text(encoding='utf-8').strip()
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
@@ -186,7 +188,16 @@ class AppFactoryTests(unittest.TestCase):
         self.assertEqual(products['data'], 'api')
         promotion = next(page for page in payload['pages'] if page['id'] == 'promotion')
         self.assertEqual(promotion['data'], 'api')
-        self.assertEqual(payload['version'], '1.0.0')
+        self.assertEqual(payload['version'], VERSION)
+
+    def test_version_endpoint_is_current_and_uncached(self):
+        from app import create_app
+
+        with create_app({'TESTING': True}).test_client() as client:
+            response = client.get('/api/version')
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.get_json()['data']['version'], VERSION)
+            self.assertIn('no-store', response.headers.get('Cache-Control', ''))
 
     def test_factory_serves_the_streamlined_frontend_pages(self):
         from app import create_app

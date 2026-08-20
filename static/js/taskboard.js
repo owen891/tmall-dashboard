@@ -105,7 +105,7 @@ async function loadUserKPIs() {
                 <td>${k.period || '--'}</td>
                 <td>¥${(k.target_gmv/10000).toFixed(1)}万</td>
                 <td>¥${(k.actual_gmv/10000).toFixed(1)}万</td>
-                <td style="font-weight:700;color:${k.achievement_rate>=100?'var(--success)':'var(--danger)'}">${k.achievement_rate.toFixed(1)}%</td>
+                <td style="font-weight:700;color:${k.achievement_rate>=1?'var(--success)':'var(--danger)'}">${(k.achievement_rate * 100).toFixed(1)}%</td>
                 <td><span style="padding:2px 8px;border-radius:4px;background:${ratingColors[k.rating]||'var(--text-secondary)'}20;color:${ratingColors[k.rating]||'var(--text-secondary)'};font-weight:600;">${k.rating}</span></td>
             </tr>
         `).join('');

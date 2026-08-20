@@ -103,6 +103,17 @@ class ReleaseGateTests(unittest.TestCase):
         self.assertIn('merge_mac_update_metadata.py', workflow)
         self.assertIn('pip install -r requirements.txt', workflow)
 
+    def test_macos_release_syncs_and_checks_the_shared_version_before_packaging(self):
+        workflow = pathlib.Path(PROJECT_ROOT, '.github', 'workflows', 'desktop-release.yml').read_text(encoding='utf-8')
+        sync = workflow.index('python scripts/sync_desktop_version.py')
+        backend = workflow.index('python scripts/build_backend.py')
+        package = workflow.index('npm run dist:mac')
+        self.assertLess(sync, backend)
+        self.assertLess(backend, package)
+
+        builder = pathlib.Path(PROJECT_ROOT, 'scripts', 'build_backend.py').read_text(encoding='utf-8')
+        self.assertIn('assert_release_version_contract', builder)
+
     def test_mac_update_metadata_merges_both_architectures(self):
         from scripts.merge_mac_update_metadata import merge_metadata
 
@@ -118,7 +129,7 @@ class ReleaseGateTests(unittest.TestCase):
     def test_desktop_build_uses_the_root_version_and_complete_pipeline(self):
         script = pathlib.Path(PROJECT_ROOT, 'scripts', 'build_desktop.ps1').read_text(encoding='utf-8')
         for marker in (
-            'sync_desktop_version.py', 'build_backend.ps1',
+            'sync_desktop_version.py', 'assert_release_version_contract', 'build_backend.ps1',
             'npm test', 'npm run build', 'npm run dist',
             'latest.yml', '.exe.blockmap',
         ):

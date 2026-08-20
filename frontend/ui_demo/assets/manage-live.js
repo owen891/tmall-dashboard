@@ -7,7 +7,7 @@
   const focusable = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
   const money = (value) => `¥${Number(value || 0).toLocaleString('zh-CN', { maximumFractionDigits: 2 })}`;
-  const percent = (value) => `${Number(value || 0).toFixed(1)}%`;
+  const percent = (value) => `${(Number(value || 0) * 100).toFixed(1)}%`;
   const asArray = (payload, key) => Array.isArray(payload) ? payload : (Array.isArray(payload?.[key]) ? payload[key] : []);
   const json = (body, method = 'POST') => ({ method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
   const toast = (message) => {
@@ -131,7 +131,8 @@
     const dialog = $('[data-manage-kpi-dialog]'); const form = $('[data-manage-kpi-form]');
     state.kpiId = item?.id ?? null; form.reset(); form.elements.period.value = item?.period || period();
     $('#manage-kpi-title').textContent = state.kpiId ? '编辑 KPI' : '新增 KPI';
-    if (item) ['user_name', 'period', 'target_gmv', 'actual_gmv', 'achievement_rate', 'rating'].forEach((key) => { if (form.elements[key]) form.elements[key].value = item[key] ?? ''; });
+    if (item) ['user_name', 'period', 'target_gmv', 'actual_gmv', 'rating'].forEach((key) => { if (form.elements[key]) form.elements[key].value = item[key] ?? ''; });
+    if (item && form.elements.achievement_rate) form.elements.achievement_rate.value = Number(item.achievement_rate || 0) * 100;
     showDialog(dialog);
   }
   function openSchedule(item) {
@@ -149,7 +150,7 @@
 
   function bindForms() {
     $('[data-manage-task-form]').addEventListener('submit', (event) => { event.preventDefault(); const values = formValues(event.currentTarget); const id = state.taskId; values.operator = '店长'; values.reason = id ? '编辑管理任务' : '创建管理任务'; mutate(id ? '更新任务' : '创建任务', values.title, async () => { await DemoApi.domainRequest(id ? `/api/manage/tasks/${Number(id)}` : '/api/manage/tasks', json(values, id ? 'PUT' : 'POST')); resetDialog($('[data-manage-task-dialog]')); }); });
-    $('[data-manage-kpi-form]').addEventListener('submit', (event) => { event.preventDefault(); const values = formValues(event.currentTarget); ['target_gmv', 'actual_gmv', 'achievement_rate'].forEach((key) => { values[key] = Number(values[key] || 0); }); const id = state.kpiId; values.operator = '店长'; values.reason = id ? '编辑用户 KPI' : '创建用户 KPI'; mutate(id ? '更新 KPI' : '创建 KPI', values.user_name, async () => { await DemoApi.domainRequest(id ? `/api/manage/kpis/${Number(id)}` : '/api/manage/kpis', json(values, id ? 'PUT' : 'POST')); resetDialog($('[data-manage-kpi-dialog]')); }); });
+    $('[data-manage-kpi-form]').addEventListener('submit', (event) => { event.preventDefault(); const values = formValues(event.currentTarget); ['target_gmv', 'actual_gmv'].forEach((key) => { values[key] = Number(values[key] || 0); }); values.achievement_rate = Number(values.achievement_rate || 0) / 100; const id = state.kpiId; values.operator = '店长'; values.reason = id ? '编辑用户 KPI' : '创建用户 KPI'; mutate(id ? '更新 KPI' : '创建 KPI', values.user_name, async () => { await DemoApi.domainRequest(id ? `/api/manage/kpis/${Number(id)}` : '/api/manage/kpis', json(values, id ? 'PUT' : 'POST')); resetDialog($('[data-manage-kpi-dialog]')); }); });
     $('[data-manage-schedule-form]').addEventListener('submit', (event) => { event.preventDefault(); const values = formValues(event.currentTarget); const id = state.scheduleId; values.enabled = event.currentTarget.elements.enabled.checked; mutate(id ? '更新扫描任务' : '创建扫描任务', values.task_name, async () => { await DemoApi.domainRequest(id ? `/api/import-scans/${Number(id)}` : '/api/import-scans', json(values, id ? 'PUT' : 'POST')); resetDialog($('[data-manage-schedule-dialog]')); }); });
   }
   function bind() {

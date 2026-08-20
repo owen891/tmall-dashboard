@@ -113,6 +113,13 @@ class DesktopRuntimeTests(unittest.TestCase):
             import config
             importlib.reload(config)
 
+    def test_missing_version_fails_fast_in_desktop_mode(self):
+        from config import _read_app_version
+
+        with tempfile.TemporaryDirectory() as temp_dir, patch.dict(os.environ, {'TMALL_DESKTOP_MODE': '1'}, clear=False):
+            with self.assertRaisesRegex(RuntimeError, 'VERSION'):
+                _read_app_version(os.path.join(temp_dir, 'VERSION'))
+
     def test_config_defaults_scan_allowlist_to_project_inbox_only(self):
         original = os.environ.get('IMPORT_SCAN_ALLOWED_ROOTS')
         try:

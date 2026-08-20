@@ -407,8 +407,9 @@ async function loadCustomerAnalysis() {
     // 占比
     const newRatioEl = document.getElementById('customerNewRatio');
     const retRatioEl = document.getElementById('customerReturnRatio');
-    if (newRatioEl) newRatioEl.textContent = '占比 ' + (data.new_ratio * 100).toFixed(1) + '%';
-    if (retRatioEl) retRatioEl.textContent = '占比 ' + (data.returning_ratio * 100).toFixed(1) + '%';
+    const formatRatio = (value) => value == null ? '占比 --' : '占比 ' + (value * 100).toFixed(1) + '%';
+    if (newRatioEl) newRatioEl.textContent = formatRatio(data.new_ratio);
+    if (retRatioEl) retRatioEl.textContent = formatRatio(data.returning_ratio);
 
     // 环比变化
     const newChgEl = document.getElementById('customerNewChg');
@@ -525,13 +526,14 @@ async function loadFunnelAnalysis() {
 
     let html = '';
     for (let i = 1; i < steps.length; i++) {
-        const rate = (steps[i].rate * 100).toFixed(1);
+        const rateValue = steps[i].rate == null ? null : steps[i].rate * 100;
+        const rate = rateValue == null ? '--' : rateValue.toFixed(1);
         const prevRate = prevSteps && prevSteps[i] && prevSteps[i].rate != null ? (prevSteps[i].rate * 100).toFixed(1) : null;
-        const barWidth = Math.min(parseFloat(rate), 100);
-        const barColor = barWidth >= 50 ? '#10B981' : barWidth >= 20 ? '#F59E0B' : '#EF4444';
+        const barWidth = rateValue == null ? 0 : Math.min(rateValue, 100);
+        const barColor = rateValue == null ? '#CBD5E1' : barWidth >= 50 ? '#10B981' : barWidth >= 20 ? '#F59E0B' : '#EF4444';
         let changeHtml = '';
-        if (prevRate !== null) {
-            const diff = (parseFloat(rate) - parseFloat(prevRate)).toFixed(1);
+        if (prevRate !== null && rateValue !== null) {
+            const diff = (rateValue - parseFloat(prevRate)).toFixed(1);
             const isUp = diff >= 0;
             changeHtml = `<span class="funnel-rate-change ${isUp ? 'up' : 'down'}">${isUp ? '↑' : '↓'}${Math.abs(diff)}% 环比</span>`;
         }

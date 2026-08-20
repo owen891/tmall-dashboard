@@ -40,7 +40,9 @@
     const legendPosition = legendConfig.position || 'bottom';
     const legendOffset = legendVisible && (legendPosition === 'bottom' || legendPosition === 'top') ? 34 : 0;
     return {
-      animation: reducedMotion ? false : { duration: 220 },
+      // Dashboard charts are interaction surfaces, not presentations. Disabling
+      // tweening avoids a large amount of canvas work on lower-power Macs.
+      animation: false,
       tooltip: {
         trigger: 'axis',
         confine: true,
@@ -83,11 +85,24 @@
     instances.get(node)?.destroy();
     const chart = window.echarts.init(node);
     chart.setOption(toEchartsOption(config), true);
-    const resize = () => chart.resize();
+    let resizeFrame = 0;
+    let lastWidth = 0;
+    let lastHeight = 0;
+    const resize = () => {
+      if (resizeFrame) return;
+      resizeFrame = requestAnimationFrame(() => {
+        resizeFrame = 0;
+        const rect = node.getBoundingClientRect();
+        if (rect.width === lastWidth && rect.height === lastHeight) return;
+        lastWidth = rect.width;
+        lastHeight = rect.height;
+        chart.resize({ width: Math.max(1, Math.round(rect.width)), height: Math.max(1, Math.round(rect.height)) });
+      });
+    };
     const observer = window.ResizeObserver ? new ResizeObserver(resize) : null;
     observer?.observe(node);
     window.addEventListener('resize', resize, { passive: true });
-    const api = { destroy() { observer?.disconnect(); window.removeEventListener('resize', resize); chart.dispose(); instances.delete(node); } };
+    const api = { destroy() { observer?.disconnect(); window.removeEventListener('resize', resize); if (resizeFrame) cancelAnimationFrame(resizeFrame); chart.dispose(); instances.delete(node); } };
     instances.set(node, api);
     return api;
   }

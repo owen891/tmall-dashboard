@@ -27,6 +27,13 @@ class DesktopPackagingContractTests(unittest.TestCase):
         self.assertIn('build\\desktop\\backend\\TmallDashboardServer.exe', script)
         self.assertIn('throw', script)
 
+    def test_python_backend_build_checks_all_release_version_artifacts(self):
+        script = (ROOT / 'scripts' / 'build_backend.py').read_text(encoding='utf-8')
+
+        self.assertIn('assert_release_version_contract', script)
+        self.assertIn("desktop' / 'package.json", script)
+        self.assertIn("frontend' / 'ui_demo' / 'assets' / 'version.js", script)
+
     def test_desktop_smoke_uses_project_version_and_checks_runtime_apis(self):
         script = (ROOT / 'scripts' / 'desktop_smoke.ps1').read_text(encoding='utf-8')
 

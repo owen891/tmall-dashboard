@@ -128,7 +128,7 @@ def create_app(config=None):
 
     @app.after_request
     def prevent_dashboard_frontend_staleness(response):
-        if request.path == '/' or request.path in {
+        if request.path == '/' or request.path == '/api/version' or request.path in {
             '/products', '/promotion', '/lifecycle', '/reviews',
             '/data-center', '/settings', '/goals',
         } or request.path.startswith('/assets/'):
@@ -203,6 +203,17 @@ def create_app(config=None):
                 {'id': 'data-center', 'path': '/data-center', 'data': 'api', 'endpoint': '/api/imports/preview'},
                 {'id': 'settings', 'path': '/settings', 'data': 'api', 'endpoint': '/api/settings'},
             ],
+        })
+
+    @app.route('/api/version')
+    def app_version():
+        return jsonify({
+            'ok': True,
+            'data': {
+                'name': 'tmall-dashboard',
+                'version': APP_VERSION,
+                'channel': 'stable',
+            },
         })
 
     @app.route('/healthz')

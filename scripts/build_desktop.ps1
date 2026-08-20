@@ -14,6 +14,8 @@ Push-Location $projectRoot
 try {
     & py -3 scripts\sync_desktop_version.py
     if ($LASTEXITCODE -ne 0) { throw "Desktop version synchronization failed with exit code $LASTEXITCODE." }
+    & py -3 -c "from scripts.build_backend import assert_release_version_contract; assert_release_version_contract()"
+    if ($LASTEXITCODE -ne 0) { throw "Desktop version contract validation failed with exit code $LASTEXITCODE." }
 
     if (-not $SkipInstall) {
         & py -3 -m pip install -r requirements-desktop.txt

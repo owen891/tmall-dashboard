@@ -1,12 +1,12 @@
 # 天猫数据仪表盘
 
-[![Release](https://img.shields.io/badge/release-v1.0.0-167d4a)](https://github.com/owen891/tmall-dashboard/releases/tag/v1.0.0)
+[![Release](https://img.shields.io/badge/release-v1.0.13-167d4a)](https://github.com/owen891/tmall-dashboard/releases/tag/v1.0.13)
 ![Python](https://img.shields.io/badge/Python-3.14-3776ab)
 ![Flask](https://img.shields.io/badge/Flask-SQLite-111111)
 
 面向单店铺运营团队的经营分析与商品运营工作台。系统以 Flask、SQLite 和原生 HTML/CSS/JavaScript 构建，把经营结果、商品表现、推广投放、生命周期、行动复盘和数据治理放在同一套可追溯流程中。
 
-当前版本：[`v1.0.0`](https://github.com/owen891/tmall-dashboard/releases/tag/v1.0.0) · [升级说明](https://github.com/owen891/tmall-dashboard/releases/tag/v1.0.0) · [发布状态](docs/RELEASE_STATUS.md)
+当前版本：[`v1.0.13`](https://github.com/owen891/tmall-dashboard/releases/tag/v1.0.13) · [升级说明](docs/RELEASE_NOTES.md) · [发布状态](docs/RELEASE_STATUS.md)
 
 ## 产品界面
 
@@ -47,6 +47,8 @@ py -3 app.py
 ```
 
 打开 `http://127.0.0.1:5000/`。主工作台包括总览、商品运营、推广分析、生命周期、经营复盘、数据中心和设置。
+
+Web 版会通过 `/api/version` 检查当前发布版本；检测到服务器已发布新版本时，页面顶部会提示刷新，刷新后加载新的前端资源。Web 版的实际升级仍由服务器部署流程完成，浏览器不会直接覆盖服务器文件。
 
 ## Windows 桌面版
 
@@ -118,7 +120,7 @@ py -3 scripts/release_audit.py --database data/dashboard.db --strict
 
 ## 详细文档
 
-- [1.0.0 Release](https://github.com/owen891/tmall-dashboard/releases/tag/v1.0.0)
+- [1.0.13 Release](https://github.com/owen891/tmall-dashboard/releases/tag/v1.0.13)
 - [发布状态](docs/RELEASE_STATUS.md)
 - [版本说明](docs/RELEASE_NOTES.md)
 - [字段字典与来源口径](docs/FIELD_DICTIONARY.md)

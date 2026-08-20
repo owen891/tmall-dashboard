@@ -32,6 +32,8 @@ def main() -> int:
     lock_path = PROJECT_ROOT / 'desktop' / 'package-lock.json'
     if lock_path.exists():
         update_json(lock_path, version, update_lock_root=True)
+    web_version = PROJECT_ROOT / 'frontend' / 'ui_demo' / 'assets' / 'version.js'
+    web_version.write_text(f"window.TMALL_WEB_VERSION = {json.dumps(version)};\n", encoding='utf-8')
     print(version)
     return 0
 

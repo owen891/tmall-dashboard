@@ -9,6 +9,9 @@
   });
 
   loadScript(new URL('table-controls.js', assetBase).href).catch(() => {});
+  loadScript(new URL('version.js', assetBase).href)
+    .then(() => loadScript(new URL('version-check.js', assetBase).href))
+    .catch(() => {});
 
   const liveAdapters = { overview: 'overview-live.js', products: 'products-live.js', promotion: 'promotion-live.js' };
   const liveAdapter = liveAdapters[document.body.dataset.page];
@@ -68,6 +71,19 @@
   const sidebar = document.querySelector('[data-shell-sidebar]');
   const header = document.querySelector('[data-shell-header]');
   if (!sidebar || !header) return;
+
+  // Lucide's public helper scans the whole document on every call. Most page
+  // updates only add a few icons, so skip the scan when no unprocessed icons
+  // exist and keep repeated renders from blocking the main thread.
+  if (window.lucide?.createIcons) {
+    const createIcons = window.lucide.createIcons.bind(window.lucide);
+    window.lucide.createIcons = (...args) => {
+      const pendingIcons = document.querySelectorAll('[data-lucide]:not([data-lucide-rendered])');
+      if (!pendingIcons.length) return;
+      pendingIcons.forEach(icon => icon.setAttribute('data-lucide-rendered', 'true'));
+      return createIcons(...args);
+    };
+  }
   const main = document.querySelector('main.demo-page');
   if (main && !main.id) main.id = 'main-content';
   document.body.insertAdjacentHTML('afterbegin', '<a class="skip-link" data-skip-link href="#main-content">跳到主要内容</a>');

@@ -10,6 +10,7 @@ datas = [
     (str(project_root / 'templates'), 'templates'),
     (str(project_root / 'static'), 'static'),
     (str(project_root / 'config.yaml'), '.'),
+    (str(project_root / 'VERSION'), '.'),
 ]
 
 hiddenimports = collect_submodules('flask_sqlalchemy') + collect_submodules('sqlalchemy')

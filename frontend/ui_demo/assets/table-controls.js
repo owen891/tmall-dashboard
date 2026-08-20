@@ -558,12 +558,24 @@
     liveStates.forEach((state) => { updateStickyHeader(state.table, state); updateStickyFooter(state.table, state); });
   }
 
-  window.addEventListener('scroll', () => {
-    liveStates.forEach((state) => { updateStickyHeader(state.table, state); updateStickyFooter(state.table, state); });
-  }, true);
-  window.addEventListener('resize', () => {
-    liveStates.forEach((state) => { syncStickyHeader(state.table, state); updateStickyHeader(state.table, state); updateStickyFooter(state.table, state); });
-  });
+  let viewportFrame = 0;
+  let viewportResize = false;
+  const scheduleViewportSync = (resize = false) => {
+    viewportResize = viewportResize || resize;
+    if (viewportFrame) return;
+    viewportFrame = requestAnimationFrame(() => {
+      viewportFrame = 0;
+      const shouldResync = viewportResize;
+      viewportResize = false;
+      liveStates.forEach((state) => {
+        if (shouldResync) syncStickyHeader(state.table, state);
+        updateStickyHeader(state.table, state);
+        updateStickyFooter(state.table, state);
+      });
+    });
+  };
+  window.addEventListener('scroll', () => scheduleViewportSync(), { capture: true, passive: true });
+  window.addEventListener('resize', () => scheduleViewportSync(true), { passive: true });
   const documentObserver = new MutationObserver((records) => {
     records.forEach((record) => {
       [...record.removedNodes].flatMap(managedTablesWithin).forEach(cleanupTable);

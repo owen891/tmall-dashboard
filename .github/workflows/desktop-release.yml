@@ -73,6 +73,10 @@ jobs:
           python -m pip install -r requirements-desktop.txt
           npm ci --prefix desktop
 
+      - name: Synchronize shared release version
+        shell: bash
+        run: python scripts/sync_desktop_version.py
+
       - name: Build macOS backend
         shell: bash
         run: python scripts/build_backend.py

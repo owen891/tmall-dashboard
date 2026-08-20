@@ -17,6 +17,13 @@ from db import get_db, get_connection, get_shop_id, init_db, load_config
 from api.api_response import evidence_level_for, failure, limitations_for, success
 from repos.audit_repo import AuditRepo
 from services.shop_scope_service import reject_legacy_shop_scope
+from services.management_validation import (
+    TASK_PRIORITIES as _TASK_PRIORITIES,
+    TASK_STATUSES as _TASK_STATUSES,
+    kpi_number as _kpi_number,
+    validate_kpi_fields as _validate_kpi_fields,
+    validate_task_fields as _validate_task_fields,
+)
 
 # 获取项目根目录的绝对路径
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -86,7 +93,7 @@ _LEGACY_SINGLE_SHOP_PATHS = {
     '/api/refund_alert', '/api/ad_performance', '/api/ad_alerts', '/api/ad_trend',
     '/api/traffic_structure', '/api/action_stats', '/api/anomalies',
     '/api/health', '/api/reviews/summary', '/api/reviews/list', '/api/reviews/products',
-    '/api/review', '/api/customer_analysis', '/api/funnel', '/api/industry_benchmark',
+    '/api/review', '/api/funnel', '/api/industry_benchmark',
     '/api/report', '/api/legacy/actions',
     '/api/market/summary', '/api/market/keywords', '/api/market/need_stats',
     '/api/market/rankings', '/api/market/histograms', '/api/market/opportunities',
@@ -1798,11 +1805,23 @@ def get_traffic_structure():
 
 # ==================== 任务看板 API ====================
 
+def _legacy_task_payload(row):
+    item = dict(row)
+    if item.get('status') == 'in_progress':
+        item['status'] = 'doing'
+    return item
+
+
 @data_bp.route('/api/tasks', methods=['GET'])
 def get_tasks():
     """获取任务列表"""
     status = request.args.get('status', '')
     priority = request.args.get('priority', '')
+    status = 'in_progress' if status == 'doing' else status
+    if status and status not in _TASK_STATUSES:
+        return jsonify({'error': 'status 参数不合法'}), 422
+    if priority and priority not in _TASK_PRIORITIES:
+        return jsonify({'error': 'priority 参数不合法'}), 422
     with get_db() as conn:
         where = ['1=1']
         params = []
@@ -1812,7 +1831,7 @@ def get_tasks():
         if priority:
             where.append('priority = ?')
             params.append(priority)
-        rows = [dict(r) for r in conn.execute(f'''
+        rows = [_legacy_task_payload(r) for r in conn.execute(f'''
             SELECT * FROM task_items WHERE {' AND '.join(where)}
             ORDER BY CASE priority WHEN 'P0' THEN 0 WHEN 'P1' THEN 1 WHEN 'P2' THEN 2 WHEN 'P3' THEN 3 ELSE 4 END,
                      due_date IS NULL, due_date ASC, created_at DESC
@@ -1823,44 +1842,84 @@ def get_tasks():
 def create_task():
     """创建任务"""
     data = request.get_json(force=True, silent=True) or {}
+    fields = {
+        'title': str(data.get('title') or '').strip(),
+        'description': str(data.get('description') or ''),
+        'status': str(data.get('status') or 'todo'),
+        'priority': str(data.get('priority') or 'P2'),
+        'assignee': str(data.get('assignee') or ''),
+        'due_date': str(data.get('due_date') or ''),
+    }
+    if fields['status'] == 'doing':
+        fields['status'] = 'in_progress'
+    try:
+        _validate_task_fields(fields)
+    except ValueError as error:
+        return jsonify({'error': str(error)}), 422
+    operator = data.get('operator') or data.get('actor') or 'admin'
+    reason = data.get('reason') or '创建管理任务'
     with get_db() as conn:
         conn.execute('''INSERT INTO task_items (title, description, status, priority, assignee, due_date)
             VALUES (?, ?, ?, ?, ?, ?)''',
-            (data.get('title', ''), data.get('description', ''), data.get('status', 'todo'),
-             data.get('priority', 'P2'), data.get('assignee', ''), data.get('due_date', '')))
+            (fields['title'], fields['description'], fields['status'],
+             fields['priority'], fields['assignee'], fields['due_date']))
+        item_id = conn.execute('SELECT last_insert_rowid()').fetchone()[0]
+        row = conn.execute('SELECT * FROM task_items WHERE id = ?', (item_id,)).fetchone()
+        AuditRepo.record('task', item_id, 'create', operator, reason, {}, dict(row), connection=conn)
         conn.commit()
-        return jsonify({'success': True})
+        return jsonify({'success': True, 'data': _legacy_task_payload(row)})
 
 @data_bp.route('/api/tasks/<int:task_id>', methods=['PUT'])
 def update_task(task_id):
     """更新任务"""
     data = request.get_json(force=True, silent=True) or {}
+    normalized = dict(data)
+    for field in ('title', 'description', 'status', 'priority', 'assignee', 'due_date'):
+        if field in normalized:
+            normalized[field] = str(normalized.get(field) or '').strip()
+    if normalized.get('status') == 'doing':
+        normalized['status'] = 'in_progress'
+    allowed = ('title', 'description', 'status', 'priority', 'assignee', 'due_date')
+    if not any(field in normalized for field in allowed):
+        return jsonify({'error': 'No fields to update'}), 422
+    try:
+        _validate_task_fields(normalized, partial=True)
+    except ValueError as error:
+        return jsonify({'error': str(error)}), 422
+    operator = data.get('operator') or data.get('actor') or 'admin'
+    reason = data.get('reason') or '更新管理任务'
     with get_db() as conn:
         sets = []
         params = []
-        for field in ['title', 'description', 'status', 'priority', 'assignee', 'due_date']:
-            if field in data:
+        for field in allowed:
+            if field in normalized:
                 sets.append(f'{field} = ?')
-                params.append(data[field])
-        if not sets:
-            return jsonify({'error': 'No fields to update'}), 400
+                params.append(normalized[field])
+        before = conn.execute('SELECT * FROM task_items WHERE id = ?', (task_id,)).fetchone()
+        if before is None:
+            return jsonify({'error': 'Task not found'}), 404
         sets.append("updated_at = datetime('now')")
         params.append(task_id)
-        cursor = conn.execute(f'UPDATE task_items SET {", ".join(sets)} WHERE id = ?', params)
-        if cursor.rowcount == 0:
-            return jsonify({'error': 'Task not found'}), 404
+        conn.execute(f'UPDATE task_items SET {", ".join(sets)} WHERE id = ?', params)
+        after = conn.execute('SELECT * FROM task_items WHERE id = ?', (task_id,)).fetchone()
+        AuditRepo.record('task', task_id, 'update', operator, reason, dict(before), dict(after), connection=conn)
         conn.commit()
-        return jsonify({'success': True})
+        return jsonify({'success': True, 'data': _legacy_task_payload(after)})
 
 @data_bp.route('/api/tasks/<int:task_id>', methods=['DELETE'])
 def delete_task(task_id):
     """删除任务"""
+    data = request.get_json(force=True, silent=True) or {}
+    operator = data.get('operator') or data.get('actor') or 'admin'
+    reason = data.get('reason') or '删除管理任务'
     with get_db() as conn:
-        cursor = conn.execute('DELETE FROM task_items WHERE id = ?', (task_id,))
-        if cursor.rowcount == 0:
+        before = conn.execute('SELECT * FROM task_items WHERE id = ?', (task_id,)).fetchone()
+        if before is None:
             return jsonify({'error': 'Task not found'}), 404
+        cursor = conn.execute('DELETE FROM task_items WHERE id = ?', (task_id,))
+        AuditRepo.record('task', task_id, 'delete', operator, reason, dict(before), {}, connection=conn)
         conn.commit()
-        return jsonify({'success': True})
+        return jsonify({'success': True, 'deleted_count': cursor.rowcount})
 
 # ==================== 用户KPI API ====================
 
@@ -1883,44 +1942,86 @@ def get_user_kpis():
 def create_user_kpi():
     """创建用户KPI"""
     data = request.get_json(force=True, silent=True) or {}
+    fields = {
+        'user_name': str(data.get('user_name') or '').strip(),
+        'period': str(data.get('period') or ''),
+        'target_gmv': data.get('target_gmv'), 'actual_gmv': data.get('actual_gmv'),
+        'achievement_rate': data.get('achievement_rate'),
+        'rating': str(data.get('rating') or 'C'),
+    }
+    try:
+        _validate_kpi_fields(fields)
+        values = (
+            fields['user_name'], fields['period'], _kpi_number(fields['target_gmv'], '目标 GMV'),
+            _kpi_number(fields['actual_gmv'], '实际 GMV'), _kpi_number(fields['achievement_rate'], '达成率'),
+            fields['rating'],
+        )
+    except ValueError as error:
+        return jsonify({'error': str(error)}), 422
+    operator = data.get('operator') or data.get('actor') or 'admin'
+    reason = data.get('reason') or '创建用户 KPI'
     with get_db() as conn:
-        conn.execute('''INSERT INTO user_kpis (user_name, period, target_gmv, actual_gmv, achievement_rate, rating)
+        cursor = conn.execute('''INSERT INTO user_kpis (user_name, period, target_gmv, actual_gmv, achievement_rate, rating)
             VALUES (?, ?, ?, ?, ?, ?)''',
-            (data.get('user_name', ''), data.get('period', ''), data.get('target_gmv', 0),
-             data.get('actual_gmv', 0), data.get('achievement_rate', 0), data.get('rating', 'C')))
+            values)
+        item_id = cursor.lastrowid
+        row = conn.execute('SELECT * FROM user_kpis WHERE id = ?', (item_id,)).fetchone()
+        AuditRepo.record('user_kpi', item_id, 'create', operator, reason, {}, dict(row), connection=conn)
         conn.commit()
-        return jsonify({'success': True})
+        return jsonify({'success': True, 'data': dict(row)})
 
 @data_bp.route('/api/user_kpis/<int:kpi_id>', methods=['PUT'])
 def update_user_kpi(kpi_id):
     """更新用户KPI"""
     data = request.get_json(force=True, silent=True) or {}
+    normalized = dict(data)
+    for field in ('user_name', 'period', 'rating'):
+        if field in normalized:
+            normalized[field] = str(normalized.get(field) or '').strip()
+    allowed = ('user_name', 'period', 'target_gmv', 'actual_gmv', 'achievement_rate', 'rating')
+    if not any(field in normalized for field in allowed):
+        return jsonify({'error': 'No fields to update'}), 422
+    try:
+        _validate_kpi_fields(normalized, partial=True)
+        for field in ('target_gmv', 'actual_gmv', 'achievement_rate'):
+            if field in normalized:
+                normalized[field] = _kpi_number(normalized[field], field)
+    except ValueError as error:
+        return jsonify({'error': str(error)}), 422
+    operator = data.get('operator') or data.get('actor') or 'admin'
+    reason = data.get('reason') or '更新用户 KPI'
     with get_db() as conn:
         sets = []
         params = []
-        for field in ['user_name', 'period', 'target_gmv', 'actual_gmv', 'achievement_rate', 'rating']:
-            if field in data:
+        before = conn.execute('SELECT * FROM user_kpis WHERE id = ?', (kpi_id,)).fetchone()
+        if before is None:
+            return jsonify({'error': 'KPI not found'}), 404
+        for field in allowed:
+            if field in normalized:
                 sets.append(f'{field} = ?')
-                params.append(data[field])
-        if not sets:
-            return jsonify({'error': 'No fields to update'}), 400
+                params.append(normalized[field])
         sets.append("updated_at = datetime('now')")
         params.append(kpi_id)
-        cursor = conn.execute(f'UPDATE user_kpis SET {", ".join(sets)} WHERE id = ?', params)
-        if cursor.rowcount == 0:
-            return jsonify({'error': 'KPI not found'}), 404
+        conn.execute(f'UPDATE user_kpis SET {", ".join(sets)} WHERE id = ?', params)
+        after = conn.execute('SELECT * FROM user_kpis WHERE id = ?', (kpi_id,)).fetchone()
+        AuditRepo.record('user_kpi', kpi_id, 'update', operator, reason, dict(before), dict(after), connection=conn)
         conn.commit()
-        return jsonify({'success': True})
+        return jsonify({'success': True, 'data': dict(after)})
 
 @data_bp.route('/api/user_kpis/<int:kpi_id>', methods=['DELETE'])
 def delete_user_kpi(kpi_id):
     """删除用户KPI"""
+    data = request.get_json(force=True, silent=True) or {}
+    operator = data.get('operator') or data.get('actor') or 'admin'
+    reason = data.get('reason') or '删除用户 KPI'
     with get_db() as conn:
-        cursor = conn.execute('DELETE FROM user_kpis WHERE id = ?', (kpi_id,))
-        if cursor.rowcount == 0:
+        before = conn.execute('SELECT * FROM user_kpis WHERE id = ?', (kpi_id,)).fetchone()
+        if before is None:
             return jsonify({'error': 'KPI not found'}), 404
+        cursor = conn.execute('DELETE FROM user_kpis WHERE id = ?', (kpi_id,))
+        AuditRepo.record('user_kpi', kpi_id, 'delete', operator, reason, dict(before), {}, connection=conn)
         conn.commit()
-        return jsonify({'success': True})
+        return jsonify({'success': True, 'deleted_count': cursor.rowcount})
 
 # ==================== 搜索词效能 API ====================
 
@@ -4178,23 +4279,44 @@ def batch_add_tags():
     product_ids = data.get('product_ids', [])
     tag = data.get('tag', '').strip()
 
-    if not product_ids or not tag:
+    if not isinstance(product_ids, list) or not product_ids or not tag:
         return jsonify({'error': '商品ID列表和标签不能为空'}), 400
 
-    count = 0
-    failed = 0
+    product_ids = list(dict.fromkeys(str(pid).strip() for pid in product_ids if str(pid).strip()))
+    if not product_ids:
+        return jsonify({'error': '商品ID列表和标签不能为空'}), 400
+
     with get_db() as conn:
-        for pid in product_ids:
-            try:
-                conn.execute('INSERT OR IGNORE INTO product_tags (product_id, tag) VALUES (?, ?)', (pid, tag))
-                count += 1
-            except Exception:
-                failed += 1
+        placeholders = ','.join(['?'] * len(product_ids))
+        existing = {
+            row['product_id'] for row in conn.execute(
+                f'SELECT product_id FROM products WHERE product_id IN ({placeholders})', product_ids
+            ).fetchall()
+        }
+        count = 0
+        for pid in existing:
+            cursor = conn.execute(
+                'INSERT OR IGNORE INTO product_tags (product_id, tag) VALUES (?, ?)', (pid, tag)
+            )
+            count += int(cursor.rowcount > 0)
         conn.commit()
+    missing = len(set(product_ids) - existing)
+    duplicate = len(existing) - count
+    details = []
+    if missing:
+        details.append(f'{missing} 件商品不存在')
+    if duplicate:
+        details.append(f'{duplicate} 件商品已有该标签')
     msg = f'已为 {count} 件商品添加标签 "{tag}"'
-    if failed:
-        msg += f'，{failed} 件失败'
-    return jsonify({'success': True, 'message': msg})
+    if details:
+        msg += '，' + '，'.join(details)
+    return jsonify({
+        'success': True,
+        'message': msg,
+        'added': count,
+        'missing': missing,
+        'duplicates': duplicate,
+    })
 
 
 @data_bp.route('/api/batch_tags', methods=['DELETE'])
@@ -4232,79 +4354,145 @@ def get_customer_analysis():
         return jsonify({'error': 'invalid dimension'}), 400
     table = dim_cfg['table']
     date_col = dim_cfg['date_col']
-    visitors_col = dim_cfg['visitors_col']
+
+    # Customer mix is a store-level distinct-buyer metric. Product tables
+    # cannot be summed here because one buyer may purchase multiple products.
+    shop_id = get_shop_id()
+
+    def period_bounds(period_value):
+        try:
+            if dim == 'monthly':
+                start = datetime.strptime(period_value, '%Y-%m')
+                end = (start.replace(day=28) + timedelta(days=4)).replace(day=1)
+            elif dim == 'weekly':
+                start = datetime.strptime(period_value, '%Y-%m-%d')
+                end = start + timedelta(days=7)
+            else:
+                start = datetime.strptime(period_value, '%Y-%m-%d')
+                end = start + timedelta(days=1)
+            return start.strftime('%Y-%m-%d'), end.strftime('%Y-%m-%d')
+        except (TypeError, ValueError):
+            return None, None
+
+    def period_key(date_value):
+        if dim == 'monthly':
+            return date_value[:7]
+        if dim == 'daily':
+            return date_value
+        try:
+            current_date = datetime.strptime(date_value, '%Y-%m-%d')
+            return (current_date - timedelta(days=current_date.weekday())).strftime('%Y-%m-%d')
+        except (TypeError, ValueError):
+            return None
+
+    def query_customer(period_value, conn):
+        start, end = period_bounds(period_value)
+        if not start:
+            return None
+        row = conn.execute(
+            '''SELECT COUNT(*) AS row_count,
+                      COUNT(product_visitors) AS visitor_count,
+                      COUNT(payment_buyers) AS buyer_count,
+                      COUNT(returning_payment_buyers) AS returning_count,
+                      COALESCE(SUM(product_visitors), 0) AS visitors,
+                      COALESCE(SUM(payment_buyers), 0) AS buyers,
+                      COALESCE(SUM(returning_payment_buyers), 0) AS returning_buyers
+               FROM store_daily_facts
+               WHERE shop_id = ? AND date >= ? AND date < ?''',
+            (shop_id, start, end),
+        ).fetchone()
+        if not row or not row['row_count']:
+            return None
+        result = dict(row)
+        result['visitors'] = result['visitors'] or 0
+        result['buyers'] = result['buyers'] or 0
+        result['returning_buyers'] = result['returning_buyers'] or 0
+        result['visitors_available'] = result['visitor_count'] == result['row_count']
+        result['split_available'] = (
+            result['buyer_count'] == result['row_count']
+            and result['returning_count'] == result['row_count']
+        )
+        if result['split_available']:
+            result['returning_buyers'] = min(result['returning_buyers'], result['buyers'])
+            result['new_buyers'] = result['buyers'] - result['returning_buyers']
+        else:
+            result['new_buyers'] = None
+            result['returning_buyers'] = None
+        return result
+
+    def ratios(result):
+        if not result or not result.get('split_available') or result['buyers'] <= 0:
+            return None, None
+        return result['new_buyers'] / result['buyers'], result['returning_buyers'] / result['buyers']
 
     with get_db() as conn:
-        # new_buyers 列只在 monthly_data 中存在
-        new_buyers_col = 'new_buyers' if dim == 'monthly' else '0'
-        buyers_col = 'buyers' if dim == 'monthly' else ('buyers' if dim == 'daily' else '0')
+        current = query_customer(period, conn)
+        current_new_ratio, current_returning_ratio = ratios(current)
+        previous = query_customer(get_prev_period(period, dim), conn)
+        prev_new_ratio, prev_returning_ratio = ratios(previous)
 
-        # 当期数据
-        row = conn.execute(f'''
-            SELECT
-                COALESCE(SUM({new_buyers_col}), 0) as new_buyers,
-                COALESCE(SUM({visitors_col}), 0) as visitors,
-                COALESCE(SUM({buyers_col}), 0) as buyers
-            FROM {table} WHERE {date_col} = ?
-        ''', (period,)).fetchone()
-
-        new_buyers = row['new_buyers'] if row else 0
-        total_visitors = row['visitors'] if row else 0
-        # 日/周维度没有 new_buyers，用 buyers 作为近似
-        if dim != 'monthly':
-            new_buyers = row['buyers'] if row else 0
-        returning_buyers = max(0, total_visitors - new_buyers)
-        new_ratio = new_buyers / total_visitors if total_visitors > 0 else 0
-        returning_ratio = returning_buyers / total_visitors if total_visitors > 0 else 0
-
-        # 上期数据（环比）
-        prev_period = get_prev_period(period, dim)
-        prev_new_ratio = None
-        prev_returning_ratio = None
-        if prev_period:
-            prev_row = conn.execute(f'''
-                SELECT
-                    COALESCE(SUM({new_buyers_col}), 0) as new_buyers,
-                    COALESCE(SUM({visitors_col}), 0) as visitors,
-                    COALESCE(SUM({buyers_col}), 0) as buyers
-                FROM {table} WHERE {date_col} = ?
-            ''', (prev_period,)).fetchone()
-            if prev_row:
-                prev_visitors = prev_row['visitors'] or 0
-                prev_new = prev_row['new_buyers'] if dim == 'monthly' else (prev_row['buyers'] or 0)
-                prev_ret = max(0, prev_visitors - prev_new)
-                prev_new_ratio = prev_new / prev_visitors if prev_visitors > 0 else 0
-                prev_returning_ratio = prev_ret / prev_visitors if prev_visitors > 0 else 0
-
-        # 趋势：最近6个周期
-        trend_rows = conn.execute(f'''
-            SELECT {date_col} as period,
-                   COALESCE(SUM({new_buyers_col}), 0) as new_buyers,
-                   COALESCE(SUM({visitors_col}), 0) as visitors,
-                   COALESCE(SUM({buyers_col}), 0) as buyers
-            FROM {table}
-            WHERE {date_col} <= ?
-            GROUP BY {date_col}
-            ORDER BY {date_col} DESC
-            LIMIT 6
-        ''', (period,)).fetchall()
+        periods = set()
+        end_period = period_bounds(period)[1]
+        if end_period:
+            rows = conn.execute(
+                'SELECT DISTINCT date FROM store_daily_facts WHERE shop_id = ? AND date < ?',
+                (shop_id, end_period),
+            ).fetchall()
+            periods = {period_key(row['date']) for row in rows if period_key(row['date'])}
         trend = []
-        for r in reversed(list(trend_rows)):
-            rd = dict(r)
-            nb = rd['new_buyers'] if dim == 'monthly' else (rd['buyers'] or 0)
-            vis = rd['visitors'] or 0
+        for trend_period in sorted(periods, reverse=True)[:6][::-1]:
+            item = query_customer(trend_period, conn)
             trend.append({
-                'period': rd['period'],
-                'new_buyers': nb,
-                'returning_buyers': max(0, vis - nb),
+                'period': trend_period,
+                'new_buyers': item['new_buyers'] if item and item['split_available'] else None,
+                'returning_buyers': item['returning_buyers'] if item and item['split_available'] else None,
             })
 
+    missing_fields = []
+    limitations = []
+    availability = 'available'
+    if current is None:
+        availability = 'no-data'
+        limitations.append('当前周期没有店铺级新老客事实')
+        legacy_start, legacy_end = period_bounds(period)
+        with get_db() as conn:
+            if dim == 'monthly':
+                legacy_exists = conn.execute(
+                    f'SELECT 1 FROM {table} WHERE {date_col} = ? LIMIT 1',
+                    (period,),
+                ).fetchone()
+            else:
+                legacy_exists = conn.execute(
+                    f'SELECT 1 FROM {table} WHERE {date_col} >= ? AND {date_col} < ? LIMIT 1',
+                    (legacy_start, legacy_end),
+                ).fetchone() if legacy_start else None
+        if legacy_exists:
+            availability = 'missing-fields'
+            missing_fields = ['store_daily_facts.product_visitors', 'store_daily_facts.payment_buyers', 'store_daily_facts.returning_payment_buyers']
+            limitations.append('已有商品或周月汇总数据不能替代店铺级去重买家事实')
+    elif not current.get('split_available'):
+        availability = 'missing-fields'
+        missing_fields = ['store_daily_facts.product_visitors', 'store_daily_facts.payment_buyers', 'store_daily_facts.returning_payment_buyers']
+        limitations.append('店铺级事实缺少完整客户字段，无法计算新老客构成')
+    else:
+        if not current.get('visitors_available'):
+            availability = 'partial'
+            missing_fields.append('store_daily_facts.product_visitors')
+            limitations.append('店铺级事实缺少访客字段，访客数不可计算')
+        if dim in {'monthly', 'weekly'}:
+            availability = 'partial'
+            limitations.append('当前仅按日事实汇总，未提供用户 ID，月/周买家数不保证跨日去重')
+
     return jsonify({
-        'new_buyers': new_buyers,
-        'returning_buyers': returning_buyers,
-        'total_visitors': total_visitors,
-        'new_ratio': round(new_ratio, 4),
-        'returning_ratio': round(returning_ratio, 4),
+        'source': 'store_daily_facts',
+        'availability': availability,
+        'missing_fields': missing_fields,
+        'limitations': limitations,
+        'new_buyers': current['new_buyers'] if current else None,
+        'returning_buyers': current['returning_buyers'] if current else None,
+        'total_visitors': current['visitors'] if current and current.get('visitors_available') else None,
+        'new_ratio': round(current_new_ratio, 4) if current_new_ratio is not None else None,
+        'returning_ratio': round(current_returning_ratio, 4) if current_returning_ratio is not None else None,
         'prev_new_ratio': round(prev_new_ratio, 4) if prev_new_ratio is not None else None,
         'prev_returning_ratio': round(prev_returning_ratio, 4) if prev_returning_ratio is not None else None,
         'trend': trend,
@@ -4326,39 +4514,64 @@ def get_funnel_analysis():
     date_col = dim_cfg['date_col']
     visitors_col = dim_cfg['visitors_col']
 
+    funnel_fields = {
+        'monthly': {
+            'visitors': 'visitors', 'page_views': 'page_views',
+            'cart_qty': 'cart_qty', 'fav_users': 'fav_users', 'payment_qty': 'payment_qty',
+        },
+        'daily': {
+            'visitors': 'ipv', 'page_views': 'pv',
+            'cart_qty': 'cart_qty', 'fav_users': 'fav_users', 'payment_qty': 'payment_qty',
+        },
+        'weekly': {
+            'visitors': 'ipv', 'page_views': 'pv',
+            'cart_qty': None, 'fav_users': None, 'payment_qty': None,
+        },
+    }
+    field_map = funnel_fields[dim]
+    step_units = {'visitors': 'users', 'page_views': 'views', 'cart_qty': 'items',
+                  'fav_users': 'users', 'payment_qty': 'items'}
+
     def query_funnel(p, conn):
         if not p:
             return None
-        page_views_col = 'page_views' if dim == 'monthly' else ('pv' if dim == 'daily' else '0')
-        cart_qty_col = 'cart_qty' if dim == 'monthly' else '0'
-        fav_users_col = 'fav_users' if dim == 'monthly' else '0'
-        payment_qty_col = 'payment_qty' if dim == 'monthly' else '0'
-        row = conn.execute(f'''
-            SELECT
-                COALESCE(SUM({visitors_col}), 0) as visitors,
-                COALESCE(SUM({page_views_col}), 0) as page_views,
-                COALESCE(SUM({cart_qty_col}), 0) as cart_qty,
-                COALESCE(SUM({fav_users_col}), 0) as fav_users,
-                COALESCE(SUM({payment_qty_col}), 0) as payment_qty
-            FROM {table} WHERE {date_col} = ?
-        ''', (p,)).fetchone()
-        if not row:
+        select_fields = ['COUNT(*) AS row_count']
+        for alias, column in field_map.items():
+            if column:
+                select_fields.append(f'COALESCE(SUM({column}), 0) AS {alias}')
+        row = conn.execute(
+            f'SELECT {", ".join(select_fields)} FROM {table} WHERE {date_col} = ?',
+            (p,),
+        ).fetchone()
+        if not row or not row['row_count']:
             return None
         rd = dict(row)
         steps = [
-            {'name': '曝光', 'value': rd['visitors'] or 0},
-            {'name': '浏览', 'value': rd['page_views'] or 0},
-            {'name': '加购', 'value': rd['cart_qty'] or 0},
-            {'name': '收藏', 'value': rd['fav_users'] or 0},
-            {'name': '支付', 'value': rd['payment_qty'] or 0},
+            {'name': '曝光', 'key': 'visitors', 'value': rd.get('visitors'), 'unit': step_units['visitors']},
+            {'name': '浏览', 'key': 'page_views', 'value': rd.get('page_views'), 'unit': step_units['page_views']},
+            {'name': '加购', 'key': 'cart_qty', 'value': rd.get('cart_qty'), 'unit': step_units['cart_qty']},
+            {'name': '收藏', 'key': 'fav_users', 'value': rd.get('fav_users'), 'unit': step_units['fav_users']},
+            {'name': '支付', 'key': 'payment_qty', 'value': rd.get('payment_qty'), 'unit': step_units['payment_qty']},
         ]
-        # 计算各步骤转化率（相对于上一步）
-        for i in range(len(steps)):
+        for i, step in enumerate(steps):
             if i == 0:
-                steps[i]['rate'] = 1.0
+                step['rate'] = 1.0 if step['value'] is not None else None
+                step['volume_ratio'] = None
+                continue
+            previous = steps[i - 1]
+            current_value = step['value']
+            previous_value = previous['value']
+            step['rate_basis'] = f"{previous['unit'] or 'unknown'}_to_{step['unit'] or 'unknown'}"
+            if current_value is None or previous_value is None or previous_value <= 0:
+                step['rate'] = None
+                step['volume_ratio'] = None
             else:
-                prev_val = steps[i - 1]['value']
-                steps[i]['rate'] = steps[i]['value'] / prev_val if prev_val > 0 else 0
+                step['volume_ratio'] = current_value / previous_value
+                # A count ratio across different units is not a conversion rate.
+                step['rate'] = (
+                    step['volume_ratio']
+                    if previous['unit'] == step['unit'] else None
+                )
         return steps
 
     with get_db() as conn:
@@ -4366,7 +4579,17 @@ def get_funnel_analysis():
         prev_period = get_prev_period(period, dim)
         prev_steps = query_funnel(prev_period, conn)
 
+    missing_fields = [alias for alias, column in field_map.items() if not column]
+    availability = 'missing-fields' if missing_fields else ('available' if steps else 'no-data')
+    limitations = []
+    if missing_fields:
+        limitations.append('当前维度缺少完整漏斗字段，缺失步骤不会用 0 填充')
+    limitations.append('不同统计单位之间仅提供 volume_ratio，不将其标记为转化率')
+
     return jsonify({
+        'availability': availability,
+        'missing_fields': missing_fields,
+        'limitations': limitations,
         'steps': steps or [],
         'prev_steps': prev_steps or [],
     })
