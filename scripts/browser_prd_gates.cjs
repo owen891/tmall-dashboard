@@ -1,4 +1,4 @@
-const { chromium } = require('C:/Users/Administrator/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright');
+const { chromium } = require(require.resolve('playwright', { paths: [require('path').join(__dirname, '..', 'desktop')] }));
 
 const base = process.env.TMALL_SMOKE_BASE || 'http://127.0.0.1:8773';
 const states = ['no-data', 'insufficient-data', 'missing-fields', 'calculation-failed', 'source-unavailable', 'partial'];
@@ -153,8 +153,12 @@ const flowImpactLabel = '影响';
   const savedTemplateLabels = await page.locator('[data-products-template-select] option').allTextContents();
   if (!savedTemplateLabels.includes('浏览器字段模板')) throw new Error(`saved custom template did not survive reload: ${savedTemplateLabels.join(' | ')}`);
   await page.locator('[data-products-columns-close]').first().click();
-  const appliedRange = await page.locator('[data-date-trigger]').innerText();
-  const anchorValue = appliedRange.split('~').pop().trim();
+  // Shortcut ranges are anchored to the browser's current day, not to the
+  // end of an explicitly supplied historical range in the page URL.
+  const anchorValue = await page.evaluate(() => {
+    const date = new Date();
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+  });
   const [anchorYear, anchorMonth, anchorDay] = anchorValue.split('-').map(Number);
   const anchorDate = new Date(anchorYear, anchorMonth - 1, anchorDay);
   const formatDate = (date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
@@ -372,9 +376,9 @@ const flowImpactLabel = '影响';
   await gatePageCapabilities(page);
   console.log('[gate] navigation, availability and template refresh');
   await page.goto(`${base}/`, { waitUntil: 'domcontentloaded', timeout: 10000 });
-  await page.waitForSelector('[data-overview-event-open]', { timeout: 5000 });
-  if (await page.locator('[data-overview-event-open]').getAttribute('data-capability-key') !== 'overview.event_edit') {
-    throw new Error('overview event editor is not gated by its registered capability');
+  await page.waitForSelector('[data-overview-action-open]', { timeout: 5000 });
+  if (await page.locator('[data-overview-action-open]').getAttribute('data-capability-key') !== 'overview.create_action') {
+    throw new Error('overview action creator is not gated by its registered capability');
   }
   await page.goto(`${base}/promotion?start=2026-07-14&end=2026-08-12&product_id=${encodeURIComponent(productId)}`, { waitUntil: 'domcontentloaded', timeout: 10000 });
   await page.goto(`${base}/goals?promotion_channel=%E4%B8%87%E7%9B%B8%E5%8F%B0`, { waitUntil: 'domcontentloaded', timeout: 10000 });

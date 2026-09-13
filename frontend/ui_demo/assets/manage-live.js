@@ -1,6 +1,7 @@
 (function () {
   const $ = (selector, root = document) => root.querySelector(selector);
   const state = { tasks: [], kpis: [], schedules: [], logs: [], capabilities: {}, token: 0, taskId: null, kpiId: null, scheduleId: null };
+  const pendingMutations = new Set();
   const dialogReturnFocus = new WeakMap();
   const doneStates = new Set(['done', 'completed']);
   const statusLabels = { todo: '待处理', in_progress: '处理中', done: '已完成', completed: '已完成', active: '正常', running: '执行中', error: '异常' };
@@ -17,7 +18,17 @@
   const setStatus = (message) => { const target = $('[data-manage-status]'); if (target) target.textContent = message; window.DemoShell?.setStatus?.(message); };
   const badgeClass = (value) => value === 'error' ? 'badge--danger' : (doneStates.has(value) || value === 'active' ? 'badge--success' : (value === 'running' || value === 'in_progress' ? 'badge--warning' : 'badge--muted'));
   const period = () => String((window.TmallDateRange?.getState?.().endDate || new Date().toISOString()).slice(0, 7));
-  const canManage = (name) => !Object.keys(state.capabilities).length || DemoApi.can({ capabilities: state.capabilities }, name);
+  const canManage = (name) => Object.keys(state.capabilities).length > 0 && DemoApi.can({ capabilities: state.capabilities }, name);
+  const applyCapabilities = () => {
+    document.querySelectorAll('[data-capability-key]').forEach((element) => {
+      const key = element.dataset.capabilityKey;
+      const enabled = canManage(key);
+      element.disabled = !enabled;
+      element.setAttribute('aria-disabled', String(!enabled));
+      if (!enabled) element.title = '当前权限或数据能力不可用';
+    });
+  };
+  const scanErrorMessage = (error) => window.TmallScanUi?.errorMessage?.(error) || error?.message || '扫描任务操作失败';
 
   function tableMessage(selector, colspan, message) {
     const body = $(selector); body.replaceChildren();
@@ -83,31 +94,38 @@
 
   async function load() {
     const token = ++state.token; const selectedPeriod = period();
-    setStatus('正在加载管理工作台数据');
+    setStatus('正在加载管理工作台数据…');
     try {
+      const capabilityPayload = await DemoApi.loadPageCapabilities('manage');
+      state.capabilities = capabilityPayload?.capabilities || capabilityPayload?.data?.capabilities || {};
+      applyCapabilities();
       const [tasks, kpis, schedules, logs] = await Promise.all([
         DemoApi.domainRequest('/api/manage/tasks'), DemoApi.domainRequest(`/api/manage/kpis?period=${encodeURIComponent(selectedPeriod)}`), DemoApi.domainRequest('/api/import-scans'), DemoApi.request('/api/logs?limit=20'),
       ]);
       if (token !== state.token) return;
-      state.tasks = tasks.data || asArray(tasks); state.kpis = kpis.data || asArray(kpis); state.schedules = schedules.data || asArray(schedules); state.logs = asArray(logs); renderAll();
+      state.tasks = tasks.data || asArray(tasks); state.kpis = kpis.data || asArray(kpis); state.schedules = schedules.data || asArray(schedules); state.logs = asArray(logs); renderAll(); applyCapabilities();
       $('[data-manage-kpi-period]').textContent = `当前周期：${selectedPeriod}`;
       setStatus('管理工作台数据已更新');
     } catch (error) {
       if (token !== state.token) return;
       tableMessage('[data-manage-tasks]', 6, '任务加载失败'); tableMessage('[data-manage-kpis]', 6, 'KPI 加载失败'); tableMessage('[data-manage-scheduled]', 5, '扫描任务加载失败'); tableMessage('[data-manage-logs]', 4, '操作日志加载失败');
-      toast(error.message || '管理工作台数据加载失败'); setStatus('管理工作台数据加载失败');
+      toast(scanErrorMessage(error)); setStatus('管理工作台数据加载失败');
     }
   }
   async function log(action, detail) { await DemoApi.request('/api/logs', json({ action, detail })); }
   async function mutate(action, detail, request) {
     if (!canManage('can_edit')) { setStatus('当前管理操作不可用'); return; }
+    const mutationKey = `${action}:${detail || ''}`;
+    if (pendingMutations.has(mutationKey)) return;
+    pendingMutations.add(mutationKey);
     try {
       await request();
       let logFailed = false;
       try { await log(action, detail); } catch (_) { logFailed = true; }
       toast(logFailed ? `${action}成功，操作日志写入失败` : `${action}成功`);
       await load();
-    } catch (error) { toast(error.message || `${action}失败`); setStatus(`${action}失败`); }
+    } catch (error) { toast(scanErrorMessage(error)); setStatus(`${action}失败`); }
+    finally { pendingMutations.delete(mutationKey); }
   }
 
   function formValues(form) { return Object.fromEntries(new FormData(form).entries()); }
@@ -146,7 +164,7 @@
   function removeTask(item) { if (window.confirm(`删除任务“${item.title || item.id}”？`)) mutate('删除任务', item.title || String(item.id), () => DemoApi.domainRequest(`/api/manage/tasks/${Number(item.id)}`, { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ operator: '店长', reason: '删除管理任务' }) })); }
   function removeKpi(item) { if (window.confirm(`删除 ${item.user_name || '该成员'} 的 KPI？`)) mutate('删除 KPI', item.user_name || String(item.id), () => DemoApi.domainRequest(`/api/manage/kpis/${Number(item.id)}`, { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ operator: '店长', reason: '删除用户 KPI' }) })); }
   function toggleSchedule(item) { const enabled = Number(item.enabled) !== 1; mutate(enabled ? '启用扫描' : '停用扫描', item.task_name || String(item.id), () => DemoApi.domainRequest(`/api/import-scans/${Number(item.id)}`, json({ enabled }, 'PUT'))); }
-  function runSchedule(item) { mutate('执行扫描', item.task_name || String(item.id), () => DemoApi.domainRequest(`/api/import-scans/${Number(item.id)}/run`, { method: 'POST' })); }
+  function runSchedule(item) { mutate('执行扫描', item.task_name || String(item.id), () => DemoApi.domainRequest(`/api/import-scans/${Number(item.id)}/run`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ force: true }) })); }
 
   function bindForms() {
     $('[data-manage-task-form]').addEventListener('submit', (event) => { event.preventDefault(); const values = formValues(event.currentTarget); const id = state.taskId; values.operator = '店长'; values.reason = id ? '编辑管理任务' : '创建管理任务'; mutate(id ? '更新任务' : '创建任务', values.title, async () => { await DemoApi.domainRequest(id ? `/api/manage/tasks/${Number(id)}` : '/api/manage/tasks', json(values, id ? 'PUT' : 'POST')); resetDialog($('[data-manage-task-dialog]')); }); });

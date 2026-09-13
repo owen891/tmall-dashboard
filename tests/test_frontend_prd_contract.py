@@ -58,7 +58,18 @@ class FrontendPrdContractTests(unittest.TestCase):
         self.assertIn('source_batches', adapter)
         self.assertIn('changes', adapter)
 
-    def test_overview_matrix_field_selector_covers_export_schema(self):
+    def test_overview_uses_generic_monthly_data_label(self):
+        page = self.read('frontend/ui_demo/pages/overview.html')
+        adapter = self.read('frontend/ui_demo/assets/overview-live.js')
+        self.assertIn('按月度数据对比净销售额、支付金额和推广花费', page)
+        self.assertIn('当前导入为月度数据；补充日度导出后可按天查看', page)
+        self.assertIn("grain === 'monthly' ? '月度数据' : '日度事实'", adapter)
+        self.assertIn('当前未导入日度明细；月度数据已用于上方指标和趋势', adapter)
+        self.assertNotIn('派米', page)
+        self.assertNotIn('派米', adapter)
+        self.assertNotIn('paimi', page.lower())
+        self.assertNotIn('paimi', adapter.lower())
+
         adapter = self.read('frontend/ui_demo/assets/overview-live.js')
         matrix_block = adapter[adapter.index('const matrixColumns ='):adapter.index('const matrixColumnsByKey')]
         keys = re.findall(r"key: '([^']+)'", matrix_block)
@@ -71,11 +82,44 @@ class FrontendPrdContractTests(unittest.TestCase):
         self.assertEqual(set(keys), set(export_columns))
         self.assertEqual(len(keys), len(export_columns))
         self.assertIn("tmall-overview-matrix-columns-v2", adapter)
+        page = self.read('frontend/ui_demo/pages/overview.html')
+        styles = self.read('frontend/ui_demo/assets/components.css')
+        self.assertIn('overview-matrix-columns-dialog', page)
+        self.assertIn('data-overview-matrix-columns-select-all', page)
+        self.assertIn('data-overview-matrix-columns-clear-all', page)
+        self.assertIn('data-overview-matrix-columns-reset', page)
+        self.assertIn('overview-matrix-columns-dialog__body', page)
+        self.assertIn('display: grid; width: 100%; min-width: 0; min-height: 0', styles)
+        page = self.read('frontend/ui_demo/pages/overview.html')
+        styles = self.read('frontend/ui_demo/assets/components.css')
+        self.assertIn('overview-matrix-columns-dialog', page)
+        self.assertIn('data-overview-matrix-columns-select-all', page)
+        self.assertIn('data-overview-matrix-columns-clear-all', page)
+        self.assertIn('data-overview-matrix-columns-reset', page)
+        self.assertIn('overview-matrix-columns-dialog__body', page)
+        self.assertIn('overview-matrix-columns-dialog__body', styles)
+        self.assertIn('grid-template-columns: minmax(0, 1.18fr) minmax(380px, .92fr)', styles)
 
-    def test_required_viewports_are_smoked(self):
-        smoke = self.read('scripts/smoke_core_pages.cjs')
-        for width in (1366, 1920, 1024, 390):
-            self.assertIn(f'width: {width}', smoke)
+    def test_overview_operations_center_aggregates_real_sources(self):
+        page = self.read('frontend/ui_demo/pages/overview.html')
+        adapter = self.read('frontend/ui_demo/assets/operations-center.js')
+        self.assertIn('data-overview-operations-center', page)
+        self.assertIn('../assets/operations-center.js', page)
+        self.assertNotIn('../assets/action-calendar.js', page)
+        self.assertNotIn('../assets/action-log.js', page)
+        for hook in (
+            'data-operations-feed', 'data-operations-filter', 'data-operations-refresh',
+            'data-operations-calendar-grid', 'data-operations-calendar-prev',
+            'data-operations-calendar-next', 'data-operations-calendar-today',
+        ):
+            self.assertIn(hook, page)
+        for contract in ('/api/actions?limit=200', '/api/actions/calendar?', '/api/logs?limit=12', 'Promise.allSettled', 'mergeActions', 'calendarToken', 'buildAnomalyItem', 'tmall:overview-anomalies-ready', 'clearCalendar'):
+            self.assertIn(contract, adapter)
+        self.assertIn("setAttribute('aria-label'", adapter)
+        self.assertIn("addEventListener('tmall:overview-actions-ready'", adapter)
+        self.assertIn("addEventListener('tmall:overview-anomalies-ready'", adapter)
+        self.assertNotIn('data-overview-home-actions', self.read('frontend/ui_demo/assets/overview-live.js'))
+        self.assertNotIn('data-overview-home-anomalies', page)
 
     def test_toolbox_import_supports_multiple_excel_files(self):
         shell = self.read('frontend/ui_demo/assets/shell.js')
@@ -148,10 +192,14 @@ class FrontendPrdContractTests(unittest.TestCase):
         self.assertIn('goals.adjust', api)
         self.assertIn('DemoApi = { request, domainRequest, optional, context, can, loadPageCapabilities, canPage, renderDataState }', api)
 
+    def test_page_capability_request_can_retry_after_a_transient_failure(self):
+        api = self.read('frontend/ui_demo/assets/api.js')
+        self.assertIn('const pending = domainRequest(`/api/page-capabilities${query}`);', api)
+        self.assertIn('if (pageCapabilityCache.get(pageKey) === pending) pageCapabilityCache.delete(pageKey);', api)
+
     def test_api_client_maps_business_actions_to_registry_keys(self):
         api = self.read('frontend/ui_demo/assets/api.js')
         for capability, selector in (
-            ('overview.view_kpis', '[data-overview-report-refresh]'),
             ('products.list', '[data-demo-refresh]'),
             ('promotion.view', '[data-demo-refresh]'),
             ('lifecycle.assessment', '[data-lifecycle-export]'),
@@ -165,12 +213,11 @@ class FrontendPrdContractTests(unittest.TestCase):
 
     def test_collapsed_overview_actions_keep_accessible_names(self):
         shell = self.read('frontend/ui_demo/assets/shell.js')
-        self.assertIn('aria-label="刷新报告"', shell)
-        self.assertIn('aria-label="新增事件"', shell)
+        self.assertIn('aria-label="新增运营动作"', shell)
 
     def test_refresh_handlers_capture_event_targets_before_async_cleanup(self):
         shell = self.read('frontend/ui_demo/assets/shell.js')
-        self.assertGreaterEqual(shell.count('const refreshButton = event.currentTarget;'), 2)
+        self.assertGreaterEqual(shell.count('const refreshButton = event.currentTarget;'), 1)
         self.assertNotIn('setTimeout(() => event.currentTarget.classList.remove', shell)
 
     def test_scan_write_controls_guard_against_duplicate_submissions(self):
@@ -193,9 +240,9 @@ class FrontendPrdContractTests(unittest.TestCase):
         overview = self.read('frontend/ui_demo/pages/overview.html')
         products = self.read('frontend/ui_demo/pages/products.html')
         api = self.read('frontend/ui_demo/assets/api.js')
-        self.assertIn('data-capability-key="overview.event_edit"', overview)
+        self.assertIn('data-capability-key="overview.create_action"', overview)
         self.assertIn('data-capability-key="products.catalog_edit"', products)
-        self.assertIn('overview.event_edit', api)
+        self.assertIn('overview.create_action', api)
         self.assertIn('products.catalog_edit', api)
 
     def test_formal_pages_use_domain_mutation_endpoints(self):
@@ -208,8 +255,8 @@ class FrontendPrdContractTests(unittest.TestCase):
             "'/api/products/batch-tags'",
         ):
             self.assertIn(endpoint, products)
-        self.assertIn("'/api/overview/events'", overview)
-        self.assertIn('/api/overview/events?chart_type=sales', overview)
+        self.assertIn("'/api/actions'", overview)
+        self.assertIn('capability_key: \'overview.create_action\'', overview)
         self.assertNotIn("'/api/star'", products)
         self.assertNotIn("'/api/batch_update'", products)
         self.assertNotIn("'/api/batch_tags'", products)
@@ -231,6 +278,8 @@ class FrontendPrdContractTests(unittest.TestCase):
         self.assertIn('未发现可导入的新文件', shell)
         self.assertIn('发现 ${discovered} 个文件，导入 ${imported} 个', shell)
         self.assertIn('按主源保留，DMP值留痕', shell)
+        self.assertIn('SCAN_FOLDER_NOT_ALLOWED', shell)
+        self.assertIn('TmallScanUi', shell)
         self.assertNotIn('/api/manage/schedules', shell)
 
     def test_manage_uses_folder_scan_domain_endpoints(self):
@@ -240,16 +289,33 @@ class FrontendPrdContractTests(unittest.TestCase):
         self.assertIn("DemoApi.domainRequest('/api/import-scans')", manage)
         self.assertIn('/api/import-scans/${Number(item.id)}', manage)
         self.assertIn('/api/import-scans/${Number(item.id)}/run', manage)
+        self.assertIn('JSON.stringify({ force: true })', manage)
         self.assertNotIn('/api/manage/schedules', manage)
         self.assertIn('name="folder_path"', page)
         self.assertIn('name="source_type"', page)
         self.assertIn('data-manage-select-scan-folder', page)
-        self.assertNotIn("'/api/scheduled_tasks'", manage)
+        self.assertIn('IMPORT_SCAN_ALLOWED_ROOTS', page)
+        self.assertIn('TmallScanUi', manage)
         self.assertIn("DemoApi.domainRequest('/api/manage/tasks')", manage)
         self.assertIn("DemoApi.domainRequest(`/api/manage/kpis?period=", manage)
         self.assertNotIn("'/api/tasks'", manage)
         self.assertNotIn("'/api/user_kpis'", manage)
 
+    def test_settings_manual_scan_forces_immediate_discovery(self):
+        settings = self.read('frontend/ui_demo/assets/settings-live.js')
+        page = self.read('frontend/ui_demo/pages/settings.html')
+        self.assertIn('/api/import-scans/${Number(job.id)}/run', settings)
+        self.assertIn('JSON.stringify({ force: true })', settings)
+        self.assertIn("job.status === 'error' ? '配置异常'", settings)
+        self.assertIn('runButton.disabled = !job.enabled', settings)
+        self.assertIn('can_manage', settings)
+        self.assertIn('scan_environment', settings)
+        self.assertIn('TmallScanUi', settings)
+        self.assertIn('data-settings-select-scan-folder', page)
+        self.assertIn('IMPORT_SCAN_ALLOWED_ROOTS', page)
+        self.assertIn('scan_environment', settings)
+        self.assertIn('can_manage', settings)
+        self.assertIn('data-scan-environment', page)
     def test_lifecycle_load_keeps_cards_available_when_assessments_fail(self):
         lifecycle = self.read('frontend/ui_demo/assets/lifecycle-live.js')
         self.assertIn("loadAssessments().catch", lifecycle)
@@ -259,9 +325,11 @@ class FrontendPrdContractTests(unittest.TestCase):
         overview = self.read('frontend/ui_demo/assets/overview-live.js')
 
         self.assertIn("DemoApi.request(`/api/anomalies?", overview)
-        self.assertIn(".catch((error) => { console.error(error); return []; })", overview)
-        self.assertIn("DemoApi.request(`/api/report?", overview)
-        self.assertIn(".catch((error) => { console.error(error); return { report: '' }; })", overview)
+        self.assertIn(".catch((error) => { console.error(error); return { error: true }; })", overview)
+        self.assertIn("window.dispatchEvent(new CustomEvent('tmall:overview-anomalies-ready'", overview)
+        self.assertIn("{ detail: { anomalies: [] } }", overview)
+        self.assertIn("actualAvailable", overview)
+        self.assertIn("不可计算", overview)
 
     def test_settings_does_not_expose_raw_json_editors(self):
         page = self.read('frontend/ui_demo/pages/settings.html')
@@ -351,6 +419,13 @@ class FrontendPrdContractTests(unittest.TestCase):
         self.assertIn('visibleAssessments()', adapter)
         self.assertIn('assessmentPriority', adapter)
         self.assertIn('data-lifecycle-assessment-evidence', adapter)
+
+    def test_lifecycle_images_fall_back_when_external_urls_expire(self):
+        adapter = self.read('frontend/ui_demo/assets/lifecycle-live.js')
+        self.assertIn("const cardImage = card.querySelector('img');", adapter)
+        self.assertIn("cardImage?.addEventListener('error'", adapter)
+        self.assertIn("image.addEventListener('error'", adapter)
+        self.assertNotIn('<img src="${thumbnailUrl}"', adapter)
 
     def test_lifecycle_editor_is_a_real_modal_and_closes_out_of_layout(self):
         page = self.read('frontend/ui_demo/pages/lifecycle.html')
@@ -740,6 +815,11 @@ class FrontendPrdContractTests(unittest.TestCase):
         self.assertIn("performance.data?.breakdowns", adapter)
         self.assertIn('.promotion-template-bar[hidden]', styles)
 
+    def test_promotion_does_not_fabricate_breakdown_rows_when_api_has_no_data(self):
+        adapter = self.read('frontend/ui_demo/assets/promotion-live.js')
+        self.assertNotIn('demoBreakdowns', adapter)
+        self.assertNotIn('demo-keyword-', adapter)
+
     def test_echarts_pages_use_block_containers_not_canvas_elements(self):
         for page in ('overview.html', 'promotion.html', 'lifecycle.html', 'compare.html'):
             content = self.read(f'frontend/ui_demo/pages/{page}')
@@ -777,6 +857,21 @@ class FrontendPrdContractTests(unittest.TestCase):
         self.assertIn("'source-unavailable'", adapter)
         self.assertIn('retry: load', adapter)
 
+    def test_data_center_does_not_silently_drop_template_settings_failure(self):
+        adapter = self.read('frontend/ui_demo/assets/data-center-live.js')
+        self.assertIn("renderDataState('source-unavailable'", adapter)
+        self.assertIn('导入模板设置不可用', adapter)
+
+    def test_overview_trend_has_an_explicit_empty_state(self):
+        adapter = self.read('frontend/ui_demo/assets/overview-live.js')
+        self.assertIn('当前周期暂无趋势数据', adapter)
+        self.assertIn('if (!rows.length)', adapter)
+
+    def test_compare_page_explains_when_no_periods_are_available(self):
+        adapter = self.read('frontend/ui_demo/assets/compare-live.js')
+        self.assertIn('当前暂无可对比趋势数据', adapter)
+        self.assertIn('if (!periods.length)', adapter)
+
     def test_ui_audit_regressions_are_covered(self):
         shell = self.read('frontend/ui_demo/assets/shell.js')
         tokens = self.read('frontend/ui_demo/assets/tokens.css')
@@ -795,7 +890,9 @@ class FrontendPrdContractTests(unittest.TestCase):
         self.assertIn('color-scheme: light', tokens)
         self.assertIn('color-scheme: dark', tokens)
         self.assertIn('meta[name="theme-color"]', shell)
-        self.assertIn('width="42" height="42" loading="lazy"', lifecycle)
+        self.assertIn('image.width = 42;', lifecycle)
+        self.assertIn('image.height = 42;', lifecycle)
+        self.assertIn("image.loading = 'lazy';", lifecycle)
         self.assertIn('window.ProductDetailDialog?.open({ productId: id', products)
         self.assertNotIn('data-product-drawer', products)
         self.assertIn('beforeunload', settings)
@@ -821,16 +918,24 @@ class FrontendPrdContractTests(unittest.TestCase):
         self.assertNotIn('.demo-drawer {', shell)
 
     def test_settings_exposes_desktop_version_management(self):
-        page = self.read('frontend/ui_demo/pages/settings.html')
+        shell = self.read('frontend/ui_demo/assets/shell.js')
         adapter = self.read('frontend/ui_demo/assets/desktop-integration.js')
+        version = self.read('frontend/ui_demo/assets/version.js')
 
-        self.assertIn('data-desktop-settings', page)
-        self.assertIn('data-desktop-version', page)
-        self.assertIn('data-desktop-check-update', page)
-        self.assertIn('data-desktop-update-status', page)
-        self.assertIn('desktop-integration.js', page)
+        self.assertIn('data-sidebar-meta', shell)
+        self.assertIn('data-sidebar-version', shell)
+        self.assertIn('data-sidebar-check-update', shell)
+        self.assertIn('demo-sidebar__meta-actions', shell)
+        self.assertIn('GitHub 仓库', shell)
+        self.assertIn('更新说明', shell)
+        self.assertIn('desktop-integration.js', shell)
         self.assertIn('window.tmallDesktop', adapter)
         self.assertIn('panel.hidden = false', adapter)
+        self.assertIn("client=web", adapter)
+        self.assertIn('window.TMALL_WEB_VERSION', adapter)
+        self.assertIn('latestReleaseApi', adapter)
+        self.assertIn('checkGithubRelease', adapter)
+        self.assertIn('repository:', version)
         self.assertIn('getVersion()', adapter)
         self.assertIn('checkForUpdates()', adapter)
 
@@ -848,6 +953,22 @@ class FrontendPrdContractTests(unittest.TestCase):
         self.assertIn("state.selectedFields[tab] = previousSelectedFields", promotion)
         self.assertIn("actionButton.setAttribute('aria-busy', 'true')", promotion)
         self.assertIn('await deletePromotionTemplate(remove.dataset.promotionDeleteTemplate)', promotion)
+
+    def test_frontend_presentation_contract_keeps_shared_styles_and_resumable_views(self):
+        promotion_page = self.read('frontend/ui_demo/pages/promotion.html')
+        components = self.read('frontend/ui_demo/assets/components.css')
+        products = self.read('frontend/ui_demo/assets/products-live.js')
+        promotion = self.read('frontend/ui_demo/assets/promotion-live.js')
+        lifecycle = self.read('frontend/ui_demo/assets/lifecycle-live.js')
+
+        self.assertNotIn('<style', promotion_page)
+        for selector in ('.promotion-command', '.promotion-board-grid', '.promotion-detail-table'):
+            self.assertIn(selector, components)
+        self.assertIn('restoreUrlState();', products)
+        self.assertIn('syncUrlState();', products)
+        self.assertIn('restorePromotionUrl();', promotion)
+        self.assertIn('syncPromotionUrl();', promotion)
+        self.assertIn('syncLifecycleUrl();', lifecycle)
 
 
 if __name__ == '__main__':

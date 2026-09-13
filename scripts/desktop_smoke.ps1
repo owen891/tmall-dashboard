@@ -57,8 +57,7 @@ try {
     $settings = Invoke-WebRequest -Uri "http://127.0.0.1:$listenPort/settings" -UseBasicParsing -TimeoutSec 10
     if ($overview.StatusCode -ne 200 -or $settings.StatusCode -ne 200) { throw 'Packaged frontend smoke check failed.' }
     $anomalies = Invoke-WebRequest -Uri "http://127.0.0.1:$listenPort/api/anomalies?dim=monthly&period=2026-08&prev_period=2026-07" -UseBasicParsing -TimeoutSec 10
-    $report = Invoke-WebRequest -Uri "http://127.0.0.1:$listenPort/api/report?dim=monthly&period=2026-08" -UseBasicParsing -TimeoutSec 10
-    if ($anomalies.StatusCode -ne 200 -or $report.StatusCode -ne 200) { throw 'Packaged runtime API smoke check failed.' }
+    if ($anomalies.StatusCode -ne 200) { throw 'Packaged runtime API smoke check failed.' }
 
     $databasePath = Join-Path $appDataPath 'TmallDashboard\data\dashboard.db'
     if (-not (Wait-Until { Test-Path -LiteralPath $databasePath -PathType Leaf })) { throw "Desktop database was not created at $databasePath." }

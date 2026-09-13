@@ -9,10 +9,10 @@ class SystemRepo:
                 'SELECT COUNT(*) FROM products'
             ).fetchone()[0]
             monthly_count = connection.execute(
-                'SELECT COUNT(*) FROM monthly_data'
+                'SELECT COUNT(DISTINCT month) FROM monthly_data'
             ).fetchone()[0]
             weekly_count = connection.execute(
-                'SELECT COUNT(*) FROM weekly_data'
+                'SELECT COUNT(DISTINCT week_start) FROM weekly_data'
             ).fetchone()[0]
 
         return {

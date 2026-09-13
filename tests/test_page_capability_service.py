@@ -81,13 +81,13 @@ class PageCapabilityServiceTests(unittest.TestCase):
         from services.page_capability_service import CAPABILITY_DEFINITIONS
 
         by_key = {item['key']: item for item in CAPABILITY_DEFINITIONS}
-        self.assertIn('overview.event_edit', by_key)
-        self.assertIn('POST /api/overview/events', by_key['overview.event_edit']['api_endpoints'])
+        self.assertIn('overview.create_action', by_key)
+        self.assertIn('POST /api/actions', by_key['overview.create_action']['api_endpoints'])
         self.assertIn('products.catalog_edit', by_key)
         self.assertIn('PUT /api/products/:product_id/metadata', by_key['products.catalog_edit']['api_endpoints'])
         self.assertIn('POST /api/imports/preview', by_key['data-center.import']['api_endpoints'])
         self.assertIn('POST /api/alert-rules', by_key['settings.configure_alerts']['api_endpoints'])
-        self.assertIn('POST /api/manage/schedules', by_key['manage.schedule']['api_endpoints'])
+        self.assertIn('POST /api/import-scans', by_key['manage.schedule']['api_endpoints'])
 
     def test_advanced_promotion_capabilities_have_explicit_release_boundaries(self):
         from services.page_capability_service import CAPABILITY_DEFINITIONS

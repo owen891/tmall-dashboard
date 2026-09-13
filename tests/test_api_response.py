@@ -8,7 +8,26 @@ if ROOT not in sys.path:
 
 
 class ApiResponseTests(unittest.TestCase):
-    def test_unknown_availability_is_normalized(self):
+    def test_json_object_distinguishes_empty_body_from_malformed_json(self):
+        from flask import Flask
+        from api.api_response import JsonObjectError, json_object
+
+        app = Flask(__name__)
+        with app.test_request_context('/', method='POST', data=b'', content_type='application/json'):
+            self.assertEqual(json_object(__import__('flask').request), {})
+        with app.test_request_context('/', method='POST', data=b'{not-json', content_type='application/json'):
+            with self.assertRaises(JsonObjectError):
+                json_object(__import__('flask').request)
+
+    def test_json_object_rejects_non_object_json(self):
+        from flask import Flask, request
+        from api.api_response import JsonObjectError, json_object
+
+        app = Flask(__name__)
+        with app.test_request_context('/', method='POST', json=[]):
+            with self.assertRaises(JsonObjectError):
+                json_object(request)
+
         from flask import Flask
         from api.api_response import success
         app = Flask(__name__)

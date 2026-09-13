@@ -13,11 +13,15 @@
 """
 
 import sys
+import atexit
+import io
 import os
 import shutil
 import tempfile
+import time
 import unittest
 import uuid
+from unittest.mock import patch
 
 # 确保项目根目录在 sys.path 中
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -26,22 +30,23 @@ if PROJECT_ROOT not in sys.path:
 
 # Mutation smoke tests run against a disposable copy so the checked-in demo
 # database remains stable across local and CI test runs.
-_TEST_DATA_DIR = tempfile.mkdtemp(prefix='tmall-dashboard-tests-')
-_TEST_DB_PATH = os.path.join(_TEST_DATA_DIR, 'dashboard.db')
+_TEST_DATA_DIR = tempfile.TemporaryDirectory(prefix='tmall-dashboard-tests-')
+atexit.register(_TEST_DATA_DIR.cleanup)
+_TEST_DB_PATH = os.path.join(_TEST_DATA_DIR.name, 'dashboard.db')
 _SOURCE_DB_PATH = os.path.join(PROJECT_ROOT, 'data', 'dashboard.db')
 if os.path.exists(_SOURCE_DB_PATH):
     shutil.copy2(_SOURCE_DB_PATH, _TEST_DB_PATH)
-os.environ['TMALL_DB_PATH'] = _TEST_DB_PATH
 
-from app import app
+from app import create_app
 from db import get_db
+app = create_app({'TESTING': True, 'DATABASE_PATH': _TEST_DB_PATH})
 
 
 def _insert_contract_products():
     prefix = f"contract-{uuid.uuid4().hex[:10]}"
     active_id = f"{prefix}-active"
     inactive_id = f"{prefix}-inactive"
-    with get_db() as conn:
+    with get_db(_TEST_DB_PATH) as conn:
         conn.execute(
             "INSERT INTO products (product_id, title, tier, style, status, starred) VALUES (?, ?, ?, ?, ?, ?)",
             (active_id, 'Contract Active Product', 'Contract Tier A', 'Contract Style A', 'active', 0)
@@ -77,7 +82,7 @@ def _insert_contract_products():
 def _get_first_product_id():
     """获取数据库中第一个 product_id，用于测试"""
     try:
-        with get_db() as conn:
+        with get_db(_TEST_DB_PATH) as conn:
             row = conn.execute('SELECT product_id FROM products LIMIT 1').fetchone()
             return row[0] if row else 'nonexistent'
     except Exception:
@@ -90,7 +95,6 @@ class SmokeTestBase(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         """创建测试客户端，复用现有数据库"""
-        app.config['TESTING'] = True
         cls.client = app.test_client()
 
     def assertGetNoCrash(self, path, params=None):
@@ -204,6 +208,14 @@ class TestProductEndpoints(SmokeTestBase):
         self.assertMutationNoCrash('POST', '/api/notes',
                                    json={'product_id': pid, 'note': 'smoke test'})
 
+    def test_notes_reject_malformed_payloads(self):
+        for payload in ([], {'product_id': [], 'note': {}}, {}):
+            response = self.client.post('/api/notes', json=payload)
+            self.assertEqual(response.status_code, 422)
+            self.assertEqual(response.get_json()['code'], 'VALIDATION_ERROR')
+        response = self.client.post('/api/notes', data='not-json', content_type='text/plain')
+        self.assertEqual(response.status_code, 422)
+
     def test_notes_delete(self):
         self.assertMutationNoCrash('DELETE', '/api/notes/99999')
 
@@ -213,6 +225,14 @@ class TestProductEndpoints(SmokeTestBase):
     def test_product_tags_add(self):
         self.assertMutationNoCrash('POST', '/api/product_tags',
                                    json={'product_id': 'nonexistent', 'tag': 'test'})
+
+    def test_product_tags_reject_malformed_payloads(self):
+        for payload in ([], {'product_id': [], 'tag': {}}, {}):
+            response = self.client.post('/api/product_tags', json=payload)
+            self.assertEqual(response.status_code, 422)
+            self.assertEqual(response.get_json()['code'], 'VALIDATION_ERROR')
+        response = self.client.post('/api/product_tags', data='not-json', content_type='text/plain')
+        self.assertEqual(response.status_code, 422)
 
     def test_product_tags_delete(self):
         self.assertMutationNoCrash('DELETE', '/api/product_tags/99999')
@@ -235,9 +255,22 @@ class TestProductEndpoints(SmokeTestBase):
         self.assertEqual(second.status_code, 200)
         self.assertEqual(second.get_json()['starred'], 1)
 
-        with get_db() as conn:
+        with get_db(_TEST_DB_PATH) as conn:
             row = conn.execute('SELECT starred FROM products WHERE product_id = ?', (active_id,)).fetchone()
         self.assertEqual(row[0], 1)
+
+    def test_legacy_catalog_writes_reject_malformed_payloads(self):
+        cases = (
+            ('/api/star', {'product_id': _get_first_product_id(), 'starred': 'maybe'}),
+            ('/api/products/missing/field', {'field': [], 'value': {}}),
+            ('/api/batch_update', {'field': 'tier', 'value': 'A', 'product_ids': 'not-a-list'}),
+            ('/api/batch_tags', {'product_ids': ['missing'], 'tag': []}),
+        )
+        for path, payload in cases:
+            with self.subTest(path=path):
+                response = self.client.post(path, json=payload) if path != '/api/products/missing/field' else self.client.put(path, json=payload)
+                self.assertEqual(response.status_code, 422)
+                self.assertEqual(response.get_json()['code'], 'VALIDATION_ERROR')
 
     def test_products_status_filter_uses_same_where_for_data_and_total(self):
         _, inactive_id = _insert_contract_products()
@@ -382,6 +415,14 @@ class TestAlertEndpoints(SmokeTestBase):
             'threshold': 0.2, 'level': 'warning'
         })
 
+    def test_alert_rules_reject_malformed_payloads(self):
+        for payload in ([], {'metric': [], 'operator': {}, 'threshold': 'not-a-number'}, {}):
+            response = self.client.post('/api/alert_rules', json=payload)
+            self.assertEqual(response.status_code, 422)
+            self.assertEqual(response.get_json()['code'], 'VALIDATION_ERROR')
+        response = self.client.post('/api/alert_rules', data='not-json', content_type='text/plain')
+        self.assertEqual(response.status_code, 422)
+
     def test_alert_rules_delete(self):
         self.assertMutationNoCrash('DELETE', '/api/alert_rules/99999')
 
@@ -411,6 +452,19 @@ class TestReviewEndpoints(SmokeTestBase):
     def test_review_upload(self):
         self.assertMutationNoCrash('POST', '/api/upload/reviews')
 
+    def test_review_upload_removes_staged_file_after_import(self):
+        with tempfile.TemporaryDirectory(prefix='tmall-review-upload-') as upload_dir:
+            with patch('api.data_api.UPLOAD_FOLDER', upload_dir), patch(
+                'scripts.import_data.import_reviews_from_file', return_value=1,
+            ):
+                response = self.client.post(
+                    '/api/upload/reviews',
+                    data={'file': (io.BytesIO(b'review'), 'reviews.csv')},
+                    content_type='multipart/form-data',
+                )
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(os.listdir(upload_dir), [])
+
 
 class TestMarketEndpoints(SmokeTestBase):
     """市场分析相关端点"""
@@ -438,6 +492,26 @@ class TestMarketEndpoints(SmokeTestBase):
 
     def test_market_upload(self):
         self.assertMutationNoCrash('POST', '/api/upload/market')
+
+    def test_market_upload_removes_staged_files_after_import_failure(self):
+        with tempfile.TemporaryDirectory(prefix='tmall-market-upload-') as upload_dir:
+            identified = {'f30': '30-search.xlsx', 'f7': '7-search.xlsx', 'ft': 'trend.xlsx'}
+            with patch('api.data_api.UPLOAD_FOLDER', upload_dir), patch(
+                'scripts.import_market.identify_market_files', return_value=identified,
+            ), patch(
+                'scripts.import_market.import_market_data', side_effect=RuntimeError('bad input'),
+            ):
+                response = self.client.post(
+                    '/api/upload/market',
+                    data={'files': [
+                        (io.BytesIO(b'30'), '30-search.xlsx'),
+                        (io.BytesIO(b'7'), '7-search.xlsx'),
+                        (io.BytesIO(b'trend'), 'trend.xlsx'),
+                    ]},
+                    content_type='multipart/form-data',
+                )
+            self.assertEqual(response.status_code, 500)
+            self.assertEqual(os.listdir(upload_dir), [])
 
 
 class TestCompareEndpoints(SmokeTestBase):
@@ -469,10 +543,48 @@ class TestImportEndpoints(SmokeTestBase):
         self.assertMutationNoCrash('POST', '/api/upload/data')
 
     def test_import_progress(self):
-        self.assertGetNoCrash('/api/import_progress/nonexistent')
+        response = self.assertGetNoCrash('/api/import_progress/nonexistent')
+        self.assertEqual(response.status_code, 404)
+        payload = response.get_json()
+        self.assertFalse(payload['ok'])
+        self.assertEqual(payload['code'], 'NOT_FOUND')
+
+    def test_import_progress_prunes_expired_terminal_tasks(self):
+        from api import data_api
+
+        task_id = 'expired-smoke-task'
+        data_api._import_progress[task_id] = {
+            'status': 'completed',
+            'progress': 100,
+            'finished_at': time.time() - data_api._IMPORT_PROGRESS_TTL_SECONDS - 1,
+        }
+        try:
+            response = self.client.get('/api/import_progress/another-missing-task')
+            self.assertEqual(response.status_code, 404)
+            self.assertNotIn(task_id, data_api._import_progress)
+        finally:
+            data_api._import_progress.pop(task_id, None)
 
     def test_upload_keywords(self):
         self.assertMutationNoCrash('POST', '/api/upload/keywords')
+
+    def test_legacy_upload_errors_use_context_envelope(self):
+        for path in ('/api/upload/data', '/api/upload/reviews', '/api/upload/keywords', '/api/upload/market'):
+            with self.subTest(path=path):
+                response = self.client.post(path)
+                self.assertEqual(response.status_code, 422)
+                payload = response.get_json()
+                self.assertFalse(payload['ok'])
+                self.assertEqual(payload['code'], 'VALIDATION_ERROR')
+                self.assertTrue(payload['requestId'])
+
+        response = self.client.post(
+            '/api/upload/data',
+            data={'file': (io.BytesIO(b'not-a-table'), 'report.txt')},
+            content_type='multipart/form-data',
+        )
+        self.assertEqual(response.status_code, 422)
+        self.assertEqual(response.get_json()['code'], 'UNSUPPORTED_FILE_TYPE')
 
 
 class TestSystemEndpoints(SmokeTestBase):
@@ -490,6 +602,15 @@ class TestSystemEndpoints(SmokeTestBase):
             'type': 'products', 'dim': 'weekly', 'period': ''
         })
 
+    def test_export_rejects_malformed_payloads(self):
+        for payload in ([], {'dim': {'invalid': True}}, {}):
+            response = self.client.post('/api/export', json=payload)
+            self.assertNotEqual(response.status_code, 500)
+            if payload != {}:
+                self.assertEqual(response.status_code, 422)
+        response = self.client.post('/api/export', data='not-json', content_type='text/plain')
+        self.assertEqual(response.status_code, 422)
+
     def test_logs_get(self):
         self.assertGetNoCrash('/api/logs')
 
@@ -497,6 +618,14 @@ class TestSystemEndpoints(SmokeTestBase):
         self.assertMutationNoCrash('POST', '/api/logs', json={
             'action': 'test', 'detail': 'smoke test'
         })
+
+    def test_logs_reject_malformed_payloads(self):
+        for payload in ([], {'action': [], 'detail': {}, 'operator': {}}, {}):
+            response = self.client.post('/api/logs', json=payload)
+            self.assertEqual(response.status_code, 422)
+            self.assertEqual(response.get_json()['code'], 'VALIDATION_ERROR')
+        response = self.client.post('/api/logs', data='not-json', content_type='text/plain')
+        self.assertEqual(response.status_code, 422)
 
     def test_traffic_structure(self):
         self.assertGetNoCrash('/api/traffic_structure', params={'dim': 'weekly'})
@@ -518,6 +647,14 @@ class TestChartEventEndpoints(SmokeTestBase):
             'event_date': '2026-01-01', 'title': 'smoke test'
         })
 
+    def test_chart_events_reject_malformed_payloads(self):
+        for payload in ([], {'event_date': [], 'title': {}}, {'event_date': 'not-a-date', 'title': 'bad'}):
+            response = self.client.post('/api/chart_events', json=payload)
+            self.assertEqual(response.status_code, 422)
+            self.assertEqual(response.get_json()['code'], 'VALIDATION_ERROR')
+        response = self.client.post('/api/chart_events', data='not-json', content_type='text/plain')
+        self.assertEqual(response.status_code, 422)
+
     def test_chart_events_delete(self):
         self.assertMutationNoCrash('DELETE', '/api/chart_events/99999')
 
@@ -532,6 +669,15 @@ class TestScheduledTaskEndpoints(SmokeTestBase):
         self.assertMutationNoCrash('POST', '/api/scheduled_tasks', json={
             'task_name': 'smoke test', 'cron_expr': '0 8 * * *'
         })
+
+    def test_scheduled_tasks_reject_malformed_payloads(self):
+        for payload in ([], {'task_name': [], 'cron_expr': {}}, {}):
+            response = self.client.post('/api/scheduled_tasks', json=payload)
+            # Legacy schedule mutations are intentionally retired by the route guard.
+            self.assertEqual(response.status_code, 410)
+            self.assertEqual(response.get_json()['code'], 'LEGACY_SCHEDULE_REMOVED')
+        response = self.client.post('/api/scheduled_tasks', data='not-json', content_type='text/plain')
+        self.assertEqual(response.status_code, 410)
 
     def test_scheduled_tasks_update(self):
         self.assertMutationNoCrash('PUT', '/api/scheduled_tasks/99999', json={
@@ -588,6 +734,17 @@ class TestUserKpiEndpoints(SmokeTestBase):
         response = self.assertMutationNoCrash('DELETE', '/api/user_kpis/99999')
         self.assertEqual(response.status_code, 404)
 
+    def test_user_kpis_reject_malformed_payloads(self):
+        for method, path in (
+            ('post', '/api/user_kpis'),
+            ('put', '/api/user_kpis/99999'),
+        ):
+            response = getattr(self.client, method)(path, json=[])
+            self.assertEqual(response.status_code, 422)
+            self.assertEqual(response.get_json()['code'], 'VALIDATION_ERROR')
+        response = self.client.delete('/api/user_kpis/99999', json=[])
+        self.assertEqual(response.status_code, 422)
+
 
 class TestKeywordsEndpoints(SmokeTestBase):
     """搜索关键词相关端点"""
@@ -606,6 +763,37 @@ class TestToolEndpoints(SmokeTestBase):
         self.assertMutationNoCrash('POST', '/api/tools/execute', json={
             'tool_name': 'nonexistent'
         })
+
+    def test_tools_reject_malformed_payloads(self):
+        for payload in ([], {'tool_id': 'review_reply', 'params': []}, {'tool_id': 'main_image_suggest', 'params': {'limit': 'bad'}}):
+            response = self.client.post('/api/tools/execute', json=payload)
+            self.assertNotEqual(response.status_code, 500)
+            if payload != []:
+                self.assertEqual(response.status_code, 422)
+        response = self.client.post('/api/tools/execute', data='not-json', content_type='text/plain')
+        self.assertEqual(response.status_code, 422)
+
+    def test_tools_return_structured_errors_for_invalid_execution(self):
+        missing = self.client.post('/api/tools/execute', json={
+            'tool_id': 'review_reply', 'params': {},
+        })
+        self.assertEqual(missing.status_code, 422)
+        self.assertFalse(missing.get_json()['ok'])
+        self.assertEqual(missing.get_json()['code'], 'VALIDATION_ERROR')
+
+        unavailable = self.client.post('/api/tools/execute', json={
+            'tool_id': 'main_image_gen', 'params': {},
+        })
+        self.assertEqual(unavailable.status_code, 409)
+        self.assertFalse(unavailable.get_json()['ok'])
+        self.assertEqual(unavailable.get_json()['code'], 'TOOL_NOT_AVAILABLE')
+
+        unknown_product = self.client.post('/api/tools/execute', json={
+            'tool_id': 'product_diagnose', 'params': {'product_id': '__missing__'},
+        })
+        self.assertEqual(unknown_product.status_code, 404)
+        self.assertFalse(unknown_product.get_json()['ok'])
+        self.assertEqual(unknown_product.get_json()['code'], 'NOT_FOUND')
 
     def test_tools_tasks(self):
         self.assertGetNoCrash('/api/tools/tasks')

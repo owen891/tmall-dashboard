@@ -14,9 +14,9 @@ from pathlib import Path
 from uuid import uuid4
 from zoneinfo import ZoneInfo
 
-from flask import current_app, has_app_context
-
+from flask import current_app, has_app_context, has_request_context, request
 from db import get_db, get_shop_id
+from repos.audit_repo import AuditRepo
 from services.import_service import import_service
 
 
@@ -27,7 +27,9 @@ CRON_TIMEZONE = ZoneInfo('Asia/Shanghai')
 
 
 class ImportScanValidationError(ValueError):
-    pass
+    def __init__(self, message, code='SCAN_VALIDATION_ERROR'):
+        super().__init__(message)
+        self.code = code
 
 
 class ImportScanConflictError(RuntimeError):
@@ -101,19 +103,22 @@ def _is_within_root(candidate, root):
 def _validate_folder(value):
     raw = str(value or '').strip()
     if not raw or raw.startswith('\\\\') or raw.startswith('//'):
-        raise ImportScanValidationError('folder_path must be a local path')
+        raise ImportScanValidationError('folder_path must be a local path', 'SCAN_FOLDER_LOCAL_ONLY')
     normalized = raw.replace('\\', '/')
     if any(part == '..' for part in normalized.split('/')):
-        raise ImportScanValidationError('folder_path cannot contain ..')
+        raise ImportScanValidationError('folder_path cannot contain ..', 'SCAN_FOLDER_TRAVERSAL')
     candidate = os.path.realpath(os.path.abspath(raw))
     if not os.path.isdir(candidate):
-        raise ImportScanValidationError('folder_path must be an existing directory')
+        raise ImportScanValidationError('folder_path must be an existing directory', 'SCAN_FOLDER_NOT_FOUND')
     if os.path.islink(raw):
-        raise ImportScanValidationError('symlink folders are not supported')
+        raise ImportScanValidationError('symlink folders are not supported', 'SCAN_FOLDER_SYMLINK_UNSUPPORTED')
     configured_desktop_mode = current_app.config.get('TMALL_DESKTOP_MODE') if has_app_context() else None
     desktop_mode = str(configured_desktop_mode or os.environ.get('TMALL_DESKTOP_MODE') or '').strip() == '1'
     if not desktop_mode and not any(_is_within_root(candidate, root) for root in _allowed_roots()):
-        raise ImportScanValidationError('folder_path is outside IMPORT_SCAN_ALLOWED_ROOTS')
+        raise ImportScanValidationError(
+            'folder_path is outside IMPORT_SCAN_ALLOWED_ROOTS',
+            'SCAN_FOLDER_NOT_ALLOWED',
+        )
     return candidate
 
 
@@ -220,13 +225,50 @@ def _validate_mapping(value):
 class ImportScanService:
     @staticmethod
     def _shop_id(shop_id=None):
+        if shop_id is None and has_request_context():
+            requested = (request.args.get('shop_id') or '').strip()
+            if requested:
+                return requested
         return str(shop_id or get_shop_id() or 'default')
 
     @classmethod
-    def create_job(cls, payload):
+    def scan_environment(cls, shop_id=None):
+        configured = current_app.config.get('TMALL_DESKTOP_MODE') if has_app_context() else None
+        desktop_mode = str(configured or os.environ.get('TMALL_DESKTOP_MODE') or '').strip() == '1'
+        roots = _allowed_roots()
+        labels = []
+        for root in roots:
+            labels.append(os.path.basename(root.rstrip(os.sep)) or root[:1])
+        view_users = set(current_app.config.get('IMPORT_SCAN_VIEW_USERS') or ()) if has_app_context() else set()
+        manage_users = set(current_app.config.get('IMPORT_SCAN_MANAGE_USERS') or ()) if has_app_context() else set()
+        username = (request.authorization.username or '').strip() if has_request_context() and request.authorization else ''
+        can_view = not view_users or username in view_users
+        can_manage = can_view and (not manage_users or username in manage_users)
+        return {
+            'mode': 'desktop' if desktop_mode else 'web',
+            'desktop_mode': desktop_mode,
+            'picker_available': desktop_mode,
+            'scheduler': 'external' if desktop_mode else 'manual',
+            'shop_id': cls._shop_id(shop_id),
+            'allowed_root_count': len(roots),
+            'allowed_roots': labels,
+            'supported_suffixes': sorted(SUPPORTED_SUFFIXES),
+            'max_file_size': int(current_app.config.get('MAX_CONTENT_LENGTH', 25 * 1024 * 1024)) if has_app_context() else 25 * 1024 * 1024,
+            'cron_timezone': 'Asia/Shanghai',
+            'can_view': can_view,
+            'can_manage': can_manage,
+        }
+
+    @staticmethod
+    def _audit_context(operator='admin', reason=''):
+        return operator, reason
+
+    @classmethod
+    def create_job(cls, payload, *, operator='admin', reason='创建本地扫描任务'):
         payload = payload or {}
-        shop_id = cls._shop_id()
+        shop_id = cls._shop_id(payload.get('shop_id'))
         task_name = str(payload.get('task_name') or '').strip()
+
         if not task_name:
             raise ImportScanValidationError('task_name is required')
         folder = _validate_folder(payload.get('folder_path'))
@@ -248,6 +290,8 @@ class ImportScanService:
                  cron, enabled, 'active' if enabled else 'disabled', _iso(next_run), _iso(now), _iso(now)),
             )
             job_id = cursor.lastrowid
+            after = dict(conn.execute('SELECT * FROM import_scan_jobs WHERE id=? AND shop_id=?', (job_id, shop_id)).fetchone())
+            AuditRepo.record('import_scan_job', job_id, 'create', operator, reason, {}, after, connection=conn)
             conn.commit()
         return cls.get_job(job_id, shop_id)
 
@@ -270,11 +314,11 @@ class ImportScanService:
             return jobs
 
     @classmethod
-    def update_job(cls, job_id, payload):
+    def update_job(cls, job_id, payload, *, operator='admin', reason='更新本地扫描任务'):
         shop_id = cls._shop_id()
         current = cls.get_job(job_id, shop_id)
         if current is None:
-            raise ImportScanValidationError('scan job not found')
+            raise ImportScanValidationError('scan job not found', 'SCAN_JOB_NOT_FOUND')
         merged = {**current, **(payload or {})}
         folder = _validate_folder(merged.get('folder_path'))
         pattern = _validate_pattern(merged.get('file_pattern'))
@@ -296,27 +340,33 @@ class ImportScanService:
                 (str(merged.get('task_name') or '').strip(), folder, pattern, source_type,
                  json.dumps(mapping, ensure_ascii=False), cron, enabled, status, _iso(next_run), now, job_id, shop_id),
             )
+            after = dict(conn.execute('SELECT * FROM import_scan_jobs WHERE id=? AND shop_id=?', (job_id, shop_id)).fetchone())
+            AuditRepo.record('import_scan_job', job_id, 'update', operator, reason, current, after, connection=conn)
             conn.commit()
-        return cls.get_job(job_id, shop_id)
+        return _row(after)
 
     @classmethod
-    def disable_job(cls, job_id):
+    def disable_job(cls, job_id, *, operator='admin', reason='停用本地扫描任务'):
         shop_id = cls._shop_id()
+        current = cls.get_job(job_id, shop_id)
+        if current is None:
+            raise ImportScanValidationError('scan job not found', 'SCAN_JOB_NOT_FOUND')
+        now = _iso(_utc_now())
         with get_db() as conn:
-            result = conn.execute(
+            conn.execute(
                 "UPDATE import_scan_jobs SET enabled=0, status='disabled', lease_token=NULL, lease_until=NULL, updated_at=? WHERE id=? AND shop_id=?",
-                (_iso(_utc_now()), job_id, shop_id),
+                (now, job_id, shop_id),
             )
+            after = dict(conn.execute('SELECT * FROM import_scan_jobs WHERE id=? AND shop_id=?', (job_id, shop_id)).fetchone())
+            AuditRepo.record('import_scan_job', job_id, 'disable', operator, reason, current, after, connection=conn)
             conn.commit()
-        if not result.rowcount:
-            raise ImportScanValidationError('scan job not found')
-        return cls.get_job(job_id, shop_id)
+        return _row(after)
 
     @classmethod
     def list_runs(cls, job_id):
         shop_id = cls._shop_id()
         if cls.get_job(job_id, shop_id) is None:
-            return []
+            raise ImportScanValidationError('scan job not found', 'SCAN_JOB_NOT_FOUND')
         with get_db() as conn:
             return [dict(row) for row in conn.execute(
                 '''SELECT r.* FROM import_scan_runs r
@@ -328,7 +378,7 @@ class ImportScanService:
     def list_files(cls, job_id, status=None):
         shop_id = cls._shop_id()
         if cls.get_job(job_id, shop_id) is None:
-            return []
+            raise ImportScanValidationError('scan job not found', 'SCAN_JOB_NOT_FOUND')
         with get_db() as conn:
             query = '''SELECT f.* FROM import_scan_files f
                        JOIN import_scan_jobs j ON j.id = f.job_id
@@ -347,6 +397,28 @@ class ImportScanService:
             for chunk in iter(lambda: handle.read(1024 * 1024), b''):
                 digest.update(chunk)
         return digest.hexdigest()
+
+    @classmethod
+    def _read_stable_file(cls, item):
+        """Read only when the discovered file is unchanged at read time."""
+        canonical, _, expected_size, expected_mtime_ns, expected_hash = item
+        try:
+            before = os.stat(canonical, follow_symlinks=False)
+            with open(canonical, 'rb') as handle:
+                content = handle.read()
+            after = os.stat(canonical, follow_symlinks=False)
+        except OSError as error:
+            raise ImportScanConflictError('文件在读取期间不可用，请等待下一次扫描', 'FILE_UNSTABLE') from error
+        actual_hash = hashlib.sha256(content).hexdigest()
+        if (
+            before.st_size != expected_size
+            or before.st_mtime_ns != expected_mtime_ns
+            or after.st_size != expected_size
+            or after.st_mtime_ns != expected_mtime_ns
+            or actual_hash != expected_hash
+        ):
+            raise ImportScanConflictError('文件在读取期间发生变化，请等待下一次扫描', 'FILE_UNSTABLE')
+        return content
 
     @classmethod
     def _discover(cls, job, force=False):
@@ -480,10 +552,10 @@ class ImportScanService:
             conn.commit()
 
     @classmethod
-    def retry_file(cls, job_id, file_id):
+    def retry_file(cls, job_id, file_id, *, operator='admin', reason='重试本地扫描文件'):
         shop_id = cls._shop_id()
         if cls.get_job(job_id, shop_id) is None:
-            raise ImportScanValidationError('scan job not found')
+            raise ImportScanValidationError('scan job not found', 'SCAN_JOB_NOT_FOUND')
         now = _iso(_utc_now())
         with get_db() as conn:
             row = conn.execute(
@@ -493,7 +565,7 @@ class ImportScanService:
                 (file_id, job_id, shop_id),
             ).fetchone()
             if row is None:
-                raise ImportScanValidationError('scan file not found')
+                raise ImportScanValidationError('scan file not found', 'SCAN_FILE_NOT_FOUND')
             if row['status'] not in {'blocked', 'failed'}:
                 raise ImportScanConflictError('only blocked or failed files can be retried')
             conn.execute(
@@ -509,13 +581,15 @@ class ImportScanService:
                    WHERE id=? AND shop_id=? AND enabled=1''',
                 (now, now, job_id, shop_id),
             )
-            conn.commit()
-            return dict(conn.execute(
+            after = dict(conn.execute(
                 '''SELECT f.* FROM import_scan_files f
                    JOIN import_scan_jobs j ON j.id = f.job_id
                    WHERE f.id=? AND f.job_id=? AND j.shop_id=?''',
                 (file_id, job_id, shop_id),
             ).fetchone())
+            AuditRepo.record('import_scan_file', file_id, 'retry', operator, reason, dict(row), after, connection=conn)
+            conn.commit()
+            return after
 
     @classmethod
     def _acquire_lease(cls, job_id):
@@ -526,7 +600,7 @@ class ImportScanService:
         with get_db() as conn:
             exists = conn.execute('SELECT id FROM import_scan_jobs WHERE id=? AND shop_id=?', (job_id, shop_id)).fetchone()
             if exists is None:
-                raise ImportScanValidationError('scan job not found')
+                raise ImportScanValidationError('scan job not found', 'SCAN_JOB_NOT_FOUND')
             result = conn.execute(
                 '''UPDATE import_scan_jobs SET lease_token=?, lease_until=?, updated_at=?
                    , status='running'
@@ -559,11 +633,12 @@ class ImportScanService:
             conn.commit()
 
     @classmethod
-    def run_job_once(cls, job_id, force=False):
+    def run_job_once(cls, job_id, force=False, *, operator='admin', reason='手动运行本地扫描任务'):
         shop_id = cls._shop_id()
         token = cls._acquire_lease(job_id)
         run_id = uuid4().hex
         started = _utc_now()
+        job = None
         counters = {'discovered_count': 0, 'imported_count': 0, 'blocked_count': 0, 'failed_count': 0}
         with get_db() as conn:
             conn.execute(
@@ -574,7 +649,7 @@ class ImportScanService:
         try:
             job = cls.get_job(job_id, shop_id)
             if not job:
-                raise ImportScanValidationError('scan job not found')
+                raise ImportScanValidationError('scan job not found', 'SCAN_JOB_NOT_FOUND')
             for item in cls._discover(job, force=force):
                 scan_file, should_process = cls._upsert_discovered(job_id, item)
                 if not should_process:
@@ -585,8 +660,7 @@ class ImportScanService:
                 counters['discovered_count'] += 1
                 canonical, filename, _, _, _ = item
                 try:
-                    with open(canonical, 'rb') as handle:
-                        content = handle.read()
+                    content = cls._read_stable_file(item)
                     preview = import_service.preview(
                         filename, content, job['source_type'], job.get('mapping_template') or None,
                     )
@@ -600,6 +674,9 @@ class ImportScanService:
                     result = import_service.confirm(preview['id'], preview.get('mapping') or {})
                     cls._update_file(file_id, status='imported', preview_id=preview.get('id'), batch_id=result.get('id'), imported_at=_iso(_utc_now()))
                     counters['imported_count'] += 1
+                except ImportScanConflictError as error:
+                    cls._update_file(file_id, status='failed', error_code=error.code, error_message=str(error))
+                    counters['failed_count'] += 1
                 except Exception as error:
                     cls._update_file(file_id, status='failed', error_code='IMPORT_FAILED', error_message=str(error))
                     counters['failed_count'] += 1
@@ -610,6 +687,8 @@ class ImportScanService:
                     '''UPDATE import_scan_runs SET completed_at=?, status=?, discovered_count=?, imported_count=?, blocked_count=?, failed_count=? WHERE id=?''',
                     (_iso(finished), status, counters['discovered_count'], counters['imported_count'], counters['blocked_count'], counters['failed_count'], run_id),
                 )
+                after_run = dict(conn.execute('SELECT * FROM import_scan_runs WHERE id=?', (run_id,)).fetchone())
+                AuditRepo.record('import_scan_run', run_id, 'run', operator, reason, {'job_id': job_id, 'status': 'running'}, after_run, connection=conn)
                 conn.commit()
             next_run = _next_cron_run(job['cron_expr'], finished)
             cls._release_lease(
@@ -617,13 +696,24 @@ class ImportScanService:
             )
             return {'id': run_id, 'job_id': job_id, 'status': status, **counters}
         except Exception as error:
+            finished = _utc_now()
             with get_db() as conn:
                 conn.execute(
                     '''UPDATE import_scan_runs SET completed_at=?, status='failed', error_message=? WHERE id=?''',
-                    (_iso(_utc_now()), str(error), run_id),
+                    (_iso(finished), str(error), run_id),
                 )
+                after_run = dict(conn.execute('SELECT * FROM import_scan_runs WHERE id=?', (run_id,)).fetchone())
+                AuditRepo.record('import_scan_run', run_id, 'run_failed', operator, reason, {'job_id': job_id, 'status': 'running'}, after_run, connection=conn)
                 conn.commit()
-            cls._release_lease(job_id, token, shop_id=shop_id, last_run=_iso(_utc_now()), last_error=str(error))
+            release_fields = {'last_run': _iso(finished), 'last_error': str(error)}
+            if job:
+                # Keep a broken directory from creating a tight retry loop on
+                # every request.  The operator can repair the folder and
+                # re-enable the job from the settings surface.
+                release_fields['next_run'] = _iso(_next_cron_run(job['cron_expr'], finished))
+                if isinstance(error, ImportScanValidationError):
+                    release_fields.update({'status': 'error', 'enabled': 0})
+            cls._release_lease(job_id, token, shop_id=shop_id, **release_fields)
             raise
 
     @classmethod
@@ -640,6 +730,9 @@ class ImportScanService:
             try:
                 results.append(cls.run_job_once(row['id']))
             except Exception as error:
-                current_app.logger.exception('Scheduled import scan job %s failed', row['id'])
+                if isinstance(error, ImportScanValidationError):
+                    current_app.logger.warning('Scheduled import scan job %s is not runnable: %s', row['id'], error)
+                else:
+                    current_app.logger.exception('Scheduled import scan job %s failed', row['id'])
                 results.append({'job_id': row['id'], 'status': 'failed', 'error': str(error)})
         return results

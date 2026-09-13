@@ -2,7 +2,7 @@ import json
 
 from flask import Blueprint, request
 
-from api.api_response import evidence_level_for, failure, limitations_for, success
+from api.api_response import evidence_level_for, failure, json_object, limitations_for, success
 from db import get_shop_id
 from services.import_service import ImportConflictError, ImportScopeError, ImportValidationError, import_service
 
@@ -67,7 +67,7 @@ def preview_import():
 
 @imports_bp.route('/api/imports', methods=['POST'])
 def confirm_import():
-    payload = request.get_json(silent=True) or {}
+    payload = json_object(request)
     try:
         result = import_service.confirm(payload.get('preview_id'), payload.get('mapping'))
     except ImportScopeError as error:

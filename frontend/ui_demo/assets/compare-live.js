@@ -131,7 +131,7 @@
     return { period_a: comparePeriod, period_b: currentPeriod };
   }
   function clearCompareState(message) {
-    text($('[data-compare-periods]'), '数据加载失败');
+    text($('[data-compare-periods]'), message);
     ['gmv', 'visitors', 'refund_rate', 'aov'].forEach((key) => {
       text($(`[data-compare-kpi="${key}"]`), '--');
       text($(`[data-compare-delta="${key}"]`), '--');
@@ -167,6 +167,10 @@
     periods = trendRows.map((row) => row.period).reverse();
     $('[data-compare-a]').replaceChildren(...periods.map(option));
     $('[data-compare-b]').replaceChildren(...periods.map(option));
+    if (!periods.length) {
+      clearCompareState('当前暂无可对比趋势数据');
+      return;
+    }
     if (periods[1]) $('[data-compare-b]').value = periods[1];
     setPeriodFromDate(pendingDateState || window.TmallDateRange?.getState());
     await run();

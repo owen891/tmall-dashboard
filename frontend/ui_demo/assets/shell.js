@@ -9,9 +9,11 @@
   });
 
   loadScript(new URL('table-controls.js', assetBase).href).catch(() => {});
+  loadScript(new URL('ui-components.js', assetBase).href).catch(() => {});
   loadScript(new URL('version.js', assetBase).href)
     .then(() => loadScript(new URL('version-check.js', assetBase).href))
     .catch(() => {});
+  loadScript(new URL('desktop-integration.js', assetBase).href).catch(() => {});
 
   const liveAdapters = { overview: 'overview-live.js', products: 'products-live.js', promotion: 'promotion-live.js' };
   const liveAdapter = liveAdapters[document.body.dataset.page];
@@ -28,18 +30,46 @@
     if (!api?.domainRequest) throw new Error('域 API 客户端不可用');
     return api.domainRequest(path, options);
   };
+  const scanErrorMessage = (error) => {
+    const code = error?.code;
+    if (code === 'SCAN_FOLDER_NOT_ALLOWED' || error?.message?.includes('outside IMPORT_SCAN_ALLOWED_ROOTS')) return '该文件夹不在允许扫描目录中。请配置 IMPORT_SCAN_ALLOWED_ROOTS 后重启服务，或使用桌面端选择文件夹。';
+    if (code === 'SCAN_FOLDER_NOT_FOUND' || error?.message?.includes('must be an existing directory')) return '文件夹不存在。请确认本机绝对路径存在且服务进程有访问权限。';
+    if (code === 'SCAN_FOLDER_LOCAL_ONLY') return '仅支持本机磁盘目录，不支持网络共享路径。';
+    if (code === 'SCAN_FOLDER_SYMLINK_UNSUPPORTED') return '不支持符号链接目录，请选择真实本地目录。';
+    if (code === 'SCAN_FOLDER_TRAVERSAL') return '文件夹路径不能包含 ..。';
+    if (code === 'SCAN_DISABLED') return '扫描任务已停用，请先启用后再运行。';
+    if (code === 'SCAN_RUNNING') return '扫描任务正在运行，请稍后刷新记录。';
+    return error?.message || '扫描任务操作失败';
+  };
+  window.TmallScanUi = { errorMessage: scanErrorMessage };
   const DATA_STATES = ['loading', 'no-data', 'insufficient-data', 'missing-fields', 'calculation-failed', 'source-unavailable', 'partial'];
   window.TmallDataStates = Object.freeze(DATA_STATES.slice());
   if (liveAdapter && !window.DemoApi) apiReady.then(() => loadScript(new URL(liveAdapter, assetBase).href)).catch(() => {});
-  const nav = [
-    ['overview', '数据概览', 'layout-dashboard', 'overview'],
-    ['products', '商品运营', 'package', 'products'],
-    ['promotion', '推广分析', 'megaphone', 'promotion'],
-    ['lifecycle', '生命周期', 'refresh-cw', 'lifecycle'],
-    ['reviews', '经营复盘', 'clipboard-check', 'reviews'],
-    ['data-center', '数据中心', 'database', 'data-center'],
-    ['settings', '设置', 'settings', 'settings']
+  const navGroups = [
+    {
+      label: '经营分析',
+      items: [
+        ['overview', '数据概览', 'layout-dashboard', 'overview'],
+        ['products', '商品运营', 'package', 'products'],
+        ['promotion', '推广分析', 'megaphone', 'promotion'],
+        ['lifecycle', '生命周期', 'refresh-cw', 'lifecycle'],
+      ],
+    },
+    {
+      label: '运营管理',
+      items: [
+        ['reviews', '经营复盘', 'clipboard-check', 'reviews'],
+      ],
+    },
+    {
+      label: '系统',
+      items: [
+        ['data-center', '数据中心', 'database', 'data-center'],
+        ['settings', '设置', 'settings', 'settings'],
+      ],
+    },
   ];
+  const nav = navGroups.flatMap((group) => group.items);
   const meta = {
     products: ['商品运营', '商品经营表现与选款效率'],
     promotion: ['推广分析', '按投放粒度解释花费、成交与投产效率'],
@@ -80,7 +110,10 @@
     window.lucide.createIcons = (...args) => {
       const pendingIcons = document.querySelectorAll('[data-lucide]:not([data-lucide-rendered])');
       if (!pendingIcons.length) return;
-      pendingIcons.forEach(icon => icon.setAttribute('data-lucide-rendered', 'true'));
+      pendingIcons.forEach(icon => {
+        icon.setAttribute('data-lucide-rendered', 'true');
+        if (!icon.hasAttribute('aria-label')) icon.setAttribute('aria-hidden', 'true');
+      });
       return createIcons(...args);
     };
   }
@@ -93,10 +126,21 @@
       <div class="demo-brand__mark" aria-hidden="true">TM</div>
       <div class="demo-brand__name"><strong>天猫数据</strong><strong>仪表盘</strong></div>
     </div>
-    <nav class="demo-nav" aria-label="主导航"><div class="demo-nav__group">
-      ${nav.map(([id, label, icon, page]) => `<a class="demo-nav__item" data-page-link="${id}" href="${route(page)}" aria-label="${label}" title="${label}"><i data-lucide="${icon}"></i><span>${label}</span></a>`).join('')}
-    </div></nav>
-    <div class="demo-sidebar__status"><span class="status-dot"></span><span>系统正常</span></div>`;
+    <nav class="demo-nav" aria-label="主导航">${navGroups.map((group) => `<section class="demo-nav__section"><h2 class="demo-nav__label">${group.label}</h2><div class="demo-nav__group">${group.items.map(([id, label, iconName, page]) => `<a class="demo-nav__item" data-page-link="${id}" href="${route(page)}" aria-label="${label}" title="${label}"><i data-lucide="${iconName}"></i><span>${label}</span>${id === 'reviews' ? '<b class="demo-nav__badge" data-nav-action-count hidden aria-label="待处理动作数量"></b>' : ''}</a>`).join('')}</div></section>`).join('')}</nav>
+    <div class="demo-sidebar__footer">
+      <div class="demo-sidebar__meta" data-sidebar-meta role="group" aria-label="版本与项目链接">
+        <div class="demo-sidebar__meta-row">
+          <span class="status-dot" aria-label="系统正常" title="系统正常"></span>
+          <span class="demo-sidebar__version" data-sidebar-version>加载中…</span>
+          <span class="demo-sidebar__update-status" data-sidebar-update-status role="status" aria-live="polite"></span>
+        </div>
+        <div class="demo-sidebar__meta-actions">
+          <a class="demo-sidebar__meta-action" href="https://github.com/owen891/tmall-dashboard" target="_blank" rel="noreferrer" aria-label="GitHub 仓库" title="GitHub 仓库"><i data-lucide="github" aria-hidden="true"></i><span>GitHub</span></a>
+          <a class="demo-sidebar__meta-action" href="https://github.com/owen891/tmall-dashboard/releases" target="_blank" rel="noreferrer" aria-label="更新说明" title="更新说明"><i data-lucide="file-text" aria-hidden="true"></i><span>更新说明</span></a>
+          <button class="button button--ghost demo-sidebar__update" type="button" data-sidebar-check-update aria-label="检查升级" title="检查升级"><i data-lucide="refresh-cw" aria-hidden="true"></i><span>检查升级</span></button>
+        </div>
+      </div>
+    </div>`;
 
   header.innerHTML = `
     <div class="demo-topbar__heading"><h1 class="demo-topbar__title">${currentMeta[0]}</h1><span class="demo-topbar__eyebrow">${currentMeta[1]}</span></div>
@@ -104,7 +148,7 @@
       <select class="demo-period__select" data-date-preset aria-label="快捷时间范围">
         <option value="today">今日</option><option value="yesterday">昨日</option><option value="7d">近7天</option><option value="30d" selected>近30天</option><option value="90d">近90天</option><option value="this_week">本周</option><option value="last_week">上周</option><option value="this_month">本月</option><option value="last_month">上月</option><option value="custom">自定义</option>
       </select>
-      <button type="button" class="demo-period__trigger tabular" data-date-trigger aria-expanded="false"><i data-lucide="calendar-days"></i><span data-period-range>数据库日期加载中</span></button>
+      <button type="button" class="demo-period__trigger tabular" data-date-trigger aria-expanded="false"><i data-lucide="calendar-days" aria-hidden="true"></i><span data-period-range>数据库日期加载中…</span></button>
       ${currentPage === 'overview' ? '<select class="demo-period__select demo-period__compare" data-compare-mode aria-label="对比方式"><option value="none">不对比</option><option value="previous_period">环比</option><option value="year_over_year">同比</option></select>' : ''}
       <div class="demo-period__popover" data-period-popover hidden>
         <div class="demo-calendar__toolbar"><button type="button" data-calendar-nav="-1" aria-label="上两个月">‹</button><strong>自定义日期范围</strong><button type="button" data-calendar-nav="1" aria-label="下两个月">›</button></div>
@@ -117,8 +161,8 @@
   if (currentPage === 'lifecycle') header.querySelector('.demo-period').hidden = true;
   if (currentPage === 'overview') {
     header.querySelector('.demo-topbar__tools').insertAdjacentHTML('beforeend', `
-      <button class="button demo-overview-action" type="button" aria-label="刷新报告" title="刷新报告" data-capability-key="overview.view_kpis" data-overview-report-refresh><i data-lucide="refresh-cw"></i><span>刷新报告</span></button>
-      <button class="button button--primary demo-overview-action" type="button" aria-label="新增事件" title="新增事件" data-capability-key="overview.event_edit" data-overview-event-open><i data-lucide="plus"></i><span>新增事件</span></button>`);
+      <button class="button button--primary demo-overview-action" type="button" aria-label="新增运营动作" title="新增运营动作" data-capability-key="overview.create_action" data-overview-action-open><i data-lucide="plus"></i><span>新增运营动作</span></button>`);
+    apiReady.then((api) => api?.loadPageCapabilities?.('overview')).catch(() => {});
   }
 
   document.body.insertAdjacentHTML('beforeend', `
@@ -132,7 +176,7 @@
           <button class="toolbox-tool" id="toolbox-tab-scan" role="tab" type="button" aria-selected="false" aria-pressed="false" aria-controls="toolbox-panel-scan" data-tool="scan"><strong>文件夹扫描任务</strong><span>扫描指定文件夹并自动导入新报表</span></button>
         </div>
         <section class="plain-panel panel" id="toolbox-panel-import" role="tabpanel" aria-labelledby="toolbox-tab-import" data-tool-panel="import"><div class="panel__header"><div><h3 class="panel__title">导入经营数据</h3><p class="panel__hint">先预览文件、确认字段映射和质量，再写入数据库</p></div><span class="badge badge--info">表格</span></div><label class="upload-zone" for="demoImportFile"><span><i data-lucide="file-up"></i><strong data-import-file-name>选择表格文件</strong><span>支持 .xlsx / .xls / .csv / .zip；可多选，文件选择器内可按 Ctrl+A 全选</span></span></label><input class="sr-only" id="demoImportFile" data-import-file type="file" accept=".xlsx,.xls,.csv,.zip" multiple><div class="section-toolbar toolbox-import-actions"><button class="button button--primary" type="button" data-import-preview><i data-lucide="scan-search"></i>预览并校验</button><button class="button button--primary" type="button" data-import-confirm disabled><i data-lucide="database"></i>确认导入</button></div><div class="import-progress" aria-hidden="true"><span data-import-progress></span></div><div class="import-result" data-import-result role="status" aria-live="polite">等待选择文件</div><section class="import-preview-panel" data-import-preview-panel hidden><div class="import-preview-panel__summary"><div class="toolbox-import-tabs" data-import-preview-tabs role="tablist" aria-label="预览文件"></div><p class="panel__hint" data-import-quality>选择文件后查看质量摘要</p><p class="panel__hint" data-import-quality-detail>未发现异常行</p></div><div class="data-table-wrap"><table class="data-table import-preview-table"><thead><tr><th>原始列</th><th>推断类型</th><th>标准字段映射</th><th>匹配状态</th><th>样例</th></tr></thead><tbody data-import-fields></tbody></table></div></section></section>
-        <section class="plain-panel panel" id="toolbox-panel-scan" role="tabpanel" aria-labelledby="toolbox-tab-scan" data-tool-panel="scan" hidden><div class="panel__header"><div><h3 class="panel__title">文件夹扫描任务</h3><p class="panel__hint">定期检查指定文件夹，新文件会复用导入校验和批次审计</p></div><button class="button button--ghost" type="button" data-refresh-scans aria-label="刷新扫描任务"><i data-lucide="refresh-cw"></i>刷新</button></div><div class="modal-form__body toolbox-scan-form"><label>任务名称<input class="input" name="scan_name" data-scan-name placeholder="例如：每日经营数据扫描" autocomplete="off"></label><label>扫描文件夹<span class="toolbox-scan-folder"><input class="input" name="scan_folder" data-scan-folder placeholder="请选择或输入本机文件夹绝对路径" autocomplete="off"><button class="button" type="button" data-select-scan-folder hidden><i data-lucide="folder-open"></i>选择文件夹</button></span></label><div class="filter-group"><label>文件匹配规则<input class="input" name="scan_pattern" data-scan-pattern value="*.xlsx;*.xls;*.csv;*.zip" autocomplete="off"></label><label>报表来源<select class="select" name="scan_source" data-scan-source><option value="auto">自动识别</option><option value="product_day">商品日度</option><option value="dmp_product_day">DMP 商品日度</option><option value="store_day">店铺日度</option><option value="refund_day">退款日度</option><option value="customer_day">客户日度</option><option value="product_week">商品周度</option><option value="product_month">商品月度</option><option value="promotion_channel_day">推广渠道日度</option><option value="promotion_campaign_day">推广计划日度</option><option value="promotion_unit_day">推广单元日度</option><option value="promotion_product_day">推广商品日度</option></select></label></div><div class="filter-group"><label>扫描频率<select class="select" name="scan_frequency" data-scan-frequency><option value="daily">每天</option><option value="weekly">每周一</option><option value="monthly">每月 1 日</option></select></label><label>扫描时间<input class="input" name="scan_time" data-scan-time type="time" value="08:00" autocomplete="off"></label></div><label class="toolbox-scan-enabled"><input type="checkbox" name="scan_enabled" data-scan-enabled checked> 创建后立即启用</label><button class="button button--primary" type="button" data-add-scan><i data-lucide="folder-plus"></i>添加扫描任务</button><div class="import-result" data-scan-result role="status" aria-live="polite">等待创建任务</div></div><div class="data-table-wrap toolbox-scan-table"><table class="data-table"><thead><tr><th>任务与文件夹</th><th>计划</th><th>状态</th><th>最近运行</th><th>操作</th></tr></thead><tbody data-scan-list><tr><td colspan="5">加载中</td></tr></tbody></table></div></section>
+        <section class="plain-panel panel" id="toolbox-panel-scan" role="tabpanel" aria-labelledby="toolbox-tab-scan" data-tool-panel="scan" hidden><div class="panel__header"><div><h3 class="panel__title">文件夹扫描任务</h3><p class="panel__hint">定期检查指定文件夹，新文件会复用导入校验和批次审计</p></div><button class="button button--ghost" type="button" data-refresh-scans aria-label="刷新扫描任务"><i data-lucide="refresh-cw"></i>刷新</button></div><div class="modal-form__body toolbox-scan-form"><label>任务名称<input class="input" name="scan_name" data-scan-name placeholder="例如：每日经营数据扫描" autocomplete="off"></label><label>扫描文件夹<span class="toolbox-scan-folder"><input class="input" name="scan_folder" data-scan-folder placeholder="请选择或输入本机文件夹绝对路径" autocomplete="off"><button class="button" type="button" data-select-scan-folder hidden><i data-lucide="folder-open"></i>选择文件夹</button></span></label><div class="filter-group"><label>文件匹配规则<input class="input" name="scan_pattern" data-scan-pattern value="*.xlsx;*.xls;*.csv;*.zip" autocomplete="off"></label><label>报表来源<select class="select" name="scan_source" data-scan-source><option value="auto">自动识别</option><option value="product_day">商品日度</option><option value="dmp_product_day">DMP 商品日度</option><option value="store_day">店铺日度</option><option value="refund_day">退款日度</option><option value="customer_day">客户日度</option><option value="product_week">商品周度</option><option value="product_month">商品月度</option><option value="promotion_channel_day">推广渠道日度</option><option value="promotion_campaign_day">推广计划日度</option><option value="promotion_unit_day">推广单元日度</option><option value="promotion_product_day">推广商品日度</option></select></label></div><div class="filter-group"><label>扫描频率<select class="select" name="scan_frequency" data-scan-frequency><option value="daily">每天</option><option value="weekly">每周一</option><option value="monthly">每月 1 日</option></select></label><label>扫描时间<input class="input" name="scan_time" data-scan-time type="time" value="08:00" autocomplete="off"></label></div><label class="toolbox-scan-enabled"><input type="checkbox" name="scan_enabled" data-scan-enabled checked> 创建后立即启用</label><button class="button button--primary" type="button" data-add-scan><i data-lucide="folder-plus"></i>添加扫描任务</button><div class="import-result" data-scan-result role="status" aria-live="polite">等待创建任务</div></div><div class="data-table-wrap toolbox-scan-table"><table class="data-table"><thead><tr><th>任务与文件夹</th><th>计划</th><th>状态</th><th>最近运行</th><th>操作</th></tr></thead><tbody data-scan-list><tr><td colspan="5">加载中…</td></tr></tbody></table></div></section>
       </div>
     </dialog>`);
 
@@ -238,6 +282,7 @@
   let calendarBase = new Date(anchorDate.getFullYear(), anchorDate.getMonth() - 1, 1);
   let draftStart = null;
   let state = { startDate: '', endDate: '', preset: params.get('preset') || '30d', compareMode: params.get('compare') || 'none' };
+  let rangeReadyDispatched = false;
 
   const rangeForPreset = (preset) => {
     const offsets = { today: 0, yesterday: 1, '7d': 6, '30d': 29, '90d': 89 };
@@ -266,6 +311,10 @@
     url.searchParams.set('compare', state.compareMode);
     if (writeHistory) history.pushState(null, '', url);
     window.dispatchEvent(new CustomEvent('tmall:date-range-change', { detail: { ...state } }));
+    if (!rangeReadyDispatched) {
+      rangeReadyDispatched = true;
+      window.dispatchEvent(new CustomEvent('tmall:date-range-ready', { detail: { ...state } }));
+    }
   };
   const applyRange = (start, end, preset = 'custom') => {
     state = { ...state, startDate: formatDate(start), endDate: formatDate(end), preset };
@@ -393,13 +442,6 @@
     showToast('正在刷新当前页面数据');
     window.setTimeout(() => refreshButton.classList.remove('is-spinning'), 500);
   });
-  header.querySelector('[data-overview-report-refresh]')?.addEventListener('click', (event) => {
-    const refreshButton = event.currentTarget;
-    refreshButton.classList.add('is-spinning');
-    window.dispatchEvent(new CustomEvent('tmall:refresh', { detail: { page: currentPage, source: 'report' } }));
-    showToast('正在刷新经营报告');
-    window.setTimeout(() => refreshButton.classList.remove('is-spinning'), 500);
-  });
   header.querySelector('[data-demo-export]').addEventListener('click', () => {
     if (!window.dispatchEvent(new CustomEvent('tmall:export', { cancelable: true, detail: { page: currentPage } }))) return;
     exportTables();
@@ -414,9 +456,14 @@
   });
   const mobileNav = header.querySelector('[data-mobile-nav]');
   let mobileNavReturnFocus = null;
+  const setSidebarState = (open) => {
+    sidebar.classList.toggle('is-open', open);
+    sidebar.toggleAttribute('inert', !open && window.matchMedia('(max-width: 900px)').matches);
+    sidebar.setAttribute('aria-hidden', String(!open && window.matchMedia('(max-width: 900px)').matches));
+  };
   const closeMobileNavigation = (restoreFocus = true) => {
     if (!sidebar.classList.contains('is-open')) return;
-    sidebar.classList.remove('is-open');
+    setSidebarState(false);
     mobileNav.setAttribute('aria-expanded', 'false');
     document.body.classList.remove('demo-scroll-lock');
     if (restoreFocus) (mobileNavReturnFocus || mobileNav).focus();
@@ -425,7 +472,7 @@
   mobileNav.addEventListener('click', () => {
     if (sidebar.classList.contains('is-open')) { closeMobileNavigation(); return; }
     mobileNavReturnFocus = mobileNav;
-    sidebar.classList.add('is-open');
+    setSidebarState(true);
     mobileNav.setAttribute('aria-expanded', 'true');
     document.body.classList.add('demo-scroll-lock');
     window.setTimeout(() => sidebar.querySelector('[data-page-link]')?.focus(), 0);
@@ -536,7 +583,18 @@
   const importFieldLabel = (key) => window.DemoLabels?.label?.('field', key, key) || key;
   const importMatchLabel = (key) => window.DemoLabels?.label?.('match', key, key) || key;
   const setImportStatus = (message) => { importResult.textContent = message; };
-  const requiredMappings = (preview) => (preview.mapping_schema?.required || []).filter((key) => !preview.mapping?.[key]);
+  const normalizeImportPreview = (value) => {
+    const preview = value && typeof value === 'object' ? value : {};
+    return {
+      ...preview,
+      mapping: preview.mapping && typeof preview.mapping === 'object' ? preview.mapping : {},
+      mapping_schema: preview.mapping_schema && typeof preview.mapping_schema === 'object' ? preview.mapping_schema : {},
+      fields: Array.isArray(preview.fields) ? preview.fields.filter((field) => field && typeof field === 'object') : [],
+      invalid_details: Array.isArray(preview.invalid_details) ? preview.invalid_details : [],
+      field_warnings: Array.isArray(preview.field_warnings) ? preview.field_warnings : [],
+    };
+  };
+  const requiredMappings = (preview) => (preview?.mapping_schema?.required || []).filter((key) => !preview.mapping?.[key]);
   const importQualityMessage = (preview) => {
     const source = importSourceLabels[preview.source_type] || preview.source_type || '未知报表';
     const range = preview.date_range?.start ? `；日期 ${preview.date_range.start} 至 ${preview.date_range.end}` : '';
@@ -555,6 +613,7 @@
       importConfirmButton.disabled = true;
       return;
     }
+    preview = normalizeImportPreview(preview);
     importPreviewPanel.hidden = false;
     document.querySelector('[data-import-preview-tabs]')?.replaceChildren(...importPreviewQueue.map((item, index) => {
       const tab = document.createElement('button');
@@ -637,6 +696,7 @@
     else if (preview.invalid_rows || preview.duplicate_keys) setImportStatus('质量校验未通过，请修正文件后重新预览');
     else setImportStatus('预览通过，可以确认导入');
   };
+  if (currentPage !== 'data-center') {
   importFile.addEventListener('change', () => {
     const files = Array.from(importFile.files || []);
     document.querySelector('[data-import-file-name]').textContent = files.length ? `已选择 ${files.length} 个表格文件` : '选择表格文件';
@@ -664,7 +724,7 @@
         try {
           const payload = await DemoApi.domainRequest('/api/imports/preview?source_type=auto', { method: 'POST', body: form });
           importCapabilities = payload.capabilities || importCapabilities;
-          importPreviewQueue.push(payload.data);
+          importPreviewQueue.push(normalizeImportPreview(payload.data));
         } catch (error) {
           importPreviewErrors.push(`${file.name}：${error.message || '预览失败'}`);
         }
@@ -729,6 +789,7 @@
       importConfirmButton.disabled = !failures.length;
     }
   });
+  }
   const scanResult = document.querySelector('[data-scan-result]');
   const scanFolder = document.querySelector('[data-scan-folder]');
   const selectScanFolderButton = document.querySelector('[data-select-scan-folder]');
@@ -775,7 +836,7 @@
   };
   const loadScanJobs = async () => {
     const tbody = document.querySelector('[data-scan-list]');
-    tbody.innerHTML = '<tr><td colspan="5">正在加载扫描任务</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="5">正在加载扫描任务…</td></tr>';
     const payload = await requestDomainApi('/api/import-scans');
     const rows = payload.data || [];
     tbody.replaceChildren();
@@ -816,14 +877,14 @@
             scanResult.textContent = scanRunSummary(result);
             await loadScanJobs();
           }
-          catch (error) { scanResult.textContent = error.message || '扫描失败'; }
+            catch (error) { scanResult.textContent = window.TmallScanUi?.errorMessage?.(error) || error.message || '扫描失败'; }
         }),
         scanAction(job.enabled ? 'pause' : 'play-circle', job.enabled ? '停用任务' : '启用任务', async () => {
           try {
             await requestDomainApi(`/api/import-scans/${Number(job.id)}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ enabled: !job.enabled }) });
             scanResult.textContent = job.enabled ? '任务已停用' : '任务已启用';
             await loadScanJobs();
-          } catch (error) { scanResult.textContent = error.message || '更新任务失败'; }
+          } catch (error) { scanResult.textContent = window.TmallScanUi?.errorMessage?.(error) || error.message || '更新任务失败'; }
         }),
       );
       if (isRunning) actions.firstElementChild.disabled = true;
@@ -850,11 +911,27 @@
       scanResult.textContent = '扫描任务已创建';
       document.querySelector('[data-scan-name]').value = '';
       await loadScanJobs();
-    } catch (error) { scanResult.textContent = error.message || '创建扫描任务失败'; }
+    } catch (error) { scanResult.textContent = window.TmallScanUi?.errorMessage?.(error) || error.message || '创建扫描任务失败'; }
     finally { addScanButton.disabled = false; }
   });
-  document.querySelector('[data-refresh-scans]').addEventListener('click', () => loadScanJobs().catch((error) => { scanResult.textContent = error.message || '扫描任务加载失败'; }));
-  loadScanJobs().catch((error) => { document.querySelector('[data-scan-list]').innerHTML = '<tr><td colspan="5">扫描任务加载失败</td></tr>'; scanResult.textContent = error.message || '扫描任务加载失败'; });
+  document.querySelector('[data-refresh-scans]').addEventListener('click', () => loadScanJobs().catch((error) => { scanResult.textContent = window.TmallScanUi?.errorMessage?.(error) || error.message || '扫描任务加载失败'; }));
+  loadScanJobs().catch((error) => { document.querySelector('[data-scan-list]').innerHTML = '<tr><td colspan="5">扫描任务加载失败</td></tr>'; scanResult.textContent = window.TmallScanUi?.errorMessage?.(error) || error.message || '扫描任务加载失败'; });
+  async function syncActionCount() {
+    const badge = sidebar.querySelector('[data-nav-action-count]');
+    if (!badge) return;
+    try {
+      const payload = await requestDomainApi('/api/actions?limit=200');
+      const rows = Array.isArray(payload?.data) ? payload.data : [];
+      const count = rows.filter((action) => ['pending_review', 'blocked', 'pending_execution', 'executing'].includes(action.status)).length;
+      badge.textContent = String(count);
+      badge.hidden = count === 0;
+      badge.setAttribute('aria-label', `待处理动作 ${count} 项`);
+    } catch (_) {
+      badge.hidden = true;
+    }
+  }
+  syncActionCount();
+  window.addEventListener('tmall:refresh', syncActionCount);
   window.DemoShell = { nav, meta, getDateRange: () => ({ ...state }), showToast, setStatus: announce, setTheme, getTheme: () => theme };
   if (window.lucide) window.lucide.createIcons();
 })();

@@ -1,19 +1,44 @@
+from datetime import datetime
+from re import fullmatch
+
 from flask import Blueprint, request
 
-from api.api_response import failure, success
+from api.api_response import failure, json_object, success
 from db import get_db
 from repos.audit_repo import AuditRepo
+from services.shop_scope_service import audit_identity, require_admin_write
 
 
 overview_events_bp = Blueprint('overview_events', __name__)
 
+ALLOWED_CHART_TYPES = {'sales', 'refund', 'traffic', 'promotion'}
+HEX_COLOR = r'^#[0-9A-Fa-f]{6}$'
+
 
 def _payload():
-    return request.get_json(silent=True) or {}
+    return json_object(request)
 
 
 def _operator_reason(data, default_reason):
-    return data.get('operator') or data.get('actor') or 'admin', data.get('reason') or default_reason
+    return audit_identity(data, default_reason)
+
+
+def _validate_event_fields(event_date, title, description, color, chart_type):
+    try:
+        parsed = datetime.strptime(event_date, '%Y-%m-%d')
+    except (TypeError, ValueError):
+        return 'event_date 必须使用 YYYY-MM-DD 格式'
+    if parsed.strftime('%Y-%m-%d') != event_date:
+        return 'event_date 必须使用 YYYY-MM-DD 格式'
+    if not 1 <= len(title) <= 120:
+        return 'title 长度必须为 1-120 个字符'
+    if len(description) > 1000:
+        return 'description 长度不能超过 1000 个字符'
+    if not fullmatch(HEX_COLOR, color):
+        return 'color 必须是六位十六进制颜色'
+    if chart_type not in ALLOWED_CHART_TYPES:
+        return 'chart_type 不受支持'
+    return None
 
 
 def _success(data, *, action, row_count=1, status=200):
@@ -29,6 +54,8 @@ def _success(data, *, action, row_count=1, status=200):
 @overview_events_bp.route('/api/overview/events', methods=['GET'])
 def list_overview_events():
     chart_type = request.args.get('chart_type', 'sales')
+    if chart_type not in ALLOWED_CHART_TYPES:
+        return failure('VALIDATION_ERROR', 'chart_type 不受支持', status=422)
     with get_db() as connection:
         rows = connection.execute(
             '''SELECT id, event_date, title, description, color, chart_type, created_at
@@ -40,6 +67,8 @@ def list_overview_events():
 
 @overview_events_bp.route('/api/overview/events', methods=['POST'])
 def create_overview_event():
+    if (denied := require_admin_write()):
+        return denied
     data = _payload()
     event_date = str(data.get('event_date') or '').strip()
     title = str(data.get('title') or '').strip()
@@ -48,6 +77,9 @@ def create_overview_event():
     description = str(data.get('description') or '').strip()
     color = str(data.get('color') or '#EF4444').strip()
     chart_type = str(data.get('chart_type') or 'sales').strip()
+    error = _validate_event_fields(event_date, title, description, color, chart_type)
+    if error:
+        return failure('VALIDATION_ERROR', error, status=422)
     operator, reason = _operator_reason(data, '记录经营事件')
     with get_db() as connection:
         cursor = connection.execute(
@@ -71,6 +103,8 @@ def create_overview_event():
 
 @overview_events_bp.route('/api/overview/events/<int:event_id>', methods=['DELETE'])
 def delete_overview_event(event_id):
+    if (denied := require_admin_write()):
+        return denied
     data = _payload()
     operator, reason = _operator_reason(data, '删除经营事件')
     with get_db() as connection:

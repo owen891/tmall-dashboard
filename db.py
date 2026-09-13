@@ -2,9 +2,10 @@ import sqlite3
 import os
 from contextlib import contextmanager
 import yaml
-from flask import current_app, has_app_context
+from flask import current_app, g, has_app_context
 
 PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
+SCHEMA_VERSION = 1
 
 _config_cache = None
 
@@ -26,33 +27,42 @@ def get_db_path():
     override = os.environ.get('TMALL_DB_PATH')
     if override:
         return os.path.abspath(override)
-    config = load_config()
-    configured_path = config['data']['db_path']
-    return configured_path if os.path.isabs(configured_path) else os.path.join(PROJECT_ROOT, configured_path)
+    # Keep standalone scripts on the same production default as create_app.
+    # config.yaml remains available for thresholds and import settings, but it
+    # must not select a second database behind the application's back.
+    return os.path.join(PROJECT_ROOT, 'data', 'dashboard.db')
 
 
 def get_shop_id(default='default'):
-    """Return the request-scoped shop without breaking legacy single-shop callers."""
+    """Return the canonical request or server shop scope."""
     if has_app_context():
-        try:
-            from flask import request
-            requested = (request.args.get('shop_id') or '').strip()
-        except RuntimeError:
-            requested = ''
-        if requested:
-            return requested
+        scoped = getattr(g, 'shop_id', None)
+        if scoped:
+            return scoped
         configured = str(current_app.config.get('SHOP_ID') or '').strip()
         if configured:
             return configured
     return os.environ.get('TMALL_SHOP_ID', default) or default
 
+
+def require_default_shop_scope():
+    """Fail closed while all current product tables remain single-shop."""
+    shop_id = get_shop_id()
+    if shop_id != 'default':
+        raise PermissionError(f'当前产品仅支持 default 店铺 scope，不允许访问 {shop_id}')
+    return shop_id
+
 def get_connection(db_path=None):
     if db_path is None:
         db_path = get_db_path()
     os.makedirs(os.path.dirname(db_path), exist_ok=True)
-    conn = sqlite3.connect(db_path)
+    # Import scans and dashboard mutations can overlap.  Give short-lived
+    # readers/writers time to wait for the WAL writer instead of surfacing a
+    # transient "database is locked" error to the request.
+    conn = sqlite3.connect(db_path, timeout=10.0)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA busy_timeout=10000")
     conn.execute("PRAGMA foreign_keys=ON")
     return conn
 
@@ -68,6 +78,12 @@ def get_db(db_path=None):
 def init_db(db_path=None):
     conn = get_connection(db_path)
     cursor = conn.cursor()
+    cursor.execute('''CREATE TABLE IF NOT EXISTS schema_migrations (
+        version INTEGER PRIMARY KEY,
+        name TEXT NOT NULL,
+        state TEXT NOT NULL DEFAULT 'applied',
+        applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )''')
 
     cursor.executescript('''
     CREATE TABLE IF NOT EXISTS products (
@@ -359,6 +375,7 @@ def init_db(db_path=None):
         FOREIGN KEY (batch_id) REFERENCES import_batches(id)
     );
     CREATE INDEX IF NOT EXISTS idx_import_batch_changes_batch ON import_batch_changes(batch_id);
+    CREATE INDEX IF NOT EXISTS idx_import_batch_changes_created_at ON import_batch_changes(created_at);
 
     CREATE TABLE IF NOT EXISTS import_previews (
         id TEXT PRIMARY KEY,
@@ -883,16 +900,13 @@ def init_db(db_path=None):
     CREATE INDEX IF NOT EXISTS idx_user_kpis_period ON user_kpis(period);
     ''')
 
-    conn.commit()
 
     batch_change_columns = {row[1] for row in cursor.execute('PRAGMA table_info(import_batch_changes)').fetchall()}
     if 'written_by' not in batch_change_columns:
         cursor.execute("ALTER TABLE import_batch_changes ADD COLUMN written_by TEXT NOT NULL DEFAULT ''")
         cursor.execute("UPDATE import_batch_changes SET written_by = batch_id WHERE written_by = ''")
-        conn.commit()
     if 'reverted_at' not in batch_change_columns:
         cursor.execute("ALTER TABLE import_batch_changes ADD COLUMN reverted_at TIMESTAMP")
-        conn.commit()
 
     alert_rule_columns = {row[1] for row in cursor.execute('PRAGMA table_info(alert_rules)').fetchall()}
     if 'name' not in alert_rule_columns:
@@ -909,7 +923,6 @@ def init_db(db_path=None):
                VALUES (?, 'promotion_product', 'roi', 'lt', ?, ?, 1)''',
             [('ROI 低于安全线', 3.0, 'warning'), ('ROI 严重偏低', 1.5, 'danger')],
         )
-    conn.commit()
 
     # SQLite cannot alter CHECK constraints in place; extend pre-existing goal lock tables.
     goal_locks_sql = cursor.execute(
@@ -917,9 +930,8 @@ def init_db(db_path=None):
     ).fetchone()
     goal_locks_definition = goal_locks_sql[0] if goal_locks_sql else ''
     if goal_locks_sql and ("'quarter'" not in goal_locks_definition or "'year'" not in goal_locks_definition):
-        cursor.executescript('''
-        ALTER TABLE goal_locks RENAME TO goal_locks_legacy;
-        CREATE TABLE goal_locks (
+        cursor.execute('ALTER TABLE goal_locks RENAME TO goal_locks_legacy')
+        cursor.execute('''CREATE TABLE goal_locks (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             year INTEGER NOT NULL,
             period_type TEXT NOT NULL CHECK(period_type IN ('year', 'quarter', 'month', 'week', 'date')),
@@ -927,13 +939,11 @@ def init_db(db_path=None):
             version INTEGER NOT NULL,
             locked_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             UNIQUE(year, period_type, period_key)
-        );
-        INSERT INTO goal_locks (id, year, period_type, period_key, version, locked_at)
-        SELECT id, year, period_type, period_key, version, locked_at FROM goal_locks_legacy;
-        DROP TABLE goal_locks_legacy;
-        CREATE INDEX IF NOT EXISTS idx_goal_locks_year ON goal_locks(year);
-        ''')
-        conn.commit()
+        )''')
+        cursor.execute('''INSERT INTO goal_locks (id, year, period_type, period_key, version, locked_at)
+            SELECT id, year, period_type, period_key, version, locked_at FROM goal_locks_legacy''')
+        cursor.execute('DROP TABLE goal_locks_legacy')
+        cursor.execute('CREATE INDEX IF NOT EXISTS idx_goal_locks_year ON goal_locks(year)')
 
     # Migration: bind import batches to the shop that produced them. Existing
     # single-shop history remains owned by the default shop.
@@ -943,7 +953,6 @@ def init_db(db_path=None):
         cursor.execute("ALTER TABLE import_batches ADD COLUMN shop_id TEXT NOT NULL DEFAULT 'default'")
     cursor.execute('DROP INDEX IF EXISTS idx_import_batches_shop_status')
     cursor.execute('CREATE INDEX idx_import_batches_shop_status ON import_batches(shop_id, status, created_at DESC)')
-    conn.commit()
 
     # Migration: bind persisted import previews to the shop that created them.
     # Existing previews belong to the legacy default shop.
@@ -953,7 +962,6 @@ def init_db(db_path=None):
         cursor.execute("ALTER TABLE import_previews ADD COLUMN shop_id TEXT NOT NULL DEFAULT 'default'")
     cursor.execute('DROP INDEX IF EXISTS idx_import_previews_shop_created')
     cursor.execute('CREATE INDEX idx_import_previews_shop_created ON import_previews(shop_id, created_at DESC)')
-    conn.commit()
 
     # Migration: bind scheduled import scans to their owning shop. Existing
     # single-shop jobs remain owned by the legacy default shop.
@@ -963,7 +971,6 @@ def init_db(db_path=None):
         cursor.execute("ALTER TABLE import_scan_jobs ADD COLUMN shop_id TEXT NOT NULL DEFAULT 'default'")
     cursor.execute('DROP INDEX IF EXISTS idx_import_scan_jobs_shop_due')
     cursor.execute('CREATE INDEX idx_import_scan_jobs_shop_due ON import_scan_jobs(shop_id, enabled, status, next_run)')
-    conn.commit()
 
     # Migration: add new health dimension columns if they don't exist
     new_health_cols = [
@@ -978,11 +985,7 @@ def init_db(db_path=None):
     for col in new_health_cols:
         if col not in existing_cols:
             default = "TEXT DEFAULT '[]'" if col == 'alert_dimensions' else 'REAL DEFAULT 0'
-            try:
-                cursor.execute(f'ALTER TABLE product_health ADD COLUMN {col} {default}')
-            except Exception:
-                pass
-    conn.commit()
+            cursor.execute(f'ALTER TABLE product_health ADD COLUMN {col} {default}')
 
     # Migration: add new columns to products table
     new_product_cols = {
@@ -1000,10 +1003,7 @@ def init_db(db_path=None):
     existing_product_cols = {row[1] for row in cursor.fetchall()}
     for col, col_def in new_product_cols.items():
         if col not in existing_product_cols:
-            try:
-                cursor.execute(f'ALTER TABLE products ADD COLUMN {col} {col_def}')
-            except Exception:
-                pass
+            cursor.execute(f'ALTER TABLE products ADD COLUMN {col} {col_def}')
 
     # Migration: add new columns to monthly_data table
     new_monthly_cols = {
@@ -1028,10 +1028,7 @@ def init_db(db_path=None):
     existing_monthly_cols = {row[1] for row in cursor.fetchall()}
     for col, col_def in new_monthly_cols.items():
         if col not in existing_monthly_cols:
-            try:
-                cursor.execute(f'ALTER TABLE monthly_data ADD COLUMN {col} {col_def}')
-            except Exception:
-                pass
+            cursor.execute(f'ALTER TABLE monthly_data ADD COLUMN {col} {col_def}')
 
     # Migration: add new columns to paid_detail table
     new_paid_cols = {
@@ -1057,10 +1054,7 @@ def init_db(db_path=None):
     existing_paid_cols = {row[1] for row in cursor.fetchall()}
     for col, col_def in new_paid_cols.items():
         if col not in existing_paid_cols:
-            try:
-                cursor.execute(f'ALTER TABLE paid_detail ADD COLUMN {col} {col_def}')
-            except Exception:
-                pass
+            cursor.execute(f'ALTER TABLE paid_detail ADD COLUMN {col} {col_def}')
 
     # Migration: add new columns to daily_data table
     new_daily_cols = {
@@ -1104,10 +1098,7 @@ def init_db(db_path=None):
     existing_daily_cols = {row[1] for row in cursor.fetchall()}
     for col, col_def in new_daily_cols.items():
         if col not in existing_daily_cols:
-            try:
-                cursor.execute(f'ALTER TABLE daily_data ADD COLUMN {col} {col_def}')
-            except Exception:
-                pass
+            cursor.execute(f'ALTER TABLE daily_data ADD COLUMN {col} {col_def}')
 
     # Migrate the product-day fact grain from product/date to
     # shop/product/date. SQLite cannot drop an inline UNIQUE constraint, so
@@ -1129,10 +1120,16 @@ def init_db(db_path=None):
             ))
     if ('shop_id', 'product_id', 'date') not in unique_indexes:
         legacy_table = 'daily_data_legacy_shop_migration'
-        if cursor.execute(
+        legacy_exists = cursor.execute(
             "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?", (legacy_table,)
-        ).fetchone():
-            raise RuntimeError(f'Cannot migrate daily_data while {legacy_table} already exists')
+        ).fetchone()
+        if legacy_exists:
+            # Recover an interrupted rename/rebuild by restoring the legacy
+            # table as the source, then retry the rebuild in this transaction.
+            cursor.execute('DROP TABLE IF EXISTS daily_data')
+            cursor.execute('ALTER TABLE daily_data_legacy_shop_migration RENAME TO daily_data')
+            cursor.execute("PRAGMA table_info(daily_data)")
+            daily_info = cursor.fetchall()
         cursor.execute('ALTER TABLE daily_data RENAME TO daily_data_legacy_shop_migration')
         definitions = []
         column_names = []
@@ -1170,11 +1167,19 @@ def init_db(db_path=None):
     existing_weekly_cols = {row[1] for row in cursor.fetchall()}
     for col, col_def in new_weekly_cols.items():
         if col not in existing_weekly_cols:
-            try:
-                cursor.execute(f'ALTER TABLE weekly_data ADD COLUMN {col} {col_def}')
-            except Exception:
-                pass
+            cursor.execute(f'ALTER TABLE weekly_data ADD COLUMN {col} {col_def}')
 
+    cursor.execute(f'PRAGMA user_version = {SCHEMA_VERSION}')
+    cursor.execute('''CREATE TABLE IF NOT EXISTS schema_migrations (
+        version INTEGER PRIMARY KEY,
+        name TEXT NOT NULL,
+        state TEXT NOT NULL DEFAULT 'applied',
+        applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )''')
+    cursor.execute(
+        "INSERT OR REPLACE INTO schema_migrations(version, name, state) VALUES (?, ?, 'applied')",
+        (SCHEMA_VERSION, 'legacy_schema_reconciliation'),
+    )
     conn.commit()
     conn.close()
     print(f"Database initialized: {db_path}")

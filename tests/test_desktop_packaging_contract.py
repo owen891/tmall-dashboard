@@ -9,8 +9,10 @@ class DesktopPackagingContractTests(unittest.TestCase):
     def test_pyinstaller_spec_bundles_required_runtime_assets(self):
         spec = (ROOT / 'packaging' / 'tmall_dashboard_backend.spec').read_text(encoding='utf-8')
 
-        for asset in ('frontend/ui_demo', 'templates', 'static', 'config.yaml'):
+        for asset in ('frontend/ui_demo', 'config.yaml'):
             self.assertIn(asset, spec)
+        self.assertNotIn("project_root / 'templates'", spec)
+        self.assertNotIn("project_root / 'static'", spec)
         self.assertIn("name='TmallDashboardServer'", spec)
         self.assertIn("name='backend'", spec)
 
@@ -40,7 +42,6 @@ class DesktopPackagingContractTests(unittest.TestCase):
         self.assertIn("Get-Content -LiteralPath (Join-Path $PSScriptRoot '..\\VERSION')", script)
         self.assertNotIn('TmallDashboard-Setup-1.0.0-x64.exe', script)
         self.assertIn('/api/anomalies?dim=monthly', script)
-        self.assertIn('/api/report?dim=monthly', script)
         self.assertIn('backend.log', script)
 
 

@@ -40,6 +40,38 @@ class AuditContractTests(unittest.TestCase):
         self.assertEqual(json.loads(audit['before_value'])['shop_name'], '')
         self.assertEqual(json.loads(audit['after_value'])['shop_name'], '演示旗舰店')
 
+    def test_import_scan_write_records_structured_audit(self):
+        import os
+        inbox = os.path.join(self.temp.name, 'inbox')
+        os.mkdir(inbox)
+        self.app.config['IMPORT_SCAN_ALLOWED_ROOTS'] = [inbox]
+        created = self.client.post('/api/import-scans', json={
+            'task_name': 'audit-scan', 'folder_path': inbox,
+            'source_type': 'product_day', 'cron_expr': '* * * * *',
+            'operator': '扫描管理员', 'reason': '建立扫描任务',
+        })
+        self.assertEqual(created.status_code, 201)
+        audit = self._latest('import_scan_job')
+        self.assertEqual(audit['action'], 'create')
+        self.assertEqual(audit['operator'], '扫描管理员')
+        self.assertEqual(audit['reason'], '建立扫描任务')
+        self.assertEqual(json.loads(audit['after_value'])['task_name'], 'audit-scan')
+
+    def test_import_scan_capability_can_deny_configured_user(self):
+        import os
+        inbox = os.path.join(self.temp.name, 'protected-inbox')
+        os.mkdir(inbox)
+        self.app.config['IMPORT_SCAN_ALLOWED_ROOTS'] = [inbox]
+        self.app.config['IMPORT_SCAN_MANAGE_USERS'] = {'allowed-user'}
+        self.app.config['DASHBOARD_USERNAME'] = 'configured-user'
+        self.app.config['DASHBOARD_PASSWORD'] = 'configured-password'
+        response = self.client.post('/api/import-scans', headers={'X-Forwarded-For': '192.0.2.10'}, auth=('configured-user', 'configured-password'), json={
+            'task_name': 'denied-scan', 'folder_path': inbox,
+            'source_type': 'product_day', 'cron_expr': '* * * * *',
+        })
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.get_json()['code'], 'FORBIDDEN')
+
     def test_period_review_write_records_actor_reason_before_and_after(self):
         payload = {
             'summary': '经营稳定', 'conclusions': '推广有效',

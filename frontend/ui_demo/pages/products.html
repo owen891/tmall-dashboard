@@ -54,7 +54,7 @@
           <div class="panel__header product-list__header">
             <div>
               <h3 class="panel__title">商品列表</h3>
-              <p class="panel__hint" data-products-status>等待加载</p>
+              <p class="panel__hint" data-products-status role="status" aria-live="polite">等待加载…</p>
             </div>
             <div class="product-field-controls">
               <div class="segmented" role="group" aria-label="字段模板">
@@ -73,7 +73,7 @@
               <label class="product-filters__search">
                 <span class="sr-only">搜索商品</span>
                 <i data-lucide="search" aria-hidden="true"></i>
-                <input class="input" data-products-search placeholder="搜索商品名称或 ID" aria-label="搜索商品">
+                <input class="input" data-products-search placeholder="搜索商品名称或 ID…" aria-label="搜索商品" autocomplete="off">
               </label>
               <div class="product-filters__core" aria-label="核心筛选">
                 <select class="select" data-products-tier aria-label="筛选分层"><option value="">全部分层</option></select>
@@ -112,10 +112,10 @@
           <div class="batch-bar" data-products-batch>
             <strong data-products-selected>已选 0 件</strong>
             <select class="select" data-products-batch-field aria-label="批量字段"><option value="tier">批量分层</option><option value="style">批量风格</option></select>
-            <input class="input" data-products-batch-value list="products-tier-options" placeholder="输入或选择分层/风格" aria-label="批量字段值">
+            <input class="input" data-products-batch-value list="products-tier-options" placeholder="输入或选择分层/风格…" aria-label="批量字段值" autocomplete="off">
             <datalist id="products-tier-options" data-products-batch-options></datalist>
             <button class="button button--primary" type="button" data-capability-key="products.catalog_edit" data-products-batch-apply><i data-lucide="check"></i>应用</button>
-            <input class="input" data-products-batch-tag placeholder="批量新增标签" aria-label="批量新增标签">
+            <input class="input" data-products-batch-tag placeholder="批量新增标签…" aria-label="批量新增标签" autocomplete="off">
             <button class="button" type="button" data-capability-key="products.catalog_edit" data-products-batch-tag-apply><i data-lucide="tag"></i>打标</button>
             <button class="button" type="button" data-capability-key="products.catalog_edit" data-products-batch-star><i data-lucide="star"></i>收藏</button>
           </div>
@@ -124,7 +124,7 @@
             <table class="data-table product-table" data-table-pagination="server">
               <thead><tr data-products-head></tr></thead>
               <tbody data-products-body>
-                <tr><td colspan="13">加载中</td></tr>
+                <tr><td colspan="13">加载中…</td></tr>
               </tbody>
             </table>
           </div>

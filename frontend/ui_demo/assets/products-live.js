@@ -125,6 +125,7 @@
     capabilities: {},
     availability: 'calculation-failed',
     evidence: [],
+    urlFilters: null,
   };
 
   const money = (value) => `¥${Number(value || 0).toLocaleString('zh-CN', { maximumFractionDigits: 2 })}`;
@@ -148,6 +149,36 @@
     body: JSON.stringify(body),
   });
   const asArray = (payload, key = 'data') => Array.isArray(payload) ? payload : (Array.isArray(payload?.[key]) ? payload[key] : []);
+  const filterKeys = ['search', 'tier', 'style', 'product_type', 'product_time_node', 'product_growth_stage', 'status', 'sort', 'order', 'lifecycle_stage', 'seasonality', 'has_pending_action'];
+  const filterSelectors = {
+    search: '[data-products-search]', tier: '[data-products-tier]', style: '[data-products-style]',
+    product_type: '[data-products-type]', product_time_node: '[data-products-time-node]',
+    product_growth_stage: '[data-products-growth-stage]', status: '[data-products-status-filter]',
+    sort: '[data-products-sort]', order: '[data-products-order]', lifecycle_stage: '[data-products-lifecycle-stage]',
+    seasonality: '[data-products-seasonality]', has_pending_action: '[data-products-pending-action]',
+  };
+  const restoreUrlState = () => {
+    const params = new URLSearchParams(window.location.search);
+    state.urlFilters = Object.fromEntries(filterKeys.filter((key) => params.has(key)).map((key) => [key, params.get(key) || '']));
+    const page = Number(params.get('page'));
+    const pageSize = Number(params.get('page_size'));
+    if (Number.isInteger(page) && page > 0) state.page = page;
+    if ([20, 50, 100, 200].includes(pageSize)) state.pageSize = pageSize;
+    state.starredOnly = params.get('starred') === '1';
+  };
+  const syncUrlState = () => {
+    const url = new URL(window.location.href);
+    const current = filters();
+    filterKeys.forEach((key) => {
+      if (current[key]) url.searchParams.set(key, current[key]);
+      else url.searchParams.delete(key);
+    });
+    url.searchParams.set('page', String(state.page));
+    url.searchParams.set('page_size', String(state.pageSize));
+    if (state.starredOnly) url.searchParams.set('starred', '1');
+    else url.searchParams.delete('starred');
+    history.replaceState(null, '', url);
+  };
 
   // missing facts are not zero: status and issue copy must stay explainable.
   function productHealth(item) {
@@ -286,7 +317,7 @@
   }
 
   function filters() {
-    return {
+    const current = {
       search: $('[data-products-search]').value.trim(),
       tier: $('[data-products-tier]').value,
       style: $('[data-products-style]').value,
@@ -300,6 +331,10 @@
       seasonality: $('[data-products-seasonality]')?.value || '',
       has_pending_action: $('[data-products-pending-action]')?.value || '',
     };
+    if (state.urlFilters) filterKeys.forEach((key) => {
+      if (state.urlFilters[key] !== undefined) current[key] = state.urlFilters[key];
+    });
+    return current;
   }
 
   function buildProductsUrl() {
@@ -307,7 +342,7 @@
     const params = new URLSearchParams({ dim: 'monthly', limit: String(state.pageSize), offset: String((state.page - 1) * state.pageSize) });
     params.set('period', currentMonthPeriod());
     const current = filters();
-    ['search', 'tier', 'style', 'product_type', 'product_time_node', 'product_growth_stage', 'status', 'sort', 'order', 'lifecycle_stage', 'seasonality', 'has_pending_action'].forEach((key) => {
+    filterKeys.forEach((key) => {
       if (current[key]) params.set(key, current[key]);
     });
     return `/api/products?${params.toString()}`;
@@ -362,8 +397,8 @@
       list.appendChild(option);
     });
     input.addEventListener('change', async () => {
-      await updateField(productId(item), key, input.value.trim());
-      await rememberClassification(dictionaryGroup, input.value.trim());
+      const updated = await updateField(productId(item), key, input.value.trim());
+      if (updated) await rememberClassification(dictionaryGroup, input.value.trim());
     });
     input.addEventListener('input', () => {
       const cell = wrap.closest('td');
@@ -871,7 +906,7 @@
     const token = ++state.token;
     currentRange(detail);
     renderDataState('loading');
-    setRowStatus('加载中');
+    setRowStatus('加载中…');
     try {
       const response = await DemoApi.domainRequest(buildProductsUrl());
       const payload = response.data;
@@ -896,6 +931,18 @@
         statusSelect.value = 'active';
         statusSelect.dataset.initialized = 'true';
       }
+      if (state.urlFilters) {
+        Object.entries(state.urlFilters).forEach(([key, value]) => {
+          const select = $(filterSelectors[key]);
+          if (!select) return;
+          if (select.tagName === 'SELECT' && [...select.options].some((option) => option.value === value)) select.value = value;
+          if (select.tagName !== 'SELECT') select.value = value;
+        });
+        state.urlFilters = null;
+      }
+      const pageSizeSelect = $('[data-products-page-size]');
+      if (pageSizeSelect) pageSizeSelect.value = String(state.pageSize);
+      $('[data-products-starred]')?.setAttribute('aria-pressed', String(state.starredOnly));
       renderTable();
       if (!state.rows.length) renderDataState('no-data', { message: '当前筛选条件没有商品。' });
       else setStatus(`已按月度口径加载 ${state.rows.length} 件商品，每页 ${state.pageSize} 件${payload?.period ? `；数据月份 ${payload.period}` : ''}`);
@@ -916,11 +963,18 @@
 
   async function updateField(id, key, value) {
     setStatus('正在写入商品字段');
-    await DemoApi.domainRequest(`/api/products/${encodeURIComponent(id)}/metadata`, jsonOptions({ field: key, value, operator: '商品运营', reason: `编辑商品${key}` }, 'PUT'));
-    const item = state.rows.find((row) => productId(row) === id);
-    if (item) item[key] = value;
-    renderTable();
-    toast('字段已更新');
+    try {
+      await DemoApi.domainRequest(`/api/products/${encodeURIComponent(id)}/metadata`, jsonOptions({ field: key, value, operator: '商品运营', reason: `编辑商品${key}` }, 'PUT'));
+      const item = state.rows.find((row) => productId(row) === id);
+      if (item) item[key] = value;
+      renderTable();
+      toast('字段已更新');
+      return true;
+    } catch (error) {
+      setStatus(error.message || '商品字段更新失败，请重试');
+      toast(error.message || '商品字段更新失败');
+      return false;
+    }
   }
 
   async function toggleStar(item, button) {
@@ -937,39 +991,52 @@
   }
 
   async function applyBatchField() {
+    if (state.batchMutation) return;
+    state.batchMutation = true;
     const ids = [...state.selected];
     const fieldName = $('[data-products-batch-field]').value;
     const value = $('[data-products-batch-value]').value.trim();
     if (!ids.length || !value) {
       toast('请选择商品并输入批量值');
+      state.batchMutation = false;
       return;
     }
-    await DemoApi.domainRequest('/api/products/batch-update', jsonOptions({ product_ids: ids, field: fieldName, value, operator: '商品运营', reason: `批量修改${fieldName}` }));
-    await rememberClassification(fieldName === 'tier' ? 'tiers' : 'styles', value);
-    toast(`已更新 ${ids.length} 件商品`);
-    state.selected.clear();
-    $('[data-products-batch-value]').value = '';
-    await load();
+    try {
+      await DemoApi.domainRequest('/api/products/batch-update', jsonOptions({ product_ids: ids, field: fieldName, value, operator: '商品运营', reason: `批量修改${fieldName}` }));
+      await rememberClassification(fieldName === 'tier' ? 'tiers' : 'styles', value);
+      toast(`已更新 ${ids.length} 件商品`);
+      state.selected.clear();
+      $('[data-products-batch-value]').value = '';
+      await load();
+    } finally { state.batchMutation = false; }
   }
 
   async function applyBatchTag() {
+    if (state.batchMutation) return;
+    state.batchMutation = true;
     const ids = [...state.selected];
     const tag = $('[data-products-batch-tag]').value.trim();
     if (!ids.length || !tag) {
       toast('请选择商品并输入标签');
+      state.batchMutation = false;
       return;
     }
-    await DemoApi.domainRequest('/api/products/batch-tags', jsonOptions({ product_ids: ids, tag, operator: '商品运营', reason: '批量添加商品标签' }));
-    toast(`已为 ${ids.length} 件商品新增标签`);
-    $('[data-products-batch-tag]').value = '';
-    state.selected.clear();
-    updateSelection();
+    try {
+      await DemoApi.domainRequest('/api/products/batch-tags', jsonOptions({ product_ids: ids, tag, operator: '商品运营', reason: '批量添加商品标签' }));
+      toast(`已为 ${ids.length} 件商品新增标签`);
+      $('[data-products-batch-tag]').value = '';
+      state.selected.clear();
+      updateSelection();
+    } finally { state.batchMutation = false; }
   }
 
   async function batchStar() {
+    if (state.batchMutation) return;
+    state.batchMutation = true;
     const ids = [...state.selected];
     if (!ids.length) {
       toast('请选择商品');
+      state.batchMutation = false;
       return;
     }
     const targets = ids.filter((id) => {
@@ -980,19 +1047,22 @@
       state.selected.clear();
       renderTable();
       toast('选中商品已全部收藏，已跳过');
+      state.batchMutation = false;
       return;
     }
-    const results = await Promise.allSettled(targets.map((id) => DemoApi.domainRequest(`/api/products/${encodeURIComponent(id)}/star`, jsonOptions({ product_id: id, starred: 1, operator: '商品运营', reason: '批量收藏商品' }))));
-    const ok = results.filter((item) => item.status === 'fulfilled').length;
-    const fail = results.length - ok;
-    results.forEach((result, index) => {
-      if (result.status !== 'fulfilled') return;
-      const row = state.rows.find((item) => productId(item) === targets[index]);
-      if (row) row.starred = Number(result.value?.data?.starred || 0);
-    });
-    state.selected.clear();
-    renderTable();
-    toast(`批量收藏完成：成功 ${ok}，失败 ${fail}，跳过 ${ids.length - targets.length}`);
+    try {
+      const results = await Promise.allSettled(targets.map((id) => DemoApi.domainRequest(`/api/products/${encodeURIComponent(id)}/star`, jsonOptions({ product_id: id, starred: 1, operator: '商品运营', reason: '批量收藏商品' }))));
+      const ok = results.filter((item) => item.status === 'fulfilled').length;
+      const fail = results.length - ok;
+      results.forEach((result, index) => {
+        if (result.status !== 'fulfilled') return;
+        const row = state.rows.find((item) => productId(item) === targets[index]);
+        if (row) row.starred = Number(result.value?.data?.starred || 0);
+      });
+      state.selected.clear();
+      renderTable();
+      toast(`批量收藏完成：成功 ${ok}，失败 ${fail}，跳过 ${ids.length - targets.length}`);
+    } finally { state.batchMutation = false; }
   }
 
   function resetFilters() {
@@ -1008,6 +1078,8 @@
     state.starredOnly = false;
     state.page = 1;
     $('[data-products-starred]').setAttribute('aria-pressed', 'false');
+    state.urlFilters = null;
+    syncUrlState();
     load();
   }
 
@@ -1018,11 +1090,14 @@
 
   function bindFilters() {
     $('[data-products-search]').addEventListener('input', () => {
+      state.urlFilters = null;
+      state.page = 1;
+      syncUrlState();
       window.clearTimeout(state.searchTimer);
       state.searchTimer = window.setTimeout(firstPageLoad, 300);
     });
     ['[data-products-tier]', '[data-products-style]', '[data-products-type]', '[data-products-time-node]', '[data-products-growth-stage]', '[data-products-status-filter]', '[data-products-sort]', '[data-products-order]', '[data-products-lifecycle-stage]', '[data-products-seasonality]', '[data-products-pending-action]'].forEach((selector) => {
-      $(selector).addEventListener('change', firstPageLoad);
+      $(selector).addEventListener('change', () => { state.urlFilters = null; state.page = 1; syncUrlState(); firstPageLoad(); });
     });
     const moreFilters = $('[data-products-more-filters]');
     const moreFiltersToggle = $('[data-products-more-filters-toggle]');
@@ -1035,6 +1110,8 @@
     }
     $('[data-products-starred]').addEventListener('click', (event) => {
       state.starredOnly = !state.starredOnly;
+      state.urlFilters = null;
+      syncUrlState();
       event.currentTarget.setAttribute('aria-pressed', String(state.starredOnly));
       renderTable();
       setStatus(state.starredOnly ? '当前页收藏过滤已开启' : '当前页收藏过滤已关闭');
@@ -1043,12 +1120,14 @@
     $('[data-products-prev]').addEventListener('click', () => {
       if (state.page > 1) {
         state.page -= 1;
+        syncUrlState();
         load();
       }
     });
     $('[data-products-next]').addEventListener('click', () => {
       if (state.page < Math.ceil(state.total / state.pageSize)) {
         state.page += 1;
+        syncUrlState();
         load();
       }
     });
@@ -1057,6 +1136,8 @@
       if (![20, 50, 100, 200].includes(nextSize)) return;
       state.pageSize = nextSize;
       state.page = 1;
+      state.urlFilters = null;
+      syncUrlState();
       load();
     });
     $('[data-products-batch-apply]').addEventListener('click', () => applyBatchField().catch((error) => toast(error.message || '批量更新失败')));
@@ -1133,6 +1214,7 @@
     } catch (_) { return null; }
   }
 
+  restoreUrlState();
   bindFilters();
   $('[data-products-batch-field]').addEventListener('change', fillBatchOptions);
   fillBatchOptions();

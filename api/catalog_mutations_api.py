@@ -1,8 +1,9 @@
 from flask import Blueprint, request
 
-from api.api_response import failure, success
+from api.api_response import failure, json_object, success
 from db import get_db
 from repos.audit_repo import AuditRepo
+from services.shop_scope_service import reject_legacy_shop_scope
 
 
 catalog_mutations_bp = Blueprint('catalog_mutations', __name__)
@@ -11,7 +12,7 @@ ALLOWED_PRODUCT_FIELDS = {'tier', 'style', 'scene', 'manager', 'remark'}
 
 
 def _payload():
-    return request.get_json(silent=True) or {}
+    return json_object(request)
 
 
 def _operator_reason(data, default_reason):
@@ -39,8 +40,14 @@ def _success(data, *, source, action, row_count=1, status=200, unknowns=None):
     )
 
 
+def _legacy_catalog_guard():
+    return reject_legacy_shop_scope('商品目录')
+
+
 @catalog_mutations_bp.route('/api/products/<product_id>/metadata', methods=['PUT'])
 def update_product_metadata(product_id):
+    if (denied := _legacy_catalog_guard()):
+        return denied
     data = _payload()
     field = str(data.get('field') or '').strip()
     if field not in ALLOWED_PRODUCT_FIELDS:
@@ -79,6 +86,8 @@ def update_product_metadata(product_id):
 
 @catalog_mutations_bp.route('/api/products/<product_id>/star', methods=['POST'])
 def set_product_star(product_id):
+    if (denied := _legacy_catalog_guard()):
+        return denied
     data = _payload()
     operator, reason = _operator_reason(data, '更新商品收藏状态')
     with get_db() as connection:
@@ -112,6 +121,8 @@ def set_product_star(product_id):
 
 @catalog_mutations_bp.route('/api/products/batch-update', methods=['POST'])
 def batch_update_products():
+    if (denied := _legacy_catalog_guard()):
+        return denied
     data = _payload()
     field = str(data.get('field') or '').strip()
     product_ids = [str(item) for item in (data.get('product_ids') or []) if str(item)]
@@ -159,6 +170,8 @@ def _validate_tags_payload(data):
 
 @catalog_mutations_bp.route('/api/products/batch-tags', methods=['POST', 'DELETE'])
 def mutate_product_tags():
+    if (denied := _legacy_catalog_guard()):
+        return denied
     data = _payload()
     product_ids, tag = _validate_tags_payload(data)
     if not product_ids or not tag:

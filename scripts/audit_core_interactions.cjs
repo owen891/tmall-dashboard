@@ -1,6 +1,8 @@
-const { chromium } = require('C:/Users/Administrator/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright');
+const { chromium } = require(require.resolve('playwright', { paths: [require('path').join(__dirname, '..', 'desktop')] }));
+const path = require('path');
 
 const base = process.env.TMALL_SMOKE_BASE || 'http://127.0.0.1:8770';
+const scanRoot = process.env.TMALL_AUDIT_SCAN_ROOT || path.resolve(__dirname, '..', 'data', 'import-inbox');
 const pages = [
   ['overview', '/'],
   ['products', '/products'],
@@ -55,8 +57,15 @@ async function selectIfReady(page, selector, value, name, failures) {
   const target = page.locator(selector).first();
   if (!(await target.count()) || !(await target.isVisible()) || await target.isDisabled()) return false;
   try {
-    const values = await target.locator('option').evaluateAll((options) => options.map((option) => option.value));
-    if (!values.includes(value)) return false;
+    const options = await target.locator('option').evaluateAll((items) => items.map((option) => ({
+      value: option.value,
+      disabled: option.disabled,
+    })));
+    const option = options.find((item) => item.value === value);
+    // A disabled option is an intentional capability signal (for example, a
+    // promotion grain with no imported facts), so skip it without failing the
+    // interaction audit.  Enabled options must still be exercised normally.
+    if (!option || option.disabled) return false;
     await target.selectOption(value);
     await wait();
     return true;
@@ -86,11 +95,10 @@ async function runPage(browser, id, path, viewport) {
     await clickIfVisible(page, '[data-demo-refresh]', 'global refresh', failures);
 
     if (id === 'overview') {
-      await clickIfVisible(page, '[data-overview-report-refresh]', 'report refresh', failures);
       await clickIfVisible(page, '[data-overview-trend-trigger]', 'trend menu open', failures);
       await clickIfVisible(page, '[data-overview-trend-menu] input', 'trend metric toggle', failures);
       await page.keyboard.press('Escape');
-      await clickIfVisible(page, '[data-overview-event-open]', 'event dialog open', failures);
+      await clickIfVisible(page, '[data-overview-action-open]', 'action dialog open', failures);
       await page.keyboard.press('Escape');
       await clickIfVisible(page, '[data-overview-kpi-select]', 'KPI card interaction', failures);
     }
@@ -162,6 +170,45 @@ async function runPage(browser, id, path, viewport) {
       await clickIfVisible(page, '[data-alert-rules-open]', 'settings alert rules open', failures);
       await clickIfVisible(page, '[data-alert-rule-close]', 'settings alert rules close', failures);
       await clickIfVisible(page, '[data-desktop-check-update]', 'desktop update check', failures);
+      if (viewport.width > 520) {
+        const scanCreate = page.locator('[data-scan-create]');
+        if (await scanCreate.count() && await scanCreate.isVisible() && !(await scanCreate.isDisabled())) {
+          const taskName = `browser-audit-${Date.now()}`;
+          try {
+            await scanCreate.click();
+            const scanDialog = page.locator('[data-scan-dialog]');
+            await scanDialog.waitFor({ state: 'visible' });
+            await scanDialog.locator('input[name="task_name"]').fill(taskName);
+            await scanDialog.locator('input[name="folder_path"]').fill(scanRoot);
+            await scanDialog.locator('input[name="file_pattern"]').fill('*.xlsx;*.xls;*.csv;*.zip');
+            await scanDialog.locator('select[name="source_type"]').selectOption('auto');
+            await scanDialog.locator('input[name="cron_expr"]').fill('* * * * *');
+            await scanDialog.locator('button[type="submit"]').click();
+            const createdRow = page.locator('[data-scan-jobs] tr').filter({ hasText: taskName });
+            await createdRow.waitFor({ state: 'visible' });
+            await createdRow.locator('button[aria-label="立即扫描"]').click();
+            await page.locator('[data-scan-status]').waitFor({ state: 'visible' });
+            await createdRow.locator('button[aria-label="立即扫描"]').click();
+            await page.locator('[data-scan-status]').waitFor({ state: 'visible' });
+            await createdRow.locator('button[aria-label="查看记录"]').click();
+            const detailDialog = page.locator('[data-scan-detail-dialog]');
+            await detailDialog.waitFor({ state: 'visible' });
+            if (process.env.TMALL_AUDIT_RETRY === '1') {
+              const retryButton = detailDialog.locator('button[aria-label="重新排队"]');
+              if (await retryButton.count() && await retryButton.isVisible() && !(await retryButton.isDisabled())) {
+                await retryButton.click();
+                await detailDialog.locator('[data-scan-files]').waitFor({ state: 'visible' });
+              }
+            }
+            await detailDialog.locator('[data-scan-detail-close][aria-label="关闭"]').click();
+            await detailDialog.waitFor({ state: 'hidden' });
+            await createdRow.locator('button[aria-label="停用任务"]').click();
+            await page.locator('[data-scan-jobs] tr').filter({ hasText: taskName }).waitFor({ state: 'visible' });
+          } catch (error) {
+            failures.push(`settings scan flow: ${error.message}`);
+          }
+        }
+      }
     }
   } catch (error) {
     failures.push(`page flow: ${error.message}`);

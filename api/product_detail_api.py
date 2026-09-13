@@ -277,6 +277,8 @@ def product_detail(product_id):
 
 @product_detail_bp.route('/api/products/<product_id>/lineage')
 def product_lineage(product_id):
+    if (denied := reject_legacy_shop_scope('商品详情')):
+        return denied
     shop_id = get_shop_id()
     stat_date = (request.args.get('date') or '').strip()
     if stat_date:
@@ -302,6 +304,8 @@ def product_lineage(product_id):
 
 @product_detail_bp.route('/api/products/<product_id>/detail/export')
 def export_product_detail(product_id):
+    if (denied := reject_legacy_shop_scope('商品详情')):
+        return denied
     """Export the same detail evidence shown by the workbench as UTF-8 CSV."""
     capability = (request.args.get('capability_key') or request.headers.get('X-Capability-Key'))
     if capability is not None and capability != 'product-detail.export':

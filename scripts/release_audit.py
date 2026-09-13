@@ -134,6 +134,24 @@ def _database_report(database_path):
                 ).fetchone()[0]
             else:
                 provenance['without_lineage'] = provenance['daily_rows']
+            if 'data_source' in {
+                row[1] for row in connection.execute('PRAGMA table_info(daily_data)')
+            }:
+                provenance['untraceable_by_source'] = [
+                    {'data_source': row[0] or '', 'row_count': row[1]}
+                    for row in connection.execute(
+                        '''SELECT d.data_source, COUNT(*)
+                           FROM daily_data d
+                           WHERE NOT EXISTS (
+                             SELECT 1 FROM daily_data_observations o
+                             WHERE o.shop_id=d.shop_id
+                               AND o.product_id=d.product_id
+                               AND o.date=d.date
+                           )
+                           GROUP BY d.data_source
+                           ORDER BY COUNT(*) DESC, d.data_source'''
+                    ).fetchall()
+                ]
     return {
         'path': str(path),
         'integrity': integrity,

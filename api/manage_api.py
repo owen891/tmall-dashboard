@@ -1,8 +1,9 @@
 from flask import Blueprint, request
 
-from api.api_response import failure, success
+from api.api_response import failure, json_object, success
 from db import get_db
 from repos.audit_repo import AuditRepo
+from services.shop_scope_service import audit_identity, require_admin_write
 from services.management_validation import (
     TASK_PRIORITIES,
     TASK_STATUSES,
@@ -12,12 +13,18 @@ from services.management_validation import (
 )
 
 manage_bp = Blueprint('manage', __name__)
+
+
 def _payload():
-    return request.get_json(silent=True) or {}
+    return json_object(request)
 
 
 def _operator_reason(data, default_reason):
-    return data.get('operator') or data.get('actor') or 'admin', data.get('reason') or default_reason
+    return audit_identity(data, default_reason)
+
+
+def _admin_guard():
+    return require_admin_write()
 
 
 def _success(data, *, source, action, row_count=1, status=200, unknowns=None):
@@ -63,6 +70,8 @@ def list_tasks():
 
 @manage_bp.route('/api/manage/tasks', methods=['POST'])
 def create_task():
+    if (denied := _admin_guard()):
+        return denied
     data = _payload()
     title = str(data.get('title') or '').strip()
     if not title:
@@ -94,6 +103,8 @@ def create_task():
 
 @manage_bp.route('/api/manage/tasks/<int:task_id>', methods=['PUT'])
 def update_task(task_id):
+    if (denied := _admin_guard()):
+        return denied
     data = _payload()
     normalized = dict(data)
     if 'title' in normalized:
@@ -127,6 +138,8 @@ def update_task(task_id):
 
 @manage_bp.route('/api/manage/tasks/<int:task_id>', methods=['DELETE'])
 def delete_task(task_id):
+    if (denied := _admin_guard()):
+        return denied
     data = _payload()
     operator, reason = _operator_reason(data, '删除管理任务')
     with get_db() as connection:
@@ -153,6 +166,8 @@ def list_kpis():
 
 @manage_bp.route('/api/manage/kpis', methods=['POST'])
 def create_kpi():
+    if (denied := _admin_guard()):
+        return denied
     data = _payload()
     user_name = str(data.get('user_name') or '').strip()
     fields = {
@@ -184,6 +199,8 @@ def create_kpi():
 
 @manage_bp.route('/api/manage/kpis/<int:kpi_id>', methods=['PUT'])
 def update_kpi(kpi_id):
+    if (denied := _admin_guard()):
+        return denied
     data = _payload()
     operator, reason = _operator_reason(data, '更新用户 KPI')
     allowed = ('user_name', 'period', 'target_gmv', 'actual_gmv', 'achievement_rate', 'rating')
@@ -222,6 +239,8 @@ def update_kpi(kpi_id):
 
 @manage_bp.route('/api/manage/kpis/<int:kpi_id>', methods=['DELETE'])
 def delete_kpi(kpi_id):
+    if (denied := _admin_guard()):
+        return denied
     data = _payload()
     operator, reason = _operator_reason(data, '删除用户 KPI')
     with get_db() as connection:

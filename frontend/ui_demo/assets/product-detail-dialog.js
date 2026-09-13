@@ -21,6 +21,8 @@
   const text = (value, fallback = '--') => value == null || value === '' ? fallback : String(value);
   const statusLabel = (value) => window.DemoLabels?.label?.('status', value, value) || text(value);
   const jsonOptions = (payload, method = 'POST') => ({ method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+  const showToast = (message, options) => window.DemoShell?.showToast?.(message, options);
+  const reportMutationError = (error, fallback) => showToast(error?.message || fallback, { duration: 5000 });
 
   function node(tag, className, copy) {
     const item = document.createElement(tag);
@@ -244,15 +246,35 @@
       const remove = node('button', 'button button--ghost', '删除'); remove.type = 'button';
       remove.addEventListener('click', async () => {
         if (!window.confirm('删除备注后无法恢复，确定删除吗？')) return;
-        await DemoApi.request(`/api/notes/${Number(note.id)}`, { method: 'DELETE' });
-        await reload();
+        remove.disabled = true;
+        try {
+          await DemoApi.request(`/api/notes/${Number(note.id)}`, { method: 'DELETE' });
+          await reload();
+        } catch (error) {
+          reportMutationError(error, '删除备注失败，请重试');
+        } finally {
+          if (remove.isConnected) remove.disabled = false;
+        }
       });
       row.appendChild(remove); list.appendChild(row);
     });
     const form = node('div', 'filter-group');
     const input = node('input', 'input'); input.placeholder = '新增备注'; input.setAttribute('aria-label', '新增备注');
     const add = node('button', 'button', '新增'); add.type = 'button';
-    add.addEventListener('click', async () => { const note = input.value.trim(); if (!note) return; await DemoApi.request('/api/notes', jsonOptions({ product_id: current.productId, note })); input.value = ''; await reload(); });
+    add.addEventListener('click', async () => {
+      const note = input.value.trim();
+      if (!note) return;
+      add.disabled = true;
+      try {
+        await DemoApi.request('/api/notes', jsonOptions({ product_id: current.productId, note }));
+        input.value = '';
+        await reload();
+      } catch (error) {
+        reportMutationError(error, '新增备注失败，请重试');
+      } finally {
+        if (add.isConnected) add.disabled = false;
+      }
+    });
     form.append(input, add); wrapper.append(list, form); return wrapper;
   }
 
@@ -264,7 +286,20 @@
     const form = node('div', 'filter-group');
     const input = node('input', 'input'); input.placeholder = '新增标签'; input.setAttribute('aria-label', '新增标签');
     const add = node('button', 'button', '新增'); add.type = 'button';
-    add.addEventListener('click', async () => { const tag = input.value.trim(); if (!tag) return; await DemoApi.request('/api/product_tags', jsonOptions({ product_id: current.productId, tag })); input.value = ''; await reload(); });
+    add.addEventListener('click', async () => {
+      const tag = input.value.trim();
+      if (!tag) return;
+      add.disabled = true;
+      try {
+        await DemoApi.request('/api/product_tags', jsonOptions({ product_id: current.productId, tag }));
+        input.value = '';
+        await reload();
+      } catch (error) {
+        reportMutationError(error, '新增标签失败，请重试');
+      } finally {
+        if (add.isConnected) add.disabled = false;
+      }
+    });
     form.append(input, add); wrapper.append(list, form); return wrapper;
   }
 
@@ -289,8 +324,16 @@
     add.addEventListener('click', async () => {
       if (window.DemoApi?.canPage?.('product-detail', 'product-detail.create_action') !== true) return;
       if (!type.value.trim()) return type.focus();
-      await DemoApi.domainRequest('/api/actions', jsonOptions({ capability_key: 'product-detail.create_action', product_id: current.productId, purpose_type: 'increase_sales', purpose_note: detail.value.trim() || type.value.trim(), action_type: type.value.trim(), action_detail: detail.value.trim(), target_metric: 'payment_amount', planned_at: new Date().toISOString().slice(0, 10), observer_window_days: 7, assigned_to: '运营人员' }));
-      type.value = ''; detail.value = ''; await reload();
+      add.disabled = true;
+      try {
+        await DemoApi.domainRequest('/api/actions', jsonOptions({ capability_key: 'product-detail.create_action', product_id: current.productId, purpose_type: 'increase_sales', purpose_note: detail.value.trim() || type.value.trim(), action_type: type.value.trim(), action_detail: detail.value.trim(), target_metric: 'payment_amount', planned_at: new Date().toISOString().slice(0, 10), observer_window_days: 7, assigned_to: '运营人员' }));
+        type.value = ''; detail.value = '';
+        await reload();
+      } catch (error) {
+        reportMutationError(error, '新增运营动作失败，请重试');
+      } finally {
+        if (add.isConnected) add.disabled = !canCreateAction;
+      }
     });
     form.append(type, detail, add); wrapper.append(list, form); return wrapper;
   }
@@ -359,7 +402,7 @@
   async function load() {
     const loadToken = ++token;
     destroyOverviewTrendChart();
-    body.replaceChildren(node('div', 'empty-state', '正在加载完整商品详情'));
+    body.replaceChildren(node('div', 'empty-state', '正在加载完整商品详情…'));
     const range = window.TmallDateRange?.getState?.() || {};
     const period = String(range.endDate || range.startDate || new Date().toISOString().slice(0, 10)).slice(0, 7);
     const id = encodeURIComponent(current.productId);

@@ -53,7 +53,14 @@ def get_overview():
     result['data']['missing_fields'] = result['data'].get('missing_fields', [])
     missing_inputs = result['data']['missing_fields']
     data_grain = result['data'].get('data_grain') or context.get('data_grain')
-    missing_ranges = [] if data_grain == 'monthly' else matrix.get('missing_date_ranges', [])
+    fallback_reason = result['data'].get('fallback_reason')
+    if data_grain == 'monthly':
+        # A monthly rollup selected because the requested daily range is
+        # unavailable is useful context, but it is not evidence for that
+        # range. Keep the values while exposing the coverage gap explicitly.
+        missing_ranges = ([{'start': start_date, 'end': end_date}] if fallback_reason else [])
+    else:
+        missing_ranges = matrix.get('missing_date_ranges', [])
     source_batches = matrix.get('source_batches', []) or ([latest_import] if latest_import else [])
     evidence_level = evidence_level_for(
         result['availability'], missing_inputs=missing_inputs, missing_ranges=missing_ranges,

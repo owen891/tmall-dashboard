@@ -35,6 +35,16 @@ class RuntimeContractsTests(unittest.TestCase):
         self.assertIn('--trusted-proxy=127.0.0.1', launcher)
         self.assertIn('--trusted-proxy-headers=x-forwarded-for', launcher)
 
+    def test_quality_gate_exercises_the_production_wsgi_stack(self):
+        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        with open(os.path.join(root, '.github', 'workflows', 'quality-gate.yml'), encoding='utf-8') as handle:
+            workflow = handle.read()
+
+        self.assertIn('python scripts/production_smoke.py', workflow)
+        self.assertIn('DASHBOARD_USERNAME: quality-gate', workflow)
+        self.assertIn('RUNNER_TEMP/tmall-production-smoke.db', workflow)
+        self.assertIn('release_audit.py --database "$RUNNER_TEMP/tmall-production-smoke.db" --strict', workflow)
+
 
 if __name__ == '__main__':
     unittest.main()

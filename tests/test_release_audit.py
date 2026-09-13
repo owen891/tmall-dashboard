@@ -54,7 +54,8 @@ class ReleaseAuditTests(unittest.TestCase):
             CREATE TABLE daily_data (
                 shop_id TEXT NOT NULL,
                 product_id TEXT NOT NULL,
-                date TEXT NOT NULL
+                date TEXT NOT NULL,
+                data_source TEXT
             );
             CREATE TABLE daily_data_observations (
                 shop_id TEXT NOT NULL,
@@ -66,7 +67,7 @@ class ReleaseAuditTests(unittest.TestCase):
                 product_id TEXT NOT NULL,
                 date TEXT NOT NULL
             );
-            INSERT INTO daily_data VALUES ('default', 'p-1', '2026-08-01');
+            INSERT INTO daily_data VALUES ('default', 'p-1', '2026-08-01', 'manual import');
             '''
         )
         connection.commit()
@@ -77,11 +78,12 @@ class ReleaseAuditTests(unittest.TestCase):
         ):
             report = build_report(self.temp_dir.name, self.database_path)
 
-        self.assertEqual(report['database']['provenance'], {
-            'daily_rows': 1,
-            'without_observations': 1,
-            'without_lineage': 1,
-        })
+        self.assertEqual(report['database']['provenance']['daily_rows'], 1)
+        self.assertEqual(report['database']['provenance']['without_observations'], 1)
+        self.assertEqual(report['database']['provenance']['without_lineage'], 1)
+        self.assertEqual(report['database']['provenance']['untraceable_by_source'], [
+            {'data_source': 'manual import', 'row_count': 1},
+        ])
         self.assertIn('untraceable_daily_facts', report['blockers'])
 
     def test_report_blocks_tracked_runtime_and_source_data(self):

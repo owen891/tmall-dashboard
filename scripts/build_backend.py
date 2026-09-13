@@ -39,8 +39,10 @@ def assert_release_version_contract() -> str:
             raise SystemExit(f'Desktop lock version {lock_version!r} does not match VERSION {version!r}')
 
     web_version_path = PROJECT_ROOT / 'frontend' / 'ui_demo' / 'assets' / 'version.js'
-    expected_web_version = f'window.TMALL_WEB_VERSION = {json.dumps(version)};\n'
-    if web_version_path.read_text(encoding='utf-8') != expected_web_version:
+    web_version = web_version_path.read_text(encoding='utf-8')
+    expected_web_version = f'window.TMALL_WEB_VERSION = {json.dumps(version)};'
+    first_line = web_version.splitlines()[0] if web_version.splitlines() else ''
+    if first_line.strip() != expected_web_version:
         raise SystemExit(f'Web version asset does not match VERSION {version!r}: {web_version_path}')
     return version
 

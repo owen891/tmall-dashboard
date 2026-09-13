@@ -990,7 +990,7 @@ class ImportService:
                        'payment_amount': self._number(value('payment_amount'), '支付金额'),
                        'refund_amount': self._number(value('successful_refund_amount'), '退款金额'),
                        'net_sales': self._number(value('payment_amount'), '支付金额') - self._number(value('successful_refund_amount'), '退款金额'),
-                       'ad_spend': self._number(value('ad_spend'), '推广花费')}
+                       'ad_spend': self._number(value('ad_spend'), '推广花费') if 'ad_spend' in mapping else None}
                 row['ipv' if table_name == 'weekly_data' else 'visitors'] = int(self._number(value('product_visitors'), '商品访客数'))
                 rows.append(row)
         if source_type in {'refund_day', 'customer_day'}:

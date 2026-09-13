@@ -35,7 +35,7 @@
   let matrixVisibleColumns = loadMatrixColumns();
   let matrixColumnSelector = null;
   let matrixColumnsReturnFocus = null;
-  const overviewEventsEndpoint = '/api/overview/events?chart_type=sales';
+  let overviewProducts = [];
   const trendMetricLabels = Object.freeze({
     net_sales: '净销售额', payment_amount: '支付金额', visitors: '商品访客数',
     payment_conversion_rate: '商品支付转化率', ad_spend: '推广花费', ad_roi: '推广 ROI',
@@ -139,6 +139,18 @@
     }));
   }
 
+  function renderMatrixStatus(matrix, state = 'ready') {
+    const node = $('[data-overview-matrix-status]');
+    if (!node) return;
+    node.className = `overview-matrix__status${state === 'error' ? ' is-error' : ''}`;
+    if (state === 'loading') return text(node, '正在读取日度明细');
+    if (state === 'error') return text(node, '日度明细读取失败');
+    const rows = Array.isArray(matrix?.rows) ? matrix.rows : [];
+    if (!rows.length) return text(node, '等待日度明细');
+    const sources = new Set(rows.map((row) => row.data_source || row.source_detail?.data_source).filter(Boolean));
+    text(node, `${rows.length} 天${sources.size ? ` · ${sources.size} 个来源` : ''}`);
+  }
+
   function matrixValue(row, column) {
     const source = row.source_detail || row;
     const value = column.key === 'source_batch_id'
@@ -190,6 +202,10 @@
         ? (Number(overview.ad_spend) > 0 ? Number(overview.payment_amount || 0) / Number(overview.ad_spend) : null)
         : overview[key];
       textAll(`[data-overview-kpi="${key}"]`, value == null ? '--' : formatter(value));
+      document.querySelectorAll(`[data-overview-kpi="${key}"]`).forEach((node) => {
+        const card = node.closest('.overview-v2-kpi');
+        if (card) card.style.setProperty('--kpi-progress', value == null ? '0%' : '100%');
+      });
       const compareKey = { payment_amount: 'gmv', net_sales: 'net_sales', visitors: 'visitors', ad_spend: 'ad_spend', ad_roi: 'roi', refund_rate: 'refund_rate', payment_conversion_rate: 'conversion', expense_ratio: 'expense_ratio' }[key];
       const change = compareKey && comparison?.kpi_compare?.[compareKey];
       const direction = Number(change?.change_pct || 0);
@@ -230,7 +246,7 @@
     const source_batches = overview.source_batches || [];
     const changes = overview.changes || [];
     const grain = overview.data_grain || context.data_grain;
-    const grainLabel = grain === 'monthly' ? '月度派米数据' : '日度事实';
+    const grainLabel = grain === 'monthly' ? '月度数据' : '日度事实';
     text($('[data-overview-context]'), batch ? `${grainLabel}覆盖 ${context.start_date || '--'} 至 ${context.end_date || '--'}；最近导入 ${batch.source_filename}（${batch.completed_at || '--'}）` : `当前没有导入的${grainLabel}。`);
     const start = context.start_date;
     const end = context.end_date;
@@ -246,9 +262,9 @@
       row.append(item('span', `${todo.product_title || todo.product_id} · ${DemoLabels.label('action', todo.action_type, todo.action_type || '运营动作')}${todo.overdue ? ' · 已逾期' : ''}`, 'status-list__label'), value);
       return row;
     }) : [item('div', '当前没有待办动作', 'empty-state')];
-    list($('[data-overview-home-actions]'), rows.map((node) => node.cloneNode(true)));
     const pending = todos.filter((todo) => ['pending_review', 'blocked', 'pending_execution', 'executing'].includes(todo.status)).length;
     textAll('[data-overview-summary="actions"]', String(pending).padStart(2, '0'));
+    window.dispatchEvent(new CustomEvent('tmall:overview-actions-ready', { detail: { todos } }));
   }
 
   function renderTrend(rows) {
@@ -256,6 +272,14 @@
     latestTrendRows = rows;
     trendCharts.forEach((chart) => chart?.destroy?.());
     trendCharts = [];
+    const target = $('#overviewHomeTrend');
+    if (!target) return;
+    if (!rows.length) {
+      target.replaceChildren(item('div', '当前周期暂无趋势数据', 'empty-state'));
+      target.setAttribute('aria-label', '当前周期暂无趋势数据');
+      return;
+    }
+    target.replaceChildren();
     const periods = rows.map((row) => row.period);
     const valueFor = (row, mode) => {
       const paymentAmount = Number(row.gmv ?? row.payment_amount ?? 0);
@@ -276,8 +300,6 @@
     const compare = modes.length > 1;
     const normalize = (values) => { const base = values.find((value) => Number.isFinite(value) && value !== 0); return base ? values.map((value) => Number(((value / base) * 100).toFixed(1))) : values; };
     const datasets = modes.map((mode) => { const values = rows.map((row) => Number(valueFor(row, mode) ?? 0)); return { label: trendMetricLabels[mode] || mode, data: compare ? normalize(values) : values }; });
-    const target = $('#overviewHomeTrend');
-    if (!target) return;
     [target].forEach((node) => {
       const chart = DemoCharts.lineMulti
         ? DemoCharts.lineMulti(node.id, periods, datasets)
@@ -289,11 +311,14 @@
   function renderTargets(data) {
     const target = data?.target || {};
     const actual = data?.actual || {};
+    const actualAvailable = data?.actual && data.actual.gsv != null;
+    const targetValue = (key) => target[key] == null ? '--' : money(target[key]);
+    const actualValue = (key) => actualAvailable ? money(actual[key]) : '不可计算';
     const values = [
-      ['支付金额', `${money(actual.gsv)} / ${money(target.target_gsv)}`, data?.gsv_progress],
-      ['推广花费', `${money(actual.ad_spend)} / ${money(target.target_ad_spend)}`, data?.ad_progress],
-      ['净销售额', money(actual.net_sales), null],
-      ['商品访客数', number(actual.visitors), null]
+      ['支付金额', `${actualValue('gsv')} / ${targetValue('target_gsv')}`, data?.gsv_progress],
+      ['推广花费', `${actualAvailable ? money(actual.ad_spend) : '不可计算'} / ${targetValue('target_ad_spend')}`, data?.ad_progress],
+      ['净销售额', actualAvailable ? money(actual.net_sales) : '不可计算', null],
+      ['商品访客数', actualAvailable ? number(actual.visitors) : '不可计算', null]
     ];
     const renderRows = () => values.map(([label, value, progress]) => {
       const row = document.createElement('div');
@@ -315,11 +340,12 @@
     return `${date.getFullYear()}-W${String(week).padStart(2, '0')}`;
   }
 
-  async function loadGoalLayers(state) {
+  async function loadGoalLayers(state, token = requestToken) {
     const year = Number(String(state?.endDate || formatLocalDate()).slice(0, 4));
     const targetRoots = [$('[data-overview-home-targets]')].filter(Boolean);
     try {
       const response = await DemoApi.domainRequest(`/api/goals/${year}/periods`);
+      if (token !== requestToken) return;
       const payload = response.data || {};
       const levels = payload.levels || {};
       const dateKey = String(state?.endDate || formatLocalDate());
@@ -363,49 +389,17 @@
     root.replaceChildren(...(cards.length ? cards : [item('div', '当前年度尚未创建目标', 'empty-state')]));
   }
 
-  function renderAnomalies(data) {
+  function renderAnomalies(data, retry) {
+    if (data?.error) {
+      window.dispatchEvent(new CustomEvent('tmall:overview-anomalies-ready', { detail: { anomalies: [] } }));
+      return;
+    }
+    if (data?.availability === 'no-data' || data?.availability === 'partial') {
+      window.dispatchEvent(new CustomEvent('tmall:overview-anomalies-ready', { detail: { anomalies: [] } }));
+      return;
+    }
     const anomalies = unwrap(data, 'anomalies');
-    if (!anomalies.length) return setStatus('[data-overview-home-anomalies]', '当前周期未发现明显异常');
-    const rows = anomalies.map((entry) => {
-      const row = document.createElement('div');
-      row.className = `alert-list__item${entry.severity === 'high' ? ' alert-list__item--danger' : ''}`;
-      const copy = document.createElement('div');
-      copy.append(item('strong', entry.label || entry.metric || '指标异常'), item('span', `较上期 ${Number(entry.change || 0).toFixed(1)}%`));
-      row.appendChild(copy);
-      return row;
-    });
-    list($('[data-overview-home-anomalies]'), anomalies.map((entry) => {
-      const row = document.createElement('div'); row.className = `overview-v2-alert${entry.severity === 'high' ? ' overview-v2-alert--danger' : ''}`;
-      const copy = document.createElement('div'); copy.append(item('strong', entry.label || entry.metric || '指标异常'), item('span', `较上期 ${Number(entry.change || 0).toFixed(1)}%`)); row.append(copy, item('b', `${Number(entry.current || 0).toLocaleString('zh-CN')}`)); return row;
-    }));
-  }
-
-  function renderHomeProducts(payload) {
-    const products = unwrap(payload, 'data').slice(0, 5);
-    const root = $('[data-overview-home-products]');
-    if (!root) return;
-    if (!products.length) return setStatus('[data-overview-home-products]', '当前日期范围暂无商品数据');
-    root.replaceChildren(...products.map((product, index) => {
-      const row = document.createElement('div'); row.className = 'overview-v2-report__row';
-      const thumbnailUrl = String(product.image_url || '').trim();
-      const image = thumbnailUrl ? document.createElement('img') : document.createElement('span'); image.className = 'overview-v2-product-image';
-      if (thumbnailUrl) { image.src = thumbnailUrl; image.alt = product.title || product.product_id || ''; image.loading = 'eager'; image.decoding = 'async'; }
-      else { image.classList.add('overview-v2-product-image--placeholder'); image.setAttribute('aria-hidden', 'true'); image.textContent = String(product.title || product.product_id || '商品').trim().slice(0, 1); }
-      image.addEventListener('error', () => {
-        const placeholder = document.createElement('span');
-        placeholder.className = 'overview-v2-product-image overview-v2-product-image--placeholder';
-        placeholder.setAttribute('aria-hidden', 'true');
-        placeholder.textContent = String(product.title || product.product_id || '商品').trim().slice(0, 1);
-        image.replaceWith(placeholder);
-      });
-      const rank = item('span', index + 1, 'overview-v2-report__rank');
-      const copy = document.createElement('div'); copy.className = 'overview-v2-report__copy';
-      const title = document.createElement('strong'); text(title, product.title || product.product_id || '--'); title.appendChild(item('small', ` · ID ${product.product_id || '--'}`, 'overview-v2-product-id'));
-      const metrics = document.createElement('span'); metrics.className = 'overview-v2-product-metrics is-expanded';
-      [['商品支付转化率', product.payment_conversion ?? product.conversion], ['客单价', product.avg_order_value], ['推广花费', product.ad_spend], ['费比', product.expense_ratio], ['推广 ROI', product.ad_roi], ['退款率', product.refund_rate]].forEach(([label, value]) => { const metric = document.createElement('span'); metric.append(item('span', label), item('b', label === '推广 ROI' ? Number(value || 0).toFixed(2) : label.includes('率') ? percent(value) : money(value))); metrics.appendChild(metric); });
-      const toggle = document.createElement('button'); toggle.type = 'button'; toggle.className = 'overview-v2-metrics-toggle'; toggle.textContent = '−'; toggle.setAttribute('aria-expanded', 'true'); toggle.setAttribute('aria-label', '收起更多指标'); toggle.addEventListener('click', () => { const expanded = metrics.classList.toggle('is-expanded'); metrics.classList.toggle('is-collapsed', !expanded); toggle.textContent = expanded ? '−' : '+3'; toggle.setAttribute('aria-expanded', String(expanded)); }); metrics.appendChild(toggle);
-      copy.append(title, metrics); row.append(image, rank, copy, item('strong', money(product.payment_amount || product.total_gmv), 'overview-v2-report__value')); return row;
-    }));
+    window.dispatchEvent(new CustomEvent('tmall:overview-anomalies-ready', { detail: { anomalies } }));
   }
 
   function renderHomeMatrix(matrix) {
@@ -414,7 +408,8 @@
     latestMatrix = matrix || { rows: [] };
     const rows = [...(matrix?.rows || [])].reverse();
     renderMatrixHeader();
-    if (!rows.length) return setTableStatus(body, '当前未导入日度明细；月度派米数据已用于上方指标和趋势', matrixVisibleColumns.length);
+    renderMatrixStatus(matrix);
+    if (!rows.length) return setTableStatus(body, '当前未导入日度明细；月度数据已用于上方指标和趋势', matrixVisibleColumns.length);
     body.replaceChildren(...rows.map((row) => {
       const tr = document.createElement('tr');
       matrixVisibleColumns.forEach((key) => {
@@ -428,59 +423,6 @@
       return tr;
     }));
     window.TmallTableControls?.refresh?.();
-  }
-
-  function parseReport(source) {
-    const result = { period: activePeriod || '--', generated: '', metrics: [], products: [], risks: [] };
-    let section = '';
-    let currentProduct = null;
-    String(source || '').split(/\r?\n/).forEach((rawLine) => {
-      const line = rawLine.trim();
-      if (!line) return;
-      const periodMatch = line.match(/报告周期[：:]\s*([^（(]+)/);
-      const generatedMatch = line.match(/生成时间[：:]\s*(.+)$/);
-      if (periodMatch) { result.period = periodMatch[1].trim(); return; }
-      if (generatedMatch) { result.generated = generatedMatch[1].trim(); return; }
-      if (line.includes('核心指标')) { section = 'metrics'; return; }
-      if (line.includes('销售TOP5') || line.includes('销售 TOP5')) { section = 'products'; return; }
-      if (line.includes('异常指标')) { section = 'risks'; return; }
-      if (section === 'metrics') {
-        const match = line.match(/^[-–]\s*([^：:]+)[：:]\s*(.+)$/);
-        if (match) result.metrics.push({ label: match[1].trim(), value: match[2].trim() });
-        return;
-      }
-      if (section === 'products') {
-        const titleMatch = line.match(/^(\d+)[.、]\s*(.+)$/);
-        if (titleMatch) {
-          currentProduct = { rank: Number(titleMatch[1]), title: titleMatch[2].trim(), sales: '--', visitors: '--', conversion: '--' };
-          result.products.push(currentProduct);
-          return;
-        }
-        const detailMatch = line.match(/销售额[：:]\s*(\S+)\s+访客[：:]\s*([\d,]+)\s+转化率[：:]\s*(\S+)/);
-        if (detailMatch && currentProduct) [currentProduct.sales, currentProduct.visitors, currentProduct.conversion] = detailMatch.slice(1);
-        return;
-      }
-      if (section === 'risks') {
-        const match = line.match(/^[-–]\s*(.+)$/);
-        if (match) result.risks.push(match[1].trim());
-      }
-    });
-    return result;
-  }
-
-  function renderHomeReport(source) {
-    const root = $('[data-overview-home-report]');
-    if (!root) return;
-    const report = parseReport(source);
-    text($('[data-overview-home-report-period]'), report.period);
-    const rows = [];
-    if (report.metrics[0]) rows.push(['规模', report.metrics[0].value, false]);
-    if (report.risks[0]) rows.push(['风险', report.risks[0], true]);
-    if (report.products.length) rows.push(['下一步', `重点商品 ${report.products.length} 款，优先处理待复盘动作`, false]);
-    root.replaceChildren(...(rows.length ? rows : [['经营状态', '本期暂无可展示的经营报告', false]]).map(([title, detail, danger]) => {
-      const row = document.createElement('div'); row.className = `overview-v2-alert${danger ? ' overview-v2-alert--danger' : ''}`;
-      const copy = document.createElement('div'); copy.append(item('strong', title), item('span', detail)); row.appendChild(copy); return row;
-    }));
   }
 
   async function load(detail) {
@@ -499,23 +441,19 @@
     const requests = [
       DemoApi.domainRequest('/api/overview?' + overviewParams.toString()),
       DemoApi.request(`/api/trend?dim=daily${range}`),
-      DemoApi.request(`/api/products?dim=daily&limit=5&sort=payment_amount&order=desc${range}`),
       DemoApi.request(`/api/target_progress?dim=monthly&period=${encodeURIComponent(period)}`),
       DemoApi.request(`/api/anomalies?dim=monthly&period=${encodeURIComponent(period)}&prev_period=${encodeURIComponent(prev)}`)
-        .catch((error) => { console.error(error); return []; }),
+        .catch((error) => { console.error(error); return { error: true }; }),
       DemoApi.request(`/api/compare?dim=monthly&period_a=${encodeURIComponent(comparePeriod)}&period_b=${encodeURIComponent(period)}`),
     ];
-    const [overviewResponse, trend, products, targets, anomalies, comparison] = await Promise.all(requests);
+    const [overviewResponse, trend, targets, anomalies, comparison] = await Promise.all(requests);
     overviewPayload = overviewResponse;
     let matrix = { data: { rows: [] } };
-    try { matrix = await DemoApi.domainRequest('/api/overview/daily-matrix?' + overviewParams.toString()); } catch (error) { setTableStatus($('[data-overview-home-matrix]'), '日度矩阵暂无数据；请导入日度明细后重试', 9, () => guardedLoad(state)); }
+    renderMatrixStatus(null, 'loading');
+    try { matrix = await DemoApi.domainRequest('/api/overview/daily-matrix?' + overviewParams.toString()); } catch (error) { renderMatrixStatus(null, 'error'); setTableStatus($('[data-overview-home-matrix]'), '日度矩阵暂无数据；请导入日度明细后重试', matrixVisibleColumns.length, () => guardedLoad(state)); }
     if (token !== requestToken) return;
     const rows = unwrap(trend, 'data');
-    renderKpis(overviewResponse.data, comparison, matrix.data); renderContext(overviewResponse.data); renderTrend(rows); renderHomeProducts(products); renderTargets(targets); await loadGoalLayers(state); renderAnomalies(anomalies); renderHomeMatrix(matrix.data || {});
-    const report = await DemoApi.request(`/api/report?dim=monthly&period=${encodeURIComponent(period)}`)
-      .catch((error) => { console.error(error); return { report: '' }; });
-    if (token !== requestToken) return;
-    renderHomeReport(report?.report || '');
+    renderKpis(overviewResponse.data, comparison, matrix.data); renderContext(overviewResponse.data); renderTrend(rows); renderTargets(targets); await loadGoalLayers(state, token); if (token !== requestToken) return; renderAnomalies(anomalies, () => guardedLoad(state)); renderHomeMatrix(matrix.data || {});
   }
 
   function guardedLoad(detail) {
@@ -525,43 +463,84 @@
   function showError(error, token) {
     if (token && token !== requestToken) return;
     ['payment_amount', 'net_sales', 'refund_rate', 'expense_ratio'].forEach((key) => textAll(`[data-overview-kpi="${key}"]`, '--'));
-    ['[data-overview-home-targets]', '[data-overview-home-anomalies]', '[data-overview-home-actions]', '[data-overview-home-report]'].forEach((selector) => setStatus(selector, '数据加载失败', 'error', () => guardedLoad()));
-    setTableStatus($('[data-overview-home-matrix]'), '数据加载失败', 9, () => guardedLoad());
+    setStatus('[data-overview-home-targets]', '数据加载失败', 'error', () => guardedLoad());
+    setTableStatus($('[data-overview-home-matrix]'), '数据加载失败', matrixVisibleColumns.length);
+    renderMatrixStatus(null, 'error');
     DemoApi.renderDataState($('[data-overview-context]'), 'calculation-failed', { message: error.message });
     console.error(error);
   }
-  async function removeEvent(id) { await DemoApi.domainRequest(`/api/overview/events/${encodeURIComponent(id)}`, { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ operator: '店长', reason: '移除经营事件' }) }); guardedLoad(); }
-  async function submitEvent(form) {
-    const data = new FormData(form);
-    const submit = $('[data-overview-event-submit]');
-    const status = $('[data-overview-event-status]');
-    submit.disabled = true;
-    text(status, '正在保存事件');
+  async function loadOverviewProducts() {
     try {
-      await DemoApi.domainRequest('/api/overview/events', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ event_date: data.get('event_date'), title: String(data.get('title') || '').trim(), description: String(data.get('description') || '').trim(), color: data.get('color'), chart_type: 'sales', operator: '店长', reason: '记录经营事件' }) });
-      $('[data-overview-event-dialog]').close(); form.reset(); window.DemoShell?.showToast?.('图表事件已保存'); guardedLoad();
-    } catch (error) {
-      text(status, error.message || '保存失败，请稍后重试');
-    } finally { submit.disabled = false; }
+      const payload = await DemoApi.domainRequest('/api/products?dim=monthly&limit=200&status=active');
+      overviewProducts = Array.isArray(payload?.data?.rows) ? payload.data.rows : [];
+      const list = $('#overview-action-products');
+      if (list) list.replaceChildren(...overviewProducts.map((product) => {
+        const option = document.createElement('option');
+        option.value = product.product_id;
+        option.label = `${product.title || product.product_id} · ${product.product_id}`;
+        return option;
+      }));
+    } catch (_) {
+      overviewProducts = [];
+    }
   }
-  const dialog = $('[data-overview-event-dialog]');
-  function hideDialog() { dialog.hidden = true; $('[data-overview-event-status]').textContent = ''; dialogReturnFocus?.focus?.(); dialogReturnFocus = null; }
+
+  async function submitAction(form) {
+    const data = new FormData(form);
+    const submit = $('[data-overview-action-submit]');
+    const status = $('[data-overview-action-status]');
+    submit.disabled = true;
+    text(status, '正在创建运营动作…');
+    try {
+      await DemoApi.domainRequest('/api/actions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          capability_key: 'overview.create_action',
+          product_id: String(data.get('product_id') || '').trim(),
+          purpose_type: 'increase_sales',
+          purpose_note: String(data.get('purpose_note') || '').trim(),
+          action_type: String(data.get('action_type') || '').trim(),
+          action_detail: String(data.get('action_detail') || '').trim(),
+          target_metric: data.get('target_metric'),
+          planned_at: data.get('planned_at'),
+          observer_window_days: data.get('observer_window_days'),
+          assigned_to: 'operator',
+          operator: '店长',
+          reason: '从概览创建运营动作',
+        }),
+      });
+      dialog.close();
+      form.reset();
+      $('#overview-action-window').value = '7';
+      window.DemoShell?.showToast?.('运营动作草稿已创建');
+      window.dispatchEvent(new CustomEvent('tmall:refresh', { detail: { source: 'overview-action-created' } }));
+    } catch (error) {
+      text(status, error.message || '创建运营动作失败，请稍后重试');
+    } finally {
+      submit.disabled = false;
+    }
+  }
+  const dialog = $('[data-overview-action-dialog]');
+  function hideDialog() { dialog.hidden = true; $('[data-overview-action-status]').textContent = ''; dialogReturnFocus?.focus?.(); dialogReturnFocus = null; }
   function showDialog(event) {
     dialogReturnFocus = event?.currentTarget || document.activeElement;
     dialog.hidden = false;
-    $('#overview-event-date').value = formatLocalDate();
-    $('[data-overview-event-status]').textContent = '';
+    $('#overview-action-date').value = formatLocalDate();
+    $('[data-overview-action-status]').textContent = '';
     dialog.showModal();
-    $('#overview-event-title-input')?.focus({ preventScroll: true });
+    $('#overview-action-product')?.focus({ preventScroll: true });
   }
-  $('[data-overview-event-open]')?.addEventListener('click', showDialog);
+  $('[data-overview-action-open]')?.addEventListener('click', showDialog);
   dialog?.addEventListener('close', hideDialog);
   dialog?.addEventListener('cancel', () => window.setTimeout(hideDialog, 0));
-  document.querySelectorAll('[data-overview-event-close]').forEach((button) => button.addEventListener('click', () => dialog.close()));
-  $('[data-overview-event-form]')?.addEventListener('submit', (event) => { event.preventDefault(); if (!event.currentTarget.reportValidity()) return; submitEvent(event.currentTarget); });
+  document.querySelectorAll('[data-overview-action-close]').forEach((button) => button.addEventListener('click', () => dialog.close()));
+  $('[data-overview-action-form]')?.addEventListener('submit', (event) => { event.preventDefault(); if (!event.currentTarget.reportValidity()) return; submitAction(event.currentTarget); });
+  loadOverviewProducts();
   const matrixColumnsDialog = $('[data-overview-matrix-columns-dialog]');
   function updateMatrixColumnsStatus(selected = matrixColumnSelector?.getSelected() || matrixVisibleColumns) {
     const normalized = normalizeMatrixColumns(selected);
+    $('[data-overview-visible-count]').textContent = String(normalized.length);
     $('[data-overview-matrix-columns-status]').textContent = `当前展示 ${normalized.length} 个字段；日期固定保留为首列`;
     $('[data-overview-matrix-columns-apply]').disabled = normalized.length < 2;
   }
@@ -593,6 +572,9 @@
     matrixColumnsDialog.hidden = false;
     matrixColumnsDialog.showModal();
   });
+  $('[data-overview-matrix-columns-select-all]')?.addEventListener('click', () => renderMatrixColumnSelector(matrixColumns.map((column) => column.key)));
+  $('[data-overview-matrix-columns-clear-all]')?.addEventListener('click', () => renderMatrixColumnSelector(['date']));
+  $('[data-overview-matrix-columns-reset]')?.addEventListener('click', () => renderMatrixColumnSelector(matrixColumns.map((column) => column.key)));
   document.querySelectorAll('[data-overview-matrix-columns-close]').forEach((button) => button.addEventListener('click', closeMatrixColumnsDialog));
   $('[data-overview-matrix-columns-apply]')?.addEventListener('click', () => {
     matrixVisibleColumns = normalizeMatrixColumns(matrixColumnSelector?.getSelected());
@@ -676,7 +658,10 @@
     window.DemoShell?.showToast?.('正在导出完整日度矩阵');
   });
   window.addEventListener('tmall:date-range-change', (event) => guardedLoad(event.detail));
+  window.addEventListener('tmall:date-range-ready', (event) => guardedLoad(event.detail));
   window.addEventListener('tmall:refresh', () => guardedLoad());
-  if (!window.TmallDateRange) guardedLoad();
+  const initialRange = window.TmallDateRange?.getState?.();
+  if (initialRange?.startDate && initialRange?.endDate) guardedLoad(initialRange);
+  else if (!window.TmallDateRange) guardedLoad();
   function normalizeMonthlyTrend(payload) { return unwrap(payload, 'data'); }
 })();

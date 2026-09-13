@@ -33,7 +33,14 @@ def main() -> int:
     if lock_path.exists():
         update_json(lock_path, version, update_lock_root=True)
     web_version = PROJECT_ROOT / 'frontend' / 'ui_demo' / 'assets' / 'version.js'
-    web_version.write_text(f"window.TMALL_WEB_VERSION = {json.dumps(version)};\n", encoding='utf-8')
+    version_line = f"window.TMALL_WEB_VERSION = {json.dumps(version)};"
+    existing = web_version.read_text(encoding='utf-8') if web_version.exists() else ''
+    lines = existing.splitlines()
+    if lines and lines[0].startswith('window.TMALL_WEB_VERSION = '):
+        lines[0] = version_line
+    else:
+        lines.insert(0, version_line)
+    web_version.write_text('\n'.join(lines).rstrip() + '\n', encoding='utf-8')
     print(version)
     return 0
 

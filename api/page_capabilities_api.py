@@ -23,8 +23,9 @@ def get_page_capabilities():
             {'field': field, 'value': value},
             status=422,
         )
-    except Exception as error:
-        return failure('PAGE_CAPABILITY_ERROR', str(error), status=500)
+    except Exception:
+        current_app.logger.exception('Page capability catalog failed')
+        return failure('PAGE_CAPABILITY_ERROR', '页面能力目录暂时不可用，请稍后重试', status=500)
 
     resolved = [
         capability

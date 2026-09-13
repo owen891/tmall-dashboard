@@ -61,6 +61,11 @@ class MetricsRepo:
             if daily_row['fact_count']:
                 return {**dict(daily_row), 'data_grain': 'daily'}
 
+            # monthly_data has no shop_id and therefore may only back the
+            # default single-shop deployment. Named shops must fail closed.
+            if shop_id != 'default':
+                return {**dict(daily_row), 'data_grain': 'daily',
+                        'fallback_reason': 'monthly_fallback_unsupported_scope'}
             start_month, end_month = start_date[:7], end_date[:7]
             month_exists = connection.execute(
                 'SELECT COUNT(*) AS count FROM monthly_data WHERE month BETWEEN ? AND ?',
@@ -137,6 +142,7 @@ class MetricsRepo:
                                   ORDER BY observed_at DESC, id DESC
                               ) AS source_rank
                        FROM daily_data_observations
+                       WHERE shop_id = ? AND date BETWEEN ? AND ?
                    )
                    SELECT d.date, SUM(d.payment_amount) AS payment_amount,
                           SUM(d.refund_amount) AS successful_refund_amount,
@@ -158,7 +164,7 @@ class MetricsRepo:
                     AND sm.source_rank = 1
                    LEFT JOIN import_batches b ON b.id = sm.source_batch_id
                    WHERE ''' + where + ''' GROUP BY d.date ORDER BY d.date''',
-                    [shop_id, start_date, end_date, *filter_params],
+                    [shop_id, start_date, end_date, shop_id, start_date, end_date, *filter_params],
                 ).fetchall()
         result = []
         for row in rows:
@@ -229,6 +235,12 @@ class MetricsRepo:
             ).fetchone()
             if daily['start_date'] and daily['end_date']:
                 return {**dict(daily), 'data_grain': 'daily', 'latest_import': dict(batch) if batch else None}
+            if shop_id != 'default':
+                return {
+                    **dict(daily), 'data_grain': None,
+                    'latest_import': dict(batch) if batch else None,
+                    'fallback_reason': 'monthly_fallback_unsupported_scope',
+                }
             monthly = connection.execute(
                 '''SELECT MIN(month) AS start_date, MAX(month) AS end_date,
                           MAX(imported_at) AS imported_at,
@@ -240,8 +252,8 @@ class MetricsRepo:
             source = str(monthly['data_source'] or '')
             filename = source.split(':', 2)[-1] if ':' in source else source
             latest_import = latest_import or {
-                'id': None, 'source_type': 'paimi_monthly',
-                'source_filename': filename or '派米月度数据', 'source_hash': None,
+                'id': None, 'source_type': 'product_month',
+                'source_filename': filename or '商品月度数据', 'source_hash': None,
                 'completed_at': monthly['imported_at'], 'quality_summary': None,
             }
             return {**dict(monthly), 'data_grain': 'monthly', 'latest_import': latest_import}

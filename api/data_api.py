@@ -1,4 +1,5 @@
 from flask import Blueprint, current_app, jsonify, request, send_file
+import re
 import sqlite3
 import yaml
 import os
@@ -8,13 +9,15 @@ import uuid
 import time
 import threading
 import calendar
+import math
 import glob as _glob
 import ntpath
 import openpyxl
+import pandas as pd
 from werkzeug.utils import secure_filename
 from datetime import datetime, timedelta
 from db import get_db, get_connection, get_shop_id, init_db, load_config
-from api.api_response import evidence_level_for, failure, limitations_for, success
+from api.api_response import evidence_level_for, failure, json_object, limitations_for, success
 from repos.audit_repo import AuditRepo
 from services.shop_scope_service import reject_legacy_shop_scope
 from services.management_validation import (
@@ -36,7 +39,37 @@ DIMENSION_MAP = {
     'daily':   {'table': 'daily_data',   'date_col': 'date', 'visitors_col': 'ipv'},
 }
 
+
+def _validate_period_arg(dimension, value, field='period'):
+    """Reject malformed explicit period values before querying legacy facts."""
+    if not value:
+        return None
+    period_format = '%Y-%m' if dimension == 'monthly' else '%Y-%m-%d'
+    try:
+        parsed = datetime.strptime(value, period_format)
+    except (TypeError, ValueError):
+        return failure(
+            'VALIDATION_ERROR',
+            f'{field} must use {period_format.replace("%Y", "YYYY").replace("%m", "MM").replace("%d", "DD")}',
+            {'dim': dimension, field: value},
+            status=422,
+        )
+    if parsed.strftime(period_format) != value:
+        return failure(
+            'VALIDATION_ERROR',
+            f'{field} must use {period_format.replace("%Y", "YYYY").replace("%m", "MM").replace("%d", "DD")}',
+            {'dim': dimension, field: value},
+            status=422,
+        )
+    return None
+
 UPLOAD_FOLDER = os.path.join(project_root, 'data/uploads/')
+
+
+def _upload_folder():
+    """Resolve uploads from the active app while keeping legacy patch hooks."""
+    configured = current_app.config.get('UPLOAD_FOLDER') if current_app else None
+    return os.path.abspath(configured or UPLOAD_FOLDER)
 
 
 def _reject_legacy_shop_scope(dimension):
@@ -62,7 +95,7 @@ def _validate_file_pattern(pattern):
 
 def _scheduled_matches(pattern):
     safe_pattern = _validate_file_pattern(pattern)
-    upload_root = os.path.abspath(UPLOAD_FOLDER)
+    upload_root = _upload_folder()
     matches = _glob.glob(os.path.join(upload_root, safe_pattern))
     return [
         path for path in matches
@@ -74,14 +107,64 @@ def _unique_upload_path(filename):
     """Keep the original name for file classification while avoiding overwrites."""
     safe_name = secure_filename(filename or '')
     stem, suffix = os.path.splitext(safe_name)
-    candidate = os.path.join(UPLOAD_FOLDER, safe_name)
+    upload_folder = _upload_folder()
+    candidate = os.path.join(upload_folder, safe_name)
     if not os.path.exists(candidate):
         return safe_name, candidate
     safe_name = f'{stem}_{uuid.uuid4().hex[:8]}{suffix}'
-    return safe_name, os.path.join(UPLOAD_FOLDER, safe_name)
+    return safe_name, os.path.join(upload_folder, safe_name)
 
-# 导入进度追踪（进程内存储）
+
+def _cleanup_upload_paths(paths):
+    """Remove files staged for synchronous legacy imports."""
+    for path in paths:
+        try:
+            os.unlink(path)
+        except FileNotFoundError:
+            continue
+        except OSError:
+            current_app.logger.warning('Unable to remove staged upload: %s', path)
+
+# 导入进度追踪（进程内存储）。终态记录只保留有限时间，避免长期运行
+# 的服务因为历史任务不断累积而增长内存。
 _import_progress = {}
+_import_progress_lock = threading.RLock()
+_IMPORT_PROGRESS_TTL_SECONDS = 24 * 60 * 60
+_IMPORT_PROGRESS_MAX_TERMINAL = 256
+
+
+def _set_import_progress(task_id, payload):
+    with _import_progress_lock:
+        _prune_import_progress()
+        _import_progress[task_id] = dict(payload)
+
+
+def _get_import_progress(task_id):
+    with _import_progress_lock:
+        _prune_import_progress()
+        progress = _import_progress.get(task_id)
+        return dict(progress) if progress is not None else None
+
+
+def _prune_import_progress(now=None):
+    now = time.time() if now is None else now
+    terminal = {'completed', 'error'}
+    for task_id, progress in list(_import_progress.items()):
+        if progress.get('status') not in terminal:
+            continue
+        finished_at = progress.get('finished_at') or progress.get('started_at') or now
+        if now - float(finished_at) > _IMPORT_PROGRESS_TTL_SECONDS:
+            _import_progress.pop(task_id, None)
+
+    terminal_items = [
+        (task_id, progress)
+        for task_id, progress in _import_progress.items()
+        if progress.get('status') in terminal
+    ]
+    if len(terminal_items) > _IMPORT_PROGRESS_MAX_TERMINAL:
+        terminal_items.sort(key=lambda item: item[1].get('finished_at', 0))
+        for task_id, _ in terminal_items[:-_IMPORT_PROGRESS_MAX_TERMINAL]:
+            _import_progress.pop(task_id, None)
 
 data_bp = Blueprint('data', __name__)
 
@@ -95,9 +178,12 @@ _LEGACY_SINGLE_SHOP_PATHS = {
     '/api/health', '/api/reviews/summary', '/api/reviews/list', '/api/reviews/products',
     '/api/review', '/api/funnel', '/api/industry_benchmark',
     '/api/report', '/api/legacy/actions',
+    '/api/star', '/api/batch_update', '/api/batch_tags',
     '/api/market/summary', '/api/market/keywords', '/api/market/need_stats',
     '/api/market/rankings', '/api/market/histograms', '/api/market/opportunities',
     '/api/market/reports', '/api/upload/reviews', '/api/upload/data',
+    '/api/keywords', '/api/alert_checks', '/api/chart_events',
+    '/api/notes', '/api/logs', '/api/product_tags',
 }
 
 
@@ -115,7 +201,10 @@ def _aov_expression(dimension):
 
 @data_bp.before_request
 def reject_legacy_single_shop_scope():
-    if request.path not in _LEGACY_SINGLE_SHOP_PATHS:
+    legacy_field_update = request.path.startswith('/api/products/') and request.path.endswith('/field')
+    legacy_prefixes = ('/api/notes', '/api/chart_events', '/api/product_tags', '/api/logs')
+    legacy_path = request.path in _LEGACY_SINGLE_SHOP_PATHS or request.path.startswith(legacy_prefixes)
+    if not legacy_path and not legacy_field_update:
         return None
     return reject_legacy_shop_scope('历史兼容数据')
 
@@ -166,7 +255,11 @@ def get_kpi():
 
         dim_cfg = DIMENSION_MAP.get(dimension)
         if not dim_cfg:
-            return jsonify({'error': 'invalid dimension'}), 400
+            return failure('VALIDATION_ERROR', 'invalid dimension', {'dim': dimension}, status=422)
+        for field, value in (('period', period), ('prev_period', prev_period)):
+            invalid = _validate_period_arg(dimension, value, field)
+            if invalid:
+                return invalid
         table = dim_cfg['table']
         date_col = dim_cfg['date_col']
         visitors_col = dim_cfg['visitors_col']
@@ -178,6 +271,7 @@ def get_kpi():
             scope_params = (shop_id,) if table == 'daily_data' else ()
             row = conn.execute(f'''
                 SELECT
+                    COUNT(*) as row_count,
                     COALESCE(SUM(payment_amount),0) as gmv,
                     COALESCE(SUM(refund_amount),0) as refund_amount,
                     COALESCE(SUM(payment_amount),0) - COALESCE(SUM(refund_amount),0) as net_sales,
@@ -189,7 +283,10 @@ def get_kpi():
                     AVG(payment_conversion) as conversion
                 FROM {table} WHERE {scope_sql}{date_col} = ?
             ''', (*scope_params, p)).fetchone()
-            return dict(row) if row else None
+            result = dict(row) if row else None
+            if result and not result.pop('row_count', 0):
+                return None
+            return result
 
         current = query_period(period)
         previous = query_period(prev_period)
@@ -231,7 +328,8 @@ def get_kpi():
         'current': current,
         'previous': previous,
         'changes': changes,
-        'anomalies': anomalies
+        'anomalies': anomalies,
+        'availability': 'available' if current and previous else 'partial' if current or previous else 'no-data',
     })
 
 @data_bp.route('/api/trend', methods=['GET'])
@@ -247,13 +345,34 @@ def get_trend():
 
     dim_cfg = DIMENSION_MAP.get(dimension)
     if not dim_cfg:
-        return jsonify({'error': 'invalid dimension'}), 400
+        return failure('VALIDATION_ERROR', 'invalid dimension', {'dim': dimension}, status=422)
+    if dimension == 'daily':
+        for field, value in (('start', start), ('end', end)):
+            invalid = _validate_period_arg(dimension, value, field)
+            if invalid:
+                return invalid
     table = dim_cfg['table']
     date_col = dim_cfg['date_col']
 
+    period_format = '%Y-%m' if dimension == 'monthly' else '%Y-%m-%d'
+    parsed_ranges = {}
+    for field, value in (('start', start), ('end', end)):
+        if not value:
+            continue
+        try:
+            parsed = datetime.strptime(value, period_format)
+        except (TypeError, ValueError):
+            return failure('VALIDATION_ERROR', f'{field} must use {period_format.replace("%Y", "YYYY").replace("%m", "MM").replace("%d", "DD")}', {'dim': dimension, field: value}, status=422)
+        if parsed.strftime(period_format) != value:
+            return failure('VALIDATION_ERROR', f'{field} must use {period_format.replace("%Y", "YYYY").replace("%m", "MM").replace("%d", "DD")}', {'dim': dimension, field: value}, status=422)
+        parsed_ranges[field] = parsed
+    if parsed_ranges.get('start') and parsed_ranges.get('end') and parsed_ranges['start'] > parsed_ranges['end']:
+        return failure('VALIDATION_ERROR', 'start must not be later than end', {'dim': dimension, 'start': start, 'end': end}, status=422)
+
     with get_db() as conn:
         visitors_col = dim_cfg['visitors_col']
-        payment_qty_expr = 'SUM(payment_qty)' if dimension == 'monthly' else '0'
+        # daily_data carries payment_qty; weekly_data predates that field.
+        payment_qty_expr = 'SUM(payment_qty)' if dimension in {'monthly', 'daily'} else '0'
         scope_sql = ' AND shop_id = ?' if table == 'daily_data' else ''
         query = f'''
             SELECT {date_col} as period,
@@ -286,16 +405,24 @@ def get_trend():
 @data_bp.route('/api/star', methods=['POST'])
 def toggle_star():
     """切换商品星标状态"""
-    data = request.get_json(force=True) or {}
-    product_id = data.get('product_id', '')
+    data = json_object(request)
+    product_id = str(data.get('product_id') or '').strip()
     if not product_id:
-        return jsonify({'error': '缺少product_id'}), 400
+        return failure('VALIDATION_ERROR', '缺少 product_id', status=422)
     with get_db() as conn:
         row = conn.execute('SELECT starred FROM products WHERE product_id = ?', (product_id,)).fetchone()
         if not row:
-            return jsonify({'error': '商品不存在'}), 404
+            return failure('NOT_FOUND', '商品不存在', status=404)
         if 'starred' in data:
-            new_val = 1 if int(data.get('starred') or 0) else 0
+            raw_starred = data.get('starred')
+            if isinstance(raw_starred, bool):
+                new_val = int(raw_starred)
+            elif isinstance(raw_starred, int) and raw_starred in {0, 1}:
+                new_val = raw_starred
+            elif isinstance(raw_starred, str) and raw_starred.strip() in {'0', '1'}:
+                new_val = int(raw_starred.strip())
+            else:
+                return failure('VALIDATION_ERROR', 'starred 必须是布尔值或 0/1', status=422)
         else:
             new_val = 0 if (row[0] or 0) else 1
         conn.execute('UPDATE products SET starred = ?, updated_at = datetime("now") WHERE product_id = ?', (new_val, product_id))
@@ -306,22 +433,22 @@ def toggle_star():
 @data_bp.route('/api/products/<product_id>/field', methods=['PUT'])
 def update_product_field(product_id):
     """行内快速编辑商品字段"""
-    data = request.get_json(force=True) or {}
-    field = data.get('field', '').strip()
-    value = data.get('value', '').strip()
+    data = json_object(request)
+    field = str(data.get('field') or '').strip()
+    value = str(data.get('value') or '').strip()
 
     # 安全设计：字段白名单防止SQL注入，仅允许以下字段通过f-string拼入SQL
     ALLOWED_FIELDS = ('tier', 'style', 'scene', 'manager', 'remark')
     if field not in ALLOWED_FIELDS:
-        return jsonify({'error': f'不允许修改字段「{field}」'}), 400
+        return failure('VALIDATION_ERROR', f'不允许修改字段「{field}」', status=422)
     if not product_id:
-        return jsonify({'error': '缺少product_id'}), 400
+        return failure('VALIDATION_ERROR', '缺少 product_id', status=422)
 
     with get_db() as conn:
         # 检查商品是否存在
         row = conn.execute('SELECT product_id FROM products WHERE product_id = ?', (product_id,)).fetchone()
         if not row:
-            return jsonify({'error': '商品不存在'}), 404
+            return failure('NOT_FOUND', '商品不存在', status=404)
 
         # 获取旧值用于日志
         old_row = conn.execute(f'SELECT {field} FROM products WHERE product_id = ?', (product_id,)).fetchone()
@@ -348,12 +475,12 @@ def update_product_field(product_id):
 # ==================== 批量更新 ====================
 @data_bp.route('/api/batch_update', methods=['POST'])
 def batch_update():
-    data = request.get_json(force=True)
-    field = data.get('field', '')
-    value = data.get('value', '')
-    ids = data.get('product_ids', [])
+    data = json_object(request)
+    field = str(data.get('field') or '').strip()
+    value = str(data.get('value') or '').strip()
+    ids = [str(item).strip() for item in (data.get('product_ids') or []) if str(item).strip()] if isinstance(data.get('product_ids'), list) else []
     if field not in ('tier', 'style') or not value or not ids:
-        return jsonify({'error': 'invalid params'}), 400
+        return failure('VALIDATION_ERROR', '商品字段、批量值和商品ID列表不能为空', status=422)
     with get_db() as conn:
         placeholders = ','.join(['?'] * len(ids))
         conn.execute(f"UPDATE products SET {field} = ?, updated_at = CURRENT_TIMESTAMP WHERE product_id IN ({placeholders})", [value] + ids)
@@ -393,6 +520,25 @@ def compare_periods():
     else:
         return failure('VALIDATION_ERROR', 'dim must be monthly, weekly, or daily', status=400)
 
+    period_format = '%Y-%m' if dim == 'monthly' else '%Y-%m-%d'
+    for period_name, period_value in (('period_a', period_a), ('period_b', period_b)):
+        try:
+            parsed_period = datetime.strptime(period_value, period_format)
+        except (TypeError, ValueError):
+            return failure(
+                'VALIDATION_ERROR',
+                f'{period_name} must use {period_format.replace("%Y", "YYYY").replace("%m", "MM").replace("%d", "DD")}',
+                {'dim': dim, period_name: period_value},
+                status=422,
+            )
+        if parsed_period.strftime(period_format) != period_value:
+            return failure(
+                'VALIDATION_ERROR',
+                f'{period_name} must use {period_format.replace("%Y", "YYYY").replace("%m", "MM").replace("%d", "DD")}',
+                {'dim': dim, period_name: period_value},
+                status=422,
+            )
+
     shop_id = get_shop_id()
     scope_sql = 'shop_id = ? AND ' if table == 'daily_data' else ''
     scope_params = (shop_id,) if table == 'daily_data' else ()
@@ -404,6 +550,7 @@ def compare_periods():
                 return None
             row = conn.execute(f'''
                 SELECT
+                    COUNT(*) as row_count,
                     COALESCE(SUM(payment_amount),0) as gmv,
                     COALESCE(SUM(refund_amount),0) as refund,
                     COALESCE(SUM(payment_amount),0) - COALESCE(SUM(refund_amount),0) as net_sales,
@@ -415,7 +562,10 @@ def compare_periods():
                     AVG(payment_conversion) as conversion
                 FROM {table} WHERE {scope_sql}{date_col} = ?
             ''', (*scope_params, p)).fetchone()
-            return dict(row) if row else None
+            result = dict(row) if row else None
+            if result and not result.pop('row_count', 0):
+                return None
+            return result
 
         def query_products(p):
             if not p:
@@ -522,7 +672,11 @@ def compare_periods():
                     'status': 'new',
                 })
 
-        product_changes.sort(key=lambda x: x.get('rank_diff') or 0, reverse=True)
+        if not (kpi_a and kpi_b):
+            # A missing period is unknown, not a zero-sales period.
+            product_changes = []
+        else:
+            product_changes.sort(key=lambda x: x.get('rank_diff') or 0, reverse=True)
 
         # 获取两个周期各自的趋势数据
         trend_rows_a = conn.execute(f'''
@@ -543,13 +697,14 @@ def compare_periods():
 
         trend_compare = {
             'labels': [period_a, period_b],
-            'series_a': [sum(dict(r).get('gmv', 0) for r in trend_rows_a)],
-            'series_b': [sum(dict(r).get('gmv', 0) for r in trend_rows_b)],
+            'series_a': [sum(dict(r).get('gmv', 0) for r in trend_rows_a) if trend_rows_a else None],
+            'series_b': [sum(dict(r).get('gmv', 0) for r in trend_rows_b) if trend_rows_b else None],
         }
 
     return jsonify({
         'period_a': period_a,
         'period_b': period_b,
+        'availability': 'available' if kpi_a and kpi_b else 'partial' if kpi_a or kpi_b else 'no-data',
         'kpi_compare': kpi_compare,
         'product_changes': product_changes,
         'trend_compare': trend_compare,
@@ -560,11 +715,11 @@ def compare_periods():
 @data_bp.route('/api/export', methods=['POST'])
 def export_data():
     """导出数据为Excel"""
-    data = request.get_json(force=True)
-    export_type = data.get('type', 'products')
-    period = data.get('period', '')
-    dim = data.get('dim', 'monthly')
-    export_shop = str(data.get('shop_id') or request.args.get('shop_id') or current_app.config.get('SHOP_ID') or os.environ.get('TMALL_SHOP_ID') or '').strip()
+    data = json_object(request)
+    export_type = str(data.get('type') or 'products').strip()
+    period = str(data.get('period') or '').strip()
+    dim = str(data.get('dim') or 'monthly').strip()
+    export_shop = str(request.args.get('shop_id') or current_app.config.get('SHOP_ID') or os.environ.get('TMALL_SHOP_ID') or '').strip()
     if dim in {'weekly', 'monthly'} and export_shop and export_shop != 'default':
         return failure(
             'UNSUPPORTED_SCOPE',
@@ -581,7 +736,7 @@ def export_data():
         ws.title = '商品数据'
         dim_cfg = DIMENSION_MAP.get(dim)
         if not dim_cfg:
-            return jsonify({'error': 'invalid dimension'}), 400
+            return failure('VALIDATION_ERROR', 'invalid dimension', {'dim': dim}, status=422)
         table, date_col = dim_cfg['table'], dim_cfg['date_col']
 
         # 筛选参数
@@ -957,7 +1112,10 @@ def get_products():
 
     dim_cfg = DIMENSION_MAP.get(dimension)
     if not dim_cfg:
-        return jsonify({'error': 'invalid dimension'}), 400
+        return failure('VALIDATION_ERROR', 'invalid dimension', {'dim': dimension}, status=422)
+    invalid = _validate_period_arg(dimension, period)
+    if invalid:
+        return invalid
     table = dim_cfg['table']
     date_col = dim_cfg['date_col']
     visitors_col = dim_cfg['visitors_col']
@@ -988,7 +1146,7 @@ def get_products():
 
     requested_period = period
     with get_db() as conn:
-        # 当前派米数据源提供的是月度事实。未指定月份时，使用最新可用月。
+        # 当前月度数据源提供的是月度事实。未指定月份时，使用最新可用月。
         # 对于当前月或历史月份，若该月尚未导入，则回退到不晚于请求月份的最新可用月；
         # 对明显未来的月份不回退，保留无事实数据的 partial 语义，避免把旧数据伪装成未来数据。
         if dimension == 'monthly':
@@ -1383,19 +1541,39 @@ def get_refund_alert():
     try:
         threshold = float(request.args.get('threshold', 0.20))
     except (ValueError, TypeError):
-        threshold = 0.20
+        return failure('VALIDATION_ERROR', 'threshold 必须是数字', status=422)
+    if not math.isfinite(threshold) or threshold < 0 or threshold > 1:
+        return failure('VALIDATION_ERROR', 'threshold 必须在 0 到 1 之间', {'threshold': threshold}, status=422)
     dimension = request.args.get('dim', 'monthly')
     period = request.args.get('period', '')
 
     dim_cfg = DIMENSION_MAP.get(dimension)
     if not dim_cfg:
-        return jsonify({'error': 'invalid dimension'}), 400
+        return failure('VALIDATION_ERROR', 'invalid dimension', {'dim': dimension}, status=422)
     table = dim_cfg['table']
     date_col = dim_cfg['date_col']
 
+    if period:
+        period_format = '%Y-%m' if dimension == 'monthly' else '%Y-%m-%d'
+        try:
+            parsed_period = datetime.strptime(period, period_format)
+        except (TypeError, ValueError):
+            return failure(
+                'VALIDATION_ERROR',
+                f'period must use {period_format.replace("%Y", "YYYY").replace("%m", "MM").replace("%d", "DD")}',
+                {'dim': dimension, 'period': period},
+                status=422,
+            )
+        if parsed_period.strftime(period_format) != period:
+            return failure(
+                'VALIDATION_ERROR',
+                f'period must use {period_format.replace("%Y", "YYYY").replace("%m", "MM").replace("%d", "DD")}',
+                {'dim': dimension, 'period': period},
+                status=422,
+            )
+
     with get_db() as conn:
         refund_rate_expr = 'd.refund_rate' if dimension == 'monthly' else 'CASE WHEN d.payment_amount > 0 THEN d.refund_amount * 1.0 / d.payment_amount ELSE 0 END'
-        refund_filter = 'd.refund_rate' if dimension == 'monthly' else 'd.refund_amount'
         rows = [dict(r) for r in conn.execute(f'''
             SELECT p.product_id, p.title, p.image_url,
                    d.payment_amount, d.refund_amount,
@@ -1403,9 +1581,9 @@ def get_refund_alert():
                    {refund_rate_expr} as refund_rate_val
             FROM products p
             JOIN {table} d ON p.product_id = d.product_id AND d.{date_col} = ?
-            WHERE p.status = 'active' AND {refund_filter} > 0
+            WHERE p.status = 'active' AND ({refund_rate_expr}) >= ?
             ORDER BY d.payment_amount DESC
-        ''', (period,)).fetchall()]
+        ''', (period, threshold)).fetchall()]
     return jsonify(rows)
 
 @data_bp.route('/api/ad_performance', methods=['GET'])
@@ -1416,7 +1594,10 @@ def get_ad_performance():
 
     dim_cfg = DIMENSION_MAP.get(dimension)
     if not dim_cfg:
-        return jsonify({'error': 'invalid dimension'}), 400
+        return failure('VALIDATION_ERROR', 'invalid dimension', {'dim': dimension}, status=422)
+    invalid = _validate_period_arg(dimension, period)
+    if invalid:
+        return invalid
     table = dim_cfg['table']
     date_col = dim_cfg['date_col']
 
@@ -1452,9 +1633,18 @@ def get_ad_alerts():
     
     dim_cfg = DIMENSION_MAP.get(dim)
     if not dim_cfg:
-        return jsonify([])
+        return failure('VALIDATION_ERROR', 'invalid dimension', {'dim': dim}, status=422)
     table = dim_cfg['table']
     date_col = dim_cfg['date_col']
+
+    if period:
+        period_format = '%Y-%m' if dim == 'monthly' else '%Y-%m-%d'
+        try:
+            parsed_period = datetime.strptime(period, period_format)
+        except (TypeError, ValueError):
+            return failure('VALIDATION_ERROR', 'invalid period format', {'dim': dim, 'period': period}, status=422)
+        if parsed_period.strftime(period_format) != period:
+            return failure('VALIDATION_ERROR', 'invalid period format', {'dim': dim, 'period': period}, status=422)
     
     with get_db() as conn:
         # Auto-detect latest period if not provided
@@ -1561,10 +1751,29 @@ def get_ad_trend():
     
     dim_cfg = DIMENSION_MAP.get(dim)
     if not dim_cfg:
-        return jsonify([])
+        return failure('VALIDATION_ERROR', 'invalid dimension', {'dim': dim}, status=422)
     table = dim_cfg['table']
     date_col = dim_cfg['date_col']
-    
+
+    if period:
+        period_format = '%Y-%m' if dim == 'monthly' else '%Y-%m-%d'
+        try:
+            parsed_period = datetime.strptime(period, period_format)
+        except (TypeError, ValueError):
+            return failure(
+                'VALIDATION_ERROR',
+                f'period must use {period_format.replace("%Y", "YYYY").replace("%m", "MM").replace("%d", "DD")}',
+                {'dim': dim, 'period': period},
+                status=422,
+            )
+        if parsed_period.strftime(period_format) != period:
+            return failure(
+                'VALIDATION_ERROR',
+                f'period must use {period_format.replace("%Y", "YYYY").replace("%m", "MM").replace("%d", "DD")}',
+                {'dim': dim, 'period': period},
+                status=422,
+            )
+
     with get_db() as conn:
         # Auto-detect latest period if not provided
         if not period:
@@ -1609,7 +1818,7 @@ def get_ad_trend():
                     GROUP BY {date_col}
                     ORDER BY {date_col} DESC
                 ''', periods).fetchall()]
-            except Exception:
+            except ValueError:
                 rows = []
         else:  # daily
             from datetime import timedelta
@@ -1630,7 +1839,7 @@ def get_ad_trend():
                     GROUP BY {date_col}
                     ORDER BY {date_col} DESC
                 ''', periods).fetchall()]
-            except Exception:
+            except ValueError:
                 rows = []
         
         # Reverse to chronological order
@@ -1659,7 +1868,7 @@ def get_periods():
         return unsupported
     dim_cfg = DIMENSION_MAP.get(dimension)
     if not dim_cfg:
-        return jsonify({'error': 'invalid dimension'}), 400
+        return failure('VALIDATION_ERROR', 'invalid dimension', {'dim': dimension}, status=422)
     table = dim_cfg['table']
     date_col = dim_cfg['date_col']
 
@@ -1724,9 +1933,18 @@ def get_traffic_structure():
     
     dim_cfg = DIMENSION_MAP.get(dim)
     if not dim_cfg:
-        return jsonify({'error': 'Invalid dimension'}), 400
+        return failure('VALIDATION_ERROR', 'invalid dimension', {'dim': dim}, status=422)
     table = dim_cfg['table']
     date_col = dim_cfg['date_col']
+
+    if period:
+        period_format = '%Y-%m' if dim == 'monthly' else '%Y-%m-%d'
+        try:
+            parsed_period = datetime.strptime(period, period_format)
+        except (TypeError, ValueError):
+            return failure('VALIDATION_ERROR', 'invalid period format', {'dim': dim, 'period': period}, status=422)
+        if parsed_period.strftime(period_format) != period:
+            return failure('VALIDATION_ERROR', 'invalid period format', {'dim': dim, 'period': period}, status=422)
     
     with get_db() as conn:
         # Auto-detect latest period if not provided
@@ -1734,7 +1952,13 @@ def get_traffic_structure():
             row = conn.execute(f'SELECT MAX({date_col}) as p FROM {table}').fetchone()
             period = row['p'] if row and row['p'] else ''
             if not period:
-                return jsonify({'structure': {}, 'trend': []})
+                return jsonify({
+                    'structure': {},
+                    'trend': [],
+                    'period': None,
+                    'dim': dim,
+                    'availability': 'no-data',
+                })
 
         # Current period traffic breakdown
         if dim == 'monthly':
@@ -1742,8 +1966,12 @@ def get_traffic_structure():
         else:
             traffic_cols = 'SUM(search_ipv) as search, SUM(recommend_ipv) as recommend, SUM(paid_ipv) as paid, SUM(organic_ipv) as organic, SUM(ipv) as total'
         
-        current = conn.execute(f'SELECT {traffic_cols} FROM {table} WHERE {date_col} = ?', (period,)).fetchone()
+        current = conn.execute(
+            f'SELECT COUNT(*) AS row_count, {traffic_cols} FROM {table} WHERE {date_col} = ?',
+            (period,),
+        ).fetchone()
         current = dict(current) if current else {}
+        current_has_rows = bool(current.pop('row_count', 0))
         
         total = current.get('total') or 0
         if total > 0:
@@ -1764,7 +1992,9 @@ def get_traffic_structure():
         
         # Trend (last 6 periods)
         trend = []
-        if dim == 'monthly':
+        if not current_has_rows:
+            rows = []
+        elif dim == 'monthly':
             rows = conn.execute(f'''
                 SELECT {date_col} as period,
                        SUM(search_ipv) as search, SUM(recommend_ipv) as recommend,
@@ -1785,7 +2015,7 @@ def get_traffic_structure():
                     FROM {table} WHERE {date_col} IN ({placeholders})
                     GROUP BY {date_col} ORDER BY {date_col} DESC
                 ''', periods).fetchall()
-            except Exception:
+            except ValueError:
                 rows = []
         else:
             rows = []
@@ -1801,7 +2031,13 @@ def get_traffic_structure():
             trend.append(r)
         trend.reverse()
     
-    return jsonify({'structure': structure, 'trend': trend, 'period': period, 'dim': dim})
+    return jsonify({
+        'structure': structure,
+        'trend': trend,
+        'period': period,
+        'dim': dim,
+        'availability': 'available' if current_has_rows else 'no-data',
+    })
 
 # ==================== 任务看板 API ====================
 
@@ -1841,7 +2077,7 @@ def get_tasks():
 @data_bp.route('/api/tasks', methods=['POST'])
 def create_task():
     """创建任务"""
-    data = request.get_json(force=True, silent=True) or {}
+    data = json_object(request)
     fields = {
         'title': str(data.get('title') or '').strip(),
         'description': str(data.get('description') or ''),
@@ -1872,7 +2108,7 @@ def create_task():
 @data_bp.route('/api/tasks/<int:task_id>', methods=['PUT'])
 def update_task(task_id):
     """更新任务"""
-    data = request.get_json(force=True, silent=True) or {}
+    data = json_object(request)
     normalized = dict(data)
     for field in ('title', 'description', 'status', 'priority', 'assignee', 'due_date'):
         if field in normalized:
@@ -1909,7 +2145,11 @@ def update_task(task_id):
 @data_bp.route('/api/tasks/<int:task_id>', methods=['DELETE'])
 def delete_task(task_id):
     """删除任务"""
-    data = request.get_json(force=True, silent=True) or {}
+    data = request.get_json(silent=True)
+    if data is None:
+        data = {}
+    elif not isinstance(data, dict):
+        return failure('VALIDATION_ERROR', '请求体必须是 JSON 对象', status=422)
     operator = data.get('operator') or data.get('actor') or 'admin'
     reason = data.get('reason') or '删除管理任务'
     with get_db() as conn:
@@ -1941,7 +2181,7 @@ def get_user_kpis():
 @data_bp.route('/api/user_kpis', methods=['POST'])
 def create_user_kpi():
     """创建用户KPI"""
-    data = request.get_json(force=True, silent=True) or {}
+    data = json_object(request)
     fields = {
         'user_name': str(data.get('user_name') or '').strip(),
         'period': str(data.get('period') or ''),
@@ -1973,7 +2213,7 @@ def create_user_kpi():
 @data_bp.route('/api/user_kpis/<int:kpi_id>', methods=['PUT'])
 def update_user_kpi(kpi_id):
     """更新用户KPI"""
-    data = request.get_json(force=True, silent=True) or {}
+    data = json_object(request)
     normalized = dict(data)
     for field in ('user_name', 'period', 'rating'):
         if field in normalized:
@@ -2011,7 +2251,11 @@ def update_user_kpi(kpi_id):
 @data_bp.route('/api/user_kpis/<int:kpi_id>', methods=['DELETE'])
 def delete_user_kpi(kpi_id):
     """删除用户KPI"""
-    data = request.get_json(force=True, silent=True) or {}
+    data = request.get_json(silent=True)
+    if data is None:
+        data = {}
+    elif not isinstance(data, dict):
+        return failure('VALIDATION_ERROR', '请求体必须是 JSON 对象', status=422)
     operator = data.get('operator') or data.get('actor') or 'admin'
     reason = data.get('reason') or '删除用户 KPI'
     with get_db() as conn:
@@ -2025,14 +2269,49 @@ def delete_user_kpi(kpi_id):
 
 # ==================== 搜索词效能 API ====================
 
+
+def _parse_keyword_date(value):
+    """Parse an explicit spreadsheet date without inventing a date."""
+    if value is None or (isinstance(value, float) and math.isnan(value)):
+        raise ValueError('日期不能为空')
+    text = str(value).strip()
+    if not text or text.lower() in {'nan', 'nat', 'none', 'null'}:
+        raise ValueError('日期不能为空')
+    try:
+        parsed = datetime.strptime(text, '%Y-%m-%d')
+    except ValueError:
+        try:
+            parsed = pd.to_datetime(value, errors='raise').to_pydatetime()
+        except (TypeError, ValueError, OverflowError):
+            raise ValueError('日期必须是有效日期，格式为 YYYY-MM-DD')
+    return parsed.strftime('%Y-%m-%d')
+
+
+def _parse_keyword_number(value, field, row_number):
+    if value is None or (isinstance(value, float) and math.isnan(value)):
+        raise ValueError(f'第{row_number}行「{field}」不能为空')
+    text = str(value).strip().replace(',', '').replace('，', '')
+    if not text:
+        raise ValueError(f'第{row_number}行「{field}」不能为空')
+    try:
+        number = float(text.rstrip('%'))
+    except (TypeError, ValueError):
+        raise ValueError(f'第{row_number}行「{field}」必须是数值')
+    if not math.isfinite(number):
+        raise ValueError(f'第{row_number}行「{field}」必须是有限数值')
+    if str(value).strip().endswith('%'):
+        number /= 100
+    return number
+
+
 @data_bp.route('/api/upload/keywords', methods=['POST'])
 def upload_keywords():
     """上传搜索词数据Excel"""
     if 'file' not in request.files:
-        return jsonify({'error': '未上传文件'}), 400
+        return failure('VALIDATION_ERROR', '未上传文件', status=422)
     file = request.files['file']
     if not file.filename.lower().endswith(('.xlsx', '.xls')):
-        return jsonify({'error': '仅支持Excel文件'}), 400
+        return failure('UNSUPPORTED_FILE_TYPE', '仅支持 Excel 文件', {'extensions': ['.xlsx', '.xls']}, status=422)
     
     import pandas as pd
     from db import init_db, get_db
@@ -2041,11 +2320,14 @@ def upload_keywords():
     
     try:
         df = pd.read_excel(file)
+        if df.empty or len(df.columns) == 0:
+            return failure('INVALID_DATA', '文件没有可导入的数据行', status=422)
         df.columns = [str(c).strip().lower() for c in df.columns]
         
         # Column mapping (生意参谋 common column names)
         col_map = {
             '搜索词': 'keyword', '关键词': 'keyword', 'keyword': 'keyword',
+            '日期': 'date', 'date': 'date', '统计日期': 'date',
             '搜索人气': 'popularity', '人气': 'popularity', 'popularity': 'popularity',
             '展现量': 'impressions', '展现': 'impressions', 'impressions': 'impressions',
             '点击量': 'clicks', '点击': 'clicks', 'clicks': 'clicks',
@@ -2071,32 +2353,37 @@ def upload_keywords():
                     break
         
         if 'keyword' not in renamed.values():
-            return jsonify({'error': '未找到搜索词列，请确认表头包含"搜索词"或"关键词"'}), 400
-        
+            return failure('MISSING_REQUIRED_FIELD', '未找到搜索词列，请确认表头包含"搜索词"或"关键词"', status=422)
+        if 'date' not in renamed.values():
+            return failure('MISSING_REQUIRED_FIELD', '未找到日期列，关键词文件必须包含「日期」或「统计日期」', status=422)
+        if len(set(renamed.values())) != len(renamed.values()):
+            return failure('VALIDATION_ERROR', '文件包含重复的关键词字段映射', status=422)
+
         df = df.rename(columns=renamed)
-        
-        # Extract date from filename or use today
-        import re
-        date_match = re.search(r'(\d{4}-\d{2}-\d{2})', file.filename)
-        if date_match:
-            date_str = date_match.group(1)
-        else:
-            date_match = re.search(r'(\d{4}\.\d{2}\.\d{2})', file.filename)
-            if date_match:
-                date_str = date_match.group(1).replace('.', '-')
-            else:
-                from datetime import datetime
-                date_str = datetime.now().strftime('%Y-%m-%d')
-        
-        # Normalize numeric values before calculating derived metrics. Tmall
-        # exports often use blank cells or "-" for unavailable values.
+
+        try:
+            df['date'] = df['date'].map(_parse_keyword_date)
+        except ValueError as error:
+            return failure('INVALID_DATA', str(error), status=422)
+
+        # Validate every supplied numeric cell; never coerce invalid values to zero.
         numeric_columns = [
             'popularity', 'impressions', 'clicks', 'ctr', 'cost', 'gmv',
             'cvr', 'roi', 'cpc', 'conversion',
         ]
-        for numeric_column in numeric_columns:
-            if numeric_column in df.columns:
-                df[numeric_column] = pd.to_numeric(df[numeric_column], errors='coerce').fillna(0)
+        try:
+            for numeric_column in numeric_columns:
+                if numeric_column in df.columns:
+                    df[numeric_column] = [
+                        _parse_keyword_number(value, numeric_column, index + 2)
+                        for index, value in enumerate(df[numeric_column])
+                    ]
+        except ValueError as error:
+            return failure('INVALID_DATA', str(error), status=422)
+
+        date_str = str(df['date'].iloc[0]) if not df.empty else None
+        if not date_str:
+            return failure('INVALID_DATA', '文件没有可导入的数据行', status=422)
 
         # Calculate derived metrics
         if 'ctr' not in df.columns and 'clicks' in df.columns and 'impressions' in df.columns:
@@ -2147,7 +2434,8 @@ def upload_keywords():
                         cpc=excluded.cpc, conversion=excluded.conversion,
                         efficacy=excluded.efficacy, category=excluded.category
                 ''', (
-                    date_str, kw,
+                    str(row.get('date')),
+                    kw,
                     int(row.get('popularity', 0) or 0),
                     int(row.get('impressions', 0) or 0),
                     int(row.get('clicks', 0) or 0),
@@ -2166,8 +2454,12 @@ def upload_keywords():
             conn.commit()
         
         return jsonify({'success': True, 'rows_imported': count, 'date': date_str})
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+    except (ValueError, TypeError, ImportError) as error:
+        current_app.logger.warning('Keyword upload validation failed: %s', error)
+        return failure('INVALID_DATA', '文件格式或数据无效，请检查表头、日期和数值', status=422)
+    except Exception:
+        current_app.logger.exception('Keyword upload failed')
+        return failure('IMPORT_FAILED', '文件解析或导入失败，请检查表格格式和数据内容', status=500)
 
 @data_bp.route('/api/keywords', methods=['GET'])
 def get_keywords():
@@ -2251,6 +2543,7 @@ def get_keywords():
         'dates': dates,
         'date': date,
         'summary': summary,
+        'availability': 'available' if total else 'no-data',
     })
 
 # ==================== 市场分析 API ====================
@@ -2260,31 +2553,32 @@ def upload_market():
     """上传市场分析数据文件"""
     files = request.files.getlist('files')
     if not files:
-        return jsonify({'error': 'No files uploaded'}), 400
+        return failure('VALIDATION_ERROR', '未上传文件', status=422)
 
-    os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+    upload_root = _upload_folder()
+    os.makedirs(upload_root, exist_ok=True)
     saved_paths = []
-
-    for file in files:
-        if not file.filename:
-            continue
-        filename, filepath = _unique_upload_path(file.filename)
-        file.save(filepath)
-        saved_paths.append(filepath)
-
-    if len(saved_paths) < 3:
-        return jsonify({'error': '需要至少3个文件（30天搜索、7天搜索、趋势分析）'}), 400
-
     try:
+        for file in files:
+            if not file.filename:
+                continue
+            filename, filepath = _unique_upload_path(file.filename)
+            file.save(filepath)
+            saved_paths.append(filepath)
+
+        if len(saved_paths) < 3:
+            return failure('VALIDATION_ERROR', '需要至少 3 个文件（30 天搜索、7 天搜索、趋势分析）', status=422)
+
         from scripts.import_market import identify_market_files, import_market_data
         identified = identify_market_files(saved_paths)
 
         if not identified['f30'] or not identified['f7'] or not identified['ft']:
-            return jsonify({
-                'success': False,
-                'error': '无法识别文件类型，请确保文件名包含"搜索排行"和"趋势分析"',
-                'identified': identified
-            }), 400
+            return failure(
+                'UNRECOGNIZED_FILES',
+                '无法识别文件类型，请确保文件名包含"搜索排行"和"趋势分析"',
+                {'identified': identified},
+                status=422,
+            )
 
         count = import_market_data(identified['f30'], identified['f7'], identified['ft'])
         return jsonify({
@@ -2292,8 +2586,11 @@ def upload_market():
             'count': count,
             'message': '市场分析数据导入成功，共处理 %d 个关键词' % count
         })
-    except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
+    except Exception:
+        current_app.logger.exception('Market data upload failed')
+        return failure('IMPORT_FAILED', '市场数据解析或导入失败，请检查文件内容', status=500)
+    finally:
+        _cleanup_upload_paths(saved_paths)
 
 
 @data_bp.route('/api/market/summary', methods=['GET'])
@@ -2560,7 +2857,11 @@ def get_anomalies():
 
     dim_cfg = DIMENSION_MAP.get(dimension)
     if not dim_cfg:
-        return jsonify({'error': 'invalid dimension'}), 400
+        return failure('VALIDATION_ERROR', 'invalid dimension', {'dim': dimension}, status=422)
+    for field, value in (('period', period), ('prev_period', prev_period)):
+        invalid = _validate_period_arg(dimension, value, field)
+        if invalid:
+            return invalid
     table = dim_cfg['table']
     date_col = dim_cfg['date_col']
     visitors_col = dim_cfg['visitors_col']
@@ -2572,6 +2873,7 @@ def get_anomalies():
                 return None
             row = conn.execute(f'''
                 SELECT
+                    COUNT(*) as row_count,
                     COALESCE(SUM(payment_amount),0) as gmv,
                     COALESCE(SUM(refund_amount),0) as refund,
                     COALESCE(SUM(payment_amount),0) - COALESCE(SUM(refund_amount),0) as net_sales,
@@ -2582,7 +2884,10 @@ def get_anomalies():
                     CASE WHEN SUM(ad_spend) > 0 THEN SUM(payment_amount) * 1.0 / SUM(ad_spend) ELSE 0 END as roi
                 FROM {table} WHERE {date_col} = ?
             ''', (p,)).fetchone()
-            return dict(row) if row else None
+            result = dict(row) if row else None
+            if result and not result.pop('row_count', 0):
+                return None
+            return result
 
         current = query_period(period)
         previous = query_period(prev_period)
@@ -2614,10 +2919,12 @@ def get_anomalies():
                             'severity': 'high' if abs(change) > anomaly_decline * 200 else 'warning'
                         })
 
+    availability = 'no-data' if current is None else ('partial' if previous is None else 'available')
     return jsonify({
         'period': period,
         'prev_period': prev_period,
         'anomaly_threshold': anomaly_decline,
+        'availability': availability,
         'anomalies': anomalies,
         'has_anomalies': len(anomalies) > 0
     })
@@ -2647,10 +2954,16 @@ def generate_alerts(conn, period):
 
     target = dict(target)
     actual = conn.execute('''
-        SELECT SUM(payment_amount) as gsv, SUM(ad_spend) as ad_spend, AVG(payment_conversion) as conversion
+        SELECT COUNT(*) as row_count,
+               SUM(payment_amount) as gsv,
+               SUM(ad_spend) as ad_spend,
+               AVG(payment_conversion) as conversion
         FROM monthly_data WHERE month = ?
     ''', (period,)).fetchone()
     actual = dict(actual) if actual else {}
+    if not actual.get('row_count'):
+        return
+    actual.pop('row_count', None)
 
     gsv_actual = actual.get('gsv', 0) or 0
     ad_actual = actual.get('ad_spend', 0) or 0
@@ -2731,6 +3044,11 @@ def get_target_progress():
     """目标完成进度 — 支持日/周/月维度"""
     period = request.args.get('period', '')
     dim = request.args.get('dim', 'monthly')
+    if dim not in DIMENSION_MAP:
+        return failure('VALIDATION_ERROR', 'invalid dimension', {'dim': dim}, status=422)
+    invalid = _validate_period_arg(dim, period)
+    if invalid:
+        return invalid
     unsupported = _reject_legacy_shop_scope(dim)
     if unsupported:
         return unsupported
@@ -2745,6 +3063,7 @@ def get_target_progress():
         if dim == 'daily':
             actual = conn.execute('''
                 SELECT
+                    COUNT(*) as row_count,
                     SUM(payment_amount) as gsv,
                     SUM(refund_amount) as refund,
                     SUM(payment_amount) - SUM(refund_amount) as net_sales,
@@ -2757,6 +3076,7 @@ def get_target_progress():
         elif dim == 'weekly':
             actual = conn.execute('''
                 SELECT
+                    COUNT(*) as row_count,
                     SUM(payment_amount) as gsv,
                     SUM(refund_amount) as refund,
                     SUM(payment_amount) - SUM(refund_amount) as net_sales,
@@ -2769,6 +3089,7 @@ def get_target_progress():
         else:
             actual = conn.execute('''
                 SELECT
+                    COUNT(*) as row_count,
                     SUM(payment_amount) as gsv,
                     SUM(refund_amount) as refund,
                     SUM(payment_amount) - SUM(refund_amount) as net_sales,
@@ -2779,6 +3100,8 @@ def get_target_progress():
                 FROM monthly_data WHERE month = ?
             ''', (period,)).fetchone()
         actual = dict(actual) if actual else None
+        if actual and not actual.pop('row_count', 0):
+            actual = None
 
         result = {'target': target, 'actual': actual, 'period': period, 'dim': dim}
 
@@ -2858,30 +3181,36 @@ def get_target_progress():
                 result['forecast_gap'] = round(gsv_target - result['gsv_forecast'], 0)
 
             # 同比数据
+            def add_yoy(previous):
+                if not previous or not previous.pop('row_count', 0):
+                    return
+                previous_gsv = previous.get('gsv')
+                previous_ad = previous.get('ad_spend')
+                if previous_gsv not in (None, 0):
+                    result['yoy_gsv'] = round((gsv_actual - previous_gsv) / previous_gsv * 100, 1)
+                if previous_ad not in (None, 0):
+                    result['yoy_ad'] = round((ad_actual - previous_ad) / previous_ad * 100, 1)
+
             if dim == 'monthly':
                 prev_period = _get_prev_month(period)
                 if prev_period:
                     prev = conn.execute('''
-                        SELECT SUM(payment_amount) as gsv, SUM(ad_spend) as ad_spend
+                        SELECT COUNT(*) as row_count, SUM(payment_amount) as gsv, SUM(ad_spend) as ad_spend
                         FROM monthly_data WHERE month = ?
                     ''', (prev_period,)).fetchone()
                     prev = dict(prev) if prev else None
-                    if prev:
-                        result['yoy_gsv'] = round((gsv_actual - (prev['gsv'] or 0)) / (prev['gsv'] or 1) * 100, 1)
-                        result['yoy_ad'] = round((ad_actual - (prev['ad_spend'] or 0)) / (prev['ad_spend'] or 1) * 100, 1)
+                    add_yoy(prev)
             elif dim == 'daily':
                 # 日维度：取前一天对比
                 try:
                     from datetime import timedelta
                     prev_date = (datetime.strptime(period, '%Y-%m-%d') - timedelta(days=1)).strftime('%Y-%m-%d')
                     prev = conn.execute('''
-                        SELECT SUM(payment_amount) as gsv, SUM(ad_spend) as ad_spend
+                        SELECT COUNT(*) as row_count, SUM(payment_amount) as gsv, SUM(ad_spend) as ad_spend
                         FROM daily_data WHERE shop_id = ? AND date = ?
                     ''', (shop_id, prev_date)).fetchone()
                     prev = dict(prev) if prev else None
-                    if prev:
-                        result['yoy_gsv'] = round((gsv_actual - (prev['gsv'] or 0)) / (prev['gsv'] or 1) * 100, 1)
-                        result['yoy_ad'] = round((ad_actual - (prev['ad_spend'] or 0)) / (prev['ad_spend'] or 1) * 100, 1)
+                    add_yoy(prev)
                 except (ValueError, IndexError):
                     pass
             elif dim == 'weekly':
@@ -2890,13 +3219,11 @@ def get_target_progress():
                     from datetime import timedelta
                     prev_week = (datetime.strptime(period, '%Y-%m-%d') - timedelta(days=7)).strftime('%Y-%m-%d')
                     prev = conn.execute('''
-                        SELECT SUM(payment_amount) as gsv, SUM(ad_spend) as ad_spend
+                        SELECT COUNT(*) as row_count, SUM(payment_amount) as gsv, SUM(ad_spend) as ad_spend
                         FROM weekly_data WHERE week_start = ?
                     ''', (prev_week,)).fetchone()
                     prev = dict(prev) if prev else None
-                    if prev:
-                        result['yoy_gsv'] = round((gsv_actual - (prev['gsv'] or 0)) / (prev['gsv'] or 1) * 100, 1)
-                        result['yoy_ad'] = round((ad_actual - (prev['ad_spend'] or 0)) / (prev['ad_spend'] or 1) * 100, 1)
+                    add_yoy(prev)
                 except (ValueError, IndexError):
                     pass
 
@@ -2909,6 +3236,9 @@ def get_product_target_progress():
     if (denied := reject_legacy_shop_scope('商品目标')):
         return denied
     period = request.args.get('period', '')
+    invalid = _validate_period_arg('monthly', period)
+    if invalid:
+        return invalid
     target_shop = (request.args.get('shop_id') or '').strip() or str(current_app.config.get('SHOP_ID') or os.environ.get('TMALL_SHOP_ID') or '').strip()
     if target_shop and target_shop != 'default':
         return failure('UNSUPPORTED_SCOPE', '商品目标当前不支持 shop_id；请先完成目标表店铺迁移', status=422)
@@ -2916,8 +3246,8 @@ def get_product_target_progress():
 
         rows = [dict(r) for r in conn.execute('''
             SELECT pt.*,
-                   COALESCE(m.payment_amount, 0) as actual_gsv,
-                   COALESCE(m.ad_spend, 0) as actual_ad_spend,
+                   m.payment_amount as actual_gsv,
+                   m.ad_spend as actual_ad_spend,
                    p.title, p.tier, p.image_url
             FROM product_targets pt
             LEFT JOIN monthly_data m ON pt.product_id = m.product_id AND m.month = pt.period
@@ -2928,9 +3258,9 @@ def get_product_target_progress():
 
         # 计算进度
         for r in rows:
-            if r['target_gsv'] and r['target_gsv'] > 0:
+            if r['actual_gsv'] is not None and r['target_gsv'] and r['target_gsv'] > 0:
                 r['gsv_progress'] = round(r['actual_gsv'] / r['target_gsv'] * 100, 1)
-            if r['target_ad_spend'] and r['target_ad_spend'] > 0:
+            if r['actual_ad_spend'] is not None and r['target_ad_spend'] and r['target_ad_spend'] > 0:
                 r['ad_progress'] = round(r['actual_ad_spend'] / r['target_ad_spend'] * 100, 1)
 
     return jsonify(rows)
@@ -2941,6 +3271,9 @@ def get_alerts():
     if (denied := reject_legacy_shop_scope('经营预警')):
         return denied
     period = request.args.get('period', '')
+    invalid = _validate_period_arg('monthly', period)
+    if invalid:
+        return invalid
     with get_db() as conn:
 
         # 仅在无预警记录时生成（避免重复插入）
@@ -2949,7 +3282,16 @@ def get_alerts():
             generate_alerts(conn, period)
 
         rows = [dict(r) for r in conn.execute('''
-            SELECT * FROM alerts WHERE period = ? AND dismissed = 0 ORDER BY severity DESC, created_at DESC
+            SELECT * FROM alerts
+            WHERE period = ? AND dismissed = 0
+            ORDER BY CASE severity
+                       WHEN 'critical' THEN 0
+                       WHEN 'high' THEN 1
+                       WHEN 'warning' THEN 2
+                       WHEN 'info' THEN 3
+                       ELSE 4
+                     END,
+                     created_at DESC
         ''', (period,)).fetchall()]
 
     return jsonify(rows)
@@ -2969,7 +3311,7 @@ def set_shop_target():
     """手动设置店铺目标"""
     if (denied := reject_legacy_shop_scope('店铺目标')):
         return denied
-    data = request.get_json(silent=True) or {}
+    data = json_object(request)
     period = str(data.get('period') or '').strip()
     try:
         datetime.strptime(period, '%Y-%m')
@@ -3036,6 +3378,9 @@ def get_health():
     """商品健康度（12维度）"""
     period = request.args.get('period', '')
     level = request.args.get('level', '')
+    invalid = _validate_period_arg('monthly', period)
+    if invalid:
+        return invalid
     with get_db() as conn:
 
         query = '''SELECT h.*,
@@ -3066,7 +3411,11 @@ def get_health():
             SELECT health_level, COUNT(*) as count FROM product_health WHERE period = ? GROUP BY health_level
         ''', (period,)).fetchall()]
 
-    return jsonify({'products': rows, 'stats': stats})
+    return jsonify({
+        'products': rows,
+        'stats': stats,
+        'availability': 'available' if rows else 'no-data',
+    })
 
 # ==================== 评价数据 API ====================
 
@@ -3074,34 +3423,40 @@ def get_health():
 def upload_reviews():
     """上传评价数据文件"""
     if 'file' not in request.files:
-        return jsonify({'error': 'No file'}), 400
+        return failure('VALIDATION_ERROR', '未上传文件', status=422)
 
     file = request.files['file']
     if not file.filename.lower().endswith(('.xlsx', '.xls', '.csv')):
-        return jsonify({'error': 'Unsupported file type'}), 400
+        return failure('UNSUPPORTED_FILE_TYPE', '仅支持 Excel 或 CSV 文件', {'extensions': ['.xlsx', '.xls', '.csv']}, status=422)
 
-    os.makedirs(UPLOAD_FOLDER, exist_ok=True)
-    filename, filepath = _unique_upload_path(file.filename)
-    file.save(filepath)
-
-    # 解析并导入
+    filepath = None
     try:
+        upload_root = _upload_folder()
+        os.makedirs(upload_root, exist_ok=True)
+        filename, filepath = _unique_upload_path(file.filename)
+        file.save(filepath)
+
+        # 解析并导入
         from scripts.import_data import import_reviews_from_file
         count = import_reviews_from_file(filepath)
         return jsonify({'success': True, 'count': count, 'filename': filename})
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+    except Exception:
+        current_app.logger.exception('Review upload failed')
+        return failure('IMPORT_FAILED', '评价文件解析或导入失败，请检查文件内容', status=500)
+    finally:
+        if filepath:
+            _cleanup_upload_paths([filepath])
 
 @data_bp.route('/api/upload/data', methods=['POST'])
 def upload_business_data():
     """上传核心业务数据Excel文件"""
     if 'file' not in request.files:
-        return jsonify({'error': 'No file uploaded'}), 400
+        return failure('VALIDATION_ERROR', '未上传文件', status=422)
 
     file = request.files['file']
     suffix = os.path.splitext(file.filename or '')[1].lower()
     if suffix not in {'.xlsx', '.xls', '.csv', '.zip'}:
-        return jsonify({'error': 'Only .xlsx, .xls, .csv, and .zip files are supported'}), 400
+        return failure('UNSUPPORTED_FILE_TYPE', '仅支持 .xlsx、.xls、.csv 和 .zip 文件', {'extensions': ['.xlsx', '.xls', '.csv', '.zip']}, status=422)
 
     import tempfile
     from scripts.import_data import import_excel_file
@@ -3111,55 +3466,58 @@ def upload_business_data():
         file.save(tmp.name)
         tmp_path = tmp.name
 
-    # 生成任务ID，立即返回，后台线程执行导入
     task_id = str(uuid.uuid4())[:8]
     filename = file.filename
+    request_app = current_app._get_current_object()
+    request_shop_id = get_shop_id()
 
-    def _do_import(task_id, file_path, filename):
+    def _do_import(task_id, file_path, filename, app, shop_id):
         """后台线程执行导入，更新进度"""
         try:
-            _import_progress[task_id] = {
+            _set_import_progress(task_id, {
                 'status': 'processing', 'progress': 10,
                 'message': '正在解析文件...', 'started_at': time.time()
-            }
+            })
 
-            result = import_excel_file(file_path)
+            # Recreate the request scope captured at submission time so the
+            # canonical importer uses the same app config, database, and shop.
+            with app.app_context(), app.test_request_context(
+                '/api/upload/data', query_string={'shop_id': shop_id}
+            ):
+                result = import_excel_file(file_path)
 
-            _import_progress[task_id] = {
+            _set_import_progress(task_id, {
                 'status': 'completed', 'progress': 100,
                 'message': f'导入完成，共 {result.get("total_rows", 0)} 行数据',
-                'result': result
-            }
-
-            # 记录操作日志
-            try:
-                with get_db() as conn:
-                    conn.execute(
-                        'INSERT INTO operation_logs (action, detail, operator) VALUES (?, ?, ?)',
-                        ('数据导入', f'导入文件: {filename}', 'admin')
-                    )
-                    conn.commit()
-            except Exception:
-                pass
-        except Exception as e:
-            _import_progress[task_id] = {
+                'result': result, 'finished_at': time.time(),
+            })
+        except Exception as error:
+            app.logger.exception('Business data import failed: %s', task_id)
+            _set_import_progress(task_id, {
                 'status': 'error', 'progress': 0,
-                'message': str(e)
-            }
+                'message': '导入失败，请检查文件格式和数据内容',
+                'error': str(error), 'finished_at': time.time(),
+            })
         finally:
             try:
                 os.unlink(file_path)
             except Exception:
                 pass
 
-    threading.Thread(target=_do_import, args=(task_id, tmp_path, filename), daemon=True).start()
+    threading.Thread(
+        target=_do_import,
+        args=(task_id, tmp_path, filename, request_app, request_shop_id),
+        daemon=True,
+    ).start()
     return jsonify({'success': True, 'task_id': task_id, 'message': '导入任务已提交'})
 
 
 @data_bp.route('/api/import_progress/<task_id>', methods=['GET'])
 def get_import_progress(task_id):
     """获取导入任务进度"""
-    progress = _import_progress.get(task_id, {})
+    progress = _get_import_progress(task_id)
+    if progress is None:
+        return failure('NOT_FOUND', '导入任务不存在或已过期', {'task_id': task_id}, status=404)
     return jsonify(progress)
 
 @data_bp.route('/api/reviews/summary', methods=['GET'])
@@ -3225,8 +3583,10 @@ def get_reviews_summary():
             SELECT rating, COUNT(*) as count FROM reviews {where} GROUP BY rating ORDER BY rating
         ''', params).fetchall()
 
+    stats_payload = dict(stats)
     return jsonify({
-        'stats': dict(stats),
+        'availability': 'available' if (stats_payload.get('total') or 0) else 'no-data',
+        'stats': stats_payload,
         'positive_dims': [dict(r) for r in pos_dims],
         'negative_dims': [dict(r) for r in neg_dims],
         'scenes': [dict(r) for r in scenes],
@@ -3271,18 +3631,20 @@ def get_alert_rules():
 @data_bp.route('/api/alert_rules', methods=['POST'])
 def create_alert_rule():
     """创建预警规则"""
-    data = request.get_json(force=True) or {}
-    metric = data.get('metric', '')
-    operator = data.get('operator', '')
+    data = json_object(request)
+    metric = str(data.get('metric') or '').strip()
+    operator = str(data.get('operator') or '').strip()
     threshold = data.get('threshold')
-    level = data.get('level', 'warning')
+    level = str(data.get('level') or 'warning').strip()
 
     if not metric or operator not in ('gt', 'lt', 'gte', 'lte') or threshold is None:
-        return jsonify({'error': '参数不完整'}), 400
+        return failure('VALIDATION_ERROR', '参数不完整', status=422)
     try:
         threshold = float(threshold)
     except (ValueError, TypeError):
-        return jsonify({'error': '阈值必须为数字'}), 400
+        return failure('VALIDATION_ERROR', '阈值必须为数字', status=422)
+    if not math.isfinite(threshold):
+        return failure('VALIDATION_ERROR', '阈值必须为有限数字', status=422)
     if level not in ('info', 'warning', 'danger'):
         level = 'warning'
 
@@ -3310,7 +3672,10 @@ def check_alerts():
 
     dim_cfg = DIMENSION_MAP.get(dimension)
     if not dim_cfg:
-        return jsonify({'error': 'invalid dimension'}), 400
+        return failure('VALIDATION_ERROR', 'invalid dimension', {'dim': dimension}, status=422)
+    invalid = _validate_period_arg(dimension, period)
+    if invalid:
+        return invalid
     table = dim_cfg['table']
     date_col = dim_cfg['date_col']
     visitors_col = dim_cfg['visitors_col']
@@ -3319,6 +3684,7 @@ def check_alerts():
         # 获取当前周期KPI汇总数据
         row = conn.execute(f'''
             SELECT
+                COUNT(*) as row_count,
                 COALESCE(SUM(payment_amount),0) as gmv,
                 COALESCE(SUM(payment_amount),0) - COALESCE(SUM(refund_amount),0) as net_sales,
                 COALESCE(SUM({visitors_col}),0) as visitors,
@@ -3329,10 +3695,11 @@ def check_alerts():
             FROM {table} WHERE {date_col} = ?
         ''', (period,)).fetchone()
 
-        if not row:
+        if not row or not row['row_count']:
             return jsonify([])
 
         current = dict(row)
+        current.pop('row_count', None)
 
         # 获取所有启用的规则
         rules = [dict(r) for r in conn.execute(
@@ -3384,12 +3751,17 @@ def get_notes(product_id):
 @data_bp.route('/api/notes', methods=['POST'])
 def add_note():
     """添加商品备注"""
-    data = request.get_json(force=True) or {}
-    product_id = data.get('product_id', '')
-    note = data.get('note', '').strip()
+    data = json_object(request)
+    product_id = str(data.get('product_id') or '').strip()
+    note = str(data.get('note') or '').strip()
     if not product_id or not note:
-        return jsonify({'error': '参数不完整'}), 400
+        return failure('VALIDATION_ERROR', '参数不完整', status=422)
     with get_db() as conn:
+        if not conn.execute(
+            'SELECT 1 FROM products WHERE product_id = ? LIMIT 1',
+            (product_id,),
+        ).fetchone():
+            return failure('NOT_FOUND', '商品不存在', status=404)
         conn.execute(
             'INSERT INTO product_notes (product_id, note) VALUES (?, ?)',
             (product_id, note)
@@ -3452,12 +3824,12 @@ def get_logs():
 @data_bp.route('/api/logs', methods=['POST'])
 def create_log():
     """记录操作日志"""
-    data = request.get_json(force=True) or {}
-    action = data.get('action', '').strip()
-    detail = data.get('detail', '').strip()
-    operator = data.get('operator', 'admin').strip()
+    data = json_object(request)
+    action = str(data.get('action') or '').strip()
+    detail = str(data.get('detail') or '').strip()
+    operator = str(data.get('operator') or 'admin').strip() or 'admin'
     if not action:
-        return jsonify({'error': 'action is required'}), 400
+        return failure('VALIDATION_ERROR', 'action is required', status=422)
     with get_db() as conn:
         conn.execute(
             'INSERT INTO operation_logs (action, detail, operator) VALUES (?, ?, ?)',
@@ -3472,6 +3844,27 @@ def get_review_data():
     """复盘数据 — 核心指标环比+同比"""
     dim = request.args.get('dim', 'monthly')
     period = request.args.get('period', '')
+
+    period_format = {'monthly': '%Y-%m', 'weekly': '%Y-%m-%d', 'daily': '%Y-%m-%d'}.get(dim)
+    if not period_format:
+        return failure('VALIDATION_ERROR', 'dim must be monthly, weekly, or daily', {'dim': dim}, status=422)
+    if period:
+        try:
+            parsed_period = datetime.strptime(period, period_format)
+        except (TypeError, ValueError):
+            return failure(
+                'VALIDATION_ERROR',
+                f'period must use {period_format.replace("%Y", "YYYY").replace("%m", "MM").replace("%d", "DD")}',
+                {'dim': dim, 'period': period},
+                status=422,
+            )
+        if parsed_period.strftime(period_format) != period:
+            return failure(
+                'VALIDATION_ERROR',
+                f'period must use {period_format.replace("%Y", "YYYY").replace("%m", "MM").replace("%d", "DD")}',
+                {'dim': dim, 'period': period},
+                status=422,
+            )
 
     with get_db() as conn:
         # Define metrics to compute
@@ -3510,6 +3903,7 @@ def get_review_data():
         # Current period
         current = conn.execute(f'''
             SELECT
+                COUNT(*) as row_count,
                 SUM(payment_amount) as gsv,
                 SUM(refund_amount) as refund_amount,
                 SUM(payment_amount) - SUM(refund_amount) as net_sales,
@@ -3527,6 +3921,9 @@ def get_review_data():
             FROM {table} WHERE {period_col} = ?
         ''', (period,)).fetchone()
         current = dict(current) if current else {}
+        current_has_rows = bool(current.pop('row_count', 0))
+        if not current_has_rows:
+            current = {}
 
         # Previous period (环比)
         if dim == 'monthly':
@@ -3535,19 +3932,20 @@ def get_review_data():
             from datetime import timedelta
             try:
                 prev_period = (datetime.strptime(period, '%Y-%m-%d') - timedelta(days=7)).strftime('%Y-%m-%d')
-            except Exception:
+            except ValueError:
                 prev_period = None
         else:  # daily
             from datetime import timedelta
             try:
                 prev_period = (datetime.strptime(period, '%Y-%m-%d') - timedelta(days=1)).strftime('%Y-%m-%d')
-            except Exception:
+            except ValueError:
                 prev_period = None
 
         prev = {}
         if prev_period:
             prev = conn.execute(f'''
                 SELECT
+                    COUNT(*) as row_count,
                     SUM(payment_amount) as gsv,
                     SUM(refund_amount) as refund_amount,
                     SUM(payment_amount) - SUM(refund_amount) as net_sales,
@@ -3565,6 +3963,8 @@ def get_review_data():
                 FROM {table} WHERE {period_col} = ?
             ''', (prev_period,)).fetchone()
             prev = dict(prev) if prev else {}
+            if not prev.pop('row_count', 0):
+                prev = {}
 
         # Same period last year (同比)
         yoy_period = None
@@ -3577,6 +3977,7 @@ def get_review_data():
         if yoy_period:
             yoy = conn.execute(f'''
                 SELECT
+                    COUNT(*) as row_count,
                     SUM(payment_amount) as gsv,
                     SUM(refund_amount) as refund_amount,
                     SUM(payment_amount) - SUM(refund_amount) as net_sales,
@@ -3594,6 +3995,8 @@ def get_review_data():
                 FROM {table} WHERE {period_col} = ?
             ''', (yoy_period,)).fetchone()
             yoy = dict(yoy) if yoy else {}
+            if not yoy.pop('row_count', 0):
+                yoy = {}
 
         # Build metrics list with changes
         metrics = [
@@ -3680,12 +4083,13 @@ def get_review_data():
                     ''', (p,)).fetchone()
                     if row and row['gsv']:
                         trend.append({'period': p, 'gsv': row['gsv'], 'ad_spend': row['ad_spend'], 'conversion': row['conversion']})
-            except Exception:
+            except ValueError:
                 pass
 
         return jsonify({
             'period': period,
             'dim': dim,
+            'availability': 'available' if current_has_rows else 'no-data',
             'prev_period': prev_period,
             'yoy_period': yoy_period,
             'metrics': result_metrics,
@@ -3705,12 +4109,22 @@ def generate_report():
 
     dim_cfg = DIMENSION_MAP.get(dim)
     if not dim_cfg:
-        return jsonify({'error': 'invalid dimension'}), 400
+        return failure('VALIDATION_ERROR', 'invalid dimension', {'dim': dim}, status=422)
+    invalid = _validate_period_arg(dim, period)
+    if invalid:
+        return invalid
     table = dim_cfg['table']
     date_col = dim_cfg['date_col']
     visitors_col = dim_cfg['visitors_col']
 
     with get_db() as conn:
+        has_period_rows = conn.execute(
+            f'SELECT 1 FROM {table} WHERE {date_col} = ? LIMIT 1',
+            (period,),
+        ).fetchone()
+        if not has_period_rows:
+            return jsonify({'error': 'no data for period'}), 404
+
         # 1. KPI汇总
         kpi_row = conn.execute(f'''
             SELECT
@@ -3835,11 +4249,32 @@ def get_multi_trend():
     shop_id = get_shop_id()
 
     if not periods_str:
-        return jsonify({'error': '请选择至少一个周期'}), 400
+        return failure('VALIDATION_ERROR', '请选择至少一个周期', status=422)
 
     periods = [p.strip() for p in periods_str.split(',') if p.strip()]
     if not periods:
-        return jsonify({'error': '请选择至少一个周期'}), 400
+        return failure('VALIDATION_ERROR', '请选择至少一个周期', status=422)
+
+    period_format = {'monthly': '%Y-%m', 'weekly': '%Y-%m-%d', 'daily': '%Y-%m-%d'}.get(dim)
+    if not period_format:
+        return failure('VALIDATION_ERROR', 'dim must be monthly, weekly, or daily', {'dim': dim}, status=422)
+    for period in periods:
+        try:
+            parsed_period = datetime.strptime(period, period_format)
+        except (TypeError, ValueError):
+            return failure(
+                'VALIDATION_ERROR',
+                f'periods must use {period_format.replace("%Y", "YYYY").replace("%m", "MM").replace("%d", "DD")}',
+                {'dim': dim, 'period': period},
+                status=422,
+            )
+        if parsed_period.strftime(period_format) != period:
+            return failure(
+                'VALIDATION_ERROR',
+                f'periods must use {period_format.replace("%Y", "YYYY").replace("%m", "MM").replace("%d", "DD")}',
+                {'dim': dim, 'period': period},
+                status=422,
+            )
 
     # 指标白名单
     metric_whitelist = {
@@ -3849,11 +4284,21 @@ def get_multi_trend():
         'refund_rate': None,  # 需要计算
     }
     if metric not in metric_whitelist:
-        return jsonify({'error': '不支持的指标'}), 400
+        return failure(
+            'VALIDATION_ERROR',
+            '不支持的指标',
+            {'metric': metric, 'accepted': sorted(metric_whitelist)},
+            status=422,
+        )
 
     dim_cfg = DIMENSION_MAP.get(dim)
     if not dim_cfg:
-        return jsonify({'error': '不支持的维度'}), 400
+        return failure(
+            'VALIDATION_ERROR',
+            '不支持的维度',
+            {'dim': dim, 'accepted': sorted(DIMENSION_MAP)},
+            status=422,
+        )
 
     result = {'periods': []}
 
@@ -3910,7 +4355,7 @@ def get_multi_trend():
                     week_start = period
                     week_end_dt = datetime.strptime(period, '%Y-%m-%d') + timedelta(days=6)
                     week_end = week_end_dt.strftime('%Y-%m-%d')
-                except Exception:
+                except ValueError:
                     data = []
                 else:
                     rows = conn.execute('''
@@ -3966,15 +4411,18 @@ def get_chart_events():
 @data_bp.route('/api/chart_events', methods=['POST'])
 def create_chart_event():
     """创建图表事件标注"""
-    data = request.get_json(force=True) or {}
-    event_date = data.get('event_date', '')
-    title = data.get('title', '')
-    description = data.get('description', '')
-    color = data.get('color', '#EF4444')
-    chart_type = data.get('chart_type', 'sales')
+    data = json_object(request)
+    event_date = str(data.get('event_date') or '').strip()
+    title = str(data.get('title') or '').strip()
+    description = str(data.get('description') or '').strip()
+    color = str(data.get('color') or '#EF4444').strip()
+    chart_type = str(data.get('chart_type') or 'sales').strip()
 
     if not event_date or not title:
-        return jsonify({'error': '日期和标题不能为空'}), 400
+        return failure('VALIDATION_ERROR', '日期和标题不能为空', status=422)
+    invalid = _validate_period_arg('daily', event_date, 'event_date')
+    if invalid:
+        return invalid
 
     with get_db() as conn:
         conn.execute(
@@ -4174,16 +4622,16 @@ def get_scheduled_tasks():
 @data_bp.route('/api/scheduled_tasks', methods=['POST'])
 def create_scheduled_task():
     """创建定时任务"""
-    data = request.get_json(force=True) or {}
-    task_name = data.get('task_name', '')
-    cron_expr = data.get('cron_expr', '')
+    data = json_object(request)
+    task_name = str(data.get('task_name') or '').strip()
+    cron_expr = str(data.get('cron_expr') or '').strip()
     try:
         file_pattern = _validate_file_pattern(data.get('file_pattern', '*.xlsx'))
     except ValueError as error:
         return jsonify({'success': False, 'error': str(error)}), 422
 
     if not task_name or not cron_expr:
-        return jsonify({'error': '任务名称和调度表达式不能为空'}), 400
+        return failure('VALIDATION_ERROR', '任务名称和调度表达式不能为空', status=422)
 
     next_run = _parse_cron_expr(cron_expr)
     next_run_str = next_run.strftime('%Y-%m-%d %H:%M:%S') if next_run else None
@@ -4200,7 +4648,7 @@ def create_scheduled_task():
 @data_bp.route('/api/scheduled_tasks/<int:task_id>', methods=['PUT'])
 def update_scheduled_task(task_id):
     """更新定时任务"""
-    data = request.get_json(force=True) or {}
+    data = json_object(request)
 
     with get_db() as conn:
         row = conn.execute('SELECT id FROM scheduled_tasks WHERE id = ?', (task_id,)).fetchone()
@@ -4212,12 +4660,12 @@ def update_scheduled_task(task_id):
             if data['enabled']:
                 conn.execute("UPDATE scheduled_tasks SET status = 'active' WHERE id = ? AND status = 'error'", (task_id,))
         if 'cron_expr' in data and data['cron_expr']:
-            cron_expr = data['cron_expr']
+            cron_expr = str(data['cron_expr']).strip()
             next_run = _parse_cron_expr(cron_expr)
             next_run_str = next_run.strftime('%Y-%m-%d %H:%M:%S') if next_run else None
             conn.execute('UPDATE scheduled_tasks SET cron_expr = ?, next_run = ? WHERE id = ?', (cron_expr, next_run_str, task_id))
         if 'task_name' in data:
-            conn.execute('UPDATE scheduled_tasks SET task_name = ? WHERE id = ?', (data['task_name'], task_id))
+            conn.execute('UPDATE scheduled_tasks SET task_name = ? WHERE id = ?', (str(data['task_name'] or '').strip(), task_id))
         if 'file_pattern' in data:
             try:
                 file_pattern = _validate_file_pattern(data['file_pattern'])
@@ -4259,9 +4707,10 @@ def run_scheduled_task(task_id):
                 import_excel_file(matched_files[0])
             status = 'active'
             message = f'任务 "{row["task_name"]}" 执行完成'
-        except Exception as e:
+        except Exception:
+            current_app.logger.exception('Legacy scheduled task failed: %s', task_id)
             status = 'error'
-            message = f'任务执行失败: {str(e)}'
+            message = '任务执行失败，请检查导入任务配置和文件内容'
 
         next_run = _parse_cron_expr(row['cron_expr'])
         next_run_str = next_run.strftime('%Y-%m-%d %H:%M:%S') if next_run else None
@@ -4275,16 +4724,16 @@ def run_scheduled_task(task_id):
 @data_bp.route('/api/batch_tags', methods=['POST'])
 def batch_add_tags():
     """批量添加商品标签"""
-    data = request.get_json(force=True) or {}
+    data = json_object(request)
     product_ids = data.get('product_ids', [])
-    tag = data.get('tag', '').strip()
+    tag = str(data.get('tag') or '').strip()
 
     if not isinstance(product_ids, list) or not product_ids or not tag:
-        return jsonify({'error': '商品ID列表和标签不能为空'}), 400
+        return failure('VALIDATION_ERROR', '商品ID列表和标签不能为空', status=422)
 
     product_ids = list(dict.fromkeys(str(pid).strip() for pid in product_ids if str(pid).strip()))
     if not product_ids:
-        return jsonify({'error': '商品ID列表和标签不能为空'}), 400
+        return failure('VALIDATION_ERROR', '商品ID列表和标签不能为空', status=422)
 
     with get_db() as conn:
         placeholders = ','.join(['?'] * len(product_ids))
@@ -4322,12 +4771,15 @@ def batch_add_tags():
 @data_bp.route('/api/batch_tags', methods=['DELETE'])
 def batch_remove_tags():
     """批量移除商品标签"""
-    data = request.get_json(force=True) or {}
+    data = json_object(request)
     product_ids = data.get('product_ids', [])
-    tag = data.get('tag', '').strip()
+    tag = str(data.get('tag') or '').strip()
 
-    if not product_ids or not tag:
-        return jsonify({'error': '商品ID列表和标签不能为空'}), 400
+    if not isinstance(product_ids, list) or not product_ids or not tag:
+        return failure('VALIDATION_ERROR', '商品ID列表和标签不能为空', status=422)
+    product_ids = list(dict.fromkeys(str(pid).strip() for pid in product_ids if str(pid).strip()))
+    if not product_ids:
+        return failure('VALIDATION_ERROR', '商品ID列表和标签不能为空', status=422)
 
     with get_db() as conn:
         placeholders = ','.join(['?'] * len(product_ids))
@@ -4351,9 +4803,28 @@ def get_customer_analysis():
 
     dim_cfg = DIMENSION_MAP.get(dim)
     if not dim_cfg:
-        return jsonify({'error': 'invalid dimension'}), 400
+        return failure('VALIDATION_ERROR', 'invalid dimension', {'dim': dim}, status=422)
     table = dim_cfg['table']
     date_col = dim_cfg['date_col']
+
+    if period:
+        period_format = '%Y-%m' if dim == 'monthly' else '%Y-%m-%d'
+        try:
+            parsed_period = datetime.strptime(period, period_format)
+        except (TypeError, ValueError):
+            return failure(
+                'VALIDATION_ERROR',
+                f'period must use {period_format.replace("%Y", "YYYY").replace("%m", "MM").replace("%d", "DD")}',
+                {'dim': dim, 'period': period},
+                status=422,
+            )
+        if parsed_period.strftime(period_format) != period:
+            return failure(
+                'VALIDATION_ERROR',
+                f'period must use {period_format.replace("%Y", "YYYY").replace("%m", "MM").replace("%d", "DD")}',
+                {'dim': dim, 'period': period},
+                status=422,
+            )
 
     # Customer mix is a store-level distinct-buyer metric. Product tables
     # cannot be summed here because one buyer may purchase multiple products.
@@ -4509,10 +4980,19 @@ def get_funnel_analysis():
 
     dim_cfg = DIMENSION_MAP.get(dim)
     if not dim_cfg:
-        return jsonify({'error': 'invalid dimension'}), 400
+        return failure('VALIDATION_ERROR', 'invalid dimension', {'dim': dim}, status=422)
     table = dim_cfg['table']
     date_col = dim_cfg['date_col']
     visitors_col = dim_cfg['visitors_col']
+
+    if period:
+        period_format = '%Y-%m' if dim == 'monthly' else '%Y-%m-%d'
+        try:
+            parsed_period = datetime.strptime(period, period_format)
+        except (TypeError, ValueError):
+            return failure('VALIDATION_ERROR', 'invalid period format', {'dim': dim, 'period': period}, status=422)
+        if parsed_period.strftime(period_format) != period:
+            return failure('VALIDATION_ERROR', 'invalid period format', {'dim': dim, 'period': period}, status=422)
 
     funnel_fields = {
         'monthly': {
@@ -4605,6 +5085,9 @@ def get_industry_benchmark():
     dim_cfg = DIMENSION_MAP.get(dim)
     if not dim_cfg:
         return failure('VALIDATION_ERROR', 'invalid dimension', {'dim': dim}, status=422)
+    invalid = _validate_period_arg(dim, period)
+    if invalid:
+        return invalid
     table = dim_cfg['table']
     date_col = dim_cfg['date_col']
     shop_ctr_expr = 'click_rate' if dim == 'monthly' else 'search_click_rate'
@@ -4675,7 +5158,10 @@ def get_product_tags():
 
     dim_cfg = DIMENSION_MAP.get(dim)
     if not dim_cfg:
-        return jsonify({'error': 'invalid dimension'}), 400
+        return failure('VALIDATION_ERROR', 'invalid dimension', {'dim': dim}, status=422)
+    invalid = _validate_period_arg(dim, period)
+    if invalid:
+        return invalid
     table = dim_cfg['table']
     date_col = dim_cfg['date_col']
 
@@ -4775,11 +5261,11 @@ def get_product_tags():
 @data_bp.route('/api/product_tags', methods=['POST'])
 def add_product_tag():
     """添加自定义标签"""
-    data = request.get_json(force=True) or {}
-    product_id = data.get('product_id', '')
-    tag = data.get('tag', '').strip()
+    data = json_object(request)
+    product_id = str(data.get('product_id') or '').strip()
+    tag = str(data.get('tag') or '').strip()
     if not product_id or not tag:
-        return jsonify({'error': '缺少参数'}), 400
+        return failure('VALIDATION_ERROR', '缺少参数', status=422)
 
     with get_db() as conn:
         try:
@@ -4788,8 +5274,9 @@ def add_product_tag():
                 (product_id, tag)
             )
             conn.commit()
-        except Exception as e:
-            return jsonify({'error': str(e)}), 500
+        except Exception:
+            current_app.logger.exception('Product tag write failed: %s', product_id)
+            return jsonify({'error': '标签保存失败，请稍后重试'}), 500
 
     return jsonify({'success': True})
 

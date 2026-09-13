@@ -3,9 +3,12 @@ import sys
 import tempfile
 import unittest
 import sqlite3
+import gzip
+import json
 import atexit
 import subprocess
 from pathlib import Path
+from unittest.mock import patch
 
 from flask import Flask
 
@@ -16,7 +19,6 @@ if PROJECT_ROOT not in sys.path:
 
 _TEST_DATA_DIR = tempfile.TemporaryDirectory(prefix='tmall-dashboard-factory-tests-')
 atexit.register(_TEST_DATA_DIR.cleanup)
-os.environ.setdefault('TMALL_DB_PATH', os.path.join(_TEST_DATA_DIR.name, 'dashboard.db'))
 
 
 class AppFactoryTests(unittest.TestCase):
@@ -47,6 +49,70 @@ class AppFactoryTests(unittest.TestCase):
         conn.close()
         self.assertIn("'quarter'", ddl)
         self.assertIn("'year'", ddl)
+
+    def test_database_url_environment_overrides_tmall_db_path(self):
+        from app import create_app
+
+        with tempfile.TemporaryDirectory() as temp_dir, patch.dict(os.environ, {
+            'DATABASE_URL': 'sqlite:///' + os.path.join(temp_dir, 'env.db').replace('\\\\', '/'),
+            'TMALL_DB_PATH': os.path.join(temp_dir, 'path.db'),
+        }, clear=False):
+            app = create_app({'TESTING': True})
+
+        self.assertTrue(app.config['DATABASE_PATH'].endswith(os.path.join(temp_dir, 'env.db')))
+        self.assertFalse(os.path.exists(os.path.join(temp_dir, 'path.db')))
+
+    def test_external_missing_scan_root_is_not_created_or_startup_blocking(self):
+        from app import create_app
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            external_root = os.path.join(temp_dir, 'external', 'missing')
+            app = create_app({'TESTING': True, 'IMPORT_SCAN_ALLOWED_ROOTS': [external_root]})
+            self.assertFalse(os.path.exists(external_root))
+            self.assertEqual(app.config['IMPORT_SCAN_ALLOWED_ROOTS'][-1], os.path.abspath(external_root))
+
+    def test_database_migration_is_idempotent_and_records_one_applied_step(self):
+        from db import SCHEMA_VERSION, init_db
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            database_path = os.path.join(temp_dir, 'idempotent.db')
+            init_db(database_path)
+            init_db(database_path)
+            connection = sqlite3.connect(database_path)
+            try:
+                rows = connection.execute(
+                    'SELECT version, state FROM schema_migrations ORDER BY version'
+                ).fetchall()
+            finally:
+                connection.close()
+
+        self.assertEqual(rows, [(SCHEMA_VERSION, 'applied')])
+
+        from db import SCHEMA_VERSION, init_db
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            database_path = os.path.join(temp_dir, 'schema.db')
+            init_db(database_path)
+            connection = sqlite3.connect(database_path)
+            try:
+                version = connection.execute('PRAGMA user_version').fetchone()[0]
+            finally:
+                connection.close()
+        self.assertEqual(version, SCHEMA_VERSION)
+
+    def test_database_connections_wait_for_concurrent_writers(self):
+        from db import get_connection, init_db
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            database_path = os.path.join(temp_dir, 'busy-timeout.db')
+            init_db(database_path)
+            connection = get_connection(database_path)
+            try:
+                self.assertEqual(connection.execute('PRAGMA journal_mode').fetchone()[0], 'wal')
+                self.assertEqual(connection.execute('PRAGMA busy_timeout').fetchone()[0], 10000)
+            finally:
+                connection.close()
+
     def test_factory_database_path_does_not_mutate_process_environment(self):
         from app import create_app
 
@@ -94,6 +160,16 @@ class AppFactoryTests(unittest.TestCase):
             expected = os.path.abspath(os.path.join(temp_dir, 'relative.db'))
             self.assertEqual(app.config['DATABASE_PATH'], expected)
             self.assertTrue(os.path.exists(expected))
+
+    def test_default_database_path_matches_raw_runtime_database(self):
+        from app import create_app
+        from config import DEFAULT_DATABASE_PATH, Config
+        from db import get_db_path
+
+        app = create_app({'TESTING': True})
+        self.assertEqual(app.config['DATABASE_PATH'], get_db_path())
+        self.assertEqual(app.config['DATABASE_PATH'], os.path.abspath(Config.DATABASE_PATH))
+        self.assertTrue(DEFAULT_DATABASE_PATH.endswith(os.path.join('data', 'dashboard.db')))
 
     def test_lan_requests_require_configured_basic_authentication(self):
         from app import create_app
@@ -158,37 +234,25 @@ class AppFactoryTests(unittest.TestCase):
             response.close()
 
 
-    def test_legacy_dashboard_remains_available(self):
+    def test_removed_legacy_and_demo_routes_are_not_exposed(self):
         from app import create_app
-        with create_app({'TESTING': True}).test_client() as client:
-            response = client.get('/legacy/')
-            self.assertEqual(response.status_code, 200)
-            response.close()
 
-    def test_demo_manifest_lists_active_pages(self):
-        from app import create_app
         with create_app({'TESTING': True}).test_client() as client:
-            response = client.get('/api/demo/manifest')
+            for path in ('/legacy/', '/demo/', '/api/demo/manifest', '/static/js/bundle.min.js'):
+                with self.subTest(path=path):
+                    response = client.get(path)
+                    self.assertEqual(response.status_code, 404)
+                    response.close()
+
+    def test_unknown_api_routes_use_structured_not_found_error(self):
+        from app import create_app
+
+        with create_app({'TESTING': True}).test_client() as client:
+            response = client.get('/api/does-not-exist')
             payload = response.get_json()
-            response.close()
-        self.assertEqual(payload['data_mode'], 'api')
-        self.assertEqual(
-            {page['id'] for page in payload['pages']},
-            {'overview', 'products', 'promotion', 'lifecycle', 'reviews', 'data-center', 'settings'},
-        )
-        lifecycle = next(page for page in payload['pages'] if page['id'] == 'lifecycle')
-        self.assertEqual(lifecycle['data'], 'api')
-        reviews = next(page for page in payload['pages'] if page['id'] == 'reviews')
-        self.assertEqual(reviews['data'], 'api')
-        data_center = next(page for page in payload['pages'] if page['id'] == 'data-center')
-        self.assertEqual(data_center['data'], 'api')
-        settings = next(page for page in payload['pages'] if page['id'] == 'settings')
-        self.assertEqual(settings['data'], 'api')
-        products = next(page for page in payload['pages'] if page['id'] == 'products')
-        self.assertEqual(products['data'], 'api')
-        promotion = next(page for page in payload['pages'] if page['id'] == 'promotion')
-        self.assertEqual(promotion['data'], 'api')
-        self.assertEqual(payload['version'], VERSION)
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(payload['code'], 'NOT_FOUND')
+        self.assertFalse(payload['ok'])
 
     def test_version_endpoint_is_current_and_uncached(self):
         from app import create_app
@@ -243,18 +307,6 @@ class AppFactoryTests(unittest.TestCase):
             compare_response.close()
             manage_response.close()
 
-    def test_manifest_uses_formal_routes(self):
-        from app import create_app
-
-        with create_app({'TESTING': True}).test_client() as client:
-            response = client.get('/api/demo/manifest')
-            payload = response.get_json()
-            response.close()
-        self.assertEqual(
-            [page['path'] for page in payload['pages']],
-            ['/', '/products', '/promotion', '/lifecycle', '/reviews', '/data-center', '/settings'],
-        )
-
     def test_health_check_confirms_database_connectivity(self):
         from app import create_app
 
@@ -264,12 +316,41 @@ class AppFactoryTests(unittest.TestCase):
             with app.test_client() as client:
                 response = client.get('/healthz')
                 payload = response.get_json()
-                response.close()
-
+            response.close()
         self.assertEqual(response.status_code, 200)
         self.assertTrue(payload['ok'])
         self.assertEqual(payload['data']['database'], 'ok')
         self.assertEqual(payload['data']['service'], 'tmall-dashboard')
+
+    def test_unexpected_api_failures_use_structured_non_diagnostic_error(self):
+        from app import create_app
+        from services.import_service import import_service
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            database_path = os.path.join(temp_dir, 'unexpected-error.db')
+            app = create_app({'TESTING': False, 'DATABASE_PATH': database_path})
+            with patch.object(import_service, 'list_batches', side_effect=RuntimeError('database internals')):
+                response = app.test_client().get('/api/imports')
+
+        payload = response.get_json()
+        self.assertEqual(response.status_code, 500)
+        self.assertFalse(payload['ok'])
+        self.assertEqual(payload['code'], 'INTERNAL_ERROR')
+        self.assertNotIn('database internals', response.get_data(as_text=True))
+        self.assertRegex(payload['requestId'], r'^[0-9a-f]{32}$')
+
+    def test_large_json_responses_are_compressed_when_client_supports_gzip(self):
+        from app import create_app
+
+        with create_app({'TESTING': True}).test_client() as client:
+            response = client.get('/api/page-capabilities', headers={'Accept-Encoding': 'gzip'})
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.headers.get('Content-Encoding'), 'gzip')
+            payload = json.loads(gzip.decompress(response.data))
+            self.assertTrue(payload['ok'])
+
+            declined = client.get('/api/page-capabilities', headers={'Accept-Encoding': 'gzip;q=0'})
+            self.assertIsNone(declined.headers.get('Content-Encoding'))
 
     def test_wsgi_module_exposes_factory_application(self):
         from wsgi import application

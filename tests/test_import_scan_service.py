@@ -49,6 +49,23 @@ class ImportScanServiceTests(unittest.TestCase):
                 'cron_expr': '* * * * *',
             })
 
+    def test_windows_style_traversal_and_unc_paths_are_rejected(self):
+        from services.import_scan_service import ImportScanValidationError, ImportScanService
+
+        for folder, code in (
+            (self.inbox + r'\..\outside', 'SCAN_FOLDER_TRAVERSAL'),
+            (self.inbox + r'/nested\..\outside', 'SCAN_FOLDER_TRAVERSAL'),
+            (r'\\server\share\imports', 'SCAN_FOLDER_LOCAL_ONLY'),
+            (r'\\?\C:\imports', 'SCAN_FOLDER_LOCAL_ONLY'),
+        ):
+            with self.subTest(folder=folder):
+                with self.assertRaises(ImportScanValidationError) as raised:
+                    ImportScanService.create_job({
+                        'task_name': 'invalid-path', 'folder_path': folder,
+                        'source_type': 'auto', 'cron_expr': '* * * * *',
+                    })
+                self.assertEqual(raised.exception.code, code)
+
     def test_desktop_mode_accepts_existing_local_folder_outside_allowlist(self):
         from services.import_scan_service import ImportScanService
 
@@ -150,6 +167,22 @@ class ImportScanServiceTests(unittest.TestCase):
         self.assertEqual(files[0]['status'], 'imported')
         self.assertIsNotNone(files[0]['batch_id'])
 
+    def test_read_stable_file_rejects_changes_after_discovery(self):
+        from services.import_scan_service import ImportScanConflictError, ImportScanService
+
+        path = os.path.join(self.inbox, 'changed.xlsx')
+        with open(path, 'wb') as handle:
+            handle.write(b'original')
+        stat = os.stat(path)
+        item = (path, 'changed.xlsx', stat.st_size, stat.st_mtime_ns, ImportScanService._file_hash(path))
+
+        with open(path, 'wb') as handle:
+            handle.write(b'replaced')
+
+        with self.assertRaises(ImportScanConflictError) as raised:
+            ImportScanService._read_stable_file(item)
+        self.assertEqual(raised.exception.code, 'FILE_UNSTABLE')
+
     def test_manual_scan_force_imports_a_new_file_without_stability_wait(self):
         from services.import_scan_service import ImportScanService
 
@@ -247,6 +280,20 @@ class ImportScanServiceTests(unittest.TestCase):
         self.assertEqual([result['job_id'] for result in results], [broken['id'], healthy['id']])
         self.assertEqual(results[0]['status'], 'failed')
         self.assertIn('folder_path', results[0]['error'])
+        broken_after_failure = ImportScanService.get_job(broken['id'])
+        self.assertEqual(broken_after_failure['status'], 'error')
+        self.assertEqual(broken_after_failure['enabled'], False)
+        self.assertGreater(
+            datetime.fromisoformat(broken_after_failure['next_run']),
+            datetime.now(timezone.utc),
+        )
+        follow_up = ImportScanService.run_due_jobs(now=datetime.now(timezone.utc) + timedelta(minutes=2))
+        self.assertEqual([result['job_id'] for result in follow_up], [healthy['id']])
+        # Re-enabling after the folder is restored returns the job to the
+        # schedulable state instead of requiring a database repair.
+        os.makedirs(broken_folder)
+        restored = ImportScanService.update_job(broken['id'], {'enabled': True})
+        self.assertEqual(restored['status'], 'active')
 
     def test_repeated_scan_of_same_file_version_does_not_create_second_batch(self):
         from db import get_db

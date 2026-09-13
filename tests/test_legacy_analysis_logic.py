@@ -125,6 +125,12 @@ class LegacyAnalysisLogicTests(unittest.TestCase):
         self.assertIsNone(payload['steps'][4]['value'])
         self.assertIn('cart_qty', payload['missing_fields'])
 
+    def test_funnel_rejects_malformed_period(self):
+        response = self.client.get('/api/funnel?dim=daily&period=2026-02-30')
+
+        self.assertEqual(response.status_code, 422)
+        self.assertEqual(response.get_json()['code'], 'VALIDATION_ERROR')
+
     def test_legacy_batch_tags_does_not_claim_missing_or_duplicate_products(self):
         from db import get_db
         with get_db(self.database_path) as connection:

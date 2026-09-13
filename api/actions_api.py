@@ -1,6 +1,7 @@
+from datetime import date
 from flask import Blueprint, request
 
-from api.api_response import evidence_level_for, failure, limitations_for, success
+from api.api_response import evidence_level_for, failure, json_object, limitations_for, success
 from services.actions_service import ActionConflictError, ActionValidationError, actions_service
 from db import get_db
 from services.shop_scope_service import reject_legacy_shop_scope
@@ -11,12 +12,12 @@ def _authorize_product_action(payload, *, capability='product-detail.create_acti
 
     There is no user/session identity in the demo runtime, so capability is an
     explicit contract marker. Legacy callers may omit it for compatibility;
-    when supplied it must match the formal capability and the product must
-    exist. This keeps authorization at the server boundary rather than relying
-    solely on button state in the browser.
+    when supplied it must match a registered formal create capability and the
+    product must exist.
     """
     requested = payload.get('capability_key')
-    if requested is not None and requested != capability:
+    allowed = {capability} if isinstance(capability, str) else set(capability)
+    if requested is not None and requested not in allowed:
         return failure('FORBIDDEN', '当前接口不允许该能力标识', {'capability': requested}, status=403)
     product_ids = payload.get('product_ids') if isinstance(payload.get('product_ids'), list) else [payload.get('product_id')]
     product_ids = [str(item) for item in product_ids if item]
@@ -78,8 +79,8 @@ def _write_success(result, *, action, status=200, availability='available', unkn
 def create_action():
     if (denied := _legacy_scope_denied()):
         return denied
-    payload = request.get_json(silent=True) or {}
-    denied = _authorize_product_action(payload)
+    payload = json_object(request)
+    denied = _authorize_product_action(payload, capability={'product-detail.create_action', 'overview.create_action'})
     if denied:
         return denied
     try:
@@ -92,7 +93,7 @@ def create_action():
 def create_actions_batch():
     if (denied := _legacy_scope_denied()):
         return denied
-    payload = request.get_json(silent=True) or {}
+    payload = json_object(request)
     denied = _authorize_product_action(payload)
     if denied:
         return denied
@@ -126,11 +127,43 @@ def list_actions():
     )
 
 
+@actions_bp.route('/api/actions/calendar', methods=['GET'])
+def calendar_actions():
+    if (denied := _legacy_scope_denied()):
+        return denied
+    from repos.actions_repo import ActionsRepo
+    start = request.args.get('start', '').strip()
+    end = request.args.get('end', '').strip()
+    if not start or not end:
+        return failure('VALIDATION_ERROR', 'start 和 end 为必填日期', status=422)
+    try:
+        start_date = date.fromisoformat(start)
+        end_date = date.fromisoformat(end)
+    except ValueError:
+        return failure('VALIDATION_ERROR', 'start 和 end 必须使用 YYYY-MM-DD 格式', status=422)
+    if end_date < start_date:
+        return failure('VALIDATION_ERROR', 'end 不能早于 start', status=422)
+    if (end_date - start_date).days > 365:
+        return failure('VALIDATION_ERROR', '动作日历查询范围不能超过 366 天', status=422)
+    status = request.args.get('status', '').strip() or None
+    rows = ActionsRepo.list_calendar_actions(start, end, status)
+    availability = 'available' if rows else 'no-data'
+    missing_inputs = [] if rows else ['actions.calendar']
+    return success(
+        rows,
+        availability=availability,
+        evidence_level=evidence_level_for(availability, missing_inputs=missing_inputs),
+        missing_inputs=missing_inputs,
+        limitations=limitations_for(availability, missing_inputs=missing_inputs),
+        evidence=[{'source': 'product_actions', 'row_count': len(rows), 'start': start, 'end': end}],
+    )
+
+
 @actions_bp.route('/api/actions/<action_id>/transition', methods=['POST'])
 def transition_action(action_id):
     if (denied := _legacy_scope_denied()):
         return denied
-    payload = request.get_json(silent=True) or {}
+    payload = json_object(request)
     denied = _authorize_capability(payload, 'product-detail.review_action')
     if denied:
         return denied
@@ -156,7 +189,7 @@ def delete_legacy_action(action_id):
 def recalculate_actions():
     if (denied := _legacy_scope_denied()):
         return denied
-    payload = request.get_json(silent=True) or {}
+    payload = json_object(request)
     denied = _authorize_capability(payload, 'product-detail.review_action')
     if denied:
         return denied
@@ -174,7 +207,7 @@ def recalculate_actions():
 def review_action(action_id):
     if (denied := _legacy_scope_denied()):
         return denied
-    payload = request.get_json(silent=True) or {}
+    payload = json_object(request)
     denied = _authorize_capability(payload, 'product-detail.review_action')
     if denied:
         return denied

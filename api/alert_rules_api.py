@@ -1,6 +1,6 @@
 from flask import Blueprint, request
 
-from api.api_response import evidence_level_for, failure, limitations_for, success
+from api.api_response import evidence_level_for, failure, json_object, limitations_for, success
 from services.alert_rules_service import (
     AlertRuleNotFoundError,
     AlertRuleValidationError,
@@ -32,7 +32,7 @@ def list_alert_rules():
 @alert_rules_bp.route('/api/alert-rules', methods=['POST'])
 def create_alert_rule():
     try:
-        result = alert_rules_service.create(request.get_json(silent=True) or {})
+        result = alert_rules_service.create(json_object(request))
         return success(result, status=201, evidence_level='full',
                        evidence=[{'source': 'alert_rules', 'rule_id': result.get('id'), 'action': 'create'}])
     except AlertRuleValidationError as error:
@@ -42,7 +42,7 @@ def create_alert_rule():
 @alert_rules_bp.route('/api/alert-rules/<int:rule_id>', methods=['PUT'])
 def update_alert_rule(rule_id):
     try:
-        result = alert_rules_service.update(rule_id, request.get_json(silent=True) or {})
+        result = alert_rules_service.update(rule_id, json_object(request))
         return success(result, evidence_level='full',
                        evidence=[{'source': 'alert_rules', 'rule_id': rule_id, 'action': 'update'}])
     except AlertRuleValidationError as error:
@@ -54,7 +54,7 @@ def update_alert_rule(rule_id):
 @alert_rules_bp.route('/api/alert-rules/<int:rule_id>', methods=['DELETE'])
 def delete_alert_rule(rule_id):
     try:
-        payload = request.get_json(silent=True) or {}
+        payload = json_object(request)
         alert_rules_service.delete(
             rule_id,
             payload.get('actor') or payload.get('operator') or 'admin',

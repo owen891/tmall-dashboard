@@ -1,6 +1,6 @@
 from flask import Blueprint, request
 
-from api.api_response import evidence_level_for, failure, limitations_for, success
+from api.api_response import evidence_level_for, failure, json_object, limitations_for, success
 from services.goals_service import GoalConflictError, GoalValidationError, goals_service
 from services.shop_scope_service import reject_legacy_shop_scope
 
@@ -16,7 +16,7 @@ def _legacy_scope_denied():
 def save_goals():
     if (denied := _legacy_scope_denied()):
         return denied
-    payload = request.get_json(silent=True) or {}
+    payload = json_object(request)
     try:
         result = goals_service.create_or_replace(
             payload.get('year'), payload.get('annual_target'), payload.get('version'),
@@ -83,7 +83,7 @@ def get_goals(year):
 def lock_goals(year):
     if (denied := _legacy_scope_denied()):
         return denied
-    payload = request.get_json(silent=True) or {}
+    payload = json_object(request)
     try:
         result = goals_service.lock_period(
             year, payload.get('version'), payload.get('period_type'), payload.get('period_key'),
@@ -129,7 +129,7 @@ def goal_periods(year):
 def adjust_goal_period(year):
     if (denied := _legacy_scope_denied()):
         return denied
-    payload = request.get_json(silent=True) or {}
+    payload = json_object(request)
     try:
         result = goals_service.adjust_period(
             year, payload.get('version'), payload.get('period_type'), payload.get('period_key'),

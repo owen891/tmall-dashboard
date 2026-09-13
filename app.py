@@ -1,9 +1,10 @@
+import gzip
 import hmac
 from urllib.parse import unquote, urlsplit
 
-from flask import Flask, jsonify, redirect, render_template, request, send_from_directory
+from flask import Flask, g, jsonify, redirect, request, send_from_directory
 from werkzeug.local import LocalProxy
-from werkzeug.exceptions import RequestEntityTooLarge
+from werkzeug.exceptions import HTTPException, RequestEntityTooLarge
 import os
 from db import get_db, get_db_path, init_db
 from api.data_api import data_bp
@@ -26,10 +27,11 @@ from api.overview_events_api import overview_events_bp
 from api.schedules_api import schedules_bp
 from api.import_scans_api import import_scans_bp
 from api.manage_api import manage_bp
-from config import APP_VERSION, Config, _sqlite_url
+from api.api_response import JsonObjectError
+from config import APP_VERSION, Config, DEFAULT_IMPORT_SCAN_INBOX, _sqlite_url, normalize_import_scan_roots
 from desktop_runtime import resource_root
+from services.shop_scope_service import authorize_request_shop, current_request_shop_id
 from models import db as orm_db
-
 # 获取项目根目录的绝对路径
 project_root = resource_root()
 demo_root = os.path.join(project_root, 'frontend', 'ui_demo')
@@ -52,31 +54,38 @@ def _database_path_from_uri(uri):
     return os.path.abspath(path)
 
 def create_app(config=None):
-    explicit_sqlalchemy_uri = bool(config and 'SQLALCHEMY_DATABASE_URI' in config)
-    app = Flask(
-        __name__,
-        template_folder=os.path.join(project_root, 'templates'),
-        static_folder=os.path.join(project_root, 'static'),
+    # An environment DATABASE_URL must be treated exactly like an explicit
+    # factory URI; otherwise the later DATABASE_PATH normalization silently
+    # replaces it with the default SQLite file.
+    explicit_sqlalchemy_uri = bool(
+        (config and 'SQLALCHEMY_DATABASE_URI' in config)
+        or os.environ.get('DATABASE_URL')
     )
+    app = Flask(__name__, static_folder=None)
     app.config.from_object(Config)
     app.config.setdefault('MAX_CONTENT_LENGTH', 25 * 1024 * 1024)
     if config:
         app.config.from_mapping(config)
 
     if explicit_sqlalchemy_uri:
-        app.config['DATABASE_PATH'] = _database_path_from_uri(
-            app.config['SQLALCHEMY_DATABASE_URI']
-        )
+        uri = app.config['SQLALCHEMY_DATABASE_URI']
+        if not (config and 'SQLALCHEMY_DATABASE_URI' in config):
+            uri = os.environ.get('DATABASE_URL', uri)
+        app.config['SQLALCHEMY_DATABASE_URI'] = uri
+        app.config['DATABASE_PATH'] = _database_path_from_uri(uri)
     else:
-        app.config['DATABASE_PATH'] = os.path.abspath(
-            app.config.get('DATABASE_PATH') or get_db_path()
-        )
+        configured_path = (config or {}).get('DATABASE_PATH') or os.environ.get('TMALL_DB_PATH') or app.config.get('DATABASE_PATH') or get_db_path()
+        app.config['DATABASE_PATH'] = os.path.abspath(configured_path)
         app.config['SQLALCHEMY_DATABASE_URI'] = _sqlite_url(app.config['DATABASE_PATH'])
-    scan_roots = app.config.get('IMPORT_SCAN_ALLOWED_ROOTS') or []
-    if isinstance(scan_roots, str):
-        scan_roots = [scan_roots]
+    scan_roots = normalize_import_scan_roots(app.config.get('IMPORT_SCAN_ALLOWED_ROOTS'))
+    app.config['IMPORT_SCAN_ALLOWED_ROOTS'] = scan_roots
+    own_inbox = os.path.normcase(os.path.realpath(os.path.abspath(DEFAULT_IMPORT_SCAN_INBOX)))
     for scan_root in scan_roots:
-        os.makedirs(os.path.abspath(scan_root), exist_ok=True)
+        normalized_root = os.path.abspath(scan_root)
+        if os.path.normcase(os.path.realpath(normalized_root)) == own_inbox:
+            os.makedirs(normalized_root, exist_ok=True)
+        elif not os.path.isdir(normalized_root):
+            app.logger.warning('Configured external import scan root is unavailable: %s', normalized_root)
 
     orm_db.init_app(app)
     app.register_blueprint(status_bp)
@@ -100,6 +109,25 @@ def create_app(config=None):
     app.register_blueprint(import_scans_bp)
     app.register_blueprint(manage_bp)
     init_db(app.config['DATABASE_PATH'])
+
+    @app.before_request
+    def reject_malformed_json():
+        if (request.method in {'POST', 'PUT', 'PATCH', 'DELETE'}
+                and request.mimetype == 'application/json'
+                and request.get_data(cache=True)):
+            from werkzeug.exceptions import BadRequest
+            try:
+                request.get_json(silent=False)
+            except BadRequest:
+                from api.api_response import failure
+                return failure('VALIDATION_ERROR', '请求体不是合法 JSON', status=422)
+
+    @app.before_request
+    def bind_and_authorize_shop_scope():
+        denied = authorize_request_shop()
+        if denied is not None:
+            return denied
+        g.shop_id = current_request_shop_id()
 
     @app.before_request
     def require_lan_authentication():
@@ -135,6 +163,22 @@ def create_app(config=None):
             response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
             response.headers['Pragma'] = 'no-cache'
             response.headers['Expires'] = '0'
+        accepts_gzip = False
+        for encoding in (request.headers.get('Accept-Encoding') or '').split(','):
+            parts = [part.strip() for part in encoding.lower().split(';')]
+            if not parts or parts[0] != 'gzip':
+                continue
+            quality = next((part[2:].strip() for part in parts[1:] if part.startswith('q=')), None)
+            try:
+                accepts_gzip = quality is None or float(quality) > 0
+            except ValueError:
+                accepts_gzip = False
+            break
+        compressible = response.status_code == 200 and response.content_type.startswith('application/json')
+        if accepts_gzip and compressible and response.content_length and response.content_length >= 1024 and not response.headers.get('Content-Encoding'):
+            response.set_data(gzip.compress(response.get_data(), mtime=0))
+            response.headers['Content-Encoding'] = 'gzip'
+            response.headers.add('Vary', 'Accept-Encoding')
         response.headers.setdefault('X-Content-Type-Options', 'nosniff')
         response.headers.setdefault('X-Frame-Options', 'SAMEORIGIN')
         response.headers.setdefault('Referrer-Policy', 'strict-origin-when-cross-origin')
@@ -144,6 +188,39 @@ def create_app(config=None):
     def payload_too_large(_error):
         from api.api_response import failure
         return failure('PAYLOAD_TOO_LARGE', '上传文件超过 25 MB 限制', status=413)
+
+    @app.errorhandler(HTTPException)
+    def api_http_error(error):
+        if not request.path.startswith('/api/'):
+            return error
+        code = {
+            404: 'NOT_FOUND',
+            405: 'METHOD_NOT_ALLOWED',
+        }.get(error.code, 'HTTP_ERROR')
+        message = {
+            404: '接口不存在',
+            405: '请求方法不被支持',
+        }.get(error.code, '请求无法处理')
+        from api.api_response import failure
+        return failure(code, message, status=error.code or 500)
+
+    @app.errorhandler(JsonObjectError)
+    def invalid_json_object(error):
+        from api.api_response import failure
+        return failure('VALIDATION_ERROR', str(error), status=422)
+
+    @app.errorhandler(Exception)
+    def unexpected_error(error):
+        if isinstance(error, HTTPException):
+            return error
+        if app.testing:
+            raise error
+        # Keep unexpected service failures on the JSON contract. The detailed
+        # exception stays in server logs; ordinary users only need a stable
+        # retryable response and request id.
+        from api.api_response import failure
+        app.logger.exception('Unhandled request failure: %s %s', request.method, request.path)
+        return failure('INTERNAL_ERROR', '服务暂时不可用，请稍后重试', status=500)
 
     @app.route('/')
     def index():
@@ -163,22 +240,6 @@ def create_app(config=None):
     def product_detail_page(product_id):
         return send_from_directory(os.path.join(demo_root, 'pages'), 'product-detail.html', max_age=0)
 
-    @app.route('/legacy/')
-    def legacy_index():
-        return render_template('dashboard.html')
-
-    @app.route('/static/<path:path>')
-    def static_files(path):
-        return send_from_directory(os.path.join(project_root, 'static'), path)
-
-    @app.route('/demo/')
-    def demo_index():
-        return send_from_directory(demo_root, 'index.html', max_age=0)
-
-    @app.route('/demo/<path:path>')
-    def demo_files(path):
-        return send_from_directory(demo_root, path, max_age=0)
-
     @app.route('/pages/<path:path>')
     def product_pages(path):
         return send_from_directory(os.path.join(demo_root, 'pages'), path, max_age=0)
@@ -187,23 +248,6 @@ def create_app(config=None):
     @app.route('/assets/<path:path>')
     def demo_assets(path):
         return send_from_directory(os.path.join(demo_root, 'assets'), path, max_age=0)
-
-    @app.route('/api/demo/manifest')
-    def demo_manifest():
-        return jsonify({
-            'name': 'tmall-dashboard',
-            'version': APP_VERSION,
-            'data_mode': 'api',
-            'pages': [
-                {'id': 'overview', 'path': '/', 'data': 'api', 'endpoint': '/api/overview'},
-                {'id': 'products', 'path': '/products', 'data': 'api', 'endpoint': '/api/products'},
-                {'id': 'promotion', 'path': '/promotion', 'data': 'api', 'endpoint': '/api/ad_trend'},
-                {'id': 'lifecycle', 'path': '/lifecycle', 'data': 'api', 'endpoint': '/api/lifecycle'},
-                {'id': 'reviews', 'path': '/reviews', 'data': 'api', 'endpoint': '/api/actions/pending-review'},
-                {'id': 'data-center', 'path': '/data-center', 'data': 'api', 'endpoint': '/api/imports/preview'},
-                {'id': 'settings', 'path': '/settings', 'data': 'api', 'endpoint': '/api/settings'},
-            ],
-        })
 
     @app.route('/api/version')
     def app_version():

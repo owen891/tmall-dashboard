@@ -19,6 +19,8 @@
   let form = null;
   let returnFocus = null;
   let editingId = null;
+  const rootTokens = new WeakMap();
+  let ruleMutationBusy = false;
 
   function createDialog() {
     dialog = document.createElement('dialog');
@@ -126,6 +128,9 @@
     remove.type = 'button'; remove.className = 'button button--ghost'; remove.textContent = '删除';
     remove.addEventListener('click', async () => {
       if (!window.confirm(`确认删除规则“${rule.name}”？`)) return;
+      if (ruleMutationBusy) return;
+      ruleMutationBusy = true;
+      remove.disabled = true;
       try {
         await DemoApi.domainRequest(`${apiPath}/${rule.id}`, { method: 'DELETE' });
         await refreshAll();
@@ -133,6 +138,9 @@
       } catch (error) {
         const list = root.querySelector('[data-alert-rules-list]');
         list.textContent = error.message || '规则删除失败';
+      } finally {
+        ruleMutationBusy = false;
+        if (remove.isConnected) remove.disabled = false;
       }
     });
     badges.append(level, edit, remove);
@@ -143,13 +151,17 @@
   async function renderRoot(root) {
     const list = root.querySelector('[data-alert-rules-list]');
     if (!list) return;
-    list.textContent = '正在加载规则';
+    const token = (rootTokens.get(root) || 0) + 1;
+    rootTokens.set(root, token);
+    list.textContent = '正在加载规则…';
     try {
       const scope = root.dataset.alertRulesScope;
       const response = await DemoApi.domainRequest(apiPath + (scope ? `?scope=${encodeURIComponent(scope)}` : ''));
-      const rules = response.data || [];
+      if (rootTokens.get(root) !== token) return;
+      const rules = Array.isArray(response.data) ? response.data.filter((rule) => rule && typeof rule === 'object') : [];
       list.replaceChildren(...(rules.length ? rules.map((rule) => ruleRow(rule, root)) : [Object.assign(document.createElement('p'), { className: 'panel__hint', textContent: '暂无预警规则' })]));
     } catch (error) {
+      if (rootTokens.get(root) !== token) return;
       list.replaceChildren();
       const message = document.createElement('p');
       message.className = 'panel__hint';

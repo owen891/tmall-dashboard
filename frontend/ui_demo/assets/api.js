@@ -57,10 +57,10 @@
   }
 
   const legacyCapabilityMap = {
-    overview: { can_export: 'overview.export', can_drilldown: 'overview.view_trend', can_create_action: 'overview.view_kpis' },
+    overview: { can_export: 'overview.export', can_drilldown: 'overview.view_trend', can_create_action: 'overview.create_action' },
     products: { can_edit: 'products.catalog_edit', can_create_action: 'products.create_action' },
     promotion: { can_export: 'promotion.export', can_drilldown: 'promotion.drilldown' },
-    lifecycle: { can_export: 'lifecycle.assessment', can_edit_stage: 'lifecycle.edit_stage' },
+    lifecycle: { can_export: 'lifecycle.export', can_edit_stage: 'lifecycle.edit_stage', can_assessment: 'lifecycle.assessment' },
     reviews: { can_transition: 'reviews.review_action', can_recalculate: 'reviews.review_action' },
     'data-center': { can_import: 'data-center.import', can_revert: 'data-center.revert' },
     settings: { can_edit: 'settings.configure_templates' },
@@ -79,10 +79,10 @@
   const pageCapabilityCache = new Map();
   const pageCapabilityPayloadCache = new Map();
   const pageCapabilityTargets = {
-    overview: [['[data-overview-report-refresh]', 'overview.view_kpis'], ['[data-overview-event-open]', 'overview.event_edit']],
+    overview: [['[data-overview-action-open]', 'overview.create_action']],
     products: [['[data-products-reset]', 'products.list'], ['[data-demo-refresh]', 'products.list'], ['[data-products-starred]', 'products.catalog_edit'], ['[data-products-batch-apply]', 'products.catalog_edit'], ['[data-products-batch-tag-apply]', 'products.catalog_edit'], ['[data-products-batch-star]', 'products.catalog_edit']],
     promotion: [['[data-demo-refresh]', 'promotion.view'], ['[data-promotion-info]', 'promotion.drilldown']],
-    lifecycle: [['[data-lifecycle-export]', 'lifecycle.assessment']],
+    lifecycle: [['[data-lifecycle-export]', 'lifecycle.export']],
     reviews: [['[data-reviews-refresh]', 'reviews.list_actions'], ['[data-actions-recalculate]', 'reviews.review_action']],
     settings: [['[data-settings-form]', 'settings.configure_templates'], ['[data-alert-rules-open]', 'settings.configure_alerts']],
     goals: [['[data-goals-form]', 'goals.view'], ['[data-goals-months]', 'goals.adjust']],
@@ -117,7 +117,13 @@
     if (!pageKey) return null;
     if (!pageCapabilityCache.has(pageKey)) {
       const query = `?page=${encodeURIComponent(pageKey)}`;
-      pageCapabilityCache.set(pageKey, domainRequest(`/api/page-capabilities${query}`));
+      const pending = domainRequest(`/api/page-capabilities${query}`);
+      pageCapabilityCache.set(pageKey, pending);
+      // A transient transport failure must not poison the cache for the rest
+      // of the page lifetime. Later user actions can then recover normally.
+      pending.catch(() => {
+        if (pageCapabilityCache.get(pageKey) === pending) pageCapabilityCache.delete(pageKey);
+      });
     }
     const payload = await pageCapabilityCache.get(pageKey);
     pageCapabilityPayloadCache.set(pageKey, payload);
@@ -131,7 +137,7 @@
   }
 
   const stateLabels = {
-    loading: '加载中', 'no-data': '暂无数据', 'insufficient-data': '数据积累中',
+    loading: '加载中…', 'no-data': '暂无数据', 'insufficient-data': '数据积累中…',
     'missing-fields': '缺少必要字段', 'calculation-failed': '指标计算失败',
     'source-unavailable': '数据来源不可用', partial: '部分数据可用',
   };

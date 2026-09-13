@@ -2,44 +2,92 @@ name: Quality Gate
 
 on:
   pull_request:
-    branches:
-      - main
+    branches: ['**']
   push:
-    branches:
-      - main
+    branches: ['**']
 
 permissions:
   contents: read
 
 jobs:
   verify:
-    name: Verify Python and UI contracts
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-
+    name: Verify Python, UI, and browser contracts (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-14]
+        python: ['3.14']
+        node: ['24']
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
     steps:
-      - name: Check out source
+      - name: Clean checkout
         uses: actions/checkout@v4
+        with:
+          clean: true
+          fetch-depth: 0
 
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.14'
+          python-version: ${{ matrix.python }}
           cache: pip
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: ${{ matrix.node }}
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
 
-      - name: Install Python dependencies
-        run: python -m pip install --upgrade pip && python -m pip install -r requirements.txt
+      - name: Install dependencies
+        shell: bash
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+          npm ci --prefix desktop
+          npx --prefix desktop playwright install --with-deps chromium
 
-      - name: Run backend tests with strict resource warnings
-        run: python -W error::ResourceWarning -m unittest discover -s tests -v
+      - name: Run backend and contract tests
+        shell: bash
+        run: |
+          python -W error::ResourceWarning -m unittest discover -s tests -v
+          node scripts/validate_ui_demos.cjs
+          find frontend/ui_demo/assets -name '*.js' -print0 | xargs -0 -n1 node --check
+          npm test --prefix desktop
+          npm run build --prefix desktop
+          python scripts/production_preflight.py
 
-      - name: Validate API-backed UI contracts
-        run: node scripts/validate_ui_demos.cjs
+      - name: Start test server
+        shell: bash
+        run: |
+          TMALL_PORT=8770 python scripts/run_test_server.py > "$RUNNER_TEMP/tmall-test-server.log" 2>&1 &
+          for i in {1..30}; do curl --fail --silent http://127.0.0.1:8770/healthz && break || sleep 1; done
 
-      - name: Run isolated production preflight
-        run: python scripts/production_preflight.py
+      - name: Run real Chromium browser gates
+        shell: bash
+        env:
+          TMALL_SMOKE_BASE: http://127.0.0.1:8770
+        run: |
+          node scripts/smoke_core_pages.cjs
+          TMALL_CAPABILITY_ONLY=1 node scripts/browser_prd_gates.cjs
+          node scripts/audit_core_interactions.cjs
+
+      - name: Upload browser diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-diagnostics-${{ matrix.os }}
+          path: ${{ runner.temp }}/tmall-test-server.log
+          if-no-files-found: ignore
+
+      - name: Exercise production WSGI stack
+        shell: bash
+        env:
+          DASHBOARD_USERNAME: quality-gate
+          DASHBOARD_PASSWORD: quality-gate-password
+        run: python scripts/production_smoke.py --database "$RUNNER_TEMP/tmall-production-smoke.db"
+
+      - name: Run strict release audit
+        shell: bash
+        run: python scripts/release_audit.py --database "$RUNNER_TEMP/tmall-production-smoke.db" --strict

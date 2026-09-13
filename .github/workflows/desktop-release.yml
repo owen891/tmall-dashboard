@@ -2,46 +2,84 @@ name: Desktop Release
 
 on:
   push:
-    tags:
-      - 'v*'
+    tags: ['v*']
   workflow_dispatch:
 
 permissions:
   contents: write
 
+concurrency:
+  group: desktop-release
+  cancel-in-progress: false
+
 jobs:
+  validate-release:
+    name: Validate release tag and VERSION
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - name: Clean checkout
+        uses: actions/checkout@v4
+        with:
+          clean: true
+          fetch-depth: 0
+          ref: ${{ github.ref }}
+      - id: version
+        name: Require tag to match VERSION
+        shell: bash
+        run: |
+          version="$(tr -d '[:space:]' < VERSION)"
+          tag="${GITHUB_REF_NAME#v}"
+          test -n "$version"
+          test "$tag" = "$version" || { echo "Tag v$tag does not match VERSION $version"; exit 1; }
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+      - name: Verify clean checkout
+        shell: bash
+        run: test -z "$(git status --porcelain)"
+
   build-windows:
+    needs: validate-release
+    if: needs.validate-release.result == 'success'
     runs-on: windows-latest
     steps:
-      - name: Checkout source
+      - name: Clean checkout
         uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
         with:
-          python-version: '3.14'
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '24'
-          cache: npm
-          cache-dependency-path: desktop/package-lock.json
-
-      - name: Build desktop installer and updater assets
+          clean: true
+          fetch-depth: 0
+          ref: ${{ github.ref }}
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.14', cache: pip }
+      - uses: actions/setup-node@v4
+        with: { node-version: '24', cache: npm, cache-dependency-path: desktop/package-lock.json }
+      - name: Install dependencies and browser
+        shell: bash
+        run: |
+          python -m pip install -r requirements-desktop.txt
+          npm ci --prefix desktop
+          npx --prefix desktop playwright install --with-deps chromium
+      - name: Run release tests and audit
+        shell: bash
+        run: |
+          npm test --prefix desktop
+          npm run build --prefix desktop
+          git diff --exit-code
+      - name: Build Windows package
         shell: powershell
-        run: powershell -ExecutionPolicy Bypass -File scripts/build_desktop.ps1
-
-      - name: Publish installer and updater metadata
-        uses: softprops/action-gh-release@v2
+        run: powershell -ExecutionPolicy Bypass -File scripts/build_desktop.ps1 -SkipInstall -SkipPythonTests
+      - uses: actions/upload-artifact@v4
         with:
-          generate_release_notes: true
-          files: |
+          name: windows-release
+          path: |
             desktop/release/*.exe
             desktop/release/*.exe.blockmap
             desktop/release/latest.yml
 
   build-macos:
+    needs: validate-release
+    if: needs.validate-release.result == 'success'
     strategy:
       fail-fast: false
       matrix:
@@ -52,94 +90,73 @@ jobs:
             arch: arm64
     runs-on: ${{ matrix.runner }}
     steps:
-      - name: Checkout source
+      - name: Clean checkout
         uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
         with:
-          python-version: '3.14'
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '24'
-          cache: npm
-          cache-dependency-path: desktop/package-lock.json
-
-      - name: Install desktop dependencies
+          clean: true
+          fetch-depth: 0
+          ref: ${{ github.ref }}
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.14', cache: pip }
+      - uses: actions/setup-node@v4
+        with: { node-version: '24', cache: npm, cache-dependency-path: desktop/package-lock.json }
+      - name: Install dependencies and browser
         shell: bash
         run: |
           python -m pip install -r requirements-desktop.txt
           npm ci --prefix desktop
-
-      - name: Synchronize shared release version
-        shell: bash
-        run: python scripts/sync_desktop_version.py
-
-      - name: Build macOS backend
-        shell: bash
-        run: python scripts/build_backend.py
-
-      - name: Verify desktop contracts
+          npx --prefix desktop playwright install --with-deps chromium
+      - name: Run release tests and audit
         shell: bash
         run: |
           npm test --prefix desktop
           npm run build --prefix desktop
-
+          git diff --exit-code
       - name: Build macOS package
         shell: bash
-        run: npm run dist:mac --prefix desktop -- --${{ matrix.arch }}
-
-      - name: Publish macOS package
-        uses: actions/upload-artifact@v4
+        run: |
+          python scripts/sync_desktop_version.py
+          python scripts/build_backend.py
+          npm run dist:mac --prefix desktop -- --${{ matrix.arch }}
+      - uses: actions/upload-artifact@v4
         with:
           name: mac-${{ matrix.arch }}
           path: |
             desktop/release/*.dmg
             desktop/release/*.zip
-            desktop/release/*.dmg.blockmap
-            desktop/release/*.zip.blockmap
+            desktop/release/*.blockmap
             desktop/release/latest-mac.yml
 
-  publish-macos:
-    needs: build-macos
+  publish:
+    needs: [validate-release, build-windows, build-macos]
+    if: needs.validate-release.result == 'success' && needs.build-windows.result == 'success' && needs.build-macos.result == 'success'
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout source
+      - name: Clean checkout
         uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.14'
-
-      - name: Install metadata merge dependencies
-        shell: bash
+        with: { clean: true, fetch-depth: 0, ref: ${{ github.ref }} }
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.14', cache: pip }
+      - name: Install metadata tools
         run: python -m pip install -r requirements.txt
-
-      - name: Download macOS build artifacts
-        uses: actions/download-artifact@v4
-        with:
-          pattern: mac-*
-          path: mac-artifacts
-
+      - uses: actions/download-artifact@v4
+        with: { pattern: '*', path: release-artifacts, merge-multiple: false }
       - name: Merge macOS updater metadata
         shell: bash
         run: |
-          python scripts/merge_mac_update_metadata.py \
-            mac-artifacts/mac-x64/latest-mac.yml \
-            mac-artifacts/mac-arm64/latest-mac.yml \
-            --output mac-release/latest-mac.yml
           mkdir -p mac-release
-          find mac-artifacts -type f \( -name '*.dmg' -o -name '*.zip' -o -name '*.blockmap' \) -exec cp {} mac-release/ \;
-
-      - name: Publish macOS installers and updater assets
+          python scripts/merge_mac_update_metadata.py release-artifacts/mac-x64/latest-mac.yml release-artifacts/mac-arm64/latest-mac.yml --output mac-release/latest-mac.yml
+          find release-artifacts -type f \( -name '*.dmg' -o -name '*.zip' -o -name '*.blockmap' \) -exec cp {} mac-release/ \;
+          cp release-artifacts/windows-release/* mac-release/ 2>/dev/null || true
+      - name: Publish one serialized GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          generate_release_notes: false
+          tag_name: ${{ github.ref_name }}
+          generate_release_notes: true
           files: |
+            mac-release/*.exe
             mac-release/*.dmg
             mac-release/*.zip
             mac-release/*.blockmap
+            mac-release/latest.yml
             mac-release/latest-mac.yml

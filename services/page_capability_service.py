@@ -17,7 +17,7 @@ PAGE_DEFINITIONS = (
         'capability_keys': (
             'overview.view_kpis', 'overview.view_trend', 'overview.view_matrix',
             'overview.compare', 'overview.view_goal_progress', 'overview.view_customer_mix',
-            'overview.view_funnel', 'overview.export', 'overview.event_edit',
+            'overview.view_funnel', 'overview.export', 'overview.create_action',
         ),
     },
     {
@@ -36,7 +36,7 @@ PAGE_DEFINITIONS = (
         'key': 'lifecycle', 'label': '生命周期', 'page_type': 'primary', 'route': '/lifecycle',
         'core_question': '商品处于什么阶段',
         'data_domains': ('lifecycle', 'product_monthly'),
-        'capability_keys': ('lifecycle.assessment', 'lifecycle.history', 'lifecycle.edit_stage'),
+        'capability_keys': ('lifecycle.assessment', 'lifecycle.history', 'lifecycle.edit_stage', 'lifecycle.export'),
     },
     {
         'key': 'reviews', 'label': '经营复盘', 'page_type': 'primary', 'route': '/reviews',
@@ -54,7 +54,7 @@ PAGE_DEFINITIONS = (
         'key': 'settings', 'label': '设置', 'page_type': 'primary', 'route': '/settings',
         'core_question': '业务口径如何管理',
         'data_domains': ('product_master',),
-        'capability_keys': ('settings.view', 'settings.configure_templates', 'settings.configure_alerts'),
+        'capability_keys': ('settings.view', 'settings.configure_templates', 'settings.configure_alerts', 'settings.import_scan_view', 'settings.import_scan_manage'),
     },
     {
         'key': 'product-detail', 'label': '商品详情', 'page_type': 'context', 'route': '/products/:product_id',
@@ -92,7 +92,7 @@ CAPABILITY_DEFINITIONS = (
     {'key': 'overview.view_customer_mix', 'page_key': 'overview', 'label': '查看客户构成', 'mode': 'analyze', 'support_level': 'conditional', 'data_domains': ('store_daily',), 'metric_keys': ('returning_buyer_ratio',), 'api_endpoints': ('GET /api/customer_analysis',)},
     {'key': 'overview.view_funnel', 'page_key': 'overview', 'label': '查看经营漏斗', 'mode': 'analyze', 'support_level': 'conditional', 'data_domains': ('store_daily',), 'metric_keys': ('payment_conversion_rate',), 'api_endpoints': ('GET /api/funnel',)},
     {'key': 'overview.export', 'page_key': 'overview', 'label': '导出经营矩阵', 'mode': 'export', 'support_level': 'conditional', 'data_domains': ('store_daily',), 'metric_keys': (), 'api_endpoints': ('GET /api/overview/daily-matrix',)},
-    {'key': 'overview.event_edit', 'page_key': 'overview', 'label': '编辑经营事件标注', 'mode': 'mutate', 'support_level': 'conditional', 'data_domains': ('store_daily',), 'metric_keys': (), 'api_endpoints': ('GET /api/overview/events', 'POST /api/overview/events', 'DELETE /api/overview/events/:event_id')},
+    {'key': 'overview.create_action', 'page_key': 'overview', 'label': '创建运营动作', 'mode': 'mutate', 'support_level': 'conditional', 'data_domains': ('product_master',), 'metric_keys': (), 'api_endpoints': ('POST /api/actions',)},
     {'key': 'products.list', 'page_key': 'products', 'label': '查看和筛选商品', 'mode': 'observe', 'support_level': 'supported', 'data_domains': ('product_master',), 'metric_keys': (), 'api_endpoints': ('GET /api/products',)},
     {'key': 'products.export', 'page_key': 'products', 'label': '导出商品结果', 'mode': 'export', 'support_level': 'conditional', 'data_domains': ('product_master',), 'metric_keys': (), 'api_endpoints': ('GET /api/products',)},
     {'key': 'products.create_action', 'page_key': 'products', 'label': '创建经营动作', 'mode': 'mutate', 'support_level': 'conditional', 'data_domains': ('product_master', 'actions'), 'metric_keys': (), 'api_endpoints': ('POST /api/actions',)},
@@ -104,6 +104,7 @@ CAPABILITY_DEFINITIONS = (
     {'key': 'lifecycle.assessment', 'page_key': 'lifecycle', 'label': '查看生命周期评估', 'mode': 'observe', 'support_level': 'conditional', 'data_domains': ('lifecycle', 'product_monthly'), 'metric_keys': (), 'api_endpoints': ('GET /api/lifecycle/assessments',)},
     {'key': 'lifecycle.history', 'page_key': 'lifecycle', 'label': '查看生命周期历史', 'mode': 'observe', 'support_level': 'conditional', 'data_domains': ('lifecycle',), 'metric_keys': (), 'api_endpoints': ('GET /api/lifecycle/:product_id/history',)},
     {'key': 'lifecycle.edit_stage', 'page_key': 'lifecycle', 'label': '调整生命周期阶段', 'mode': 'mutate', 'support_level': 'conditional', 'data_domains': ('lifecycle',), 'metric_keys': (), 'api_endpoints': ('PUT /api/lifecycle/:product_id',)},
+    {'key': 'lifecycle.export', 'page_key': 'lifecycle', 'label': '导出生命周期数据', 'mode': 'export', 'support_level': 'conditional', 'data_domains': ('lifecycle', 'product_monthly'), 'metric_keys': (), 'api_endpoints': ('GET /api/lifecycle/assessments',)},
     {'key': 'reviews.list_actions', 'page_key': 'reviews', 'label': '查看待复盘动作', 'mode': 'observe', 'support_level': 'supported', 'data_domains': ('actions',), 'metric_keys': (), 'api_endpoints': ('GET /api/actions/pending-review',)},
     {'key': 'reviews.review_action', 'page_key': 'reviews', 'label': '完成动作复盘', 'mode': 'workflow', 'support_level': 'conditional', 'data_domains': ('actions', 'product_weekly'), 'metric_keys': (), 'api_endpoints': ('POST /api/actions/:id/review',)},
     {'key': 'reviews.period_compare', 'page_key': 'reviews', 'label': '查看周期复盘', 'mode': 'analyze', 'support_level': 'conditional', 'data_domains': ('product_weekly',), 'metric_keys': (), 'api_endpoints': ('GET /api/period-reviews',)},
@@ -113,6 +114,8 @@ CAPABILITY_DEFINITIONS = (
     {'key': 'settings.view', 'page_key': 'settings', 'label': '查看设置', 'mode': 'observe', 'support_level': 'supported', 'data_domains': (), 'metric_keys': (), 'api_endpoints': ('GET /api/settings',)},
     {'key': 'settings.configure_templates', 'page_key': 'settings', 'label': '配置字段和视图模板', 'mode': 'configure', 'support_level': 'supported', 'data_domains': (), 'metric_keys': (), 'api_endpoints': ('PUT /api/settings',)},
     {'key': 'settings.configure_alerts', 'page_key': 'settings', 'label': '配置预警规则', 'mode': 'configure', 'support_level': 'supported', 'data_domains': (), 'metric_keys': (), 'api_endpoints': ('GET /api/alert-rules', 'POST /api/alert-rules', 'PUT /api/alert-rules/:rule_id', 'DELETE /api/alert-rules/:rule_id')},
+    {'key': 'settings.import_scan_view', 'page_key': 'settings', 'label': '查看本地扫描任务', 'mode': 'observe', 'support_level': 'supported', 'data_domains': (), 'metric_keys': (), 'api_endpoints': ('GET /api/import-scans',)},
+    {'key': 'settings.import_scan_manage', 'page_key': 'settings', 'label': '管理本地扫描任务', 'mode': 'configure', 'support_level': 'supported', 'data_domains': (), 'metric_keys': (), 'api_endpoints': ('POST /api/import-scans', 'PUT /api/import-scans/:job_id', 'DELETE /api/import-scans/:job_id', 'POST /api/import-scans/:job_id/run')},
     {'key': 'product-detail.view', 'page_key': 'product-detail', 'label': '查看商品详情', 'mode': 'observe', 'support_level': 'supported', 'data_domains': ('product_master', 'product_daily'), 'metric_keys': ('net_sales', 'ad_roi'), 'api_endpoints': ('GET /api/products/:product_id/detail',)},
     {'key': 'product-detail.create_action', 'page_key': 'product-detail', 'label': '从详情创建动作', 'mode': 'mutate', 'support_level': 'conditional', 'data_domains': ('product_master', 'actions'), 'metric_keys': (), 'api_endpoints': ('POST /api/actions',)},
     {'key': 'product-detail.review_action', 'page_key': 'product-detail', 'label': '从详情完成复盘', 'mode': 'workflow', 'support_level': 'conditional', 'data_domains': ('actions',), 'metric_keys': (), 'api_endpoints': ('POST /api/actions/:id/review',)},
@@ -124,14 +127,14 @@ CAPABILITY_DEFINITIONS = (
     {'key': 'compare.view', 'page_key': 'compare', 'label': '比较两个周期', 'mode': 'analyze', 'support_level': 'conditional', 'data_domains': ('product_weekly',), 'metric_keys': ('net_sales',), 'api_endpoints': ('GET /api/period-reviews',)},
     {'key': 'compare.export', 'page_key': 'compare', 'label': '导出周期比较', 'mode': 'export', 'support_level': 'conditional', 'data_domains': ('product_weekly',), 'metric_keys': (), 'api_endpoints': ('GET /api/period-reviews',)},
     {'key': 'manage.view', 'page_key': 'manage', 'label': '查看管理任务', 'mode': 'observe', 'support_level': 'conditional', 'data_domains': ('actions',), 'metric_keys': (), 'api_endpoints': ('GET /api/manage/tasks', 'GET /api/manage/kpis')},
-    {'key': 'manage.schedule', 'page_key': 'manage', 'label': '执行调度流程', 'mode': 'workflow', 'support_level': 'conditional', 'data_domains': ('imports',), 'metric_keys': (), 'api_endpoints': ('GET /api/manage/schedules', 'POST /api/manage/schedules', 'PUT /api/manage/schedules/:task_id', 'DELETE /api/manage/schedules/:task_id', 'POST /api/manage/schedules/:task_id/run')},
+    {'key': 'manage.schedule', 'page_key': 'manage', 'label': '执行调度流程', 'mode': 'workflow', 'support_level': 'conditional', 'data_domains': ('imports',), 'metric_keys': (), 'api_endpoints': ('GET /api/import-scans', 'POST /api/import-scans', 'PUT /api/import-scans/:job_id', 'DELETE /api/import-scans/:job_id', 'POST /api/import-scans/:job_id/run')},
     {'key': 'overview.industry_benchmark', 'page_key': 'overview', 'label': '行业基准对比', 'mode': 'analyze', 'support_level': 'unsupported', 'data_domains': (), 'metric_keys': (), 'api_endpoints': ('GET /api/industry_benchmark',)},
     {'key': 'promotion.causal_attribution', 'page_key': 'promotion', 'label': '严格因果归因', 'mode': 'analyze', 'support_level': 'unsupported', 'data_domains': (), 'metric_keys': (), 'api_endpoints': ()},
 )
 
 
 SURFACE_DEFINITIONS = (
-    {'key': 'overview.event-edit', 'page_key': 'overview', 'label': '经营事件编辑', 'modal_kind': 'edit', 'trigger_capability': 'overview.event_edit', 'selector': '[data-overview-event-dialog]'},
+    {'key': 'overview.action-create', 'page_key': 'overview', 'label': '运营动作创建', 'modal_kind': 'edit', 'trigger_capability': 'overview.create_action', 'selector': '[data-overview-action-dialog]'},
     {'key': 'products.column-config', 'page_key': 'products', 'label': '商品列设置', 'modal_kind': 'config', 'trigger_capability': 'products.list', 'selector': '[data-products-columns-dialog]'},
     {'key': 'promotion.drilldown-detail', 'page_key': 'promotion', 'label': '推广下钻详情', 'modal_kind': 'detail', 'trigger_capability': 'promotion.drilldown', 'selector': '[data-promotion-dialog]'},
     {'key': 'lifecycle.edit-stage', 'page_key': 'lifecycle', 'label': '生命周期人工调整', 'modal_kind': 'edit', 'trigger_capability': 'lifecycle.edit_stage', 'selector': '[data-lifecycle-edit-dialog]'},

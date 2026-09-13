@@ -138,7 +138,9 @@
   });
   form.addEventListener('input', markDirty);
   form.addEventListener('change', markDirty);
-  const scanState = { jobs: [], editingId: null };
+  const scanState = { jobs: [], editingId: null, environment: null };
+  let scanLoadToken = 0;
+  let scanMutationBusy = false;
   const scanBody = document.querySelector('[data-scan-jobs]');
   const scanStatus = document.querySelector('[data-scan-status]');
   const showToast = (message, options) => window.DemoShell?.showToast?.(message, options);
@@ -147,9 +149,24 @@
   const scanFormStatus = document.querySelector('[data-scan-form-status]');
   const scanDetailDialog = document.querySelector('[data-scan-detail-dialog]');
   const scanSourceLabels = { auto: '自动识别', product_day: '商品日度', dmp_product_day: 'DMP 商品日度', store_day: '店铺日度', refund_day: '退款日度', customer_day: '客户日度', product_week: '商品周度', product_month: '商品月度', promotion_channel_day: '推广渠道日度', promotion_campaign_day: '推广计划日度', promotion_unit_day: '推广单元日度', promotion_product_day: '推广商品日度' };
+  const renderScanEnvironment = (environment) => {
+    const target = document.querySelector('[data-scan-environment]');
+    if (!target || !environment) return;
+    const roots = (environment.allowed_roots || []).join('、') || '未配置';
+    const mode = environment.mode === 'desktop' ? '桌面模式' : 'Web 服务模式';
+    target.textContent = `${mode} · 允许目录 ${roots} · 支持 ${environment.supported_suffixes?.join('、') || '--'} · 计划时区 ${environment.cron_timezone || 'Asia/Shanghai'}`;
+  };
   const setScanStatus = (message) => { if (scanStatus) scanStatus.textContent = message || ''; };
+  const setScanCapabilityState = () => {
+    const enabled = scanState.environment?.can_manage !== false;
+    document.querySelectorAll('[data-scan-create], [data-scan-form] button[type="submit"], [data-settings-select-scan-folder]').forEach((element) => {
+      element.disabled = !enabled;
+      element.toggleAttribute('aria-disabled', !enabled);
+    });
+  };
   const setScanFormStatus = (message) => { if (scanFormStatus) scanFormStatus.textContent = message || ''; };
   const formatScanFormError = (error) => {
+    if (window.TmallScanUi?.errorMessage) return window.TmallScanUi.errorMessage(error);
     const message = error?.message || '保存扫描任务失败';
     if (message.includes('outside IMPORT_SCAN_ALLOWED_ROOTS')) return '该文件夹不在允许扫描目录中。请使用已配置的数据源目录，或联系管理员将此目录加入允许列表。';
     if (message.includes('must be an existing directory')) return '文件夹不存在。请检查路径是否为本机已有的绝对路径。';
@@ -171,24 +188,27 @@
       const task = document.createElement('td'); const name = document.createElement('strong'); name.textContent = job.task_name || '未命名任务'; const folder = document.createElement('div'); folder.className = 'panel__hint'; folder.textContent = job.folder_path || '--'; task.append(name, folder); row.appendChild(task);
       appendTextCell(row, scanSourceLabels[job.source_type] || job.source_type);
       appendTextCell(row, job.cron_expr || '--');
-      appendTextCell(row, job.enabled ? (job.status === 'active' ? '已启用' : job.status) : '已停用');
+      appendTextCell(row, job.status === 'error' ? '配置异常' : (job.enabled ? (job.status === 'active' ? '已启用' : job.status) : '已停用'));
       appendTextCell(row, formatScanTime(job.last_run));
       const actions = document.createElement('td'); actions.className = 'table-actions';
-      actions.append(
-        scanAction('play', '立即扫描', () => runScanJob(job)),
-        scanAction('history', '查看记录', () => openScanDetails(job)),
-        scanAction('pencil', '编辑任务', () => openScanDialog(job)),
-        scanAction(job.enabled ? 'power-off' : 'power', job.enabled ? '停用任务' : '启用任务', () => toggleScanJob(job)),
-      );
+      const canManage = scanState.environment?.can_manage !== false;
+      const runButton = scanAction('play', job.enabled ? '立即扫描' : '请先启用任务', () => runScanJob(job));
+      runButton.disabled = !job.enabled || !canManage;
+      const detailButton = scanAction('history', '查看记录', () => openScanDetails(job));
+      const editButton = scanAction('pencil', '编辑任务', () => openScanDialog(job));
+      const toggleButton = scanAction(job.enabled ? 'power-off' : 'power', job.enabled ? '停用任务' : '启用任务', () => toggleScanJob(job));
+      [editButton, toggleButton].forEach((button) => { button.disabled = !canManage; button.toggleAttribute('aria-disabled', !canManage); });
+      actions.append(runButton, detailButton, editButton, toggleButton);
       row.appendChild(actions); scanBody.appendChild(row);
     });
     window.lucide?.createIcons();
   }
   async function loadScanJobs() {
     if (!scanBody) return;
-    const loading = document.createElement('tr'); const cell = appendTextCell(loading, '正在加载扫描任务'); cell.colSpan = 6; scanBody.replaceChildren(loading);
-    try { const response = await DemoApi.domainRequest('/api/import-scans'); scanState.jobs = response.data || []; renderScanJobs(); setScanStatus(''); }
-    catch (error) { scanState.jobs = []; renderScanJobs(); setScanStatus(error.message || '扫描任务加载失败'); }
+    const token = ++scanLoadToken;
+    const loading = document.createElement('tr'); const cell = appendTextCell(loading, '正在加载扫描任务…'); cell.colSpan = 6; scanBody.replaceChildren(loading);
+    try { const response = await DemoApi.domainRequest('/api/import-scans'); if (token !== scanLoadToken) return; scanState.environment = response.scan_environment || null; renderScanEnvironment(scanState.environment); setScanCapabilityState(); scanState.jobs = Array.isArray(response.data) ? response.data.filter((job) => job && typeof job === 'object') : []; renderScanJobs(); setScanStatus(''); }
+    catch (error) { if (token !== scanLoadToken) return; scanState.jobs = []; renderScanJobs(); setScanStatus(formatScanFormError(error)); }
   }
   function openScanDialog(job = null) {
     scanState.editingId = job?.id ?? null; scanForm.reset(); scanForm.elements.file_pattern.value = job?.file_pattern || '*.xlsx;*.xls;*.csv;*.zip'; scanForm.elements.cron_expr.value = job?.cron_expr || '* * * * *'; scanForm.elements.source_type.value = job?.source_type || 'auto'; scanForm.elements.enabled.checked = job ? Boolean(job.enabled) : true;
@@ -196,14 +216,17 @@
     if (job) { scanForm.elements.task_name.value = job.task_name || ''; scanForm.elements.folder_path.value = job.folder_path || ''; }
     document.querySelector('#scanDialogTitle').textContent = job ? '编辑扫描任务' : '新增扫描任务'; scanDialog.showModal(); scanForm.elements.task_name.focus();
   }
-  async function mutateScan(message, operation, handleError = (error) => setScanStatus(error.message || '扫描任务操作失败')) {
+  async function mutateScan(message, operation, handleError = (error) => setScanStatus(formatScanFormError(error))) {
+    if (scanMutationBusy) return;
+    scanMutationBusy = true;
     setScanStatus(message);
     try { const result = await operation(); await loadScanJobs(); return result; }
     catch (error) { handleError(error); }
+    finally { scanMutationBusy = false; }
   }
   function runScanJob(job) {
     showToast(`已启动扫描：${job.task_name}`, { duration: 3000 });
-    mutateScan(`正在扫描 ${job.task_name}…`, () => DemoApi.domainRequest(`/api/import-scans/${Number(job.id)}/run`, { method: 'POST' })).then((response) => {
+    mutateScan(`正在扫描 ${job.task_name}…`, () => DemoApi.domainRequest(`/api/import-scans/${Number(job.id)}/run`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ force: true }) })).then((response) => {
       const result = response?.data;
       if (!result) return;
       const summary = `扫描完成：发现 ${result.discovered_count || 0}，导入 ${result.imported_count || 0}，阻塞 ${result.blocked_count || 0}，失败 ${result.failed_count || 0}`;
@@ -220,7 +243,7 @@
     rows.slice(0, 20).forEach((item) => { const row = document.createElement('tr'); columns.forEach((column) => appendTextCell(row, column(item))); body.appendChild(row); });
   };
   async function loadScanDetails(job) {
-    renderScanDetailRows('[data-scan-runs]', [], Array.from({ length: 5 }, () => () => ''), '加载中'); renderScanDetailRows('[data-scan-files]', [], Array.from({ length: 5 }, () => () => ''), '加载中');
+    renderScanDetailRows('[data-scan-runs]', [], Array.from({ length: 5 }, () => () => ''), '加载中…'); renderScanDetailRows('[data-scan-files]', [], Array.from({ length: 5 }, () => () => ''), '加载中…');
     try {
       const [runs, files] = await Promise.all([DemoApi.domainRequest(`/api/import-scans/${Number(job.id)}/runs`), DemoApi.domainRequest(`/api/import-scans/${Number(job.id)}/files`)]);
       renderScanDetailRows('[data-scan-runs]', runs.data || [], [(item) => formatScanTime(item.started_at), (item) => item.status, (item) => item.imported_count, (item) => item.blocked_count, (item) => item.failed_count], '暂无运行记录');
@@ -230,20 +253,34 @@
         const row = document.createElement('tr');
         appendTextCell(row, item.source_filename); appendTextCell(row, item.status); appendTextCell(row, item.batch_id || '--'); appendTextCell(row, formatScanTime(item.updated_at));
         const actions = document.createElement('td'); actions.className = 'table-actions';
-        if (['blocked', 'failed'].includes(item.status)) actions.append(scanAction('rotate-ccw', '重新排队', async () => {
-          try { await DemoApi.domainRequest(`/api/import-scans/${Number(job.id)}/files/${Number(item.id)}/retry`, { method: 'POST' }); setScanStatus('文件已重新排队'); showToast(`文件已重新排队：${item.source_filename}`); await loadScanDetails(job); await loadScanJobs(); }
-          catch (error) { setScanStatus(error.message || '重新排队失败'); }
-        }));
+        if (['blocked', 'failed'].includes(item.status)) {
+          const retryButton = scanAction('rotate-ccw', '重新排队', async () => {
+            try { await DemoApi.domainRequest(`/api/import-scans/${Number(job.id)}/files/${Number(item.id)}/retry`, { method: 'POST' }); setScanStatus('文件已重新排队'); showToast(`文件已重新排队：${item.source_filename}`); await loadScanDetails(job); await loadScanJobs(); }
+            catch (error) { setScanStatus(formatScanFormError(error)); }
+          });
+          const canManage = scanState.environment?.can_manage !== false;
+          retryButton.disabled = !canManage;
+          retryButton.toggleAttribute('aria-disabled', !canManage);
+          actions.append(retryButton);
+        }
         row.appendChild(actions); body.appendChild(row);
       });
       window.lucide?.createIcons();
-    } catch (error) { setScanStatus(error.message || '扫描记录加载失败'); }
+    } catch (error) { setScanStatus(formatScanFormError(error)); }
   }
   async function openScanDetails(job) {
     document.querySelector('#scanDetailTitle').textContent = `${job.task_name || '扫描任务'}记录`; scanDetailDialog.showModal();
     await loadScanDetails(job);
   }
-  document.querySelector('[data-scan-create]')?.addEventListener('click', () => openScanDialog());
+  document.querySelector('[data-scan-create]')?.addEventListener('click', () => { if (scanState.environment?.can_manage === false) return; openScanDialog(); });
+  const settingsScanFolderButton = document.querySelector('[data-settings-select-scan-folder]');
+  if (window.tmallDesktop?.selectScanFolder && settingsScanFolderButton) {
+    settingsScanFolderButton.hidden = false;
+    settingsScanFolderButton.addEventListener('click', async () => {
+      const selected = await window.tmallDesktop.selectScanFolder();
+      if (selected) scanForm.elements.folder_path.value = selected;
+    });
+  }
   document.querySelectorAll('[data-scan-close]').forEach((button) => button.addEventListener('click', () => scanDialog.close()));
   document.querySelectorAll('[data-scan-detail-close]').forEach((button) => button.addEventListener('click', () => scanDetailDialog.close()));
   scanForm?.addEventListener('submit', (event) => {

@@ -31,7 +31,9 @@ class LifecycleRepo:
                           COUNT(DISTINCT d.date) AS covered_days,
                           CAST(strftime('%d', date(m.month || '-01', '+1 month', '-1 day')) AS INTEGER) AS expected_days
                    FROM monthly_data m
-                   LEFT JOIN daily_data d ON d.shop_id = ? AND d.product_id = m.product_id AND substr(d.date, 1, 7) = m.month
+                   LEFT JOIN daily_data d ON d.shop_id = ? AND d.product_id = m.product_id
+                                           AND d.date >= m.month || '-01'
+                                           AND d.date < date(m.month || '-01', '+1 month')
                    GROUP BY m.product_id, m.month, m.payment_amount
                    ORDER BY m.product_id, m.month'''
                 , (shop_id,)).fetchall()
@@ -72,7 +74,9 @@ class LifecycleRepo:
                           COUNT(DISTINCT d.date) AS covered_days,
                           CAST(strftime('%d', date(m.month || '-01', '+1 month', '-1 day')) AS INTEGER) AS expected_days
                    FROM monthly_data m
-                   LEFT JOIN daily_data d ON d.shop_id = ? AND d.product_id = m.product_id AND substr(d.date, 1, 7) = m.month
+                   LEFT JOIN daily_data d ON d.shop_id = ? AND d.product_id = m.product_id
+                                           AND d.date >= m.month || '-01'
+                                           AND d.date < date(m.month || '-01', '+1 month')
                    WHERE m.product_id = ?
                    GROUP BY m.month, m.payment_amount ORDER BY m.month''', (shop_id, product_id)
             ).fetchall()

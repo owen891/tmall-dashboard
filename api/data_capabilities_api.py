@@ -1,4 +1,4 @@
-from flask import Blueprint, request
+from flask import Blueprint, current_app, request
 
 from api.api_response import failure, success
 from services.data_capability_service import AVAILABILITIES, DOMAIN_DEFINITIONS, build_catalog
@@ -28,8 +28,9 @@ def get_data_capabilities():
 
     try:
         data = build_catalog(domain=domain, availability=availability)
-    except Exception as error:
-        return failure('DATA_CAPABILITY_ERROR', str(error), status=500)
+    except Exception:
+        current_app.logger.exception('Data capability catalog failed')
+        return failure('DATA_CAPABILITY_ERROR', '数据能力目录暂时不可用，请稍后重试', status=500)
 
     missing_fields = sorted({
         field['key']

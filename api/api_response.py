@@ -1,6 +1,7 @@
 from uuid import uuid4
 
 from flask import jsonify
+from werkzeug.exceptions import BadRequest, UnsupportedMediaType
 
 
 AVAILABILITY_VALUES = {
@@ -8,6 +9,23 @@ AVAILABILITY_VALUES = {
     'calculation-failed', 'source-unavailable', 'partial',
 }
 EVIDENCE_LEVEL_VALUES = {'full', 'partial', 'insufficient'}
+
+
+class JsonObjectError(ValueError):
+    """Raised when a JSON write payload is not an object."""
+
+
+def json_object(request, *, allow_empty=True):
+    """Read a JSON object; distinguish an empty body from malformed JSON."""
+    if allow_empty and not request.get_data(cache=True):
+        return {}
+    try:
+        data = request.get_json(silent=False)
+    except (BadRequest, UnsupportedMediaType) as error:
+        raise JsonObjectError('请求体不是合法 JSON') from error
+    if not isinstance(data, dict):
+        raise JsonObjectError('请求体必须是 JSON 对象')
+    return data
 
 
 def evidence_level_for(availability, *, missing_inputs=(), missing_ranges=()):
@@ -35,7 +53,8 @@ def limitations_for(availability, *, missing_inputs=(), missing_ranges=()):
 def success(data, availability='available', status=200, *, capabilities=None,
             filters=None, missing_fields=None, missing_ranges=None, source_batches=None,
             evidence_level='full', missing_inputs=None, limitations=None,
-            freshness=None, evidence=None, assumptions=None, unknowns=None):
+            freshness=None, evidence=None, assumptions=None, unknowns=None,
+            scan_environment=None):
     if availability not in AVAILABILITY_VALUES:
         availability = 'calculation-failed'
     if evidence_level not in EVIDENCE_LEVEL_VALUES:
@@ -56,6 +75,7 @@ def success(data, availability='available', status=200, *, capabilities=None,
         'evidence': list(evidence or []),
         'assumptions': list(assumptions or []),
         'unknowns': list(unknowns or []),
+        **({'scan_environment': dict(scan_environment)} if scan_environment is not None else {}),
         'requestId': uuid4().hex,
     }), status
 

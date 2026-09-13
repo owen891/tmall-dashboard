@@ -51,7 +51,13 @@ class ShopScopeApiTests(unittest.TestCase):
     def tearDown(self):
         self.temp_dir.cleanup()
 
-    def test_daily_compare_is_scoped_to_requested_shop(self):
+    def test_client_shop_id_does_not_change_server_scope(self):
+        from flask import request
+        from db import get_shop_id
+
+        with self.app.test_request_context('/api/status?shop_id=shop-b'):
+            self.assertEqual(get_shop_id(), 'default')
+
         response = self.client.get(
             '/api/compare?dim=daily&period_a=2026-04-01&period_b=2026-04-02&shop_id=shop-a'
         )
@@ -159,6 +165,21 @@ class ShopScopeApiTests(unittest.TestCase):
         for url in urls:
             with self.subTest(url=url):
                 response = self.client.get(url)
+                self.assertEqual(response.status_code, 422)
+                self.assertEqual(response.get_json()['code'], 'UNSUPPORTED_SCOPE')
+                response.close()
+
+    def test_non_default_legacy_catalog_writes_fail_closed(self):
+        requests = (
+            ('POST', '/api/star?shop_id=shop-a', {'product_id': 'scope-product', 'starred': 1}),
+            ('PUT', '/api/products/scope-product/field?shop_id=shop-a', {'field': 'tier', 'value': 'A'}),
+            ('POST', '/api/batch_update?shop_id=shop-a', {'field': 'tier', 'value': 'A', 'product_ids': ['scope-product']}),
+            ('POST', '/api/batch_tags?shop_id=shop-a', {'tag': '重点', 'product_ids': ['scope-product']}),
+            ('DELETE', '/api/batch_tags?shop_id=shop-a', {'tag': '重点', 'product_ids': ['scope-product']}),
+        )
+        for method, url, payload in requests:
+            with self.subTest(method=method, url=url):
+                response = self.client.open(url, method=method, json=payload)
                 self.assertEqual(response.status_code, 422)
                 self.assertEqual(response.get_json()['code'], 'UNSUPPORTED_SCOPE')
                 response.close()

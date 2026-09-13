@@ -8,6 +8,10 @@
   const pct = (value) => value == null ? '--' : `${Number(value).toFixed(1)}%`;
   const actionStatusLabels = { draft: '草稿', pending_execution: '待执行', executing: '执行中', observing: '观察中', pending_review: '待复盘', blocked: '阻塞', calculation_failed: '计算失败', completed: '已完成', cancelled: '已取消' };
   const actionStatus = (value) => actionStatusLabels[value] || value || '--';
+  const mutationError = (error, fallback = '操作失败，请重试') => {
+    const status = $('[data-product-detail-action-status]') || $('[data-product-detail-status]');
+    if (status) status.textContent = error?.message || fallback;
+  };
   const detailMetricKeys = new Set(['payment_qty', 'search_visitors', 'paid_ipv', 'organic_ipv', 'presale_amount', 'presale_qty', 'data_source']);
   const row = (label, value) => { const node = document.createElement('div'); node.className = 'status-list__item'; const left = document.createElement('span'); left.className = 'status-list__label'; left.textContent = label; const right = document.createElement('span'); right.className = 'status-list__value'; right.textContent = value ?? '--'; node.append(left, right); return node; };
   const transitions = { draft: ['pending_execution', 'cancelled'], pending_execution: ['executing', 'blocked', 'cancelled'], executing: ['observing', 'blocked', 'cancelled'], observing: ['pending_review', 'blocked', 'calculation_failed'], pending_review: ['blocked'], blocked: ['pending_execution', 'cancelled'], calculation_failed: ['observing', 'blocked'], completed: ['pending_review'] };
@@ -51,6 +55,7 @@
       window.history.back();
     });
     selectDetailTab(location.hash.slice(1), { updateHash: false });
+    window.addEventListener('hashchange', () => selectDetailTab(location.hash.slice(1), { updateHash: false }));
   }
   const requestAction = (action, suffix, body) => DemoApi.domainRequest(`/api/actions/${encodeURIComponent(action.id)}${suffix}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
   function actionCard(action) {
@@ -65,17 +70,18 @@
       button.addEventListener('click', async () => {
         const body = { capability_key: 'product-detail.review_action', status: target, version: action.version };
         if (target === 'blocked') { body.blocked_reason = window.prompt('请输入阻塞原因') || ''; body.expected_recovery_at = window.prompt('请输入预计恢复日期（YYYY-MM-DD）') || ''; if (!body.blocked_reason || !body.expected_recovery_at) return; }
-        try { await requestAction(action, '/transition', body); await load(); } catch (error) { window.alert(error.message); }
+        button.disabled = true;
+        try { await requestAction(action, '/transition', body); await load(); } catch (error) { mutationError(error, '更新运营动作状态失败，请重试'); } finally { if (button.isConnected) button.disabled = false; }
       }); controls.appendChild(button);
     });
     if (action.status === 'observing') {
       const button = document.createElement('button'); button.type = 'button'; button.className = 'button button--ghost'; button.textContent = '重新计算观察窗口';
-      button.addEventListener('click', async () => { try { await DemoApi.domainRequest('/api/actions/recalculate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ capability_key: 'product-detail.review_action' }) }); await load(); } catch (error) { window.alert(error.message); } }); controls.appendChild(button);
+      button.addEventListener('click', async () => { button.disabled = true; try { await DemoApi.domainRequest('/api/actions/recalculate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ capability_key: 'product-detail.review_action' }) }); await load(); } catch (error) { mutationError(error, '重新计算观察窗口失败，请重试'); } finally { if (button.isConnected) button.disabled = false; } }); controls.appendChild(button);
     }
     if (action.status === 'pending_review') {
       const form = document.createElement('form'); form.className = 'modal-form__body';
       form.innerHTML = '<label>是否有效<select class="select" name="effective" aria-label="复盘结论是否有效"><option value="true">有效</option><option value="false">无效</option></select></label><label>变更原因<input class="input" name="reason" required></label><label>复盘结论<input class="input" name="conclusion" required></label><label>后续动作<input class="input" name="next_action" required></label><label>复盘人<input class="input" name="reviewer" value="运营人员" required></label><button class="button button--primary" type="submit">提交复盘</button>';
-      form.addEventListener('submit', async (event) => { event.preventDefault(); const values = Object.fromEntries(new FormData(form)); try { await requestAction(action, '/review', { ...values, capability_key: 'product-detail.review_action', effective: values.effective === 'true', version: action.version }); await load(); } catch (error) { window.alert(error.message); } }); content.appendChild(form);
+      form.addEventListener('submit', async (event) => { event.preventDefault(); const values = Object.fromEntries(new FormData(form)); const submit = form.querySelector('button[type="submit"]'); if (submit) submit.disabled = true; try { await requestAction(action, '/review', { ...values, capability_key: 'product-detail.review_action', effective: values.effective === 'true', version: action.version }); await load(); } catch (error) { mutationError(error, '提交复盘失败，请重试'); } finally { if (submit?.isConnected) submit.disabled = false; } }); content.appendChild(form);
     }
     card.append(content, controls); return card;
   }
@@ -124,12 +130,14 @@
       if (selectedRange.endDate) workbenchExportQuery.set('end', selectedRange.endDate);
       $$('[data-product-detail-export]').forEach((link) => { link.href = `/api/products/${encodeURIComponent(id)}/detail/export?${workbenchExportQuery}`; });
       $('[data-product-detail-stage]').textContent = data.lifecycle?.stage_label || data.lifecycle?.stage || '--'; $('[data-product-detail-days]').textContent = data.lifecycle?.continuous_valid_days ?? '--'; $('[data-product-detail-confidence]').textContent = `置信度：${DemoLabels.label('confidence', data.lifecycle?.confidence)} · ${data.lifecycle?.locked ? '人工' : '系统'}`; $('[data-product-detail-rationale]').textContent = data.lifecycle?.rationale || '暂无判断依据';
-      const trend = $('[data-product-detail-trend]'); trend.replaceChildren(...data.daily_trend.map((item) => { const tr = document.createElement('tr'); [item.date, money(item.payment_amount), money(item.net_sales), item.product_visitors ?? '--', money(item.ad_spend)].forEach((value, index) => { const td = document.createElement('td'); td.textContent = value; if (index) td.className = 'num'; tr.appendChild(td); }); return tr; })); if (!data.daily_trend.length) trend.innerHTML = '<tr><td colspan="5">暂无日度数据</td></tr>';
-      const actions = $('[data-product-detail-actions]'); actions.replaceChildren(...data.actions.map(actionCard)); if (!data.actions.length) actions.textContent = '暂无运营动作'; renderHistory(data.lifecycle_history); renderComparison(data.period_comparison, data.contribution_analysis); renderEvidence(data.evidence_summary);
+      const trendRows = Array.isArray(data.daily_trend) ? data.daily_trend : [];
+      const trend = $('[data-product-detail-trend]');
+      trend.replaceChildren(...trendRows.map((item) => { const tr = document.createElement('tr'); [item.date, money(item.payment_amount), money(item.net_sales), item.product_visitors ?? '--', money(item.ad_spend)].forEach((value, index) => { const td = document.createElement('td'); td.textContent = value; if (index) td.className = 'num'; tr.appendChild(td); }); return tr; })); if (!trendRows.length) trend.innerHTML = '<tr><td colspan="5">暂无日度数据</td></tr>';
+      const actions = $('[data-product-detail-actions]'); const actionRows = Array.isArray(data.actions) ? data.actions : []; actions.replaceChildren(...actionRows.map(actionCard)); if (!actionRows.length) actions.textContent = '暂无运营动作'; renderHistory(data.lifecycle_history); renderComparison(data.period_comparison, data.contribution_analysis); renderEvidence(data.evidence_summary);
       const exportLink = $('[data-product-detail-export]'); if (exportLink) { const exportQuery = new URLSearchParams({ capability_key: 'product-detail.export' }); if (selectedRange.startDate) exportQuery.set('start', selectedRange.startDate); if (selectedRange.endDate) exportQuery.set('end', selectedRange.endDate); exportLink.href = `/api/products/${encodeURIComponent(id)}/detail/export?${exportQuery}`; }
     } catch (error) { DemoApi.renderDataState($('[data-product-detail-status]'), 'calculation-failed', { message: error.message, retry: load }); }
   }
-  $('[data-product-detail-action-form]').addEventListener('submit', async (event) => { event.preventDefault(); if (Object.keys(detailPayload?.capabilities || {}).length && !DemoApi.can(detailPayload, 'can_create_action')) { $('[data-product-detail-action-status]').textContent = '当前数据条件不满足创建运营动作'; return; } const form = new FormData(event.currentTarget); try { await DemoApi.domainRequest('/api/actions', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ capability_key: 'product-detail.create_action', product_id: id, purpose_type: 'increase_sales', purpose_note: form.get('purpose_note'), action_type: form.get('action_type'), action_detail: form.get('action_detail'), target_metric: 'payment_amount', planned_at: form.get('planned_at'), observer_window_days: 7, assigned_to: 'operator' }) }); $('[data-product-detail-action-status]').textContent = '运营动作草稿已创建'; load(); } catch (error) { $('[data-product-detail-action-status]').textContent = error.message; } });
+  $('[data-product-detail-action-form]').addEventListener('submit', async (event) => { event.preventDefault(); if (Object.keys(detailPayload?.capabilities || {}).length && !DemoApi.can(detailPayload, 'can_create_action')) { $('[data-product-detail-action-status]').textContent = '当前数据条件不满足创建运营动作'; return; } const formElement = event.currentTarget; const form = new FormData(formElement); const submit = formElement.querySelector('button[type="submit"]'); if (submit) { submit.disabled = true; submit.setAttribute('aria-busy', 'true'); } try { await DemoApi.domainRequest('/api/actions', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ capability_key: 'product-detail.create_action', product_id: id, purpose_type: 'increase_sales', purpose_note: form.get('purpose_note'), action_type: form.get('action_type'), action_detail: form.get('action_detail'), target_metric: 'payment_amount', planned_at: form.get('planned_at'), observer_window_days: 7, assigned_to: 'operator' }) }); $('[data-product-detail-action-status]').textContent = '运营动作草稿已创建'; await load(); } catch (error) { mutationError(error, '创建运营动作失败，请重试'); } finally { if (submit?.isConnected) { submit.disabled = false; submit.removeAttribute('aria-busy'); } } });
   bindWorkbenchNavigation();
   window.addEventListener('tmall:date-range-change', (event) => load(event.detail));
   DemoLabels.load().finally(load);

@@ -20,8 +20,30 @@
   const renderDataState = (state, details) => DemoApi.renderDataState(status, state, details);
   const sourceLabels = { product_day: '商品日度', dmp_product_day: 'DMP商品日度', store_day: '店铺日度', product_week: '商品周度', product_month: '商品月度', promotion_channel_day: '推广渠道日度', promotion_campaign_day: '推广计划日度', promotion_unit_day: '推广单元日度', promotion_product_day: '推广商品日度', refund_day: '退款日度', customer_day: '新老客日度' };
   const shortHash = (value) => value && value.length > 16 ? `${value.slice(0, 8)}...${value.slice(-6)}` : (value || '--');
-  const loadSettings = async () => { try { settings = (await DemoApi.domainRequest('/api/settings')).data; } catch (_) { settings = null; } };
+  const loadSettings = async () => {
+    try {
+      settings = (await DemoApi.domainRequest('/api/settings')).data;
+      if (status?.dataset.importSettingsWarning) {
+        status.classList.remove('data-state');
+        status.removeAttribute('role');
+        status.removeAttribute('aria-live');
+        delete status.dataset.importSettingsWarning;
+        text(status, '');
+      }
+    } catch (_) {
+      settings = null;
+      if (status) status.dataset.importSettingsWarning = 'true';
+      renderDataState('source-unavailable', {
+        message: '导入模板设置不可用，将使用自动识别。',
+        retry: loadSettings,
+      });
+    }
+  };
   const render = (result) => {
+    result = result || {};
+    const resultFields = Array.isArray(result.fields) ? result.fields.filter((field) => field && typeof field === 'object') : [];
+    result.mapping = result.mapping && typeof result.mapping === 'object' ? result.mapping : {};
+    result.required_unmapped = Array.isArray(result.required_unmapped) ? result.required_unmapped : [];
     preview = result;
     panel.hidden = false;
     if (result.invalid_field_count) {
@@ -66,7 +88,7 @@
         .join('; ');
     }
     if (detail) detail.textContent = details || '未发现异常行';
-    fields.replaceChildren(...result.fields.map((field) => {
+    fields.replaceChildren(...resultFields.map((field) => {
       const row = document.createElement('tr');
       const source = document.createElement('td'); source.textContent = field.source_column; row.appendChild(source);
       const inferred = document.createElement('td'); inferred.textContent = DemoLabels.label('match', field.inferred_type || 'empty'); row.appendChild(inferred);
@@ -126,7 +148,7 @@
     if (Object.keys(importCapabilities).length && !DemoApi.can({ capabilities: importCapabilities }, 'can_import')) return text(status, '当前数据源不允许导入');
     const pending = previewQueue.length ? previewQueue : (preview ? [preview] : []);
     if (pending.some((item) => item.invalid_rows || item.duplicate_keys)) return text(status, '质量校验未通过，请修正源文件后重新预览。');
-    if (!pending.length || pending.some((item) => item.required_unmapped.length)) return text(status, '请先完成必填字段映射。');
+    if (!pending.length || pending.some((item) => (Array.isArray(item.required_unmapped) ? item.required_unmapped : []).length)) return text(status, '请先完成必填字段映射。');
     confirmButton.disabled = true; text(status, '正在事务导入…');
     const failures = [];
     const failedPreviews = [];
@@ -158,7 +180,7 @@
     finally { if (failures.length || status.textContent.includes('失败')) confirmButton.disabled = false; }
   });
   async function loadHistory() {
-    if (historyStatus) text(historyStatus, '正在加载导入批次');
+    if (historyStatus) text(historyStatus, '正在加载导入批次…');
     try {
       const response = await DemoApi.domainRequest('/api/imports');
       importCapabilities = response.capabilities || importCapabilities;
@@ -230,7 +252,7 @@
     return node;
   };
   const listText = (items) => items?.length ? items.join(' / ') : '--';
-  const coverageText = (coverage) => {
+  const coverageText = (coverage = {}) => {
     const range = coverage.start && coverage.end ? `${coverage.start} ~ ${coverage.end}` : '无日期范围';
     return `${coverage.row_count} 行 · ${coverage.entity_count} 个实体 · ${range}`;
   };
@@ -275,7 +297,7 @@
   const renderUnsupported = () => {
     unsupported.replaceChildren(make('h4', '当前明确不支持'));
     const list = make('div', undefined, 'unsupported-capabilities__list');
-    catalog.unsupported_capabilities.forEach((item) => {
+    (catalog.unsupported_capabilities || []).forEach((item) => {
       const boundary = make('div', undefined, 'unsupported-capability');
       boundary.append(make('strong', item.label), make('span', `缺少前提：${item.prerequisite}`));
       list.append(boundary);
@@ -285,8 +307,8 @@
   const renderRows = () => {
     const query = (search.value || '').trim().toLowerCase();
     const selected = availability.value;
-    const domains = catalog.domains.filter((domain) => {
-      const matchesQuery = !query || `${domain.key} ${domain.label} ${domain.consumer_pages.join(' ')}`.toLowerCase().includes(query);
+    const domains = (catalog.domains || []).filter((domain) => {
+      const matchesQuery = !query || `${domain.key} ${domain.label} ${(domain.consumer_pages || []).join(' ')}`.toLowerCase().includes(query);
       return matchesQuery && (!selected || domain.availability === selected);
     });
     table.replaceChildren(...domains.map((domain) => {
@@ -298,8 +320,8 @@
       row.append(name);
       [
         listText(domain.grain), coverageText(domain.coverage),
-        `${domain.raw_fields.filter((field) => field.availability === 'available').length}/${domain.raw_fields.length}`,
-        `${domain.derived_metrics.filter((metric) => metric.availability === 'available').length}/${domain.derived_metrics.length}`,
+        `${(domain.raw_fields || []).filter((field) => field.availability === 'available').length}/${(domain.raw_fields || []).length}`,
+        `${(domain.derived_metrics || []).filter((metric) => metric.availability === 'available').length}/${(domain.derived_metrics || []).length}`,
         listText(domain.consumer_pages), listText(domain.limitations)
       ].forEach((value) => row.append(make('td', value)));
       const action = make('td');
@@ -314,7 +336,7 @@
       const row = document.createElement('tr'); const cell = make('td', '没有符合当前筛选的数据域');
       cell.colSpan = 8; row.append(cell); table.append(row);
     }
-    status.textContent = `显示 ${domains.length} / ${catalog.domains.length} 个数据域`;
+    status.textContent = `显示 ${domains.length} / ${(catalog.domains || []).length} 个数据域`;
   };
   const renderCatalog = () => {
     ['available', 'partial', 'no_data', 'source_unavailable'].forEach((key) => {
@@ -331,7 +353,23 @@
     DemoApi.renderDataState(status, 'loading');
     try {
       const response = await DemoApi.domainRequest('/api/data-capabilities');
-      catalog = response.data;
+      const source = response.data || {};
+      catalog = {
+        ...source,
+        summary: source.summary || {},
+        domains: (Array.isArray(source.domains) ? source.domains : []).map((domain) => ({
+          ...domain,
+          coverage: domain.coverage || {},
+          source_tables: Array.isArray(domain.source_tables) ? domain.source_tables : [],
+          source_coverage: Array.isArray(domain.source_coverage) ? domain.source_coverage : [],
+          source_batches: Array.isArray(domain.source_batches) ? domain.source_batches : [],
+          raw_fields: Array.isArray(domain.raw_fields) ? domain.raw_fields : [],
+          derived_metrics: Array.isArray(domain.derived_metrics) ? domain.derived_metrics : [],
+          consumer_pages: Array.isArray(domain.consumer_pages) ? domain.consumer_pages : [],
+          limitations: Array.isArray(domain.limitations) ? domain.limitations : [],
+        })),
+        unsupported_capabilities: Array.isArray(source.unsupported_capabilities) ? source.unsupported_capabilities : [],
+      };
       renderCatalog();
     } catch (error) {
       table.replaceChildren();
@@ -444,7 +482,16 @@
     DemoApi.renderDataState(status, 'loading');
     try {
       const response = await DemoApi.domainRequest('/api/page-capabilities');
-      catalog = response.data;
+      const source = response.data || {};
+      catalog = {
+        ...source,
+        summary: source.summary || {},
+        pages: (Array.isArray(source.pages) ? source.pages : []).map((page) => ({
+          ...page,
+          capabilities: Array.isArray(page.capabilities) ? page.capabilities : [],
+        })),
+        surfaces: Array.isArray(source.surfaces) ? source.surfaces : [],
+      };
       render();
     } catch (error) {
       table.replaceChildren();

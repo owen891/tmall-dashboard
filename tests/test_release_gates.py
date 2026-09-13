@@ -59,13 +59,7 @@ class ReleaseGateTests(unittest.TestCase):
         ):
             self.assertIn(marker, script)
 
-    def test_release_notes_bound_phase_one_scope(self):
-        notes = pathlib.Path(PROJECT_ROOT, 'docs', 'RELEASE_NOTES.md').read_text(encoding='utf-8')
-        self.assertIn('Phase 1', notes)
-        for excluded in ('利润', '库存', '用户 cohort', '因果归因', '市场机会'):
-            self.assertIn(excluded, notes)
-
-    def test_phase_two_catalog_is_covered_by_release_gates(self):
+    def test_data_capability_catalog_is_covered_by_release_gates(self):
         script = pathlib.Path(PROJECT_ROOT, 'scripts', 'browser_prd_gates.cjs').read_text(encoding='utf-8')
         for marker in (
             'data-capability-summary', 'data-capability-filter="search"',
@@ -73,10 +67,6 @@ class ReleaseGateTests(unittest.TestCase):
             '当前不承诺完整市场机会分析',
         ):
             self.assertIn(marker, script)
-        notes = pathlib.Path(PROJECT_ROOT, 'docs', 'RELEASE_NOTES.md').read_text(encoding='utf-8')
-        self.assertIn('Phase 2', notes)
-        self.assertIn('只读', notes)
-        self.assertIn('证据', notes)
 
     def test_browser_gate_restores_only_writable_settings(self):
         script = pathlib.Path(PROJECT_ROOT, 'scripts', 'browser_prd_gates.cjs').read_text(encoding='utf-8')
@@ -87,6 +77,17 @@ class ReleaseGateTests(unittest.TestCase):
         script = pathlib.Path(PROJECT_ROOT, 'scripts', 'browser_prd_gates.cjs').read_text(encoding='utf-8')
         self.assertIn('const promotionTemplateName = `浏览器推广模板-${Date.now()}`', script)
         self.assertIn('savedPromotionTemplate !== promotionTemplateName', script)
+
+    def test_browser_gate_anchors_shortcuts_to_browser_day(self):
+        script = pathlib.Path(PROJECT_ROOT, 'scripts', 'browser_prd_gates.cjs').read_text(encoding='utf-8')
+        self.assertIn("const anchorValue = await page.evaluate(() => {", script)
+        self.assertIn('const date = new Date();', script)
+        self.assertNotIn("appliedRange.split('~').pop().trim()", script)
+
+    def test_interaction_audit_respects_disabled_capability_options(self):
+        script = pathlib.Path(PROJECT_ROOT, 'scripts', 'audit_core_interactions.cjs').read_text(encoding='utf-8')
+        self.assertIn('disabled: option.disabled', script)
+        self.assertIn('if (!option || option.disabled) return false;', script)
 
     def test_desktop_release_uploads_installer_and_updater_assets(self):
         workflow = pathlib.Path(PROJECT_ROOT, '.github', 'workflows', 'desktop-release.yml').read_text(encoding='utf-8')

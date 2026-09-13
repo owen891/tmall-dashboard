@@ -1,8 +1,9 @@
 from datetime import datetime
+import os
 
-from flask import Blueprint, request
+from flask import Blueprint, current_app, request
 
-from api.api_response import failure, success
+from api.api_response import failure, json_object, success
 from db import get_db
 from repos.audit_repo import AuditRepo
 from api.data_api import _cron_to_label, _parse_cron_expr, _scheduled_matches, _validate_file_pattern
@@ -21,7 +22,7 @@ def reject_removed_schedule_api():
 
 
 def _payload():
-    return request.get_json(silent=True) or {}
+    return json_object(request)
 
 
 def _operator_reason(data, default_reason):
@@ -170,15 +171,39 @@ def run_schedule(task_id):
         )
         status = 'active'
         message = f'任务 "{row["task_name"]}" 执行完成'
+        file_results = []
+        run_status = 200
         try:
             pattern = row['file_pattern'] or '*.xlsx'
             matched_files = _scheduled_matches(pattern)
-            if matched_files:
+            if not matched_files:
+                status = 'partial'
+                message = '没有匹配到待导入文件'
+            else:
                 from scripts.import_data import import_excel_file
-                import_excel_file(matched_files[0])
-        except Exception as error:
+                for filepath in matched_files:
+                    filename = os.path.basename(filepath)
+                    try:
+                        result = import_excel_file(filepath) or {}
+                        file_results.append({
+                            'file': filename,
+                            'status': 'success' if result.get('success', True) else 'failed',
+                            'rows': result.get('total_rows', result.get('rows_imported', 0)),
+                            'batch_id': result.get('batch_id'),
+                        })
+                    except Exception:
+                        current_app.logger.exception('Scheduled import failed for %s', filename)
+                        file_results.append({'file': filename, 'status': 'failed', 'error': '导入失败，请检查文件内容'})
+                failed = [item for item in file_results if item['status'] == 'failed']
+                status = 'error' if failed and len(failed) == len(file_results) else 'partial' if failed else 'active'
+                if failed:
+                    message = '部分文件导入失败' if status == 'partial' else '文件导入失败'
+                    run_status = 500
+        except Exception:
+            current_app.logger.exception('Scheduled task failed: %s', task_id)
             status = 'error'
-            message = f'任务执行失败: {error}'
+            message = '任务执行失败，请检查任务配置和文件内容'
+            run_status = 500
         next_run = _parse_cron_expr(row['cron_expr'])
         next_run_str = next_run.strftime('%Y-%m-%d %H:%M:%S') if next_run else None
         connection.execute(
@@ -186,7 +211,14 @@ def run_schedule(task_id):
             (status, next_run_str, task_id),
         )
         after = _task(_get_task(connection, task_id))
-        after['message'] = message
+        after.update({'message': message, 'files': file_results, 'partial': status == 'partial'})
         AuditRepo.record('scheduled_task', task_id, 'run', operator, reason, _task(row), after, connection=connection)
         connection.commit()
-    return _success(after, action='run')
+    if run_status != 200:
+        return failure(
+            'SCHEDULE_RUN_FAILED',
+            message,
+            {'task': after, 'files': file_results, 'partial': status == 'partial'},
+            status=run_status,
+        )
+    return _success(after, action='run', unknowns=[message] if status != 'active' else [])

@@ -7,6 +7,10 @@
   };
   const currentVersion = normalizeVersion(window.TMALL_WEB_VERSION) || '0.0.0';
   if (window.tmallDesktop?.isDesktop) return;
+  const project = window.TMALL_PROJECT || {
+    latestRelease: 'https://github.com/owen891/tmall-dashboard/releases/latest',
+    latestReleaseApi: 'https://api.github.com/repos/owen891/tmall-dashboard/releases/latest',
+  };
 
   const newerThan = (candidate, current) => {
     const parse = value => normalizeVersion(value)?.split('.').map(Number) || null;
@@ -20,13 +24,24 @@
   };
 
   const dismissKey = `tmall-update-dismissed:${currentVersion}`;
+  const githubCheckKey = 'tmall-update-github-last-check';
+  const githubCheckInterval = 30 * 60 * 1000;
+  const githubCheckDue = () => {
+    try {
+      const last = Number(localStorage.getItem(githubCheckKey) || 0);
+      return !last || Date.now() - last >= githubCheckInterval;
+    } catch { return true; }
+  };
+  const markGithubCheck = () => {
+    try { localStorage.setItem(githubCheckKey, String(Date.now())); } catch {}
+  };
   const dismissed = () => {
     try { return sessionStorage.getItem(dismissKey) === '1'; } catch { return false; }
   };
   const dismiss = () => {
     try { sessionStorage.setItem(dismissKey, '1'); } catch {}
   };
-  const showBanner = version => {
+  const showBanner = (version, releaseUrl = project.latestRelease) => {
     const safeVersion = normalizeVersion(version);
     if (!safeVersion || dismissed() || document.querySelector('[data-update-banner]')) return;
     const banner = document.createElement('aside');
@@ -38,10 +53,15 @@
     const title = document.createElement('strong');
     title.textContent = `发现新版本 ${safeVersion}`;
     const hint = document.createElement('span');
-    hint.textContent = '刷新页面后立即生效';
+    hint.textContent = '查看更新说明后刷新页面生效';
     message.append(title, hint);
     const actions = document.createElement('span');
     actions.className = 'web-update-banner__actions';
+    const notes = document.createElement('a');
+    notes.href = releaseUrl;
+    notes.target = '_blank';
+    notes.rel = 'noreferrer';
+    notes.textContent = '更新说明';
     const refresh = document.createElement('button');
     refresh.type = 'button';
     refresh.dataset.updateRefresh = 'true';
@@ -51,7 +71,7 @@
     later.dataset.updateDismiss = 'true';
     later.setAttribute('aria-label', '稍后提醒');
     later.textContent = '稍后';
-    actions.append(refresh, later);
+    actions.append(notes, refresh, later);
     banner.append(message, actions);
     refresh.addEventListener('click', () => window.location.reload());
     later.addEventListener('click', () => { dismiss(); banner.remove(); });
@@ -69,7 +89,22 @@
     }
   };
 
+  const checkGithubRelease = async () => {
+    if (!githubCheckDue()) return;
+    markGithubCheck();
+    try {
+      const response = await fetch(project.latestReleaseApi, { cache: 'no-store', headers: { Accept: 'application/vnd.github+json' } });
+      if (!response.ok) return;
+      const release = await response.json();
+      const version = release?.tag_name;
+      if (newerThan(version, currentVersion)) showBanner(version, project.latestRelease);
+    } catch {
+      // GitHub checks are best-effort and must not affect dashboard use.
+    }
+  };
+
   check();
-  window.setInterval(check, 5 * 60 * 1000);
-  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') check(); });
+  checkGithubRelease();
+  window.setInterval(() => { check(); checkGithubRelease(); }, 30 * 60 * 1000);
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') { check(); checkGithubRelease(); } });
 })();

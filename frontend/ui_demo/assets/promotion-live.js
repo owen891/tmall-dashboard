@@ -121,23 +121,6 @@
   Object.entries(promotionTemplateOverrides).forEach(([tab, templates]) => { tabDefinitions[tab].templates = templates; });
   const promotionBuiltinTemplateIds = new Set(Object.values(promotionTemplateOverrides).flat().map((template) => template.id));
 
-  const demoBreakdowns = {
-    keywords: [
-      { product_id: 'demo-keyword-001', title: '山楂汁关键词拓量', spend: 9684, sales: 11040, roi: 1.14, visitors: 10120, ppc: 0.96 },
-      { product_id: 'demo-keyword-002', title: '山楂零食高意向词', spend: 4210, sales: 16460, roi: 3.91, visitors: 4310, ppc: 0.98 },
-      { product_id: 'demo-keyword-003', title: '儿童零食长尾词', spend: 1850, sales: 5210, roi: 2.82, visitors: 2870, ppc: 0.65 },
-    ],
-    crowd: [
-      { product_id: 'demo-crowd-001', title: '老客相似人群', spend: 4210, sales: 9180, roi: 2.18, visitors: 2110, ppc: 2.00 },
-      { product_id: 'demo-crowd-002', title: '高消费人群', spend: 3380, sales: 5880, roi: 1.74, visitors: 1760, ppc: 1.92 },
-      { product_id: 'demo-crowd-003', title: '兴趣扩展人群', spend: 2240, sales: 2150, roi: 0.96, visitors: 1620, ppc: 1.38 },
-    ],
-    creative: [
-      { product_id: 'demo-creative-001', title: '主图 A · 玄关场景', spend: 2680, sales: 7660, roi: 2.86, visitors: 5210, ppc: 0.51 },
-      { product_id: 'demo-creative-002', title: '短视频 B · 软装讲解', spend: 1970, sales: 4360, roi: 2.21, visitors: 3840, ppc: 0.51 },
-      { product_id: 'demo-creative-003', title: '主图 C · 商品特写', spend: 1520, sales: 2140, roi: 1.41, visitors: 2630, ppc: 0.58 },
-    ],
-  };
   const storageKey = 'tmall_promotion_field_templates_v1';
   const fieldPreferenceStorageKey = 'tmall_promotion_field_selection_v2';
   let fieldSelector = null;
@@ -155,8 +138,9 @@
     } catch (_) { return {}; }
   };
   const storedFieldPreferences = loadFieldPreferences();
+  const initialPromotionParams = new URLSearchParams(window.location.search);
   const state = {
-    period: '', rows: [], planRows: [], breakdowns: {}, alerts: [], availableGrains: [], activeTab: 'products', dialogTab: 'products', promotionDetailTab: 'overview', promotionDetailProduct: null, promotionDetailUnits: [], promotionDetailSource: 'available', token: 0,
+    period: '', rows: [], planRows: [], breakdowns: {}, alerts: [], availableGrains: [], activeTab: initialPromotionParams.get('tab') || 'products', dialogTab: 'products', promotionDetailTab: 'overview', promotionDetailProduct: null, promotionDetailUnits: [], promotionDetailSource: 'available', token: 0, promotionDetailRequest: 0,
     dialogReturnFocus: null, fieldDialogReturnFocus: null, chart: null, settings: null, capabilities: {}, customTemplates: loadCustomTemplates(),
     demoTabs: new Set(),
     selectedFields: Object.fromEntries(Object.entries(tabDefinitions).map(([key, definition]) => [key, [...definition.templates[0].fields]])),
@@ -176,11 +160,6 @@
   function normalizeBreakdowns(raw) {
     const normalized = { ...(raw || {}) };
     state.demoTabs.clear();
-    Object.entries(demoBreakdowns).forEach(([key, rows]) => {
-      if (Array.isArray(normalized[key]?.rows) && normalized[key].rows.length) return;
-      normalized[key] = { availability: 'demo', is_demo: true, rows };
-      state.demoTabs.add(key);
-    });
     return normalized;
   }
   const money = (value) => `￥${Number(value || 0).toLocaleString('zh-CN', { maximumFractionDigits: 2 })}`;
@@ -982,7 +961,7 @@
     if (!state.availableGrains.includes(level)) return toast('当前数据未导入该下钻粒度');
     const query = new URLSearchParams({start:range.startDate || `${state.period}-01`, end:range.endDate || `${state.period}-31`, group_by:level});
     [['channel','[data-promotion-channel]'],['campaign_id','[data-promotion-campaign]'],['unit_id','[data-promotion-unit]']].forEach(([key, selector]) => { const value = $(selector).value.trim(); if (value) query.set(key, value); });
-    try { const response = await DemoApi.domainRequest(`/api/promotion?${query}`); renderDrilldown(response.data.rows, level); } catch(error) { clearTable(error.message || '推广下钻加载失败'); }
+    try { const response = await DemoApi.domainRequest(`/api/promotion?${query}`); renderDrilldown(Array.isArray(response.data?.rows) ? response.data.rows : [], level); } catch(error) { clearTable(error.message || '推广下钻加载失败'); }
   }
 
   function metric(label, value) {
@@ -1058,7 +1037,7 @@
     body.replaceChildren();
     tabs.hidden = sourceState !== 'available';
     if (sourceState !== 'available') {
-      body.append(element('div', 'empty-state', sourceState === 'loading' ? '正在加载推广明细' : '推广明细加载失败，请稍后重试。'));
+      body.append(element('div', 'empty-state', sourceState === 'loading' ? '正在加载推广明细…' : '推广明细加载失败，请稍后重试。'));
       return;
     }
 
@@ -1145,6 +1124,7 @@
   }
 
   async function openPromotionDetail(row, trigger) {
+    const requestToken = ++state.promotionDetailRequest;
     const product = state.rows.find((item) => productId(item) === productId(row)) || row;
     state.promotionDetailTab = 'overview';
     $('[data-promotion-dialog-title]').textContent = productTitle(product) || '推广明细';
@@ -1155,9 +1135,11 @@
     openDialog(trigger);
     try {
       const response = await DemoApi.domainRequest(`/api/promotion?${promotionDetailQuery(product)}`);
+      if (requestToken !== state.promotionDetailRequest) return;
       const units = Array.isArray(response.data?.rows) ? response.data.rows : [];
       renderPromotionDetail(product, units, 'available');
     } catch (error) {
+      if (requestToken !== state.promotionDetailRequest) return;
       renderPromotionDetail(product, [], 'error');
       const hint = $('[data-promotion-dialog-body] .empty-state');
       if (hint) hint.appendChild(element('span', '', error.message || '接口暂时不可用。'));
@@ -1215,6 +1197,7 @@
 
   function closeDialog() {
     const dialog = $('[data-promotion-dialog]');
+    state.promotionDetailRequest += 1;
     if (dialog.open) dialog.close();
   }
 
@@ -1258,13 +1241,34 @@
   }
 
   function selectTab(tab) {
+    if (!Object.prototype.hasOwnProperty.call(tabDefinitions, tab)) tab = 'products';
     state.activeTab = tab;
+    syncPromotionUrl();
     document.querySelectorAll('[data-promotion-tab]').forEach((button) => {
       const active = button.dataset.promotionTab === tab;
       button.setAttribute('aria-selected', String(active));
       button.setAttribute('aria-pressed', String(active));
     });
     renderActiveTable();
+  }
+
+  function syncPromotionUrl() {
+    const url = new URL(window.location.href);
+    url.searchParams.set('tab', state.activeTab);
+    [['channel', '[data-promotion-channel]'], ['campaign_id', '[data-promotion-campaign]'], ['unit_id', '[data-promotion-unit]']].forEach(([key, selector]) => {
+      const value = $(selector)?.value.trim() || '';
+      if (value) url.searchParams.set(key, value);
+      else url.searchParams.delete(key);
+    });
+    history.replaceState(null, '', url);
+  }
+
+  function restorePromotionUrl() {
+    [['channel', '[data-promotion-channel]'], ['campaign_id', '[data-promotion-campaign]'], ['unit_id', '[data-promotion-unit]']].forEach(([key, selector]) => {
+      const input = $(selector);
+      if (input) input.value = initialPromotionParams.get(key) || '';
+    });
+    if (!Object.prototype.hasOwnProperty.call(tabDefinitions, state.activeTab)) state.activeTab = 'products';
   }
 
   async function loadBoardOverview(detail, token) {
@@ -1284,7 +1288,7 @@
     const token = ++state.token;
     state.period = getPeriod(detail);
     $('[data-promotion-period]').textContent = `${state.period} 商品推广趋势`;
-    clearTable('加载推广数据中');
+    clearTable('加载推广数据中…');
     renderKpis([]);
     renderAlerts([]);
     renderCommandBoard([], []);
@@ -1398,15 +1402,18 @@
       if (!input) return;
       let timer = null;
       input.addEventListener('input', () => {
+        syncPromotionUrl();
         window.clearTimeout(timer);
         timer = window.setTimeout(() => load(), 260);
       });
-      input.addEventListener('change', () => load());
+      input.addEventListener('change', () => { syncPromotionUrl(); load(); });
     });
   }
+  restorePromotionUrl();
   bindPageFilters();
   bindFieldSettings();
   bindDialog();
+  selectTab(state.activeTab);
   loadServerTemplates()
     .catch((error) => toast(error.message || '字段模板加载失败'))
     .finally(() => renderTemplateSelect());

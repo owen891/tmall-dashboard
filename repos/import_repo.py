@@ -64,6 +64,7 @@ class ImportRepo:
                         batch['invalid_rows'], batch['quality_summary'],
                     ),
                 )
+                seen_product_snapshots = set()
                 for row in rows:
                     shop_id = str(row.get('shop_id') or 'default')
                     existing = connection.execute(
@@ -85,9 +86,21 @@ class ImportRepo:
                     )
 
                     prior_product = connection.execute(
-                        'SELECT title, parent_product_id, product_type, sku_code, source_status, product_tags FROM products WHERE product_id = ?',
+                        'SELECT * FROM products WHERE product_id = ?',
                         (row['product_id'],),
                     ).fetchone()
+                    if row['product_id'] not in seen_product_snapshots and prior_product:
+                        connection.execute(
+                            '''INSERT INTO import_batch_changes (batch_id, table_name, business_key, previous_row, written_by)
+                               VALUES (?, 'products', ?, ?, ?)''',
+                            (
+                                batch['id'],
+                                json.dumps({'product_id': row['product_id']}, ensure_ascii=False, sort_keys=True),
+                                json.dumps(dict(prior_product), ensure_ascii=False),
+                                batch['id'],
+                            ),
+                        )
+                        seen_product_snapshots.add(row['product_id'])
                     connection.execute(
                         '''
                         INSERT INTO products (
@@ -118,7 +131,12 @@ class ImportRepo:
                                SET title = ?, parent_product_id = ?, product_type = ?, sku_code = ?,
                                    source_status = ?, product_tags = ?
                                WHERE product_id = ?''',
-                            (*tuple(prior_product), row['product_id']),
+                            (
+                                prior_product['title'], prior_product['parent_product_id'],
+                                prior_product['product_type'], prior_product['sku_code'],
+                                prior_product['source_status'], prior_product['product_tags'],
+                                row['product_id'],
+                            ),
                         )
                     resolution_row = dict(row)
                     result = record_daily_observation(
@@ -283,6 +301,7 @@ class ImportRepo:
                 ).fetchall()
                 restored_count = 0
                 skipped_count = 0
+                product_skipped_count = 0
                 affected_products = set()
                 affected_dates = {}
                 revertable_observation_keys = set()
@@ -299,9 +318,36 @@ class ImportRepo:
                         (change['table_name'], change['business_key'], change['id']),
                     ).fetchone()
                     if newer:
-                        skipped_count += 1
+                        if change['table_name'] != 'products':
+                            skipped_count += 1
+                        else:
+                            product_skipped_count += 1
                         continue
+
                     table_name = change['table_name']
+                    if table_name == 'products':
+                        key = json.loads(change['business_key'])
+                        product_id = key['product_id']
+                        if change['previous_row'] is None:
+                            referenced = connection.execute(
+                                '''SELECT 1 FROM daily_data WHERE product_id = ? LIMIT 1''',
+                                (product_id,),
+                            ).fetchone()
+                            if referenced:
+                                product_skipped_count += 1
+                            else:
+                                connection.execute('DELETE FROM products WHERE product_id = ?', (product_id,))
+                                restored_count += 1
+                        else:
+                            previous = json.loads(change['previous_row'])
+                            columns = [column for column in previous if column != 'id']
+                            connection.execute(
+                                f"INSERT OR REPLACE INTO products ({', '.join(columns)}) VALUES ({', '.join('?' for _ in columns)})",
+                                [previous[column] for column in columns],
+                            )
+                            restored_count += 1
+                        connection.execute('UPDATE import_batch_changes SET reverted_at = CURRENT_TIMESTAMP WHERE id = ?', (change['id'],))
+                        continue
                     if table_name == 'daily_data':
                         shop_id, product_id, fact_date = _parse_daily_business_key(change['business_key'])
                         # product_actions is a legacy single-shop table. A

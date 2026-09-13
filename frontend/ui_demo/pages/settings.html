@@ -36,14 +36,14 @@
         </div>
         <div class="settings-tab-panel" data-settings-tab-panel="goals" id="settings-goals">
         <div class="settings-form-section"><h3>销售目标设置</h3><p>这里维护年度默认值；本周、本月、季度和年度目标在“经营目标”页拆解并锁定。</p></div>
-        <label>年度销售目标默认值（元）<input class="input" type="number" name="annual_target_default" min="0" step="0.01"></label>
-        <label>增长倍率<input class="input" type="number" name="growth_multiplier" min="0.01" step="0.01"></label>
-        <label>超额完成阈值<input class="input" type="number" name="overachievement_threshold" min="0.01" step="0.01"></label>
+        <label>年度销售目标默认值（元）<input class="input" type="number" inputmode="decimal" name="annual_target_default" min="0" step="0.01" autocomplete="off"></label>
+        <label>增长倍率<input class="input" type="number" inputmode="decimal" name="growth_multiplier" min="0.01" step="0.01" autocomplete="off"></label>
+        <label>超额完成阈值<input class="input" type="number" inputmode="decimal" name="overachievement_threshold" min="0.01" step="0.01" autocomplete="off"></label>
         <div class="settings-goal-link"><span>需要调整本周 / 本月 / 季度 / 年度目标金额？前往经营目标页。</span><a class="button" href="/goals">打开经营目标</a></div>
         </div>
         <div class="settings-tab-panel" data-settings-tab-panel="store">
-        <label>连续有效天数<input class="input" name="continuous_days" type="number" min="1" step="1" value="60"></label>
-        <label>季节判断最少完整月数<input class="input" name="seasonal_months" type="number" min="1" step="1" value="12"></label>
+        <label>连续有效天数<input class="input" name="continuous_days" type="number" inputmode="numeric" min="1" step="1" value="60" autocomplete="off"></label>
+        <label>季节判断最少完整月数<input class="input" name="seasonal_months" type="number" inputmode="numeric" min="1" step="1" value="12" autocomplete="off"></label>
         <label>当前商品视图<select class="select" name="product_view_template"><option value="operate">基础经营</option><option value="select">选款</option><option value="paid">推广效率</option><option value="refund">退款售后</option><option value="lifecycle">生命周期</option></select></label>
         </div>
         <div class="settings-savebar" data-settings-savebar><span class="settings-savebar__dirty" data-settings-dirty role="status" aria-live="polite">已保存</span><button class="button button--ghost" type="button" data-settings-discard disabled>放弃修改</button><button class="button button--primary" type="submit">保存设置</button><p data-settings-status role="status" aria-live="polite"></p></div>
@@ -57,16 +57,9 @@
         <div data-alert-rules-list aria-live="polite"></div>
       </section>
       <section class="plain-panel panel" id="settings-formula"><div class="panel__header"><div><h3 class="panel__title">指标口径</h3><p class="panel__hint">核心指标公式不可编辑</p></div></div><p>净销售额 = 支付金额 - 成功退款金额；退款率与费比均按汇总后再计算。</p></section>
-      <section class="plain-panel panel desktop-update" id="settings-desktop" hidden data-desktop-settings>
-        <div class="panel__header">
-          <div><h3 class="panel__title">桌面应用</h3><p class="panel__hint">当前版本 <span class="desktop-update__version" data-desktop-version>--</span></p></div>
-          <button class="button" type="button" data-desktop-check-update><i data-lucide="refresh-cw"></i>检查更新</button>
-        </div>
-        <p class="panel__hint" data-desktop-update-status role="status" aria-live="polite"></p>
-      </section>
       <section class="plain-panel panel" id="settings-import-scans" aria-labelledby="importScanTitle">
-        <div class="panel__header"><div><h3 class="panel__title" id="importScanTitle">本地导入扫描</h3><p class="panel__hint">按计划扫描本机固定文件夹，复用导入预览、质量校验和批次审计。</p></div><button class="button" type="button" data-scan-create><i data-lucide="folder-plus"></i>新增任务</button></div>
-        <div class="data-table-wrap"><table class="data-table"><thead><tr><th>任务</th><th>来源</th><th>计划</th><th>状态</th><th>最近运行</th><th>操作</th></tr></thead><tbody data-scan-jobs><tr><td colspan="6">加载中</td></tr></tbody></table></div>
+        <div class="panel__header"><div><h3 class="panel__title" id="importScanTitle">本地导入扫描</h3><p class="panel__hint">按计划扫描本机固定文件夹，复用导入预览、质量校验和批次审计。</p><p class="panel__hint" data-scan-environment aria-live="polite">正在读取扫描环境…</p></div><button class="button" type="button" data-scan-create><i data-lucide="folder-plus"></i>新增任务</button></div>
+        <div class="data-table-wrap"><table class="data-table"><thead><tr><th>任务</th><th>来源</th><th>计划</th><th>状态</th><th>最近运行</th><th>操作</th></tr></thead><tbody data-scan-jobs><tr><td colspan="6">加载中…</td></tr></tbody></table></div>
         <p class="panel__hint" data-scan-status role="status" aria-live="polite"></p>
       </section>
       </div>
@@ -78,7 +71,7 @@
       <div class="modal-form__header"><h3 id="scanDialogTitle">新增扫描任务</h3><button class="button button--ghost" type="button" data-scan-close aria-label="关闭"><i data-lucide="x"></i></button></div>
       <div class="modal-form__body">
         <label>任务名称<input class="input" name="task_name" required autocomplete="off"></label>
-        <label>本地文件夹绝对路径<input class="input" name="folder_path" required autocomplete="off" placeholder="E:\\data\\import-inbox"></label>
+        <label>本地文件夹绝对路径<span class="toolbox-scan-folder"><input class="input" name="folder_path" required autocomplete="off" placeholder="E:\\data\\import-inbox…"><button class="button" type="button" data-settings-select-scan-folder hidden><i data-lucide="folder-open"></i>选择文件夹</button></span><span class="panel__hint">Web 版仅能扫描 `IMPORT_SCAN_ALLOWED_ROOTS` 下的目录；桌面版可使用文件夹选择器。</span></label>
         <label>文件匹配规则<input class="input" name="file_pattern" value="*.xlsx;*.xls;*.csv;*.zip" list="scan-file-patterns" required autocomplete="off"><span class="panel__hint">可用分号组合多种格式；扫描器只处理 Excel、CSV 和 ZIP。</span></label>
         <label>报表来源<select class="select" name="source_type" required><option value="auto">自动识别</option><option value="product_day">商品日度</option><option value="dmp_product_day">DMP 商品日度</option><option value="store_day">店铺日度</option><option value="refund_day">退款日度</option><option value="customer_day">客户日度</option><option value="product_week">商品周度</option><option value="product_month">商品月度</option><option value="promotion_channel_day">推广渠道日度</option><option value="promotion_campaign_day">推广计划日度</option><option value="promotion_unit_day">推广单元日度</option><option value="promotion_product_day">推广商品日度</option></select></label>
         <label>扫描计划（cron）<input class="input" name="cron_expr" value="* * * * *" required autocomplete="off"></label>
@@ -100,6 +93,6 @@
     <div class="modal-form__body"><h4>最近运行</h4><div class="data-table-wrap"><table class="data-table"><thead><tr><th>开始时间</th><th>状态</th><th>导入</th><th>阻塞</th><th>失败</th></tr></thead><tbody data-scan-runs></tbody></table></div><h4>发现文件</h4><div class="data-table-wrap"><table class="data-table"><thead><tr><th>文件</th><th>状态</th><th>批次</th><th>更新时间</th><th>操作</th></tr></thead><tbody data-scan-files></tbody></table></div></div>
     <div class="modal-form__footer"><button class="button" type="button" data-scan-detail-close>关闭</button></div>
   </dialog>
-  <script src="../assets/api.js"></script><script src="../assets/navigation.js"></script><script src="../assets/labels.js"></script><script src="../assets/shell.js"></script><script src="../assets/alert-rules.js"></script><script src="../assets/settings-live.js"></script><script src="../assets/desktop-integration.js"></script>
+  <script src="../assets/api.js"></script><script src="../assets/navigation.js"></script><script src="../assets/labels.js"></script><script src="../assets/shell.js"></script><script src="../assets/alert-rules.js"></script><script src="../assets/settings-live.js"></script>
 </body>
 </html>

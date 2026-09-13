@@ -184,24 +184,5 @@ def import_smart_selection(filepath, conn):
 
 
 if __name__ == '__main__':
-    init_db()
-    conn = get_connection()
-
-    files = sys.argv[1:]
-    if not files:
-        print("Usage: python import_smart.py <file1.xlsx> [file2.xlsx ...]")
-        sys.exit(1)
-
-    grand_total = 0
-    for f in files:
-        if not os.path.exists(f):
-            print(f"SKIP: {f} not found")
-            continue
-        print(f"\nImporting: {os.path.basename(f)}")
-        n = import_smart_selection(f, conn)
-        grand_total += n
-        conn.commit()
-        print(f"  Total: {n} rows")
-
-    conn.close()
-    print(f"\n=== Grand total: {grand_total} rows imported ===")
+    from scripts.legacy_import_cli import run_legacy_import
+    raise SystemExit(run_legacy_import(sys.argv[1:], 'product_month'))

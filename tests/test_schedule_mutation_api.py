@@ -38,7 +38,7 @@ class ScheduleMutationApiTests(unittest.TestCase):
         })
         self.assertEqual(response.status_code, 422)
         # The default allowed root does not include arbitrary temp folders.
-        self.assertEqual(response.get_json()['code'], 'VALIDATION_ERROR')
+        self.assertEqual(response.get_json()['code'], 'SCAN_FOLDER_NOT_ALLOWED')
 
 
 if __name__ == '__main__':

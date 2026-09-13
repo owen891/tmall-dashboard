@@ -1,6 +1,6 @@
 from flask import Blueprint, request
 
-from api.api_response import evidence_level_for, failure, limitations_for, success
+from api.api_response import evidence_level_for, failure, json_object, limitations_for, success
 from services.lifecycle_service import LifecycleConflictError, LifecycleValidationError, lifecycle_service
 from services.shop_scope_service import reject_legacy_shop_scope
 
@@ -57,7 +57,7 @@ def assessments():
 def update_assessment(product_id):
     if (denied := reject_legacy_shop_scope('生命周期')):
         return denied
-    payload = request.get_json(silent=True) or {}
+    payload = json_object(request)
     try:
         result = lifecycle_service.update(product_id, payload)
         enough_days = int(result.get('continuous_valid_days') or 0) >= 60

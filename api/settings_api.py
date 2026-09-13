@@ -1,6 +1,6 @@
 from flask import Blueprint, request
 
-from api.api_response import failure, success
+from api.api_response import failure, json_object, success
 from services.settings_service import SettingsValidationError, settings_service
 
 
@@ -19,7 +19,7 @@ def get_settings():
 
 @settings_bp.route('/api/settings', methods=['PUT'])
 def update_settings():
-    payload = request.get_json(silent=True) or {}
+    payload = json_object(request)
     operator = payload.pop('operator', None) or 'admin'
     reason = payload.pop('reason', None) or '更新系统设置'
     try:

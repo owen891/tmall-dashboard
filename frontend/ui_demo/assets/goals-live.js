@@ -13,6 +13,17 @@
   let previewTimer = null;
   let annualTargetDirty = false;
   let pageCapabilitiesReady = false;
+  let loadToken = 0;
+  let annualSaving = false;
+  let suggestionLoading = false;
+  const pendingMonths = new Set();
+  const pendingLocks = new Set();
+
+  window.addEventListener('beforeunload', (event) => {
+    if (!annualTargetDirty) return;
+    event.preventDefault();
+    event.returnValue = '';
+  });
 
   const money = (value) => Number(value || 0).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   const setStatus = (message) => {
@@ -136,19 +147,23 @@
   }
 
   async function load(year, replaceAnnualTarget = false) {
-    renderDataState('loading', { message: '正在加载年度目标' });
-    setTableMessage(monthsBody, 5, '正在加载月度执行计划');
+    const token = ++loadToken;
+    renderDataState('loading', { message: '正在加载年度目标…' });
+    setTableMessage(monthsBody, 5, '正在加载月度执行计划…');
     try {
       const goal = await DemoApi.domainRequest(`/api/goals/${year}`);
+      if (token !== loadToken) return;
       current = goal.data;
       capabilities = goal.capabilities || {};
       updateAnnualControls();
       const periods = await DemoApi.domainRequest(`/api/goals/${year}/periods`);
+      if (token !== loadToken) return;
       renderMonths(periods.data);
       versionLabel.textContent = `当前版本 ${current.version}，年度合计 ¥${money(current.annual_total)}`;
       if (replaceAnnualTarget || !annualTargetDirty) form.elements.annual_target.value = Number(current.annual_total).toFixed(2);
       queuePreview();
     } catch (error) {
+      if (token !== loadToken) return;
       current = null; capabilities = {};
       versionLabel.textContent = '该年度尚未创建目标';
       if (error.status === 404) {
@@ -163,9 +178,10 @@
   }
 
   async function saveMonth(periodKey, input) {
-    if (!current || input.disabled) return;
+    if (!current || input.disabled || pendingMonths.has(periodKey)) return;
     const targetAmount = Number(input.value);
     if (!Number.isFinite(targetAmount) || targetAmount < 0) { setStatus('请输入有效的月度目标金额'); input.focus(); return; }
+    pendingMonths.add(periodKey);
     input.disabled = true;
     try {
       const response = await DemoApi.domainRequest(`/api/goals/${current.year}/adjustments`, {
@@ -175,10 +191,13 @@
       setStatus(`已保存 ${periodKey}，当前版本 ${response.data.version}`);
       await load(current.year);
     } catch (error) { input.disabled = false; setStatus(error.message || '月度目标保存失败'); }
+    finally { pendingMonths.delete(periodKey); }
   }
 
   async function lockMonth(periodKey) {
     if (!current || !canLock()) { setStatus('当前目标不允许锁定'); return; }
+    if (pendingLocks.has(periodKey)) return;
+    pendingLocks.add(periodKey);
     try {
       const response = await DemoApi.domainRequest(`/api/goals/${current.year}/locks`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -187,6 +206,7 @@
       setStatus(`已锁定 ${periodKey}，当前版本 ${response.data.version}`);
       await load(current.year);
     } catch (error) { setStatus(error.message || '月份锁定失败'); }
+    finally { pendingLocks.delete(periodKey); }
   }
 
   async function loadSettings() {
@@ -200,6 +220,7 @@
 
   form.addEventListener('submit', async (event) => {
     event.preventDefault();
+    if (annualSaving) return;
     if (!canEdit()) { setStatus('当前目标不允许编辑'); return; }
     const year = Number(form.elements.year.value);
     const multiplier = Number(form.elements.growth_multiplier.value);
@@ -209,20 +230,28 @@
     if (!Number.isFinite(annualTarget) || annualTarget < 0) { setStatus('请输入有效的年度总目标'); return; }
     const payload = { year, annual_target: annualTarget, growth_multiplier: multiplier, operator: '运营人员', reason: '按去年同期销售占比生成年度目标' };
     if (current?.year === year) payload.version = current.version;
+    annualSaving = true;
+    const saveButton = form.querySelector('[data-goals-save]');
+    if (saveButton) { saveButton.disabled = true; saveButton.setAttribute('aria-busy', 'true'); }
     try {
       const response = await DemoApi.domainRequest('/api/goals', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
       setStatus(`年度目标已保存，当前版本 ${response.data.version}`);
       annualTargetDirty = false;
       await load(year, true);
     } catch (error) { setStatus(error.message || '年度目标保存失败'); }
+    finally { annualSaving = false; if (saveButton?.isConnected) { saveButton.disabled = !canEdit(); saveButton.removeAttribute('aria-busy'); } }
   });
 
   suggestButton.addEventListener('click', async () => {
+    if (suggestionLoading) return;
     if (!canEdit()) { setStatus('当前目标不允许编辑'); return; }
     const year = Number(form.elements.year.value);
     const multiplier = Number(form.elements.growth_multiplier.value);
     if (!Number.isInteger(year) || year < 2000 || year > 2100) { setStatus('年份必须是 2000-2100 的整数'); return; }
     if (!Number.isFinite(multiplier) || multiplier <= 0) { setStatus('增长倍率必须为大于 0 的有限数字'); return; }
+    suggestionLoading = true;
+    suggestButton.disabled = true;
+    suggestButton.setAttribute('aria-busy', 'true');
     try {
       const response = await DemoApi.domainRequest(`/api/goals/${year}/suggestion?growth_multiplier=${encodeURIComponent(multiplier)}`);
       form.elements.suggested_annual_target.value = Number(response.data.suggested_annual_target).toFixed(2);
@@ -231,6 +260,7 @@
       document.querySelector('[data-goals-suggestion-source]').textContent = `去年净销售额 ¥${money(response.data.prior_year_net_sales)} × ${multiplier.toFixed(2)} 倍`;
       queuePreview();
     } catch (error) { setStatus(error.message || '建议值生成失败'); }
+    finally { suggestionLoading = false; if (suggestButton.isConnected) { suggestButton.disabled = !canEdit(); suggestButton.removeAttribute('aria-busy'); } }
   });
 
   form.elements.year.addEventListener('change', () => { annualTargetDirty = false; load(Number(form.elements.year.value)); });

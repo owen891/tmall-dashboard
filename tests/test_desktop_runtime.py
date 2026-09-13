@@ -120,16 +120,17 @@ class DesktopRuntimeTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, 'VERSION'):
                 _read_app_version(os.path.join(temp_dir, 'VERSION'))
 
-    def test_config_defaults_scan_allowlist_to_project_inbox_only(self):
+    def test_config_defaults_scan_allowlist_to_project_inbox_and_legacy_watch_folder(self):
         original = os.environ.get('IMPORT_SCAN_ALLOWED_ROOTS')
         try:
             os.environ.pop('IMPORT_SCAN_ALLOWED_ROOTS', None)
             import config
             importlib.reload(config)
-            self.assertEqual(
-                config.Config.IMPORT_SCAN_ALLOWED_ROOTS,
-                [os.path.join(PROJECT_ROOT, 'data', 'import-inbox')],
-            )
+            expected = [
+                os.path.join(PROJECT_ROOT, 'data', 'import-inbox'),
+                os.path.abspath(os.path.expanduser('~/Downloads/tmall_data/')),
+            ]
+            self.assertEqual(config.Config.IMPORT_SCAN_ALLOWED_ROOTS, expected)
         finally:
             if original is None:
                 os.environ.pop('IMPORT_SCAN_ALLOWED_ROOTS', None)
@@ -137,6 +138,17 @@ class DesktopRuntimeTests(unittest.TestCase):
                 os.environ['IMPORT_SCAN_ALLOWED_ROOTS'] = original
             import config
             importlib.reload(config)
+
+    def test_scan_root_resolution_supports_windows_separator_and_deduplicates(self):
+        from config import DEFAULT_IMPORT_SCAN_INBOX, resolve_import_scan_allowed_roots
+
+        with tempfile.TemporaryDirectory() as first, tempfile.TemporaryDirectory() as second:
+            resolved = resolve_import_scan_allowed_roots(
+                {'IMPORT_SCAN_ALLOWED_ROOTS': f'~{os.sep}scan;{first};{first};{second}'},
+            )
+            self.assertEqual(resolved[0], DEFAULT_IMPORT_SCAN_INBOX)
+            self.assertEqual(resolved[1], os.path.abspath(os.path.expanduser('~' + os.sep + 'scan')))
+            self.assertEqual(resolved[2:], [os.path.abspath(first), os.path.abspath(second)])
 
     def test_app_factory_database_override_keeps_sqlalchemy_on_same_file(self):
         from app import create_app

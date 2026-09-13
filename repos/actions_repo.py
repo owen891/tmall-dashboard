@@ -1,4 +1,4 @@
-from db import get_db, get_shop_id
+from db import get_db, get_shop_id, require_default_shop_scope
 from repos.audit_repo import AuditRepo
 
 
@@ -11,6 +11,7 @@ class ActionsRepo:
     }
     @staticmethod
     def create(action, operator=None, reason=None):
+        require_default_shop_scope()
         fields = ', '.join(action)
         placeholders = ', '.join('?' for _ in action)
         with get_db() as connection:
@@ -27,6 +28,7 @@ class ActionsRepo:
 
     @staticmethod
     def create_many(actions, operator=None, reason=None):
+        require_default_shop_scope()
         with get_db() as connection:
             try:
                 for action in actions:
@@ -48,12 +50,14 @@ class ActionsRepo:
 
     @staticmethod
     def get(action_id):
+        require_default_shop_scope()
         with get_db() as connection:
             row = connection.execute('SELECT * FROM product_actions WHERE id = ?', (action_id,)).fetchone()
         return dict(row) if row else None
 
     @staticmethod
     def update(action_id, values, expected_version=None, operator=None, reason=None):
+        require_default_shop_scope()
         if not values or not set(values) <= ActionsRepo.UPDATE_FIELDS:
             raise ValueError('动作更新字段不合法')
         assignments = ', '.join(f'{key} = ?' for key in values)
@@ -91,12 +95,14 @@ class ActionsRepo:
 
     @staticmethod
     def observing():
+        require_default_shop_scope()
         with get_db() as connection:
             rows = connection.execute("SELECT * FROM product_actions WHERE status = 'observing'").fetchall()
         return [dict(row) for row in rows]
 
     @staticmethod
     def metric_window(product_id, start_date, end_date, metric):
+        require_default_shop_scope()
         if metric != 'payment_amount':
             return None
         shop_id = get_shop_id()
@@ -110,6 +116,7 @@ class ActionsRepo:
 
     @staticmethod
     def list_pending_review():
+        require_default_shop_scope()
         with get_db() as connection:
             rows = connection.execute(
                 "SELECT * FROM product_actions WHERE status = 'pending_review' ORDER BY planned_at"
@@ -118,18 +125,21 @@ class ActionsRepo:
 
     @staticmethod
     def list_actions(product_id=None, limit=500, status=None):
-        query = 'SELECT * FROM product_actions'
+        require_default_shop_scope()
+        query = '''SELECT pa.*, p.title AS product_title, p.image_url AS product_image
+                   FROM product_actions pa
+                   LEFT JOIN products p ON p.product_id = pa.product_id'''
         parameters = []
         clauses = []
         if product_id:
-            clauses.append('product_id = ?')
+            clauses.append('pa.product_id = ?')
             parameters.append(product_id)
         if status:
-            clauses.append('status = ?')
+            clauses.append('pa.status = ?')
             parameters.append(status)
         if clauses:
             query += ' WHERE ' + ' AND '.join(clauses)
-        query += ' ORDER BY planned_at DESC LIMIT ?'
+        query += ' ORDER BY pa.planned_at DESC LIMIT ?'
         parameters.append(limit)
         with get_db() as connection:
             rows = connection.execute(query, parameters).fetchall()
@@ -144,7 +154,32 @@ class ActionsRepo:
         return result
 
     @staticmethod
+    def list_calendar_actions(start_date, end_date, status=None):
+        require_default_shop_scope()
+        query = '''SELECT pa.*, p.title AS product_title, p.image_url AS product_image
+                   FROM product_actions pa
+                   LEFT JOIN products p ON p.product_id = pa.product_id
+                   WHERE pa.planned_at BETWEEN ? AND ?'''
+        parameters = [start_date, end_date]
+        if status:
+            query += ' AND pa.status = ?'
+            parameters.append(status)
+        query += ' ORDER BY pa.planned_at ASC, pa.updated_at DESC, pa.id ASC'
+        with get_db() as connection:
+            rows = connection.execute(query, parameters).fetchall()
+            result = [dict(row) for row in rows]
+            for item in result:
+                history = connection.execute(
+                    '''SELECT from_status, to_status, detail, operator, version, created_at
+                       FROM product_action_history WHERE action_id = ? ORDER BY id''',
+                    (item['id'],),
+                ).fetchall()
+                item['history'] = [dict(row) for row in history]
+        return result
+
+    @staticmethod
     def history(action_id):
+        require_default_shop_scope()
         with get_db() as connection:
             rows = connection.execute(
                 '''SELECT from_status, to_status, detail, operator, version, created_at

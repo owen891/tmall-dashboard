@@ -48,10 +48,18 @@ class ImportScannerApiTests(unittest.TestCase):
         listed = self.client.get('/api/import-scans')
         self.assertEqual(listed.status_code, 200)
         self.assertEqual(listed.get_json()['data'][0]['id'], job_id)
+        environment = listed.get_json()['scan_environment']
+        self.assertEqual(environment['mode'], 'web')
+        self.assertFalse(environment['picker_available'])
+        self.assertEqual(environment['allowed_root_count'], len(environment['allowed_roots']))
+        self.assertIn('inbox', environment['allowed_roots'])
+        self.assertNotIn(self.inbox, environment['allowed_roots'])
         updated = self.client.put(f'/api/import-scans/{job_id}', json={'enabled': False})
         self.assertEqual(updated.status_code, 200)
         deleted = self.client.delete(f'/api/import-scans/{job_id}')
         self.assertEqual(deleted.status_code, 200)
+        self.assertFalse(deleted.get_json()['data']['enabled'])
+        self.assertEqual(deleted.get_json()['data']['status'], 'disabled')
         old = self.client.get('/api/manage/schedules')
         self.assertEqual(old.status_code, 410)
         self.assertEqual(old.get_json()['code'], 'LEGACY_SCHEDULE_REMOVED')
@@ -69,11 +77,12 @@ class ImportScannerApiTests(unittest.TestCase):
         self.assertEqual(listed.get_json()['data'], [])
 
         updated = self.client.put(f'/api/import-scans/{job_id}?shop_id=shop-b', json={'enabled': False})
-        self.assertEqual(updated.status_code, 422)
+        self.assertEqual(updated.status_code, 404)
         deleted = self.client.delete(f'/api/import-scans/{job_id}?shop_id=shop-b')
         self.assertEqual(deleted.status_code, 404)
         run = self.client.post(f'/api/import-scans/{job_id}/run?shop_id=shop-b', json={'force': True})
-        self.assertEqual(run.status_code, 422)
+        self.assertEqual(run.status_code, 404)
+        self.assertEqual(run.get_json()['code'], 'SCAN_JOB_NOT_FOUND')
 
     def test_invalid_local_path_returns_422(self):
         response = self.client.post('/api/import-scans', json={
@@ -81,6 +90,58 @@ class ImportScannerApiTests(unittest.TestCase):
             'source_type': 'product_day', 'cron_expr': '* * * * *',
         })
         self.assertEqual(response.status_code, 422)
+
+    def test_mutations_reject_non_object_json(self):
+        for method, path in (
+            ('post', '/api/import-scans'),
+            ('put', '/api/import-scans/99999'),
+            ('post', '/api/import-scans/99999/run'),
+        ):
+            with self.subTest(method=method, path=path):
+                response = getattr(self.client, method)(path, json=[])
+                self.assertEqual(response.status_code, 422)
+                self.assertEqual(response.get_json()['code'], 'VALIDATION_ERROR')
+
+    def test_invalid_local_path_returns_specific_error_code(self):
+        response = self.client.post('/api/import-scans', json={
+            'task_name': 'missing', 'folder_path': os.path.join(self.inbox, 'missing'),
+            'source_type': 'product_day', 'cron_expr': '* * * * *',
+        })
+        self.assertEqual(response.status_code, 422)
+        payload = response.get_json()
+        self.assertEqual(payload['code'], 'SCAN_FOLDER_NOT_FOUND')
+        self.assertEqual(payload['details']['reason'], 'SCAN_FOLDER_NOT_FOUND')
+
+    def test_missing_scan_job_detail_endpoints_return_not_found(self):
+        for path in ('/api/import-scans/99999/runs', '/api/import-scans/99999/files'):
+            with self.subTest(path=path):
+                response = self.client.get(path)
+                self.assertEqual(response.status_code, 404)
+                self.assertEqual(response.get_json()['code'], 'SCAN_JOB_NOT_FOUND')
+
+    def test_existing_job_invalid_update_returns_validation_error_not_not_found(self):
+        created = self.client.post('/api/import-scans', json={
+            'task_name': 'update-me', 'folder_path': self.inbox,
+            'source_type': 'product_day', 'cron_expr': '* * * * *',
+        })
+        job_id = created.get_json()['data']['id']
+        response = self.client.put(f'/api/import-scans/{job_id}', json={'cron_expr': 'not cron'})
+        self.assertEqual(response.status_code, 422)
+        self.assertEqual(response.get_json()['code'], 'VALIDATION_ERROR')
+
+    def test_malformed_json_is_not_treated_as_empty_payload(self):
+        created = self.client.post('/api/import-scans', json={
+            'task_name': 'malformed', 'folder_path': self.inbox,
+            'source_type': 'product_day', 'cron_expr': '* * * * *',
+        })
+        job_id = created.get_json()['data']['id']
+        response = self.client.put(
+            f'/api/import-scans/{job_id}',
+            data='{"enabled":',
+            content_type='application/json',
+        )
+        self.assertEqual(response.status_code, 422)
+        self.assertEqual(response.get_json()['code'], 'VALIDATION_ERROR')
 
     def test_manual_run_can_force_scan_and_returns_import_counters(self):
         from services.import_scan_service import ImportScanService

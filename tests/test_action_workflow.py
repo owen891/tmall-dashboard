@@ -127,7 +127,39 @@ class ActionWorkflowTests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertEqual([item['id'] for item in listed['data']], [action_id])
 
-    def test_legacy_action_mutations_are_read_only(self):
+    def test_action_calendar_filters_planned_dates_and_includes_product_context(self):
+        first_id = self.create_action()
+        status, created = self.request('POST', '/api/actions', json={
+            'product_id': 'action-a', 'purpose_type': 'increase_sales',
+            'purpose_note': '第二个动作', 'action_type': 'price_change',
+            'action_detail': '调整价格', 'target_metric': 'payment_amount',
+            'planned_at': '2026-04-10', 'observer_window_days': 7,
+        })
+        self.assertEqual(status, 201)
+        second_id = created['data']['id']
+        status, payload = self.request('GET', '/api/actions/calendar?start=2026-04-03&end=2026-04-10')
+        self.assertEqual(status, 200)
+        self.assertTrue(payload['ok'])
+        self.assertEqual([row['id'] for row in payload['data']], [first_id, second_id])
+        self.assertEqual(payload['data'][0]['product_title'], '动作商品')
+        self.assertGreaterEqual(len(payload['data'][0]['history']), 1)
+
+    def test_action_calendar_validates_range_and_preserves_no_data_envelope(self):
+        for query in (
+            'start=2026/04/03&end=2026-04-10',
+            'start=2026-04-11&end=2026-04-10',
+            'start=2025-01-01&end=2026-01-02',
+            'start=2026-04-03',
+        ):
+            status, payload = self.request('GET', f'/api/actions/calendar?{query}')
+            self.assertEqual(status, 422)
+            self.assertEqual(payload['code'], 'VALIDATION_ERROR')
+        status, payload = self.request('GET', '/api/actions/calendar?start=2026-05-01&end=2026-05-31')
+        self.assertEqual(status, 200)
+        self.assertTrue(payload['ok'])
+        self.assertEqual(payload['availability'], 'no-data')
+        self.assertEqual(payload['data'], [])
+
         for method, path in (
             ('POST', '/api/legacy/actions'),
             ('PUT', '/api/legacy/actions/1'),

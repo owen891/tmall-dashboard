@@ -86,7 +86,10 @@
     }
   };
   const lifecycleTemplateId = (fields) => Object.entries(lifecycleDetailTemplates).find(([, selected]) => JSON.stringify(selected) === JSON.stringify(normalizeLifecycleDetailFields(fields)))?.[0] || 'custom';
-  const state = { summaries: [], rowsByProduct: new Map(), range: null, selectedId: '', previousFocus: null, requestId: 0, scaleChart: null, efficiencyChart: null, efficiencyMode: 'refundRate', detailTab: 'overview', detailFields: loadLifecycleDetailFields(), page: 1 };
+  const initialLifecycleParams = new URLSearchParams(window.location.search);
+  const initialLifecyclePage = Number(initialLifecycleParams.get('page'));
+  const initialAssessmentPage = Number(initialLifecycleParams.get('assessment_page'));
+  const state = { summaries: [], rowsByProduct: new Map(), range: null, selectedId: '', previousFocus: null, requestId: 0, scaleChart: null, efficiencyChart: null, efficiencyMode: 'refundRate', detailTab: 'overview', detailFields: loadLifecycleDetailFields(), page: Number.isInteger(initialLifecyclePage) && initialLifecyclePage > 0 ? initialLifecyclePage : 1, urlRestored: false };
   const detailTabUI = (() => {
     const dialog = $('[data-lifecycle-detail]');
     if (!dialog) return null;
@@ -162,7 +165,7 @@
   const renderDataState = (state, details) => DemoApi.renderDataState($('[data-lifecycle-status]'), state, details);
   let assessments = [];
   let assessmentPayload = { capabilities: {} };
-  let assessmentPage = 1;
+  let assessmentPage = Number.isInteger(initialAssessmentPage) && initialAssessmentPage > 0 ? initialAssessmentPage : 1;
   const assessmentPageSize = 20;
   const assessmentLabel = (value) => DemoLabels.classification('lifecycle_stages', value, value || '--');
   const seasonalLabel = (value) => DemoLabels.classification('seasonal_attributes', value, value ? value : '数据不足');
@@ -342,9 +345,27 @@
       card.dataset.lifecycleCard = record.product_id;
       card.setAttribute('aria-label', `查看 ${record.title || record.product_id} 的生命周期详情`);
       const thumbnailUrl = String(record.image_url || '').trim();
-      const image = thumbnailUrl ? `<img src="${thumbnailUrl}" alt="" width="42" height="42" loading="lazy">` : '<span class="product-thumb product-thumb--placeholder" aria-hidden="true"><i data-lucide="image"></i></span>';
+      const image = '<span class="product-thumb product-thumb--placeholder" aria-hidden="true"><i data-lucide="image"></i></span>';
       const trend = growth === null ? '无环比' : `${growth >= 0 ? '上升' : '下降'} ${percent(Math.abs(growth))}`;
       card.innerHTML = `<span class="lifecycle-card__header">${image}<span><span class="lifecycle-card__title">${escapeHtml(record.title || '未命名商品')}</span><span class="lifecycle-card__meta"><span class="badge ${tierClass(record.tier)}">${escapeHtml(DemoLabels.classification('tiers', record.tier, '未分层'))}</span><span class="badge badge--muted">${escapeHtml(DemoLabels.classification('styles', record.style, '未分类'))}</span></span></span></span><span class="lifecycle-card__stats"><span class="lifecycle-card__stat"><strong>${money(sum(rows, 'gsv'))}</strong><span>累计 GSV</span></span><span class="lifecycle-card__stat"><strong>${count(rows.length)}</strong><span>活跃月数</span></span><span class="lifecycle-card__stat"><strong class="lifecycle-card__trend ${growth > 0.05 ? 'is-up' : growth < -0.05 ? 'is-down' : ''}">${trend}</strong><span>最近月环比</span></span></span>`;
+      if (thumbnailUrl) {
+        const image = document.createElement('img');
+        image.className = 'product-thumb';
+        image.width = 42;
+        image.height = 42;
+        image.loading = 'lazy';
+        image.alt = '';
+        image.src = thumbnailUrl;
+        card.querySelector('.lifecycle-card__header')?.firstElementChild?.replaceWith(image);
+      }
+      const cardImage = card.querySelector('img');
+      cardImage?.addEventListener('error', () => {
+        const placeholder = document.createElement('span');
+        placeholder.className = 'product-thumb product-thumb--placeholder';
+        placeholder.setAttribute('aria-hidden', 'true');
+        placeholder.textContent = String(record.title || record.product_id || '商品').trim().slice(0, 1);
+        cardImage.replaceWith(placeholder);
+      }, { once: true });
       card.addEventListener('click', () => openDetail(record.product_id, card));
       grid.appendChild(card);
     });
@@ -378,6 +399,21 @@
     select.value = tiers.includes(current) ? current : '';
   }
 
+  function syncLifecycleUrl() {
+    const url = new URL(window.location.href);
+    const search = $('[data-lifecycle-search]')?.value.trim() || '';
+    const tier = $('[data-lifecycle-tier]')?.value || '';
+    const assessmentSearch = $('[data-lifecycle-assessment-search]')?.value.trim() || '';
+    const assessmentStage = $('[data-lifecycle-assessment-stage]')?.value || '';
+    [['search', search], ['tier', tier], ['assessment_search', assessmentSearch], ['assessment_stage', assessmentStage]].forEach(([key, value]) => {
+      if (value) url.searchParams.set(key, value);
+      else url.searchParams.delete(key);
+    });
+    url.searchParams.set('page', String(state.page));
+    url.searchParams.set('assessment_page', String(assessmentPage));
+    history.replaceState(null, '', url);
+  }
+
   async function loadRows(productId, token) {
     if (state.rowsByProduct.has(productId)) return state.rowsByProduct.get(productId);
     const payload = await DemoApi.request(`/api/lifecycle?product_id=${encodeURIComponent(productId)}`);
@@ -391,7 +427,7 @@
     const token = ++state.requestId;
     rangeFrom(detail);
     const grid = $('[data-lifecycle-grid]');
-    grid.replaceChildren(createMessage('生命周期数据加载中'));
+    grid.replaceChildren(createMessage('生命周期数据加载中…'));
     grid.setAttribute('aria-busy', 'true');
     renderDataState('loading');
     try {
@@ -413,6 +449,18 @@
       const summaryRows = Array.isArray(summaries) ? summaries : [];
       state.summaries = summaryRows.map((summary) => ({ ...summary, rows: parseSummaryRows(summary) })).filter((record) => record.rows.length);
       fillTiers();
+      if (!state.urlRestored) {
+        const search = initialLifecycleParams.get('search');
+        const tier = initialLifecycleParams.get('tier');
+        const assessmentSearch = initialLifecycleParams.get('assessment_search');
+        const assessmentStage = initialLifecycleParams.get('assessment_stage');
+        if (search != null) $('[data-lifecycle-search]').value = search;
+        if (tier && [...$('[data-lifecycle-tier]').options].some((option) => option.value === tier)) $('[data-lifecycle-tier]').value = tier;
+        if (assessmentSearch != null) $('[data-lifecycle-assessment-search]').value = assessmentSearch;
+        if (assessmentStage && [...$('[data-lifecycle-assessment-stage]').options].some((option) => option.value === assessmentStage)) $('[data-lifecycle-assessment-stage]').value = assessmentStage;
+        state.urlRestored = true;
+        syncLifecycleUrl();
+      }
       const months = [...new Set(state.summaries.flatMap((record) => record.rows.map((row) => row.month)))].sort();
       $('[data-lifecycle-period]').textContent = months.length ? `数据库全周期 ${months[0]} 至 ${months.at(-1)}，按商品查看完整月度表现` : '数据库暂无生命周期记录';
       renderCards();
@@ -688,6 +736,14 @@
       image.loading = 'lazy';
       image.src = thumbnailUrl;
       image.alt = record.title || '';
+      image.addEventListener('error', () => {
+        imageRoot.replaceChildren();
+        imageRoot.setAttribute('aria-hidden', 'true');
+        const placeholder = document.createElement('i');
+        placeholder.setAttribute('data-lucide', 'image');
+        imageRoot.appendChild(placeholder);
+        window.lucide?.createIcons?.();
+      }, { once: true });
       imageRoot.removeAttribute('aria-hidden');
       imageRoot.appendChild(image);
     } else {
@@ -752,14 +808,14 @@
     toast(`已导出 ${count(rows.length)} 条生命周期记录`);
   }
 
-  $('[data-lifecycle-search]').addEventListener('input', () => { state.page = 1; renderCards(); });
-  $('[data-lifecycle-tier]').addEventListener('change', () => { state.page = 1; renderCards(); });
-  $('[data-lifecycle-prev]').addEventListener('click', () => { if (state.page > 1) { state.page -= 1; renderCards(); window.scrollTo({ top: 0, behavior: 'smooth' }); } });
-  $('[data-lifecycle-next]').addEventListener('click', () => { const pages = Math.max(1, Math.ceil(visibleRecords().length / pageSize)); if (state.page < pages) { state.page += 1; renderCards(); window.scrollTo({ top: 0, behavior: 'smooth' }); } });
-  $('[data-lifecycle-assessment-search]').addEventListener('input', () => { assessmentPage = 1; renderAssessments(); });
-  $('[data-lifecycle-assessment-stage]').addEventListener('change', () => { assessmentPage = 1; renderAssessments(); });
-  $('[data-lifecycle-assessment-prev]').addEventListener('click', () => { if (assessmentPage > 1) { assessmentPage -= 1; renderAssessments(); } });
-  $('[data-lifecycle-assessment-next]').addEventListener('click', () => { const pages = Math.max(1, Math.ceil(visibleAssessments().length / assessmentPageSize)); if (assessmentPage < pages) { assessmentPage += 1; renderAssessments(); } });
+  $('[data-lifecycle-search]').addEventListener('input', () => { state.page = 1; syncLifecycleUrl(); renderCards(); });
+  $('[data-lifecycle-tier]').addEventListener('change', () => { state.page = 1; syncLifecycleUrl(); renderCards(); });
+  $('[data-lifecycle-prev]').addEventListener('click', () => { if (state.page > 1) { state.page -= 1; syncLifecycleUrl(); renderCards(); window.scrollTo({ top: 0, behavior: 'smooth' }); } });
+  $('[data-lifecycle-next]').addEventListener('click', () => { const pages = Math.max(1, Math.ceil(visibleRecords().length / pageSize)); if (state.page < pages) { state.page += 1; syncLifecycleUrl(); renderCards(); window.scrollTo({ top: 0, behavior: 'smooth' }); } });
+  $('[data-lifecycle-assessment-search]').addEventListener('input', () => { assessmentPage = 1; syncLifecycleUrl(); renderAssessments(); });
+  $('[data-lifecycle-assessment-stage]').addEventListener('change', () => { assessmentPage = 1; syncLifecycleUrl(); renderAssessments(); });
+  $('[data-lifecycle-assessment-prev]').addEventListener('click', () => { if (assessmentPage > 1) { assessmentPage -= 1; syncLifecycleUrl(); renderAssessments(); } });
+  $('[data-lifecycle-assessment-next]').addEventListener('click', () => { const pages = Math.max(1, Math.ceil(visibleAssessments().length / assessmentPageSize)); if (assessmentPage < pages) { assessmentPage += 1; syncLifecycleUrl(); renderAssessments(); } });
   $('[data-lifecycle-back]').addEventListener('click', closeDetail);
   $('[data-lifecycle-detail]').addEventListener('cancel', (event) => { event.preventDefault(); closeDetail(); });
   $('[data-lifecycle-detail]').addEventListener('click', (event) => { if (event.target === event.currentTarget) closeDetail(); });
@@ -767,6 +823,8 @@
   document.querySelectorAll('[data-lifecycle-columns-close]').forEach((button) => button.addEventListener('click', closeLifecycleColumnsDialog));
   $('[data-lifecycle-template-apply]')?.addEventListener('click', applyLifecycleTemplate);
   $('[data-lifecycle-template-save]')?.addEventListener('click', async () => {
+    const saveButton = $('[data-lifecycle-template-save]');
+    if (saveButton?.disabled) return;
     const input = $('[data-lifecycle-template-name]');
     const label = input?.value.trim();
     const fields = normalizeLifecycleDetailFields(lifecycleColumnSelector?.getSelected());
@@ -774,14 +832,18 @@
     const key = `custom_${Date.now()}`;
     lifecycleDetailTemplates[key] = fields;
     lifecycleDetailTemplateLabels[key] = label;
+    if (saveButton) { saveButton.disabled = true; saveButton.setAttribute('aria-busy', 'true'); }
     try {
       await persistLifecycleTemplates();
       input.value = '';
       state.detailFields = fields;
       renderLifecycleColumnSelector(fields);
+      $('[data-lifecycle-columns-status]').textContent = `模板“${label}”已保存`;
     } catch (_) {
       delete lifecycleDetailTemplates[key];
       delete lifecycleDetailTemplateLabels[key];
+    } finally {
+      if (saveButton) { saveButton.disabled = false; saveButton.removeAttribute('aria-busy'); }
     }
   });
   $('[data-lifecycle-columns-select-all]')?.addEventListener('click', () => renderLifecycleColumnSelector(defaultLifecycleDetailFields));
@@ -805,7 +867,7 @@
     assessmentPreviousFocus?.focus?.();
     assessmentPreviousFocus = null;
   });
-  $('[data-lifecycle-edit-form]')?.addEventListener('submit', async (event) => { event.preventDefault(); if (!editingAssessment) return; if (Object.keys(assessmentPayload.capabilities || {}).length && !DemoApi.can(assessmentPayload, 'can_edit_stage')) { $('[data-lifecycle-edit-status]').textContent = '当前数据不足，暂不能调整阶段'; return; } const data = new FormData(event.currentTarget); try { await DemoApi.domainRequest(`/api/lifecycle/${encodeURIComponent(editingAssessment.product_id)}`, {method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({version:editingAssessment.version,manual_stage:data.get('manual_stage') || null,seasonal_attribute:data.get('seasonal_attribute') || null,lock:data.get('lock') === 'on',reason:data.get('reason'),operator:data.get('operator')})}); closeAssessmentEditor(); await loadAssessments(); } catch(error) { $('[data-lifecycle-edit-status]').textContent = error.message; } });
+  $('[data-lifecycle-edit-form]')?.addEventListener('submit', async (event) => { event.preventDefault(); if (!editingAssessment) return; if (Object.keys(assessmentPayload.capabilities || {}).length && !DemoApi.can(assessmentPayload, 'can_edit_stage')) { $('[data-lifecycle-edit-status]').textContent = '当前数据不足，暂不能调整阶段'; return; } const form = event.currentTarget; const submit = form.querySelector('button[type="submit"]'); const data = new FormData(form); if (submit) { submit.disabled = true; submit.setAttribute('aria-busy', 'true'); } try { await DemoApi.domainRequest(`/api/lifecycle/${encodeURIComponent(editingAssessment.product_id)}`, {method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({version:editingAssessment.version,manual_stage:data.get('manual_stage') || null,seasonal_attribute:data.get('seasonal_attribute') || null,lock:data.get('lock') === 'on',reason:data.get('reason'),operator:data.get('operator')})}); closeAssessmentEditor(); await loadAssessments(); } catch(error) { $('[data-lifecycle-edit-status]').textContent = error.message || '生命周期调整失败，请重试'; } finally { if (submit?.isConnected) { submit.disabled = false; submit.removeAttribute('aria-busy'); } } });
   document.querySelectorAll('[data-efficiency-mode]').forEach((button) => button.addEventListener('click', () => { state.efficiencyMode = button.dataset.efficiencyMode; document.querySelectorAll('[data-efficiency-mode]').forEach((item) => item.setAttribute('aria-pressed', String(item === button))); const record = state.summaries.find((item) => String(item.product_id) === state.selectedId); if (record) renderEfficiencyChart(selectedRows(record)); }));
   window.addEventListener('tmall:refresh', () => load());
   DemoLabels.load().then(() => { fillAssessmentOptions(); load(); });

@@ -4,8 +4,9 @@
 import re
 import json
 from collections import Counter
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, current_app, jsonify, request
 from db import get_db
+from api.api_response import failure, json_object
 from services.shop_scope_service import reject_legacy_shop_scope
 
 tool_bp = Blueprint('tool', __name__)
@@ -147,29 +148,38 @@ def get_tools():
 @tool_bp.route('/api/tools/execute', methods=['POST'])
 def execute_tool():
     """执行工具任务"""
-    data = request.get_json(force=True, silent=True) or {}
-    tool_id = data.get('tool_id', '')
+    data = json_object(request, allow_empty=False)
+    tool_id = str(data.get('tool_id') or '').strip()
     params = data.get('params', {})
+    if params is None:
+        params = {}
+    if not isinstance(params, dict):
+        return failure('VALIDATION_ERROR', 'params 必须是 JSON 对象', status=422)
+    params = dict(params)
+    if 'limit' in params:
+        try:
+            params['limit'] = int(params.get('limit') or 50)
+        except (TypeError, ValueError):
+            return failure('VALIDATION_ERROR', 'limit 必须是整数', status=422)
 
     # 验证工具是否存在
     tool = next((t for t in TOOLS if t['id'] == tool_id), None)
     if not tool:
-        return jsonify({"error": "tool_not_found", "message": f"未找到工具: {tool_id}"}), 404
+        return failure('NOT_FOUND', f'未找到工具: {tool_id}', {'tool_id': tool_id}, status=404)
 
     if tool['status'] == 'coming_soon':
-        return jsonify({
-            "error": "tool_not_available",
-            "message": f"「{tool['name']}」尚未接入，敬请期待",
-            "tool_id": tool_id,
-        })
+        return failure('TOOL_NOT_AVAILABLE', f"「{tool['name']}」尚未接入，敬请期待", {'tool_id': tool_id}, status=409)
 
     # data_import 工具由前端直接调用 /api/upload/data
     if tool_id == 'data_import':
-        return jsonify({
-            "error": "tool_not_available",
-            "message": "「数据导入」请通过前端上传文件",
-            "tool_id": tool_id,
-        })
+        return failure('TOOL_NOT_AVAILABLE', '「数据导入」请通过前端上传文件', {'tool_id': tool_id}, status=409)
+
+    missing = [
+        field['key'] for field in tool.get('params', [])
+        if field.get('required') and not str(params.get(field['key']) or '').strip()
+    ]
+    if missing:
+        return failure('VALIDATION_ERROR', '缺少必填参数', {'fields': missing, 'tool_id': tool_id}, status=422)
 
     if tool_id in {'product_diagnose', 'main_image_suggest'}:
         denied = reject_legacy_shop_scope('商品工具')
@@ -191,10 +201,16 @@ def execute_tool():
                 "tool_id": tool_id,
             })
         if isinstance(result, dict) and result.get('code') == 'UNSUPPORTED_SCOPE':
-            return jsonify(result), 422
+            return failure('UNSUPPORTED_SCOPE', result.get('message', '当前范围不支持该工具'), {'tool_id': tool_id}, status=422)
+        if isinstance(result, dict) and result.get('error'):
+            message = str(result['error'])
+            status = 404 if message.startswith('未找到商品') else 422
+            code = 'NOT_FOUND' if status == 404 else 'VALIDATION_ERROR'
+            return failure(code, message, {'tool_id': tool_id}, status=status)
         return jsonify({"result": result, "status": "success"})
     except Exception as e:
-        return jsonify({"error": "exec_error", "message": f"执行失败: {str(e)}"}), 500
+        current_app.logger.exception('Tool execution failed: %s', tool_id)
+        return failure('TOOL_EXECUTION_FAILED', '工具执行失败，请稍后重试', {'tool_id': tool_id}, status=500)
 
 
 # ================================================================
@@ -222,7 +238,7 @@ _STOP_WORDS = set([
 
 def _exec_main_image_suggest(params):
     """评价生成主图建议 - 分析好评提取卖点"""
-    product_id = params.get('product_id', '').strip()
+    product_id = str(params.get('product_id') or '').strip()
     limit = int(params.get('limit', 50) or 50)
     limit = min(max(limit, 10), 200)
 
@@ -553,9 +569,9 @@ def _quality_templates(style, product_label, feature_str):
 
 def _exec_review_reply(params):
     """评价仿写助手 - 生成回复模板"""
-    review_text = params.get('review_text', '').strip()
-    reply_style = params.get('reply_style', '专业正式').strip()
-    product_type = params.get('product_type', '').strip()
+    review_text = str(params.get('review_text') or '').strip()
+    reply_style = str(params.get('reply_style') or '专业正式').strip()
+    product_type = str(params.get('product_type') or '').strip()
 
     if not review_text:
         return {"error": "请输入评价内容"}
@@ -590,7 +606,7 @@ def _exec_review_reply(params):
 
 def _exec_product_diagnose(params):
     """商品详情页诊断 - 综合分析商品数据"""
-    product_id = params.get('product_id', '').strip()
+    product_id = str(params.get('product_id') or '').strip()
     if not product_id:
         return {"error": "请输入商品ID"}
 

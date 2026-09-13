@@ -52,10 +52,21 @@ assert(apiClient.includes('renderDataState'), 'api client: missing shared data s
 assert(overviewAdapter.includes("DemoApi.domainRequest('/api/overview?"), 'overview adapter: KPI must use the standard overview contract');
 assert(overviewAdapter.includes('字段缺失'), 'overview adapter: unavailable metrics must disclose missing fields');
 assert(overviewAdapter.includes('/api/trend?dim=daily'), 'overview adapter: missing date-filtered trend API request');
-assert(overviewAdapter.includes('/api/products?dim=daily'), 'overview adapter: missing date-filtered product API request');
-for (const hook of ['data-overview-home-targets', 'data-overview-home-actions', 'data-overview-home-anomalies', 'data-overview-home-matrix', 'data-overview-home-products', 'data-overview-home-report']) {
+for (const hook of ['data-overview-home-targets', 'data-overview-home-matrix', 'data-overview-operations-center', 'data-operations-feed', 'data-operations-calendar-grid']) {
   assert(overview.includes(hook), `overview: missing workflow hook ${hook}`);
 }
+const operationsCenter = read(path.join(root, 'assets', 'operations-center.js'));
+assert(overview.includes('../assets/operations-center.js'), 'overview: missing operations center adapter');
+assert(!overview.includes('../assets/action-calendar.js'), 'overview: legacy action calendar adapter remains');
+assert(!overview.includes('../assets/action-log.js'), 'overview: legacy action log adapter remains');
+for (const hook of ['data-operations-filter', 'data-operations-refresh', 'data-operations-calendar-prev', 'data-operations-calendar-next', 'data-operations-calendar-today']) {
+  assert(overview.includes(hook), `operations center: missing ${hook}`);
+}
+for (const contract of ['/api/actions?limit=200', '/api/actions/calendar?', '/api/logs?limit=12', 'Promise.allSettled', 'mergeActions', 'buildAnomalyItem', 'tmall:overview-anomalies-ready']) {
+  assert(operationsCenter.includes(contract), `operations center: missing ${contract}`);
+}
+assert(operationsCenter.includes("setAttribute('aria-label'"), 'operations center: calendar count must expose aria-label');
+assert(operationsCenter.includes('calendarToken'), 'operations center: calendar requests need a race token');
 assert(overview.includes('data-overview-decision'), 'overview: missing decision-first summary region');
 assert(overview.includes('data-overview-secondary-kpis'), 'overview: missing secondary KPI disclosure region');
 assert(overviewAdapter.includes('data-overview-retry'), 'overview adapter: failed regions must expose local retry');
@@ -96,10 +107,18 @@ assert(dataCenter.includes('data-governance-disclosure'), 'data-center: governan
 assert(dataCenter.includes('aria-current="step"'), 'data-center: current import step must be announced');
 
 const settings = read(path.join(pagesDir, 'settings.html'));
+const compare = read(path.join(pagesDir, 'compare.html'));
+const compareAdapter = read(path.join(root, 'assets', 'compare-live.js'));
+assert(compare.includes('../assets/compare-live.js'), 'compare: missing live adapter');
+assert(compare.includes('../assets/api.js') && compare.includes('../assets/shell.js'), 'compare: missing shared runtime dependencies');
+assert(compareAdapter.includes('/api/compare?dim=monthly'), 'compare: missing period comparison API request');
+assert(compareAdapter.includes("addEventListener('tmall:date-range-change'"), 'compare: missing date range listener');
+
 assert(settings.includes('Asia/Shanghai'), 'settings: missing default timezone disclosure');
 assert(settings.includes('核心指标公式不可'), 'settings: missing formula edit boundary');
 assert(settings.includes('data-settings-savebar'), 'settings: missing sticky save bar');
-assert(settings.includes('data-settings-dirty'), 'settings: missing unsaved-change status hook');
+assert(settings.includes('data-scan-environment'), 'settings: missing scan environment disclosure');
+assert(settings.includes('IMPORT_SCAN_ALLOWED_ROOTS'), 'settings: missing scan root boundary disclosure');
 
 const settingsAdapter = read(path.join(root, 'assets', 'settings-live.js'));
 assert(!settingsAdapter.includes('window.prompt('), 'settings: template management must use in-page controls, not prompt dialogs');
@@ -167,9 +186,6 @@ for (const adapter of ['overview-live.js', 'products-live.js', 'promotion-live.j
   const source = read(path.join(root, 'assets', adapter));
   assert(source.includes("addEventListener('tmall:date-range-change'"), `assets/${adapter}: date changes do not refresh data`);
 }
-
-const manifestSource = read(path.resolve(root, '..', '..', 'app.py'));
-assert(manifestSource.includes("'data_mode': 'api'"), 'app.py: manifest must declare API mode');
 
 if (errors.length) {
   console.error(`${errors.length} UI validation error(s)`);

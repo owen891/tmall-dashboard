@@ -1,7 +1,7 @@
 from flask import Blueprint, request
 from datetime import date
 import re
-from api.api_response import evidence_level_for, failure, limitations_for, success
+from api.api_response import evidence_level_for, failure, json_object, limitations_for, success
 from repos.period_reviews_repo import PeriodReviewsRepo
 
 
@@ -51,7 +51,7 @@ def save_period_review(period_type, period_key):
         _validate_period_key(period_type, period_key)
     except ValueError as error:
         return failure('VALIDATION_ERROR', str(error), status=422)
-    payload = request.get_json(silent=True) or {}
+    payload = json_object(request)
     if any(not payload.get(key) for key in ('summary','conclusions','next_actions','reviewer')):
         return failure('VALIDATION_ERROR', '周期复盘字段不完整', status=422)
     PeriodReviewsRepo.upsert(period_type, period_key, payload)

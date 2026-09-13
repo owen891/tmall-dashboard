@@ -7,8 +7,6 @@ project_root = Path(SPECPATH).resolve().parent
 
 datas = [
     (str(project_root / 'frontend' / 'ui_demo'), 'frontend/ui_demo'),
-    (str(project_root / 'templates'), 'templates'),
-    (str(project_root / 'static'), 'static'),
     (str(project_root / 'config.yaml'), '.'),
     (str(project_root / 'VERSION'), '.'),
 ]
