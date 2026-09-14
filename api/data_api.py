@@ -406,6 +406,9 @@ def get_trend():
         query += f' GROUP BY {date_col} ORDER BY {date_col}'
 
         rows = [dict(r) for r in conn.execute(query, params).fetchall()]
+        # 前端趋势图默认取 payment_amount；接口历史字段为 gmv，两者同义。
+        for row in rows:
+            row['payment_amount'] = row.get('gmv')
 
     return jsonify(rows)
 
