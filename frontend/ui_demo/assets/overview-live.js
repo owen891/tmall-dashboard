@@ -62,6 +62,8 @@
   }
   function resolveMonthlyPeriod(state, monthlyRows) {
     const target = String(state?.endDate || formatLocalDate()).slice(0, 7);
+    const nowMonth = formatLocalDate().slice(0, 7);
+    if (target >= nowMonth) return target; // 当前月/未来月直接用 target，日度数据可聚合
     const months = monthlyRows.map((row) => row.period).filter(Boolean).sort();
     return months.filter((period) => period <= target).pop() || months.at(-1) || target;
   }
@@ -286,7 +288,7 @@
     target.replaceChildren();
     const periods = rows.map((row) => row.period);
     const valueFor = (row, mode) => {
-      const paymentAmount = Number(row.gmv ?? row.payment_amount ?? 0);
+      const paymentAmount = Number(row.payment_amount ?? row.gmv ?? 0);
       const adSpend = Number(row.ad_spend ?? 0);
       const refund = Number(row.refund ?? row.refund_amount ?? 0);
       return {
@@ -321,7 +323,7 @@
     const values = [
       ['支付金额', `${actualValue('gsv')} / ${targetValue('target_gsv')}`, data?.gsv_progress],
       ['推广花费', `${actualAvailable ? moneyWan(actual.ad_spend) : '不可计算'} / ${targetValue('target_ad_spend')}`, data?.ad_progress],
-      ['净销售额', actualAvailable ? moneyWan(actual.net_sales) : '不可计算', null],
+      ['净销售额', `${actualAvailable ? moneyWan(actual.net_sales) : '不可计算'} / ${target.target_net_sales == null ? '--' : moneyWan(target.target_net_sales)}`, data?.net_sales_progress],
       ['商品访客数', actualAvailable ? numberWan(actual.visitors) : '不可计算', null]
     ];
     const renderRows = () => values.map(([label, value, progress]) => {
@@ -365,13 +367,16 @@
         row.append(item('span', `${label} · ${key}`, 'status-list__label'), item('span', `${money(done)} / ${money(target)} · ${rate}`, 'status-list__value'));
         return row;
       });
+      // goals 系统无任何目标数据时，保留 shop_targets（店铺目标）的渲染结果
+      const hasAnyGoal = levels.year != null || Object.values(levels).some((v) => v && typeof v === "object" && Object.keys(v).length > 0);
+      if (!hasAnyGoal) { textAll('[data-overview-summary="target"]', '--'); return; }
       targetRoots.forEach((root) => root.replaceChildren(...rows.map((row) => row.cloneNode(true))));
       adaptHomeTargets();
       const annual = levels.year;
       const annualActual = actual.year;
       textAll('[data-overview-summary="target"]', annual == null ? '--' : `${Number(annual) ? (Number(annualActual || 0) / Number(annual) * 100).toFixed(1) : 0}%`);
     } catch (error) {
-      targetRoots.forEach((root) => root.replaceChildren(item('div', '当前年度尚未创建目标', 'empty-state')));
+      // goals 年度目标未创建时，保留 shop_targets 店铺目标的渲染结果（原覆盖行已移除）
       textAll('[data-overview-summary="target"]', '--');
     }
   }

@@ -3156,6 +3156,21 @@ def get_target_progress():
                     COUNT(DISTINCT m.product_id) as product_count
                 FROM monthly_data m{_t_join} WHERE m.month = ?{_t_where}
             ''', (period, *_t_label_params)).fetchone()
+            # 月度数据未覆盖该月时（如当前月只有日度导出），从日度数据聚合
+            if not actual or not actual['row_count']:
+                _fallback_join = f' JOIN products p ON p.product_id = d.product_id' if _t_label else ''
+                actual = conn.execute(f'''
+                    SELECT
+                        COUNT(*) as row_count,
+                        SUM(payment_amount) as gsv,
+                        SUM(refund_amount) as refund,
+                        SUM(payment_amount) - SUM(refund_amount) as net_sales,
+                        SUM(ipv) as visitors,
+                        AVG(payment_conversion) as conversion,
+                        SUM(ad_spend) as ad_spend,
+                        COUNT(DISTINCT d.product_id) as product_count
+                    FROM daily_data d{_fallback_join} WHERE d.shop_id = ? AND d.date LIKE ?{_t_where}
+                ''', (shop_id, period + '%', *_t_label_params)).fetchone()
         actual = dict(actual) if actual else None
         if actual and not actual.pop('row_count', 0):
             actual = None
@@ -3174,6 +3189,16 @@ def get_target_progress():
             result['ad_gap'] = ad_target - ad_actual
             result['actual_ad_ratio'] = round(ad_actual / gsv_actual, 4) if gsv_actual > 0 else None
             result['target_ad_ratio'] = target['target_ad_ratio']
+
+            # 净销售额目标进度（target_net_sales 为新增字段，旧记录可能为 NULL）
+            net_target = target.get('target_net_sales') or 0
+            net_actual = actual.get('net_sales') or 0
+            if net_target > 0:
+                result['net_sales_progress'] = round(net_actual / net_target * 100, 1)
+                result['net_sales_gap'] = net_target - net_actual
+            else:
+                result['net_sales_progress'] = None
+                result['net_sales_gap'] = None
 
             # 时间进度估算
             try:
@@ -3376,10 +3401,11 @@ def set_shop_target():
         return failure('VALIDATION_ERROR', 'period must use YYYY-MM format', status=422)
     with get_db() as conn:
         conn.execute('''
-            INSERT OR REPLACE INTO shop_targets (period, target_gsv, target_ad_spend, target_ad_ratio, target_conversion, target_refund_rate, remark)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            INSERT OR REPLACE INTO shop_targets (period, target_gsv, target_ad_spend, target_ad_ratio, target_conversion, target_refund_rate, target_net_sales, remark)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         ''', (period, data.get('target_gsv'), data.get('target_ad_spend'),
               data.get('target_ad_ratio'), data.get('target_conversion'), data.get('target_refund_rate'),
+              data.get('target_net_sales'),
               data.get('remark')))
         conn.commit()
     return jsonify({'success': True})
