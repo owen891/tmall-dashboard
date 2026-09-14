@@ -13,6 +13,7 @@ venv/
 *.db-shm
 
 # 数据目录（运行时数据，不入版本库）
+/data/
 data/backups/
 data/raw/
 data/uploads/
@@ -65,3 +66,12 @@ lifecycle-dialog-*.png
 overview-polish-*.png
 products-columns-*.png
 ui-manage-toolbox-check.png
+
+# 本地业务数据与派米导入审计（仅本机使用，禁止提交）
+/data/**/*.json
+/data/demo/
+/frontend/ui_demo/assets/product-thumbs/*
+!/frontend/ui_demo/assets/product-thumbs/image-unavailable.svg
+/tmp_*.py
+/tmp_*.json
+/tmp_*.txt

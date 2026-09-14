@@ -218,7 +218,9 @@ class SettingsService:
                 if not isinstance(template, dict) or not isinstance(template.get('columns'), list):
                     raise SettingsValidationError('商品视图必须包含显示字段')
                 columns = template['columns']
-                if not template.get('label') or not all(isinstance(column, str) and column in VIEW_COLUMNS for column in columns):
+                # BI 字段目录由已导入的真实报表表头驱动；静态字段仍沿用原白名单。
+                allowed_product_fields = VIEW_COLUMNS | {item['key'] for item in get_field_catalog()['products']}
+                if not template.get('label') or not all(isinstance(column, str) and column in allowed_product_fields for column in columns):
                     raise SettingsValidationError('商品视图包含不支持的字段')
                 normalized[template_key] = {'label': template['label'], 'columns': columns}
             for key in builtin:

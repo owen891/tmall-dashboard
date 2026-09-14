@@ -58,6 +58,13 @@ class FrontendPrdContractTests(unittest.TestCase):
         self.assertIn('source_batches', adapter)
         self.assertIn('changes', adapter)
 
+    def test_overview_scale_kpis_use_ten_thousand_unit(self):
+        adapter = self.read('frontend/ui_demo/assets/overview-live.js')
+        self.assertIn("const moneyWan = (value) => wan(value, '¥');", adapter)
+        self.assertIn("const numberWan = (value) => wan(value);", adapter)
+        for key in ('payment_amount', 'net_sales', 'visitors', 'ad_spend'):
+            self.assertIn(f"['{key}', {'numberWan' if key == 'visitors' else 'moneyWan'}]", adapter)
+
     def test_overview_matrix_field_selector_covers_export_schema(self):
         adapter = self.read('frontend/ui_demo/assets/overview-live.js')
         matrix_block = adapter[adapter.index('const matrixColumns ='):adapter.index('const matrixColumnsByKey')]

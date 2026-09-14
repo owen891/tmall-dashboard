@@ -96,6 +96,13 @@ SOURCE_PRIORITY = {
     'other_report': 10,
 }
 
+# A dated Primeet BI 商品总览 file is a complete, user-provided daily
+# snapshot.  When it contains a field, that value must take precedence over
+# older product/day, promotion, and DMP imports for the same product/date.
+# Fields absent from the snapshot still fall through to the normal source
+# precedence rules, so historical imports can supplement those fields.
+AUTHORITATIVE_SNAPSHOT_SOURCE_TYPES = {'paimi_bi_product_day'}
+
 def source_system_for(source_type, source_filename=''):
     text = f'{source_type} {source_filename}'.lower()
     if source_type == 'dmp_product_day' or 'dmp' in text or '全店单品' in source_filename:
@@ -178,9 +185,16 @@ def _load_candidates(connection, product_id, stat_date, field_key, legacy=None, 
 def _choose(field_key, candidates):
     if not candidates:
         return None
+    # The dated BI 商品总览 import is explicitly selected by the user as the
+    # replacement source.  Use it for every field it actually supplies;
+    # unprovided fields continue through the ordinary primary/fallback rules.
+    authoritative = [
+        item for item in candidates
+        if item[1] in AUTHORITATIVE_SNAPSHOT_SOURCE_TYPES
+    ]
     primary = PRIMARY_SOURCES.get(field_key)
     preferred = [item for item in candidates if item[0] == primary] if primary else []
-    pool = preferred or candidates
+    pool = authoritative or preferred or candidates
     pool = sorted(pool, key=lambda item: SOURCE_PRIORITY.get(item[0], 0), reverse=True)
     selected = pool[0]
     distinct = []

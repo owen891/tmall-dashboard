@@ -4,6 +4,10 @@ The API keeps legacy aliases at its adapters, while configuration surfaces use
 these standard keys and labels.
 """
 
+import json
+
+from db import get_db
+
 
 PROMOTION_FIELDS = (
     ('product', '商品主图 / 商品', '基础信息', 'text'),
@@ -85,9 +89,43 @@ def _product_fields():
     ]
 
 
+def _bi_product_fields():
+    """Return the imported BI source fields that are safe to expose in product views."""
+    try:
+        with get_db() as connection:
+            rows = connection.execute(
+                """SELECT field_key, source_column, label, group_name, data_type, format,
+                          source_type, available_months_json, nonempty_count
+                     FROM source_field_catalog
+                    WHERE source_type = 'bi_monthly_overview'
+                    ORDER BY source_column"""
+            ).fetchall()
+    except Exception:
+        # Settings must remain usable before a local database has been initialized.
+        return []
+
+    fields = []
+    for row in rows:
+        value = dict(row)
+        try:
+            value['available_months'] = json.loads(value.pop('available_months_json') or '[]')
+        except (TypeError, ValueError):
+            value['available_months'] = []
+        value['key'] = value.pop('field_key')
+        value['domain'] = 'products'
+        value['group'] = value.pop('group_name') or 'BI 数据源字段'
+        value['aliases'] = [value['source_column']]
+        fields.append(value)
+    return fields
+
+
+def get_bi_product_field_keys():
+    return {item['key'] for item in _bi_product_fields()}
+
+
 def get_field_catalog():
     return {
-        'products': _product_fields(),
+        'products': [*_product_fields(), *_bi_product_fields()],
         'promotion': [
             {
                 'key': key,

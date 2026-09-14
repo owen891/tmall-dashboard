@@ -1066,6 +1066,13 @@ def get_products():
         dmp_metric_cols = dmp_cols if dimension in {'daily', 'weekly'} else dmp_zero_cols
         repurchase_cross_cols = "COALESCE(d.repurchase_rate, 0) as repurchase_rate,\n               COALESCE(d.cross_sell_rate, 0) as cross_sell_rate," if dimension in {'monthly', 'daily', 'weekly'} else "0 as repurchase_rate,\n               0 as cross_sell_rate,"
         click_score_cols = "COALESCE(d.click_rate, 0) as click_rate,\n               COALESCE(d.score, 0) as score," if dimension == 'monthly' else "0 as click_rate,\n               0 as score,"
+        # Imported BI-only fields remain in a JSON payload so source schema changes do not
+        # require adding hundreds of SQLite columns. The catalog controls which are exposed.
+        bi_payload_select = ', bsp.payload_json AS bi_payload_json' if dimension == 'monthly' else ''
+        bi_payload_join = (
+            'LEFT JOIN monthly_source_payload bsp ON bsp.product_id = p.product_id AND bsp.month = d.month'
+            if dimension == 'monthly' else ''
+        )
 
         data_relation = table
         join_clause = f'p.product_id = d.product_id AND d.{date_col} = ?'
@@ -1258,9 +1265,11 @@ def get_products():
                    COALESCE(pd_latest.item_fav_cost, 0) as item_fav_cost,
                    COALESCE(pd_latest.item_fav_rate, 0) as item_fav_rate,
                    COALESCE(pd_latest.cart_cost, 0) as cart_cost
+                   {bi_payload_select}
             FROM products p
             {legacy_lifecycle_join}
             LEFT JOIN {data_relation} d ON {join_clause}
+            {bi_payload_join}
             {legacy_paid_join}
             WHERE {where_sql}
         '''
@@ -1301,6 +1310,22 @@ def get_products():
         params.append(offset)
 
         rows = [dict(r) for r in conn.execute(query, params).fetchall()]
+        if dimension == 'monthly' and rows:
+            # Resolve only catalogued fields. Missing source values stay absent/None rather
+            # than being synthesized as zero, while existing legacy metrics retain compatibility.
+            bi_catalog = conn.execute(
+                "SELECT field_key, source_column FROM source_field_catalog WHERE source_type = 'bi_monthly_overview'"
+            ).fetchall()
+            if bi_catalog:
+                field_map = {item['field_key']: item['source_column'] for item in bi_catalog}
+                for row in rows:
+                    raw_payload = row.pop('bi_payload_json', None)
+                    try:
+                        payload = json.loads(raw_payload) if raw_payload else {}
+                    except (TypeError, ValueError):
+                        payload = {}
+                    for field_key, source_column in field_map.items():
+                        row[field_key] = payload.get(source_column)
 
         # 获取总数（用于服务端分页）- 与主查询使用完全相同的WHERE条件
         count_query = f'''SELECT COUNT(*) as total FROM products p

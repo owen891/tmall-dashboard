@@ -304,6 +304,36 @@ def init_db(db_path=None):
     CREATE INDEX IF NOT EXISTS idx_weekly_date ON weekly_data(week_start);
     CREATE INDEX IF NOT EXISTS idx_monthly_product ON monthly_data(product_id);
     CREATE INDEX IF NOT EXISTS idx_monthly_month ON monthly_data(month);
+
+    -- 原始派米 BI 月度商品总览字段：保留报表中未映射到 monthly_data 的完整字段。
+    -- 每个商品/月份只有一份当前有效载荷，导入时按月份整体替换，便于回滚。
+    CREATE TABLE IF NOT EXISTS monthly_source_payload (
+        product_id TEXT NOT NULL,
+        month TEXT NOT NULL,
+        source_filename TEXT NOT NULL,
+        source_hash TEXT NOT NULL,
+        payload_json TEXT NOT NULL,
+        imported_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (product_id, month)
+    );
+    CREATE INDEX IF NOT EXISTS idx_monthly_source_payload_month
+        ON monthly_source_payload(month);
+
+    -- 字段目录由导入器按源文件真实表头维护，供设置接口和商品字段选择器使用。
+    CREATE TABLE IF NOT EXISTS source_field_catalog (
+        field_key TEXT PRIMARY KEY,
+        source_column TEXT NOT NULL UNIQUE,
+        label TEXT NOT NULL,
+        group_name TEXT NOT NULL DEFAULT 'BI 数据源字段',
+        data_type TEXT NOT NULL DEFAULT 'text',
+        format TEXT NOT NULL DEFAULT 'text',
+        source_type TEXT NOT NULL DEFAULT 'bi_monthly_overview',
+        available_months_json TEXT NOT NULL DEFAULT '[]',
+        nonempty_count INTEGER NOT NULL DEFAULT 0,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE INDEX IF NOT EXISTS idx_source_field_catalog_source_type
+        ON source_field_catalog(source_type, source_column);
     CREATE INDEX IF NOT EXISTS idx_paid_product ON paid_detail(product_id);
     CREATE INDEX IF NOT EXISTS idx_paid_product_imported ON paid_detail(product_id, imported_at DESC);
 
