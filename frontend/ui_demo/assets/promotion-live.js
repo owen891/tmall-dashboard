@@ -402,32 +402,57 @@
     });
   }
 
+  const PROMOTION_ALERT_PREVIEW_LIMIT = 5;
+
   function severityClass(severity) {
     return severity === 'danger' ? 'alert-list__item--danger' : '';
   }
 
-  function renderAlerts(rows) {
-    const container = $('[data-promotion-alerts]');
-    const count = $('[data-promotion-alert-count]');
+  function createAlertItem(alert) {
+    const item = element('div', `alert-list__item ${severityClass(alert.severity)}`.trim());
+    const copy = element('div');
+    copy.append(element('strong', '', text(alert.title, productId(alert) || '商品')), element('span', '', text(alert.message, '指标异常')));
+    const button = element('button', 'button button--ghost', '查看商品');
+    button.type = 'button';
+    button.dataset.promotionDrill = productId(alert);
+    button.addEventListener('click', () => openProductDetail(alert, button));
+    item.append(copy, button);
+    return item;
+  }
+
+  function renderAlertItems(container, rows, { emptyMessage = true } = {}) {
     container.replaceChildren();
-    count.textContent = `${rows.length} 条`;
     if (!rows.length) {
+      if (!emptyMessage) return;
       const empty = element('div', 'empty-state');
       empty.append(element('strong', '', '当前月份没有触发推广预警'), element('span', '', '预警由 API 按商品推广 ROI 与推广花费规则计算。'));
       container.appendChild(empty);
       return;
     }
-    rows.forEach((alert) => {
-      const item = element('div', `alert-list__item ${severityClass(alert.severity)}`.trim());
-      const copy = element('div');
-      copy.append(element('strong', '', text(alert.title, productId(alert) || '商品')), element('span', '', text(alert.message, '指标异常')));
-      const button = element('button', 'button button--ghost', '查看商品');
-      button.type = 'button';
-      button.dataset.promotionDrill = productId(alert);
-      button.addEventListener('click', () => openProductDetail(alert, button));
-      item.append(copy, button);
-      container.appendChild(item);
-    });
+    rows.forEach((alert) => container.appendChild(createAlertItem(alert)));
+  }
+
+  function renderAlertDialog(rows) {
+    const list = $('[data-promotion-alert-dialog-list]');
+    const subtitle = $('[data-promotion-alert-dialog-subtitle]');
+    if (!list) return;
+    if (subtitle) subtitle.textContent = `${state.period || '--'} · 共 ${rows.length} 条投放预警`;
+    renderAlertItems(list, rows);
+  }
+
+  function renderAlerts(rows) {
+    const container = $('[data-promotion-alerts]');
+    const count = $('[data-promotion-alert-count]');
+    const moreButton = $('[data-promotion-alerts-more]');
+    const alerts = Array.isArray(rows) ? rows : [];
+    count.textContent = `${alerts.length} 条`;
+    renderAlertItems(container, alerts.slice(0, PROMOTION_ALERT_PREVIEW_LIMIT));
+    if (moreButton) {
+      moreButton.hidden = alerts.length <= PROMOTION_ALERT_PREVIEW_LIMIT;
+      moreButton.textContent = `查看全部 ${alerts.length} 条`;
+    }
+    const dialog = $('[data-promotion-alert-dialog]');
+    if (dialog?.open) renderAlertDialog(alerts);
   }
 
   function clearTable(message) {
@@ -1361,6 +1386,34 @@
     state.fieldDialogReturnFocus = null;
   }
 
+  function openAlertsDialog(trigger) {
+    const dialog = $('[data-promotion-alert-dialog]');
+    if (!dialog) return;
+    state.alertDialogReturnFocus = trigger || document.activeElement;
+    renderAlertDialog(state.alerts || []);
+    dialog.showModal();
+    window.setTimeout(() => dialog.querySelector('[data-promotion-alert-dialog-close]')?.focus(), 0);
+    window.lucide?.createIcons();
+  }
+
+  function closeAlertsDialog() {
+    const dialog = $('[data-promotion-alert-dialog]');
+    if (dialog?.open) dialog.close();
+  }
+
+  function bindAlertsDialog() {
+    const dialog = $('[data-promotion-alert-dialog]');
+    if (!dialog) return;
+    $('[data-promotion-alerts-more]')?.addEventListener('click', (event) => openAlertsDialog(event.currentTarget));
+    dialog.querySelectorAll('[data-promotion-alert-dialog-close]').forEach((button) => button.addEventListener('click', closeAlertsDialog));
+    dialog.addEventListener('click', (event) => { if (event.target === dialog) closeAlertsDialog(); });
+    dialog.addEventListener('cancel', (event) => { event.preventDefault(); closeAlertsDialog(); });
+    dialog.addEventListener('close', () => {
+      state.alertDialogReturnFocus?.focus?.();
+      state.alertDialogReturnFocus = null;
+    });
+  }
+
   function bindFieldSettings() {
     $('[data-promotion-template-select]')?.addEventListener('change', (event) => applyTemplate(event.target.value));
     $('[data-promotion-manage-fields]')?.addEventListener('click', openFieldDialog);
@@ -1412,6 +1465,7 @@
   restorePromotionUrl();
   bindPageFilters();
   bindFieldSettings();
+  bindAlertsDialog();
   bindDialog();
   selectTab(state.activeTab);
   loadServerTemplates()

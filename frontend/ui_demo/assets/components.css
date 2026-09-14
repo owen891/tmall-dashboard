@@ -180,6 +180,8 @@ input[type="checkbox"], input[type="radio"] { width: 18px; height: 18px; margin:
 .alert-list__item--danger { border-color: var(--border-danger-subtle); background: var(--danger-tint); }
 .alert-list__item strong { display: block; font-size: var(--font-size-secondary); }
 .alert-list__item span { display: block; margin-top: 2px; color: var(--text-secondary); }
+.promotion-alert-dialog { width: min(820px, calc(100vw - 24px)); }
+.promotion-alert-dialog .modal-form__body { max-height: min(620px, calc(100dvh - 180px)); }
 .funnel { display: grid; gap: 8px; }
 .funnel__row { display: grid; grid-template-columns: 92px minmax(0, 1fr) 64px; align-items: center; gap: 8px; font-size: var(--font-size-meta); }
 .funnel__bar { height: 22px; border-radius: var(--radius-sm); background: var(--brand-tint); }

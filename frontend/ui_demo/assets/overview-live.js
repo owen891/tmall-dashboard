@@ -2,6 +2,10 @@
   const $ = (selector) => document.querySelector(selector);
   const money = (value) => `¥${Number(value || 0).toLocaleString('zh-CN', { maximumFractionDigits: 0 })}`;
   const number = (value) => Number(value || 0).toLocaleString('zh-CN');
+  // 首页总览的规模型指标统一以“万”为单位，避免百万级数值过长。
+  const wan = (value, prefix = '') => `${prefix}${(Number(value || 0) / 10000).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}万`;
+  const moneyWan = (value) => wan(value, '¥');
+  const numberWan = (value) => wan(value);
   const percent = (value) => `${(Number(value || 0) * 100).toFixed(1)}%`;
   const text = (node, value) => { if (node) node.textContent = value == null || value === '' ? '--' : String(value); };
   const textAll = (selector, value) => document.querySelectorAll(selector).forEach((node) => text(node, value));
@@ -184,10 +188,10 @@
   function renderKpis(overview, comparison, matrix) {
     const fallback = deriveKpiFallback(matrix);
     const metrics = [
-      ['payment_amount', money],
-      ['net_sales', money],
-      ['visitors', number],
-      ['ad_spend', money],
+      ['payment_amount', moneyWan],
+      ['net_sales', moneyWan],
+      ['visitors', numberWan],
+      ['ad_spend', moneyWan],
       ['ad_roi', (value) => Number(value || 0).toFixed(2)],
       ['refund_rate', percent],
       ['expense_ratio', percent],
@@ -228,7 +232,7 @@
       });
     });
     const netSales = overview.net_sales;
-    text($('[data-overview-summary="net_sales"]'), netSales == null ? '--' : money(netSales));
+    text($('[data-overview-summary="net_sales"]'), netSales == null ? '--' : moneyWan(netSales));
     text($('[data-overview-summary-meta="net_sales"]'), overview.data_cutoff_date ? `数据截至 ${overview.data_cutoff_date}` : '等待加载');
     text($('[data-overview-cutoff]'), overview.data_cutoff_date ? `数据截至 ${overview.data_cutoff_date}` : '数据截至 --');
     const freshness = overview.context?.latest_import?.completed_at || overview.data_cutoff_date;
@@ -312,13 +316,13 @@
     const target = data?.target || {};
     const actual = data?.actual || {};
     const actualAvailable = data?.actual && data.actual.gsv != null;
-    const targetValue = (key) => target[key] == null ? '--' : money(target[key]);
-    const actualValue = (key) => actualAvailable ? money(actual[key]) : '不可计算';
+    const targetValue = (key) => target[key] == null ? '--' : moneyWan(target[key]);
+    const actualValue = (key) => actualAvailable ? moneyWan(actual[key]) : '不可计算';
     const values = [
       ['支付金额', `${actualValue('gsv')} / ${targetValue('target_gsv')}`, data?.gsv_progress],
-      ['推广花费', `${actualAvailable ? money(actual.ad_spend) : '不可计算'} / ${targetValue('target_ad_spend')}`, data?.ad_progress],
-      ['净销售额', actualAvailable ? money(actual.net_sales) : '不可计算', null],
-      ['商品访客数', actualAvailable ? number(actual.visitors) : '不可计算', null]
+      ['推广花费', `${actualAvailable ? moneyWan(actual.ad_spend) : '不可计算'} / ${targetValue('target_ad_spend')}`, data?.ad_progress],
+      ['净销售额', actualAvailable ? moneyWan(actual.net_sales) : '不可计算', null],
+      ['商品访客数', actualAvailable ? numberWan(actual.visitors) : '不可计算', null]
     ];
     const renderRows = () => values.map(([label, value, progress]) => {
       const row = document.createElement('div');

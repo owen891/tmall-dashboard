@@ -81,8 +81,8 @@
             <div class="chart-box chart-box--tall"><div id="promotionTrend" class="chart-canvas" role="img" aria-label="推广花费、推广成交和推广 ROI 趋势"></div></div>
           </article>
           <article class="plain-panel panel">
-            <div class="panel__header"><div><h3 class="panel__title">投放预警</h3><p class="panel__hint">按已启用的推广商品规则自动识别</p></div><div class="panel__actions"><button class="button button--ghost" type="button" data-alert-rules-open data-alert-rules-scope="promotion_product"><i data-lucide="settings-2"></i>配置预警</button><span class="badge badge--danger" data-promotion-alert-count>--</span></div></div>
-            <div class="alert-list" data-promotion-alerts aria-live="polite"><div class="empty-state"><span>加载中…</span></div></div>
+            <div class="panel__header"><div><h3 class="panel__title">投放预警</h3><p class="panel__hint">按已启用的推广商品规则自动识别；此处最多展示 5 条。</p></div><div class="panel__actions"><button class="button button--ghost" type="button" data-alert-rules-open data-alert-rules-scope="promotion_product"><i data-lucide="settings-2"></i>配置预警</button><button class="button button--ghost" type="button" data-promotion-alerts-more hidden>查看全部</button><span class="badge badge--danger" data-promotion-alert-count>--</span></div></div>
+            <div class="alert-list" data-promotion-alerts aria-live="polite"><div class="empty-state"><span>加载中</span></div></div>
           </article>
         </section>
 
@@ -142,6 +142,20 @@
       </div>
     </div>
   </dialog>
+
+  <dialog class="modal-form promotion-alert-dialog" data-promotion-alert-dialog data-modal-kind="detail" aria-labelledby="promotionAlertDialogTitle">
+    <div class="modal-form__header">
+      <div><h3 id="promotionAlertDialogTitle">全部投放预警</h3><p data-promotion-alert-dialog-subtitle>--</p></div>
+      <button class="button button--ghost" type="button" data-promotion-alert-dialog-close aria-label="关闭全部投放预警"><i data-lucide="x"></i></button>
+    </div>
+    <div class="modal-form__body">
+      <div class="alert-list promotion-alert-dialog__list" data-promotion-alert-dialog-list></div>
+    </div>
+    <div class="modal-form__footer">
+      <button class="button" type="button" data-promotion-alert-dialog-close>关闭</button>
+    </div>
+  </dialog>
+
 
     <dialog class="modal-form promotion-field-dialog" data-promotion-field-dialog data-modal-kind="config" aria-labelledby="promotionFieldDialogTitle">
     <div class="modal-form__header">

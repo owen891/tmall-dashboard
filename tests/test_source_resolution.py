@@ -31,6 +31,36 @@ class SourceResolutionTests(unittest.TestCase):
             self.assertEqual(connection.execute("SELECT COUNT(*) FROM daily_data_observations").fetchone()[0], 2)
             self.assertEqual(connection.execute("SELECT COUNT(*) FROM reconciliation_results").fetchone()[0], 1)
 
+    def test_paimi_bi_snapshot_overrides_older_promotion_value_when_present(self):
+        from db import get_connection
+        from services.source_resolution_service import record_daily_observation
+
+        connection = get_connection(self.db_path)
+        try:
+            record_daily_observation(
+                connection,
+                {'product_id': 'p-paimi', 'date': '2026-08-18', 'ad_spend': 12},
+                source_type='promotion_product_day', source_batch_id='promotion-1',
+                source_system='promotion_tool', shop_id='default',
+            )
+            record_daily_observation(
+                connection,
+                {'product_id': 'p-paimi', 'date': '2026-08-18', 'ad_spend': 8},
+                source_type='paimi_bi_product_day', source_batch_id='paimi-1',
+                source_system='business_advisor', shop_id='default',
+            )
+            fact = connection.execute(
+                "SELECT ad_spend FROM daily_data WHERE product_id = 'p-paimi'"
+            ).fetchone()
+            lineage = connection.execute(
+                "SELECT effective_source_type FROM fact_field_lineage WHERE product_id = 'p-paimi' AND field_key = 'ad_spend'"
+            ).fetchone()
+        finally:
+            connection.close()
+
+        self.assertEqual(fact['ad_spend'], 8.0)
+        self.assertEqual(lineage['effective_source_type'], 'paimi_bi_product_day')
+
     def test_zero_is_not_treated_as_missing_when_dmp_has_nonzero(self):
         from services.source_resolution_service import SourceResolutionService
 

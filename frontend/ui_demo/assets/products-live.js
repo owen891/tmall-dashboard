@@ -79,8 +79,30 @@
     { key: 'search_click_rate', label: '\u514d\u8d39\u641c\u7d22\u70b9\u51fb\u7387', format: 'percent' },
     { key: 'category_width', label: '\u8fde\u5e26\u8d2d\u4e70\u53f6\u5b50\u7c7b\u76ee\u5bbd\u5ea6', format: 'number' },
   );
-  const columns = [...new Map(columnGroups.flatMap((group) => group.columns).map((column) => [column.key, column])).values()];
-  const columnsByKey = new Map(columns.map((column) => [column.key, column]));
+  const columns = [];
+  const columnsByKey = new Map();
+  function rebuildColumns() {
+    const uniqueColumns = [...new Map(columnGroups.flatMap((group) => group.columns).map((column) => [column.key, column])).values()];
+    columns.splice(0, columns.length, ...uniqueColumns);
+    columnsByKey.clear();
+    columns.forEach((column) => columnsByKey.set(column.key, column));
+  }
+  function ingestBiFieldCatalog(catalog) {
+    const dynamic = Array.isArray(catalog)
+      ? catalog.filter((field) => field && field.source_type === 'bi_monthly_overview' && field.key && field.label)
+      : [];
+    if (!dynamic.length) return;
+    const known = new Set(columnGroups.flatMap((group) => group.columns.map((column) => column.key)));
+    const newColumns = dynamic
+      .filter((field) => !known.has(field.key))
+      .map((field) => ({ key: field.key, label: field.label, format: field.format || 'text' }));
+    if (!newColumns.length) return;
+    const group = columnGroups.find((item) => item.label === 'BI 数据源字段');
+    if (group) group.columns.push(...newColumns);
+    else columnGroups.push({ label: 'BI 数据源字段', columns: newColumns });
+    rebuildColumns();
+  }
+  rebuildColumns();
   const templates = {
     operate: ['tier', 'style', 'product_type', 'product_time_node', 'status', 'payment_amount', 'net_sales', 'conversion', 'refund_rate', 'ad_spend', 'roi', 'paid_ipv', 'organic_ipv', 'search_ipv', 'recommend_ipv', 'repurchase_rate'],
     select: ['tier', 'style', 'product_type', 'product_time_node', 'category', 'status', 'visitors', 'conversion', 'cart_rate', 'fav_rate', 'payment_amount', 'buyers', 'avg_order_value', 'score'],
@@ -1207,6 +1229,7 @@
     try {
       const payload = await DemoApi.domainRequest('/api/settings');
       DemoLabels.setDictionaries(payload.data?.classification_dictionaries);
+      ingestBiFieldCatalog(payload.data?.field_catalog?.products);
       const configuredDefault = payload.data?.product_view_template;
       ingestViewTemplates(payload.data);
       renderTemplateSelect(configuredDefault);
