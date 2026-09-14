@@ -3102,15 +3102,20 @@ def get_target_progress():
     if unsupported:
         return unsupported
     shop_id = get_shop_id()
+    _t_label, _t_label_params = shop_label_filter(category_filters_from_request())
+    _t_table = 'daily_data' if dim == 'daily' else 'weekly_data' if dim == 'weekly' else 'monthly_data'
+    _t_alias = 'd' if dim == 'daily' else 'w' if dim == 'weekly' else 'm'
+    _t_join = f' JOIN products p ON p.product_id = {_t_alias}.product_id' if _t_label else ''
+    _t_where = (' AND ' + _t_label) if _t_label else ''
     with get_db() as conn:
 
         # 获取店铺目标（period字段兼容月/周/日格式）
         target = conn.execute('SELECT * FROM shop_targets WHERE period = ?', (period,)).fetchone()
         target = dict(target) if target else None
 
-        # 根据维度查询实际数据
+        # 根据维度查询实际数据（品类模式过滤 actual，target 保持店铺目标）
         if dim == 'daily':
-            actual = conn.execute('''
+            actual = conn.execute(f'''
                 SELECT
                     COUNT(*) as row_count,
                     SUM(payment_amount) as gsv,
@@ -3119,11 +3124,11 @@ def get_target_progress():
                     SUM(ipv) as visitors,
                     AVG(payment_conversion) as conversion,
                     SUM(ad_spend) as ad_spend,
-                    COUNT(DISTINCT product_id) as product_count
-                FROM daily_data WHERE shop_id = ? AND date = ?
-            ''', (shop_id, period)).fetchone()
+                    COUNT(DISTINCT d.product_id) as product_count
+                FROM daily_data d{_t_join} WHERE d.shop_id = ? AND d.date = ?{_t_where}
+            ''', (shop_id, period, *_t_label_params)).fetchone()
         elif dim == 'weekly':
-            actual = conn.execute('''
+            actual = conn.execute(f'''
                 SELECT
                     COUNT(*) as row_count,
                     SUM(payment_amount) as gsv,
@@ -3132,11 +3137,11 @@ def get_target_progress():
                     SUM(ipv) as visitors,
                     AVG(payment_conversion) as conversion,
                     SUM(ad_spend) as ad_spend,
-                    COUNT(DISTINCT product_id) as product_count
-                FROM weekly_data WHERE week_start = ?
-            ''', (period,)).fetchone()
+                    COUNT(DISTINCT w.product_id) as product_count
+                FROM weekly_data w{_t_join} WHERE w.week_start = ?{_t_where}
+            ''', (period, *_t_label_params)).fetchone()
         else:
-            actual = conn.execute('''
+            actual = conn.execute(f'''
                 SELECT
                     COUNT(*) as row_count,
                     SUM(payment_amount) as gsv,
@@ -3145,9 +3150,9 @@ def get_target_progress():
                     SUM(visitors) as visitors,
                     AVG(payment_conversion) as conversion,
                     SUM(ad_spend) as ad_spend,
-                    COUNT(DISTINCT product_id) as product_count
-                FROM monthly_data WHERE month = ?
-            ''', (period,)).fetchone()
+                    COUNT(DISTINCT m.product_id) as product_count
+                FROM monthly_data m{_t_join} WHERE m.month = ?{_t_where}
+            ''', (period, *_t_label_params)).fetchone()
         actual = dict(actual) if actual else None
         if actual and not actual.pop('row_count', 0):
             actual = None

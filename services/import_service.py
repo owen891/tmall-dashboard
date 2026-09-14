@@ -29,7 +29,7 @@ PRODUCT_DAY_REQUIRED_FIELDS = {
 PRODUCT_DAY_OPTIONAL_FIELDS = {
     'successful_refund_amount', 'payment_buyers',
     'product_name', 'parent_product_id', 'product_type', 'sku_code', 'source_status', 'product_tags',
-    'product_growth_stage',
+    'product_growth_stage', 'shop_label',
     'page_views', 'avg_stay_duration', 'bounce_rate', 'favorite_users', 'cart_items', 'cart_users',
     'paid_visitors', 'organic_visitors', 'recommend_visitors', 'ad_roi', 'favorite_cart_rate',
     'repurchase_rate', 'presale_amount', 'presale_qty', 'search_click_rate', 'payment_unit_price',
@@ -137,6 +137,7 @@ FIELD_ALIASES = {
     'sku_code': {'货号', 'sku_code'},
     'source_status': {'商品状态', 'source_status'},
     'product_tags': {'商品标签', 'product_tags'},
+    'shop_label': {'品类标签', 'shop_label'},
     'page_views': {'商品浏览量', '浏览量', 'page_views', 'pv'},
     'avg_stay_duration': {'平均停留时长', 'avg_stay_duration'},
     'bounce_rate': {'商品详情页跳出率', '跳出率', 'bounce_rate'},
@@ -884,11 +885,20 @@ class ImportService:
                 }
                 text_fields = {
                     'product_name', 'parent_product_id', 'product_type', 'sku_code',
-                    'source_status', 'product_tags', 'product_growth_stage',
+                    'source_status', 'product_tags', 'product_growth_stage', 'shop_label',
                 }
                 for field in text_fields:
                     if mapping.get(field):
                         row[field] = str(source[mapping[field]]).strip()
+                # 品类标签：从 BI「商品标签」列（自动映射 product_tags 或显式 shop_label）
+                # 同步到 shop_label，供品类模式过滤使用；独立于用户映射模板。
+                if 'shop_label' not in row:
+                    _bi_mapping = preview.get('mapping') or {}
+                    _label_col = _bi_mapping.get('shop_label') or _bi_mapping.get('product_tags')
+                    if _label_col and _label_col in preview['frame'].columns:
+                        _label_value = str(source[_label_col]).strip()
+                        if _label_value and _label_value.lower() not in {'nan', 'none', 'null'}:
+                            row['shop_label'] = _label_value
                 integer_fields = {
                     'payment_buyers', 'payment_items', 'page_views', 'favorite_users',
                     'cart_items', 'cart_users', 'order_buyers', 'order_items',

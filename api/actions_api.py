@@ -112,8 +112,10 @@ def list_actions():
         limit = min(max(int(request.args.get('limit', 500)), 1), 1000)
     except ValueError:
         return failure('VALIDATION_ERROR', 'limit 必须是整数', status=422)
+    from services.category_mode_service import mode_to_label, requested_category_mode
+    _label = mode_to_label(requested_category_mode())
     rows = ActionsRepo.list_actions(
-        request.args.get('product_id'), limit, request.args.get('status')
+        request.args.get('product_id'), limit, request.args.get('status'), shop_label=_label
     )
     availability = 'available' if rows else 'no-data'
     missing_inputs = [] if rows else ['actions']
@@ -146,7 +148,9 @@ def calendar_actions():
     if (end_date - start_date).days > 365:
         return failure('VALIDATION_ERROR', '动作日历查询范围不能超过 366 天', status=422)
     status = request.args.get('status', '').strip() or None
-    rows = ActionsRepo.list_calendar_actions(start, end, status)
+    from services.category_mode_service import mode_to_label, requested_category_mode
+    _label = mode_to_label(requested_category_mode())
+    rows = ActionsRepo.list_calendar_actions(start, end, status, shop_label=_label)
     availability = 'available' if rows else 'no-data'
     missing_inputs = [] if rows else ['actions.calendar']
     return success(

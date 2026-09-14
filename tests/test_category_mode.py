@@ -229,6 +229,124 @@ class CategoryModeContractTests(unittest.TestCase):
         self.assertIn('标品袜子', shell_js)
         self.assertIn('demo-category__select', shell_css)
 
+    def test_target_progress_sock_filters(self):
+        resp_all = self.client.get('/api/target_progress?dim=daily&period=2026-04-04')
+        self.assertEqual(resp_all.status_code, 200)
+        self.assertEqual(resp_all.get_json()['actual']['gsv'], 400)
+        resp_sock = self.client.get('/api/target_progress?dim=daily&period=2026-04-04&category_mode=sock')
+        self.assertEqual(resp_sock.status_code, 200)
+        # 04-04 has no sock rows -> category-scoped actual has no facts.
+        self.assertIsNone(resp_sock.get_json()['actual'])
+
+    def test_actions_sock_filters(self):
+        from db import get_db
+        with get_db(self.database_path) as connection:
+            connection.executemany(
+                '''INSERT INTO product_actions (
+                       product_id, purpose_type, purpose_note, action_type, action_detail, target_metric,
+                   status, planned_at, observer_window_days, version
+                   ) VALUES (?, 'promotion', '提价', 'adjust_bid', '提价测试', 'gmv',
+                   'pending_execution', ?, 7, 1)''',
+                [('sock-a', '2026-04-10'), ('other-a', '2026-04-11')],
+            )
+            connection.commit()
+        resp_all = self.client.get('/api/actions')
+        self.assertEqual(resp_all.status_code, 200)
+        self.assertEqual(len(resp_all.get_json()['data']), 2)
+        resp_sock = self.client.get('/api/actions?category_mode=sock')
+        self.assertEqual(resp_sock.status_code, 200)
+        ids = [r['product_id'] for r in resp_sock.get_json()['data']]
+        self.assertEqual(ids, ['sock-a'])
+
+    def test_calendar_actions_sock_filters(self):
+        from db import get_db
+        with get_db(self.database_path) as connection:
+            connection.executemany(
+                '''INSERT INTO product_actions (
+                       product_id, purpose_type, purpose_note, action_type, action_detail, target_metric,
+                   status, planned_at, observer_window_days, version
+                   ) VALUES (?, 'promotion', '提价', 'adjust_bid', '提价测试', 'gmv',
+                   'pending_execution', ?, 7, 1)''',
+                [('sock-a', '2026-04-10'), ('other-a', '2026-04-11')],
+            )
+            connection.commit()
+        resp_all = self.client.get('/api/actions/calendar?start=2026-04-01&end=2026-04-30')
+        self.assertEqual(resp_all.status_code, 200)
+        self.assertEqual(len(resp_all.get_json()['data']), 2)
+        resp_sock = self.client.get('/api/actions/calendar?start=2026-04-01&end=2026-04-30&category_mode=sock')
+        self.assertEqual(resp_sock.status_code, 200)
+        ids = [r['product_id'] for r in resp_sock.get_json()['data']]
+        self.assertEqual(ids, ['sock-a'])
+
+    def test_import_field_aliases_label_to_shop_label(self):
+        import services.import_service as isvc
+        self.assertIn('shop_label', isvc.PRODUCT_DAY_OPTIONAL_FIELDS)
+        self.assertIn('商品标签', isvc.FIELD_ALIASES['product_tags'])
+        self.assertIn('品类标签', isvc.FIELD_ALIASES['shop_label'])
+
+    def test_confirm_extracts_shop_label_from_bi_label_column(self):
+        import io as _io
+        import pandas as pd
+        from db import get_db
+        from services.import_service import import_service as svc
+        df = pd.DataFrame({
+            '日期': ['2026-04-05'],
+            '商品ID': ['new-sock-2'],
+            '商品标签': ['标品袜子'],
+            '支付金额': [100],
+            '访客数': [10],
+        })
+        bio = _io.BytesIO()
+        df.to_excel(bio, index=False)
+        with self.app.app_context():
+            preview = svc.preview('bi2.xlsx', bio.getvalue(), 'product_day')
+            svc.confirm(preview['id'], {
+                'date': '日期', 'product_id': '商品ID', 'payment_amount': '支付金额',
+                'product_visitors': '访客数',
+            })
+        with get_db(self.database_path) as connection:
+            label = connection.execute(
+                'SELECT shop_label FROM products WHERE product_id = ?', ('new-sock-2',)
+            ).fetchone()['shop_label']
+        self.assertEqual(label, '标品袜子')
+
+    def test_import_batch_writes_shop_label(self):
+        from uuid import uuid4
+        from db import get_db
+        from repos.import_repo import ImportRepo
+
+        def run(rows):
+            batch = {
+                'id': uuid4().hex, 'shop_id': 'default', 'source_type': 'product_day',
+                'source_filename': 'bi.xlsx', 'source_hash': 'h', 'total_rows': 1, 'valid_rows': 1,
+                'invalid_rows': 0, 'quality_summary': '{}',
+            }
+            # Repo resolves the DB via Flask app config; keep it on the fixture database.
+            with self.app.app_context():
+                ImportRepo.complete_product_daily_batch(batch, rows)
+
+        run([{
+            'shop_id': 'default', 'product_id': 'new-sock', 'date': '2026-04-05',
+            'payment_amount': 100, 'product_visitors': 10, 'product_name': '新品袜',
+            'shop_label': '标品袜子',
+        }])
+        with get_db(self.database_path) as connection:
+            label = connection.execute(
+                'SELECT shop_label FROM products WHERE product_id = ?', ('new-sock',)
+            ).fetchone()['shop_label']
+        self.assertEqual(label, '标品袜子')
+        # 空标签导入不得覆盖已有标签
+        run([{
+            'shop_id': 'default', 'product_id': 'new-sock', 'date': '2026-04-06',
+            'payment_amount': 200, 'product_visitors': 20, 'product_name': '新品袜',
+            'shop_label': '',
+        }])
+        with get_db(self.database_path) as connection:
+            label = connection.execute(
+                'SELECT shop_label FROM products WHERE product_id = ?', ('new-sock',)
+            ).fetchone()['shop_label']
+        self.assertEqual(label, '标品袜子')
+
 
 if __name__ == '__main__':
     unittest.main()

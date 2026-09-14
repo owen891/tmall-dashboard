@@ -105,8 +105,8 @@ class ImportRepo:
                         '''
                         INSERT INTO products (
                             product_id, title, status, parent_product_id, product_type,
-                            sku_code, source_status, product_tags, product_growth_stage
-                        ) VALUES (?, ?, 'active', ?, ?, ?, ?, ?, ?)
+                            sku_code, source_status, product_tags, product_growth_stage, shop_label
+                        ) VALUES (?, ?, 'active', ?, ?, ?, ?, ?, ?, ?)
                         ON CONFLICT(product_id) DO UPDATE SET
                             title = COALESCE(NULLIF(excluded.title, ''), products.title),
                             parent_product_id = COALESCE(NULLIF(excluded.parent_product_id, ''), products.parent_product_id),
@@ -115,12 +115,14 @@ class ImportRepo:
                             source_status = COALESCE(NULLIF(excluded.source_status, ''), products.source_status),
                             product_tags = COALESCE(NULLIF(excluded.product_tags, ''), products.product_tags),
                             product_growth_stage = COALESCE(NULLIF(excluded.product_growth_stage, ''), products.product_growth_stage),
+                            shop_label = COALESCE(NULLIF(excluded.shop_label, ''), products.shop_label),
                             updated_at = CURRENT_TIMESTAMP
                         ''',
                         (
                             row['product_id'], row.get('product_name', ''), row.get('parent_product_id', ''),
                             row.get('product_type', ''), row.get('sku_code', ''), row.get('source_status', ''),
                             row.get('product_tags', ''), row.get('product_growth_stage', ''),
+                            row.get('shop_label', ''),
                         ),
                     )
                     if batch['source_type'] == 'dmp_product_day' and prior_product:

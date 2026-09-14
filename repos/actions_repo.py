@@ -124,7 +124,7 @@ class ActionsRepo:
         return [dict(row) for row in rows]
 
     @staticmethod
-    def list_actions(product_id=None, limit=500, status=None):
+    def list_actions(product_id=None, limit=500, status=None, shop_label=None):
         require_default_shop_scope()
         query = '''SELECT pa.*, p.title AS product_title, p.image_url AS product_image
                    FROM product_actions pa
@@ -137,6 +137,9 @@ class ActionsRepo:
         if status:
             clauses.append('pa.status = ?')
             parameters.append(status)
+        if shop_label:
+            clauses.append("(p.shop_label = ? OR instr(',' || p.shop_label || ',', ',' || ? || ',') > 0)")
+            parameters.extend([shop_label, shop_label])
         if clauses:
             query += ' WHERE ' + ' AND '.join(clauses)
         query += ' ORDER BY pa.planned_at DESC LIMIT ?'
@@ -154,7 +157,7 @@ class ActionsRepo:
         return result
 
     @staticmethod
-    def list_calendar_actions(start_date, end_date, status=None):
+    def list_calendar_actions(start_date, end_date, status=None, shop_label=None):
         require_default_shop_scope()
         query = '''SELECT pa.*, p.title AS product_title, p.image_url AS product_image
                    FROM product_actions pa
@@ -164,6 +167,9 @@ class ActionsRepo:
         if status:
             query += ' AND pa.status = ?'
             parameters.append(status)
+        if shop_label:
+            query += " AND (p.shop_label = ? OR instr(',' || p.shop_label || ',', ',' || ? || ',') > 0)"
+            parameters.extend([shop_label, shop_label])
         query += ' ORDER BY pa.planned_at ASC, pa.updated_at DESC, pa.id ASC'
         with get_db() as connection:
             rows = connection.execute(query, parameters).fetchall()
