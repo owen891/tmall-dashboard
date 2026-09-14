@@ -1,5 +1,21 @@
 (function () {
+  const CATEGORY_MODE_KEY = 'dashboard.categoryMode';
+  const DEFAULT_CATEGORY_MODE = 'sock';
+  const currentCategoryMode = () => {
+    try {
+      const stored = localStorage.getItem(CATEGORY_MODE_KEY);
+      if (stored) return stored;
+    } catch (_) { /* ignore */ }
+    return DEFAULT_CATEGORY_MODE;
+  };
+  const withCategoryMode = (path, method) => {
+    if (method !== 'GET' || !path || /^https?:/i.test(path)) return path;
+    const sep = path.includes('?') ? '&' : '?';
+    return `${path}${sep}category_mode=${encodeURIComponent(currentCategoryMode())}`;
+  };
   async function request(path, options = {}) {
+    const method = (options.method || 'GET').toUpperCase();
+    path = withCategoryMode(path, method);
     const response = await fetch(path, {
       headers: { Accept: 'application/json', ...(options.headers || {}) },
       ...options

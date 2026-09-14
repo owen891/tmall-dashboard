@@ -1028,6 +1028,7 @@ def init_db(db_path=None):
         'product_tags': 'TEXT DEFAULT \'\'',
         'product_growth_stage': 'TEXT DEFAULT \'\'',
         'product_time_node': 'TEXT DEFAULT \'\'',
+        'shop_label': 'TEXT DEFAULT \'\'',
     }
     cursor.execute("PRAGMA table_info(products)")
     existing_product_cols = {row[1] for row in cursor.fetchall()}

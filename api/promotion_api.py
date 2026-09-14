@@ -1,6 +1,7 @@
 from flask import Blueprint, request
 
 from api.api_response import evidence_level_for, failure, limitations_for, success
+from services.category_mode_service import category_filters_from_request
 from services.promotion_service import PromotionValidationError, promotion_service
 
 
@@ -17,6 +18,7 @@ def promotion():
         **{key: request.args.get(key) for key in ('channel', 'campaign_id', 'unit_id', 'product_id')},
         'channel': request.args.get('channel') or request.args.get('promotionChannel'),
     }
+    filters.update(category_filters_from_request())
     group_by = request.args.get('group_by', 'channel')
     try:
         result = promotion_service.list(start_date, end_date, group_by, filters)

@@ -23,8 +23,12 @@ class PromotionRepo:
         params = [shop_id, start_date, end_date]
         for key in ('channel', 'campaign_id', 'unit_id', 'product_id'):
             if filters.get(key):
-                where.append(f'{key} = ?')
+                where.append(f'pdf.{key} = ?')
                 params.append(filters[key])
+        if filters.get('shop_label'):
+            label = filters['shop_label']
+            where.append("(p.shop_label = ? OR instr(',' || p.shop_label || ',', ',' || ? || ',') > 0)")
+            params.extend([label, label])
         select = ', '.join(f'pdf.{column}' for column in columns)
         grouping = ', '.join(f'pdf.{column}' for column in columns)
         product_select = ''
@@ -95,7 +99,7 @@ class PromotionRepo:
                     LEFT JOIN products p ON p.product_id = pdf.product_id
                     {paid_join}
                     {link_join}
-                    WHERE {' AND '.join(f'pdf.{clause}' for clause in where)}
+                    WHERE {' AND '.join(where)}
                     GROUP BY {grouping} ORDER BY ad_spend DESC''', query_params,
             ).fetchall()
             store_payment = connection.execute(

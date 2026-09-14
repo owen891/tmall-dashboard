@@ -1,6 +1,7 @@
 from flask import Blueprint, request
 
 from api.api_response import evidence_level_for, failure, json_object, limitations_for, success
+from services.category_mode_service import category_filters_from_request
 from services.lifecycle_service import LifecycleConflictError, LifecycleValidationError, lifecycle_service
 from services.shop_scope_service import reject_legacy_shop_scope
 
@@ -13,6 +14,16 @@ def assessments():
     if (denied := reject_legacy_shop_scope('生命周期')):
         return denied
     rows = lifecycle_service.list()
+    category_filters = category_filters_from_request()
+    if category_filters.get('shop_label'):
+        from db import get_db
+        _label = category_filters['shop_label']
+        with get_db() as _conn:
+            _ids = [str(r['product_id']) for r in _conn.execute(
+                "SELECT product_id FROM products WHERE (shop_label = ? OR instr(',' || shop_label || ',', ',' || ? || ',') > 0)",
+                (_label, _label))]
+        _idset = set(_ids)
+        rows = [row for row in rows if str(row['product_id']) in _idset]
     product_id = request.args.get('productId') or request.args.get('product_id')
     stage = request.args.get('lifecycleStage') or request.args.get('lifecycle_stage')
     if product_id:

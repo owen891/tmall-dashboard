@@ -144,6 +144,11 @@
 
   header.innerHTML = `
     <div class="demo-topbar__heading"><h1 class="demo-topbar__title">${currentMeta[0]}</h1><span class="demo-topbar__eyebrow">${currentMeta[1]}</span></div>
+    <div class="demo-category" role="group" aria-label="品类模式">
+      <select class="demo-period__select demo-category__select" data-category-mode aria-label="品类模式">
+        <option value="sock">标品袜子</option><option value="all">全部品类</option>
+      </select>
+    </div>
     <div class="demo-period" role="group" aria-label="统计时间">
       <select class="demo-period__select" data-date-preset aria-label="快捷时间范围">
         <option value="today">今日</option><option value="yesterday">昨日</option><option value="7d">近7天</option><option value="30d" selected>近30天</option><option value="90d">近90天</option><option value="this_week">本周</option><option value="last_week">上周</option><option value="this_month">本月</option><option value="last_month">上月</option><option value="custom">自定义</option>
@@ -157,6 +162,21 @@
       </div>
     </div>
     <div class="demo-topbar__tools"><button class="button demo-import-trigger" type="button" data-open-toolbox title="导入数据"><i data-lucide="upload"></i><span>导入数据</span></button><button class="demo-tool demo-mobile-nav" type="button" title="打开导航" aria-label="打开导航" aria-expanded="false" data-mobile-nav><i data-lucide="menu"></i></button><button class="demo-tool" type="button" title="刷新" aria-label="刷新" data-demo-refresh><i data-lucide="refresh-cw"></i></button><button class="demo-tool" type="button" title="导出" aria-label="导出当前表格" data-demo-export><i data-lucide="download"></i></button><button class="demo-tool" type="button" title="切换深色主题" aria-label="切换深色主题" data-demo-theme><i data-lucide="moon"></i></button></div>`;
+
+  const categorySelect = header.querySelector('[data-category-mode]');
+  const CATEGORY_STORAGE_KEY = 'dashboard.categoryMode';
+  const readCategoryMode = () => { try { const v = localStorage.getItem(CATEGORY_STORAGE_KEY); if (v) return v; } catch (_) {} return 'sock'; };
+  const storeCategoryMode = (v) => { try { localStorage.setItem(CATEGORY_STORAGE_KEY, v); } catch (_) {} };
+  if (categorySelect) {
+    categorySelect.value = readCategoryMode();
+    categorySelect.addEventListener('change', () => { storeCategoryMode(categorySelect.value); window.location.reload(); });
+    requestApi('/api/settings').then((payload) => {
+      const modes = payload?.data?.category_modes || payload?.category_modes || [];
+      if (!Array.isArray(modes) || !modes.length) return;
+      categorySelect.innerHTML = modes.map((m) => `<option value="${String(m.value)}">${String(m.label)}</option>`).join('');
+      categorySelect.value = readCategoryMode();
+    }).catch(() => {});
+  }
 
   if (currentPage === 'lifecycle') header.querySelector('.demo-period').hidden = true;
   if (currentPage === 'overview') {

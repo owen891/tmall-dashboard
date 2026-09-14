@@ -153,6 +153,9 @@ dialog { overscroll-behavior: contain; }
   white-space: nowrap;
 }
 .demo-period[hidden] { display: none; }
+.demo-category { display: flex; align-items: center; margin-right: var(--space-2); flex: none; }
+.demo-category__select { min-width: 120px; max-width: 220px; }
+
 .demo-period__range { color: var(--text-primary); font-weight: 600; }
 .demo-period__select { min-height: var(--input-height); padding: var(--space-1) 28px var(--space-1) var(--space-2); border: 1px solid var(--input-border); border-radius: var(--radius-md); background: var(--input-bg); color: var(--text-primary); font-size: var(--font-size-secondary); }
 .demo-period__select:focus-visible, .demo-period__trigger:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 1px; border-color: var(--brand); }

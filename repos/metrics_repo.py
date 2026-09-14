@@ -19,6 +19,10 @@ class MetricsRepo:
                                WHERE pf.shop_id = d.shop_id AND pf.date = d.date AND pf.product_id = d.product_id
                                  AND pf.channel = ?)''')
             params.append(filters['promotion_channel'])
+        if filters.get('shop_label'):
+            label = filters['shop_label']
+            clauses.append("(p.shop_label = ? OR instr(',' || p.shop_label || ',', ',' || ? || ',') > 0)")
+            params.extend([label, label])
         return clauses, params
 
     @staticmethod
@@ -85,6 +89,10 @@ class MetricsRepo:
             if filters.get('lifecycle_stage'):
                 monthly_clauses.append("COALESCE(lp.manual_stage, lp.recommended_stage, '') = ?")
                 monthly_filter_params.append(filters['lifecycle_stage'])
+            if filters.get('shop_label'):
+                label = filters['shop_label']
+                monthly_clauses.append("(p.shop_label = ? OR instr(',' || p.shop_label || ',', ',' || ? || ',') > 0)")
+                monthly_filter_params.extend([label, label])
             # Promotion-channel filtering requires daily promotion facts, so do not
             # pretend a monthly rollup answers that more granular filter.
             if filters.get('promotion_channel'):
@@ -131,10 +139,13 @@ class MetricsRepo:
                     (shop_id, start_date, end_date),
                 ).fetchall()
             else:
-                clauses, filter_params = MetricsRepo._product_filter_sql(filters)
-                where = ' AND '.join(['d.shop_id = ?', 'd.date BETWEEN ? AND ?', *clauses])
-                rows = connection.execute(
-                '''WITH source_meta AS (
+                # Materialize the per-product/source latest-observation lookup
+                # into an indexed temp table: joining the raw observations
+                # table directly here is O(rows x rows) and stalls the overview
+                # page on multi-week ranges.
+                connection.execute('DROP TABLE IF EXISTS _source_meta')
+                connection.execute(
+                    '''CREATE TEMP TABLE _source_meta AS
                        SELECT shop_id, product_id, date, source_filename,
                               source_batch_id, source_type,
                               ROW_NUMBER() OVER (
@@ -142,8 +153,16 @@ class MetricsRepo:
                                   ORDER BY observed_at DESC, id DESC
                               ) AS source_rank
                        FROM daily_data_observations
-                       WHERE shop_id = ? AND date BETWEEN ? AND ?
-                   )
+                       WHERE date BETWEEN ? AND ?''',
+                    (start_date, end_date),
+                )
+                connection.execute(
+                    'CREATE INDEX _source_meta_key ON _source_meta(shop_id, product_id, date, source_filename)'
+                )
+                clauses, filter_params = MetricsRepo._product_filter_sql(filters)
+                where = ' AND '.join(['d.shop_id = ?', 'd.date BETWEEN ? AND ?', *clauses])
+                rows = connection.execute(
+                '''
                    SELECT d.date, SUM(d.payment_amount) AS payment_amount,
                           SUM(d.refund_amount) AS successful_refund_amount,
                           SUM(d.ad_spend) AS ad_spend,
@@ -158,13 +177,13 @@ class MetricsRepo:
                           MAX(b.quality_summary) AS quality_summary
                    FROM daily_data d JOIN products p ON p.product_id = d.product_id
                    LEFT JOIN lifecycle_profiles lp ON lp.product_id = d.product_id
-                   LEFT JOIN source_meta sm
+                   LEFT JOIN _source_meta sm
                      ON sm.shop_id = d.shop_id AND sm.product_id = d.product_id
                     AND sm.date = d.date AND sm.source_filename = d.data_source
                     AND sm.source_rank = 1
                    LEFT JOIN import_batches b ON b.id = sm.source_batch_id
                    WHERE ''' + where + ''' GROUP BY d.date ORDER BY d.date''',
-                    [shop_id, start_date, end_date, shop_id, start_date, end_date, *filter_params],
+                    [shop_id, start_date, end_date, *filter_params],
                 ).fetchall()
         result = []
         for row in rows:

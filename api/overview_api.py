@@ -8,6 +8,7 @@ from flask import Blueprint, Response, request
 from api.api_response import evidence_level_for, failure, limitations_for, success
 from repos.metrics_repo import MetricsRepo
 from services.metrics_service import build_overview
+from services.category_mode_service import category_filters_from_request
 from services.shop_scope_service import reject_legacy_shop_scope
 
 
@@ -16,7 +17,9 @@ FILTER_KEYS = ('product_id', 'tier', 'lifecycle_stage', 'promotion_channel')
 
 
 def _filters():
-    return {key: request.args.get(key) for key in FILTER_KEYS if request.args.get(key)}
+    filters = {key: request.args.get(key) for key in FILTER_KEYS if request.args.get(key)}
+    filters.update(category_filters_from_request())
+    return filters
 
 
 def _date_argument(name):

@@ -9,8 +9,12 @@ settings_bp = Blueprint('settings', __name__)
 
 @settings_bp.route('/api/settings', methods=['GET'])
 def get_settings():
+    payload = settings_service.get()
+    from services.category_mode_service import SOCK_MODE, available_labels
+    payload['category_modes'] = available_labels()
+    payload['category_mode_default'] = SOCK_MODE
     return success(
-        settings_service.get(),
+        payload,
         evidence_level='full',
         freshness={'source': 'persisted_settings'},
         evidence=[{'source': 'settings', 'row_count': 1}],

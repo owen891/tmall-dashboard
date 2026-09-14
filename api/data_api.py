@@ -19,6 +19,7 @@ from datetime import datetime, timedelta
 from db import get_db, get_connection, get_shop_id, init_db, load_config
 from api.api_response import evidence_level_for, failure, json_object, limitations_for, success
 from repos.audit_repo import AuditRepo
+from services.category_mode_service import category_filters_from_request
 from services.shop_scope_service import reject_legacy_shop_scope
 from services.management_validation import (
     TASK_PRIORITIES as _TASK_PRIORITIES,
@@ -1328,6 +1329,11 @@ def get_products():
         if product_type:
             where_clauses.append('p.product_type = ?')
             where_params.append(product_type)
+        _category_filters = category_filters_from_request()
+        if _category_filters.get('shop_label'):
+            _label = _category_filters['shop_label']
+            where_clauses.append("(p.shop_label = ? OR instr(',' || p.shop_label || ',', ',' || ? || ',') > 0)")
+            where_params.extend([_label, _label])
         if product_time_node:
             where_clauses.append('p.product_time_node = ?')
             where_params.append(product_time_node)
