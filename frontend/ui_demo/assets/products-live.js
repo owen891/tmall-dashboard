@@ -1181,6 +1181,7 @@
       dim: 'daily',
       start,
       end,
+      category_mode: (() => { try { return localStorage.getItem('dashboard.categoryMode') || 'sock'; } catch { return 'sock'; } })(),
       columns: ['title', 'product_id', ...state.visibleColumns],
       star_only: state.starredOnly,
       ...filters(),

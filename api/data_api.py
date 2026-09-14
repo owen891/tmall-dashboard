@@ -19,7 +19,7 @@ from datetime import datetime, timedelta
 from db import get_db, get_connection, get_shop_id, init_db, load_config
 from api.api_response import evidence_level_for, failure, json_object, limitations_for, success
 from repos.audit_repo import AuditRepo
-from services.category_mode_service import category_filters_from_request
+from services.category_mode_service import category_filters_from_request, mode_to_label, shop_label_filter
 from services.shop_scope_service import reject_legacy_shop_scope
 from services.management_validation import (
     TASK_PRIORITIES as _TASK_PRIORITIES,
@@ -264,6 +264,9 @@ def get_kpi():
         table = dim_cfg['table']
         date_col = dim_cfg['date_col']
         visitors_col = dim_cfg['visitors_col']
+        _label_clause, _label_params = shop_label_filter(category_filters_from_request())
+        _join_sql = f' JOIN products p ON p.product_id = {table}.product_id' if _label_clause else ''
+        _kpi_where = (' AND ' + _label_clause) if _label_clause else ''
 
         def query_period(p):
             if not p:
@@ -282,8 +285,8 @@ def get_kpi():
                     COALESCE(SUM(ad_spend),0) as ad_spend,
                     CASE WHEN SUM(ad_spend) > 0 THEN SUM(payment_amount) * 1.0 / SUM(ad_spend) ELSE 0 END as roi,
                     AVG(payment_conversion) as conversion
-                FROM {table} WHERE {scope_sql}{date_col} = ?
-            ''', (*scope_params, p)).fetchone()
+                FROM {table}{_join_sql} WHERE {scope_sql}{date_col} = ?{_kpi_where}
+            ''', (*scope_params, p, *_label_params)).fetchone()
             result = dict(row) if row else None
             if result and not result.pop('row_count', 0):
                 return None
@@ -375,6 +378,9 @@ def get_trend():
         # daily_data carries payment_qty; weekly_data predates that field.
         payment_qty_expr = 'SUM(payment_qty)' if dimension in {'monthly', 'daily'} else '0'
         scope_sql = ' AND shop_id = ?' if table == 'daily_data' else ''
+        _label_clause, _label_params = shop_label_filter(category_filters_from_request())
+        _join_sql = f' JOIN products p ON p.product_id = {table}.product_id' if _label_clause else ''
+        _trend_where = (' AND ' + _label_clause) if _label_clause else ''
         query = f'''
             SELECT {date_col} as period,
                    SUM(payment_amount) as gmv,
@@ -386,10 +392,11 @@ def get_trend():
                    {payment_qty_expr} as payment_count,
                    AVG(cart_rate) as cart_rate,
                    AVG(fav_rate) as fav_rate
-            FROM {table}
-             WHERE 1=1{scope_sql}
+            FROM {table}{_join_sql}
+             WHERE 1=1{scope_sql}{_trend_where}
          '''
         params = [shop_id] if table == 'daily_data' else []
+        params = [*params, *_label_params]
         if start:
             query += f' AND {date_col} >= ?'
             params.append(start)
@@ -545,6 +552,9 @@ def compare_periods():
     scope_params = (shop_id,) if table == 'daily_data' else ()
 
     with get_db() as conn:
+        _label_clause, _label_params = shop_label_filter(category_filters_from_request())
+        _join_sql = f' JOIN products p ON p.product_id = {table}.product_id' if _label_clause else ''
+        _kpi_where = (' AND ' + _label_clause) if _label_clause else ''
 
         def query_kpi(p):
             if not p:
@@ -561,8 +571,8 @@ def compare_periods():
                     COALESCE(SUM(ad_spend),0) as ad_spend,
                     CASE WHEN SUM(ad_spend) > 0 THEN SUM(payment_amount) * 1.0 / SUM(ad_spend) ELSE 0 END as roi,
                     AVG(payment_conversion) as conversion
-                FROM {table} WHERE {scope_sql}{date_col} = ?
-            ''', (*scope_params, p)).fetchone()
+                FROM {table}{_join_sql} WHERE {scope_sql}{date_col} = ?{_kpi_where}
+            ''', (*scope_params, p, *_label_params)).fetchone()
             result = dict(row) if row else None
             if result and not result.pop('row_count', 0):
                 return None
@@ -580,9 +590,9 @@ def compare_periods():
                 FROM products p
                 LEFT JOIN {table} d ON p.product_id = d.product_id
                     AND {scope_sql.replace('shop_id', 'd.shop_id') if table == 'daily_data' else ''}d.{date_col} = ?
-                WHERE p.status = 'active'
+                WHERE p.status = 'active'{_kpi_where}
                 ORDER BY d.payment_amount DESC
-            ''', (*scope_params, p)).fetchall()
+            ''', (*scope_params, p, *_label_params)).fetchall()
             return [dict(r) for r in rows]
 
         kpi_a = query_kpi(period_a)
@@ -809,6 +819,11 @@ def export_data():
         if product_id:
             where_clauses.append("p.product_id = ?")
             params.append(product_id)
+        export_category_mode = data.get('category_mode') or request.args.get('category_mode')
+        export_label = mode_to_label(export_category_mode)
+        if export_label:
+            where_clauses.append("(p.shop_label = ? OR instr(',' || p.shop_label || ',', ',' || ? || ',') > 0)")
+            params.extend([export_label, export_label])
         where_sql = (' AND ' + ' AND '.join(where_clauses)) if where_clauses else ''
 
         data_relation = table
@@ -2898,6 +2913,9 @@ def get_anomalies():
     visitors_col = dim_cfg['visitors_col']
 
     with get_db() as conn:
+        _label_clause, _label_params = shop_label_filter(category_filters_from_request())
+        _join_sql = f' JOIN products p ON p.product_id = {table}.product_id' if _label_clause else ''
+        _kpi_where = (' AND ' + _label_clause) if _label_clause else ''
 
         def query_period(p):
             if not p:
@@ -2913,8 +2931,8 @@ def get_anomalies():
                     CASE WHEN SUM(payment_amount) > 0 THEN SUM(refund_amount) * 1.0 / SUM(payment_amount) ELSE 0 END as refund_rate,
                     COALESCE(SUM(ad_spend),0) as ad_spend,
                     CASE WHEN SUM(ad_spend) > 0 THEN SUM(payment_amount) * 1.0 / SUM(ad_spend) ELSE 0 END as roi
-                FROM {table} WHERE {date_col} = ?
-            ''', (p,)).fetchone()
+                FROM {table}{_join_sql} WHERE {date_col} = ?{_kpi_where}
+            ''', (p, *_label_params)).fetchone()
             result = dict(row) if row else None
             if result and not result.pop('row_count', 0):
                 return None
@@ -3386,6 +3404,8 @@ def get_lifecycle():
             ''', (product_id,)).fetchall()
         else:
             # Top products lifecycle summary
+            _label_clause, _label_params = shop_label_filter(category_filters_from_request())
+            _lifecycle_where = (' WHERE ' + _label_clause) if _label_clause else ''
             rows = conn.execute('''
                 SELECT p.product_id, p.title, p.image_url, p.tier, p.style,
                        GROUP_CONCAT(d.month || ':' || COALESCE(d.payment_amount,0)) as gsv_series,
@@ -3395,10 +3415,11 @@ def get_lifecycle():
                        MAX(d.month) as last_month
                 FROM products p
                 JOIN monthly_data d ON p.product_id = d.product_id
+                ''' + _lifecycle_where + '''
                 GROUP BY p.product_id
                 ORDER BY total_gsv DESC
                 LIMIT ?
-            ''', (limit,)).fetchall()
+            ''', (*_label_params, limit)).fetchall()
 
     return jsonify([dict(r) for r in rows])
 

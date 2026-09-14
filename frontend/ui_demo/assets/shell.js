@@ -142,13 +142,16 @@
       </div>
     </div>`;
 
-  header.innerHTML = `
-    <div class="demo-topbar__heading"><h1 class="demo-topbar__title">${currentMeta[0]}</h1><span class="demo-topbar__eyebrow">${currentMeta[1]}</span></div>
+  const hideCategoryPages = new Set(['data-center', 'settings', 'manage', 'catalog']);
+  const categoryMarkup = hideCategoryPages.has(currentPage) ? '' : `
     <div class="demo-category" role="group" aria-label="品类模式">
       <select class="demo-period__select demo-category__select" data-category-mode aria-label="品类模式">
         <option value="sock">标品袜子</option><option value="all">全部品类</option>
       </select>
-    </div>
+    </div>`;
+  header.innerHTML = `
+    <div class="demo-topbar__heading"><h1 class="demo-topbar__title">${currentMeta[0]}</h1><span class="demo-topbar__eyebrow">${currentMeta[1]}</span></div>
+    ${categoryMarkup}
     <div class="demo-period" role="group" aria-label="统计时间">
       <select class="demo-period__select" data-date-preset aria-label="快捷时间范围">
         <option value="today">今日</option><option value="yesterday">昨日</option><option value="7d">近7天</option><option value="30d" selected>近30天</option><option value="90d">近90天</option><option value="this_week">本周</option><option value="last_week">上周</option><option value="this_month">本月</option><option value="last_month">上月</option><option value="custom">自定义</option>

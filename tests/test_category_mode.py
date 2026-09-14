@@ -119,6 +119,87 @@ class CategoryModeContractTests(unittest.TestCase):
         self.assertEqual(resp_sock.status_code, 200)
         self.assertEqual(resp_sock.get_json()['data']['payment_amount'], 3000)
 
+    def test_lifecycle_list_sock_filters(self):
+        from db import get_db
+        with get_db(self.database_path) as connection:
+            connection.executemany(
+                '''
+                INSERT INTO monthly_data (
+                    month, product_id, payment_amount, refund_amount, visitors, ad_spend
+                ) VALUES (?, ?, ?, ?, ?, ?)
+                ''',
+                [
+                    ('2026-05', 'sock-a', 1000, 100, 100, 200),
+                    ('2026-05', 'sock-b', 2000, 200, 200, 300),
+                    ('2026-05', 'other-a', 3000, 300, 300, 400),
+                    ('2026-05', 'unlabeled-a', 4000, 400, 400, 500),
+                ],
+            )
+            connection.commit()
+        resp_all = self.client.get('/api/lifecycle?limit=100')
+        self.assertEqual(resp_all.status_code, 200)
+        self.assertEqual(len(resp_all.get_json()), 4)
+        resp_sock = self.client.get('/api/lifecycle?limit=100&category_mode=sock')
+        self.assertEqual(resp_sock.status_code, 200)
+        ids = {row['product_id'] for row in resp_sock.get_json()}
+        self.assertEqual(ids, {'sock-a', 'sock-b'})
+
+    def test_compare_sock_filters(self):
+        resp_all = self.client.get('/api/compare?dim=daily&period_a=2026-04-01&period_b=2026-04-03')
+        self.assertEqual(resp_all.status_code, 200)
+        kpi_all = resp_all.get_json()['kpi_compare']['gmv']
+        self.assertEqual(kpi_all['period_a'], 100)
+        self.assertEqual(kpi_all['period_b'], 300)
+        resp_sock = self.client.get('/api/compare?dim=daily&period_a=2026-04-01&period_b=2026-04-03&category_mode=sock')
+        self.assertEqual(resp_sock.status_code, 200)
+        kpi_sock = resp_sock.get_json()['kpi_compare']
+        # 04-03 has no sock-labeled rows, so no KPI pair exists (filtered out).
+        self.assertNotIn('gmv', kpi_sock)
+
+    def test_trend_sock_filters(self):
+        resp_all = self.client.get('/api/trend?dim=daily&start=2026-04-01&end=2026-04-30')
+        self.assertEqual(resp_all.status_code, 200)
+        rows_all = resp_all.get_json()
+        self.assertEqual(len(rows_all), 4)
+        self.assertEqual(sum(r['gmv'] for r in rows_all), 1000)
+        resp_sock = self.client.get('/api/trend?dim=daily&start=2026-04-01&end=2026-04-30&category_mode=sock')
+        self.assertEqual(resp_sock.status_code, 200)
+        rows_sock = resp_sock.get_json()
+        self.assertEqual(len(rows_sock), 2)
+        self.assertEqual(sum(r['gmv'] for r in rows_sock), 300)
+
+    def test_anomalies_sock_filters(self):
+        resp_all = self.client.get('/api/anomalies?dim=daily&period=2026-04-04&prev_period=2026-04-02')
+        self.assertEqual(resp_all.status_code, 200)
+        resp_sock = self.client.get('/api/anomalies?dim=daily&period=2026-04-04&prev_period=2026-04-02&category_mode=sock')
+        self.assertEqual(resp_sock.status_code, 200)
+        # 04-04 has no sock-labeled rows -> no anomalies reported for the period.
+        self.assertEqual(resp_sock.get_json()['anomalies'], [])
+
+    def test_kpi_sock_filters(self):
+        resp_all = self.client.get('/api/kpi?dim=daily&period=2026-04-04&prev_period=2026-04-02')
+        self.assertEqual(resp_all.status_code, 200)
+        self.assertEqual(resp_all.get_json()['current']['gmv'], 400)
+        resp_sock = self.client.get('/api/kpi?dim=daily&period=2026-04-04&prev_period=2026-04-02&category_mode=sock')
+        self.assertEqual(resp_sock.status_code, 200)
+        # 04-04 has no sock-labeled rows -> current period has no facts.
+        self.assertIsNone(resp_sock.get_json()['current'])
+
+    def test_export_sock_filters(self):
+        payload = {'type': 'products', 'dim': 'daily', 'start': '2026-04-01', 'end': '2026-04-30'}
+        resp_all = self.client.post('/api/export', json=payload)
+        self.assertEqual(resp_all.status_code, 200)
+        size_all = len(resp_all.data)
+        resp_sock = self.client.post('/api/export?category_mode=sock', json=payload)
+        self.assertEqual(resp_sock.status_code, 200)
+        size_sock = len(resp_sock.data)
+        self.assertLess(size_sock, size_all)
+
+    def test_frontend_hides_category_on_data_center(self):
+        shell_js = open(os.path.join(PROJECT_ROOT, 'frontend/ui_demo/assets/shell.js'), encoding='utf-8').read()
+        self.assertIn("hideCategoryPages", shell_js)
+        self.assertIn("'data-center'", shell_js)
+
     def test_settings_returns_category_modes(self):
         resp = self.client.get('/api/settings')
         self.assertEqual(resp.status_code, 200, resp.get_data(as_text=True))
