@@ -51,7 +51,33 @@
   }
   function isPending(action) { return ['pending_review', 'blocked', 'pending_execution', 'executing'].includes(action.status); }
   function actionTitle(action) { return `${action.product_title || action.product_id || '商品'} · ${actionType(action)}`; }
-  function actionDetail(action) { return action.purpose_note || action.action_detail || '已创建运营动作，等待后续处理。'; }
+  const deletableStatuses = new Set(['draft', 'pending_execution', 'blocked']);
+  function actionDetail(action) { return action.action_detail || action.purpose_note || '已创建运营动作，等待后续处理。'; }
+  function actionPurpose(action) { return action.purpose_note || '未填写动作目的'; }
+  function actionMeta(action) {
+    const parts = [`计划 ${formatDate(action.planned_at) || '--'}`, stateLabels[action.status] || action.status || '--'];
+    if (action.assigned_to) parts.push(`负责人 ${action.assigned_to}`);
+    if (action.observer_window_days) parts.push(`观察 ${action.observer_window_days} 天`);
+    if (action.overdue) parts.push('已逾期');
+    return parts.join(' · ');
+  }
+  async function deleteAction(action, button) {
+    if (!deletableStatuses.has(action.status) || button.disabled) return;
+    if (!window.confirm(`确认删除动作“${actionTitle(action)}”？删除后将从提醒列表和计划日历移除。`)) return;
+    button.disabled = true;
+    try {
+      await DemoApi.domainRequest(`/api/actions/${encodeURIComponent(action.id)}`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ capability_key: 'overview.delete_action', version: action.version, operator: '店长', reason: '从概览删除运营动作' }),
+      });
+      window.DemoShell?.showToast?.('运营动作已删除');
+      await load();
+    } catch (error) {
+      window.DemoShell?.showToast?.(error.message || '删除运营动作失败');
+      button.disabled = false;
+    }
+  }
   function buildActionItem(action, compact = false) {
     const item = document.createElement('article');
     const tone = toneFor(action.status);
@@ -62,13 +88,21 @@
     const head = document.createElement('div'); head.className = 'operations-center__item-head';
     const title = document.createElement('strong'); title.textContent = actionTitle(action); head.appendChild(title);
     const source = document.createElement('span'); source.className = 'badge badge--info'; source.textContent = '运营动作'; head.appendChild(source);
-    const meta = document.createElement('span'); meta.className = 'operations-center__item-meta'; meta.textContent = `${stateLabels[action.status] || action.status || '--'} · ${formatDateTime(action.updated_at || action.planned_at || action.created_at)}${action.overdue ? ' · 已逾期' : ''}`;
-    const detail = document.createElement('p'); detail.textContent = actionDetail(action);
-    copy.append(head, meta, detail);
+    const meta = document.createElement('span'); meta.className = 'operations-center__item-meta'; meta.textContent = actionMeta(action);
+    const purpose = document.createElement('p'); purpose.className = 'operations-center__item-purpose'; purpose.textContent = `目的：${actionPurpose(action)}`;
+    const detail = document.createElement('p'); detail.className = 'operations-center__item-detail'; detail.textContent = `执行：${actionDetail(action)}`;
+    copy.append(head, meta, purpose, detail);
     const status = document.createElement('span'); status.className = `badge badge--${tone}`; status.textContent = stateLabels[action.status] || action.status || '--';
     if (compact) head.appendChild(status); else item.append(marker, copy, status);
     if (!compact) {
-      const link = document.createElement('a'); link.className = 'button button--ghost operations-center__item-link'; link.href = '/reviews'; link.textContent = '处理'; copy.appendChild(link);
+      const actions = document.createElement('div'); actions.className = 'operations-center__item-actions';
+      const link = document.createElement('a'); link.className = 'button button--ghost operations-center__item-link'; link.href = '/reviews'; link.textContent = '处理'; actions.appendChild(link);
+      if (deletableStatuses.has(action.status)) {
+        const remove = document.createElement('button'); remove.type = 'button'; remove.className = 'button button--ghost button--danger'; remove.dataset.actionDelete = action.id; remove.setAttribute('data-action-delete', action.id); remove.setAttribute('aria-label', `删除${actionTitle(action)}`); remove.innerHTML = '<i data-lucide="trash-2" aria-hidden="true"></i><span>删除</span>';
+        remove.addEventListener('click', () => deleteAction(action, remove));
+        actions.appendChild(remove);
+      }
+      copy.appendChild(actions);
     }
     if (compact) item.append(marker, copy);
     return item;
@@ -125,6 +159,7 @@
     $('[data-operations-feed-count]').textContent = String(Math.min(items.length, 12));
     $('[data-operations-feed-status]').textContent = state.sourceErrors.length ? `部分来源加载失败 · 已显示 ${items.length} 条可用提醒` : `${items.length} 条提醒`;
     window.lucide?.createIcons?.();
+    window.DemoApi.loadPageCapabilities?.().catch(() => {});
   }
   function renderCalendarDetails(date) {
     const rows = state.calendarActions.filter((action) => formatDate(action.planned_at) === date);
@@ -189,7 +224,14 @@
       state.sourceErrors = [...new Set(state.sourceErrors.filter((source) => source !== 'calendar'))];
       if (payload.availability !== 'available') {
         if (payload.availability !== 'no-data') state.sourceErrors = [...new Set([...state.sourceErrors, 'calendar'])];
-        clearCalendar(payload.availability === 'no-data' ? '当前月份暂无计划动作' : '计划日历暂不可用', payload.availability === 'no-data' ? null : loadCalendar);
+        if (payload.availability === 'no-data') {
+          state.calendarActions = [];
+          state.selectedDate = '';
+          $('[data-operations-calendar-status]').textContent = '当前月份暂无计划动作';
+          renderCalendar();
+        } else {
+          clearCalendar('计划日历暂不可用', loadCalendar);
+        }
         return;
       }
       state.calendarActions = Array.isArray(payload.data) ? payload.data : [];

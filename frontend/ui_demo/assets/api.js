@@ -95,8 +95,8 @@
   const pageCapabilityCache = new Map();
   const pageCapabilityPayloadCache = new Map();
   const pageCapabilityTargets = {
-    overview: [['[data-overview-action-open]', 'overview.create_action']],
-    products: [['[data-products-reset]', 'products.list'], ['[data-demo-refresh]', 'products.list'], ['[data-products-starred]', 'products.catalog_edit'], ['[data-products-batch-apply]', 'products.catalog_edit'], ['[data-products-batch-tag-apply]', 'products.catalog_edit'], ['[data-products-batch-star]', 'products.catalog_edit']],
+    overview: [['[data-overview-action-open]', 'overview.create_action'], ['[data-action-delete]', 'overview.delete_action']],
+    products: [['[data-products-reset]', 'products.list'], ['[data-demo-refresh]', 'products.list'], ['[data-products-batch-copy]', 'products.list'], ['[data-products-starred]', 'products.catalog_edit'], ['[data-products-batch-apply]', 'products.catalog_edit'], ['[data-products-batch-tag-apply]', 'products.catalog_edit'], ['[data-products-batch-star]', 'products.catalog_edit']],
     promotion: [['[data-demo-refresh]', 'promotion.view'], ['[data-promotion-info]', 'promotion.drilldown']],
     lifecycle: [['[data-lifecycle-export]', 'lifecycle.export']],
     reviews: [['[data-reviews-refresh]', 'reviews.list_actions'], ['[data-actions-recalculate]', 'reviews.review_action']],

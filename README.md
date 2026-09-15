@@ -1,12 +1,12 @@
 # 天猫数据仪表盘
 
-[![Release](https://img.shields.io/badge/release-v1.0.2-167d4a)](https://github.com/owen891/tmall-dashboard/releases/tag/v1.0.2)
+[![Release](https://img.shields.io/badge/release-v1.0.13-167d4a)](https://github.com/owen891/tmall-dashboard/releases/tag/v1.0.13)
 ![Python](https://img.shields.io/badge/Python-3.14-3776ab)
 ![Flask](https://img.shields.io/badge/Flask-SQLite-111111)
 
 面向单店铺运营团队的经营分析与商品运营工作台。系统以 Flask、SQLite 和原生 HTML/CSS/JavaScript 构建，把经营结果、商品表现、推广投放、生命周期、行动复盘和数据治理放在同一套可追溯流程中。
 
-当前版本：[`v1.0.2`](https://github.com/owen891/tmall-dashboard/releases/tag/v1.0.2)。更新说明和安装包均在 GitHub Release 页面提供。
+当前版本：[`v1.0.13`](https://github.com/owen891/tmall-dashboard/releases/tag/v1.0.13)。更新说明和安装包均在 GitHub Release 页面提供。
 
 ## 产品界面
 
@@ -50,6 +50,14 @@ py -3 app.py
 
 Web 版会通过 `/api/version` 检查当前发布版本；检测到服务器已发布新版本时，页面顶部会提示刷新，刷新后加载新的前端资源。Web 版的实际升级仍由服务器部署流程完成，浏览器不会直接覆盖服务器文件。
 
+### 在线升级流程
+
+- **Web 版：** 页面启动、回到前台以及定时检查 `/api/version?client=web`。服务端版本高于页面内置版本时显示“更新说明”和“立即刷新”；刷新只重新加载已部署的 Web 资源，不会修改服务器文件。管理员需要先完成服务器部署，浏览器端只负责发现和加载新版本。
+- **桌面版：** Electron 启动时会检查 GitHub Releases，托盘菜单和设置页也可以手动检查。发现新版本后先询问是否下载，下载完成后再询问是否重启安装；安装前会停止内置 Flask/Waitress 服务，避免数据库或后端文件被占用。开发环境不会触发在线更新。
+- **更新源：** 桌面端使用 `https://github.com/owen891/tmall-dashboard/releases/latest/download`。Windows 必须同时发布 `latest.yml`、`TmallDashboard-Setup-<version>-x64.exe` 和对应 `.blockmap`；macOS 必须发布合并后的 `latest-mac.yml`、x64/arm64 的 `.dmg`、`.zip` 及对应 `.blockmap`。这些文件由 `desktop-release.yml` 在 Windows 和 macOS runner 上生成后统一上传。
+- **版本约束：** `VERSION`、`desktop/package.json`、`desktop/package-lock.json`、Web 版本资源和更新元数据必须使用同一个三段式版本号；例如 `VERSION=1.0.13` 必须对应 tag `v1.0.13`。只推送匹配的 `v*` tag 才会触发桌面 Release，不能从普通分支手动生成更新元数据。
+- **macOS 前提：** 当前 workflow 会在 Intel 与 Apple Silicon runner 分别构建并合并更新索引。下载安装包不要求本机先安装开发工具；要让 macOS 自动更新顺利安装，发布环境还应配置有效的 Apple Developer 签名和公证凭据，否则用户仍可从 Release 页面手动下载包，但系统可能拦截未签名应用或自动安装。
+
 ## Windows 桌面版
 
 桌面版将 Electron 窗口、Chromium 和 PyInstaller Flask/Waitress 后端一起打包，目标电脑不需要预装 Python、Node.js、浏览器或 WebView2。首次安装包可离线运行；在线更新从公开 GitHub Releases 下载。
@@ -60,18 +68,28 @@ Web 版会通过 `/api/version` 检查当前发布版本；检测到服务器已
 .\scripts\build_desktop.ps1
 ```
 
-产物位于 `desktop/release/`，包含 NSIS 安装器、blockmap 和 `latest.yml`。发布前请从干净 checkout 开始（不要在带有本地构建产物、数据库或未提交改动的工作树上打 tag）：
+本地构建 macOS x64 或 Apple Silicon 产物（需在对应 macOS 环境执行）：
+
+```bash
+npm ci --prefix desktop
+python scripts/sync_desktop_version.py
+python scripts/build_backend.py
+npm run dist:mac --prefix desktop -- --x64
+# Apple Silicon：将 --x64 改为 --arm64
+```
+
+Windows 产物位于 `desktop/release/`，包含 NSIS 安装器、blockmap 和 `latest.yml`；macOS 产物包含 `.dmg`、`.zip` 和 `latest-mac.yml`。
 
 ```powershell
 git fetch --tags origin
 git checkout --detach origin/main
 git clean -fdx
 (Get-Content VERSION -Raw).Trim()
-git tag v1.0.2
-git push origin v1.0.2
+git tag v1.0.13
+git push origin v1.0.13
 ```
 
-标签必须与根目录 `VERSION` 完全一致（例如 `VERSION=1.0.2` 对应 `v1.0.2`）。`desktop-release.yml` 只允许 `push` 的 `v*` 标签进入发布；手动 `workflow_dispatch` 不会发布，避免从非 tag 提交创建 Release。Windows 与 macOS 使用相同的 Python/Node 运行时、锁定依赖、桌面测试和 Chromium 门禁，构建完成后由单一串行 job 合并并发布 Release。
+标签必须与根目录 `VERSION` 完全一致（当前 `VERSION=1.0.13` 对应 `v1.0.13`）。`desktop-release.yml` 只允许 `push` 的 `v*` 标签进入发布；手动 `workflow_dispatch` 不会发布，避免从非 tag 提交创建 Release。Windows 与 macOS 使用相同的 Python/Node 运行时、锁定依赖和桌面测试，构建完成后由单一串行 job 合并并发布 Release。真实浏览器门禁由 `quality-gate.yml` 执行，不由桌面发布 workflow 重复执行。
 
 本地运行真实浏览器门禁前安装仓库依赖和 Chromium：
 
@@ -144,4 +162,4 @@ py -3 scripts/release_audit.py --database data/dashboard.db --strict
 
 ## 发布
 
-当前版本、更新说明与桌面端安装包见 [GitHub Release v1.0.2](https://github.com/owen891/tmall-dashboard/releases/tag/v1.0.2)。
+当前版本、更新说明与桌面端安装包见 [GitHub Release v1.0.13](https://github.com/owen891/tmall-dashboard/releases/tag/v1.0.13)。

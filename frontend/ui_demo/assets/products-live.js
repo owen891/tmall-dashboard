@@ -148,6 +148,7 @@
     availability: 'calculation-failed',
     evidence: [],
     urlFilters: null,
+    copyingIds: false,
   };
 
   const money = (value) => `¥${Number(value || 0).toLocaleString('zh-CN', { maximumFractionDigits: 2 })}`;
@@ -165,6 +166,52 @@
     window.DemoShell?.setStatus?.(message);
   };
   const renderDataState = (state, details) => DemoApi.renderDataState($('[data-products-status]'), state, details);
+  function copyWithFallback(text) {
+    const textarea = document.createElement('textarea');
+    textarea.value = text;
+    textarea.setAttribute('readonly', '');
+    textarea.style.position = 'fixed';
+    textarea.style.opacity = '0';
+    document.body.appendChild(textarea);
+    textarea.select();
+    const copied = document.execCommand('copy');
+    textarea.remove();
+    if (!copied) throw new Error('当前浏览器不支持复制');
+  }
+
+  async function copySelectedProductIds(button) {
+    if (state.copyingIds) return;
+    const ids = [...state.selected].map((id) => String(id || '').trim()).filter(Boolean);
+    if (!ids.length) {
+      toast('请选择商品');
+      return;
+    }
+    state.copyingIds = true;
+    button.disabled = true;
+    button.setAttribute('aria-busy', 'true');
+    const text = ids.join('\n');
+    try {
+      if (navigator.clipboard?.writeText) {
+        try {
+          await navigator.clipboard.writeText(text);
+        } catch (_) {
+          copyWithFallback(text);
+        }
+      } else {
+        copyWithFallback(text);
+      }
+      setStatus(`已复制 ${ids.length} 个商品 ID`);
+      toast(`已复制 ${ids.length} 个商品 ID`);
+    } catch (error) {
+      setStatus(error.message || '复制商品 ID 失败，请重试');
+      toast(error.message || '复制商品 ID 失败，请重试');
+    } finally {
+      state.copyingIds = false;
+      button.removeAttribute('aria-busy');
+      updateSelection();
+    }
+  }
+
   const jsonOptions = (body, method = 'POST') => ({
     method,
     headers: { 'Content-Type': 'application/json' },
@@ -647,6 +694,8 @@
     all.indeterminate = selectedVisible.length > 0 && selectedVisible.length < visibleIds.length;
     $('[data-products-selected]').textContent = `已选 ${state.selected.size} 件`;
     $('[data-products-batch]').classList.toggle('is-active', state.selected.size > 0);
+    const copyButton = $('[data-products-batch-copy]');
+    if (copyButton) copyButton.disabled = state.selected.size === 0 || state.copyingIds;
   }
 
   function renderMobileSummary(rows) {
@@ -1165,6 +1214,7 @@
     $('[data-products-batch-apply]').addEventListener('click', () => applyBatchField().catch((error) => toast(error.message || '批量更新失败')));
     $('[data-products-batch-tag-apply]').addEventListener('click', () => applyBatchTag().catch((error) => toast(error.message || '批量打标失败')));
     $('[data-products-batch-star]').addEventListener('click', () => batchStar().catch((error) => toast(error.message || '批量收藏失败')));
+    $('[data-products-batch-copy]').addEventListener('click', (event) => copySelectedProductIds(event.currentTarget));
     document.querySelectorAll('[data-products-view]').forEach((button) => button.addEventListener('click', () => {
       state.view = button.dataset.productsView || 'operate';
       try { localStorage.setItem(storageKey, state.view); } catch {}

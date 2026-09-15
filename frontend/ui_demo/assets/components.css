@@ -651,8 +651,10 @@ body[data-page="reviews"] [data-period-review-list] .status-list__item strong { 
 .operations-center__item-head { display: flex; min-width: 0; align-items: center; gap: var(--space-2); }
 .operations-center__item-head strong { min-width: 0; overflow-wrap: anywhere; font-size: var(--font-size-secondary); line-height: var(--line-height-secondary); }
 .operations-center__item-meta { color: var(--text-secondary); font-size: var(--font-size-meta); line-height: var(--line-height-meta); }
-.operations-center__item-copy p { margin: 0; overflow-wrap: anywhere; color: var(--text-secondary); font-size: var(--font-size-meta); line-height: var(--line-height-secondary); }
-.operations-center__item-link { justify-self: end; align-self: center; white-space: nowrap; }
+.operations-center__item-purpose, .operations-center__item-detail { margin: 0; overflow-wrap: anywhere; color: var(--text-secondary); font-size: var(--font-size-meta); line-height: var(--line-height-secondary); }
+.operations-center__item-purpose { color: var(--text-primary); }
+.operations-center__item-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: var(--space-1); }
+.operations-center__item-actions .button--danger { color: var(--danger); }
 .operations-center__calendar-toolbar { display: flex; align-items: center; gap: var(--space-1); }
 .operations-center__calendar-toolbar strong { min-width: 86px; color: var(--text-primary); font-size: var(--font-size-secondary); text-align: center; }
 .operations-center__calendar-week, .operations-center__calendar-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; }

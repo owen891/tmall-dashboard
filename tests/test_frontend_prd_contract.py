@@ -61,7 +61,7 @@ class FrontendPrdContractTests(unittest.TestCase):
     def test_overview_uses_generic_monthly_data_label(self):
         page = self.read('frontend/ui_demo/pages/overview.html')
         adapter = self.read('frontend/ui_demo/assets/overview-live.js')
-        self.assertIn('按月度数据对比净销售额、支付金额和推广花费', page)
+        self.assertIn('按月度数据对比净销售额、支付金额和推广花费实际值', page)
         self.assertIn('当前导入为月度数据；补充日度导出后可按天查看', page)
         self.assertIn("grain === 'monthly' ? '月度数据' : '日度事实'", adapter)
         self.assertIn('当前未导入日度明细；月度数据已用于上方指标和趋势', adapter)
@@ -123,6 +123,12 @@ class FrontendPrdContractTests(unittest.TestCase):
             self.assertIn(hook, page)
         for contract in ('/api/actions?limit=200', '/api/actions/calendar?', '/api/logs?limit=12', 'Promise.allSettled', 'mergeActions', 'calendarToken', 'buildAnomalyItem', 'tmall:overview-anomalies-ready', 'clearCalendar'):
             self.assertIn(contract, adapter)
+        for marker in ('purpose_note', 'action_detail', 'data-action-delete', 'overview.delete_action', 'DELETE', '目的：', '执行：', '负责人', '观察'):
+            self.assertIn(marker, adapter)
+        capabilities = self.read('services/page_capability_service.py')
+        self.assertIn("'overview.delete_action'", capabilities)
+        overview_capabilities = capabilities.split("'key': 'products'", 1)[0]
+        self.assertIn("'overview.delete_action'", overview_capabilities)
         self.assertIn("setAttribute('aria-label'", adapter)
         self.assertIn("addEventListener('tmall:overview-actions-ready'", adapter)
         self.assertIn("addEventListener('tmall:overview-anomalies-ready'", adapter)
@@ -250,8 +256,22 @@ class FrontendPrdContractTests(unittest.TestCase):
         api = self.read('frontend/ui_demo/assets/api.js')
         self.assertIn('data-capability-key="overview.create_action"', overview)
         self.assertIn('data-capability-key="products.catalog_edit"', products)
+        self.assertIn('data-capability-key="products.list" data-products-batch-copy', products)
+        self.assertIn('aria-label="复制选中商品 ID"', products)
         self.assertIn('overview.create_action', api)
         self.assertIn('products.catalog_edit', api)
+        self.assertIn("['[data-products-batch-copy]', 'products.list']", api)
+
+    def test_products_batch_copy_uses_selected_ids_without_write_api(self):
+        products = self.read('frontend/ui_demo/assets/products-live.js')
+        self.assertIn('async function copySelectedProductIds(button)', products)
+        self.assertIn('const ids = [...state.selected]', products)
+        self.assertIn("const text = ids.join('\\n');", products)
+        self.assertIn('navigator.clipboard?.writeText', products)
+        self.assertIn('copyWithFallback(text)', products)
+        self.assertIn("toast('请选择商品')", products)
+        self.assertIn("toast(`已复制 ${ids.length} 个商品 ID`)", products)
+        self.assertNotIn("'/api/products/batch-copy'", products)
 
     def test_formal_pages_use_domain_mutation_endpoints(self):
         products = self.read('frontend/ui_demo/assets/products-live.js')

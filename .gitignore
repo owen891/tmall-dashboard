@@ -56,6 +56,7 @@ Thumbs.db
 .test-tmp/
 
 # Local agent and visual review artifacts
+.zcode/
 .tmp-*
 .superpowers/
 .planning/
@@ -66,6 +67,15 @@ lifecycle-dialog-*.png
 overview-polish-*.png
 products-columns-*.png
 ui-manage-toolbox-check.png
+
+# Local generated data artifacts (never commit)
+/*.json
+/*.csv
+/*.xlsx
+/screenshots/
+/exports/
+/imports/
+/artifacts/
 
 # 本地业务数据与派米导入审计（仅本机使用，禁止提交）
 /data/**/*.json

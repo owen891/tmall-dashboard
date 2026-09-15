@@ -2,7 +2,7 @@ from datetime import date
 from flask import Blueprint, request
 
 from api.api_response import evidence_level_for, failure, json_object, limitations_for, success
-from services.actions_service import ActionConflictError, ActionValidationError, actions_service
+from services.actions_service import ActionConflictError, ActionNotFoundError, ActionValidationError, actions_service
 from db import get_db
 from services.shop_scope_service import reject_legacy_shop_scope
 
@@ -37,7 +37,8 @@ def _authorize_product_action(payload, *, capability='product-detail.create_acti
 
 def _authorize_capability(payload, expected):
     requested = payload.get('capability_key')
-    if requested is not None and requested != expected:
+    allowed = {expected} if isinstance(expected, str) else set(expected)
+    if requested is not None and requested not in allowed:
         return failure('FORBIDDEN', 'capability mismatch', {'capability': requested}, status=403)
     return None
 
@@ -173,6 +174,24 @@ def transition_action(action_id):
         return denied
     try:
         return _write_success(actions_service.transition(action_id, payload.get('status'), payload), action='transition')
+    except (ActionValidationError, ActionConflictError) as error:
+        return _handle(error)
+
+
+@actions_bp.route('/api/actions/<action_id>', methods=['DELETE'])
+def delete_action(action_id):
+    if str(action_id).isdigit():
+        return failure('LEGACY_READ_ONLY', '旧动作接口已冻结，请使用正式动作接口', {'id': int(action_id)}, status=409)
+    if (denied := _legacy_scope_denied()):
+        return denied
+    payload = json_object(request)
+    denied = _authorize_capability(payload, {'overview.delete_action', 'reviews.delete_action'})
+    if denied:
+        return denied
+    try:
+        return _write_success(actions_service.delete(action_id, payload), action='delete')
+    except ActionNotFoundError as error:
+        return failure('NOT_FOUND', str(error), status=404)
     except (ActionValidationError, ActionConflictError) as error:
         return _handle(error)
 

@@ -13,6 +13,10 @@ class ActionConflictError(ValueError):
     pass
 
 
+class ActionNotFoundError(ValueError):
+    pass
+
+
 TRANSITIONS = {
     'draft': {'pending_execution', 'cancelled'},
     'pending_execution': {'executing', 'blocked', 'cancelled'},
@@ -130,6 +134,21 @@ class ActionsService:
         ):
             raise ActionConflictError('动作版本已更新，请刷新后重试')
         return ActionsRepo.get(action_id)
+
+    def delete(self, action_id, payload):
+        action = ActionsRepo.get(action_id)
+        if not action:
+            raise ActionNotFoundError('动作不存在')
+        if payload.get('version') != action['version']:
+            raise ActionConflictError('动作版本已更新，请刷新后重试')
+        if action['status'] not in {'draft', 'pending_execution', 'blocked'}:
+            raise ActionConflictError(f'当前状态（{action["status"]}）不允许删除动作')
+        if not ActionsRepo.delete(
+            action_id, expected_version=action['version'], operator=payload.get('operator'),
+            reason=payload.get('reason') or '删除运营动作',
+        ):
+            raise ActionConflictError('动作版本已更新，请刷新后重试')
+        return {'id': action_id, 'deleted_count': 1}
 
     def recalculate(self):
         updated = []

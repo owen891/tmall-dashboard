@@ -94,6 +94,31 @@ class ActionsRepo:
         return cursor.rowcount
 
     @staticmethod
+    def delete(action_id, expected_version=None, operator=None, reason=None):
+        require_default_shop_scope()
+        with get_db() as connection:
+            try:
+                connection.execute('BEGIN IMMEDIATE')
+                before = connection.execute('SELECT * FROM product_actions WHERE id = ?', (action_id,)).fetchone()
+                if before is None or (expected_version is not None and before['version'] != expected_version):
+                    connection.rollback()
+                    return 0
+                AuditRepo.record(
+                    'action', action_id, 'delete', operator or before['assigned_to'] or 'system',
+                    reason or '删除运营动作', dict(before), None, connection=connection,
+                )
+                connection.execute('DELETE FROM product_action_history WHERE action_id = ?', (action_id,))
+                cursor = connection.execute(
+                    'DELETE FROM product_actions WHERE id = ?' + (' AND version = ?' if expected_version is not None else ''),
+                    (action_id, expected_version) if expected_version is not None else (action_id,),
+                )
+                connection.commit()
+                return cursor.rowcount
+            except Exception:
+                connection.rollback()
+                raise
+
+    @staticmethod
     def observing():
         require_default_shop_scope()
         with get_db() as connection:

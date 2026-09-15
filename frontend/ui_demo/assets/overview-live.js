@@ -303,9 +303,7 @@
       }[mode];
     };
     const modes = homeTrendModes.length ? homeTrendModes : ['net_sales'];
-    const compare = modes.length > 1;
-    const normalize = (values) => { const base = values.find((value) => Number.isFinite(value) && value !== 0); return base ? values.map((value) => Number(((value / base) * 100).toFixed(1))) : values; };
-    const datasets = modes.map((mode) => { const values = rows.map((row) => Number(valueFor(row, mode) ?? 0)); return { label: trendMetricLabels[mode] || mode, data: compare ? normalize(values) : values }; });
+    const datasets = modes.map((mode) => { const values = rows.map((row) => Number(valueFor(row, mode) ?? 0)); return { label: trendMetricLabels[mode] || mode, data: values }; });
     [target].forEach((node) => {
       const chart = DemoCharts.lineMulti
         ? DemoCharts.lineMulti(node.id, periods, datasets)
@@ -598,7 +596,7 @@
     const labels = homeTrendModes.map((mode) => trendMetricLabels[mode] || mode);
     const single = labels.length === 1;
     text($('[data-overview-trend-title]'), single ? `${labels[0]} · 趋势` : '指标对比 · 趋势');
-    text($('[data-overview-trend-hint]'), single ? `按日查看${labels[0]}变化` : `按日对比${labels.join('、')}（起始值=100）`);
+    text($('[data-overview-trend-hint]'), single ? `按日查看${labels[0]}变化` : `按日对比${labels.join('、')}实际值`);
     const triggerLabel = single ? labels[0] : `已选 ${labels.length} 项`;
     text($('[data-overview-trend-selection]'), triggerLabel);
     $('[data-overview-home-trend]')?.setAttribute('aria-label', single ? `${labels[0]}趋势` : '指标对比趋势');

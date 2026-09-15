@@ -153,6 +153,29 @@ const flowImpactLabel = '影响';
   const savedTemplateLabels = await page.locator('[data-products-template-select] option').allTextContents();
   if (!savedTemplateLabels.includes('浏览器字段模板')) throw new Error(`saved custom template did not survive reload: ${savedTemplateLabels.join(' | ')}`);
   await page.locator('[data-products-columns-close]').first().click();
+  await page.evaluate(() => {
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText: async (text) => { window.__productClipboardWrites = [...(window.__productClipboardWrites || []), text]; } },
+    });
+  });
+  const productChecks = page.locator('[data-products-body] input[type="checkbox"]');
+  const productIds = await productChecks.evaluateAll((inputs) => inputs.slice(0, 2).map((input) => input.value));
+  if (productIds.length < 2) throw new Error('batch copy gate requires at least two product rows');
+  await productChecks.nth(0).check();
+  await productChecks.nth(1).check();
+  const copyButton = page.locator('[data-products-batch-copy]');
+  if (await copyButton.isDisabled()) throw new Error('batch copy button stayed disabled after selecting products');
+  await copyButton.click();
+  const copiedIds = await page.evaluate(() => window.__productClipboardWrites?.at(-1));
+  if (copiedIds !== productIds.join('\\n')) throw new Error(`batch copy content mismatch: ${copiedIds} / ${productIds.join('\\n')}`);
+  await productChecks.nth(1).uncheck();
+  await productChecks.nth(0).uncheck();
+  if (!await copyButton.isDisabled()) throw new Error('batch copy button stayed enabled after clearing selection');
+  const batchBarLayout = await page.locator('[data-products-batch]').evaluate((bar) => ({
+    horizontalOverflow: bar.scrollWidth > bar.clientWidth,
+  }));
+  if (batchBarLayout.horizontalOverflow) throw new Error(`desktop batch bar overflowed: ${JSON.stringify(batchBarLayout)}`);
   // Shortcut ranges are anchored to the browser's current day, not to the
   // end of an explicitly supplied historical range in the page URL.
   const anchorValue = await page.evaluate(() => {
@@ -216,7 +239,11 @@ const flowImpactLabel = '影响';
       bodyOverflow: getComputedStyle(body).overflow,
     };
   });
+  const mobileBatchBarLayout = await mobilePage.locator('[data-products-batch]').evaluate((bar) => ({
+    horizontalOverflow: bar.scrollWidth > bar.clientWidth,
+  }));
   await mobilePage.close();
+  if (mobileBatchBarLayout.horizontalOverflow) throw new Error(`mobile batch bar overflowed: ${JSON.stringify(mobileBatchBarLayout)}`);
   if (!mobileLayout.footerInside || !mobileLayout.saveInside || mobileLayout.horizontalOverflow) {
     throw new Error(`mobile product column dialog overflowed: ${JSON.stringify(mobileLayout)}`);
   }

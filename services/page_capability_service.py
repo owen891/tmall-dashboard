@@ -17,7 +17,7 @@ PAGE_DEFINITIONS = (
         'capability_keys': (
             'overview.view_kpis', 'overview.view_trend', 'overview.view_matrix',
             'overview.compare', 'overview.view_goal_progress', 'overview.view_customer_mix',
-            'overview.view_funnel', 'overview.export', 'overview.create_action',
+            'overview.view_funnel', 'overview.export', 'overview.create_action', 'overview.delete_action',
         ),
     },
     {
@@ -93,6 +93,7 @@ CAPABILITY_DEFINITIONS = (
     {'key': 'overview.view_funnel', 'page_key': 'overview', 'label': '查看经营漏斗', 'mode': 'analyze', 'support_level': 'conditional', 'data_domains': ('store_daily',), 'metric_keys': ('payment_conversion_rate',), 'api_endpoints': ('GET /api/funnel',)},
     {'key': 'overview.export', 'page_key': 'overview', 'label': '导出经营矩阵', 'mode': 'export', 'support_level': 'conditional', 'data_domains': ('store_daily',), 'metric_keys': (), 'api_endpoints': ('GET /api/overview/daily-matrix',)},
     {'key': 'overview.create_action', 'page_key': 'overview', 'label': '创建运营动作', 'mode': 'mutate', 'support_level': 'conditional', 'data_domains': ('product_master',), 'metric_keys': (), 'api_endpoints': ('POST /api/actions',)},
+    {'key': 'overview.delete_action', 'page_key': 'overview', 'label': '删除运营动作', 'mode': 'mutate', 'support_level': 'conditional', 'data_domains': ('actions',), 'metric_keys': (), 'api_endpoints': ('DELETE /api/actions/:id',)},
     {'key': 'products.list', 'page_key': 'products', 'label': '查看和筛选商品', 'mode': 'observe', 'support_level': 'supported', 'data_domains': ('product_master',), 'metric_keys': (), 'api_endpoints': ('GET /api/products',)},
     {'key': 'products.export', 'page_key': 'products', 'label': '导出商品结果', 'mode': 'export', 'support_level': 'conditional', 'data_domains': ('product_master',), 'metric_keys': (), 'api_endpoints': ('GET /api/products',)},
     {'key': 'products.create_action', 'page_key': 'products', 'label': '创建经营动作', 'mode': 'mutate', 'support_level': 'conditional', 'data_domains': ('product_master', 'actions'), 'metric_keys': (), 'api_endpoints': ('POST /api/actions',)},

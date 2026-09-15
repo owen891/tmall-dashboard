@@ -195,6 +195,42 @@ class ActionWorkflowTests(unittest.TestCase):
         self.assertEqual(status, 403)
         self.assertEqual(result['code'], 'FORBIDDEN')
 
+    def test_formal_action_delete_removes_draft_and_writes_audit(self):
+        action_id = self.create_action()
+        status, payload = self.request('DELETE', f'/api/actions/{action_id}', json={
+            'capability_key': 'overview.delete_action', 'version': 1,
+            'operator': 'operator', 'reason': '清理错误动作',
+        })
+        self.assertEqual(status, 200)
+        self.assertEqual(payload['data']['deleted_count'], 1)
+        listed_status, listed = self.request('GET', '/api/actions?product_id=action-a')
+        self.assertEqual(listed_status, 200)
+        self.assertEqual(listed['data'], [])
+        with self.get_db(self.database_path) as connection:
+            self.assertEqual(connection.execute('SELECT COUNT(*) FROM product_actions WHERE id = ?', (action_id,)).fetchone()[0], 0)
+            audit = connection.execute(
+                "SELECT action, operator, reason, before_value FROM audit_logs WHERE entity_type = 'action' AND entity_id = ? ORDER BY id DESC LIMIT 1",
+                (action_id,),
+            ).fetchone()
+        self.assertEqual(dict(audit)['action'], 'delete')
+        self.assertEqual(dict(audit)['operator'], 'operator')
+        self.assertEqual(dict(audit)['reason'], '清理错误动作')
+        self.assertIn('action-a', dict(audit)['before_value'])
+
+    def test_formal_action_delete_rejects_wrong_capability_version_and_status(self):
+        action_id = self.create_action()
+        status, payload = self.request('DELETE', f'/api/actions/{action_id}', json={'capability_key': 'settings.configure_templates', 'version': 1})
+        self.assertEqual(status, 403)
+        self.assertEqual(payload['code'], 'FORBIDDEN')
+        status, payload = self.request('DELETE', f'/api/actions/{action_id}', json={'capability_key': 'overview.delete_action', 'version': 2})
+        self.assertEqual(status, 409)
+        self.assertEqual(payload['code'], 'CONFLICT')
+        self.transition(action_id, 'pending_execution')
+        self.transition(action_id, 'executing')
+        status, payload = self.request('DELETE', f'/api/actions/{action_id}', json={'capability_key': 'overview.delete_action', 'version': 3})
+        self.assertEqual(status, 409)
+        self.assertIn('不允许删除', payload['message'])
+
     def test_workflow_mutations_reject_wrong_capability(self):
         action_id = self.create_action()
         status, result = self.request('POST', f'/api/actions/{action_id}/transition', json={
