@@ -169,6 +169,7 @@
   const categorySelect = header.querySelector('[data-category-mode]');
   const CATEGORY_STORAGE_KEY = 'dashboard.categoryMode';
   const readCategoryMode = () => { try { const v = localStorage.getItem(CATEGORY_STORAGE_KEY); if (v) return v; } catch (_) {} return 'sock'; };
+  const hasStoredCategoryMode = () => { try { return Boolean(localStorage.getItem(CATEGORY_STORAGE_KEY)); } catch (_) { return false; } };
   const storeCategoryMode = (v) => { try { localStorage.setItem(CATEGORY_STORAGE_KEY, v); } catch (_) {} };
   if (categorySelect) {
     categorySelect.value = readCategoryMode();
@@ -176,8 +177,13 @@
     requestApi('/api/settings').then((payload) => {
       const modes = payload?.data?.category_modes || payload?.category_modes || [];
       if (!Array.isArray(modes) || !modes.length) return;
-      categorySelect.innerHTML = modes.map((m) => `<option value="${String(m.value)}">${String(m.label)}</option>`).join('');
+      categorySelect.innerHTML = modes.filter((m) => m && m.enabled !== false).map((m) => `<option value="${String(m.value)}">${String(m.label)}</option>`).join('');
+      if (!hasStoredCategoryMode() && payload?.data?.category_mode_default) storeCategoryMode(payload.data.category_mode_default);
       categorySelect.value = readCategoryMode();
+      if (!categorySelect.value && payload?.data?.category_mode_default) {
+        categorySelect.value = payload.data.category_mode_default;
+        storeCategoryMode(categorySelect.value);
+      }
     }).catch(() => {});
   }
 

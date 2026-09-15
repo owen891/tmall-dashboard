@@ -406,6 +406,11 @@ input[type="checkbox"], input[type="radio"] { width: 18px; height: 18px; margin:
 .classification-row { display: grid; grid-template-columns: minmax(120px, 1fr) minmax(90px, .8fr) auto auto; align-items: center; gap: 6px; min-width: 0; }
 .classification-row code { overflow: hidden; color: var(--text-secondary); font-size: var(--font-size-meta); text-overflow: ellipsis; white-space: nowrap; }
 .classification-row__toggle { display: inline-flex; align-items: center; gap: 4px; color: var(--text-secondary); font-size: var(--font-size-meta); white-space: nowrap; }
+.settings-category-panel { margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--border-default); }
+.settings-category-list { display: grid; gap: 8px; }
+.settings-category-row { display: grid; grid-template-columns: minmax(100px, .8fr) minmax(120px, 1fr) minmax(140px, 1.2fr) auto auto auto; align-items: center; gap: 8px; }
+.settings-scope-info { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 8px 0; }
+@media (max-width: 780px) { .settings-category-row { grid-template-columns: repeat(2, minmax(0, 1fr)); } .settings-category-row .button { grid-column: 2; } }
 @media (max-width: 900px) { .classification-dictionaries { grid-template-columns: 1fr; } }
 @media (max-width: 560px) { .classification-row { grid-template-columns: minmax(0, 1fr) auto; } .classification-row code { grid-column: 1; } .classification-row__toggle { min-height: var(--control-height-touch); padding-inline: var(--space-2); } }
 .star-button { display: inline-grid; width: var(--icon-button-size); min-width: var(--icon-button-size); height: var(--icon-button-size); min-height: var(--icon-button-size); place-items: center; padding: 0; border: 0; border-radius: var(--radius-md); background: transparent; color: var(--text-tertiary); }

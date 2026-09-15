@@ -16,6 +16,11 @@ from services.field_catalog import get_field_catalog
 
 DEFAULTS = {
     'shop_name': '', 'timezone': 'Asia/Shanghai', 'currency': 'CNY',
+    'category_mode_default': 'sock',
+    'category_modes': [
+        {'value': 'all', 'label': '全部品类', 'shop_label': None, 'enabled': True, 'system': True},
+        {'value': 'sock', 'label': '标品袜子', 'shop_label': '标品袜子', 'enabled': True, 'system': True},
+    ],
     'week_starts_on': 'monday', 'annual_target_default': 0.0,
     'growth_multiplier': 1.0, 'overachievement_threshold': 1.0,
     'lifecycle_thresholds': {'continuous_days': 60, 'seasonal_months': 12},
@@ -166,8 +171,43 @@ class SettingsService:
         values['classification_dictionaries'] = merged_dictionaries(
             values.get('classification_dictionaries')
         )
+        values['category_modes'] = self._merged_category_modes(values.get('category_modes'))
+        enabled_modes = [item['value'] for item in values['category_modes'] if item.get('enabled', True)]
+        if not enabled_modes:
+            values['category_modes'][0]['enabled'] = True
+            enabled_modes = ['all']
+        if values.get('category_mode_default') not in enabled_modes:
+            values['category_mode_default'] = enabled_modes[0]
         values['field_catalog'] = get_field_catalog()
         return values
+
+    @staticmethod
+    def _merged_category_modes(raw_modes):
+        """Normalize persisted category definitions while retaining built-ins."""
+        builtins = {item['value']: deepcopy(item) for item in DEFAULTS['category_modes']}
+        normalized = []
+        if isinstance(raw_modes, list):
+            for item in raw_modes:
+                if not isinstance(item, dict) or not item.get('value'):
+                    continue
+                value = str(item['value']).strip()
+                if value in builtins:
+                    builtins[value].update({
+                        'label': str(item.get('label') or builtins[value]['label']).strip(),
+                        'enabled': bool(item.get('enabled', True)),
+                    })
+                elif value not in {entry['value'] for entry in normalized}:
+                    label = str(item.get('label') or '').strip()
+                    shop_label = item.get('shop_label')
+                    if label and isinstance(shop_label, (str, type(None))):
+                        normalized.append({
+                            'value': value,
+                            'label': label,
+                            'shop_label': (shop_label.strip() if isinstance(shop_label, str) else '') or label,
+                            'enabled': bool(item.get('enabled', True)),
+                            'system': False,
+                        })
+        return [builtins['all'], builtins['sock'], *normalized]
 
     def update(self, payload, operator='admin', reason='更新系统设置'):
         before = self.get()
@@ -200,6 +240,53 @@ class SettingsService:
         for key in ('lifecycle_thresholds', 'field_mappings', 'mapping_templates', 'view_templates', 'promotion_view_templates', 'lifecycle_view_templates'):
             if key in values and not isinstance(values[key], dict):
                 raise SettingsValidationError('设置项格式错误')
+        if 'category_mode_default' in values:
+            values['category_mode_default'] = str(values['category_mode_default'] or '').strip()
+        if 'category_modes' in values:
+            if not isinstance(values['category_modes'], list):
+                raise SettingsValidationError('品类定义必须是列表')
+            normalized_modes = []
+            seen = set()
+            for item in values['category_modes']:
+                if not isinstance(item, dict):
+                    raise SettingsValidationError('品类定义格式错误')
+                value = str(item.get('value') or '').strip()
+                label = str(item.get('label') or '').strip()
+                if not value or not label:
+                    raise SettingsValidationError('品类编码和名称不能为空')
+                if value in seen:
+                    raise SettingsValidationError('品类编码不能重复')
+                seen.add(value)
+                if value in {'all', 'sock'}:
+                    if value == 'all' and item.get('shop_label') not in (None, '', 'all'):
+                        raise SettingsValidationError('全部品类不能设置商品标签映射')
+                    shop_label = None if value == 'all' else '标品袜子'
+                    normalized_modes.append({
+                        'value': value, 'label': label, 'shop_label': shop_label,
+                        'enabled': bool(item.get('enabled', True)), 'system': True,
+                    })
+                else:
+                    shop_label = str(item.get('shop_label') or '').strip()
+                    if not shop_label:
+                        raise SettingsValidationError('自定义品类必须设置商品标签映射')
+                    normalized_modes.append({
+                        'value': value, 'label': label, 'shop_label': shop_label,
+                        'enabled': bool(item.get('enabled', True)), 'system': False,
+                    })
+            for builtin in DEFAULTS['category_modes']:
+                if builtin['value'] not in seen:
+                    raise SettingsValidationError('内置品类不能删除')
+            enabled_values = {item['value'] for item in normalized_modes if item['enabled']}
+            if not enabled_values:
+                raise SettingsValidationError('至少需要启用一个品类')
+            requested_default = values.get('category_mode_default', before.get('category_mode_default', 'sock'))
+            if requested_default not in enabled_values:
+                raise SettingsValidationError('默认品类必须引用已启用的品类')
+            values['category_modes'] = normalized_modes
+        elif 'category_mode_default' in values:
+            current_modes = before.get('category_modes', DEFAULTS['category_modes'])
+            if values['category_mode_default'] not in {item['value'] for item in current_modes if item.get('enabled', True)}:
+                raise SettingsValidationError('默认品类必须引用已启用的品类')
         if 'mapping_templates' in values:
             for source_type, mapping in values['mapping_templates'].items():
                 if source_type not in SOURCE_ALLOWED_FIELDS or not isinstance(mapping, dict):

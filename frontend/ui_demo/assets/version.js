@@ -1,4 +1,4 @@
-window.TMALL_WEB_VERSION = "1.0.13";
+window.TMALL_WEB_VERSION = "2.0.0";
 window.TMALL_PROJECT = Object.freeze({
   repository: "https://github.com/owen891/tmall-dashboard",
   releases: "https://github.com/owen891/tmall-dashboard/releases",

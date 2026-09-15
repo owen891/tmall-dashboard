@@ -35,7 +35,16 @@ def mode_to_label(category_mode: str | None) -> str | None:
     """Resolve a category_mode value to the actual shop_label value, or None for all."""
     if not category_mode or category_mode == 'all':
         return None
-    return SOCK_LABEL if category_mode == SOCK_MODE else category_mode
+    if category_mode == SOCK_MODE:
+        return SOCK_LABEL
+    try:
+        from services.settings_service import settings_service
+        for mode in settings_service.get().get('category_modes', []):
+            if mode.get('value') == category_mode:
+                return mode.get('shop_label') or None
+    except Exception:
+        pass
+    return category_mode
 
 
 def shop_label_filter(filters: dict | None = None) -> tuple[str | None, list]:
@@ -64,7 +73,7 @@ def category_filters_from_request() -> dict:
 
 
 def available_labels() -> list[dict]:
-    """Distinct non-empty shop_label values for the settings/UI dropdown."""
+    """Configured category definitions plus labels discovered in imported data."""
     try:
         with get_db() as connection:
             rows = connection.execute(
@@ -73,8 +82,22 @@ def available_labels() -> list[dict]:
     except Exception:
         rows = []
     labels = [r['shop_label'] for r in rows]
-    return [
-        {'value': 'all', 'label': '全部品类'},
-        {'value': SOCK_MODE, 'label': '标品袜子'},
-        *({'value': label, 'label': label} for label in labels if label != SOCK_LABEL),
+    try:
+        from services.settings_service import settings_service
+        configured = settings_service.get().get('category_modes', [])
+    except Exception:
+        configured = []
+    result = [
+        {'value': item['value'], 'label': item['label'], 'shop_label': item.get('shop_label'), 'enabled': item.get('enabled', True), 'system': item.get('system', False)}
+        for item in configured
     ]
+    values = {item['value'] for item in result}
+    mapped_labels = {item.get('shop_label') for item in result if item.get('shop_label')}
+    for label in labels:
+        if label and label not in values and label not in mapped_labels and label != SOCK_LABEL:
+            result.append({'value': label, 'label': label, 'shop_label': label, 'enabled': True, 'system': False})
+            values.add(label)
+            mapped_labels.add(label)
+    if not result:
+        result = [{'value': 'all', 'label': '全部品类', 'shop_label': None, 'enabled': True, 'system': True}, {'value': SOCK_MODE, 'label': SOCK_LABEL, 'shop_label': SOCK_LABEL, 'enabled': True, 'system': True}]
+    return result

@@ -5,7 +5,7 @@
   const fieldLabels = { date: '日期', product_id: '商品编号', product_name: '商品名称', payment_amount: '支付金额', successful_refund_amount: '成功退款金额', product_visitors: '商品访客数', payment_buyers: '支付买家数', returning_payment_buyers: '复购买家数', ad_spend: '推广花费', channel: '推广渠道', campaign_id: '推广计划', unit_id: '推广单元', attributed_payment_amount: '推广成交' };
   const columnLabels = { product_id: '商品编号', title: '商品名称', tier: '商品分层', style: '经营类型', status: '在售状态', payment_amount: '支付金额', net_sales: '净销售额', conversion: '商品支付转化率', refund_amount: '退款金额', refund_rate: '退款率', ad_spend: '推广花费', roi: '推广 ROI', overall_roi: '整体 ROI', paid_ratio: '付费占比', score: '综合评分', lifecycle_stage: '生命周期阶段', seasonality: '季节性', has_pending_action: '待办动作' };
   const builtInViews = new Set(['operate', 'select', 'paid', 'refund', 'lifecycle']);
-  const templateState = { mapping_templates: {}, view_templates: {}, classification_dictionaries: { tiers: [], styles: [], lifecycle_stages: [], seasonal_attributes: [] } };
+  const templateState = { mapping_templates: {}, view_templates: {}, classification_dictionaries: { tiers: [], styles: [], lifecycle_stages: [], seasonal_attributes: [] }, category_modes: [], category_mode_default: 'sock' };
   const dictionaryLabels = { tiers: '商品分层', styles: '商品风格', lifecycle_stages: '生命周期', seasonal_attributes: '季节属性' };
   const dictionaryRoot = document.querySelector('[data-classification-dictionaries]');
   const dirtyStatus = document.querySelector('[data-settings-dirty]');
@@ -21,6 +21,27 @@
     document.querySelector('[data-settings-savebar]')?.classList.toggle('is-dirty', isDirty);
   };
   const markDirty = () => setDirty(true);
+  const categoryRoot = document.querySelector('[data-category-modes]');
+  const renderCategoryModes = () => {
+    if (!categoryRoot) return;
+    categoryRoot.replaceChildren(...(templateState.category_modes || []).map((item, index) => {
+      const row = document.createElement('div'); row.className = 'settings-category-row';
+      const value = document.createElement('input'); value.className = 'input'; value.value = item.value || ''; value.placeholder = '编码'; value.disabled = Boolean(item.system); value.setAttribute('aria-label', '品类编码');
+      value.addEventListener('input', () => { markDirty(); item.value = value.value.trim(); });
+      const label = document.createElement('input'); label.className = 'input'; label.value = item.label || ''; label.placeholder = '显示名称'; label.setAttribute('aria-label', '品类名称');
+      label.addEventListener('input', () => { markDirty(); item.label = label.value; });
+      const mapping = document.createElement('input'); mapping.className = 'input'; mapping.value = item.shop_label || ''; mapping.placeholder = item.value === 'all' ? '不筛选' : '商品标签'; mapping.disabled = item.value === 'all'; mapping.setAttribute('aria-label', '商品标签映射');
+      mapping.addEventListener('input', () => { markDirty(); item.shop_label = mapping.value; });
+      const enabledLabel = document.createElement('label'); enabledLabel.className = 'classification-row__toggle'; const enabled = document.createElement('input'); enabled.type = 'checkbox'; enabled.checked = item.enabled !== false; enabled.addEventListener('change', () => { markDirty(); item.enabled = enabled.checked; }); enabledLabel.append(enabled, document.createTextNode('启用'));
+      const defaultLabel = document.createElement('label'); defaultLabel.className = 'classification-row__toggle'; const radio = document.createElement('input'); radio.type = 'radio'; radio.name = 'category_mode_default'; radio.checked = templateState.category_mode_default === item.value; radio.disabled = item.enabled === false; radio.addEventListener('change', () => { if (radio.checked) { markDirty(); templateState.category_mode_default = item.value; renderCategoryModes(); } }); defaultLabel.append(radio, document.createTextNode('默认'));
+      row.append(value, label, mapping, enabledLabel, defaultLabel);
+      if (item.system) { const badge = document.createElement('span'); badge.className = 'badge'; badge.textContent = '内置'; row.appendChild(badge); }
+      else { const remove = document.createElement('button'); remove.type = 'button'; remove.className = 'button button--ghost'; remove.textContent = '移除'; remove.addEventListener('click', () => { markDirty(); templateState.category_modes.splice(index, 1); if (templateState.category_mode_default === item.value) templateState.category_mode_default = 'all'; renderCategoryModes(); }); row.appendChild(remove); }
+      return row;
+    }));
+    window.lucide?.createIcons();
+  };
+  document.querySelector('[data-category-add]')?.addEventListener('click', () => { markDirty(); templateState.category_modes.push({ value: `custom_${Date.now()}`, label: '', shop_label: '', enabled: true, system: false }); renderCategoryModes(); categoryRoot?.lastElementChild?.querySelector('input')?.focus(); });
   const tabLinks = [...document.querySelectorAll('[data-settings-tab]')];
   const tabPanels = [...document.querySelectorAll('[data-settings-tab-panel]')];
   function selectSettingsTab(tab, updateHash = true) {
@@ -108,7 +129,7 @@
   }
   templatePanel.querySelector('[data-template-add-map]').addEventListener('click', () => { const source = sourceSelect.value; const key = mappingKeySelect.value; const column = mappingColumnInput.value.trim(); if (!column) return; markDirty(); templateState.mapping_templates[source] ||= {}; templateState.mapping_templates[source][key] = column; mappingColumnInput.value = ''; renderTemplates(); });
   templatePanel.querySelector('[data-template-add-view]').addEventListener('click', () => { const label = templatePanel.querySelector('[data-template-view-label]').value.trim(); const columns = [...viewColumnsSelect.selectedOptions].map((option) => option.value); if (!label || !columns.length) return; markDirty(); const key = `custom_${Date.now()}`; templateState.view_templates[key] = { label, columns }; templatePanel.querySelector('[data-template-view-label]').value = ''; [...viewColumnsSelect.options].forEach((option) => { option.selected = false; }); renderTemplates(); });
-  const set = (data) => { renderProductViewOptions(data); Object.entries(data).forEach(([key, value]) => { if (form.elements[key] && value !== null && typeof value !== 'object') form.elements[key].value = value; }); const thresholds = data.lifecycle_thresholds || {}; form.elements.continuous_days.value = thresholds.continuous_days ?? 60; form.elements.seasonal_months.value = thresholds.seasonal_months ?? 12; templateState.mapping_templates = data.mapping_templates || {}; templateState.view_templates = data.view_templates || {}; templateState.classification_dictionaries = structuredClone(data.classification_dictionaries || templateState.classification_dictionaries); DemoLabels.setDictionaries(templateState.classification_dictionaries); renderTemplates(); renderDictionaries(); setDirty(false); const summary = (key) => document.querySelector(`[data-settings-summary="${key}"]`); if (summary('status')) summary('status').textContent = '已保存'; if (summary('annual_target')) summary('annual_target').textContent = `¥${Number(data.annual_target_default || 0).toLocaleString('zh-CN')}`; if (summary('view')) summary('view').textContent = data.product_view_template || 'operate'; };
+  const set = (data) => { renderProductViewOptions(data); Object.entries(data).forEach(([key, value]) => { if (form.elements[key] && value !== null && typeof value !== 'object') form.elements[key].value = value; }); const thresholds = data.lifecycle_thresholds || {}; form.elements.continuous_days.value = thresholds.continuous_days ?? 60; form.elements.seasonal_months.value = thresholds.seasonal_months ?? 12; templateState.mapping_templates = data.mapping_templates || {}; templateState.view_templates = data.view_templates || {}; templateState.classification_dictionaries = structuredClone(data.classification_dictionaries || templateState.classification_dictionaries); templateState.category_modes = structuredClone(data.category_modes || []); templateState.category_mode_default = data.category_mode_default || 'sock'; document.querySelector('[data-settings-shop-scope]')?.replaceChildren(document.createTextNode(data.shop_scope?.shop_id || 'default')); DemoLabels.setDictionaries(templateState.classification_dictionaries); renderTemplates(); renderDictionaries(); renderCategoryModes(); setDirty(false); const summary = (key) => document.querySelector(`[data-settings-summary="${key}"]`); if (summary('status')) summary('status').textContent = '已保存'; if (summary('annual_target')) summary('annual_target').textContent = `¥${Number(data.annual_target_default || 0).toLocaleString('zh-CN')}`; if (summary('view')) summary('view').textContent = data.product_view_template || 'operate'; };
   const clearStatus = () => { status.replaceChildren(); status.classList.remove('data-state'); };
   const renderState = (state, details = {}) => DemoApi.renderDataState(status, state, { retry: load, ...details });
   const load = async () => { renderState('loading'); try { settingsPayload = await DemoApi.domainRequest('/api/settings'); set(settingsPayload.data); clearStatus(); } catch (error) { renderState('source-unavailable', { message: error.message || '设置加载失败' }); } };
@@ -123,7 +144,7 @@
     if (discardButton) discardButton.disabled = true;
     renderState('loading');
     try {
-      const response = await DemoApi.domainRequest('/api/settings', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ shop_name: data.get('shop_name'), timezone: data.get('timezone'), currency: data.get('currency'), week_starts_on: data.get('week_starts_on'), annual_target_default: Number(data.get('annual_target_default') || 0), growth_multiplier: Number(data.get('growth_multiplier') || 1), overachievement_threshold: Number(data.get('overachievement_threshold') || 1), lifecycle_thresholds: { continuous_days: Number(data.get('continuous_days') || 60), seasonal_months: Number(data.get('seasonal_months') || 12) }, mapping_templates: templateState.mapping_templates, view_templates: templateState.view_templates, classification_dictionaries: templateState.classification_dictionaries, product_view_template: data.get('product_view_template') }) });
+      const response = await DemoApi.domainRequest('/api/settings', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ shop_name: data.get('shop_name'), timezone: data.get('timezone'), currency: data.get('currency'), week_starts_on: data.get('week_starts_on'), annual_target_default: Number(data.get('annual_target_default') || 0), growth_multiplier: Number(data.get('growth_multiplier') || 1), overachievement_threshold: Number(data.get('overachievement_threshold') || 1), lifecycle_thresholds: { continuous_days: Number(data.get('continuous_days') || 60), seasonal_months: Number(data.get('seasonal_months') || 12) }, mapping_templates: templateState.mapping_templates, view_templates: templateState.view_templates, classification_dictionaries: templateState.classification_dictionaries, category_modes: templateState.category_modes, category_mode_default: templateState.category_mode_default, product_view_template: data.get('product_view_template') }) });
       settingsPayload = response;
       set(response.data);
       clearStatus();
@@ -197,8 +218,9 @@
       const detailButton = scanAction('history', '查看记录', () => openScanDetails(job));
       const editButton = scanAction('pencil', '编辑任务', () => openScanDialog(job));
       const toggleButton = scanAction(job.enabled ? 'power-off' : 'power', job.enabled ? '停用任务' : '启用任务', () => toggleScanJob(job));
-      [editButton, toggleButton].forEach((button) => { button.disabled = !canManage; button.toggleAttribute('aria-disabled', !canManage); });
-      actions.append(runButton, detailButton, editButton, toggleButton);
+      const deleteButton = scanAction('trash-2', '删除任务', () => deleteScanJob(job));
+      [editButton, toggleButton, deleteButton].forEach((button) => { button.disabled = !canManage; button.toggleAttribute('aria-disabled', !canManage); });
+      actions.append(runButton, detailButton, editButton, toggleButton, deleteButton);
       row.appendChild(actions); scanBody.appendChild(row);
     });
     window.lucide?.createIcons();
@@ -236,6 +258,10 @@
   function toggleScanJob(job) {
     if (job.enabled) return mutateScan('正在停用任务…', () => DemoApi.domainRequest(`/api/import-scans/${Number(job.id)}`, { method: 'DELETE' })).then((response) => { if (response) showToast(`已停用扫描任务：${job.task_name}`); });
     return mutateScan('正在启用任务…', () => DemoApi.domainRequest(`/api/import-scans/${Number(job.id)}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ enabled: true }) })).then((response) => { if (response) showToast(`已启用扫描任务：${job.task_name}`); });
+  }
+  function deleteScanJob(job) {
+    if (!window.confirm(`确定删除扫描任务“${job.task_name || '未命名任务'}”？相关扫描记录也会删除。`)) return;
+    mutateScan('正在删除任务…', () => DemoApi.domainRequest(`/api/import-scans/${Number(job.id)}/delete`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) })).then((response) => { if (response) showToast(`已删除扫描任务：${job.task_name || '未命名任务'}`); });
   }
   const renderScanDetailRows = (selector, rows, columns, emptyText) => {
     const body = document.querySelector(selector); body.replaceChildren();
