@@ -135,8 +135,8 @@
           <span class="demo-sidebar__update-status" data-sidebar-update-status role="status" aria-live="polite"></span>
         </div>
         <div class="demo-sidebar__meta-actions">
-          <a class="demo-sidebar__meta-action" href="https://github.com/owen891/tmall-dashboard" target="_blank" rel="noreferrer" aria-label="GitHub 仓库" title="GitHub 仓库"><i data-lucide="github" aria-hidden="true"></i><span>GitHub</span></a>
-          <a class="demo-sidebar__meta-action" href="https://github.com/owen891/tmall-dashboard/releases" target="_blank" rel="noreferrer" aria-label="更新说明" title="更新说明"><i data-lucide="file-text" aria-hidden="true"></i><span>更新说明</span></a>
+          <a class="demo-sidebar__meta-action" href="https://github.com/owen891/tmall-dashboard" target="_blank" rel="noreferrer" aria-label="GitHub 仓库" title="GitHub 仓库"><i data-lucide="github" aria-hidden="true"></i><span class="demo-sidebar__meta-action-label">GitHub</span></a>
+          <a class="demo-sidebar__meta-action" href="https://github.com/owen891/tmall-dashboard/releases" target="_blank" rel="noreferrer" aria-label="更新说明" title="更新说明"><i data-lucide="file-text" aria-hidden="true"></i><span class="demo-sidebar__meta-action-label">更新说明</span></a>
           <button class="button button--ghost demo-sidebar__update" type="button" data-sidebar-check-update aria-label="检查升级" title="检查升级"><i data-lucide="refresh-cw" aria-hidden="true"></i><span>检查升级</span></button>
         </div>
       </div>

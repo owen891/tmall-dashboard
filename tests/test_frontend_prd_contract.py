@@ -482,6 +482,7 @@ class FrontendPrdContractTests(unittest.TestCase):
         self.assertIn('data-goals-months', page)
         self.assertNotIn('data-goals-adjust-form', page)
         self.assertIn('data-goals-month-target', adapter)
+        self.assertIn("setStatus('');", adapter)
         self.assertIn('saveMonth', adapter)
         self.assertIn('lockMonth', adapter)
         self.assertIn('/allocation-preview?annual_target=', adapter)

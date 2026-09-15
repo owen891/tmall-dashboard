@@ -407,6 +407,7 @@ input[type="checkbox"], input[type="radio"] { width: 18px; height: 18px; margin:
 .classification-row code { overflow: hidden; color: var(--text-secondary); font-size: var(--font-size-meta); text-overflow: ellipsis; white-space: nowrap; }
 .classification-row__toggle { display: inline-flex; align-items: center; gap: 4px; color: var(--text-secondary); font-size: var(--font-size-meta); white-space: nowrap; }
 .settings-category-panel { margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--border-default); }
+.demo-sidebar__meta-action-label { display: none; }
 .settings-category-list { display: grid; gap: 8px; }
 .settings-category-row { display: grid; grid-template-columns: minmax(100px, .8fr) minmax(120px, 1fr) minmax(140px, 1.2fr) auto auto auto; align-items: center; gap: 8px; }
 .settings-scope-info { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 8px 0; }

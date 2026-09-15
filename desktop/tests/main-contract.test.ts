@@ -27,6 +27,8 @@ describe('desktop main process contract', () => {
     expect(source).toContain('const allowedOrigin = new URL(url).origin')
     expect(source).toContain('new URL(event.url).origin !== allowedOrigin')
     expect(source).toContain('event.preventDefault()')
+    expect(source).toContain('shell.openExternal')
+    expect(source).toContain("target.hostname === 'github.com'")
   })
 
   it('routes tray and settings update checks to the desktop updater', () => {

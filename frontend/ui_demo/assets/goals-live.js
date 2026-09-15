@@ -161,6 +161,7 @@
       renderMonths(periods.data);
       versionLabel.textContent = `当前版本 ${current.version}，年度合计 ¥${money(current.annual_total)}`;
       if (replaceAnnualTarget || !annualTargetDirty) form.elements.annual_target.value = Number(current.annual_total).toFixed(2);
+      setStatus('');
       queuePreview();
     } catch (error) {
       if (token !== loadToken) return;
