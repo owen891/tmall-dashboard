@@ -9,8 +9,8 @@
   const status = panel.querySelector(sidebar ? '[data-sidebar-update-status]' : '[data-desktop-update-status]')
 
   const project = window.TMALL_PROJECT || {
-    latestRelease: 'https://github.com/owen891/tmall-dashboard/releases/latest',
-    latestReleaseApi: 'https://api.github.com/repos/owen891/tmall-dashboard/releases/latest',
+    latestRelease: 'https://gitcode.com/owen891/tmall-dashboard/releases/latest',
+    latestReleaseApi: 'https://gitcode.com/api/v5/repos/owen891/tmall-dashboard/releases/latest',
   }
   const normalizeVersion = value => {
     const normalized = String(value ?? '').trim().replace(/^v/i, '')
@@ -28,19 +28,19 @@
     status.textContent = text
     status.title = title
   }
-  const checkGithubRelease = async () => {
+  const checkRelease = async () => {
     if (button) button.disabled = true
-    setStatus('检查中…', '正在检查 GitHub 更新…')
+    setStatus('检查中…', '正在检查 GitCode 更新…')
     try {
-      const response = await fetch(project.latestReleaseApi, { cache: 'no-store', headers: { Accept: 'application/vnd.github+json' } })
-      if (!response.ok) throw new Error('暂时无法连接 GitHub')
+      const response = await fetch(project.latestReleaseApi, { cache: 'no-store', headers: { Accept: 'application/json' } })
+      if (!response.ok) throw new Error('暂时无法连接 GitCode')
       const release = await response.json()
       const latestVersion = normalizeVersion(release?.tag_name || release?.name)
-      if (!latestVersion) throw new Error('GitHub Release 版本号不可识别')
+      if (!latestVersion) throw new Error('GitCode Release 版本号不可识别')
       if (newerThan(latestVersion, currentVersion())) setStatus('有新版本', `发现新版本 v${latestVersion}，请查看更新说明后升级。`)
-      else setStatus('最新', `已是最新版本；GitHub Release v${latestVersion}`)
+      else setStatus('最新', `已是最新版本；GitCode Release v${latestVersion}`)
     } catch (error) {
-      setStatus('检查失败', error.message || 'GitHub 更新检查失败，请稍后重试。')
+      setStatus('检查失败', error.message || 'GitCode 更新检查失败，请稍后重试。')
     } finally {
       if (button) button.disabled = false
     }
@@ -82,7 +82,7 @@
       .then(response => response.ok ? response.json() : null)
       .then(payload => { if (payload?.data?.version && version) version.textContent = payload.data.version })
       .catch(() => {})
-    button?.addEventListener('click', checkGithubRelease)
+    button?.addEventListener('click', checkRelease)
     return
   }
   if (button) button.hidden = false

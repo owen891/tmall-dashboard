@@ -54,7 +54,7 @@ Web 版会通过 `/api/version` 检查当前发布版本；检测到服务器已
 
 - **Web 版：** 页面启动、回到前台以及定时检查 `/api/version?client=web`。服务端版本高于页面内置版本时显示“更新说明”和“立即刷新”；刷新只重新加载已部署的 Web 资源，不会修改服务器文件。管理员需要先完成服务器部署，浏览器端只负责发现和加载新版本。
 - **桌面版：** Electron 启动时会检查 GitHub Releases，托盘菜单和设置页也可以手动检查。发现新版本后先询问是否下载，下载完成后再询问是否重启安装；安装前会停止内置 Flask/Waitress 服务，避免数据库或后端文件被占用。开发环境不会触发在线更新。
-- **更新源：** 桌面端使用 `https://github.com/owen891/tmall-dashboard/releases/latest/download`。Windows 必须同时发布 `latest.yml`、`TmallDashboard-Setup-<version>-x64.exe` 和对应 `.blockmap`；macOS 必须发布合并后的 `latest-mac.yml`、x64/arm64 的 `.dmg`、`.zip` 及对应 `.blockmap`。这些文件由 `desktop-release.yml` 在 Windows 和 macOS runner 上生成后统一上传。
+- **更新源：** 桌面端优先使用国内 GitCode Release `https://gitcode.com/owen891/tmall-dashboard/releases/latest/download`，失败时回退到 GitHub。Windows 必须同时发布 `latest.yml`、`TmallDashboard-Setup-<version>-x64.exe` 和对应 `.blockmap`；macOS 必须发布合并后的 `latest-mac.yml`、x64/arm64 的 `.dmg`、`.zip` 及对应 `.blockmap`。这些文件由 `desktop-release.yml` 在 Windows 和 macOS runner 上生成后统一上传。
 - **版本约束：** `VERSION`、`desktop/package.json`、`desktop/package-lock.json`、Web 版本资源和更新元数据必须使用同一个三段式版本号；当前本地开发基线为 `VERSION=2.0.0`，未来必须对应 tag `v2.0.0`。只推送匹配的 `v*` tag 才会触发桌面 Release，不能从普通分支手动生成更新元数据。
 - **macOS 前提：** 当前 workflow 会在 Intel 与 Apple Silicon runner 分别构建并合并更新索引。下载安装包不要求本机先安装开发工具；要让 macOS 自动更新顺利安装，发布环境还应配置有效的 Apple Developer 签名和公证凭据，否则用户仍可从 Release 页面手动下载包，但系统可能拦截未签名应用或自动安装。
 

@@ -9,6 +9,7 @@ describe('desktop updater contract', () => {
   it('checks once on startup without forcing download', () => {
     expect(source).toContain('autoUpdater.autoDownload = false')
     expect(source).toContain('autoUpdater.autoInstallOnAppQuit = true')
+    expect(source).toContain('https://gitcode.com/owen891/tmall-dashboard/releases/latest/download')
     expect(source).toContain('https://github.com/owen891/tmall-dashboard/releases/latest/download')
     expect(source).not.toContain('setInterval(')
   })
