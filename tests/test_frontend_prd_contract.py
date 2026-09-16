@@ -125,6 +125,7 @@ class FrontendPrdContractTests(unittest.TestCase):
             self.assertIn(contract, adapter)
         for marker in ('purpose_note', 'action_detail', 'data-action-delete', 'overview.delete_action', 'DELETE', '目的：', '执行：', '负责人', '观察'):
             self.assertIn(marker, adapter)
+        self.assertIn("'暂无提醒'", adapter)
         capabilities = self.read('services/page_capability_service.py')
         self.assertIn("'overview.delete_action'", capabilities)
         overview_capabilities = capabilities.split("'key': 'products'", 1)[0]

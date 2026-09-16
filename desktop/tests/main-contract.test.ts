@@ -31,6 +31,11 @@ describe('desktop main process contract', () => {
     expect(source).toContain("target.hostname === 'github.com'")
   })
 
+  it('loads the packaged executable icon for the tray', () => {
+    expect(source).toContain("app.getFileIcon(process.execPath, { size: 'small' })")
+    expect(source).toContain('await createTray()')
+  })
+
   it('routes tray and settings update checks to the desktop updater', () => {
     expect(i18nSource).toContain("checkForUpdates: '检查更新'")
     expect(source).toContain('label: zhCN.checkForUpdates')

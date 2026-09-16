@@ -78,9 +78,9 @@ function rebuildTrayMenu(): void {
   ]))
 }
 
-function createTray(): void {
-  const icon = nativeImage.createFromPath(process.execPath)
-  tray = new Tray(icon.isEmpty() ? nativeImage.createEmpty() : icon)
+async function createTray(): Promise<void> {
+  const icon = await app.getFileIcon(process.execPath, { size: 'small' })
+  tray = new Tray(icon.isEmpty() ? nativeImage.createFromPath(process.execPath) : icon)
   tray.setToolTip(zhCN.appName)
   tray.on('double-click', showMainWindow)
   rebuildTrayMenu()
@@ -138,7 +138,7 @@ async function bootstrap(): Promise<void> {
   registerDesktopIpc()
   backend = await startBackend(process.resourcesPath)
   mainWindow = createMainWindow(backend.url)
-  createTray()
+  await createTray()
   updater = createDesktopUpdater({
     beforeQuitAndInstall: prepareUpdateInstall,
     getWindow: () => mainWindow,

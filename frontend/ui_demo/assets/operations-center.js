@@ -152,7 +152,12 @@
     const feed = $('[data-operations-feed]');
     const items = visibleItems();
     feed.replaceChildren();
-    if (!items.length) { renderState(feed, 'no-data'); $('[data-operations-feed-count]').textContent = '0'; return; }
+    if (!items.length) {
+      renderState(feed, 'no-data');
+      $('[data-operations-feed-count]').textContent = '0';
+      $('[data-operations-feed-status]').textContent = state.sourceErrors.length ? '提醒来源暂不可用' : '暂无提醒';
+      return;
+    }
     items.slice(0, 12).forEach((entry) => {
       feed.appendChild(entry.type === 'action' ? buildActionItem(entry.value) : entry.type === 'anomaly' ? buildAnomalyItem(entry.value) : buildLogItem(entry.value));
     });
