@@ -10,8 +10,8 @@
       label: '基础信息',
       columns: [
         { key: 'image', label: '主图', sortable: false, width: '56px' },
-        { key: 'title', label: '商品标题', sortable: false, width: '280px' },
-        { key: 'product_id', label: '商品ID', sortable: false, width: '120px' },
+        { key: 'title', label: '商品标题', sortable: false, width: '100px' },
+        { key: 'product_id', label: '商品ID', sortable: false, width: '100px' },
       ],
     },
     {
