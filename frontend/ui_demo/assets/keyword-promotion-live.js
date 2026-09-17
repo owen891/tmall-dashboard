@@ -287,8 +287,9 @@
       const fillSelect = (sel, values) => {
         if (!sel) return;
         const current = sel.value;
-        sel.innerHTML = '<option value="">全部</option>' + values.map(v => `<option value="${v}">${v}</option>`).join('');
-        if (current && values.includes(current)) sel.value = current;
+        const opts = (values || []).map(v => typeof v === 'object' && v !== null ? v.value : v).filter(Boolean);
+        sel.innerHTML = '<option value="">全部</option>' + opts.map(v => `<option value="${v}">${v}</option>`).join('');
+        if (current && opts.includes(current)) sel.value = current;
       };
 
       fillSelect($('[data-kp-category]'), opts.category || []);
