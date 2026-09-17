@@ -30,6 +30,7 @@
       <section class="plain-panel panel" id="settings-store" data-settings-form-panel><form class="modal-form__body" id="settings-form" data-settings-form>
         <div class="settings-tab-panel" data-settings-tab-panel="store">
         <label>店铺名<input class="input" name="shop_name"></label>
+        <div class="settings-scope-info"><span class="panel__hint">当前店铺 scope</span><strong data-settings-shop-scope>default</strong><span class="panel__hint">当前数据域仍按单店迁移状态运行，暂不支持在此切换其他店铺。</span></div>
         <label>时区<input class="input" name="timezone" value="Asia/Shanghai" readonly></label>
         <label>货币<input class="input" name="currency" value="CNY" readonly></label>
         <label>周起始日<select class="select" name="week_starts_on"><option value="monday">周一</option><option value="sunday">周日</option></select></label>
@@ -46,6 +47,10 @@
         <label>季节判断最少完整月数<input class="input" name="seasonal_months" type="number" inputmode="numeric" min="1" step="1" value="12" autocomplete="off"></label>
         <label>当前商品视图<select class="select" name="product_view_template"><option value="operate">基础经营</option><option value="select">选款</option><option value="paid">推广效率</option><option value="refund">退款售后</option><option value="lifecycle">生命周期</option></select></label>
         </div>
+        <section class="settings-category-panel settings-tab-panel" data-settings-tab-panel="store" aria-labelledby="categoryModesTitle">
+          <div class="panel__header"><div><h3 class="panel__title" id="categoryModesTitle">品类定义</h3><p class="panel__hint">品类通过商品表的 `shop_label` 标签匹配。可为同一标签设置更易读的业务名称。</p></div><button class="button button--ghost" type="button" data-category-add><i data-lucide="plus"></i>新增品类</button></div>
+          <div class="settings-category-list" data-category-modes></div>
+        </section>
         <div class="settings-savebar" data-settings-savebar><span class="settings-savebar__dirty" data-settings-dirty role="status" aria-live="polite">已保存</span><button class="button button--ghost" type="button" data-settings-discard disabled>放弃修改</button><button class="button button--primary" type="submit">保存设置</button><p data-settings-status role="status" aria-live="polite"></p></div>
       </form></section>
       <section class="plain-panel panel" aria-labelledby="classificationDictionaryTitle">

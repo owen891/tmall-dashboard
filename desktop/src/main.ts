@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, Tray, type OpenDialogOptions } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, shell, Tray, type OpenDialogOptions } from 'electron'
 import { join } from 'node:path'
 import { type BackendHandle, startBackend } from './backend'
 import { zhCN } from './i18n'
@@ -34,7 +34,15 @@ function createMainWindow(url: string): BrowserWindow {
       nodeIntegration: false,
     },
   })
-  window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
+  window.webContents.setWindowOpenHandler(details => {
+    try {
+      const target = new URL(details.url)
+      if (target.protocol === 'https:' && target.hostname === 'github.com') void shell.openExternal(target.toString())
+    } catch {
+      // Keep malformed and untrusted popup URLs blocked.
+    }
+    return { action: 'deny' }
+  })
   window.webContents.on('will-navigate', event => {
     if (new URL(event.url).origin !== allowedOrigin) event.preventDefault()
   })
@@ -70,9 +78,9 @@ function rebuildTrayMenu(): void {
   ]))
 }
 
-function createTray(): void {
-  const icon = nativeImage.createFromPath(process.execPath)
-  tray = new Tray(icon.isEmpty() ? nativeImage.createEmpty() : icon)
+async function createTray(): Promise<void> {
+  const icon = await app.getFileIcon(process.execPath, { size: 'small' })
+  tray = new Tray(icon.isEmpty() ? nativeImage.createFromPath(process.execPath) : icon)
   tray.setToolTip(zhCN.appName)
   tray.on('double-click', showMainWindow)
   rebuildTrayMenu()
@@ -130,7 +138,7 @@ async function bootstrap(): Promise<void> {
   registerDesktopIpc()
   backend = await startBackend(process.resourcesPath)
   mainWindow = createMainWindow(backend.url)
-  createTray()
+  await createTray()
   updater = createDesktopUpdater({
     beforeQuitAndInstall: prepareUpdateInstall,
     getWindow: () => mainWindow,

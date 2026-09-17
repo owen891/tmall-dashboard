@@ -84,6 +84,7 @@ dialog { overscroll-behavior: contain; }
 .demo-sidebar__meta-action, .demo-sidebar__update { display: inline-flex; min-height: 28px; align-items: center; gap: var(--space-1); padding: 0 var(--space-1); border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--text-tertiary); font-size: var(--font-size-meta); line-height: var(--line-height-meta); white-space: nowrap; }
 .demo-sidebar__meta-action:hover, .demo-sidebar__update:hover { background: var(--surface-muted); color: var(--brand); }
 .demo-sidebar__meta-action .lucide, .demo-sidebar__update .lucide { width: var(--icon-inline); height: var(--icon-inline); }
+.demo-sidebar__github-icon { display: block; width: var(--icon-inline); height: var(--icon-inline); flex: 0 0 auto; }
 .demo-sidebar__meta-actions .demo-sidebar__update { min-height: 28px; padding: 0 var(--space-1); border-color: transparent; }
 .demo-sidebar__meta-actions .demo-sidebar__update:hover { border-color: transparent; }
 .toolbox-dialog { width: min(720px, calc(100vw - 32px)); max-width: none; max-height: calc(100dvh - 24px); padding: 0; border: 1px solid var(--border-default); border-radius: var(--dialog-radius); background: var(--surface-page); color: var(--text-primary); box-shadow: var(--dialog-shadow); font-size: var(--font-size-secondary); line-height: var(--line-height-body); }

@@ -363,6 +363,22 @@ class ImportScanService:
         return _row(after)
 
     @classmethod
+    def delete_job(cls, job_id, *, operator='admin', reason='删除本地扫描任务'):
+        shop_id = cls._shop_id()
+        current = cls.get_job(job_id, shop_id)
+        if current is None:
+            raise ImportScanValidationError('scan job not found', 'SCAN_JOB_NOT_FOUND')
+        if current.get('status') == 'running' or current.get('lease_token'):
+            raise ImportScanConflictError('扫描任务正在运行，暂时不能删除', 'SCAN_CONFLICT')
+        with get_db() as conn:
+            conn.execute('DELETE FROM import_scan_files WHERE job_id=?', (job_id,))
+            conn.execute('DELETE FROM import_scan_runs WHERE job_id=?', (job_id,))
+            conn.execute('DELETE FROM import_scan_jobs WHERE id=? AND shop_id=?', (job_id, shop_id))
+            AuditRepo.record('import_scan_job', job_id, 'delete', operator, reason, current, {}, connection=conn)
+            conn.commit()
+        return {'id': job_id, 'deleted': True}
+
+    @classmethod
     def list_runs(cls, job_id):
         shop_id = cls._shop_id()
         if cls.get_job(job_id, shop_id) is None:

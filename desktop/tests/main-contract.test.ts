@@ -27,6 +27,13 @@ describe('desktop main process contract', () => {
     expect(source).toContain('const allowedOrigin = new URL(url).origin')
     expect(source).toContain('new URL(event.url).origin !== allowedOrigin')
     expect(source).toContain('event.preventDefault()')
+    expect(source).toContain('shell.openExternal')
+    expect(source).toContain("target.hostname === 'github.com'")
+  })
+
+  it('loads the packaged executable icon for the tray', () => {
+    expect(source).toContain("app.getFileIcon(process.execPath, { size: 'small' })")
+    expect(source).toContain('await createTray()')
   })
 
   it('routes tray and settings update checks to the desktop updater', () => {

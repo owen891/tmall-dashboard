@@ -8,7 +8,7 @@ icon: assets/tmall-dashboard.ico
 
 publish:
   provider: generic
-  url: https://github.com/owen891/tmall-dashboard/releases/latest/download
+  url: https://gitcode.com/owen891/tmall-dashboard/releases/latest/download
 
 files:
   - dist/**/*

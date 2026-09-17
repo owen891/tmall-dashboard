@@ -10,9 +10,13 @@ settings_bp = Blueprint('settings', __name__)
 @settings_bp.route('/api/settings', methods=['GET'])
 def get_settings():
     payload = settings_service.get()
-    from services.category_mode_service import SOCK_MODE, available_labels
+    from services.category_mode_service import available_labels
+    from services.shop_scope_service import current_request_shop_id
     payload['category_modes'] = available_labels()
-    payload['category_mode_default'] = SOCK_MODE
+    payload['shop_scope'] = {
+        'shop_id': current_request_shop_id(),
+        'supports_multi_shop': False,
+    }
     return success(
         payload,
         evidence_level='full',

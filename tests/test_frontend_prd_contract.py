@@ -125,6 +125,7 @@ class FrontendPrdContractTests(unittest.TestCase):
             self.assertIn(contract, adapter)
         for marker in ('purpose_note', 'action_detail', 'data-action-delete', 'overview.delete_action', 'DELETE', '目的：', '执行：', '负责人', '观察'):
             self.assertIn(marker, adapter)
+        self.assertIn("'暂无提醒'", adapter)
         capabilities = self.read('services/page_capability_service.py')
         self.assertIn("'overview.delete_action'", capabilities)
         overview_capabilities = capabilities.split("'key': 'products'", 1)[0]
@@ -482,6 +483,7 @@ class FrontendPrdContractTests(unittest.TestCase):
         self.assertIn('data-goals-months', page)
         self.assertNotIn('data-goals-adjust-form', page)
         self.assertIn('data-goals-month-target', adapter)
+        self.assertIn("setStatus('');", adapter)
         self.assertIn('saveMonth', adapter)
         self.assertIn('lockMonth', adapter)
         self.assertIn('/allocation-preview?annual_target=', adapter)
@@ -955,6 +957,8 @@ class FrontendPrdContractTests(unittest.TestCase):
         self.assertIn('data-sidebar-check-update', shell)
         self.assertIn('demo-sidebar__meta-actions', shell)
         self.assertIn('GitHub 仓库', shell)
+        self.assertIn('demo-sidebar__github-icon', shell)
+        self.assertNotIn('data-lucide="github"', shell)
         self.assertIn('更新说明', shell)
         self.assertIn('desktop-integration.js', shell)
         self.assertIn('window.tmallDesktop', adapter)
@@ -962,8 +966,10 @@ class FrontendPrdContractTests(unittest.TestCase):
         self.assertIn("client=web", adapter)
         self.assertIn('window.TMALL_WEB_VERSION', adapter)
         self.assertIn('latestReleaseApi', adapter)
-        self.assertIn('checkGithubRelease', adapter)
+        self.assertIn('checkRelease', adapter)
         self.assertIn('repository:', version)
+        self.assertIn('https://gitcode.com/owen891/tmall-dashboard/releases', version)
+        self.assertIn('https://gitcode.com/api/v5/repos/owen891/tmall-dashboard/releases/latest', version)
         self.assertIn('getVersion()', adapter)
         self.assertIn('checkForUpdates()', adapter)
 

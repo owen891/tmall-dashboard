@@ -35,15 +35,16 @@ def test_web_update_checker_validates_versions_and_uses_dom_text_nodes():
     assert 'newerThan(version, currentVersion)' in checker
 
 
-def test_web_update_checker_throttles_github_requests_across_page_navigation():
+def test_web_update_checker_throttles_release_requests_across_page_navigation():
     checker = (PROJECT_ROOT / 'frontend' / 'ui_demo' / 'assets' / 'version-check.js').read_text(encoding='utf-8')
     desktop = (PROJECT_ROOT / 'frontend' / 'ui_demo' / 'assets' / 'desktop-integration.js').read_text(encoding='utf-8')
 
-    assert "tmall-update-github-last-check" in checker
-    assert 'githubCheckInterval' in checker
-    assert 'localStorage.setItem(githubCheckKey' in checker
-    assert 'button?.addEventListener(\'click\', checkGithubRelease)' in desktop
-    assert '    checkGithubRelease()\n' not in desktop
+    assert "tmall-update-release-last-check" in checker
+    assert 'releaseCheckInterval' in checker
+    assert 'localStorage.setItem(releaseCheckKey' in checker
+    assert 'markReleaseCheck()' in checker
+    assert 'button?.addEventListener(\'click\', checkRelease)' in desktop
+    assert '    checkRelease()\n' not in desktop
 
 
 def test_shell_only_scans_unprocessed_lucide_nodes():

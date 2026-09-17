@@ -4,7 +4,10 @@ import { autoUpdater } from 'electron-updater'
 import { isWindowsLockError, pendingUpdateDirectories } from './updater-helpers'
 import { zhCN } from './i18n'
 
-const UPDATE_FEED_URL = 'https://github.com/owen891/tmall-dashboard/releases/latest/download'
+const UPDATE_FEEDS = [
+  'https://gitcode.com/owen891/tmall-dashboard/releases/latest/download',
+  'https://github.com/owen891/tmall-dashboard/releases/latest/download',
+] as const
 
 export type UpdateStatus =
   | { state: 'checking' }
@@ -35,7 +38,8 @@ async function clearPendingUpdateCache(): Promise<void> {
 
 export function createDesktopUpdater(options: UpdaterOptions): DesktopUpdater {
   const { beforeQuitAndInstall } = options
-  autoUpdater.setFeedURL({ provider: 'generic', url: UPDATE_FEED_URL })
+  let feedIndex = 0
+  autoUpdater.setFeedURL({ provider: 'generic', url: UPDATE_FEEDS[feedIndex] })
   autoUpdater.autoDownload = false
   autoUpdater.autoInstallOnAppQuit = true
 
@@ -113,8 +117,20 @@ export function createDesktopUpdater(options: UpdaterOptions): DesktopUpdater {
     if (checking) return lastStatus
     checking = true
     try {
-      await autoUpdater.checkForUpdates()
-      return lastStatus
+      try {
+        await autoUpdater.checkForUpdates()
+        return lastStatus
+      } catch (error) {
+        if (feedIndex !== 0) return publish({ state: 'error', message: errorMessage(error) })
+        feedIndex = 1
+        autoUpdater.setFeedURL({ provider: 'generic', url: UPDATE_FEEDS[feedIndex] })
+        try {
+          await autoUpdater.checkForUpdates()
+          return lastStatus
+        } catch (fallbackError) {
+          return publish({ state: 'error', message: errorMessage(fallbackError) })
+        }
+      }
     } catch (error) {
       return publish({ state: 'error', message: errorMessage(error) })
     } finally {

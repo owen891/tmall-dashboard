@@ -8,8 +8,8 @@
   const currentVersion = normalizeVersion(window.TMALL_WEB_VERSION) || '0.0.0';
   if (window.tmallDesktop?.isDesktop) return;
   const project = window.TMALL_PROJECT || {
-    latestRelease: 'https://github.com/owen891/tmall-dashboard/releases/latest',
-    latestReleaseApi: 'https://api.github.com/repos/owen891/tmall-dashboard/releases/latest',
+    latestRelease: 'https://gitcode.com/owen891/tmall-dashboard/releases/latest',
+    latestReleaseApi: 'https://gitcode.com/api/v5/repos/owen891/tmall-dashboard/releases/latest',
   };
 
   const newerThan = (candidate, current) => {
@@ -24,16 +24,16 @@
   };
 
   const dismissKey = `tmall-update-dismissed:${currentVersion}`;
-  const githubCheckKey = 'tmall-update-github-last-check';
-  const githubCheckInterval = 30 * 60 * 1000;
-  const githubCheckDue = () => {
+  const releaseCheckKey = 'tmall-update-release-last-check';
+  const releaseCheckInterval = 30 * 60 * 1000;
+  const releaseCheckDue = () => {
     try {
-      const last = Number(localStorage.getItem(githubCheckKey) || 0);
-      return !last || Date.now() - last >= githubCheckInterval;
+      const last = Number(localStorage.getItem(releaseCheckKey) || 0);
+      return !last || Date.now() - last >= releaseCheckInterval;
     } catch { return true; }
   };
-  const markGithubCheck = () => {
-    try { localStorage.setItem(githubCheckKey, String(Date.now())); } catch {}
+  const markReleaseCheck = () => {
+    try { localStorage.setItem(releaseCheckKey, String(Date.now())); } catch {}
   };
   const dismissed = () => {
     try { return sessionStorage.getItem(dismissKey) === '1'; } catch { return false; }
@@ -89,22 +89,22 @@
     }
   };
 
-  const checkGithubRelease = async () => {
-    if (!githubCheckDue()) return;
-    markGithubCheck();
+  const checkRelease = async () => {
+    if (!releaseCheckDue()) return;
+    markReleaseCheck();
     try {
-      const response = await fetch(project.latestReleaseApi, { cache: 'no-store', headers: { Accept: 'application/vnd.github+json' } });
+      const response = await fetch(project.latestReleaseApi, { cache: 'no-store', headers: { Accept: 'application/json' } });
       if (!response.ok) return;
       const release = await response.json();
       const version = release?.tag_name;
       if (newerThan(version, currentVersion)) showBanner(version, project.latestRelease);
     } catch {
-      // GitHub checks are best-effort and must not affect dashboard use.
+      // Release checks are best-effort and must not affect dashboard use.
     }
   };
 
   check();
-  checkGithubRelease();
-  window.setInterval(() => { check(); checkGithubRelease(); }, 30 * 60 * 1000);
-  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') { check(); checkGithubRelease(); } });
+  checkRelease();
+  window.setInterval(() => { check(); checkRelease(); }, 30 * 60 * 1000);
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') { check(); checkRelease(); } });
 })();

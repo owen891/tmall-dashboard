@@ -98,6 +98,20 @@ def disable_scan_job(job_id):
         return _error(error, 404)
 
 
+@import_scans_bp.route('/api/import-scans/<int:job_id>/delete', methods=['POST'])
+def delete_scan_job(job_id):
+    denied = _require('manage')
+    if denied is not None:
+        return denied
+    try:
+        payload, operator, reason = _audit_payload(_payload(), '删除本地扫描任务')
+        return success(ImportScanService.delete_job(job_id, operator=operator, reason=reason))
+    except ImportScanConflictError as error:
+        return _error(error, 409)
+    except ImportScanValidationError as error:
+        return _error(error, 404)
+
+
 @import_scans_bp.route('/api/import-scans/<int:job_id>/run', methods=['POST'])
 def run_scan_job(job_id):
     denied = _require('manage')
