@@ -109,7 +109,7 @@
 
   // 字段模板
   const TEMPLATES = {
-    promotion: ['image', 'title', 'total_score', 'score_grade', 'roi', 'ad_spend', 'payment_amount', 'cvr', 'ctr', 'cart_rate', 'suggested_action'],
+    promotion: ['image', 'product_id', 'title', 'total_score', 'score_grade', 'roi', 'ad_spend', 'payment_amount', 'cvr', 'ctr', 'cart_rate', 'suggested_action'],
     attribute: ['image', 'title', 'category', 'gender', 'season', 'material', 'scene', 'thickness', 'style'],
     full: ALL_COLUMNS.map(c => c.key),
   };
@@ -191,10 +191,7 @@
           ? `<a href="https://detail.tmall.com/item.htm?id=${row.product_id}" target="_blank"><img src="${row.image_url}" alt="" style="width:40px;height:40px;object-fit:cover;border-radius:4px;"></a>`
           : `<a href="https://detail.tmall.com/item.htm?id=${row.product_id}" target="_blank"><div style="width:40px;height:40px;background:var(--surface-2);border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:10px;color:var(--text-tertiary);">无图</div></a>`;
       case 'title':
-        return `<a href="https://detail.tmall.com/item.htm?id=${row.product_id}" target="_blank" title="${row.title || ''}" style="color:inherit;text-decoration:none;display:block;line-height:1.4;">
-          <span style="display:-webkit-box;-webkit-line-clamp:1;-webkit-box-orient:vertical;overflow:hidden;">${row.title || '--'}</span>
-          <span style="font-size:11px;color:var(--text-tertiary);font-family:monospace;">ID: ${row.product_id || '--'}</span>
-        </a>`;
+        return `<a href="https://detail.tmall.com/item.htm?id=${row.product_id}" target="_blank" title="${row.title || ''}" style="color:inherit;text-decoration:none;display:-webkit-box;-webkit-line-clamp:1;-webkit-box-orient:vertical;overflow:hidden;">${row.title || '--'}</a>`;
       case 'product_id':
         return `<code style="font-size:11px;">${row.product_id || '--'}</code>`;
       case 'total_score':
