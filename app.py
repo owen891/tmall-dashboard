@@ -1,4 +1,4 @@
-import gzip
+﻿import gzip
 import hmac
 from urllib.parse import unquote, urlsplit
 
@@ -15,6 +15,8 @@ from api.actions_api import actions_bp
 from api.settings_api import settings_bp
 from api.lifecycle_api import lifecycle_bp
 from api.promotion_api import promotion_bp
+from api.keyword_promotion_api import keyword_promotion_bp
+from api.market_ranking_api import market_ranking_bp
 from api.period_reviews_api import period_reviews_bp
 from api.product_detail_api import product_detail_bp
 from api.status_api import status_bp
@@ -27,6 +29,7 @@ from api.overview_events_api import overview_events_bp
 from api.schedules_api import schedules_bp
 from api.import_scans_api import import_scans_bp
 from api.manage_api import manage_bp
+from api.sycm_api import sycm_bp
 from api.api_response import JsonObjectError
 from config import APP_VERSION, Config, DEFAULT_IMPORT_SCAN_INBOX, _sqlite_url, normalize_import_scan_roots
 from desktop_runtime import resource_root
@@ -97,6 +100,8 @@ def create_app(config=None):
     app.register_blueprint(settings_bp)
     app.register_blueprint(lifecycle_bp)
     app.register_blueprint(promotion_bp)
+    app.register_blueprint(keyword_promotion_bp)
+    app.register_blueprint(market_ranking_bp)
     app.register_blueprint(period_reviews_bp)
     app.register_blueprint(product_detail_bp)
     app.register_blueprint(tool_bp)
@@ -108,6 +113,7 @@ def create_app(config=None):
     app.register_blueprint(schedules_bp)
     app.register_blueprint(import_scans_bp)
     app.register_blueprint(manage_bp)
+    app.register_blueprint(sycm_bp)
     init_db(app.config['DATABASE_PATH'])
 
     @app.before_request
@@ -232,7 +238,7 @@ def create_app(config=None):
             return redirect('/reviews')
         if page == 'manage':
             return redirect('/settings')
-        if page not in {'products', 'promotion', 'lifecycle', 'reviews', 'data-center', 'settings', 'goals'}:
+        if page not in {'products', 'promotion', 'keyword-promotion', 'market-ranking', 'lifecycle', 'reviews', 'data-center', 'settings', 'goals', 'flow-source', 'rival-analysis'}:
             return jsonify({'error': 'page not found'}), 404
         return send_from_directory(os.path.join(demo_root, 'pages'), f'{page}.html', max_age=0)
 
@@ -301,3 +307,4 @@ app = LocalProxy(get_app)
 
 if __name__ == '__main__':
     app.run(host='127.0.0.1', port=int(os.environ.get('TMALL_PORT', '5000')), debug=False)
+

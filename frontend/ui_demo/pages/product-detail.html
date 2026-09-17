@@ -1,4 +1,4 @@
-<!doctype html>
+﻿<!doctype html>
 <html lang="zh-CN">
 <head>
   <meta charset="utf-8">
@@ -44,6 +44,7 @@
         <nav class="product-workbench__tabs" role="tablist" aria-label="商品详情分组">
           <button class="product-workbench__tab" type="button" role="tab" data-product-detail-tab="overview" aria-selected="true" aria-controls="product-detail-panel-overview">经营概览</button>
           <button class="product-workbench__tab" type="button" role="tab" data-product-detail-tab="trend" aria-selected="false" aria-controls="product-detail-panel-trend">日度趋势</button>
+          <button class="product-workbench__tab" type="button" role="tab" data-product-detail-tab="flow-source" aria-selected="false" aria-controls="product-detail-panel-flow-source">流量来源</button>
           <button class="product-workbench__tab" type="button" role="tab" data-product-detail-tab="lifecycle" aria-selected="false" aria-controls="product-detail-panel-lifecycle">生命周期</button>
           <button class="product-workbench__tab" type="button" role="tab" data-product-detail-tab="actions" aria-selected="false" aria-controls="product-detail-panel-actions">运营动作</button>
           <button class="product-workbench__tab" type="button" role="tab" data-product-detail-tab="evidence" aria-selected="false" aria-controls="product-detail-panel-evidence">数据证据</button>
@@ -79,6 +80,47 @@
           <section class="plain-panel panel"><div class="panel__header"><div><h2 class="panel__title">周期对比</h2><p class="panel__hint">按月聚合，异常阈值为环比 20%</p></div></div><div class="data-table-wrap"><table class="data-table"><thead><tr><th>月份</th><th class="num">净销售额</th><th class="num">环比</th><th class="num">访客环比</th><th>异常变化</th></tr></thead><tbody data-product-detail-period-comparison><tr><td colspan="5">加载中…</td></tr></tbody></table></div><div class="status-list" data-product-detail-contribution></div></section>
         </section>
 
+                <section class="product-workbench__panel" data-product-detail-panel="flow-source" id="product-detail-panel-flow-source" role="tabpanel" aria-labelledby="product-detail-tab-flow-source" hidden>
+          <section class="plain-panel panel">
+            <div class="panel__header">
+              <div>
+                <h2 class="panel__title">单品流量来源</h2>
+                <p class="panel__hint">生意参谋 · 第一次访问来源口径 · 按访客数排序</p>
+              </div>
+              <div class="panel__tools">
+                <span class="badge badge--success" data-item-flow-date>--</span>
+              </div>
+            </div>
+            <div class="metric-grid" style="margin-bottom: var(--space-4);">
+              <article class="metric-card"><div class="metric-card__label">总访客数</div><div class="metric-card__value" data-item-flow-total-uv>--</div></article>
+              <article class="metric-card"><div class="metric-card__label">总支付金额</div><div class="metric-card__value" data-item-flow-total-pay>--</div></article>
+              <article class="metric-card"><div class="metric-card__label">支付买家数</div><div class="metric-card__value" data-item-flow-total-buyers>--</div></article>
+              <article class="metric-card"><div class="metric-card__label">渠道数</div><div class="metric-card__value" data-item-flow-channel-count>--</div></article>
+            </div>
+            <div class="data-table-wrap">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>渠道名称</th>
+                    <th class="num">访客数</th>
+                    <th class="num">访客占比</th>
+                    <th class="num">支付金额</th>
+                    <th class="num">支付买家</th>
+                    <th class="num">支付转化率</th>
+                    <th class="num">UV价值</th>
+                    <th class="num">加购人数</th>
+                    <th class="num">收藏人数</th>
+                    <th class="num">新访客</th>
+                  </tr>
+                </thead>
+                <tbody data-item-flow-table>
+                  <tr><td colspan="10" style="text-align:center;color:var(--text-tertiary);padding:24px">加载中…</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </section>
+
         <section class="product-workbench__panel" data-product-detail-panel="lifecycle" id="product-detail-panel-lifecycle" role="tabpanel" aria-labelledby="product-detail-tab-lifecycle" hidden>
           <section class="plain-panel panel"><div class="panel__header"><div><h2 class="panel__title">生命周期判断</h2><p class="panel__hint" data-product-detail-confidence>--</p></div></div><div class="status-list"><div class="status-list__item"><span class="status-list__label">当前阶段</span><span class="status-list__value" data-product-detail-stage>--</span></div><div class="status-list__item"><span class="status-list__label">连续有效日</span><span class="status-list__value" data-product-detail-days>--</span></div><div class="status-list__item"><span class="status-list__label">判断依据</span><span class="status-list__value" data-product-detail-rationale>--</span></div></div></section>
           <section class="plain-panel panel"><div class="panel__header"><div><h2 class="panel__title">生命周期历史</h2><p class="panel__hint">阶段推荐、人工调整和操作记录</p></div></div><div class="data-table-wrap"><table class="data-table"><thead><tr><th>时间</th><th>推荐阶段</th><th>人工阶段</th><th>变更原因</th><th>操作人</th><th>版本</th></tr></thead><tbody data-product-detail-lifecycle-history><tr><td colspan="6">加载中…</td></tr></tbody></table></div></section>
@@ -102,3 +144,5 @@
   <script src="../assets/product-detail-live.js"></script>
 </body>
 </html>
+
+

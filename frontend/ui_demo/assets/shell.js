@@ -15,7 +15,7 @@
     .catch(() => {});
   loadScript(new URL('desktop-integration.js', assetBase).href).catch(() => {});
 
-  const liveAdapters = { overview: 'overview-live.js', products: 'products-live.js', promotion: 'promotion-live.js' };
+  const liveAdapters = { overview: 'overview-live.js', products: 'products-live.js', promotion: 'promotion-live.js', 'keyword-promotion': 'keyword-promotion-live.js', 'market-ranking': 'market-ranking-live.js', 'flow-source': 'flow-source-live.js', 'rival-analysis': 'rival-analysis-live.js' };
   const liveAdapter = liveAdapters[document.body.dataset.page];
   const apiReady = window.DemoApi
     ? Promise.resolve(window.DemoApi)
@@ -51,7 +51,11 @@
       items: [
         ['overview', '数据概览', 'layout-dashboard', 'overview'],
         ['products', '商品运营', 'package', 'products'],
+        ['flow-source', '流量来源', 'git-branch', 'flow-source'],
+        ['rival-analysis', '竞店竞品', 'users', 'rival-analysis'],
         ['promotion', '推广分析', 'megaphone', 'promotion'],
+        ['keyword-promotion', '关键词选品', 'filter', 'keyword-promotion'],
+        ['market-ranking', '市场分析', 'trending-up', 'market-ranking'],
         ['lifecycle', '生命周期', 'refresh-cw', 'lifecycle'],
       ],
     },
@@ -72,7 +76,11 @@
   const nav = navGroups.flatMap((group) => group.items);
   const meta = {
     products: ['商品运营', '商品经营表现与选款效率'],
+    'flow-source': ['流量来源', '生意参谋第一次访问来源，渠道结构与转化分析'],
+    'rival-analysis': ['竞店竞品', '竞店核心指标对比与竞品商品分析'],
     promotion: ['推广分析', '按投放粒度解释花费、成交与投产效率'],
+    'keyword-promotion': ['关键词选品', '按属性标签筛选推广效果好的标品商品'],
+    'market-ranking': ['市场分析', '生意参谋市场排行，类目对比与热卖趋势洞察'],
     lifecycle: ['生命周期', '按商品查看跨月经营表现与累计贡献'],
     reviews: ['经营复盘', '查看待复盘动作与经营周期差异'],
     'data-center': ['数据中心', '导入、校验和管理经营数据'],

@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>竞店竞品分析 - 天猫数据仪表盘</title>
+<link rel="stylesheet" href="../assets/tokens.css">
+<link rel="stylesheet" href="../assets/shell.css">
+<link rel="stylesheet" href="../assets/components.css">
+<script src="../assets/lucide-1.8.0.min.js"></script>
+<script src="../assets/echarts-5.5.1.min.js"></script>
+<style>
+.rival-chart-row { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-4); margin-bottom: var(--space-4); }
+.rival-chart-box { background: var(--surface-muted); border-radius: var(--radius-md); padding: var(--space-3); min-height: 320px; }
+.rival-chart-title { font-size: var(--font-size-secondary); font-weight: 600; color: var(--text-secondary); margin-bottom: var(--space-2); text-align: center; }
+.rival-table-wrap { overflow-x: auto; }
+.rival-table { width: 100%; border-collapse: collapse; font-size: var(--font-size-meta); }
+.rival-table th { background: var(--surface-muted); padding: 10px 12px; text-align: left; font-weight: 600; color: var(--text-secondary); border-bottom: 2px solid var(--border-color); white-space: nowrap; }
+.rival-table td { padding: 10px 12px; border-bottom: 1px solid var(--border-color); color: var(--text-primary); }
+.rival-table tr:hover { background: var(--surface-hover); }
+.rival-table .num { text-align: right; font-family: var(--font-mono); }
+.rival-table .pct { text-align: right; font-family: var(--font-mono); color: var(--text-secondary); }
+.rival-badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 500; }
+.rival-badge--tmall { background: rgba(239, 68, 68, 0.1); color: #ef4444; }
+.rival-badge--taobao { background: rgba(245, 158, 11, 0.1); color: #f59e0b; }
+.rival-item-card { display: flex; gap: var(--space-3); padding: var(--space-3); border-bottom: 1px solid var(--border-color); }
+.rival-item-card:hover { background: var(--surface-hover); }
+.rival-item-img { width: 80px; height: 80px; border-radius: var(--radius-sm); background: var(--surface-muted); flex-shrink: 0; overflow: hidden; }
+.rival-item-img img { width: 100%; height: 100%; object-fit: cover; }
+.rival-item-info { flex: 1; min-width: 0; }
+.rival-item-title { font-size: var(--font-size-secondary); font-weight: 500; color: var(--text-primary); margin-bottom: 4px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.rival-item-meta { display: flex; gap: var(--space-4); font-size: var(--font-size-meta); color: var(--text-secondary); }
+.rival-item-meta span { font-family: var(--font-mono); }
+.rival-tabs { display: flex; gap: var(--space-2); margin-bottom: var(--space-4); }
+.rival-tab { padding: 8px 16px; border-radius: var(--radius-sm); cursor: pointer; font-size: var(--font-size-secondary); color: var(--text-secondary); background: var(--surface-muted); border: none; }
+.rival-tab.active { background: var(--primary-color); color: white; }
+@media (max-width: 900px) { .rival-chart-row { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body data-page="rival-analysis">
+<div class="demo-app">
+  <aside class="demo-sidebar" data-shell-sidebar></aside>
+  <div class="demo-main">
+    <header class="demo-topbar" data-shell-header></header>
+    <main class="demo-page">
+
+      <div class="demo-page__intro">
+        <div>
+          <h2>竞店竞品分析</h2>
+          <p>生意参谋 · 竞店核心指标对比 · 竞品商品洞察</p>
+        </div>
+        <div class="demo-page__actions">
+          <span class="badge badge--info" data-rival-date>--</span>
+        </div>
+      </div>
+
+      <!-- 指标卡片 -->
+      <section class="metric-grid">
+        <article class="metric-card">
+          <div class="metric-card__label">监控竞店数</div>
+          <div class="metric-card__value" data-rival-total>--</div>
+          <div class="metric-card__meta">天猫 + 淘宝</div>
+        </article>
+        <article class="metric-card">
+          <div class="metric-card__label">竞店平均UV</div>
+          <div class="metric-card__value" data-rival-avg-uv>--</div>
+          <div class="metric-card__meta">所有竞店均值</div>
+        </article>
+        <article class="metric-card">
+          <div class="metric-card__label">平均支付买家</div>
+          <div class="metric-card__value" data-rival-avg-buyers>--</div>
+          <div class="metric-card__meta">所有竞店均值</div>
+        </article>
+        <article class="metric-card">
+          <div class="metric-card__label">平均转化率</div>
+          <div class="metric-card__value" data-rival-avg-rate>--</div>
+          <div class="metric-card__meta">所有竞店均值</div>
+        </article>
+      </section>
+
+      <!-- 切换标签 -->
+      <div class="rival-tabs">
+        <button class="rival-tab active" data-rival-tab="shops">竞店分析</button>
+        <button class="rival-tab" data-rival-tab="items">竞品分析</button>
+      </div>
+
+      <!-- 竞店分析 -->
+      <div data-rival-panel="shops">
+        <!-- 图表区域 -->
+        <section class="rival-chart-row">
+          <div class="rival-chart-box">
+            <div class="rival-chart-title">竞店UV TOP10</div>
+            <div id="rivalUvChart" style="width:100%;height:280px;"></div>
+          </div>
+          <div class="rival-chart-box">
+            <div class="rival-chart-title">竞店支付买家 TOP10</div>
+            <div id="rivalBuyerChart" style="width:100%;height:280px;"></div>
+          </div>
+        </section>
+
+        <!-- 竞店详细表格 -->
+        <section class="plain-panel panel">
+          <div class="panel__header">
+            <div>
+              <h3 class="panel__title">竞店明细</h3>
+              <p class="panel__hint">按访客数排序，展示各竞店核心指标</p>
+            </div>
+          </div>
+          <div class="rival-table-wrap">
+            <table class="rival-table">
+              <thead>
+                <tr>
+                  <th style="width:50px">排名</th>
+                  <th>店铺名称</th>
+                  <th>类型</th>
+                  <th class="num">访客数</th>
+                  <th class="num">支付买家</th>
+                  <th class="pct">支付转化率</th>
+                  <th class="num">加购人数</th>
+                  <th class="num">收藏人数</th>
+                </tr>
+              </thead>
+              <tbody data-rival-shops-body>
+                <tr><td colspan="8" style="text-align:center;color:var(--text-tertiary);padding:24px">加载中…</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </div>
+
+      <!-- 竞品分析 -->
+      <div data-rival-panel="items" style="display:none;">
+        <section class="plain-panel panel">
+          <div class="panel__header">
+            <div>
+              <h3 class="panel__title">竞品商品</h3>
+              <p class="panel__hint">生意参谋推荐竞品，按访客数排序</p>
+            </div>
+          </div>
+          <div data-rival-items-list>
+            <div style="text-align:center;color:var(--text-tertiary);padding:24px">加载中…</div>
+          </div>
+        </section>
+      </div>
+
+    </main>
+  </div>
+</div>
+
+<script src="../assets/api.js"></script>
+<script src="../assets/navigation.js"></script>
+<script src="../assets/labels.js"></script>
+<script src="../assets/shell.js"></script>
+<script src="../assets/rival-analysis-live.js"></script>
+</body>
+</html>

@@ -1,0 +1,192 @@
+/* 关键词选品页面样式 */
+
+/* 指标卡片 */
+.metric-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px;
+  margin-bottom: 20px;
+}
+.metric-card {
+  background: var(--surface-1, #fff);
+  border: 1px solid var(--border, #e5e7eb);
+  border-radius: 8px;
+  padding: 16px;
+}
+.metric-card__label {
+  font-size: 13px;
+  color: var(--text-secondary, #6b7280);
+  margin-bottom: 8px;
+}
+.metric-card__value {
+  font-size: 24px;
+  font-weight: 600;
+  color: var(--text-primary, #111827);
+}
+
+/* 筛选器 */
+.product-filters__range {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text-secondary, #6b7280);
+}
+.product-filters__range .input {
+  width: 80px;
+}
+
+/* 评级徽章 */
+.kp-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 12px;
+  font-weight: 500;
+}
+.kp-badge--s { background: #dcfce7; color: #166534; }
+.kp-badge--a { background: #dbeafe; color: #1e40af; }
+.kp-badge--b { background: #fef3c7; color: #92400e; }
+.kp-badge--c { background: #fee2e2; color: #991b1b; }
+.kp-badge--data { background: #f3f4f6; color: #6b7280; }
+
+/* ROI颜色 */
+.kp-roi-good { color: #16a34a; font-weight: 500; }
+.kp-roi-bad { color: #dc2626; font-weight: 500; }
+
+/* 标签 */
+.kp-tag {
+  display: inline-block;
+  padding: 1px 6px;
+  background: var(--surface-2, #f3f4f6);
+  border-radius: 4px;
+  font-size: 11px;
+  color: var(--text-secondary, #6b7280);
+  margin-right: 2px;
+}
+.kp-tag--action {
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+
+/* 排序图标 */
+.sort-icon {
+  display: inline-block;
+  margin-left: 4px;
+  font-size: 10px;
+  opacity: 0.4;
+}
+.sort-icon--active {
+  opacity: 1;
+  color: var(--primary, #2563eb);
+}
+
+/* 列设置弹窗 */
+.products-columns-dialog {
+  width: 560px;
+  max-width: 90vw;
+  max-height: 80vh;
+  padding: 0;
+  border: none;
+  border-radius: 12px;
+  background: var(--surface-1, #fff);
+  box-shadow: 0 20px 60px rgba(0,0,0,0.15);
+}
+.products-columns-dialog::backdrop {
+  background: rgba(0,0,0,0.4);
+}
+.modal-form__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  padding: 20px 24px 16px;
+  border-bottom: 1px solid var(--border, #e5e7eb);
+}
+.modal-form__header h3 {
+  margin: 0 0 4px;
+  font-size: 16px;
+  font-weight: 600;
+}
+.products-columns-dialog__body {
+  padding: 16px 24px 24px;
+}
+
+/* 字段模板栏 */
+.field-template-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.field-template-bar__current {
+  font-size: 13px;
+  color: var(--text-secondary, #6b7280);
+}
+.field-template-bar__current strong {
+  color: var(--text-primary, #111827);
+}
+.field-template-bar__controls {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* 字段选择器 */
+.kp-field-group {
+  margin-bottom: 16px;
+}
+.kp-field-group__title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary, #111827);
+  margin-bottom: 8px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border, #e5e7eb);
+}
+.kp-field-group__items {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+.kp-field-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--text-primary, #111827);
+  cursor: pointer;
+  padding: 4px 6px;
+  border-radius: 4px;
+}
+.kp-field-item:hover {
+  background: var(--surface-2, #f3f4f6);
+}
+.kp-field-item input[type="checkbox"] {
+  cursor: pointer;
+}
+
+/* 模板保存区 */
+.products-template-save {
+  display: flex;
+  gap: 8px;
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border, #e5e7eb);
+}
+
+/* 表格图片 */
+.product-table img {
+  display: block;
+}
+
+/* 响应式 */
+@media (max-width: 768px) {
+  .kp-field-group__items {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .metric-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}

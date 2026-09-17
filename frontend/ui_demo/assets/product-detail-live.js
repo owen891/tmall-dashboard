@@ -1,4 +1,4 @@
-(function () {
+﻿(function () {
   const id = decodeURIComponent(location.pathname.split('/').pop());
   const $ = (selector) => document.querySelector(selector);
   const $$ = (selector) => [...document.querySelectorAll(selector)];
@@ -17,7 +17,7 @@
   const transitions = { draft: ['pending_execution', 'cancelled'], pending_execution: ['executing', 'blocked', 'cancelled'], executing: ['observing', 'blocked', 'cancelled'], observing: ['pending_review', 'blocked', 'calculation_failed'], pending_review: ['blocked'], blocked: ['pending_execution', 'cancelled'], calculation_failed: ['observing', 'blocked'], completed: ['pending_review'] };
   let detailPayload = null;
   let selectedRange = {};
-  const detailTabs = new Set(['overview', 'trend', 'lifecycle', 'actions', 'evidence']);
+  const detailTabs = new Set(['overview', 'trend', 'flow-source', 'lifecycle', 'actions', 'evidence']);
 
   function selectDetailTab(tab, { updateHash = true, focus = false } = {}) {
     const active = detailTabs.has(tab) ? tab : 'overview';
@@ -135,6 +135,7 @@
       trend.replaceChildren(...trendRows.map((item) => { const tr = document.createElement('tr'); [item.date, money(item.payment_amount), money(item.net_sales), item.product_visitors ?? '--', money(item.ad_spend)].forEach((value, index) => { const td = document.createElement('td'); td.textContent = value; if (index) td.className = 'num'; tr.appendChild(td); }); return tr; })); if (!trendRows.length) trend.innerHTML = '<tr><td colspan="5">暂无日度数据</td></tr>';
       const actions = $('[data-product-detail-actions]'); const actionRows = Array.isArray(data.actions) ? data.actions : []; actions.replaceChildren(...actionRows.map(actionCard)); if (!actionRows.length) actions.textContent = '暂无运营动作'; renderHistory(data.lifecycle_history); renderComparison(data.period_comparison, data.contribution_analysis); renderEvidence(data.evidence_summary);
       const exportLink = $('[data-product-detail-export]'); if (exportLink) { const exportQuery = new URLSearchParams({ capability_key: 'product-detail.export' }); if (selectedRange.startDate) exportQuery.set('start', selectedRange.startDate); if (selectedRange.endDate) exportQuery.set('end', selectedRange.endDate); exportLink.href = `/api/products/${encodeURIComponent(id)}/detail/export?${exportQuery}`; }
+      loadItemFlowSource(id);
     } catch (error) { DemoApi.renderDataState($('[data-product-detail-status]'), 'calculation-failed', { message: error.message, retry: load }); }
   }
   $('[data-product-detail-action-form]').addEventListener('submit', async (event) => { event.preventDefault(); if (Object.keys(detailPayload?.capabilities || {}).length && !DemoApi.can(detailPayload, 'can_create_action')) { $('[data-product-detail-action-status]').textContent = '当前数据条件不满足创建运营动作'; return; } const formElement = event.currentTarget; const form = new FormData(formElement); const submit = formElement.querySelector('button[type="submit"]'); if (submit) { submit.disabled = true; submit.setAttribute('aria-busy', 'true'); } try { await DemoApi.domainRequest('/api/actions', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ capability_key: 'product-detail.create_action', product_id: id, purpose_type: 'increase_sales', purpose_note: form.get('purpose_note'), action_type: form.get('action_type'), action_detail: form.get('action_detail'), target_metric: 'payment_amount', planned_at: form.get('planned_at'), observer_window_days: 7, assigned_to: 'operator' }) }); $('[data-product-detail-action-status]').textContent = '运营动作草稿已创建'; await load(); } catch (error) { mutationError(error, '创建运营动作失败，请重试'); } finally { if (submit?.isConnected) { submit.disabled = false; submit.removeAttribute('aria-busy'); } } });
@@ -142,3 +143,57 @@
   window.addEventListener('tmall:date-range-change', (event) => load(event.detail));
   DemoLabels.load().finally(load);
 })();
+  // 加载单品流量来源数据
+  async function loadItemFlowSource(itemId) {
+    try {
+      const r = await fetch(`/api/sycm/item-flow/summary?item_id=${encodeURIComponent(itemId)}`);
+      const d = await r.json();
+      if (!d.ok) {
+        const tbody = document.querySelector('[data-item-flow-table]');
+        if (tbody) tbody.innerHTML = `<tr><td colspan="10" style="text-align:center;color:var(--text-tertiary);padding:24px">${d.message || '暂无流量来源数据'}</td></tr>`;
+        return;
+      }
+      const data = d.data;
+      const channels = data.channels || [];
+      const totalUv = data.total_uv || 0;
+      const totalPay = data.total_pay_amount || 0;
+      let totalBuyers = 0;
+      channels.forEach(ch => { totalBuyers += ch.pay_buyer_count || 0; });
+
+      const setText = (sel, val) => { const el = document.querySelector(sel); if (el) el.textContent = val; };
+      setText('[data-item-flow-date]', data.stat_date || '--');
+      setText('[data-item-flow-total-uv]', totalUv.toLocaleString('zh-CN'));
+      setText('[data-item-flow-total-pay]', '¥' + (totalPay >= 10000 ? (totalPay/10000).toFixed(1) + '万' : totalPay.toFixed(0)));
+      setText('[data-item-flow-total-buyers]', totalBuyers.toLocaleString('zh-CN'));
+      setText('[data-item-flow-channel-count]', channels.length);
+
+      const tbody = document.querySelector('[data-item-flow-table]');
+      if (!tbody) return;
+      if (!channels.length) {
+        tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;color:var(--text-tertiary);padding:24px">暂无流量来源数据</td></tr>';
+        return;
+      }
+      tbody.innerHTML = channels.map(ch => {
+        const uvPct = totalUv > 0 ? (ch.uv / totalUv * 100).toFixed(1) + '%' : '--';
+        const rate = ch.pay_rate != null ? (ch.pay_rate * 100).toFixed(2) + '%' : '--';
+        const uvValue = ch.uv_value != null ? '¥' + ch.uv_value.toFixed(2) : '--';
+        return `<tr>
+          <td><strong>${ch.channel_name}</strong></td>
+          <td class="num">${(ch.uv || 0).toLocaleString('zh-CN')}</td>
+          <td class="num">${uvPct}</td>
+          <td class="num">¥${ch.pay_amount != null ? (ch.pay_amount >= 10000 ? (ch.pay_amount/10000).toFixed(1) + '万' : ch.pay_amount.toFixed(0)) : '--'}</td>
+          <td class="num">${(ch.pay_buyer_count || 0).toLocaleString('zh-CN')}</td>
+          <td class="num">${rate}</td>
+          <td class="num">${uvValue}</td>
+          <td class="num">${(ch.cart_buyer_count || 0).toLocaleString('zh-CN')}</td>
+          <td class="num">${(ch.collect_item_count || 0).toLocaleString('zh-CN')}</td>
+          <td class="num">${(ch.new_uv || 0).toLocaleString('zh-CN')}</td>
+        </tr>`;
+      }).join('');
+    } catch (err) {
+      console.error('加载单品流量来源失败:', err);
+    }
+  }
+})();
+
+
