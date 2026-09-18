@@ -1,0 +1,38 @@
+/* 推广分析 4 视图扩展样式（总览渠道卡 / 计划看板 / 素材看板 / 结构抽屉） */
+    .promotion-view-tabs { margin-bottom: 16px; }
+    .promotion-view-tabs button { display: inline-flex; align-items: center; gap: 6px; }
+    .promotion-view-tabs button svg { width: 15px; height: 15px; }
+    .promotion-channel-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; padding: 4px 0 12px; }
+    .promotion-channel-card { border: 1px solid var(--border, #e5e7eb); border-radius: 10px; padding: 12px 14px; display: flex; flex-direction: column; gap: 6px; background: var(--surface, #fff); }
+    .promotion-channel-card__name { font-weight: 600; display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+    .promotion-channel-card__roi { font-size: 18px; font-weight: 700; }
+    .promotion-channel-card[data-tone="success"] .promotion-channel-card__roi { color: #16a34a; }
+    .promotion-channel-card[data-tone="warning"] .promotion-channel-card__roi { color: #d97706; }
+    .promotion-channel-card[data-tone="danger"] .promotion-channel-card__roi { color: #dc2626; }
+    .promotion-channel-card__metrics { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 10px; font-size: 12px; color: var(--text-secondary, #6b7280); }
+    .promotion-channel-card__metrics b { color: var(--text-primary, #111827); font-weight: 600; }
+    .promotion-channel-cards__footnote { font-size: 12px; color: var(--text-secondary, #6b7280); margin: 4px 0 0; }
+    .promotion-creative-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 12px; padding: 4px 0 12px; }
+    .promotion-creative-card { border: 1px solid var(--border, #e5e7eb); border-radius: 10px; overflow: hidden; background: var(--surface, #fff); display: flex; flex-direction: column; position: relative; }
+    .promotion-creative-card__badges { position: absolute; top: 6px; left: 6px; display: flex; gap: 4px; flex-wrap: wrap; z-index: 1; }
+    .promotion-creative-card__badge { font-size: 10px; padding: 2px 6px; border-radius: 999px; background: #16a34a; color: #fff; font-weight: 600; }
+    .promotion-creative-card__badge--cvr { background: #2563eb; }
+    .promotion-creative-card__badge--cart { background: #d97706; }
+    .promotion-creative-card__thumb { aspect-ratio: 1; width: 100%; object-fit: cover; background: #f3f4f6; }
+    .promotion-creative-card__thumb-placeholder { aspect-ratio: 1; width: 100%; display: flex; align-items: center; justify-content: center; color: #9ca3af; background: #f3f4f6; }
+    .promotion-creative-card__body { padding: 10px 12px; display: flex; flex-direction: column; gap: 4px; font-size: 12px; }
+    .promotion-creative-card__name { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .promotion-creative-card__product { color: var(--text-secondary, #6b7280); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .promotion-creative-card__metrics { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 8px; color: var(--text-secondary, #6b7280); }
+    .promotion-creative-card__metrics b { color: var(--text-primary, #111827); }
+    .promotion-campaign-row__detail td { background: var(--surface-muted, #f9fafb); }
+    .promotion-campaign-products { display: flex; flex-wrap: wrap; gap: 10px; padding: 8px 4px; }
+    .promotion-campaign-product { display: flex; gap: 8px; align-items: center; border: 1px solid var(--border, #e5e7eb); border-radius: 8px; padding: 6px 10px 6px 6px; background: var(--surface, #fff); max-width: 320px; }
+    .promotion-campaign-product img { width: 36px; height: 36px; border-radius: 6px; object-fit: cover; }
+    .promotion-campaign-product__meta { min-width: 0; }
+    .promotion-campaign-product__name { font-size: 12px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .promotion-campaign-product__sub { font-size: 11px; color: var(--text-secondary, #6b7280); }
+    .plan-type-badge { display: inline-block; font-size: 11px; padding: 1px 8px; border-radius: 999px; border: 1px solid var(--border, #e5e7eb); color: var(--text-secondary, #6b7280); }
+    .plan-type-badge--控点击 { border-color: #2563eb; color: #2563eb; }
+    .plan-type-badge--控成本 { border-color: #16a34a; color: #16a34a; }
+    .plan-type-badge--控投产 { border-color: #7c3aed; color: #7c3aed; }

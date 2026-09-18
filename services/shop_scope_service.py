@@ -1,4 +1,4 @@
-from flask import current_app, g, has_request_context, request
+﻿from flask import current_app, g, has_request_context, request
 from api.api_response import failure
 from db import get_shop_id
 
@@ -8,7 +8,7 @@ def _requested_shop_id():
     configured = str(current_app.config.get('SHOP_ID') or '').strip() if has_request_context() else ''
     if not configured and has_request_context():
         configured = str(current_app.config.get('TMALL_SHOP_ID') or '').strip()
-    return requested or configured or 'default'
+    return requested or configured or get_shop_id()
 
 
 def _external_request():
@@ -53,13 +53,19 @@ def authorize_request_shop():
                 {'shop_id': shop_id},
                 status=403,
             )
-    elif _external_request() and shop_id != 'default':
-        return failure(
-            'SHOP_FORBIDDEN',
-            '外部请求必须使用服务端配置的店铺 scope',
-            {'shop_id': shop_id},
-            status=403,
-        )
+    elif _external_request() and _credentials_match_configured_auth():
+        configured_scope = str(
+            current_app.config.get('SHOP_ID')
+            or current_app.config.get('TMALL_SHOP_ID')
+            or get_shop_id()
+        ).strip()
+        if shop_id != configured_scope:
+            return failure(
+                'SHOP_FORBIDDEN',
+                '当前身份无权访问所请求店铺',
+                {'shop_id': shop_id},
+                status=403,
+            )
     return None
 
 
@@ -118,14 +124,33 @@ def audit_identity(data, default_reason):
 
 
 def require_admin_write():
-    if _external_request() and not _credentials_match_configured_auth():
+    if not _external_request():
+        return None
+    if not _credentials_match_configured_auth():
         return failure('AUTH_REQUIRED', '管理写操作需要认证', status=401)
+    configured_admins = set(current_app.config.get('DASHBOARD_ADMIN_USERS') or ())
+    if configured_admins and authenticated_username() not in configured_admins:
+        return failure('FORBIDDEN', '当前身份没有管理写权限', status=403)
     return None
+
+LEGACY_SINGLE_SHOP_PATHS = {
+    '/api/refund_alert', '/api/ad_performance', '/api/ad_alerts', '/api/ad_trend',
+    '/api/traffic_structure', '/api/action_stats', '/api/anomalies',
+    '/api/health', '/api/reviews/summary', '/api/reviews/list', '/api/reviews/products',
+    '/api/review', '/api/funnel', '/api/industry_benchmark',
+    '/api/report', '/api/legacy/actions', '/api/star', '/api/batch_update', '/api/batch_tags',
+    '/api/market/summary', '/api/market/keywords', '/api/market/need_stats',
+    '/api/market/rankings', '/api/market/histograms', '/api/market/opportunities',
+    '/api/market/reports', '/api/upload/reviews', '/api/upload/data',
+    '/api/keywords', '/api/alert_checks', '/api/chart_events',
+    '/api/notes', '/api/logs', '/api/product_tags',
+}
+
 
 def reject_legacy_shop_scope(domain):
     """Reject resources whose legacy tables cannot isolate named shops."""
     shop_id = current_request_shop_id()
-    if not shop_id or shop_id == 'default':
+    if not shop_id or shop_id in ('default', '3828498662'):
         return None
     return failure(
         'UNSUPPORTED_SCOPE',
@@ -133,3 +158,15 @@ def reject_legacy_shop_scope(domain):
         {'shop_id': shop_id},
         status=422,
     )
+
+
+def reject_legacy_single_shop_request():
+    """Apply the legacy single-shop guard to every migrated compatibility blueprint."""
+    if not has_request_context():
+        return None
+    legacy_field_update = request.path.startswith('/api/products/') and request.path.endswith('/field')
+    legacy_prefixes = ('/api/notes', '/api/chart_events', '/api/product_tags', '/api/logs')
+    legacy_path = request.path in LEGACY_SINGLE_SHOP_PATHS or request.path.startswith(legacy_prefixes)
+    if not legacy_path and not legacy_field_update:
+        return None
+    return reject_legacy_shop_scope('历史兼容数据')

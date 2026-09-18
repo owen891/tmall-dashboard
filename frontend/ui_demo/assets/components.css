@@ -272,28 +272,6 @@ input[type="checkbox"], input[type="radio"] { width: 18px; height: 18px; margin:
 .product-table { min-width: 1280px; }
 .product-table th:first-child, .product-table td:first-child { width: 38px; min-width: 38px; }
 .product-table [data-product-view][hidden] { display: none; }
-.products-ops-summary { display: grid; gap: var(--space-3); margin-bottom: var(--space-6); }
-.products-alert { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); padding: 14px 16px; border: 1px solid var(--border-warning-subtle); border-radius: var(--radius-md); background: var(--warning-tint); }
-.products-alert__main { display: flex; align-items: center; gap: 10px; min-width: 0; }
-.products-alert__main strong { display: block; color: var(--text-primary); }
-.products-alert__main p { margin: 3px 0 0; color: var(--text-secondary); font-size: var(--font-size-meta); }
-.products-alert__icon { display: grid; place-items: center; width: 30px; height: 30px; flex: 0 0 30px; border-radius: 50%; color: var(--warning); background: var(--surface-base); }
-.products-ops-grid { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(280px, .65fr); gap: var(--space-3); margin-bottom: var(--space-6); }
-.products-issues, .products-coverage { min-width: 0; }
-.products-issues .panel__header, .products-coverage .panel__header { margin-bottom: 0; }
-.products-issues__list, .products-coverage__list { display: grid; gap: 0; padding: 0 var(--space-3); }
-.products-issue { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); padding: 12px 0; border-top: 1px solid var(--border-default); }
-.products-issue:first-child { border-top: 0; }
-.products-issue > div { display: grid; min-width: 0; gap: 3px; }
-.products-issue strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.products-issue span { color: var(--text-secondary); font-size: var(--font-size-meta); }
-.products-coverage__item { padding: 11px 0; border-top: 1px solid var(--border-default); }
-.products-coverage__item:first-child { border-top: 0; }
-.products-coverage__line { display: flex; justify-content: space-between; gap: 10px; font-size: var(--font-size-meta); }
-.products-coverage__line span { color: var(--text-secondary); font-family: var(--font-mono); }
-.products-coverage__track { height: 6px; margin: 7px 0 4px; overflow: hidden; border-radius: 999px; background: var(--surface-muted); }
-.products-coverage__track i { display: block; height: 100%; border-radius: inherit; background: var(--success); }
-.products-coverage__item small { color: var(--text-secondary); font-size: var(--font-size-meta); }
 .products-health-cell { min-width: 0; }
 .product-field-controls { display: flex; align-items: center; gap: 8px; }
 .products-columns-dialog { display: flex; width: min(960px, calc(100vw - 24px)); max-height: min(760px, calc(100vh - 24px)); border: 1px solid var(--border-default); border-radius: var(--radius-lg); background: var(--surface-base); color: var(--text-primary); box-shadow: var(--elevation-lg); overflow: hidden; flex-direction: column; }

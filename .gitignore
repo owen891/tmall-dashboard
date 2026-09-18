@@ -85,3 +85,9 @@ ui-manage-toolbox-check.png
 /tmp_*.py
 /tmp_*.json
 /tmp_*.txt
+
+# 本地构建工作区与运行产物（不入版本库）
+/frontend-build/
+/logs/
+/archive/
+/*.png

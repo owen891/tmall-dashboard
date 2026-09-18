@@ -683,6 +683,8 @@ class FrontendPrdContractTests(unittest.TestCase):
     def test_product_detail_page_uses_context_capability_key(self):
         page = self.read('frontend/ui_demo/pages/product-detail.html')
         self.assertIn('<body data-page="product-detail">', page)
+        self.assertIn('../assets/product-detail-live.js', page)
+        self.assertNotIn('../assets/product-detail-dialog.js', page)
 
     def test_product_detail_live_has_no_mojibake_copy(self):
         component = self.read('frontend/ui_demo/assets/product-detail-live.js')
@@ -710,7 +712,7 @@ class FrontendPrdContractTests(unittest.TestCase):
         page = self.read('frontend/ui_demo/pages/products.html')
         component = self.read('frontend/ui_demo/assets/product-detail-dialog.js')
         styles = self.read('frontend/ui_demo/assets/components.css')
-        self.assertIn('../assets/echarts-5.5.1.min.js', page)
+        self.assertIn('../assets/echarts-custom.min.js', page)
         self.assertIn('../assets/charts.js', page)
         self.assertIn('function renderOverviewTrend', component)
         self.assertIn('function groupOverviewTrendByMonth', component)

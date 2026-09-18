@@ -172,13 +172,26 @@ class ActionsRepo:
         with get_db() as connection:
             rows = connection.execute(query, parameters).fetchall()
             result = [dict(row) for row in rows]
-            for item in result:
-                history = connection.execute(
-                    '''SELECT from_status, to_status, detail, operator, version, created_at
-                       FROM product_action_history WHERE action_id = ? ORDER BY id''',
-                    (item['id'],),
+            # 批量查询 history（避免 N+1）
+            if result:
+                action_ids = [item['id'] for item in result]
+                placeholders = ','.join('?' * len(action_ids))
+                all_history = connection.execute(
+                    f'''SELECT action_id, from_status, to_status, detail, operator, version, created_at
+                        FROM product_action_history WHERE action_id IN ({placeholders}) ORDER BY action_id, id''',
+                    action_ids,
                 ).fetchall()
-                item['history'] = [dict(row) for row in history]
+                history_map = {}
+                for h in all_history:
+                    hid = h['action_id']
+                    if hid not in history_map:
+                        history_map[hid] = []
+                    history_map[hid].append(dict(h))
+                for item in result:
+                    item['history'] = history_map.get(item['id'], [])
+            else:
+                for item in result:
+                    item['history'] = []
         return result
 
     @staticmethod
@@ -199,13 +212,26 @@ class ActionsRepo:
         with get_db() as connection:
             rows = connection.execute(query, parameters).fetchall()
             result = [dict(row) for row in rows]
-            for item in result:
-                history = connection.execute(
-                    '''SELECT from_status, to_status, detail, operator, version, created_at
-                       FROM product_action_history WHERE action_id = ? ORDER BY id''',
-                    (item['id'],),
+            # 批量查询 history（避免 N+1）
+            if result:
+                action_ids = [item['id'] for item in result]
+                placeholders = ','.join('?' * len(action_ids))
+                all_history = connection.execute(
+                    f'''SELECT action_id, from_status, to_status, detail, operator, version, created_at
+                        FROM product_action_history WHERE action_id IN ({placeholders}) ORDER BY action_id, id''',
+                    action_ids,
                 ).fetchall()
-                item['history'] = [dict(row) for row in history]
+                history_map = {}
+                for h in all_history:
+                    hid = h['action_id']
+                    if hid not in history_map:
+                        history_map[hid] = []
+                    history_map[hid].append(dict(h))
+                for item in result:
+                    item['history'] = history_map.get(item['id'], [])
+            else:
+                for item in result:
+                    item['history'] = []
         return result
 
     @staticmethod

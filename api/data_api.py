@@ -18,6 +18,7 @@ from werkzeug.utils import secure_filename
 from datetime import datetime, timedelta
 from db import get_db, get_connection, get_shop_id, init_db, load_config
 from api.api_response import evidence_level_for, failure, json_object, limitations_for, success
+from utils.cache import cache as _ttl_cache
 from repos.audit_repo import AuditRepo
 from services.category_mode_service import category_filters_from_request, mode_to_label, shop_label_filter
 from services.shop_scope_service import reject_legacy_shop_scope
@@ -39,6 +40,54 @@ DIMENSION_MAP = {
     'weekly':  {'table': 'weekly_data',  'date_col': 'week_start', 'visitors_col': 'ipv'},
     'daily':   {'table': 'daily_data',   'date_col': 'date', 'visitors_col': 'ipv'},
 }
+
+def _request_cache_key(prefix):
+    """生成基于请求路径和查询参数的缓存 key"""
+    params = sorted(request.args.items())
+    param_str = "&".join(f"{k}={v}" for k, v in params)
+    shop_id = getattr(getattr(__import__('flask').g, 'shop_id', None), '__str__', lambda: 'default')()
+    return f"{prefix}:{request.path}:{shop_id}:{param_str}"
+
+
+def _cached_json_response(prefix, ttl=60):
+    """读取缓存的 JSON 响应，未命中返回 None"""
+    key = _request_cache_key(prefix)
+    cached = _ttl_cache.get(key)
+    if cached is not None:
+        return cached
+    return None
+
+
+def _store_json_response(prefix, response_data, ttl=60):
+    """存储 JSON 响应到缓存"""
+    key = _request_cache_key(prefix)
+    _ttl_cache.set(key, response_data, ttl)
+
+
+def cached_api(prefix, ttl=60):
+    """API 缓存装饰器：缓存成功的 JSON 响应，ttl 秒"""
+    def decorator(f):
+        def wrapped(*args, **kwargs):
+            key = _request_cache_key(prefix)
+            cached = _ttl_cache.get(key)
+            if cached is not None:
+                from flask import jsonify as _jsonify
+                return _jsonify(cached)
+            result = f(*args, **kwargs)
+            try:
+                if hasattr(result, 'status_code') and result.status_code == 200 and hasattr(result, 'get_json'):
+                    data = result.get_json()
+                    if data is not None:
+                        _ttl_cache.set(key, data, ttl)
+            except Exception:
+                # 缓存存储失败不影响主流程响应
+                pass
+            return result
+        wrapped.__name__ = getattr(f, '__name__', 'wrapped')
+        wrapped.__doc__ = getattr(f, '__doc__', '')
+        return wrapped
+    return decorator
+
 
 
 def _validate_period_arg(dimension, value, field='period'):
@@ -242,7 +291,8 @@ def _fmt_wan(val):
         return f"{n:,.0f}"
     return f"{n / 10000:.1f}万"
 
-@data_bp.route('/api/kpi', methods=['GET'])
+# @data_bp.route('/api/kpi', methods=['GET'])  # 已迁移到 overview_legacy_api.py
+@cached_api('kpi', 60)
 def get_kpi():
     """KPI卡片数据"""
     dimension = request.args.get('dim', 'weekly')
@@ -336,7 +386,8 @@ def get_kpi():
         'availability': 'available' if current and previous else 'partial' if current or previous else 'no-data',
     })
 
-@data_bp.route('/api/trend', methods=['GET'])
+# @data_bp.route('/api/trend', methods=['GET'])  # 已迁移到 overview_legacy_api.py
+@cached_api('trend', 60)
 def get_trend():
     """趋势数据"""
     dimension = request.args.get('dim', 'weekly')
@@ -413,7 +464,7 @@ def get_trend():
     return jsonify(rows)
 
 # ==================== 星标收藏 ====================
-@data_bp.route('/api/star', methods=['POST'])
+# @data_bp.route('/api/star', methods=['POST'])  # 已迁移到 overview_legacy_api.py
 def toggle_star():
     """切换商品星标状态"""
     data = json_object(request)
@@ -441,7 +492,7 @@ def toggle_star():
     return jsonify({'starred': new_val})
 
 # ==================== 行内快速编辑 ====================
-@data_bp.route('/api/products/<product_id>/field', methods=['PUT'])
+# @data_bp.route('/api/products/<product_id>/field', methods=['PUT'])  # 已迁移到 misc_legacy_api.py
 def update_product_field(product_id):
     """行内快速编辑商品字段"""
     data = json_object(request)
@@ -484,7 +535,7 @@ def update_product_field(product_id):
     return jsonify({'success': True, 'field': field, 'value': value})
 
 # ==================== 批量更新 ====================
-@data_bp.route('/api/batch_update', methods=['POST'])
+# @data_bp.route('/api/batch_update', methods=['POST'])  # 已迁移到 misc_legacy_api.py
 def batch_update():
     data = json_object(request)
     field = str(data.get('field') or '').strip()
@@ -506,7 +557,8 @@ def batch_update():
 
 # ==================== 周期对比分析 API ====================
 
-@data_bp.route('/api/compare', methods=['GET'])
+# @data_bp.route('/api/compare', methods=['GET'])  # 已迁移到 data_legacy_api.py
+@cached_api('compare_periods', ttl=30)
 def compare_periods():
     """周期对比分析"""
     dim = request.args.get('dim', 'monthly')
@@ -726,7 +778,7 @@ def compare_periods():
 
 # ==================== 数据导出 API ====================
 
-@data_bp.route('/api/export', methods=['POST'])
+# @data_bp.route('/api/export', methods=['POST'])  # 已迁移到 data_legacy_api.py
 def export_data():
     """导出数据为Excel"""
     data = json_object(request)
@@ -1103,7 +1155,8 @@ def calc_score(row):
     score += min(search * 5, 5)
     return round(max(0, min(100, score)), 1)
 
-@data_bp.route('/api/products', methods=['GET'])
+# @data_bp.route('/api/products', methods=['GET'])  # 已迁移到 products_legacy_api.py
+@cached_api('products', 30)
 def get_products():
     """商品列表"""
     dimension = request.args.get('dim', 'monthly')
@@ -1584,7 +1637,7 @@ def get_products():
         evidence=[{'source': 'products', 'row_count': len(rows), 'observed_fact_rows': observed_rows, 'total': total_count}],
     )
 
-@data_bp.route('/api/refund_alert', methods=['GET'])
+# @data_bp.route('/api/refund_alert', methods=['GET'])  # 已迁移到 alerts_api.py
 def get_refund_alert():
     """退款预警商品列表"""
     try:
@@ -1635,7 +1688,8 @@ def get_refund_alert():
         ''', (period, threshold)).fetchall()]
     return jsonify(rows)
 
-@data_bp.route('/api/ad_performance', methods=['GET'])
+# @data_bp.route('/api/ad_performance', methods=['GET'])  # 已迁移到 data_legacy_api.py
+@cached_api('get_ad_performance', ttl=30)
 def get_ad_performance():
     """推广效果数据"""
     dimension = request.args.get('dim', 'monthly')
@@ -1674,7 +1728,8 @@ def get_ad_performance():
         ''', (period,)).fetchall()]
     return jsonify(rows)
 
-@data_bp.route('/api/ad_alerts', methods=['GET'])
+# @data_bp.route('/api/ad_alerts', methods=['GET'])  # 已迁移到 products_legacy_api.py
+@cached_api('get_ad_alerts', ttl=30)
 def get_ad_alerts():
     """推广效果预警"""
     dim = request.args.get('dim', 'monthly')
@@ -1785,7 +1840,8 @@ def get_ad_alerts():
     
     return jsonify(alerts)
 
-@data_bp.route('/api/ad_trend', methods=['GET'])
+# @data_bp.route('/api/ad_trend', methods=['GET'])  # 已迁移到 products_legacy_api.py
+@cached_api('get_ad_trend', ttl=30)
 def get_ad_trend():
     """推广趋势分析 — 最近N个周期的推广核心指标"""
     dim = request.args.get('dim', 'monthly')
@@ -1908,7 +1964,8 @@ def get_ad_trend():
         
         return jsonify(rows)
 
-@data_bp.route('/api/periods', methods=['GET'])
+# @data_bp.route('/api/periods', methods=['GET'])  # 已迁移到 data_legacy_api.py
+@cached_api('get_periods', ttl=60)
 def get_periods():
     """获取可选的时间周期列表"""
     dimension = request.args.get('dim', 'weekly')
@@ -1933,7 +1990,7 @@ def get_periods():
     return jsonify(rows)
 
 # 预留接口：数据备份（前端暂未调用）
-@data_bp.route('/api/backup', methods=['POST'])
+# @data_bp.route('/api/backup', methods=['POST'])  # 已迁移到 system_legacy_api.py
 def trigger_backup():
     """手动触发数据库备份"""
     if current_app.config.get('TESTING'):
@@ -1942,7 +1999,7 @@ def trigger_backup():
     success = backup_database()
     return jsonify({'success': success})
 
-@data_bp.route('/api/legacy/actions', methods=['GET'])
+# @data_bp.route('/api/legacy/actions', methods=['GET'])  # 已迁移到 system_legacy_api.py
 def get_actions():
     """运营动作列表"""
     period = request.args.get('period', '')
@@ -1974,7 +2031,8 @@ def get_actions():
 
 # ==================== 流量结构分析 API ====================
 
-@data_bp.route('/api/traffic_structure', methods=['GET'])
+# @data_bp.route('/api/traffic_structure', methods=['GET'])  # 已迁移到 data_legacy_api.py
+@cached_api('traffic', 60)
 def get_traffic_structure():
     """流量结构分析"""
     dim = request.args.get('dim', 'monthly')
@@ -2097,7 +2155,7 @@ def _legacy_task_payload(row):
     return item
 
 
-@data_bp.route('/api/tasks', methods=['GET'])
+# @data_bp.route('/api/tasks', methods=['GET'])  # 已迁移到 system_legacy_api.py
 def get_tasks():
     """获取任务列表"""
     status = request.args.get('status', '')
@@ -2123,7 +2181,7 @@ def get_tasks():
         ''', params).fetchall()]
     return jsonify(rows)
 
-@data_bp.route('/api/tasks', methods=['POST'])
+# @data_bp.route('/api/tasks', methods=['POST'])  # 已迁移到 system_legacy_api.py
 def create_task():
     """创建任务"""
     data = json_object(request)
@@ -2154,7 +2212,7 @@ def create_task():
         conn.commit()
         return jsonify({'success': True, 'data': _legacy_task_payload(row)})
 
-@data_bp.route('/api/tasks/<int:task_id>', methods=['PUT'])
+# @data_bp.route('/api/tasks/<int:task_id>', methods=['PUT'])  # 已迁移到 system_legacy_api.py
 def update_task(task_id):
     """更新任务"""
     data = json_object(request)
@@ -2191,7 +2249,7 @@ def update_task(task_id):
         conn.commit()
         return jsonify({'success': True, 'data': _legacy_task_payload(after)})
 
-@data_bp.route('/api/tasks/<int:task_id>', methods=['DELETE'])
+# @data_bp.route('/api/tasks/<int:task_id>', methods=['DELETE'])  # 已迁移到 system_legacy_api.py
 def delete_task(task_id):
     """删除任务"""
     data = request.get_json(silent=True)
@@ -2212,7 +2270,7 @@ def delete_task(task_id):
 
 # ==================== 用户KPI API ====================
 
-@data_bp.route('/api/user_kpis', methods=['GET'])
+# @data_bp.route('/api/user_kpis', methods=['GET'])  # 已迁移到 goals_legacy_api.py
 def get_user_kpis():
     """获取用户KPI列表"""
     period = request.args.get('period', '')
@@ -2227,7 +2285,7 @@ def get_user_kpis():
         ''', params).fetchall()]
     return jsonify(rows)
 
-@data_bp.route('/api/user_kpis', methods=['POST'])
+# @data_bp.route('/api/user_kpis', methods=['POST'])  # 已迁移到 goals_legacy_api.py
 def create_user_kpi():
     """创建用户KPI"""
     data = json_object(request)
@@ -2259,7 +2317,7 @@ def create_user_kpi():
         conn.commit()
         return jsonify({'success': True, 'data': dict(row)})
 
-@data_bp.route('/api/user_kpis/<int:kpi_id>', methods=['PUT'])
+# @data_bp.route('/api/user_kpis/<int:kpi_id>', methods=['PUT'])  # 已迁移到 goals_legacy_api.py
 def update_user_kpi(kpi_id):
     """更新用户KPI"""
     data = json_object(request)
@@ -2297,7 +2355,7 @@ def update_user_kpi(kpi_id):
         conn.commit()
         return jsonify({'success': True, 'data': dict(after)})
 
-@data_bp.route('/api/user_kpis/<int:kpi_id>', methods=['DELETE'])
+# @data_bp.route('/api/user_kpis/<int:kpi_id>', methods=['DELETE'])  # 已迁移到 goals_legacy_api.py
 def delete_user_kpi(kpi_id):
     """删除用户KPI"""
     data = request.get_json(silent=True)
@@ -2353,7 +2411,7 @@ def _parse_keyword_number(value, field, row_number):
     return number
 
 
-@data_bp.route('/api/upload/keywords', methods=['POST'])
+# @data_bp.route('/api/upload/keywords', methods=['POST'])  # 已迁移到 market_legacy_api.py
 def upload_keywords():
     """上传搜索词数据Excel"""
     if 'file' not in request.files:
@@ -2510,7 +2568,7 @@ def upload_keywords():
         current_app.logger.exception('Keyword upload failed')
         return failure('IMPORT_FAILED', '文件解析或导入失败，请检查表格格式和数据内容', status=500)
 
-@data_bp.route('/api/keywords', methods=['GET'])
+# @data_bp.route('/api/keywords', methods=['GET'])  # 已迁移到 market_legacy_api.py
 def get_keywords():
     """搜索词效能列表"""
     date = request.args.get('date', '')
@@ -2597,7 +2655,7 @@ def get_keywords():
 
 # ==================== 市场分析 API ====================
 
-@data_bp.route('/api/upload/market', methods=['POST'])
+# @data_bp.route('/api/upload/market', methods=['POST'])  # 已迁移到 market_legacy_api.py
 def upload_market():
     """上传市场分析数据文件"""
     files = request.files.getlist('files')
@@ -2642,7 +2700,8 @@ def upload_market():
         _cleanup_upload_paths(saved_paths)
 
 
-@data_bp.route('/api/market/summary', methods=['GET'])
+# @data_bp.route('/api/market/summary', methods=['GET'])  # 已迁移到 misc_legacy_api.py
+@cached_api('get_market_summary', ttl=30)
 def get_market_summary():
     """获取市场分析摘要"""
     category = request.args.get('category', '')
@@ -2682,7 +2741,8 @@ def get_market_summary():
     })
 
 
-@data_bp.route('/api/market/keywords', methods=['GET'])
+# @data_bp.route('/api/market/keywords', methods=['GET'])  # 已迁移到 market_legacy_api.py
+@cached_api('get_market_keywords', ttl=30)
 def get_market_keywords():
     """获取关键词分析数据"""
     category = request.args.get('category', '')
@@ -2718,7 +2778,7 @@ def get_market_keywords():
     })
 
 
-@data_bp.route('/api/market/need_stats', methods=['GET'])
+# @data_bp.route('/api/market/need_stats', methods=['GET'])  # 已迁移到 market_legacy_api.py
 def get_market_need_stats():
     """获取8维度需求统计"""
     category = request.args.get('category', '')
@@ -2743,7 +2803,8 @@ def get_market_need_stats():
     })
 
 
-@data_bp.route('/api/market/rankings', methods=['GET'])
+# @data_bp.route('/api/market/rankings', methods=['GET'])  # 已迁移到 market_legacy_api.py
+@cached_api('get_market_rankings', ttl=30)
 def get_market_rankings():
     """获取商品排名数据"""
     category = request.args.get('category', '')
@@ -2774,7 +2835,7 @@ def get_market_rankings():
     })
 
 
-@data_bp.route('/api/market/histograms', methods=['GET'])
+# @data_bp.route('/api/market/histograms', methods=['GET'])  # 已迁移到 market_legacy_api.py
 def get_market_histograms():
     """获取直方图数据"""
     category = request.args.get('category', '')
@@ -2798,7 +2859,7 @@ def get_market_histograms():
     })
 
 
-@data_bp.route('/api/market/opportunities', methods=['GET'])
+# @data_bp.route('/api/market/opportunities', methods=['GET'])  # 已迁移到 market_legacy_api.py
 def get_market_opportunities():
     """获取关键词机会（跨Skill联动）"""
     analysis_date = request.args.get('analysis_date', '')
@@ -2839,7 +2900,7 @@ def get_market_opportunities():
     })
 
 
-@data_bp.route('/api/market/reports', methods=['GET'])
+# @data_bp.route('/api/market/reports', methods=['GET'])  # 已迁移到 market_legacy_api.py
 def get_market_reports():
     """获取所有市场分析报告列表"""
     with get_db() as conn:
@@ -2852,7 +2913,7 @@ def get_market_reports():
         'reports': rows,
     })
 
-@data_bp.route('/api/legacy/actions', methods=['POST'])
+# @data_bp.route('/api/legacy/actions', methods=['POST'])  # 已迁移到 system_legacy_api.py
 def create_action():
     return failure(
         'LEGACY_READ_ONLY',
@@ -2861,7 +2922,7 @@ def create_action():
         status=409,
     )
 
-@data_bp.route('/api/legacy/actions/<int:action_id>', methods=['PUT'])
+# @data_bp.route('/api/legacy/actions/<int:action_id>', methods=['PUT'])  # 已迁移到 system_legacy_api.py
 def update_action(action_id):
     return failure(
         'LEGACY_READ_ONLY',
@@ -2870,7 +2931,7 @@ def update_action(action_id):
         status=409,
     )
 
-@data_bp.route('/api/legacy/actions/<int:action_id>', methods=['DELETE'])
+# @data_bp.route('/api/legacy/actions/<int:action_id>', methods=['DELETE'])  # 已迁移到 system_legacy_api.py
 def delete_action(action_id):
     return failure(
         'LEGACY_READ_ONLY',
@@ -2879,7 +2940,8 @@ def delete_action(action_id):
         status=409,
     )
 
-@data_bp.route('/api/action_stats', methods=['GET'])
+# @data_bp.route('/api/action_stats', methods=['GET'])  # 已迁移到 system_legacy_api.py
+@cached_api('get_action_stats', ttl=60)
 def get_action_stats():
     """动作类型效果统计"""
     with get_db() as conn:
@@ -2897,7 +2959,8 @@ def get_action_stats():
     return jsonify(rows)
 
 # 预留接口：异常检测（前端暂未调用）
-@data_bp.route('/api/anomalies', methods=['GET'])
+# @data_bp.route('/api/anomalies', methods=['GET'])  # 已迁移到 data_legacy_api.py
+@cached_api('get_anomalies', ttl=60)
 def get_anomalies():
     """获取当前周期的异常指标"""
     dimension = request.args.get('dim', 'weekly')
@@ -3089,7 +3152,7 @@ def generate_alerts(conn, period):
 
     conn.commit()
 
-@data_bp.route('/api/target_progress', methods=['GET'])
+# @data_bp.route('/api/target_progress', methods=['GET'])  # 已迁移到 goals_legacy_api.py
 def get_target_progress():
     if request.args.get('dim', 'monthly') == 'daily' and (denied := reject_legacy_shop_scope('店铺目标')):
         return denied
@@ -3294,6 +3357,7 @@ def get_target_progress():
                     prev = dict(prev) if prev else None
                     add_yoy(prev)
                 except (ValueError, IndexError):
+                    # 同比日期解析失败时跳过年同比计算
                     pass
             elif dim == 'weekly':
                 # 周维度：取上一周对比
@@ -3307,12 +3371,13 @@ def get_target_progress():
                     prev = dict(prev) if prev else None
                     add_yoy(prev)
                 except (ValueError, IndexError):
+                    # 周同比日期解析失败时跳过
                     pass
 
     return jsonify(result)
 
 # 预留接口：商品分层目标进度（前端暂未调用）
-@data_bp.route('/api/product_target_progress', methods=['GET'])
+# @data_bp.route('/api/product_target_progress', methods=['GET'])  # 已迁移到 data_legacy_api.py
 def get_product_target_progress():
     """商品/分层目标进度"""
     if (denied := reject_legacy_shop_scope('商品目标')):
@@ -3347,7 +3412,7 @@ def get_product_target_progress():
 
     return jsonify(rows)
 
-@data_bp.route('/api/alerts', methods=['GET'])
+# @data_bp.route('/api/alerts', methods=['GET'])  # 已迁移到 alerts_api.py
 def get_alerts():
     """获取预警列表"""
     if (denied := reject_legacy_shop_scope('经营预警')):
@@ -3378,7 +3443,7 @@ def get_alerts():
 
     return jsonify(rows)
 
-@data_bp.route('/api/alerts/<int:alert_id>/dismiss', methods=['POST'])
+# @data_bp.route('/api/alerts/<int:alert_id>/dismiss', methods=['POST'])  # 已迁移到 alerts_api.py
 def dismiss_alert(alert_id):
     if (denied := reject_legacy_shop_scope('经营预警')):
         return denied
@@ -3388,7 +3453,7 @@ def dismiss_alert(alert_id):
     return jsonify({'success': True})
 
 # 预留接口：手动设置店铺目标（前端暂未调用）
-@data_bp.route('/api/targets/shop', methods=['POST'])
+# @data_bp.route('/api/targets/shop', methods=['POST'])  # 已迁移到 goals_legacy_api.py
 def set_shop_target():
     """手动设置店铺目标"""
     if (denied := reject_legacy_shop_scope('店铺目标')):
@@ -3412,7 +3477,8 @@ def set_shop_target():
 
 # ==================== 生命周期管理 API ====================
 
-@data_bp.route('/api/lifecycle', methods=['GET'])
+# @data_bp.route('/api/lifecycle', methods=['GET'])  # 已迁移到 data_legacy_api.py
+@cached_api('get_lifecycle', ttl=30)
 def get_lifecycle():
     """Get product lifecycle data - monthly GSV for each product"""
     if (denied := reject_legacy_shop_scope('生命周期')):
@@ -3459,7 +3525,8 @@ def get_lifecycle():
 
 # ==================== 商品健康度 API ====================
 
-@data_bp.route('/api/health', methods=['GET'])
+# @data_bp.route('/api/health', methods=['GET'])  # 已迁移到 overview_legacy_api.py
+@cached_api('get_health', ttl=60)
 def get_health():
     """商品健康度（12维度）"""
     period = request.args.get('period', '')
@@ -3505,7 +3572,7 @@ def get_health():
 
 # ==================== 评价数据 API ====================
 
-@data_bp.route('/api/upload/reviews', methods=['POST'])
+# @data_bp.route('/api/upload/reviews', methods=['POST'])  # 已迁移到 misc_legacy_api.py
 def upload_reviews():
     """上传评价数据文件"""
     if 'file' not in request.files:
@@ -3533,7 +3600,7 @@ def upload_reviews():
         if filepath:
             _cleanup_upload_paths([filepath])
 
-@data_bp.route('/api/upload/data', methods=['POST'])
+# @data_bp.route('/api/upload/data', methods=['POST'])  # 已迁移到 misc_legacy_api.py
 def upload_business_data():
     """上传核心业务数据Excel文件"""
     if 'file' not in request.files:
@@ -3587,8 +3654,8 @@ def upload_business_data():
         finally:
             try:
                 os.unlink(file_path)
-            except Exception:
-                pass
+            except Exception as _e:
+                current_app.logger.warning(f'清理临时文件失败: {_e}')
 
     threading.Thread(
         target=_do_import,
@@ -3598,7 +3665,7 @@ def upload_business_data():
     return jsonify({'success': True, 'task_id': task_id, 'message': '导入任务已提交'})
 
 
-@data_bp.route('/api/import_progress/<task_id>', methods=['GET'])
+# @data_bp.route('/api/import_progress/<task_id>', methods=['GET'])  # 已迁移到 misc_legacy_api.py
 def get_import_progress(task_id):
     """获取导入任务进度"""
     progress = _get_import_progress(task_id)
@@ -3606,7 +3673,8 @@ def get_import_progress(task_id):
         return failure('NOT_FOUND', '导入任务不存在或已过期', {'task_id': task_id}, status=404)
     return jsonify(progress)
 
-@data_bp.route('/api/reviews/summary', methods=['GET'])
+# @data_bp.route('/api/reviews/summary', methods=['GET'])  # 已迁移到 reviews_api.py
+@cached_api('get_reviews_summary', ttl=60)
 def get_reviews_summary():
     """评价总览"""
     product_id = request.args.get('product_id', '')
@@ -3680,7 +3748,7 @@ def get_reviews_summary():
         'rating_dist': [dict(r) for r in rating_dist]
     })
 
-@data_bp.route('/api/reviews/list', methods=['GET'])
+# @data_bp.route('/api/reviews/list', methods=['GET'])  # 已迁移到 reviews_api.py
 def get_reviews_list():
     """评价列表"""
     product_id = request.args.get('product_id', '')
@@ -3705,7 +3773,7 @@ def get_reviews_list():
         rows = [dict(r) for r in conn.execute(query, params).fetchall()]
     return jsonify(rows)
 
-@data_bp.route('/api/alert_rules', methods=['GET'])
+# @data_bp.route('/api/alert_rules', methods=['GET'])  # 已迁移到 alerts_api.py
 def get_alert_rules():
     """获取所有预警规则"""
     with get_db() as conn:
@@ -3714,7 +3782,7 @@ def get_alert_rules():
         ).fetchall()]
     return jsonify(rows)
 
-@data_bp.route('/api/alert_rules', methods=['POST'])
+# @data_bp.route('/api/alert_rules', methods=['POST'])  # 已迁移到 alerts_api.py
 def create_alert_rule():
     """创建预警规则"""
     data = json_object(request)
@@ -3742,7 +3810,7 @@ def create_alert_rule():
         conn.commit()
     return jsonify({'success': True})
 
-@data_bp.route('/api/alert_rules/<int:rule_id>', methods=['DELETE'])
+# @data_bp.route('/api/alert_rules/<int:rule_id>', methods=['DELETE'])  # 已迁移到 alerts_api.py
 def delete_alert_rule(rule_id):
     """删除预警规则"""
     with get_db() as conn:
@@ -3750,7 +3818,7 @@ def delete_alert_rule(rule_id):
         conn.commit()
     return jsonify({'success': True})
 
-@data_bp.route('/api/alert_checks', methods=['GET'])
+# @data_bp.route('/api/alert_checks', methods=['GET'])  # 已迁移到 alerts_api.py
 def check_alerts():
     """检查当前周期数据是否触发预警规则"""
     dimension = request.args.get('dim', 'weekly')
@@ -3824,7 +3892,7 @@ def check_alerts():
 
     return jsonify(triggered)
 
-@data_bp.route('/api/notes/<product_id>', methods=['GET'])
+# @data_bp.route('/api/notes/<product_id>', methods=['GET'])  # 已迁移到 reviews_api.py
 def get_notes(product_id):
     """获取商品备注列表"""
     with get_db() as conn:
@@ -3834,7 +3902,7 @@ def get_notes(product_id):
         ).fetchall()]
     return jsonify(rows)
 
-@data_bp.route('/api/notes', methods=['POST'])
+# @data_bp.route('/api/notes', methods=['POST'])  # 已迁移到 reviews_api.py
 def add_note():
     """添加商品备注"""
     data = json_object(request)
@@ -3861,7 +3929,7 @@ def add_note():
         conn.commit()
     return jsonify({'success': True})
 
-@data_bp.route('/api/notes/<int:note_id>', methods=['DELETE'])
+# @data_bp.route('/api/notes/<int:note_id>', methods=['DELETE'])  # 已迁移到 reviews_api.py
 def delete_note(note_id):
     """删除商品备注"""
     with get_db() as conn:
@@ -3878,7 +3946,7 @@ def delete_note(note_id):
             conn.commit()
     return jsonify({'success': True})
 
-@data_bp.route('/api/reviews/products', methods=['GET'])
+# @data_bp.route('/api/reviews/products', methods=['GET'])  # 已迁移到 reviews_api.py
 def get_reviewed_products():
     """有评价的商品列表"""
     with get_db() as conn:
@@ -3897,7 +3965,7 @@ def get_reviewed_products():
 
 # ==================== 操作日志 API ====================
 
-@data_bp.route('/api/logs', methods=['GET'])
+# @data_bp.route('/api/logs', methods=['GET'])  # 已迁移到 system_legacy_api.py
 def get_logs():
     """获取最近操作日志"""
     limit = max(1, min(request.args.get('limit', 50, type=int) or 50, 200))
@@ -3907,7 +3975,7 @@ def get_logs():
         ).fetchall()]
     return jsonify(rows)
 
-@data_bp.route('/api/logs', methods=['POST'])
+# @data_bp.route('/api/logs', methods=['POST'])  # 已迁移到 system_legacy_api.py
 def create_log():
     """记录操作日志"""
     data = json_object(request)
@@ -3925,7 +3993,7 @@ def create_log():
     return jsonify({'success': True})
 
 
-@data_bp.route('/api/review', methods=['GET'])
+# @data_bp.route('/api/review', methods=['GET'])  # 已迁移到 reviews_api.py
 def get_review_data():
     """复盘数据 — 核心指标环比+同比"""
     dim = request.args.get('dim', 'monthly')
@@ -4170,6 +4238,7 @@ def get_review_data():
                     if row and row['gsv']:
                         trend.append({'period': p, 'gsv': row['gsv'], 'ad_spend': row['ad_spend'], 'conversion': row['conversion']})
             except ValueError:
+                # 趋势周期解析失败时跳过该周期
                 pass
 
         return jsonify({
@@ -4185,7 +4254,7 @@ def get_review_data():
 
 # ==================== 数据报告 API ====================
 
-@data_bp.route('/api/report', methods=['GET'])
+# @data_bp.route('/api/report', methods=['GET'])  # 已迁移到 misc_legacy_api.py
 def generate_report():
     """生成文本格式的数据摘要报告"""
     dim = request.args.get('dim', 'monthly')
@@ -4326,7 +4395,8 @@ def generate_report():
 
 
 # ==================== Feature 4: 多周期趋势叠加 ====================
-@data_bp.route('/api/multi_trend', methods=['GET'])
+# @data_bp.route('/api/multi_trend', methods=['GET'])  # 已迁移到 data_legacy_api.py
+@cached_api('get_multi_trend', ttl=30)
 def get_multi_trend():
     """多周期趋势叠加数据"""
     dim = request.args.get('dim', 'monthly')
@@ -4481,7 +4551,7 @@ def get_multi_trend():
 
 
 # ==================== Feature 7: 数据异常事件标注 ====================
-@data_bp.route('/api/chart_events', methods=['GET'])
+# @data_bp.route('/api/chart_events', methods=['GET'])  # 已迁移到 system_legacy_api.py
 def get_chart_events():
     """获取图表事件标注"""
     chart_type = request.args.get('chart_type', 'sales')
@@ -4494,7 +4564,7 @@ def get_chart_events():
     return jsonify(events)
 
 
-@data_bp.route('/api/chart_events', methods=['POST'])
+# @data_bp.route('/api/chart_events', methods=['POST'])  # 已迁移到 system_legacy_api.py
 def create_chart_event():
     """创建图表事件标注"""
     data = json_object(request)
@@ -4519,7 +4589,7 @@ def create_chart_event():
     return jsonify({'success': True, 'message': '标注已添加'})
 
 
-@data_bp.route('/api/chart_events/<int:event_id>', methods=['DELETE'])
+# @data_bp.route('/api/chart_events/<int:event_id>', methods=['DELETE'])  # 已迁移到 system_legacy_api.py
 def delete_chart_event(event_id):
     """删除图表事件标注"""
     with get_db() as conn:
@@ -4585,6 +4655,7 @@ def _parse_cron_expr(cron_expr):
             return next_run
 
     except Exception:
+        # cron 表达式解析失败时返回 None，由调用方处理
         pass
     return None
 
@@ -4606,6 +4677,7 @@ def _cron_to_label(cron_expr):
             time_str = parts[2] if len(parts) > 2 else '08:00'
             return f"每月{dom}号 {time_str}"
     except Exception:
+        # cron 表达式描述解析失败时返回原始表达式
         pass
     return cron_expr
 
@@ -4690,7 +4762,7 @@ def _scheduler_check():
     return None
 
 
-@data_bp.route('/api/scheduled_tasks', methods=['GET'])
+# @data_bp.route('/api/scheduled_tasks', methods=['GET'])  # 已迁移到 system_legacy_api.py
 def get_scheduled_tasks():
     """获取所有定时任务"""
     with get_db() as conn:
@@ -4705,7 +4777,7 @@ def get_scheduled_tasks():
     return jsonify(tasks)
 
 
-@data_bp.route('/api/scheduled_tasks', methods=['POST'])
+# @data_bp.route('/api/scheduled_tasks', methods=['POST'])  # 已迁移到 system_legacy_api.py
 def create_scheduled_task():
     """创建定时任务"""
     data = json_object(request)
@@ -4731,7 +4803,7 @@ def create_scheduled_task():
     return jsonify({'success': True, 'message': '任务已创建'})
 
 
-@data_bp.route('/api/scheduled_tasks/<int:task_id>', methods=['PUT'])
+# @data_bp.route('/api/scheduled_tasks/<int:task_id>', methods=['PUT'])  # 已迁移到 system_legacy_api.py
 def update_scheduled_task(task_id):
     """更新定时任务"""
     data = json_object(request)
@@ -4763,7 +4835,7 @@ def update_scheduled_task(task_id):
     return jsonify({'success': True, 'message': '任务已更新'})
 
 
-@data_bp.route('/api/scheduled_tasks/<int:task_id>', methods=['DELETE'])
+# @data_bp.route('/api/scheduled_tasks/<int:task_id>', methods=['DELETE'])  # 已迁移到 system_legacy_api.py
 def delete_scheduled_task(task_id):
     """删除定时任务"""
     with get_db() as conn:
@@ -4772,7 +4844,7 @@ def delete_scheduled_task(task_id):
     return jsonify({'success': True, 'message': '任务已删除'})
 
 
-@data_bp.route('/api/scheduled_tasks/<int:task_id>/run', methods=['POST'])
+# @data_bp.route('/api/scheduled_tasks/<int:task_id>/run', methods=['POST'])  # 已迁移到 system_legacy_api.py
 def run_scheduled_task(task_id):
     """手动触发定时任务"""
     with get_db() as conn:
@@ -4807,7 +4879,7 @@ def run_scheduled_task(task_id):
 
 
 # ==================== Feature 9: 商品批量打标签 ====================
-@data_bp.route('/api/batch_tags', methods=['POST'])
+# @data_bp.route('/api/batch_tags', methods=['POST'])  # 已迁移到 misc_legacy_api.py
 def batch_add_tags():
     """批量添加商品标签"""
     data = json_object(request)
@@ -4854,7 +4926,7 @@ def batch_add_tags():
     })
 
 
-@data_bp.route('/api/batch_tags', methods=['DELETE'])
+# @data_bp.route('/api/batch_tags', methods=['DELETE'])  # 已迁移到 misc_legacy_api.py
 def batch_remove_tags():
     """批量移除商品标签"""
     data = json_object(request)
@@ -4881,7 +4953,8 @@ def batch_remove_tags():
 
 # ==================== 新老客分析 API ====================
 
-@data_bp.route('/api/customer_analysis', methods=['GET'])
+# @data_bp.route('/api/customer_analysis', methods=['GET'])  # 已迁移到 data_legacy_api.py
+@cached_api('get_customer_analysis', ttl=60)
 def get_customer_analysis():
     """新老客分析：新客数、老客数、占比及趋势"""
     dim = request.args.get('dim', 'monthly')
@@ -5058,7 +5131,8 @@ def get_customer_analysis():
 
 # ==================== 加购→支付漏斗分析 API ====================
 
-@data_bp.route('/api/funnel', methods=['GET'])
+# @data_bp.route('/api/funnel', methods=['GET'])  # 已迁移到 data_legacy_api.py
+@cached_api('get_funnel_analysis', ttl=60)
 def get_funnel_analysis():
     """漏斗分析：曝光→浏览→加购→收藏→支付"""
     dim = request.args.get('dim', 'monthly')
@@ -5163,7 +5237,8 @@ def get_funnel_analysis():
 
 # ==================== 行业基准对比 API ====================
 
-@data_bp.route('/api/industry_benchmark', methods=['GET'])
+# @data_bp.route('/api/industry_benchmark', methods=['GET'])  # 已迁移到 market_legacy_api.py
+@cached_api('get_industry_benchmark', ttl=120)
 def get_industry_benchmark():
     """Return conditional benchmark evidence without inventing zero values."""
     dim = request.args.get('dim', 'monthly')
@@ -5236,7 +5311,7 @@ def get_industry_benchmark():
 
 # ==================== 商品画像标签 API ====================
 
-@data_bp.route('/api/product_tags', methods=['GET'])
+# @data_bp.route('/api/product_tags', methods=['GET'])  # 已迁移到 products_legacy_api.py
 def get_product_tags():
     """商品自动画像标签 + 自定义标签"""
     dim = request.args.get('dim', 'monthly')
@@ -5344,7 +5419,7 @@ def get_product_tags():
     return jsonify(results)
 
 
-@data_bp.route('/api/product_tags', methods=['POST'])
+# @data_bp.route('/api/product_tags', methods=['POST'])  # 已迁移到 products_legacy_api.py
 def add_product_tag():
     """添加自定义标签"""
     data = json_object(request)
@@ -5367,7 +5442,7 @@ def add_product_tag():
     return jsonify({'success': True})
 
 
-@data_bp.route('/api/product_tags/<int:tag_id>', methods=['DELETE'])
+# @data_bp.route('/api/product_tags/<int:tag_id>', methods=['DELETE'])  # 已迁移到 products_legacy_api.py
 def delete_product_tag(tag_id):
     """删除标签"""
     with get_db() as conn:

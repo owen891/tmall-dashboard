@@ -84,6 +84,7 @@ def run_recovery_drill(source_database_path):
 
 
 def run_preflight(database_path=None, *, username=None, password=None, require_auth=False):
+    """Run checks against a temporary copy so the inspected database is never migrated."""
     if database_path is None:
         with tempfile.TemporaryDirectory(prefix='tmall-production-preflight-') as directory:
             return run_preflight(
@@ -93,45 +94,50 @@ def run_preflight(database_path=None, *, username=None, password=None, require_a
                 require_auth=require_auth,
             )
 
-    app_config = {'TESTING': False, 'DATABASE_PATH': str(database_path)}
-    if username is not None:
-        app_config['DASHBOARD_USERNAME'] = username
-    if password is not None:
-        app_config['DASHBOARD_PASSWORD'] = password
-    app = create_app(app_config)
-    with app.test_client() as client:
-        health_response = client.get('/healthz')
-        health_payload = health_response.get_json()
-        routes = {}
-        for route in FORMAL_ROUTES:
-            response = client.get(route)
-            routes[route] = response.status_code
-            response.close()
-        health_response.close()
+    source = Path(database_path).resolve()
+    with tempfile.TemporaryDirectory(prefix='tmall-production-preflight-') as directory:
+        runtime_path = Path(directory) / 'dashboard.db'
+        if source.is_file():
+            shutil.copy2(source, runtime_path)
+        app_config = {'TESTING': False, 'DATABASE_PATH': str(runtime_path)}
+        if username is not None:
+            app_config['DASHBOARD_USERNAME'] = username
+        if password is not None:
+            app_config['DASHBOARD_PASSWORD'] = password
+        app = create_app(app_config)
+        with app.test_client() as client:
+            health_response = client.get('/healthz')
+            health_status = health_response.status_code
+            health_payload = health_response.get_json()
+            routes = {}
+            for route in FORMAL_ROUTES:
+                response = client.get(route)
+                routes[route] = response.status_code
+                response.close()
 
-        auth_report = {'required': bool(require_auth)}
-        if require_auth and username and password:
-            credentials = base64.b64encode(f'{username}:{password}'.encode('utf-8')).decode('ascii')
-            unauthenticated = client.get('/healthz', environ_overrides={'REMOTE_ADDR': '192.168.10.20'})
-            authenticated = client.get(
-                '/healthz',
-                headers={'Authorization': f'Basic {credentials}'},
-                environ_overrides={'REMOTE_ADDR': '192.168.10.20'},
-            )
-            auth_report.update({
-                'unauthenticated_external_status': unauthenticated.status_code,
-                'authenticated_external_status': authenticated.status_code,
-            })
-            unauthenticated.close()
-            authenticated.close()
-        elif require_auth:
-            auth_report['error'] = 'AUTH_CONFIGURATION_REQUIRED'
+            auth_report = {'required': bool(require_auth)}
+            if require_auth and username and password:
+                credentials = base64.b64encode(f'{username}:{password}'.encode('utf-8')).decode('ascii')
+                unauthenticated = client.get('/healthz', environ_overrides={'REMOTE_ADDR': '192.168.10.20'})
+                authenticated = client.get(
+                    '/healthz',
+                    headers={'Authorization': f'Basic {credentials}'},
+                    environ_overrides={'REMOTE_ADDR': '192.168.10.20'},
+                )
+                auth_report.update({
+                    'unauthenticated_external_status': unauthenticated.status_code,
+                    'authenticated_external_status': authenticated.status_code,
+                })
+                unauthenticated.close()
+                authenticated.close()
+            elif require_auth:
+                auth_report['error'] = 'AUTH_CONFIGURATION_REQUIRED'
 
-    database = _database_report(database_path)
+    database = _database_report(source)
     ok = (
         database['integrity'] == 'ok'
-        and health_response.status_code == 200
-        and health_payload['data']['database'] == 'ok'
+        and health_status == 200
+        and health_payload.get('data', {}).get('database') == 'ok'
         and all(status == 200 for status in routes.values())
     )
     if require_auth:
@@ -139,7 +145,7 @@ def run_preflight(database_path=None, *, username=None, password=None, require_a
     return {
         'ok': ok,
         'database': database,
-        'health': {'status': health_response.status_code, 'payload': health_payload},
+        'health': {'status': health_status, 'payload': health_payload},
         'routes': routes,
         'auth': auth_report,
     }

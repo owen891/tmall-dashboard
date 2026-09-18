@@ -42,6 +42,8 @@ if (-not $SkipPreflight) {
 & py -3 -m waitress `
     "--host=$ListenHost" `
     "--port=$Port" `
+    "--threads=16" `
+    "--connection-limit=200" `
     '--trusted-proxy=127.0.0.1' `
     '--trusted-proxy-headers=x-forwarded-for' `
     'wsgi:application'

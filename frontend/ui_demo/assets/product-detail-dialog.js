@@ -1,4 +1,4 @@
-(function () {
+﻿(function () {
   const css = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
   const chartPointRadius = () => window.DemoCharts?.chartPointRadius?.() || 3;
   const chartLineWidth = () => window.DemoCharts?.chartLineWidth?.() || 2;
@@ -11,6 +11,7 @@
   const detailTabs = [
     ['overview', '经营概览'],
     ['trend', '日趋势'],
+    ['flow-source', '流量结构'],
     ['lifecycle', '生命周期'],
     ['collaboration', '协作记录'],
   ];
@@ -226,6 +227,130 @@
     return wrapper;
   }
 
+  function renderFlowSource(flowData) {
+    const wrapper = section('流量结构', '生意参谋 · 第一次访问来源口径 · 支持三级渠道下钻');
+    if (!flowData || !flowData.channels || !flowData.channels.length) {
+      wrapper.append(node('p', 'panel__hint', '暂无流量来源数据'));
+      return wrapper;
+    }
+    const allChannels = flowData.channels || [];
+    const totalUv = flowData.total_uv || 0;
+    const totalPay = flowData.total_pay_amount || 0;
+    let totalBuyers = 0;
+    allChannels.forEach(ch => { totalBuyers += ch.pay_buyer_count || 0; });
+
+    // 当前层级状态
+    let currentLevel = 0;
+    let currentParent = null;
+    const breadcrumb = [];
+
+    // 指标卡片
+    const metricsGrid = node('div', 'detail-metrics product-detail-metrics');
+    metricsGrid.append(
+      metric('总访客数', number(totalUv)),
+      metric('总支付金额', money(totalPay)),
+      metric('支付买家数', number(totalBuyers)),
+      metric('渠道数', number(allChannels.length)),
+    );
+    wrapper.append(metricsGrid);
+
+    // 面包屑导航
+    const breadcrumbBar = node('div', '');
+    breadcrumbBar.style.cssText = 'display:flex;gap:8px;align-items:center;margin-bottom:12px;flex-wrap:wrap;';
+    const breadcrumbText = node('span', 'panel__hint', '当前层级：渠道列表');
+    breadcrumbBar.append(breadcrumbText);
+
+    // 表格容器
+    const tableContainer = node('div');
+
+    function getChannelsForLevel(level, parent) {
+      return allChannels.filter(ch => {
+        if (level === 0) return ch.level === 2 || ch.level === 0 || ch.level == null;
+        return ch.level === level && ch.parent_channel === parent;
+      }).sort((a, b) => (b.uv || 0) - (a.uv || 0));
+    }
+
+    function renderTable() {
+      const channels = getChannelsForLevel(currentLevel, currentParent);
+      const levelTotalUv = channels.reduce((s, ch) => s + (ch.uv || 0), 0);
+
+      // 更新面包屑
+      const levelNames = ['渠道列表', '二级渠道', '三级渠道'];
+      let bcHtml = `<span style="cursor:pointer;color:var(--brand-color);text-decoration:underline;" data-bc-level="0">全部渠道</span>`;
+      breadcrumb.forEach((item, idx) => {
+        bcHtml += ` <span style="color:var(--text-tertiary);">/</span> `;
+        if (idx < breadcrumb.length - 1) {
+          bcHtml += `<span style="cursor:pointer;color:var(--brand-color);text-decoration:underline;" data-bc-level="${idx + 1}">${item.name}</span>`;
+        } else {
+          bcHtml += `<span style="font-weight:600;">${item.name}</span>`;
+        }
+      });
+      breadcrumbText.innerHTML = `当前层级：${levelNames[currentLevel] || ('Level ' + currentLevel)} ${bcHtml}`;
+
+      // 绑定面包屑点击
+      breadcrumbText.querySelectorAll('[data-bc-level]').forEach(el => {
+        el.addEventListener('click', () => {
+          const level = parseInt(el.dataset.bcLevel);
+          currentLevel = level;
+          if (level === 0) {
+            currentParent = null;
+            breadcrumb.length = 0;
+          } else {
+            breadcrumb.length = level;
+            currentParent = breadcrumb[level - 1].channel;
+          }
+          renderTable();
+        });
+      });
+
+      // 渲染表格
+      tableContainer.replaceChildren();
+      const tableWrap = node('div', 'data-table-wrap');
+      const table = node('table', 'data-table');
+      table.innerHTML = '<thead><tr><th>渠道名称</th><th class="num">访客数</th><th class="num">访客占比</th><th class="num">支付金额</th><th class="num">支付买家</th><th class="num">支付转化率</th><th class="num">UV价值</th></tr></thead>';
+      const tbody = document.createElement('tbody');
+
+      if (!channels.length) {
+        tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--text-tertiary);padding:16px;">暂无下级渠道数据</td></tr>';
+      }
+
+      channels.forEach(ch => {
+        const tr = document.createElement('tr');
+        const hasChildren = allChannels.some(c => c.level === currentLevel + 1 && c.parent_channel === ch.channel_name);
+        const uvPct = levelTotalUv > 0 ? ((ch.uv / levelTotalUv) * 100).toFixed(1) + '%' : '--';
+        const rate = ch.pay_rate != null ? (ch.pay_rate * 100).toFixed(2) + '%' : '--';
+        const uvValue = ch.uv != null && ch.uv > 0 && ch.pay_amount != null ? '¥' + (ch.pay_amount / ch.uv).toFixed(2) : '--';
+
+        const nameTd = node('td', '', '');
+        if (hasChildren) {
+          nameTd.innerHTML = `<strong style="cursor:pointer;color:var(--brand-color);">${escapeHtml(ch.channel_name)} →</strong>`;
+          nameTd.querySelector('strong').addEventListener('click', () => {
+            breadcrumb.push({ name: ch.channel_name, channel: ch.channel_name });
+            currentParent = ch.channel_name;
+            currentLevel = ch.level + 1;
+            renderTable();
+          });
+        } else {
+          nameTd.innerHTML = `<strong>${ch.channel_name}</strong>`;
+        }
+
+        [number(ch.uv), uvPct, money(ch.pay_amount), number(ch.pay_buyer_count), rate, uvValue].forEach((value, index) => {
+          const td = node('td', 'num', value);
+          tr.appendChild(td);
+        });
+        tr.insertBefore(nameTd, tr.firstChild);
+        tbody.appendChild(tr);
+      });
+      table.appendChild(tbody);
+      tableWrap.appendChild(table);
+      tableContainer.appendChild(tableWrap);
+    }
+
+    wrapper.append(breadcrumbBar, tableContainer);
+    renderTable();
+    return wrapper;
+  }
+
   function renderLifecycle(lifecycle) {
     const wrapper = section('生命周期');
     if (!lifecycle) { wrapper.append(node('p', 'panel__hint', '暂无生命周期评估')); return wrapper; }
@@ -364,6 +489,7 @@
       panel.appendChild(overviewLayout);
     }
     if (tab === 'trend') panel.append(renderTrend(detail.daily_trend));
+    if (tab === 'flow-source') panel.append(renderFlowSource(current.flowSource));
     if (tab === 'lifecycle') panel.append(renderLifecycle(detail.lifecycle));
     if (tab === 'collaboration') {
       panel.append(
@@ -414,9 +540,10 @@
       DemoApi.request(`/api/product_tags?dim=monthly&period=${encodeURIComponent(period)}`),
       DemoApi.domainRequest(`/api/actions?product_id=${id}&limit=500`),
       DemoApi.loadPageCapabilities('product-detail'),
+      fetch(`/api/sycm/item-flow/summary?item_id=${encodeURIComponent(current.productId)}&belong=all`).then(r => r.json()).catch(() => ({ ok: false })),
     ]);
     if (loadToken !== token || !current) return;
-    const [detailResult, notesResult, tagsResult, actionsResult, capabilityResult] = results;
+    const [detailResult, notesResult, tagsResult, actionsResult, capabilityResult, flowSourceResult] = results;
     if (detailResult.status !== 'fulfilled') {
       body.replaceChildren(node('div', 'empty-state', detailResult.reason?.message || '商品详情加载失败'));
       return;
@@ -456,11 +583,13 @@
       notes: notesResult.status === 'fulfilled' ? (notesResult.value || []) : [],
       tags: tagsResult.status === 'fulfilled' ? (tagsResult.value || []) : [],
       actions: actionsResult.status === 'fulfilled' ? actionsResult.value : [],
+      flowSource: flowSourceResult.status === 'fulfilled' && flowSourceResult.value.ok ? flowSourceResult.value.data : null,
       notesError: notesResult.status !== 'fulfilled',
       tagsError: tagsResult.status !== 'fulfilled',
       actionsError: actionsResult.status !== 'fulfilled',
       capabilityError: capabilityResult.status !== 'fulfilled',
     };
+    current.flowSource = current.view.flowSource;
     updateTabState();
     renderCurrentPanel();
   }

@@ -160,3 +160,33 @@ def audit_import(batch_id):
         limitations=limitations_for(availability, missing_inputs=missing_inputs),
         evidence=[{'source': 'import_batch_changes', 'batch_id': batch_id, 'row_count': len(audit_rows)}],
     )
+
+
+@imports_bp.route('/api/imports/<batch_id>/staging', methods=['GET'])
+def staging_import(batch_id):
+    """Return the normalized rows that were staged before atomic publish."""
+    from db import get_db
+    shop_id = get_shop_id()
+    with get_db() as connection:
+        batch = connection.execute(
+            'SELECT id, shop_id FROM import_batches WHERE id = ?', (batch_id,)
+        ).fetchone()
+        if not batch:
+            return failure('VALIDATION_ERROR', '导入批次不存在', status=404)
+        if str(batch['shop_id'] or 'default') != shop_id:
+            return failure('UNSUPPORTED_SCOPE', '导入批次不属于当前店铺', status=422)
+        rows = connection.execute(
+            '''SELECT row_no, payload_json, status, staged_at, published_at
+               FROM import_staging_rows WHERE batch_id = ? ORDER BY row_no''',
+            (batch_id,),
+        ).fetchall()
+    staging_rows = [dict(row) for row in rows]
+    availability = 'available' if staging_rows else 'no-data'
+    return success(
+        staging_rows,
+        availability=availability,
+        evidence_level=evidence_level_for(availability, missing_inputs=[] if staging_rows else ['import_staging_rows']),
+        missing_inputs=[] if staging_rows else ['import_staging_rows'],
+        limitations=limitations_for(availability, missing_inputs=[] if staging_rows else ['import_staging_rows']),
+        evidence=[{'source': 'import_staging_rows', 'batch_id': batch_id, 'row_count': len(staging_rows)}],
+    )

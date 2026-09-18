@@ -52,6 +52,21 @@ class PageCapabilityServiceTests(unittest.TestCase):
         self.assertNotIn('data-promotion-drawer', surfaces['promotion.drilldown-detail']['selector'])
         self.assertEqual(surfaces['manage.schedule']['modal_kind'], 'flow')
 
+    def test_product_detail_page_and_shared_dialog_have_distinct_targets(self):
+        from services.page_capability_service import (
+            CAPABILITY_DEFINITIONS,
+            PAGE_DEFINITIONS,
+            SURFACE_DEFINITIONS,
+        )
+
+        page = next(item for item in PAGE_DEFINITIONS if item['key'] == 'product-detail')
+        capability = next(item for item in CAPABILITY_DEFINITIONS if item['key'] == 'product-detail.view')
+        surface = next(item for item in SURFACE_DEFINITIONS if item['key'] == 'product-detail.dialog')
+        self.assertTrue(any(path.endswith('product-detail-live.js') for path in page['target_files']))
+        self.assertTrue(any(path.endswith('product-detail-live.js') for path in capability['target_files']))
+        self.assertTrue(any(path.endswith('product-detail-dialog.js') for path in surface['target_files']))
+        self.assertFalse(any(path.endswith('product-detail-dialog.js') for path in page['target_files']))
+
     def test_registry_endpoints_match_real_flask_routes(self):
         from services.page_capability_service import validate_registry, build_page_catalog
 

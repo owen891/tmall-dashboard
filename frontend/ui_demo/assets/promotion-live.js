@@ -531,6 +531,7 @@
       image.className = 'product-thumb';
       image.alt = `${productTitle(row)}主图`;
       image.loading = 'lazy';
+      image.referrerPolicy = 'no-referrer';
       image.src = source;
       image.addEventListener('error', () => image.replaceWith(productThumbnailPlaceholder(row)), { once: true });
       return image;

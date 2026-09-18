@@ -355,6 +355,7 @@
         image.height = 42;
         image.loading = 'lazy';
         image.alt = '';
+        image.referrerPolicy = 'no-referrer';
         image.src = thumbnailUrl;
         card.querySelector('.lifecycle-card__header')?.firstElementChild?.replaceWith(image);
       }

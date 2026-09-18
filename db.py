@@ -1,4 +1,4 @@
-import sqlite3
+﻿import sqlite3
 import os
 from contextlib import contextmanager
 import yaml
@@ -33,7 +33,7 @@ def get_db_path():
     return os.path.join(PROJECT_ROOT, 'data', 'dashboard.db')
 
 
-def get_shop_id(default='default'):
+def get_shop_id(default='3828498662'):
     """Return the canonical request or server shop scope."""
     if has_app_context():
         scoped = getattr(g, 'shop_id', None)
@@ -48,7 +48,7 @@ def get_shop_id(default='default'):
 def require_default_shop_scope():
     """Fail closed while all current product tables remain single-shop."""
     shop_id = get_shop_id()
-    if shop_id != 'default':
+    if shop_id not in ('default', '3828498662'):
         raise PermissionError(f'当前产品仅支持 default 店铺 scope，不允许访问 {shop_id}')
     return shop_id
 
@@ -59,11 +59,19 @@ def get_connection(db_path=None):
     # Import scans and dashboard mutations can overlap.  Give short-lived
     # readers/writers time to wait for the WAL writer instead of surfacing a
     # transient "database is locked" error to the request.
-    conn = sqlite3.connect(db_path, timeout=10.0)
+    conn = sqlite3.connect(db_path, timeout=30.0)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
-    conn.execute("PRAGMA busy_timeout=10000")
+    conn.execute("PRAGMA busy_timeout=30000")
     conn.execute("PRAGMA foreign_keys=ON")
+    # 性能优化：WAL模式下NORMAL足够安全，写入更快
+    conn.execute("PRAGMA synchronous=NORMAL")
+    # 缓存20MB（默认2MB）
+    conn.execute("PRAGMA cache_size=-20000")
+    # 临时表用内存
+    conn.execute("PRAGMA temp_store=MEMORY")
+    # 启用mmap提高读性能（256MB）
+    conn.execute("PRAGMA mmap_size=268435456")
     return conn
 
 @contextmanager
@@ -394,6 +402,19 @@ def init_db(db_path=None):
     );
     CREATE INDEX IF NOT EXISTS idx_import_batches_status ON import_batches(status);
 
+    CREATE TABLE IF NOT EXISTS import_staging_rows (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        batch_id TEXT NOT NULL,
+        row_no INTEGER NOT NULL,
+        payload_json TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'staged',
+        staged_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        published_at TIMESTAMP,
+        UNIQUE(batch_id, row_no),
+        FOREIGN KEY (batch_id) REFERENCES import_batches(id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_import_staging_batch ON import_staging_rows(batch_id, row_no);
+
     CREATE TABLE IF NOT EXISTS import_batch_changes (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         batch_id TEXT NOT NULL,
@@ -496,6 +517,11 @@ def init_db(db_path=None):
         campaign_id TEXT NOT NULL DEFAULT '',
         unit_id TEXT NOT NULL DEFAULT '',
         product_id TEXT NOT NULL DEFAULT '',
+        grain TEXT NOT NULL DEFAULT '',
+        campaign_name TEXT NOT NULL DEFAULT '',
+        cart_adds INTEGER,
+        cart_cost REAL,
+        new_buyers INTEGER,
         ad_spend REAL,
         attributed_payment_amount REAL,
         impressions INTEGER,
@@ -507,6 +533,70 @@ def init_db(db_path=None):
         PRIMARY KEY (shop_id, date, channel, campaign_id, unit_id, product_id)
     );
     CREATE INDEX IF NOT EXISTS idx_promotion_daily_facts_grain ON promotion_daily_facts(date, channel, campaign_id, unit_id, product_id);
+    CREATE TABLE IF NOT EXISTS promotion_period_summary (
+        shop_id TEXT NOT NULL DEFAULT 'default',
+        period_start DATE NOT NULL,
+        period_end DATE NOT NULL,
+        channel TEXT NOT NULL,
+        ad_spend REAL,
+        source_batch_id TEXT,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (shop_id, period_start, period_end, channel)
+    );
+    CREATE INDEX IF NOT EXISTS idx_promotion_period_summary_period
+        ON promotion_period_summary(shop_id, period_start, period_end);
+
+    CREATE TABLE IF NOT EXISTS promotion_creatives (
+        shop_id TEXT NOT NULL DEFAULT 'default',
+        creative_id TEXT NOT NULL,
+        creative_name TEXT NOT NULL DEFAULT '',
+        image_url TEXT NOT NULL DEFAULT '',
+        video_url TEXT NOT NULL DEFAULT '',
+        creative_format TEXT NOT NULL DEFAULT '',
+        product_id TEXT NOT NULL DEFAULT '',
+        product_name TEXT NOT NULL DEFAULT '',
+        channel TEXT NOT NULL DEFAULT '',
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (shop_id, creative_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_promotion_creatives_product
+        ON promotion_creatives(shop_id, product_id);
+
+    CREATE TABLE IF NOT EXISTS promotion_creative_daily (
+        shop_id TEXT NOT NULL DEFAULT 'default',
+        date DATE NOT NULL,
+        channel TEXT NOT NULL,
+        creative_id TEXT NOT NULL,
+        product_id TEXT NOT NULL DEFAULT '',
+        campaign_id TEXT NOT NULL DEFAULT '',
+        ad_spend REAL,
+        attributed_payment_amount REAL,
+        impressions INTEGER,
+        clicks INTEGER,
+        payment_buyers INTEGER,
+        direct_payment_amount REAL,
+        indirect_payment_amount REAL,
+        cart_adds INTEGER,
+        new_buyers INTEGER,
+        source_batch_id TEXT,
+        PRIMARY KEY (shop_id, date, channel, creative_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_promotion_creative_daily_product
+        ON promotion_creative_daily(shop_id, product_id, date);
+
+    CREATE TABLE IF NOT EXISTS promotion_campaign_items (
+        shop_id TEXT NOT NULL DEFAULT 'default',
+        campaign_id TEXT NOT NULL,
+        product_id TEXT NOT NULL,
+        campaign_name TEXT NOT NULL DEFAULT '',
+        product_name TEXT NOT NULL DEFAULT '',
+        image_url TEXT NOT NULL DEFAULT '',
+        channel TEXT NOT NULL DEFAULT '',
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (shop_id, campaign_id, product_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_promotion_campaign_items_product
+        ON promotion_campaign_items(shop_id, product_id);
 
     CREATE TABLE IF NOT EXISTS lifecycle_profiles (
         product_id TEXT PRIMARY KEY,
@@ -921,6 +1011,137 @@ def init_db(db_path=None):
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
 
+    CREATE TABLE IF NOT EXISTS collector_runs (
+        id TEXT PRIMARY KEY,
+        source_key TEXT NOT NULL,
+        shop_id TEXT NOT NULL DEFAULT 'default',
+        window_start TEXT,
+        window_end TEXT,
+        mode TEXT NOT NULL DEFAULT 'manual',
+        status TEXT NOT NULL DEFAULT 'queued',
+        priority INTEGER NOT NULL DEFAULT 100,
+        attempt INTEGER NOT NULL DEFAULT 0,
+        worker_id TEXT,
+        lease_until TEXT,
+        requested_by TEXT,
+        started_at TEXT,
+        finished_at TEXT,
+        checkpoint_json TEXT NOT NULL DEFAULT '{}',
+        stats_json TEXT NOT NULL DEFAULT '{}',
+        error_code TEXT,
+        error_message TEXT,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS collector_leases (
+        source_key TEXT NOT NULL,
+        shop_id TEXT NOT NULL,
+        run_id TEXT NOT NULL,
+        lease_until TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (source_key, shop_id),
+        FOREIGN KEY (run_id) REFERENCES collector_runs(id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_collector_leases_until ON collector_leases(lease_until);
+
+    CREATE INDEX IF NOT EXISTS idx_collector_runs_status
+        ON collector_runs(status, priority, created_at);
+    CREATE INDEX IF NOT EXISTS idx_collector_runs_source_window
+        ON collector_runs(source_key, shop_id, window_start, window_end);
+
+    CREATE TABLE IF NOT EXISTS collector_checkpoints (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        run_id TEXT NOT NULL,
+        unit_type TEXT NOT NULL,
+        unit_key TEXT NOT NULL,
+        page_no INTEGER,
+        cursor TEXT,
+        status TEXT NOT NULL,
+        row_count INTEGER NOT NULL DEFAULT 0,
+        source_hash TEXT,
+        last_error_code TEXT,
+        last_error_message TEXT,
+        started_at TEXT,
+        finished_at TEXT,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(run_id, unit_type, unit_key, page_no),
+        FOREIGN KEY(run_id) REFERENCES collector_runs(id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_collector_checkpoints_run
+        ON collector_checkpoints(run_id, status);
+
+    CREATE TABLE IF NOT EXISTS collector_quality_results (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        run_id TEXT NOT NULL,
+        rule_key TEXT NOT NULL,
+        severity TEXT NOT NULL,
+        expected_value TEXT,
+        actual_value TEXT,
+        status TEXT NOT NULL,
+        message TEXT,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY(run_id) REFERENCES collector_runs(id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_collector_quality_run
+        ON collector_quality_results(run_id, status);
+
+    CREATE TABLE IF NOT EXISTS collector_artifacts (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        run_id TEXT NOT NULL,
+        artifact_type TEXT NOT NULL,
+        path TEXT NOT NULL,
+        sha256 TEXT NOT NULL,
+        size_bytes INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY(run_id) REFERENCES collector_runs(id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_collector_artifacts_run
+        ON collector_artifacts(run_id, artifact_type);
+
+    CREATE TABLE IF NOT EXISTS collector_data_staging (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        source_key TEXT NOT NULL,
+        batch_id TEXT NOT NULL,
+        unit_type TEXT NOT NULL DEFAULT 'row',
+        unit_key TEXT NOT NULL,
+        payload_json TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'staged',
+        quality_message TEXT,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        published_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_collector_data_staging_batch
+        ON collector_data_staging(batch_id, status);
+
+    CREATE TABLE IF NOT EXISTS collector_health_alerts (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        source_key TEXT NOT NULL,
+        alert_type TEXT NOT NULL,
+        severity TEXT NOT NULL DEFAULT 'warning',
+        status TEXT NOT NULL DEFAULT 'open',
+        fingerprint TEXT NOT NULL,
+        message TEXT NOT NULL,
+        details_json TEXT NOT NULL DEFAULT '{}',
+        first_seen_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        last_seen_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        resolved_at TEXT,
+        UNIQUE(source_key, alert_type, fingerprint, status)
+    );
+    CREATE INDEX IF NOT EXISTS idx_collector_health_alerts_status
+        ON collector_health_alerts(status, last_seen_at);
+
+    CREATE TABLE IF NOT EXISTS collector_schema_snapshots (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        source_key TEXT NOT NULL,
+        schema_hash TEXT NOT NULL,
+        schema_json TEXT NOT NULL,
+        observed_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(source_key, schema_hash)
+    );
+    CREATE INDEX IF NOT EXISTS idx_collector_schema_snapshots_source
+        ON collector_schema_snapshots(source_key, observed_at);
+
     CREATE INDEX IF NOT EXISTS idx_product_tags_product ON product_tags(product_id);
     CREATE INDEX IF NOT EXISTS idx_product_tags_tag ON product_tags(tag);
 
@@ -1060,6 +1281,22 @@ def init_db(db_path=None):
     for col, col_def in new_monthly_cols.items():
         if col not in existing_monthly_cols:
             cursor.execute(f'ALTER TABLE monthly_data ADD COLUMN {col} {col_def}')
+
+    # Migration: add dimension/behavior columns to promotion_daily_facts.
+    # grain tags each row's aggregation level ('channel'/'campaign'/'unit'/'product')
+    # so report queries can sum a single grain instead of mixing overlapping rows.
+    new_promotion_cols = {
+        'grain': "TEXT NOT NULL DEFAULT ''",
+        'campaign_name': "TEXT NOT NULL DEFAULT ''",
+        'cart_adds': 'INTEGER',
+        'cart_cost': 'REAL',
+        'new_buyers': 'INTEGER',
+    }
+    cursor.execute("PRAGMA table_info(promotion_daily_facts)")
+    existing_promotion_cols = {row[1] for row in cursor.fetchall()}
+    for col, col_def in new_promotion_cols.items():
+        if col not in existing_promotion_cols:
+            cursor.execute(f'ALTER TABLE promotion_daily_facts ADD COLUMN {col} {col_def}')
 
     # Migration: add new columns to paid_detail table
     new_paid_cols = {

@@ -7,7 +7,7 @@
   <link rel="stylesheet" href="../assets/tokens.css">
   <link rel="stylesheet" href="../assets/shell.css">
   <link rel="stylesheet" href="../assets/components.css">
-  <script src="../assets/lucide-1.8.0.min.js"></script>
+  <script src="../assets/lucide-custom.min.js"></script>
 </head>
 <body data-page="product-detail">
   <div class="demo-app">
@@ -34,11 +34,11 @@
         </header>
 
         <section class="metric-grid product-workbench__kpis" aria-label="商品核心指标">
-          <article class="metric-card"><div class="metric-card__label">净销售额</div><div class="metric-card__value" data-product-detail-kpi="net_sales">--</div><div class="metric-card__hint">当前日期范围</div></article>
-          <article class="metric-card"><div class="metric-card__label">支付金额</div><div class="metric-card__value" data-product-detail-kpi="payment_amount">--</div><div class="metric-card__hint">成交规模</div></article>
-          <article class="metric-card"><div class="metric-card__label">支付转化率</div><div class="metric-card__value" data-product-detail-kpi="payment_conversion_rate">--</div><div class="metric-card__hint">访客到支付</div></article>
-          <article class="metric-card"><div class="metric-card__label">费比</div><div class="metric-card__value" data-product-detail-kpi="expense_ratio">--</div><div class="metric-card__hint">推广花费 / 支付</div></article>
-          <article class="metric-card"><div class="metric-card__label">客单价</div><div class="metric-card__value" data-product-detail-kpi="average_order_value">--</div><div class="metric-card__hint">支付金额 / 买家</div></article>
+          <article class="metric-card metric-card--drillable" data-drill-metric="net_sales"><div class="metric-card__label">净销售额</div><div class="metric-card__value" data-product-detail-kpi="net_sales">--</div><div class="metric-card__hint">当前日期范围</div></article>
+          <article class="metric-card metric-card--drillable" data-drill-metric="payment_amount"><div class="metric-card__label">支付金额</div><div class="metric-card__value" data-product-detail-kpi="payment_amount">--</div><div class="metric-card__hint">成交规模</div></article>
+          <article class="metric-card metric-card--drillable" data-drill-metric="payment_conversion_rate"><div class="metric-card__label">支付转化率</div><div class="metric-card__value" data-product-detail-kpi="payment_conversion_rate">--</div><div class="metric-card__hint">访客到支付</div></article>
+          <article class="metric-card metric-card--drillable" data-drill-metric="expense_ratio"><div class="metric-card__label">费比</div><div class="metric-card__value" data-product-detail-kpi="expense_ratio">--</div><div class="metric-card__hint">推广花费 / 支付</div></article>
+          <article class="metric-card metric-card--drillable" data-drill-metric="average_order_value"><div class="metric-card__label">客单价</div><div class="metric-card__value" data-product-detail-kpi="average_order_value">--</div><div class="metric-card__hint">支付金额 / 买家</div></article>
         </section>
 
         <nav class="product-workbench__tabs" role="tablist" aria-label="商品详情分组">
@@ -137,6 +137,61 @@
       </main>
     </div>
   </div>
+  <!-- KPI下钻模态框 -->
+  <div class="drill-modal" data-drill-modal hidden>
+    <div class="drill-modal__overlay" data-drill-overlay></div>
+    <div class="drill-modal__dialog" role="dialog" aria-modal="true" aria-labelledby="drill-modal-title">
+      <header class="drill-modal__header">
+        <h3 class="drill-modal__title" id="drill-modal-title" data-drill-title>指标下钻</h3>
+        <button class="drill-modal__close" type="button" data-drill-close aria-label="关闭"><i data-lucide="x"></i></button>
+      </header>
+      <div class="drill-modal__body">
+        <div class="drill-modal__stats" data-drill-stats></div>
+        <div class="drill-modal__controls">
+          <div class="drill-modal__seg" role="tablist" data-drill-period>
+            <button type="button" class="drill-modal__seg-btn is-active" data-period="daily">日</button>
+            <button type="button" class="drill-modal__seg-btn" data-period="weekly">周</button>
+            <button type="button" class="drill-modal__seg-btn" data-period="monthly">月</button>
+          </div>
+        </div>
+        <div class="drill-modal__chart" data-drill-chart></div>
+        <div class="drill-modal__table-wrap">
+          <table class="data-table drill-modal__table">
+            <thead><tr><th>周期</th><th class="num">数值</th><th class="num">环比</th></tr></thead>
+            <tbody data-drill-table></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+  <style>
+    .metric-card--drillable{cursor:pointer;transition:box-shadow .15s,transform .15s}
+    .metric-card--drillable:hover{box-shadow:0 4px 16px rgba(0,0,0,.12);transform:translateY(-2px)}
+    .drill-modal{position:fixed;inset:0;z-index:1000;display:flex;align-items:center;justify-content:center}
+    .drill-modal[hidden]{display:none}
+    .drill-modal__overlay{position:absolute;inset:0;background:rgba(0,0,0,.5);backdrop-filter:blur(2px)}
+    .drill-modal__dialog{position:relative;background:var(--bg-surface,#fff);border-radius:12px;box-shadow:0 20px 60px rgba(0,0,0,.3);width:min(900px,92vw);max-height:88vh;display:flex;flex-direction:column;overflow:hidden}
+    .drill-modal__header{display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid var(--border-subtle,#eee)}
+    .drill-modal__title{margin:0;font-size:16px;font-weight:600}
+    .drill-modal__close{background:none;border:none;cursor:pointer;padding:6px;border-radius:6px;color:var(--text-secondary,#666)}
+    .drill-modal__close:hover{background:var(--bg-hover,#f5f5f5)}
+    .drill-modal__body{padding:20px;overflow-y:auto;flex:1}
+    .drill-modal__stats{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px}
+    .drill-modal__stat{background:var(--bg-subtle,#f8f9fa);border-radius:8px;padding:12px;text-align:center}
+    .drill-modal__stat-label{font-size:12px;color:var(--text-secondary,#666);margin-bottom:4px}
+    .drill-modal__stat-value{font-size:18px;font-weight:600;color:var(--text-primary,#222)}
+    .drill-modal__controls{display:flex;justify-content:flex-end;margin-bottom:12px}
+    .drill-modal__seg{display:inline-flex;background:var(--bg-subtle,#f0f0f0);border-radius:8px;padding:2px}
+    .drill-modal__seg-btn{border:none;background:transparent;padding:6px 14px;border-radius:6px;cursor:pointer;font-size:13px;color:var(--text-secondary,#666)}
+    .drill-modal__seg-btn.is-active{background:var(--bg-surface,#fff);color:var(--text-primary,#222);box-shadow:0 1px 3px rgba(0,0,0,.1)}
+    .drill-modal__chart{height:280px;margin-bottom:16px}
+    .drill-modal__table-wrap{max-height:240px;overflow-y:auto}
+    .drill-modal__table{width:100%;border-collapse:collapse;font-size:13px}
+    .drill-modal__table th,.drill-modal__table td{padding:8px 12px;text-align:left;border-bottom:1px solid var(--border-subtle,#eee)}
+    .drill-modal__table .num{text-align:right;font-variant-numeric:tabular-nums}
+    .drill-modal__table .up{color:#d4380d}
+    .drill-modal__table .down{color:#389e0d}
+  </style>
   <script src="../assets/api.js"></script>
   <script src="../assets/navigation.js"></script>
   <script src="../assets/labels.js"></script>

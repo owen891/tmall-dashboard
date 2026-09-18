@@ -1,0 +1,200 @@
+﻿# ============================================================
+# 完整RPA自动化采集脚本
+# 功能：启动Chrome -> 自动登录BI -> 打开所有页面 -> 触发采集 -> 等待完成 -> 输出结果
+# 用法:
+#   .\auto-collect.ps1                    # 采集全部
+#   .\auto-collect.ps1 -Sources bi_daily,bi_monthly  # 只采集BI
+#   .\auto-collect.ps1 -Sources sycm_flow,sycm_item_flow,sycm_market,wanxiangtai  # 只采集其他
+# 可通过 Windows 任务计划程序每天定时调用
+# ============================================================
+
+param(
+    [string[]]$Sources = @('bi_daily', 'bi_monthly', 'sycm_flow', 'sycm_item_flow', 'sycm_market', 'wanxiangtai')
+)
+
+$ErrorActionPreference = "Continue"
+
+# ==================== 配置 ====================
+$ChromePath = "C:\Program Files\Google\Chrome\Application\chrome.exe"
+$ChromeDebugPort = 9222
+$ChromeUserDataDir = "$env:LOCALAPPDATA\Google\Chrome\User Data Debug"
+$DashboardUrl = "http://127.0.0.1:5000"
+$ProjectRoot = if ($env:TMALL_PROJECT_ROOT) { $env:TMALL_PROJECT_ROOT } else { Split-Path -Parent $PSScriptRoot }
+$PythonPath = if ($env:TMALL_COLLECT_PYTHON) { $env:TMALL_COLLECT_PYTHON } else { Join-Path $ProjectRoot '.venv\Scripts\python.exe' }
+$LogDir = if ($env:TMALL_LOG_DIR) { $env:TMALL_LOG_DIR } else { Join-Path $ProjectRoot 'logs' }
+
+if (-not (Test-Path -LiteralPath $PythonPath)) { throw "采集 Python 不存在: $PythonPath" }
+
+$ChromeStartTimeout = 30
+$CollectWaitTimeout = 600
+$CloseChromeAfterCollect = $false
+
+$BIUsername = $env:BI_USERNAME
+$BIPassword = $env:BI_PASSWORD
+if ($Sources | Where-Object { $_ -like 'bi_*' }) {
+    if ([string]::IsNullOrWhiteSpace($BIUsername) -or [string]::IsNullOrWhiteSpace($BIPassword)) {
+        throw 'BI_USERNAME and BI_PASSWORD must be set for BI collection.'
+    }
+}
+
+$sourceNames = @{
+    'bi_daily' = 'BI商品日度'
+    'bi_monthly' = 'BI商品月度'
+    'sycm_flow' = '生意参谋-店铺流量'
+    'sycm_item_flow' = '生意参谋-单品流量'
+    'sycm_market' = '生意参谋-市场数据'
+    'wanxiangtai' = '万相台推广'
+}
+
+$needBIPage = $Sources | Where-Object { $_ -like 'bi_*' }
+$needOtherPages = $Sources | Where-Object { $_ -like 'sycm_*' -or $_ -eq 'wanxiangtai' }
+
+if (-not (Test-Path $LogDir)) {
+    New-Item -ItemType Directory -Path $LogDir -Force | Out-Null
+}
+
+$logFile = Join-Path $LogDir "auto-collect-$(Get-Date -Format 'yyyyMMdd-HHmmss').log"
+
+function Write-Log {
+    param([string]$Message, [string]$Level = "INFO")
+    $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+    $line = "[$timestamp] [$Level] $Message"
+    Write-Host $line
+    Add-Content -Path $logFile -Value $line -Encoding UTF8
+}
+
+Write-Log "========================================"
+Write-Log "  RPA 自动化采集开始"
+Write-Log "  采集数据源: $($Sources -join ', ')"
+Write-Log "========================================"
+
+# 1. 检查看板服务
+Write-Log "`n[1/6] 检查看板服务状态..."
+try {
+    $resp = Invoke-WebRequest -Uri "$DashboardUrl/api/health" -UseBasicParsing -TimeoutSec 5
+    Write-Log "  ✓ 看板服务运行正常"
+} catch {
+    Write-Log "  ✗ 看板服务未启动: $($_.Exception.Message)" "ERROR"
+    exit 1
+}
+
+# 2. 启动Chrome调试模式
+Write-Log "`n[2/6] 检查并启动Chrome调试模式..."
+function Test-ChromeDebug {
+    try {
+        $resp = Invoke-WebRequest -Uri "http://127.0.0.1:$ChromeDebugPort/json/version" -UseBasicParsing -TimeoutSec 2
+        return ($resp.StatusCode -eq 200)
+    } catch { return $false }
+}
+
+if (Test-ChromeDebug) {
+    Write-Log "  ✓ Chrome调试模式已在运行"
+} else {
+    Write-Log "  启动Chrome调试模式..."
+    Start-Process -FilePath $ChromePath -ArgumentList @(
+        "--remote-debugging-port=$ChromeDebugPort",
+        "--remote-allow-origins=*",
+        "--user-data-dir=$ChromeUserDataDir",
+        "--no-first-run",
+        "--no-default-browser-check"
+    ) -WindowStyle Normal
+
+    for ($i = 0; $i -lt $ChromeStartTimeout; $i++) {
+        Start-Sleep -Seconds 1
+        if (Test-ChromeDebug) { Write-Log "  ✓ Chrome启动成功（$($i+1)秒）"; break }
+    }
+}
+
+# 3. 自动登录 & 打开页面
+Write-Log "`n[3/6] 自动登录BI页面并打开采集页面..."
+if ($needBIPage -or $needOtherPages) {
+    $autoLoginScript = Join-Path $ProjectRoot "scripts\auto_login_bi.py"
+    $loginArgs = @($autoLoginScript)
+    if ($BIUsername) { $env:BI_USERNAME = $BIUsername }
+    if ($BIPassword) { $env:BI_PASSWORD = $BIPassword }
+    $loginOutput = & $PythonPath @loginArgs 2>&1
+    foreach ($line in $loginOutput) { Write-Log "  $line" }
+    Write-Log "  等待页面加载..."
+    Start-Sleep -Seconds 5
+} else {
+    Write-Log "  - 无需打开页面"
+}
+
+# 3b. 万相台自动登录（cookie 持久化，只在过期时才账密登录）
+if ($Sources -contains 'wanxiangtai') {
+    Write-Log "`n[3b] 检查万相台登录态..."
+    $credFile = "E:\桌面\AI\BI.txt"
+    if (Test-Path $credFile) {
+        $lines = Get-Content $credFile -Encoding UTF8
+        for ($i = 0; $i -lt $lines.Count; $i++) {
+            if ($lines[$i] -match '^账号[：:]\s*(.+)$' -and $i + 1 -lt $lines.Count) {
+                $env:WXT_USERNAME = $Matches[1].Trim()
+                if ($lines[$i+1] -match '^密码[：:]\s*(.+)$') {
+                    $env:WXT_PASSWORD = $Matches[1].Trim()
+                }
+                break
+            }
+        }
+    }
+    $wxtLoginScript = Join-Path $ProjectRoot "scripts\auto_login_wanxiangtai.py"
+    $wxtOutput = & $PythonPath $wxtLoginScript 2>&1
+    foreach ($line in $wxtOutput) { Write-Log "  $line" }
+}
+
+# 4. 触发采集任务
+Write-Log "`n[4/6] 触发采集任务..."
+$triggered = @()
+foreach ($source in $Sources) {
+    $name = $sourceNames[$source]
+    try {
+        $body = @{source = $source} | ConvertTo-Json
+        $resp = Invoke-WebRequest -Uri "$DashboardUrl/api/collect/trigger" -Method POST -Body $body -ContentType "application/json" -UseBasicParsing -TimeoutSec 10
+        $data = $resp.Content | ConvertFrom-Json
+        if ($data.ok) { Write-Log "  ✓ 已触发: $name"; $triggered += $source }
+        else { Write-Log "  ✗ 触发失败: $name - $($data.message)" "WARN" }
+    } catch {
+        Write-Log "  ✗ 触发异常: $name - $($_.Exception.Message)" "WARN"
+    }
+    Start-Sleep -Seconds 2
+}
+
+if ($triggered.Count -eq 0) { Write-Log "  ✗ 没有触发任何任务" "ERROR"; exit 1 }
+Write-Log "  成功触发 $($triggered.Count) 个任务"
+
+# 5. 等待采集完成
+Write-Log "`n[5/6] 等待采集完成..."
+for ($i = 0; $i -lt $CollectWaitTimeout; $i += 10) {
+    Start-Sleep -Seconds 10
+    $running = 0; $completed = 0; $failed = 0
+    foreach ($source in $triggered) {
+        try {
+            $resp = Invoke-WebRequest -Uri "$DashboardUrl/api/collect/log/$source" -UseBasicParsing -TimeoutSec 5
+            $status = ($resp.Content | ConvertFrom-Json).data.status
+            if ($status -eq 'running') { $running++ }
+            elseif ($status -eq 'completed') { $completed++ }
+            elseif ($status -eq 'failed') { $failed++ }
+        } catch {}
+    }
+    Write-Log "  已等待 $($i+10)秒: 运行中=$running, 完成=$completed, 失败=$failed"
+    if ($running -eq 0) { Write-Log "  ✓ 全部完成"; break }
+}
+
+# 6. 输出最终状态
+Write-Log "`n[6/6] 最终状态:"
+$successCount = 0; $failCount = 0
+foreach ($source in $triggered) {
+    $name = $sourceNames[$source]
+    try {
+        $resp = Invoke-WebRequest -Uri "$DashboardUrl/api/collect/log/$source" -UseBasicParsing -TimeoutSec 5
+        $data = $resp.Content | ConvertFrom-Json
+        if ($data.data.status -eq 'completed') { Write-Log "  ✓ $name : 成功"; $successCount++ }
+        elseif ($data.data.status -eq 'failed') { Write-Log "  ✗ $name : 失败 - $($data.data.error)"; $failCount++ }
+        else { Write-Log "  ⚠ $name : $($data.data.status)" }
+    } catch { Write-Log "  ? $name : 无法查询" }
+}
+
+Write-Log "========================================"
+Write-Log "  成功: $successCount, 失败: $failCount"
+Write-Log "========================================"
+
+if ($failCount -gt 0) { exit 1 } else { exit 0 }

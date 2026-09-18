@@ -3,7 +3,7 @@ from flask import Blueprint, request
 from api.api_response import failure, json_object, success
 from db import get_db
 from repos.audit_repo import AuditRepo
-from services.shop_scope_service import reject_legacy_shop_scope
+from services.shop_scope_service import audit_identity, reject_legacy_shop_scope, require_admin_write
 
 
 catalog_mutations_bp = Blueprint('catalog_mutations', __name__)
@@ -16,7 +16,7 @@ def _payload():
 
 
 def _operator_reason(data, default_reason):
-    return data.get('operator') or data.get('actor') or 'admin', data.get('reason') or default_reason
+    return audit_identity(data, default_reason)
 
 
 def _starred(value):
@@ -41,7 +41,7 @@ def _success(data, *, source, action, row_count=1, status=200, unknowns=None):
 
 
 def _legacy_catalog_guard():
-    return reject_legacy_shop_scope('商品目录')
+    return reject_legacy_shop_scope('商品目录') or require_admin_write()
 
 
 @catalog_mutations_bp.route('/api/products/<product_id>/metadata', methods=['PUT'])

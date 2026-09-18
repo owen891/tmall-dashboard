@@ -31,6 +31,11 @@
     if (n >= 10000) return (n / 10000).toFixed(1) + '万';
     return fmtInt(n);
   }
+  function escapeHtml(value) {
+    return String(value ?? '').replace(/[&<>"']/g, (char) => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    })[char]);
+  }
 
   // ===== 加载数据 =====
   async function loadSummary() {
@@ -96,7 +101,7 @@
       shopHtml += `
         <div style="margin-bottom:12px">
           <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px">
-            <span style="font-weight:600;color:${COLORS[cat.category] || '#666'}">${cat.category}</span>
+            <span style="font-weight:600;color:${COLORS[cat.category] || '#666'}">${escapeHtml(cat.category)}</span>
             <span style="color:var(--text-secondary)">天猫 ${tmallPct.toFixed(1)}% / 淘宝 ${(100-tmallPct).toFixed(1)}%</span>
           </div>
           <div style="display:flex;height:20px;border-radius:4px;overflow:hidden">
@@ -117,7 +122,7 @@
     const trendColors = ['#10b981', '#ef4444', '#9ca3af', '#3b82f6', '#f59e0b'];
     let trendHtml = '';
     categories.forEach(cat => {
-      trendHtml += `<div style="margin-bottom:8px"><span style="font-weight:600;font-size:12px;color:${COLORS[cat.category]}">${cat.category}</span></div>`;
+      trendHtml += `<div style="margin-bottom:8px"><span style="font-weight:600;font-size:12px;color:${COLORS[cat.category]}">${escapeHtml(cat.category)}</span></div>`;
       trendLabels.forEach((label, i) => {
         const val = cat[trendKeys[i]] || 0;
         const maxVal = Math.max(...categories.map(c => c[trendKeys[i]] || 0), 1);
@@ -138,7 +143,7 @@
     categories.forEach(cat => {
       concHtml += `
         <div style="margin-bottom:16px">
-          <div style="font-weight:600;font-size:12px;color:${COLORS[cat.category]};margin-bottom:6px">${cat.category}</div>
+          <div style="font-weight:600;font-size:12px;color:${COLORS[cat.category]};margin-bottom:6px">${escapeHtml(cat.category)}</div>
           <div class="market-bar-row">
             <span class="market-bar-label">TOP10</span>
             <div class="market-bar-track"><div class="market-bar-fill" style="width:${cat.concentration_top10 || 0}%;background:#4f46e5"></div></div>
@@ -161,7 +166,7 @@
       totalHtml += `
         <div style="margin-bottom:16px">
           <div style="display:flex;justify-content:space-between;margin-bottom:4px">
-            <span style="font-weight:600;font-size:13px;color:${COLORS[cat.category]}">${cat.category}</span>
+            <span style="font-weight:600;font-size:13px;color:${COLORS[cat.category]}">${escapeHtml(cat.category)}</span>
             <span style="font-family:var(--font-display);font-size:18px;font-weight:700">${fmtWan(cat.total_buyers)}</span>
           </div>
           <div style="height:24px;background:var(--surface-base);border-radius:4px;overflow:hidden">
@@ -176,19 +181,19 @@
   function renderFilters() {
     const catSel = $('[data-mr-filter-category]');
     catSel.innerHTML = '<option value="">全部类目</option>' +
-      state.categories.map(c => `<option value="${c}">${c}</option>`).join('');
+      state.categories.map(c => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join('');
 
     const listSel = $('[data-mr-filter-list-type]');
     listSel.innerHTML = '<option value="">全部榜单</option>' +
-      state.listTypes.map(t => `<option value="${t}">${t}</option>`).join('');
+      state.listTypes.map(t => `<option value="${escapeHtml(t)}">${escapeHtml(t)}</option>`).join('');
 
     const kwCatSel = $('[data-mr-kw-category]');
     kwCatSel.innerHTML = '<option value="">全部类目</option>' +
-      state.categories.map(c => `<option value="${c}">${c}</option>`).join('');
+      state.categories.map(c => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join('');
 
     const kwTypeSel = $('[data-mr-kw-type]');
     kwTypeSel.innerHTML = '<option value="">全部类型</option>' +
-      state.keywordTypes.map(t => `<option value="${t}">${t}</option>`).join('');
+      state.keywordTypes.map(t => `<option value="${escapeHtml(t)}">${escapeHtml(t)}</option>`).join('');
   }
 
   // ===== 渲染商品榜单 =====
@@ -204,10 +209,10 @@
         : `<span class="badge badge--muted">${p.rank}</span>`;
       return `<tr>
         <td>${rankBadge}</td>
-        <td><span class="badge badge--info">${p.category}</span></td>
-        <td><span class="badge badge--muted">${p.list_type}</span></td>
-        <td style="max-width:300px">${p.title || '-'}</td>
-        <td style="color:var(--text-secondary)">${p.shop || '-'}</td>
+        <td><span class="badge badge--info">${escapeHtml(p.category)}</span></td>
+        <td><span class="badge badge--muted">${escapeHtml(p.list_type)}</span></td>
+        <td style="max-width:300px">${escapeHtml(p.title || '-')}</td>
+        <td style="color:var(--text-secondary)">${escapeHtml(p.shop || '-')}</td>
         <td style="font-family:var(--font-mono)">${fmtInt(p.buyers)}</td>
         <td style="font-family:var(--font-mono)">${fmtInt(p.visitors)}</td>
       </tr>`;
@@ -224,7 +229,8 @@
       const max = Math.max(...list.map(k => k.count), 1);
       return list.map(k => `
         <div class="market-bar-row">
-          <span class="market-bar-label" style="width:70px">${k.keyword}</span>
+            <span class="market-bar-label" style="width:70px">${escapeHtml(k.keyword)}</span>
+
           <div class="market-bar-track"><div class="market-bar-fill" style="width:${k.count / max * 100}%;background:${color}"></div></div>
           <span class="market-bar-value" style="width:40px">${fmtInt(k.count)}</span>
         </div>`).join('');
@@ -241,7 +247,7 @@
       container.innerHTML = '<span style="color:var(--text-tertiary)">暂无重叠店铺</span>';
       return;
     }
-    container.innerHTML = shops.map(s => `<span class="market-overlap-tag">${s}</span>`).join('');
+    container.innerHTML = shops.map(s => `<span class="market-overlap-tag">${escapeHtml(s)}</span>`).join('');
   }
 
   // ===== 事件绑定 =====
@@ -265,38 +271,7 @@
   }
 
   // ===== 初始化 =====
-  async function init() {
-    try {
-      const [summary, filters] = await Promise.all([loadSummary(), loadFilters()]);
-      renderMetrics(summary);
-      renderCategoryComparison(summary.categories);
-      renderFilters();
-      bindEvents();
 
-      const [products, keywords, overlapShops] = await Promise.all([
-        loadProducts(), loadKeywords(), loadOverlapShops()
-      ]);
-      renderProducts(products);
-      renderKeywords(keywords);
-      renderOverlapShops(overlapShops);
-
-      // 加载生意参谋数据
-      loadSycmCategories();
-      loadSycmItemRank();
-      loadSycmSearchRank();
-
-      window.lucide?.createIcons();
-    } catch (e) {
-      console.error('市场分析加载失败:', e);
-      document.querySelector('.demo-page').innerHTML =
-        `<div style="padding:40px;text-align:center;color:var(--danger)">加载失败：${e.message}</div>`;
-    }
-  }
-
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', init);
-  } else { init(); }
-})();
   // ===== 生意参谋数据 =====
   async function loadSycmCategories() {
     try {
@@ -330,17 +305,21 @@
         tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--text-tertiary);padding:24px">暂无数据</td></tr>';
         return;
       }
-      tbody.innerHTML = d.data.items.map((item, idx) => `
-        <tr>
+      tbody.innerHTML = d.data.items.map((item, idx) => {
+        const img = item.pic_url
+          ? `<img loading="lazy" src="${item.pic_url}" alt="" style="width:40px;height:40px;object-fit:cover;border-radius:4px;" onerror="this.style.display='none'">`
+          : '';
+        return `<tr>
           <td>${idx + 1}</td>
+          <td>${img}</td>
           <td>${item.cate_name}</td>
           <td>${item.title || '-'}</td>
           <td>${item.shop_name || '-'}</td>
           <td class="num">${fmtWan(item.uv)}</td>
           <td class="num">${fmtWan(item.pay_buyer_count)}</td>
           <td>${item.core_keyword || '-'}</td>
-        </tr>
-      `).join('');
+        </tr>`;
+      }).join('');
     } catch (e) {
       console.error('加载生意参谋商品排行失败:', e);
     }
@@ -374,8 +353,7 @@
     }
   }
 
-  // 生意参谋筛选事件
-  document.addEventListener('DOMContentLoaded', () => {
+  function bindSycmFilters() {
     setTimeout(() => {
       const cateFilter = document.querySelector('[data-sycm-cate-filter]');
       if (cateFilter) {
@@ -385,5 +363,39 @@
       if (kwCateFilter) {
         kwCateFilter.addEventListener('change', e => loadSycmSearchRank(e.target.value));
       }
-    }, 1000);
-  });
+    }, 500);
+  }
+
+async function init() {
+    try {
+      const [summary, filters] = await Promise.all([loadSummary(), loadFilters()]);
+      renderMetrics(summary);
+      renderCategoryComparison(summary.categories);
+      renderFilters();
+      bindEvents();
+
+      const [products, keywords, overlapShops] = await Promise.all([
+        loadProducts(), loadKeywords(), loadOverlapShops()
+      ]);
+      renderProducts(products);
+      renderKeywords(keywords);
+      renderOverlapShops(overlapShops);
+
+      // 加载生意参谋数据
+      loadSycmCategories();
+      loadSycmItemRank();
+      loadSycmSearchRank();
+      bindSycmFilters();
+
+      window.lucide?.createIcons();
+    } catch (e) {
+      console.error('市场分析加载失败:', e);
+      document.querySelector('.demo-page').innerHTML =
+        `<div style="padding:40px;text-align:center;color:var(--danger)">加载失败：${e.message}</div>`;
+    }
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+  } else { init(); }
+})();

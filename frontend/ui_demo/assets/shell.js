@@ -1,4 +1,63 @@
-(function () {
+﻿(function () {
+
+  // 全局 HTML 转义函数，防止 XSS
+  window.escapeHtml = function (value) {
+    return String(value ?? '').replace(/[&<>"']/g, function (char) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char];
+    });
+  };
+
+  // 全局前端错误上报
+  (function setupErrorReporting() {
+    var errorBuffer = [];
+    var isSending = false;
+
+    function sendErrors() {
+      if (isSending || errorBuffer.length === 0) return;
+      isSending = true;
+      var errors = errorBuffer.splice(0, errorBuffer.length);
+      try {
+        fetch('/api/frontend-errors', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ errors: errors, url: location.href, userAgent: navigator.userAgent }),
+        }).catch(function () { /* 上报失败静默 */ });
+      } catch (e) { /* 静默 */ }
+      finally { isSending = false; }
+    }
+
+    function reportError(type, message, source, lineno, colno, error) {
+      var entry = {
+        type: type,
+        message: String(message || '').slice(0, 500),
+        source: source || '',
+        lineno: lineno || 0,
+        colno: colno || 0,
+        stack: error && error.stack ? String(error.stack).slice(0, 1000) : '',
+        timestamp: new Date().toISOString(),
+      };
+      errorBuffer.push(entry);
+      // 批量上报，最多每5秒一次
+      setTimeout(sendErrors, 1000);
+    }
+
+    window.addEventListener('error', function (e) {
+      reportError('js_error', e.message, e.filename, e.lineno, e.colno, e.error);
+    }, true);
+
+    window.addEventListener('unhandledrejection', function (e) {
+      var reason = e.reason;
+      reportError('unhandled_promise', reason && reason.message ? reason.message : String(reason), '', 0, 0, reason);
+    });
+
+    // 资源加载错误
+    window.addEventListener('error', function (e) {
+      if (e.target && (e.target.tagName === 'SCRIPT' || e.target.tagName === 'LINK' || e.target.tagName === 'IMG')) {
+        reportError('resource_error', e.target.src || e.target.href, '', 0, 0, null);
+      }
+    }, true);
+  })();
+
   const assetBase = new URL('.', document.currentScript?.src || window.location.href);
   const loadScript = (src) => new Promise((resolve, reject) => {
     const script = document.createElement('script');
@@ -57,6 +116,7 @@
         ['keyword-promotion', '关键词选品', 'filter', 'keyword-promotion'],
         ['market-ranking', '市场分析', 'trending-up', 'market-ranking'],
         ['lifecycle', '生命周期', 'refresh-cw', 'lifecycle'],
+        ['analysis', '自定义分析', 'bar-chart-3', 'analysis'],
       ],
     },
     {
@@ -68,6 +128,7 @@
     {
       label: '系统',
       items: [
+        ['data-collection', '数据采集', 'download', 'data-collection'],
         ['data-center', '数据中心', 'database', 'data-center'],
         ['settings', '设置', 'settings', 'settings'],
       ],
@@ -82,6 +143,8 @@
     'keyword-promotion': ['关键词选品', '按属性标签筛选推广效果好的标品商品'],
     'market-ranking': ['市场分析', '生意参谋市场排行，类目对比与热卖趋势洞察'],
     lifecycle: ['生命周期', '按商品查看跨月经营表现与累计贡献'],
+    analysis: ['自定义分析', '自由选择指标、维度与时间范围生成分析图表'],
+    'data-collection': ['数据采集', '各数据源采集状态管理与手动触发'],
     reviews: ['经营复盘', '查看待复盘动作与经营周期差异'],
     'data-center': ['数据中心', '导入、校验和管理经营数据'],
     settings: ['设置', '维护店铺与业务默认配置'],
@@ -322,7 +385,7 @@
   let rangeReadyDispatched = false;
 
   const rangeForPreset = (preset) => {
-    const offsets = { today: 0, yesterday: 1, '7d': 6, '30d': 29, '90d': 89 };
+    const offsets = { today: 0, yesterday: 0, '7d': 6, '30d': 29, '90d': 89 };
     const startOfWeek = (date) => shiftDays(date, -((date.getDay() + 6) % 7));
     if (preset === 'this_week') return { start: startOfWeek(anchorDate), end: new Date(anchorDate) };
     if (preset === 'last_week') {
@@ -451,9 +514,10 @@
   window.TmallDateRange = { getState: () => ({ ...state }) };
   const restoreRangeFromUrl = () => {
     const currentParams = new URLSearchParams(window.location.search);
-    const preset = currentParams.get('preset') || '30d';
+    let preset = currentParams.get('preset') || '30d';
     const start = currentParams.get('start');
     const end = currentParams.get('end');
+    if (start && end) preset = 'custom';
     state = { ...state, preset, compareMode: currentParams.get('compare') || 'none' };
     if (start && end) {
       state.startDate = start;
@@ -468,10 +532,26 @@
     dispatchRange(false);
   };
   window.addEventListener('popstate', restoreRangeFromUrl);
-  apiReady.then((DemoApi) => DemoApi.request('/api/periods?dim=daily')).then(async () => {
-      calendarBase = new Date(anchorDate.getFullYear(), anchorDate.getMonth() - 1, 1);
-      restoreRangeFromUrl();
-    }).catch(() => { range.textContent = '数据库日期加载失败'; });
+  // 立即初始化日期范围，不依赖 API 返回（restoreRangeFromUrl 只从 URL/默认预设计算日期）
+  calendarBase = new Date(anchorDate.getFullYear(), anchorDate.getMonth() - 1, 1);
+  restoreRangeFromUrl();
+  // /api/periods 仅用于后续校准日历基准月份，失败不影响日期初始化
+  apiReady.then((DemoApi) => DemoApi.request('/api/periods?dim=daily')).then((periods) => {
+      if (Array.isArray(periods) && periods.length && periods[0].period) {
+        const latest = new Date(periods[0].period + 'T00:00:00');
+        if (!isNaN(latest.getTime())) {
+          anchorDate = latest;
+          calendarBase = new Date(latest.getFullYear(), latest.getMonth() - 1, 1);
+          // 如果当前是动态预设（非custom），基于最新数据日期重新计算日期范围
+          if (state.preset !== 'custom') {
+            const next = rangeForPreset(state.preset);
+            state.startDate = formatDate(next.start);
+            state.endDate = formatDate(next.end);
+            dispatchRange(false);
+          }
+        }
+      }
+    }).catch(() => { /* 静默忽略，日期已在上方初始化 */ });
   header.querySelector('[data-demo-refresh]').addEventListener('click', (event) => {
     const refreshButton = event.currentTarget;
     refreshButton.classList.add('is-spinning');

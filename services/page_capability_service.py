@@ -142,7 +142,7 @@ SURFACE_DEFINITIONS = (
     {'key': 'reviews.action-review', 'page_key': 'reviews', 'label': '动作复盘', 'modal_kind': 'flow', 'trigger_capability': 'reviews.review_action', 'selector': '[data-reviews-list]'},
     {'key': 'data-center.import', 'page_key': 'data-center', 'label': '导入确认', 'modal_kind': 'flow', 'trigger_capability': 'data-center.import', 'selector': '[data-import-confirm]'},
     {'key': 'settings.alert-rule', 'page_key': 'settings', 'label': '预警规则编辑', 'modal_kind': 'config', 'trigger_capability': 'settings.configure_alerts', 'selector': '.alert-rules-dialog'},
-    {'key': 'product-detail.dialog', 'page_key': 'product-detail', 'label': '共享商品详情', 'modal_kind': 'detail', 'trigger_capability': 'product-detail.view', 'selector': '[data-modal-kind="detail"]'},
+    {'key': 'product-detail.dialog', 'page_key': 'product-detail', 'label': '共享商品详情', 'modal_kind': 'detail', 'trigger_capability': 'product-detail.view', 'selector': '[data-modal-kind="detail"]', 'target_files': ('frontend/ui_demo/pages/product-detail.html', 'frontend/ui_demo/assets/product-detail-dialog.js')},
     {'key': 'goals.adjust', 'page_key': 'goals', 'label': '目标调整', 'modal_kind': 'flow', 'trigger_capability': 'goals.adjust', 'selector': '[data-goals-months]'},
     {'key': 'manage.schedule', 'page_key': 'manage', 'label': '调度任务', 'modal_kind': 'flow', 'trigger_capability': 'manage.schedule', 'selector': '[data-manage-schedule-dialog]'},
 )
@@ -157,7 +157,7 @@ _PAGE_TARGET_FILES = {
     'reviews': ('frontend/ui_demo/pages/reviews.html', 'frontend/ui_demo/assets/reviews-live.js'),
     'data-center': ('frontend/ui_demo/pages/data-center.html', 'frontend/ui_demo/assets/data-center-live.js'),
     'settings': ('frontend/ui_demo/pages/settings.html', 'frontend/ui_demo/assets/settings-live.js'),
-    'product-detail': ('frontend/ui_demo/pages/product-detail.html', 'frontend/ui_demo/assets/product-detail-dialog.js'),
+    'product-detail': ('frontend/ui_demo/pages/product-detail.html', 'frontend/ui_demo/assets/product-detail-live.js'),
     'goals': ('frontend/ui_demo/pages/goals.html', 'frontend/ui_demo/assets/goals-live.js'),
     'compare': ('frontend/ui_demo/pages/compare.html', 'frontend/ui_demo/assets/compare-live.js'),
     'manage': ('frontend/ui_demo/pages/manage.html', 'frontend/ui_demo/assets/manage-live.js'),

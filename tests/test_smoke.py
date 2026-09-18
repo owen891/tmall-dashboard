@@ -39,7 +39,7 @@ if os.path.exists(_SOURCE_DB_PATH):
 
 from app import create_app
 from db import get_db
-app = create_app({'TESTING': True, 'DATABASE_PATH': _TEST_DB_PATH})
+app = create_app({'TESTING': True, 'DATABASE_PATH': _TEST_DB_PATH, 'SHOP_ID': '3828498662'})
 
 
 def _insert_contract_products():
@@ -179,8 +179,8 @@ class TestProductEndpoints(SmokeTestBase):
     def test_products_supports_daily_date_range(self):
         response = self.client.get('/api/products', query_string={
             'dim': 'daily',
-            'start': '2026-04-01',
-            'end': '2026-04-19',
+            'start': '2026-09-10',
+            'end': '2026-09-17',
             'limit': 5,
         })
         self.assertEqual(response.status_code, 200)

@@ -1,4 +1,4 @@
-(function () {
+﻿(function () {
   const makeProductPlaceholder = (item, productId) => {
     const placeholder = document.createElement('span');
     placeholder.className = 'product-thumb product-thumb--placeholder';
@@ -274,63 +274,6 @@
     return `${url.pathname}${url.search}`;
   }
 
-  function renderOperationsSummary(rows) {
-    const alertTitle = $('[data-products-alert-title]');
-    const alertMessage = $('[data-products-alert-message]');
-    const alertAction = $('[data-products-alert-action]');
-    const issueCount = $('[data-products-action]');
-    const issueList = $('[data-products-issues-list]');
-    const coverageList = $('[data-products-coverage-list]');
-    if (!alertTitle || !issueList || !coverageList) return;
-    const pending = rows.filter((item) => Number(item.has_pending_action || 0));
-    const missing = rows.filter((item) => !Number(item.has_data || 0));
-    const totalIssues = pending.length + missing.length;
-    alertTitle.textContent = totalIssues ? `${totalIssues} 个商品需要关注` : '当前筛选范围暂无待处理事项';
-    alertMessage.textContent = totalIssues
-      ? `${pending.length} 个有待办动作 · ${missing.length} 个缺少商品月度事实`
-      : '商品主档和当前事实覆盖没有触发可解释规则。';
-    issueCount.textContent = totalIssues ? `${totalIssues} 项` : '无事项';
-    alertAction.hidden = !totalIssues;
-    alertAction.onclick = () => issueList.closest('.products-issues')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    issueList.replaceChildren();
-    const issues = [...pending.map((item) => ({ item, label: '待执行动作', reason: '存在待执行运营动作', tone: 'warning' })), ...missing.map((item) => ({ item, label: '数据覆盖不足', reason: '缺少商品月度事实，指标不参与判断', tone: 'muted' }))].slice(0, 3);
-    if (!issues.length) {
-      const empty = document.createElement('p');
-      empty.className = 'panel__hint';
-      empty.textContent = '暂无需要处理的事项';
-      issueList.appendChild(empty);
-    } else issues.forEach(({ item, label, reason, tone }) => {
-      const row = document.createElement('div');
-      row.className = 'products-issue';
-      const copy = document.createElement('div');
-      const title = document.createElement('strong');
-      title.textContent = item.title || productId(item) || '未命名商品';
-      const detail = document.createElement('span');
-      detail.textContent = `${label} · ${reason}`;
-      copy.append(title, detail);
-      const action = document.createElement('button');
-      action.type = 'button'; action.className = 'button button--ghost'; action.textContent = '查看详情';
-      action.addEventListener('click', () => openProductDetail(item, action));
-      row.append(copy, action);
-      issueList.appendChild(row);
-    });
-    const evidence = state.evidence?.[0] || {};
-    const observed = Number(evidence.observed_fact_rows || rows.filter((item) => Number(item.has_data || 0)).length);
-    const total = Number(evidence.row_count || rows.length);
-    coverageList.replaceChildren();
-    [['商品主档', total ? 100 : 0, '已加载商品'], ['商品月度事实', total ? observed / total * 100 : 0, `${observed} / ${total || 0} 件可分析`], ['推广日事实', null, '当前接口未提供覆盖证据']].forEach(([label, ratio, note]) => {
-      const item = document.createElement('div'); item.className = 'products-coverage__item';
-      const line = document.createElement('div'); line.className = 'products-coverage__line';
-      const title = document.createElement('strong'); title.textContent = label;
-      const value = document.createElement('span'); value.textContent = ratio == null ? '不可用' : `${ratio.toFixed(1)}%`;
-      line.append(title, value);
-      const track = document.createElement('div'); track.className = 'products-coverage__track';
-      const bar = document.createElement('i'); bar.style.width = `${Math.max(0, Math.min(100, ratio || 0))}%`; track.appendChild(bar);
-      const hint = document.createElement('small'); hint.textContent = note;
-      item.append(line, track, hint); coverageList.appendChild(item);
-    });
-  }
-
   function currentRange(detail) {
     const next = detail || window.TmallDateRange?.getState?.() || state.dateRange || {};
     state.dateRange = next;
@@ -341,6 +284,13 @@
     const range = currentRange();
     const raw = range.endDate || range.startDate || new Date().toISOString().slice(0, 10);
     return String(raw).slice(0, 7);
+  }
+
+  // 判断当前日期范围是否应该使用日度数据（单日范围使用日度，其他使用月度）
+  function shouldUseDailyData() {
+    const range = currentRange();
+    if (!range.startDate || !range.endDate) return false;
+    return range.startDate === range.endDate;
   }
 
   function setRowStatus(message) {
@@ -407,9 +357,18 @@
   }
 
   function buildProductsUrl() {
-    // 当前导入源是商品月度事实，商品页按月度口径读取，避免日表为空时整页指标变成 0。
+    // 单日范围使用日度数据，其他使用月度数据
+    const useDaily = shouldUseDailyData();
+    const dim = useDaily ? 'daily' : 'monthly';
+
     const params = new URLSearchParams({ dim: 'monthly', limit: String(state.pageSize), offset: String((state.page - 1) * state.pageSize) });
-    params.set('period', currentMonthPeriod());
+    if (useDaily) {
+      const range = currentRange();
+      if (range.startDate) params.set('start', range.startDate);
+      if (range.endDate) params.set('end', range.endDate);
+    } else {
+      params.set('period', currentMonthPeriod());
+    }
     const current = filters();
     filterKeys.forEach((key) => {
       if (current[key]) params.set(key, current[key]);
@@ -559,7 +518,6 @@
     if (!rows.length) {
       setRowStatus(state.starredOnly ? '当前页没有收藏商品' : '当前条件暂无商品');
       renderMobileSummary(rows);
-      renderOperationsSummary(rows);
       applyFieldView();
       updatePagination();
       updateSelection();
@@ -603,6 +561,7 @@
         thumbnail.className = 'product-thumb';
         thumbnail.alt = '';
         thumbnail.loading = 'lazy';
+        thumbnail.referrerPolicy = 'no-referrer';
         thumbnail.src = item.image_url;
         thumbnail.addEventListener('error', () => {
           thumbnail.replaceWith(makeProductPlaceholder(item, id));
@@ -613,6 +572,7 @@
         thumbnail.className = 'product-thumb';
         thumbnail.alt = '';
         thumbnail.loading = 'lazy';
+        thumbnail.referrerPolicy = 'no-referrer';
         thumbnail.src = thumbnailUrl;
         thumbnail.addEventListener('error', () => {
           const placeholder = document.createElement('span');
@@ -633,7 +593,7 @@
       titleButton.type = 'button';
       titleButton.className = 'product-title__link';
       titleButton.textContent = item.title || '未命名商品';
-      titleButton.setAttribute('aria-label', `查看商品详情：${item.title || id || '未命名商品'}`);
+      titleButton.setAttribute('aria-label', `查看商品详情：${escapeHtml(item.title || id || '未命名商品')}`);
       titleButton.addEventListener('click', () => openProductDetail(item, titleButton));
       const sub = document.createElement('span');
       sub.textContent = id || '--';
@@ -671,7 +631,6 @@
       body.appendChild(row);
     });
     renderMobileSummary(rows);
-    renderOperationsSummary(rows);
     applyFieldView();
     updatePagination();
     updateSelection();
@@ -1016,14 +975,18 @@
       $('[data-products-starred]')?.setAttribute('aria-pressed', String(state.starredOnly));
       renderTable();
       if (!state.rows.length) renderDataState('no-data', { message: '当前筛选条件没有商品。' });
-      else setStatus(`已按月度口径加载 ${state.rows.length} 件商品，每页 ${state.pageSize} 件${payload?.period ? `；数据月份 ${payload.period}` : ''}`);
+      else {
+        const useDaily = shouldUseDailyData();
+        const dimLabel = useDaily ? '日度' : '月度';
+        const periodInfo = useDaily ? '' : (payload?.period ? `；数据月份 ${payload.period}` : '');
+        setStatus(`已按${dimLabel}口径加载 ${state.rows.length} 件商品，每页 ${state.pageSize} 件${periodInfo}`);
+      }
     } catch (error) {
       if (token !== state.token) return;
       state.rows = [];
       state.total = 0;
       state.availability = 'calculation-failed';
       state.evidence = [];
-      renderOperationsSummary([]);
       updateKpis([]);
       setRowStatus('商品数据加载失败');
       renderDataState('calculation-failed', { message: error.message || '商品数据加载失败', retry: () => load() });
@@ -1306,5 +1269,5 @@
     dictionariesReady.then(() => load(event.detail));
   });
   window.addEventListener('tmall:refresh', () => dictionariesReady.then(() => load()));
-  if (!window.TmallDateRange) dictionariesReady.then(() => load());
+  dictionariesReady.then(() => load());
 })();

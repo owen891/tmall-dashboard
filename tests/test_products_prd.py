@@ -58,7 +58,7 @@ class ProductPrdContractTests(unittest.TestCase):
         from pathlib import Path
         page = (Path(ROOT) / 'frontend/ui_demo/pages/products.html').read_text(encoding='utf-8')
         script = (Path(ROOT) / 'frontend/ui_demo/assets/products-live.js').read_text(encoding='utf-8')
-        for hook in ('data-products-alert', 'data-products-coverage', 'data-products-issues', 'data-products-health', 'data-products-action'):
+        for hook in ('data-products-status', 'data-products-pending-action', 'data-products-mobile-summary'):
             self.assertIn(hook, page)
         self.assertIn('has_data', script)
         self.assertIn('has_pending_action', script)

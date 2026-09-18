@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>自定义分析 | 天猫数据仪表盘</title>
+  <link rel="stylesheet" href="../assets/tokens.css">
+  <link rel="stylesheet" href="../assets/shell.css">
+  <link rel="stylesheet" href="../assets/components.css">
+  <script src="../assets/lucide-custom.min.js"></script>
+  <script src="../assets/echarts-custom.min.js"></script>
+  <style>
+  .analysis-page { padding: var(--space-5); }
+  .analysis-page__header { display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--space-5); }
+  .analysis-page__title { font-size: 1.5rem; font-weight: 700; margin: 0; }
+  .analysis-page__subtitle { color: var(--text-secondary); margin-top: 4px; }
+  .analysis-config { background: var(--surface); border: 1px solid var(--border-color); border-radius: var(--radius-lg); padding: var(--space-5); margin-bottom: var(--space-5); }
+  .analysis-config__grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: var(--space-4); }
+  .analysis-config__field { display: flex; flex-direction: column; gap: 6px; }
+  .analysis-config__label { font-size: 0.85rem; font-weight: 600; color: var(--text-secondary); }
+  .analysis-config__select, .analysis-config__input { padding: 8px 12px; border: 1px solid var(--border-color); border-radius: var(--radius-sm); background: var(--surface); color: var(--text-primary); font-size: 0.9rem; }
+  .analysis-config__select:focus, .analysis-config__input:focus { outline: none; border-color: var(--primary-color); }
+  .analysis-config__actions { display: flex; gap: var(--space-3); margin-top: var(--space-4); }
+  .analysis-charts { display: grid; grid-template-columns: repeat(auto-fit, minmax(400px, 1fr)); gap: var(--space-5); }
+  .analysis-chart { background: var(--surface); border: 1px solid var(--border-color); border-radius: var(--radius-lg); padding: var(--space-4); }
+  .analysis-chart__header { display: flex; justify-content: space-between; align-items: center; margin-bottom: var(--space-3); }
+  .analysis-chart__title { font-size: 1rem; font-weight: 600; margin: 0; }
+  .analysis-chart__canvas { width: 100%; height: 320px; }
+  .analysis-templates { display: flex; gap: var(--space-3); margin-bottom: var(--space-5); flex-wrap: wrap; }
+  .analysis-template { padding: 8px 16px; border: 1px solid var(--border-color); border-radius: var(--radius-sm); background: var(--surface); cursor: pointer; font-size: 0.85rem; color: var(--text-secondary); transition: all 0.15s; }
+  .analysis-template:hover { border-color: var(--primary-color); color: var(--primary-color); }
+  .analysis-template--active { border-color: var(--primary-color); background: var(--primary-color); color: white; }
+  .analysis-saved { margin-top: var(--space-5); }
+  .analysis-saved__title { font-size: 1rem; font-weight: 600; margin-bottom: var(--space-3); }
+  .analysis-saved__list { display: flex; flex-direction: column; gap: var(--space-2); }
+  .analysis-saved__item { display: flex; justify-content: space-between; align-items: center; padding: var(--space-3); background: var(--surface-muted); border-radius: var(--radius-sm); }
+  .analysis-saved__name { font-weight: 500; }
+  .analysis-saved__meta { font-size: 0.8rem; color: var(--text-secondary); }
+  .analysis-saved__actions { display: flex; gap: var(--space-2); }
+  .analysis-empty { text-align: center; padding: var(--space-10); color: var(--text-tertiary); }
+  .analysis-empty__icon { font-size: 3rem; margin-bottom: var(--space-3); opacity: 0.3; }
+  </style>
+</head>
+<body data-page="analysis">
+  <div class="demo-app">
+    <aside class="demo-sidebar" data-shell-sidebar></aside>
+    <div class="demo-main">
+      <header class="demo-topbar" data-shell-header></header>
+      <main class="analysis-page">
+        <div class="analysis-page__header">
+          <div>
+            <h1 class="analysis-page__title">自定义分析</h1>
+            <p class="analysis-page__subtitle">选择指标、维度和时间范围，自由生成分析图表</p>
+          </div>
+          <div class="button-row">
+            <button class="button button--ghost" id="saveAnalysisBtn"><i data-lucide="save"></i><span>保存分析</span></button>
+            <button class="button button--primary" id="runAnalysisBtn"><i data-lucide="play"></i><span>生成图表</span></button>
+          </div>
+        </div>
+
+        <div class="analysis-templates" id="analysisTemplates">
+          <div class="analysis-template analysis-template--active" data-template="sales-trend">销售趋势</div>
+          <div class="analysis-template" data-template="traffic-source">流量来源</div>
+          <div class="analysis-template" data-template="conversion-funnel">转化漏斗</div>
+          <div class="analysis-template" data-template="product-ranking">商品排行</div>
+          <div class="analysis-template" data-template="ad-performance">广告表现</div>
+        </div>
+
+        <div class="analysis-config">
+          <div class="analysis-config__grid">
+            <div class="analysis-config__field">
+              <label class="analysis-config__label">指标</label>
+              <select class="analysis-config__select" id="metricSelect">
+                <option value="payment_amount">支付金额</option>
+                <option value="net_sales">净销售额</option>
+                <option value="product_visitors">商品访客数</option>
+                <option value="payment_conversion_rate">支付转化率</option>
+                <option value="ad_spend">推广花费</option>
+                <option value="expense_ratio">费比</option>
+                <option value="average_order_value">客单价</option>
+                <option value="payment_qty">支付买家数</option>
+              </select>
+            </div>
+            <div class="analysis-config__field">
+              <label class="analysis-config__label">维度</label>
+              <select class="analysis-config__select" id="dimensionSelect">
+                <option value="date">按日期</option>
+                <option value="week">按周</option>
+                <option value="month">按月</option>
+                <option value="product">按商品</option>
+                <option value="category">按类目</option>
+              </select>
+            </div>
+            <div class="analysis-config__field">
+              <label class="analysis-config__label">图表类型</label>
+              <select class="analysis-config__select" id="chartTypeSelect">
+                <option value="line">折线图</option>
+                <option value="bar">柱状图</option>
+                <option value="pie">饼图</option>
+                <option value="scatter">散点图</option>
+              </select>
+            </div>
+            <div class="analysis-config__field">
+              <label class="analysis-config__label">开始日期</label>
+              <input type="date" class="analysis-config__input" id="startDate">
+            </div>
+            <div class="analysis-config__field">
+              <label class="analysis-config__label">结束日期</label>
+              <input type="date" class="analysis-config__input" id="endDate">
+            </div>
+            <div class="analysis-config__field">
+              <label class="analysis-config__label">TOP N</label>
+              <select class="analysis-config__select" id="topNSelect">
+                <option value="10">TOP 10</option>
+                <option value="20">TOP 20</option>
+                <option value="50">TOP 50</option>
+                <option value="100">TOP 100</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <div class="analysis-charts" id="analysisCharts">
+          <div class="analysis-empty">
+            <div class="analysis-empty__icon"><i data-lucide="bar-chart-3"></i></div>
+            <p>选择配置后点击"生成图表"开始分析</p>
+          </div>
+        </div>
+
+        <div class="analysis-saved" id="savedAnalysisSection" style="display:none;">
+          <h3 class="analysis-saved__title">已保存的分析</h3>
+          <div class="analysis-saved__list" id="savedAnalysisList"></div>
+        </div>
+      </main>
+    </div>
+  </div>
+  <script src="../assets/api.js"></script>
+  <script src="../assets/navigation.js"></script>
+  <script src="../assets/labels.js"></script>
+  <script src="../assets/shell.js"></script>
+  <script src="../assets/analysis-live.js"></script>
+</body>
+</html>

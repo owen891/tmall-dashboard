@@ -63,6 +63,9 @@ jobs:
       - name: Run release tests and audit
         shell: bash
         run: |
+          python -W error::ResourceWarning -m unittest discover -s tests -v
+          node scripts/validate_ui_demos.cjs
+          python scripts/production_preflight.py
           npm test --prefix desktop
           npm run build --prefix desktop
           git diff --exit-code
@@ -109,6 +112,9 @@ jobs:
       - name: Run release tests and audit
         shell: bash
         run: |
+          python -W error::ResourceWarning -m unittest discover -s tests -v
+          node scripts/validate_ui_demos.cjs
+          python scripts/production_preflight.py
           npm test --prefix desktop
           npm run build --prefix desktop
           git diff --exit-code

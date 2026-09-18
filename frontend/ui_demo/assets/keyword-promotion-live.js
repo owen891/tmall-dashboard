@@ -145,6 +145,14 @@
     if (v == null || isNaN(v)) return '--';
     return Number(v).toLocaleString('zh-CN', { maximumFractionDigits: 0 });
   }
+  function escapeHtml(value) {
+    return String(value ?? '').replace(/[&<>"']/g, (char) => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    })[char]);
+  }
+  function safeProductUrl(productId) {
+    return `https://detail.tmall.com/item.htm?id=${encodeURIComponent(String(productId ?? ''))}`;
+  }
   function gradeBadge(grade) {
     if (!grade) return '<span class="kp-badge kp-badge--data">--</span>';
     const cls = grade.startsWith('S') ? 'kp-badge--s' : grade.startsWith('A') ? 'kp-badge--a' : grade.startsWith('B') ? 'kp-badge--b' : grade.startsWith('C') ? 'kp-badge--c' : 'kp-badge--data';
@@ -188,12 +196,12 @@
     switch (key) {
       case 'image':
         return row.image_url
-          ? `<a href="https://detail.tmall.com/item.htm?id=${row.product_id}" target="_blank"><img src="${row.image_url}" alt="" style="width:40px;height:40px;object-fit:cover;border-radius:4px;"></a>`
-          : `<a href="https://detail.tmall.com/item.htm?id=${row.product_id}" target="_blank"><div style="width:40px;height:40px;background:var(--surface-2);border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:10px;color:var(--text-tertiary);">无图</div></a>`;
+          ? `<a href="${safeProductUrl(row.product_id)}" target="_blank" rel="noopener noreferrer"><img loading="lazy" src="${escapeHtml(row.image_url)}" alt="" style="width:40px;height:40px;object-fit:cover;border-radius:4px;"></a>`
+          : `<a href="${safeProductUrl(row.product_id)}" target="_blank" rel="noopener noreferrer"><div style="width:40px;height:40px;background:var(--surface-2);border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:10px;color:var(--text-tertiary);">无图</div></a>`;
       case 'title':
-        return `<a href="https://detail.tmall.com/item.htm?id=${row.product_id}" target="_blank" title="${row.title || ''}" style="color:inherit;text-decoration:none;display:-webkit-box;-webkit-line-clamp:1;-webkit-box-orient:vertical;overflow:hidden;">${row.title || '--'}</a>`;
+        return `<a href="${safeProductUrl(row.product_id)}" target="_blank" rel="noopener noreferrer" title="${escapeHtml(row.title || '')}" style="color:inherit;text-decoration:none;display:-webkit-box;-webkit-line-clamp:1;-webkit-box-orient:vertical;overflow:hidden;">${escapeHtml(row.title || '--')}</a>`;
       case 'product_id':
-        return `<code style="font-size:11px;">${row.product_id || '--'}</code>`;
+        return `<code style="font-size:11px;">${escapeHtml(row.product_id || '--')}</code>`;
       case 'total_score':
         return `<strong>${fmtNum(v, 1)}</strong>`;
       case 'score_grade':
@@ -252,13 +260,13 @@
       case 'roi_with_presale':
         return fmtNum(v, 2);
       case 'scene':
-        return (v || '').split(/[、,，]/).slice(0, 2).map(s => `<span class="kp-tag">${s.trim()}</span>`).join('') || '--';
+        return (v || '').split(/[、,，]/).slice(0, 2).map(s => `<span class="kp-tag">${escapeHtml(s.trim())}</span>`).join('') || '--';
       case 'material':
-        return (v || '').split(/[,，]/).slice(0, 2).map(s => `<span class="kp-tag">${s.trim()}</span>`).join('') || '--';
+        return (v || '').split(/[,，]/).slice(0, 2).map(s => `<span class="kp-tag">${escapeHtml(s.trim())}</span>`).join('') || '--';
       case 'suggested_action':
-        return v ? `<span class="kp-tag kp-tag--action">${v}</span>` : '--';
+        return v ? `<span class="kp-tag kp-tag--action">${escapeHtml(v)}</span>` : '--';
       default:
-        return v != null && v !== '' ? v : '--';
+        return v != null && v !== '' ? escapeHtml(v) : '--';
     }
   }
 

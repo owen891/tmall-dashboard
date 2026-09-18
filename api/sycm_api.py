@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+﻿# -*- coding: utf-8 -*-
 """生意参谋数据API
 流量来源、竞店竞品、市场排行等数据查询接口
 """
@@ -136,7 +136,7 @@ def flow_source_trend():
     c.execute('''
         SELECT stat_date, channel_name, uv, pay_amount, pay_buyer_count
         FROM sycm_flow_source_daily
-        WHERE level = 0 AND belong = 'farthest'
+        WHERE level = 0
         ORDER BY stat_date DESC
         LIMIT ?
     ''', (days * 5,))  # 假设最多5个一级渠道
@@ -169,6 +169,7 @@ def item_flow_summary():
     """单品流量来源汇总"""
     stat_date = request.args.get('date') or get_latest_date('sycm_item_flow_source_daily')
     item_id = request.args.get('item_id')
+    belong = request.args.get('belong', 'all')  # 默认all，显示完整三级渠道
     if not stat_date:
         return failure('NO_DATA', '暂无单品流量来源数据')
 
@@ -176,25 +177,47 @@ def item_flow_summary():
     c = conn.cursor()
 
     if item_id:
-        c.execute('''
-            SELECT channel_name, uv, pv, pay_amount, pay_buyer_count, pay_rate,
-                   cart_buyer_count, collect_item_count, new_uv, deal_buyer_count, pay_item_count
-            FROM sycm_item_flow_source_daily
-            WHERE stat_date = ? AND item_id = ? AND belong = 'farthest'
-            ORDER BY uv DESC
-        ''', (stat_date, item_id))
+        if belong == 'all':
+            c.execute('''
+                SELECT channel_name, parent_channel, level, channel_type, uv, pv, pay_amount, pay_buyer_count, pay_rate,
+                       cart_buyer_count, collect_item_count, new_uv, deal_buyer_count, pay_item_count
+                FROM sycm_item_flow_source_daily
+                WHERE stat_date = ? AND item_id = ?
+                ORDER BY level ASC, uv DESC
+            ''', (stat_date, item_id))
+        else:
+            c.execute('''
+                SELECT channel_name, parent_channel, level, channel_type, uv, pv, pay_amount, pay_buyer_count, pay_rate,
+                       cart_buyer_count, collect_item_count, new_uv, deal_buyer_count, pay_item_count
+                FROM sycm_item_flow_source_daily
+                WHERE stat_date = ? AND item_id = ? AND belong = ?
+                ORDER BY level ASC, uv DESC
+            ''', (stat_date, item_id, belong))
     else:
-        c.execute('''
-            SELECT channel_name, SUM(uv) as uv, SUM(pv) as pv, SUM(pay_amount) as pay_amount,
-                   SUM(pay_buyer_count) as pay_buyer_count,
-                   AVG(pay_rate) as pay_rate, SUM(cart_buyer_count) as cart_buyer_count,
-                   SUM(collect_item_count) as collect_item_count, SUM(new_uv) as new_uv,
-                   SUM(deal_buyer_count) as deal_buyer_count, SUM(pay_item_count) as pay_item_count
-            FROM sycm_item_flow_source_daily
-            WHERE stat_date = ? AND belong = 'farthest'
-            GROUP BY channel_name
-            ORDER BY uv DESC
-        ''', (stat_date,))
+        if belong == 'all':
+            c.execute('''
+                SELECT channel_name, parent_channel, level, channel_type, SUM(uv) as uv, SUM(pv) as pv, SUM(pay_amount) as pay_amount,
+                       SUM(pay_buyer_count) as pay_buyer_count,
+                       AVG(pay_rate) as pay_rate, SUM(cart_buyer_count) as cart_buyer_count,
+                       SUM(collect_item_count) as collect_item_count, SUM(new_uv) as new_uv,
+                       SUM(deal_buyer_count) as deal_buyer_count, SUM(pay_item_count) as pay_item_count
+                FROM sycm_item_flow_source_daily
+                WHERE stat_date = ?
+                GROUP BY channel_name, parent_channel, level, channel_type
+                ORDER BY level ASC, uv DESC
+            ''', (stat_date,))
+        else:
+            c.execute('''
+                SELECT channel_name, parent_channel, level, channel_type, SUM(uv) as uv, SUM(pv) as pv, SUM(pay_amount) as pay_amount,
+                       SUM(pay_buyer_count) as pay_buyer_count,
+                       AVG(pay_rate) as pay_rate, SUM(cart_buyer_count) as cart_buyer_count,
+                       SUM(collect_item_count) as collect_item_count, SUM(new_uv) as new_uv,
+                       SUM(deal_buyer_count) as deal_buyer_count, SUM(pay_item_count) as pay_item_count
+                FROM sycm_item_flow_source_daily
+                WHERE stat_date = ? AND belong = ?
+                GROUP BY channel_name, parent_channel, level, channel_type
+                ORDER BY level ASC, uv DESC
+            ''', (stat_date, belong))
 
     channels = []
     total_uv = 0
@@ -202,19 +225,22 @@ def item_flow_summary():
     for row in c.fetchall():
         channels.append({
             'channel_name': row[0],
-            'uv': row[1],
-            'pv': row[2],
-            'pay_amount': row[3],
-            'pay_buyer_count': row[4],
-            'pay_rate': row[5],
-            'cart_buyer_count': row[6],
-            'collect_item_count': row[7],
-            'new_uv': row[8],
-            'deal_buyer_count': row[9],
-            'pay_item_count': row[10],
+            'parent_channel': row[1],
+            'level': row[2],
+            'channel_type': row[3],
+            'uv': row[4],
+            'pv': row[5],
+            'pay_amount': row[6],
+            'pay_buyer_count': row[7],
+            'pay_rate': row[8],
+            'cart_buyer_count': row[9],
+            'collect_item_count': row[10],
+            'new_uv': row[11],
+            'deal_buyer_count': row[12],
+            'pay_item_count': row[13],
         })
-        total_uv += row[1] or 0
-        total_pay += row[3] or 0
+        total_uv += row[4] or 0
+        total_pay += row[6] or 0
 
     conn.close()
     return success({
@@ -401,7 +427,7 @@ def market_item_rank():
     c = conn.cursor()
 
     query = '''
-        SELECT cate_id, cate_name, item_id, title, shop_name, shop_id,
+        SELECT cate_id, cate_name, item_id, title, pic_url, shop_name, shop_id,
                uv, pay_buyer_count, core_keyword, rank, is_self
         FROM sycm_market_item_rank
         WHERE stat_date = ?
@@ -424,13 +450,14 @@ def market_item_rank():
             'cate_name': row[1],
             'item_id': row[2],
             'title': row[3],
-            'shop_name': row[4],
-            'shop_id': row[5],
-            'uv': row[6],
-            'pay_buyer_count': row[7],
-            'core_keyword': row[8],
-            'rank': row[9],
-            'is_self': bool(row[10]),
+            'pic_url': row[4],
+            'shop_name': row[5],
+            'shop_id': row[6],
+            'uv': row[7],
+            'pay_buyer_count': row[8],
+            'core_keyword': row[9],
+            'rank': row[10],
+            'is_self': bool(row[11]),
         })
 
     conn.close()

@@ -453,10 +453,17 @@ class OverviewContractTests(unittest.TestCase):
 
     def test_alert_checks_do_not_trigger_rules_for_missing_period(self):
         response = self.client.post(
-            '/api/alert_rules',
-            json={'metric': 'gmv', 'operator': 'lt', 'threshold': 100},
+            '/api/alert-rules',
+            json={
+                'name': '测试规则',
+                'scope': 'store',
+                'metric': 'gmv',
+                'operator': 'lt',
+                'threshold': 100,
+                'level': 'warning',
+            },
         )
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 201)
 
         payload = self.client.get(
             '/api/alert_checks?dim=monthly&period=2099-12'

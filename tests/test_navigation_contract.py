@@ -53,7 +53,7 @@ class NavigationContractTests(unittest.TestCase):
 
     def test_products_page_declares_operations_regions(self):
         page = self.read('frontend/ui_demo/pages/products.html')
-        for hook in ('data-products-alert', 'data-products-coverage', 'data-products-issues', 'data-products-health', 'data-products-action'):
+        for hook in ('data-products-status', 'data-products-pending-action', 'data-products-batch', 'data-products-mobile-summary'):
             self.assertIn(hook, page)
 
     def test_product_detail_page_declares_workbench_regions(self):

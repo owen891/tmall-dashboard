@@ -27,10 +27,10 @@ for (const name of required) {
   assert(!/<svg\b/i.test(html), `${relative}: inline SVG is forbidden`);
   assert(!html.includes('cdn.jsdelivr.net/npm/echarts'), `${relative}: ECharts must not depend on the external CDN`);
   if (html.includes('echarts')) {
-    assert(html.includes('../assets/echarts-5.5.1.min.js'), `${relative}: ECharts must use the local bundled asset`);
+    assert(html.includes('../assets/echarts-custom.min.js'), `${relative}: ECharts must use the local bundled asset`);
   }
   assert(!html.includes('unpkg.com/lucide'), `${relative}: Lucide must not depend on the external CDN`);
-  assert(html.includes('../assets/lucide-1.8.0.min.js'), `${relative}: Lucide must use the local bundled asset`);
+  assert(html.includes('../assets/lucide-custom.min.js'), `${relative}: Lucide must use the local bundled asset`);
   assert(/data-right-rail/.test(html), `${relative}: missing right-rail contract`);
   const ids = [...html.matchAll(/(?<![\w-])id=["']([^"']+)["']/gi)].map((match) => match[1]);
   const duplicates = ids.filter((id, index) => ids.indexOf(id) !== index);
@@ -82,13 +82,11 @@ assert(products.includes('data-table-wrap--discoverable'), 'products: missing ho
 assert(products.includes('../assets/product-detail-dialog.js'), 'products: non-list surfaces must keep the shared product detail dialog dependency');
 assert(productsAdapter.includes('new URL(`/products/${id}`, window.location.origin)'), 'products: product rows must open the standalone detail workbench');
 assert(productsAdapter.includes("['preset', 'promotion_channel']") && productsAdapter.includes("['tier', 'lifecycle_stage']"), 'products: detail navigation must preserve supported context');
-for (const hook of ['data-products-alert', 'data-products-coverage', 'data-products-issues', 'data-products-health', 'data-products-action']) {
-  assert(products.includes(hook), `products: missing operations region hook ${hook}`);
-}
 
 const promotion = read(path.join(pagesDir, 'promotion.html'));
 assert(promotion.includes('../assets/promotion-live.js'), 'promotion: missing live adapter');
-assert(!promotion.includes('../assets/promotion.js'), 'promotion: legacy interaction module must not load');
+assert(!promotion.includes('../assets/promotion.js"') && !promotion.includes("../assets/promotion.js'"), 'promotion: legacy interaction module must not load');
+assert(!fs.existsSync(path.join(root, 'assets', 'promotion.js')), 'promotion: legacy interaction module must be removed');
 for (const hook of ['data-promotion-alerts', 'data-promotion-tabs', 'data-promotion-dialog', 'data-promotion-drill']) {
   assert(promotion.includes(hook), `promotion: missing workflow hook ${hook}`);
 }

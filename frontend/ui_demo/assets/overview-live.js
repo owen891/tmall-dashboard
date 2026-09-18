@@ -434,7 +434,15 @@
 
   async function load(detail) {
     const token = ++requestToken;
-    const state = detail || window.TmallDateRange?.getState() || {};
+    let state = detail || window.TmallDateRange?.getState() || {};
+    // 防御：日期无效时使用近30天默认值，避免传 start=undefined 到后端导致 Invalid isoformat 错误
+    if (!state.startDate || !state.endDate || state.startDate === 'undefined' || state.endDate === 'undefined' || state.startDate === '' || state.endDate === '') {
+      const today = new Date();
+      const start = new Date(today);
+      start.setDate(start.getDate() - 29);
+      const fmt = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      state = { ...state, startDate: fmt(start), endDate: fmt(today), preset: state.preset || '30d' };
+    }
     const monthlyTrend = normalizeMonthlyTrend(await DemoApi.request('/api/trend?dim=monthly'));
     if (token !== requestToken) return;
     const period = resolveMonthlyPeriod(state, monthlyTrend);
@@ -575,9 +583,24 @@
   }
   $('[data-overview-matrix-columns-open]')?.addEventListener('click', (event) => {
     matrixColumnsReturnFocus = event.currentTarget;
-    renderMatrixColumnSelector();
-    matrixColumnsDialog.hidden = false;
-    matrixColumnsDialog.showModal();
+    if (!matrixColumnsDialog) {
+      console.error('未找到列设置弹窗元素 [data-overview-matrix-columns-dialog]');
+      return;
+    }
+    try {
+      renderMatrixColumnSelector();
+    } catch (error) {
+      console.error('渲染字段选择器失败:', error);
+    }
+    matrixColumnsDialog.removeAttribute('hidden');
+    if (!matrixColumnsDialog.open) {
+      try {
+        matrixColumnsDialog.showModal();
+      } catch (e) {
+        console.error('showModal失败:', e);
+        matrixColumnsDialog.setAttribute('open', '');
+      }
+    }
   });
   $('[data-overview-matrix-columns-select-all]')?.addEventListener('click', () => renderMatrixColumnSelector(matrixColumns.map((column) => column.key)));
   $('[data-overview-matrix-columns-clear-all]')?.addEventListener('click', () => renderMatrixColumnSelector(['date']));
@@ -668,7 +691,8 @@
   window.addEventListener('tmall:date-range-ready', (event) => guardedLoad(event.detail));
   window.addEventListener('tmall:refresh', () => guardedLoad());
   const initialRange = window.TmallDateRange?.getState?.();
-  if (initialRange?.startDate && initialRange?.endDate) guardedLoad(initialRange);
+  // 只要日期范围对象存在就尝试加载（load函数内部有默认日期防御），避免页面一直显示"加载中…"
+  if (initialRange) guardedLoad(initialRange);
   else if (!window.TmallDateRange) guardedLoad();
   function normalizeMonthlyTrend(payload) { return unwrap(payload, 'data'); }
 })();

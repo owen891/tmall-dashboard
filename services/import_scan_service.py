@@ -307,10 +307,20 @@ class ImportScanService:
         with get_db() as conn:
             rows = conn.execute('SELECT * FROM import_scan_jobs WHERE shop_id = ? ORDER BY id DESC', (shop_id,)).fetchall()
             jobs = [_row(item) for item in rows]
-            for job in jobs:
-                job['file_count'] = conn.execute(
-                    'SELECT COUNT(*) FROM import_scan_files WHERE job_id = ?', (job['id'],)
-                ).fetchone()[0]
+            # 批量查询 file_count（避免 N+1）
+            if jobs:
+                job_ids = [job['id'] for job in jobs]
+                placeholders = ','.join('?' * len(job_ids))
+                counts = conn.execute(
+                    f'SELECT job_id, COUNT(*) as cnt FROM import_scan_files WHERE job_id IN ({placeholders}) GROUP BY job_id',
+                    job_ids,
+                ).fetchall()
+                count_map = {row[0]: row[1] for row in counts}
+                for job in jobs:
+                    job['file_count'] = count_map.get(job['id'], 0)
+            else:
+                for job in jobs:
+                    job['file_count'] = 0
             return jobs
 
     @classmethod

@@ -6,6 +6,8 @@ from flask import Flask, g, jsonify, redirect, request, send_from_directory
 from werkzeug.local import LocalProxy
 from werkzeug.exceptions import HTTPException, RequestEntityTooLarge
 import os
+import logging
+import time
 from db import get_db, get_db_path, init_db
 from api.data_api import data_bp
 from api.imports_api import imports_bp
@@ -16,6 +18,7 @@ from api.settings_api import settings_bp
 from api.lifecycle_api import lifecycle_bp
 from api.promotion_api import promotion_bp
 from api.keyword_promotion_api import keyword_promotion_bp
+from api.wanxiangtai_api import wanxiangtai_bp
 from api.market_ranking_api import market_ranking_bp
 from api.period_reviews_api import period_reviews_bp
 from api.product_detail_api import product_detail_bp
@@ -30,10 +33,25 @@ from api.schedules_api import schedules_bp
 from api.import_scans_api import import_scans_bp
 from api.manage_api import manage_bp
 from api.sycm_api import sycm_bp
+from api.collect_api import collect_bp
+from api.alerts_api import alerts_bp
+from api.goals_legacy_api import goals_legacy_bp
+from api.reviews_api import reviews_bp
+from api.market_legacy_api import market_legacy_bp
+from api.system_legacy_api import system_legacy_bp
+from api.products_legacy_api import products_legacy_bp
+from api.overview_legacy_api import overview_legacy_bp
+from api.data_legacy_api import data_legacy_bp
+from api.misc_legacy_api import misc_legacy_bp
 from api.api_response import JsonObjectError
 from config import APP_VERSION, Config, DEFAULT_IMPORT_SCAN_INBOX, _sqlite_url, normalize_import_scan_roots
 from desktop_runtime import resource_root
-from services.shop_scope_service import authorize_request_shop, current_request_shop_id
+from services.shop_scope_service import (
+    authorize_request_shop,
+    current_request_shop_id,
+    reject_legacy_single_shop_request,
+    require_admin_write,
+)
 from models import db as orm_db
 # 获取项目根目录的绝对路径
 project_root = resource_root()
@@ -69,6 +87,10 @@ def create_app(config=None):
     app.config.setdefault('MAX_CONTENT_LENGTH', 25 * 1024 * 1024)
     if config:
         app.config.from_mapping(config)
+    # Test fixtures historically use the isolated default scope. Production
+    # remains on the configured collector shop (3828498662 in this deployment).
+    if app.config.get('TESTING') and not app.config.get('SHOP_ID'):
+        app.config['SHOP_ID'] = 'default'
 
     if explicit_sqlalchemy_uri:
         uri = app.config['SQLALCHEMY_DATABASE_URI']
@@ -101,6 +123,7 @@ def create_app(config=None):
     app.register_blueprint(lifecycle_bp)
     app.register_blueprint(promotion_bp)
     app.register_blueprint(keyword_promotion_bp)
+    app.register_blueprint(wanxiangtai_bp)
     app.register_blueprint(market_ranking_bp)
     app.register_blueprint(period_reviews_bp)
     app.register_blueprint(product_detail_bp)
@@ -114,10 +137,21 @@ def create_app(config=None):
     app.register_blueprint(import_scans_bp)
     app.register_blueprint(manage_bp)
     app.register_blueprint(sycm_bp)
+    app.register_blueprint(collect_bp)
+    app.register_blueprint(alerts_bp)
+    app.register_blueprint(goals_legacy_bp)
+    app.register_blueprint(reviews_bp)
+    app.register_blueprint(market_legacy_bp)
+    app.register_blueprint(system_legacy_bp)
+    app.register_blueprint(products_legacy_bp)
+    app.register_blueprint(overview_legacy_bp)
+    app.register_blueprint(data_legacy_bp)
+    app.register_blueprint(misc_legacy_bp)
     init_db(app.config['DATABASE_PATH'])
 
     @app.before_request
     def reject_malformed_json():
+        g._request_start_time = time.time()
         if (request.method in {'POST', 'PUT', 'PATCH', 'DELETE'}
                 and request.mimetype == 'application/json'
                 and request.get_data(cache=True)):
@@ -134,6 +168,12 @@ def create_app(config=None):
         if denied is not None:
             return denied
         g.shop_id = current_request_shop_id()
+
+    @app.before_request
+    def reject_legacy_single_shop_scope_at_app_level():
+        # Legacy routes now live on separate blueprints, so the former
+        # data_bp.before_request hook must be enforced at application scope.
+        return reject_legacy_single_shop_request()
 
     @app.before_request
     def require_lan_authentication():
@@ -160,11 +200,23 @@ def create_app(config=None):
             'WWW-Authenticate': 'Basic realm="tmall-dashboard"',
         }
 
+    @app.before_request
+    def require_admin_for_external_mutations():
+        if request.method not in {'POST', 'PUT', 'PATCH', 'DELETE'}:
+            return None
+        public_mutations = {
+            '/api/frontend-errors',
+            '/api/imports/preview',
+        }
+        if request.path in public_mutations:
+            return None
+        return require_admin_write()
+
     @app.after_request
     def prevent_dashboard_frontend_staleness(response):
         if request.path == '/' or request.path == '/api/version' or request.path in {
             '/products', '/promotion', '/lifecycle', '/reviews',
-            '/data-center', '/settings', '/goals',
+            '/data-center', '/data-collection', '/settings', '/goals',
         } or request.path.startswith('/assets/'):
             response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
             response.headers['Pragma'] = 'no-cache'
@@ -188,6 +240,18 @@ def create_app(config=None):
         response.headers.setdefault('X-Content-Type-Options', 'nosniff')
         response.headers.setdefault('X-Frame-Options', 'SAMEORIGIN')
         response.headers.setdefault('Referrer-Policy', 'strict-origin-when-cross-origin')
+        if request.method in {'POST', 'PUT', 'PATCH', 'DELETE'} and response.status_code < 400:
+            # Mutations may affect multiple cached legacy projections; invalidate
+            # the process-local cache instead of serving stale post-write data.
+            from utils.cache import cache
+            cache.clear()
+        # API 请求日志
+        if request.path.startswith('/api/'):
+            start = getattr(g, '_request_start_time', None)
+            if start is not None:
+                elapsed = (time.time() - start) * 1000
+                level = logging.WARNING if elapsed > 1000 else logging.INFO if elapsed > 200 else logging.DEBUG
+                logging.getLogger('api.request').log(level, '%s %s %s %.0fms', request.method, request.path, response.status_code, elapsed)
         return response
 
     @app.errorhandler(RequestEntityTooLarge)
@@ -238,7 +302,7 @@ def create_app(config=None):
             return redirect('/reviews')
         if page == 'manage':
             return redirect('/settings')
-        if page not in {'products', 'promotion', 'keyword-promotion', 'market-ranking', 'lifecycle', 'reviews', 'data-center', 'settings', 'goals', 'flow-source', 'rival-analysis'}:
+        if page not in {'overview', 'analysis', 'products', 'promotion', 'keyword-promotion', 'market-ranking', 'lifecycle', 'reviews', 'data-center', 'settings', 'goals', 'flow-source', 'rival-analysis', 'data-collection'}:
             return jsonify({'error': 'page not found'}), 404
         return send_from_directory(os.path.join(demo_root, 'pages'), f'{page}.html', max_age=0)
 
@@ -253,7 +317,11 @@ def create_app(config=None):
     # The catalog is also served at `/`, so relative asset URLs resolve here.
     @app.route('/assets/<path:path>')
     def demo_assets(path):
-        return send_from_directory(os.path.join(demo_root, 'assets'), path, max_age=0)
+        resp = send_from_directory(os.path.join(demo_root, 'assets'), path)
+        # 静态资源缓存7天（JS/CSS/图片）
+        if path.endswith(('.js', '.css', '.png', '.jpg', '.jpeg', '.gif', '.svg', '.woff', '.woff2', '.ttf')):
+            resp.headers['Cache-Control'] = 'public, max-age=604800'
+        return resp
 
     @app.route('/api/version')
     def app_version():

@@ -102,6 +102,11 @@ def _user_allowlist(environment, name):
     return {item.strip() for item in raw.replace(';', ',').split(',') if item.strip()}
 
 
+def _admin_users(environment=None):
+    environment = os.environ if environment is None else environment
+    return _user_allowlist(environment, 'DASHBOARD_ADMIN_USERS')
+
+
 def _shop_allowlist(environment=None):
     environment = os.environ if environment is None else environment
     raw = str(environment.get('TMALL_SHOP_ALLOWLIST') or '').strip()
@@ -126,3 +131,4 @@ class Config:
     SHOP_ALLOWLIST = _shop_allowlist()
     IMPORT_SCAN_VIEW_USERS = _user_allowlist(os.environ, 'IMPORT_SCAN_VIEW_USERS')
     IMPORT_SCAN_MANAGE_USERS = _user_allowlist(os.environ, 'IMPORT_SCAN_MANAGE_USERS')
+    DASHBOARD_ADMIN_USERS = _admin_users()

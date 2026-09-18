@@ -1022,10 +1022,13 @@ class ImportService:
                 'SELECT completed_at, quality_summary FROM import_batches WHERE id = ?', (batch['id'],)
             ).fetchone()
         stored_quality = completed['quality_summary'] if completed else None
-        quality = json.loads(stored_quality or '{}') if stored_quality else (
-            json.loads(batch['quality_summary']) if isinstance(batch.get('quality_summary'), str)
-            else batch.get('quality_summary', {})
-        )
+        try:
+            quality = json.loads(stored_quality) if (stored_quality and stored_quality.strip()) else (
+                (lambda s: json.loads(s) if s and s.strip() else {})(batch['quality_summary']) if isinstance(batch.get('quality_summary'), str)
+                else batch.get('quality_summary', {})
+            )
+        except (json.JSONDecodeError, TypeError):
+            quality = {}
         invalid_count = int(batch.get('invalid_rows') or quality.get('invalid_rows') or 0)
         return {
             'id': batch['id'],
@@ -1079,7 +1082,13 @@ class ImportService:
                 (shop_id,)
             ).fetchall()]
         for batch in batches:
-            quality = json.loads(batch['quality_summary'])
+            try:
+
+                quality = (lambda s: json.loads(s) if s and s.strip() else {})(batch['quality_summary']) if batch.get('quality_summary') else {}
+
+            except (json.JSONDecodeError, TypeError):
+
+                quality = {}
             batch['quality_summary'] = quality
             batch.update(self._report(batch, batch['inserted_count'], batch['updated_count']))
         return batches

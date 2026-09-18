@@ -13,6 +13,8 @@ keep their behaviour; the frontend decides what the user sees by default.
 """
 from __future__ import annotations
 
+import logging
+
 from flask import has_request_context, request
 
 from db import get_db
@@ -42,8 +44,8 @@ def mode_to_label(category_mode: str | None) -> str | None:
         for mode in settings_service.get().get('category_modes', []):
             if mode.get('value') == category_mode:
                 return mode.get('shop_label') or None
-    except Exception:
-        pass
+    except Exception as _e:
+        logging.getLogger(__name__).debug(f'获取品类模式配置失败，使用默认值: {_e}')
     return category_mode
 
 

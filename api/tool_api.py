@@ -283,6 +283,7 @@ def _exec_main_image_suggest(params):
                 if d and d.strip():
                     dim_counter[d.strip()] += 1
         except (json.JSONDecodeError, TypeError):
+            # 卖点 JSON 解析失败时视为无数据
             pass
 
     core_selling_points = [
@@ -300,6 +301,7 @@ def _exec_main_image_suggest(params):
                 if s and s.strip():
                     scene_counter[s.strip()] += 1
         except (json.JSONDecodeError, TypeError):
+            # 场景 JSON 解析失败时视为无数据
             pass
 
     scene_suggestions = [

@@ -36,6 +36,18 @@ def _parse_daily_business_key(value):
     return 'default', product_id, stat_date
 
 
+def _stage_rows(connection, batch_id, rows):
+    """Persist the normalized publish payload before mutating business facts."""
+    connection.executemany(
+        '''INSERT INTO import_staging_rows (batch_id, row_no, payload_json, status)
+           VALUES (?, ?, ?, 'staged')''',
+        [
+            (batch_id, index, json.dumps(row, ensure_ascii=False, default=str))
+            for index, row in enumerate(rows, start=1)
+        ],
+    )
+
+
 class ImportRepo:
     @staticmethod
     def complete_product_daily_batch(batch, rows):
@@ -64,6 +76,7 @@ class ImportRepo:
                         batch['invalid_rows'], batch['quality_summary'],
                     ),
                 )
+                _stage_rows(connection, batch['id'], rows)
                 seen_product_snapshots = set()
                 for row in rows:
                     shop_id = str(row.get('shop_id') or 'default')
@@ -168,6 +181,10 @@ class ImportRepo:
                        WHERE id = ?''',
                     (inserted_count, updated_count, json.dumps(quality_summary, ensure_ascii=False), batch['id']),
                 )
+                connection.execute(
+                    "UPDATE import_staging_rows SET status = 'published', published_at = CURRENT_TIMESTAMP WHERE batch_id = ?",
+                    (batch['id'],),
+                )
                 connection.commit()
             except Exception:
                 connection.rollback()
@@ -193,8 +210,9 @@ class ImportRepo:
                        total_rows, valid_rows, invalid_rows, quality_summary)
                        VALUES (?, ?, ?, ?, ?, 'processing', ?, ?, ?, ?)''',
                     (batch['id'], batch.get('shop_id', 'default'), batch['source_type'], batch['source_filename'], batch['source_hash'],
-                     batch['total_rows'], batch['valid_rows'], batch['invalid_rows'], batch['quality_summary']),
+                    batch['total_rows'], batch['valid_rows'], batch['invalid_rows'], batch['quality_summary']),
                 )
+                _stage_rows(connection, batch['id'], rows)
                 for row in rows:
                     where = ' AND '.join(f'{column} = ?' for column in key_columns)
                     values = [row[column] for column in key_columns]
@@ -264,6 +282,10 @@ class ImportRepo:
                 connection.execute(
                     "UPDATE import_batches SET status = 'completed', inserted_count = ?, updated_count = ?, quality_summary = ?, completed_at = CURRENT_TIMESTAMP WHERE id = ?",
                     (inserted_count, updated_count, json.dumps(quality_summary, ensure_ascii=False), batch['id']),
+                )
+                connection.execute(
+                    "UPDATE import_staging_rows SET status = 'published', published_at = CURRENT_TIMESTAMP WHERE batch_id = ?",
+                    (batch['id'],),
                 )
                 connection.commit()
             except Exception:

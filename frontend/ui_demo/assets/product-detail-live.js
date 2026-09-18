@@ -19,6 +19,9 @@
   let selectedRange = {};
   const detailTabs = new Set(['overview', 'trend', 'flow-source', 'lifecycle', 'actions', 'evidence']);
 
+  // 单品流量来源树形展开状态
+  const itemFlowExpanded = new Set();
+
   function selectDetailTab(tab, { updateHash = true, focus = false } = {}) {
     const active = detailTabs.has(tab) ? tab : 'overview';
     $$('[data-product-detail-tab]').forEach((button) => {
@@ -107,12 +110,214 @@
       card.append(label, value, source); return card;
     }));
   }
+
+  // 加载单品流量来源数据（树形折叠展开）
+  async function loadItemFlowSource(itemId) {
+    try {
+      const r = await fetch(`/api/sycm/item-flow/summary?item_id=${encodeURIComponent(itemId)}`);
+      const d = await r.json();
+      if (!d.ok) {
+        const tbody = document.querySelector('[data-item-flow-table]');
+        if (tbody) tbody.innerHTML = `<tr><td colspan="10" style="text-align:center;color:var(--text-tertiary);padding:24px">${d.message || '暂无流量来源数据'}</td></tr>`;
+        return;
+      }
+      const data = d.data;
+      const channels = data.channels || [];
+      const totalUv = data.total_uv || 0;
+      const totalPay = data.total_pay_amount || 0;
+
+      // 构建树形结构：level=0 → level=1 → level=2
+      const level0 = channels.filter(ch => ch.level === 0);
+      const childrenMap = {};
+      channels.forEach(ch => {
+        const parent = ch.parent_channel || '';
+        if (parent && ch.level > 0) {
+          if (!childrenMap[parent]) childrenMap[parent] = [];
+          childrenMap[parent].push(ch);
+        }
+      });
+
+      function buildTree(node, level) {
+        const treeNode = { ...node, level: level, children: [] };
+        const children = childrenMap[node.channel_name] || [];
+        children.forEach(child => {
+          treeNode.children.push(buildTree(child, level + 1));
+        });
+        treeNode.children.sort((a, b) => (b.uv || 0) - (a.uv || 0));
+        return treeNode;
+      }
+
+      const tree = level0.map(ch => buildTree(ch, 1));
+      tree.sort((a, b) => (b.uv || 0) - (a.uv || 0));
+      tree.forEach(node => itemFlowExpanded.add(node.channel_name));
+
+      // 统计
+      let totalBuyers = 0;
+      let channelCount = 0;
+      function countChannels(nodes) {
+        nodes.forEach(node => {
+          channelCount++;
+          totalBuyers += node.pay_buyer_count || 0;
+          if (node.children.length) countChannels(node.children);
+        });
+      }
+      countChannels(tree);
+
+      const setText2 = (sel, val) => { const el = document.querySelector(sel); if (el) el.textContent = val; };
+      setText2('[data-item-flow-date]', data.stat_date || '--');
+      setText2('[data-item-flow-total-uv]', totalUv.toLocaleString('zh-CN'));
+      setText2('[data-item-flow-total-pay]', '¥' + (totalPay >= 10000 ? (totalPay/10000).toFixed(1) + '万' : totalPay.toFixed(0)));
+      setText2('[data-item-flow-total-buyers]', totalBuyers.toLocaleString('zh-CN'));
+      setText2('[data-item-flow-channel-count]', channelCount);
+
+      const tbody = document.querySelector('[data-item-flow-table]');
+      if (!tbody) return;
+      if (!tree.length) {
+        tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;color:var(--text-tertiary);padding:24px">暂无流量来源数据</td></tr>';
+        return;
+      }
+
+      // 渲染树形表格
+      function renderNode(node) {
+        const isExpanded = itemFlowExpanded.has(node.channel_name);
+        const hasChildren = node.children.length > 0;
+        const indent = (node.level - 1) * 20;
+
+        const toggleBtn = hasChildren
+          ? `<span class="toggle-btn" data-item-flow-toggle="${node.channel_name}">${isExpanded ? '−' : '+'}</span>`
+          : `<span class="toggle-btn toggle-btn--empty">·</span>`;
+
+        const uvPct = totalUv > 0 ? (node.uv / totalUv * 100).toFixed(1) + '%' : '--';
+        const rate = node.pay_rate != null ? (node.pay_rate * 100).toFixed(2) + '%' : '--';
+        const uvValue = node.uv > 0 && node.pay_amount != null ? '¥' + (node.pay_amount / node.uv).toFixed(2) : '--';
+
+        let html = `<tr class="level-${node.level}">
+          <td>
+            <div class="channel-cell" style="padding-left:${indent}px">
+              ${toggleBtn}
+              <span class="channel-name ${hasChildren ? 'channel-name--clickable' : ''}" data-item-flow-channel="${node.channel_name}">${node.channel_name}</span>
+            </div>
+          </td>
+          <td class="num">${(node.uv || 0).toLocaleString('zh-CN')}</td>
+          <td class="num">${uvPct}</td>
+          <td class="num">¥${node.pay_amount != null ? (node.pay_amount >= 10000 ? (node.pay_amount/10000).toFixed(1) + '万' : node.pay_amount.toFixed(0)) : '--'}</td>
+          <td class="num">${(node.pay_buyer_count || 0).toLocaleString('zh-CN')}</td>
+          <td class="num">${rate}</td>
+          <td class="num">${uvValue}</td>
+          <td class="num">${(node.cart_buyer_count || 0).toLocaleString('zh-CN')}</td>
+          <td class="num">${node.uv > 0 && node.cart_buyer_count != null ? (node.cart_buyer_count / node.uv * 100).toFixed(2) + '%' : '--'}</td>
+          <td class="num">${(node.collect_item_count || 0).toLocaleString('zh-CN')}</td>
+          <td class="num">${(node.new_uv || 0).toLocaleString('zh-CN')}</td>
+        </tr>`;
+
+        if (isExpanded && hasChildren) {
+          node.children.forEach(child => {
+            html += renderNode(child);
+          });
+        }
+        return html;
+      }
+
+      function renderTable() {
+        let html = '';
+        tree.forEach(node => { html += renderNode(node); });
+        tbody.innerHTML = html;
+        bindEvents();
+      }
+
+      function bindEvents() {
+        tbody.querySelectorAll('[data-item-flow-toggle]').forEach(el => {
+          el.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const name = el.dataset.itemFlowToggle;
+            if (itemFlowExpanded.has(name)) {
+              itemFlowExpanded.delete(name);
+            } else {
+              itemFlowExpanded.add(name);
+            }
+            renderTable();
+          });
+        });
+        tbody.querySelectorAll('.channel-name--clickable').forEach(el => {
+          el.addEventListener('click', () => {
+            const name = el.dataset.itemFlowChannel;
+            if (itemFlowExpanded.has(name)) {
+              itemFlowExpanded.delete(name);
+            } else {
+              itemFlowExpanded.add(name);
+            }
+            renderTable();
+          });
+        });
+      }
+
+      renderTable();
+
+      // 渲染图表（用一级渠道）
+      if (window.echarts && tree.length) {
+        // 饼图
+        const pieEl = document.getElementById('itemFlowPieChart');
+        if (pieEl) {
+          const pieChart = echarts.init(pieEl);
+          const pieData = tree.slice(0, 8).map(ch => ({ name: ch.channel_name, value: ch.uv || 0 }));
+          if (tree.length > 8) {
+            const otherUv = tree.slice(8).reduce((s, ch) => s + (ch.uv || 0), 0);
+            pieData.push({ name: '其他', value: otherUv });
+          }
+          pieChart.setOption({
+            tooltip: { trigger: 'item', formatter: '{b}: {c} ({d}%)' },
+            legend: { bottom: 0, textStyle: { fontSize: 10 } },
+            series: [{
+              type: 'pie',
+              radius: ['35%', '65%'],
+              center: ['50%', '42%'],
+              itemStyle: { borderRadius: 4, borderColor: '#fff', borderWidth: 2 },
+              label: { show: false },
+              emphasis: { label: { show: true, fontSize: 12, fontWeight: 'bold' } },
+              data: pieData,
+            }],
+            color: ['#3b82f6', '#ef4444', '#22c55e', '#f59e0b', '#8b5cf6', '#06b6d4', '#ec4899', '#84cc16', '#94a3b8'],
+          });
+        }
+
+        // 柱状图
+        const barEl = document.getElementById('itemFlowBarChart');
+        if (barEl) {
+          const barChart = echarts.init(barEl);
+          const top10 = [...tree].sort((a, b) => (b.pay_amount || 0) - (a.pay_amount || 0)).slice(0, 10);
+          const names = top10.map(ch => ch.channel_name.length > 5 ? ch.channel_name.slice(0, 5) + '...' : ch.channel_name);
+          const barData = top10.map(ch => ch.pay_amount || 0);
+          barChart.setOption({
+            tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
+            grid: { left: '3%', right: '4%', bottom: '15%', containLabel: true },
+            xAxis: { type: 'category', data: names, axisLabel: { fontSize: 9, rotate: 30 } },
+            yAxis: { type: 'value', axisLabel: { formatter: function(v) { return v >= 10000 ? (v/10000).toFixed(0) + '万' : v; } } },
+            series: [{
+              type: 'bar',
+              data: barData,
+              itemStyle: { color: '#22c55e', borderRadius: [3, 3, 0, 0] },
+              barWidth: '50%',
+            }],
+          });
+        }
+      }
+    } catch (err) {
+      console.error('加载单品流量来源失败:', err);
+    }
+  }
+
   async function load(range) {
     try {
       selectedRange = range || window.TmallDateRange?.getState?.() || selectedRange || {};
       const query = new URLSearchParams(); if (selectedRange.startDate) query.set('start', selectedRange.startDate); if (selectedRange.endDate) query.set('end', selectedRange.endDate);
       const payload = await DemoApi.domainRequest(`/api/products/${encodeURIComponent(id)}/detail${query.toString() ? `?${query}` : ''}`); detailPayload = payload; const data = payload.data;
       setText('[data-product-detail-title]', data.product.title || id);
+      // 设置商品主图
+      const productImg = document.querySelector('[data-product-detail-image]');
+      if (productImg && data.product.image_url) {
+        productImg.src = data.product.image_url;
+        productImg.style.display = 'block';
+      }
       setText('[data-product-detail-meta]', `商品 ${id} · 数据截止 ${data.summary.data_cutoff_date || '--'}`);
       setText('[data-product-detail-breadcrumb]', `商品经营 / 商品列表 / ${data.product.title || id}`);
       $('[data-product-detail-meta]').textContent = `商品 ${id} · 数据截止 ${data.summary.data_cutoff_date || '--'}`;
@@ -142,58 +347,102 @@
   bindWorkbenchNavigation();
   window.addEventListener('tmall:date-range-change', (event) => load(event.detail));
   DemoLabels.load().finally(load);
-})();
-  // 加载单品流量来源数据
-  async function loadItemFlowSource(itemId) {
-    try {
-      const r = await fetch(`/api/sycm/item-flow/summary?item_id=${encodeURIComponent(itemId)}`);
-      const d = await r.json();
-      if (!d.ok) {
-        const tbody = document.querySelector('[data-item-flow-table]');
-        if (tbody) tbody.innerHTML = `<tr><td colspan="10" style="text-align:center;color:var(--text-tertiary);padding:24px">${d.message || '暂无流量来源数据'}</td></tr>`;
-        return;
-      }
-      const data = d.data;
-      const channels = data.channels || [];
-      const totalUv = data.total_uv || 0;
-      const totalPay = data.total_pay_amount || 0;
-      let totalBuyers = 0;
-      channels.forEach(ch => { totalBuyers += ch.pay_buyer_count || 0; });
 
-      const setText = (sel, val) => { const el = document.querySelector(sel); if (el) el.textContent = val; };
-      setText('[data-item-flow-date]', data.stat_date || '--');
-      setText('[data-item-flow-total-uv]', totalUv.toLocaleString('zh-CN'));
-      setText('[data-item-flow-total-pay]', '¥' + (totalPay >= 10000 ? (totalPay/10000).toFixed(1) + '万' : totalPay.toFixed(0)));
-      setText('[data-item-flow-total-buyers]', totalBuyers.toLocaleString('zh-CN'));
-      setText('[data-item-flow-channel-count]', channels.length);
+  // ========== KPI 数据下钻 ==========
+  const drillMetricLabels = { net_sales: '净销售额', payment_amount: '支付金额', payment_conversion_rate: '支付转化率', expense_ratio: '费比', average_order_value: '客单价' };
+  const drillMetricFormat = { net_sales: money, payment_amount: money, payment_conversion_rate: percent, expense_ratio: percent, average_order_value: money };
+  let drillCurrentMetric = null, drillCurrentPeriod = 'daily', drillChart = null;
 
-      const tbody = document.querySelector('[data-item-flow-table]');
-      if (!tbody) return;
-      if (!channels.length) {
-        tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;color:var(--text-tertiary);padding:24px">暂无流量来源数据</td></tr>';
-        return;
-      }
-      tbody.innerHTML = channels.map(ch => {
-        const uvPct = totalUv > 0 ? (ch.uv / totalUv * 100).toFixed(1) + '%' : '--';
-        const rate = ch.pay_rate != null ? (ch.pay_rate * 100).toFixed(2) + '%' : '--';
-        const uvValue = ch.uv_value != null ? '¥' + ch.uv_value.toFixed(2) : '--';
-        return `<tr>
-          <td><strong>${ch.channel_name}</strong></td>
-          <td class="num">${(ch.uv || 0).toLocaleString('zh-CN')}</td>
-          <td class="num">${uvPct}</td>
-          <td class="num">¥${ch.pay_amount != null ? (ch.pay_amount >= 10000 ? (ch.pay_amount/10000).toFixed(1) + '万' : ch.pay_amount.toFixed(0)) : '--'}</td>
-          <td class="num">${(ch.pay_buyer_count || 0).toLocaleString('zh-CN')}</td>
-          <td class="num">${rate}</td>
-          <td class="num">${uvValue}</td>
-          <td class="num">${(ch.cart_buyer_count || 0).toLocaleString('zh-CN')}</td>
-          <td class="num">${(ch.collect_item_count || 0).toLocaleString('zh-CN')}</td>
-          <td class="num">${(ch.new_uv || 0).toLocaleString('zh-CN')}</td>
-        </tr>`;
-      }).join('');
-    } catch (err) {
-      console.error('加载单品流量来源失败:', err);
+  function getDrillValue(item, metric) {
+    if (metric === 'net_sales') return item.net_sales;
+    if (metric === 'payment_amount') return item.payment_amount;
+    if (metric === 'payment_conversion_rate') { const v = item.product_visitors || item.paid_ipv || 0; const b = item.payment_qty || item.paid_buyers || 0; return v > 0 ? b / v : null; }
+    if (metric === 'expense_ratio') { const p = item.payment_amount || 0; const s = item.ad_spend || 0; return p > 0 ? s / p : null; }
+    if (metric === 'average_order_value') { const q = item.payment_qty || item.paid_buyers || 0; const p = item.payment_amount || 0; return q > 0 ? p / q : null; }
+    return item[metric];
+  }
+
+  function aggregateDrillData(rows, period) {
+    if (period === 'daily') return rows;
+    const groups = {};
+    rows.forEach((item) => {
+      const d = new Date(item.date);
+      let key = period === 'weekly' ? (() => { const w = new Date(d); w.setDate(d.getDate() - d.getDay()); return w.toISOString().slice(0, 10); })() : item.date.slice(0, 7);
+      if (!groups[key]) groups[key] = { date: key, payment_amount: 0, net_sales: 0, product_visitors: 0, ad_spend: 0, payment_qty: 0 };
+      groups[key].payment_amount += Number(item.payment_amount) || 0;
+      groups[key].net_sales += Number(item.net_sales) || 0;
+      groups[key].product_visitors += Number(item.product_visitors) || 0;
+      groups[key].ad_spend += Number(item.ad_spend) || 0;
+      groups[key].payment_qty += Number(item.payment_qty) || 0;
+    });
+    return Object.values(groups).sort((a, b) => a.date.localeCompare(b.date));
+  }
+
+  function renderDrillContent() {
+    const metric = drillCurrentMetric, period = drillCurrentPeriod;
+    const trendRows = Array.isArray(detailPayload && detailPayload.daily_trend) ? detailPayload.daily_trend : [];
+    const data = aggregateDrillData(trendRows, period);
+    const format = drillMetricFormat[metric] || ((v) => v == null ? '--' : v);
+    const values = data.map((item) => getDrillValue(item, metric)).filter((v) => v != null && !isNaN(v));
+    const stats = document.querySelector('[data-drill-stats]');
+    if (values.length) {
+      const avg = values.reduce((a, b) => a + b, 0) / values.length, max = Math.max(...values), min = Math.min(...values), latest = values[values.length - 1];
+      stats.innerHTML = '<div class="drill-modal__stat"><div class="drill-modal__stat-label">最新值</div><div class="drill-modal__stat-value">' + format(latest) + '</div></div><div class="drill-modal__stat"><div class="drill-modal__stat-label">平均值</div><div class="drill-modal__stat-value">' + format(avg) + '</div></div><div class="drill-modal__stat"><div class="drill-modal__stat-label">最高值</div><div class="drill-modal__stat-value">' + format(max) + '</div></div><div class="drill-modal__stat"><div class="drill-modal__stat-label">最低值</div><div class="drill-modal__stat-value">' + format(min) + '</div></div>';
+    } else {
+      stats.innerHTML = '<div class="drill-modal__stat" style="grid-column:1/-1;text-align:center;color:var(--text-tertiary);">暂无数据</div>';
+    }
+    const chartEl = document.querySelector('[data-drill-chart]');
+    if (drillChart) { drillChart.dispose(); drillChart = null; }
+    if (window.echarts && data.length) {
+      drillChart = echarts.init(chartEl);
+      drillChart.setOption({
+        tooltip: { trigger: 'axis', formatter: function(params) { var p = params[0]; return p.name + '<br/>' + drillMetricLabels[metric] + ': ' + format(p.value); } },
+        grid: { left: 50, right: 20, top: 20, bottom: 40 },
+        xAxis: { type: 'category', data: data.map(function(d) { return d.date; }), axisLabel: { rotate: data.length > 14 ? 45 : 0, fontSize: 10 } },
+        yAxis: { type: 'value', axisLabel: { formatter: function(v) { return (metric === 'payment_conversion_rate' || metric === 'expense_ratio') ? (v * 100).toFixed(1) + '%' : (v >= 10000 ? (v / 10000).toFixed(1) + '万' : v.toFixed(0)); } } },
+        series: [{ name: drillMetricLabels[metric], type: 'line', smooth: true, data: data.map(function(d) { return getDrillValue(d, metric); }), areaStyle: { opacity: 0.1 }, lineStyle: { width: 2 }, itemStyle: { color: '#3b82f6' } }],
+      });
+    } else {
+      chartEl.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--text-tertiary);">暂无趋势数据</div>';
+    }
+    const table = document.querySelector('[data-drill-table]');
+    if (data.length) {
+      var rows = data.map(function(item, idx) {
+        var tr = document.createElement('tr');
+        var val = getDrillValue(item, metric);
+        var prev = idx > 0 ? getDrillValue(data[idx - 1], metric) : null;
+        var change = (prev != null && prev != 0 && val != null) ? ((val - prev) / prev * 100) : null;
+        [item.date, format(val), (change != null ? (change > 0 ? '+' : '') + change.toFixed(1) + '%' : '--')].forEach(function(value, index) {
+          var td = document.createElement('td'); td.textContent = value;
+          if (index > 0) td.className = 'num';
+          if (index === 2 && change != null) td.style.color = change > 0 ? '#10b981' : '#ef4444';
+          tr.appendChild(td);
+        });
+        return tr;
+      });
+      table.replaceChildren.apply(table, rows);
+    } else {
+      table.innerHTML = '<tr><td colspan="3" style="text-align:center;color:var(--text-tertiary);padding:24px;">暂无数据</td></tr>';
     }
   }
+
+  function renderDrillModal(metric) {
+    drillCurrentMetric = metric;
+    document.querySelector('[data-drill-title]').textContent = (drillMetricLabels[metric] || metric) + ' · 趋势下钻';
+    document.querySelector('[data-drill-modal]').hidden = false;
+    renderDrillContent();
+  }
+  function closeDrillModal() { document.querySelector('[data-drill-modal]').hidden = true; if (drillChart) { drillChart.dispose(); drillChart = null; } }
+
+  document.querySelectorAll('[data-drill-metric]').forEach(function(card) { card.addEventListener('click', function() { renderDrillModal(card.dataset.drillMetric); }); });
+  var closeBtn = document.querySelector('[data-drill-close]'); if (closeBtn) closeBtn.addEventListener('click', closeDrillModal);
+  var modal = document.querySelector('[data-drill-modal]'); if (modal) modal.addEventListener('click', function(e) { if (e.target.dataset.drillModal !== undefined) closeDrillModal(); });
+  document.addEventListener('keydown', function(e) { if (e.key === 'Escape' && !document.querySelector('[data-drill-modal]').hidden) closeDrillModal(); });
+  document.querySelectorAll('[data-drill-period]').forEach(function(tab) { tab.addEventListener('click', function() {
+    document.querySelectorAll('[data-drill-period]').forEach(function(t) { t.classList.remove('drill-modal__tab--active'); });
+    tab.classList.add('drill-modal__tab--active');
+    drillCurrentPeriod = tab.dataset.drillPeriod;
+    renderDrillContent();
+  }); });
+  window.addEventListener('resize', function() { if (drillChart) drillChart.resize(); });
 })();
-
-

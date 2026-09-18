@@ -109,7 +109,7 @@ class AppFactoryTests(unittest.TestCase):
             connection = get_connection(database_path)
             try:
                 self.assertEqual(connection.execute('PRAGMA journal_mode').fetchone()[0], 'wal')
-                self.assertEqual(connection.execute('PRAGMA busy_timeout').fetchone()[0], 10000)
+                self.assertEqual(connection.execute('PRAGMA busy_timeout').fetchone()[0], 30000)
             finally:
                 connection.close()
 
