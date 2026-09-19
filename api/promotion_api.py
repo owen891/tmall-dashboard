@@ -53,14 +53,16 @@ def promotion_creatives():
     product_id = request.args.get('product_id')
     channel = request.args.get('channel')
     sort = request.args.get('sort', 'clicks')
-    result = promotion_service.creatives(start_date, end_date, product_id, channel, sort)
+    category_filters = category_filters_from_request()
+    result = promotion_service.creatives(start_date, end_date, product_id, channel, sort, category_filters)
     availability = result['availability']
     missing_inputs = ['promotion_creatives'] if not result['rows'] else []
     return success(
         result,
         availability=availability,
         filters={'start': start_date, 'end': end_date,
-                 'product_id': product_id, 'channel': channel, 'sort': sort},
+                 'product_id': product_id, 'channel': channel, 'sort': sort,
+                 **{k: v for k, v in category_filters.items() if v}},
         missing_inputs=missing_inputs,
         limitations=limitations_for(availability, missing_inputs=missing_inputs) + result.get('limitations', []),
         evidence_level=evidence_level_for(availability, missing_inputs=missing_inputs),

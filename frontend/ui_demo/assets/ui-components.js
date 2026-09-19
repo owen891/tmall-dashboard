@@ -18,10 +18,40 @@
     const normalized = String(value).replace('T', ' ').replace(/\.\d+Z?$/, '');
     return normalized.slice(0, 16);
   };
-  const status = (node, state, details = {}) => {
-    if (!node || !window.DemoApi?.renderDataState) return;
-    window.DemoApi.renderDataState(node, state, details);
+  const dataStateTitles = {
+    loading: '加载中…', 'no-data': '暂无数据', 'insufficient-data': '数据积累中…',
+    'missing-fields': '缺少必要字段', 'calculation-failed': '指标计算失败',
+    'source-unavailable': '数据来源不可用', partial: '部分数据可用',
   };
+  const dataStateDetails = {
+    loading: '正在读取数据', 'no-data': '当前筛选条件没有可展示的数据', 'insufficient-data': '补充更多数据后才能计算',
+    'missing-fields': '请检查导入字段', 'calculation-failed': '请稍后重试', 'source-unavailable': '请检查数据源连接',
+    partial: '部分字段暂不可用',
+  };
+  const stateKey = (state) => (dataStateTitles[state] ? state : 'calculation-failed');
+  const stateDetail = (state, details) => {
+    if (state === 'missing-fields' && Array.isArray(details?.fields) && details.fields.length) return `缺少：${details.fields.join('、')}`;
+    return details?.message || details?.reason || dataStateDetails[state] || '';
+  };
+  const retryButton = (handler) => {
+    const node = create('button', 'ui-button ui-button--ghost', '重试');
+    node.type = 'button';
+    node.addEventListener('click', handler);
+    return node;
+  };
+  // Inline variant for status slots: fills the given container (title + detail + optional retry).
+  const renderDataState = (node, state, details = {}) => {
+    if (!node) return node;
+    const key = stateKey(state);
+    node.replaceChildren();
+    node.classList.add('data-state');
+    node.setAttribute('role', 'status');
+    node.setAttribute('aria-live', 'polite');
+    node.append(create('strong', '', dataStateTitles[key]), create('span', '', stateDetail(key, details)));
+    if (details?.retry) node.append(retryButton(details.retry));
+    return node;
+  };
+  const status = renderDataState;
   const icon = (name, label) => {
     const node = create('i');
     node.dataset.lucide = name;
@@ -30,27 +60,47 @@
     return node;
   };
   const escape = (value) => String(value ?? '').replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
+  const isBlank = (value) => value == null || value === '';
   const formatNumber = (value, digits = 0) => {
+    if (isBlank(value)) return '--';
     const number = Number(value);
     return Number.isFinite(number) ? number.toLocaleString('zh-CN', { minimumFractionDigits: digits, maximumFractionDigits: digits }) : '--';
   };
-  const formatMoney = (value, digits = 0) => formatNumber(value, digits);
-  const formatPercent = (value, digits = 1) => {
+  // unit 'auto' renders values from 1e4 as 万元 (123456 -> ¥12.35万); 'none' keeps the raw amount.
+  const formatMoney = (value, options = {}) => {
+    if (typeof options === 'number') options = { digits: options };
+    const { digits = 2, unit = 'none', currency = '¥' } = options;
+    if (isBlank(value)) return '--';
     const number = Number(value);
     if (!Number.isFinite(number)) return '--';
-    return `${(Math.abs(number) <= 1 ? number * 100 : number).toFixed(digits)}%`;
+    if (unit === 'auto' && Math.abs(number) >= 10000) {
+      return `${currency}${(number / 10000).toLocaleString('zh-CN', { minimumFractionDigits: digits, maximumFractionDigits: digits })}万`;
+    }
+    return `${currency}${number.toLocaleString('zh-CN', { minimumFractionDigits: digits, maximumFractionDigits: digits })}`;
+  };
+  // mode 'ratio' expects 0.15 -> 15%; mode 'percent' expects 15 -> 15%. No auto-scaling heuristic.
+  const formatPercent = (value, options = {}) => {
+    if (typeof options === 'number') options = { digits: options };
+    const { digits = 1, mode = 'ratio' } = options;
+    if (isBlank(value)) return '--';
+    const number = Number(value);
+    if (!Number.isFinite(number)) return '--';
+    return `${(mode === 'percent' ? number : number * 100).toFixed(digits)}%`;
   };
   const format = Object.freeze({ number: formatNumber, money: formatMoney, percent: formatPercent, dateTime: formatDateTime });
   const isElement = (value) => Boolean(value && value.nodeType === 1);
 
+  let iconScanQueued = false;
   const renderIcon = (node) => {
-    if (node && window.lucide?.createIcons) {
-      try {
-        window.lucide.createIcons({ nodes: [node] });
-      } catch (error) {
-        window.lucide.createIcons();
-      }
-    }
+    // lucide-custom.min.js only supports full-document createIcons(), but factory-built
+    // nodes are still detached when their factory runs — scan once the current task
+    // has attached them.
+    if (!node || !window.lucide?.createIcons || iconScanQueued) return node;
+    iconScanQueued = true;
+    Promise.resolve().then(() => {
+      iconScanQueued = false;
+      try { window.lucide.createIcons(); } catch (error) { /* a lucide failure must not break component creation */ }
+    });
     return node;
   };
   const button = ({ label, icon: iconName, variant = 'secondary', size, type = 'button', disabled = false, className = '' } = {}) => {
@@ -67,19 +117,12 @@
     if (detail) node.append(create('span', '', detail));
     return node;
   };
+  // Block variant for panels and setState: a standalone .ui-empty-state node.
   const dataState = (state = 'loading', details = {}) => {
-    const labels = {
-      loading: ['加载中…', '正在读取数据'],
-      'no-data': ['暂无数据', '当前筛选条件没有可展示的数据'],
-      'insufficient-data': ['数据不足', '补充更多数据后才能计算'],
-      'missing-fields': ['字段缺失', details.fields ? `缺少：${details.fields.join('、')}` : '请检查导入字段'],
-      'calculation-failed': ['计算失败', details.message || '请稍后重试'],
-      'source-unavailable': ['数据源不可用', details.message || '请检查数据源连接'],
-      partial: ['部分数据可用', details.message || '部分字段暂不可用'],
-    };
-    const [message, detail] = labels[state] || labels['no-data'];
-    const node = emptyState(message, detail);
-    node.dataset.state = state;
+    const key = stateKey(state);
+    const node = emptyState(dataStateTitles[key], stateDetail(key, details));
+    node.dataset.state = key;
+    if (details?.retry) node.append(retryButton(details.retry));
     return node;
   };
   const metricCard = ({ label, value = '--', meta = '', tone = 'default', icon: iconName, interactive = false, target } = {}) => {
@@ -152,6 +195,107 @@
     if (!window.DemoFieldSelector?.create) throw new Error('字段选择器组件尚未加载');
     return window.DemoFieldSelector.create(options);
   };
+  let modalSequence = 0;
+  let openModalCount = 0;
+  let bodyOverflowBeforeModal = '';
+  // Native <dialog> per DESIGN_SYSTEM.md §4.5: showModal() puts the dialog in the top layer,
+  // so stacking across open modals is handled by the browser. ESC and backdrop clicks are
+  // routed through close() so onClose fires exactly once per dismissal.
+  const modal = ({ title, description = '', body = null, footer = null, size = 'md', dismissible = true, onClose = null } = {}) => {
+    const node = create('dialog', ['ui-modal', size && size !== 'md' ? `ui-modal--${size}` : ''].filter(Boolean).join(' '));
+    const titleId = `ui-modal-title-${++modalSequence}`;
+    node.setAttribute('aria-labelledby', titleId);
+    if (!dismissible) node.dataset.uiModalStatic = '';
+    // showModal() requires the dialog to be in the document; keep it attached for its whole lifetime.
+    document.body.append(node);
+    const handle = { node, body: null, footer: null, open: () => handle, close: () => handle, destroy: () => handle };
+    const header = create('header', 'ui-modal__header');
+    const copy = create('div', 'ui-modal__copy');
+    const heading = create('h3', '', title);
+    heading.id = titleId;
+    copy.append(heading);
+    if (description) copy.append(create('p', '', description));
+    header.append(copy);
+    const closeButton = button({ icon: 'x', variant: 'ghost', className: 'ui-modal__close' });
+    closeButton.setAttribute('aria-label', '关闭');
+    closeButton.addEventListener('click', () => handle.close());
+    header.append(closeButton);
+    node.append(header);
+    const bodyNode = create('div', 'ui-modal__body');
+    if (isElement(body)) bodyNode.append(body);
+    else if (body) bodyNode.append(create('p', '', String(body)));
+    node.append(bodyNode);
+    handle.body = bodyNode;
+    if (footer) {
+      const footerNode = create('footer', 'ui-modal__footer');
+      (Array.isArray(footer) ? footer : [footer]).forEach((item) => footerNode.append(isElement(item) ? item : create('div', '', String(item))));
+      node.append(footerNode);
+      handle.footer = footerNode;
+    }
+    let counted = false;
+    let finished = false;
+    const acquire = () => {
+      if (counted) return;
+      counted = true;
+      if (openModalCount === 0) { bodyOverflowBeforeModal = document.body.style.overflow; document.body.style.overflow = 'hidden'; }
+      openModalCount += 1;
+    };
+    const release = () => {
+      if (!counted) return;
+      counted = false;
+      openModalCount = Math.max(0, openModalCount - 1);
+      if (openModalCount === 0) document.body.style.overflow = bodyOverflowBeforeModal;
+    };
+    // Some embedded Chromium builds never dispatch the dialog close event, so the
+    // scroll-lock release and onClose must run synchronously in close()/destroy(),
+    // with the close event only as a fallback for UA-initiated dismissal.
+    const finish = () => {
+      if (finished) return;
+      finished = true;
+      release();
+      if (onClose) onClose();
+    };
+    handle.open = () => {
+      if (node.open) return handle;
+      finished = false;
+      acquire();
+      try {
+        node.showModal();
+      } catch (error) {
+        release();
+        throw error;
+      }
+      return handle;
+    };
+    handle.close = () => {
+      if (node.open) {
+        node.close();
+        finish();
+      }
+      return handle;
+    };
+    handle.destroy = () => {
+      if (node.open) {
+        node.close();
+        finish();
+      }
+      node.remove();
+      return handle;
+    };
+    node.addEventListener('close', finish);
+    node.addEventListener('cancel', (event) => { event.preventDefault(); if (dismissible) handle.close(); });
+    node.addEventListener('keydown', (event) => { if (event.key === 'Escape' && dismissible && node.open) { event.preventDefault(); handle.close(); } });
+    node.addEventListener('click', (event) => { if (dismissible && event.target === node) handle.close(); });
+    return handle;
+  };
+  const confirm = ({ title, message = '', description = '', confirmLabel = '确认', cancelLabel = '取消', tone = 'primary' } = {}) => new Promise((resolve) => {
+    const cancel = button({ label: cancelLabel });
+    const ok = button({ label: confirmLabel, variant: tone === 'danger' ? 'danger' : 'primary' });
+    const dialog = modal({ title, description, body: create('p', '', message), size: 'sm', dismissible: false, footer: [cancel, ok], onClose: () => resolve(false) });
+    cancel.addEventListener('click', () => dialog.close());
+    ok.addEventListener('click', () => { resolve(true); dialog.close(); });
+    dialog.open();
+  });
   const legacyMap = Object.freeze({
     button: 'ui-button',
     'metric-card': 'ui-metric-card',
@@ -180,7 +324,7 @@
     });
     return root;
   };
-  const api = { text, create, clear, escape, formatDateTime, format, status, icon, button, badge, emptyState, dataState, metricCard, metricGrid, panel, pageHeader, filterToolbar, table, setState, fieldSelector, upgradeLegacy };
+  const api = { text, create, clear, escape, formatDateTime, format, status, renderDataState, icon, button, badge, emptyState, dataState, metricCard, metricGrid, panel, pageHeader, filterToolbar, table, setState, modal, confirm, fieldSelector, upgradeLegacy };
   const audit = (root = document) => {
     const issues = [];
     root.querySelectorAll('.metric-card, .panel, .plain-panel, .button, .badge, .empty-state, .section-toolbar, .data-table-wrap, .data-table').forEach((node) => {

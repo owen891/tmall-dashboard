@@ -366,6 +366,12 @@ tmall-dashboard/
 
 * 数值用 `--font-size-kpi` + `--font-display`
 
+* 图标和进度条颜色按指标类型语义映射，同一类指标必须同色，禁止逐卡挑选装饰色：
+  * 金额类（净销售额、支付金额、客单价、推广花费）→ `--brand`（`overview-v2-kpi--brand` / `ui-metric-card--brand`）
+  * 比率类（转化率、退款率、费用比）→ `--info`
+  * 人群类（访客数、老买家占比）→ `--purple`
+  * 效率/成果类（ROI 等正向效率指标）→ `--success`
+
 ### 3.4 面板（内容区）
 
 
@@ -603,6 +609,14 @@ tmall-dashboard/
 * 必须有 `modal-form__footer`，取消在左、主要操作在右
 
 * 点击遮罩或按 ESC 关闭（需阻止默认 cancel 事件）
+
+* 动态弹窗统一使用 `TmallUI.modal({ title, description, body, footer, size, dismissible, onClose })`，返回 `{ node, body, footer, open(), close(), destroy() }`；组件自带标题栏、关闭按钮、`aria-labelledby`、焦点还原和 body 滚动锁定
+
+* 确认流使用 `TmallUI.confirm({ title, message, confirmLabel, cancelLabel, tone })`，返回 `Promise<boolean>`；`tone: 'danger'` 渲染红色主要按钮
+
+* `size` 枚举：`sm`(420px) / `md`(560px，默认) / `lg`(820px) / `xl`(960px)；`dismissible: false` 时 ESC 与遮罩点击无效，只允许页脚按钮关闭
+
+* 新增弹窗功能不得手写 `<dialog>` 结构；存量 `.modal-form` 系列弹窗在对应页面迁移时替换为组件
 
 ### 4.6 徽章 / 标签
 
@@ -1306,7 +1320,10 @@ TmallUI.pageHeader(options)
 TmallUI.filterToolbar(content, actions)
 TmallUI.table(options)
 TmallUI.dataState(state, details)
+TmallUI.fieldSelector(options)
 ```
+
+字段选择器是跨商品、生命周期、经营概览和推广页面复用的公共组件。实现位于 `frontend/ui_demo/assets/field-selector.js`，统一入口为 `TmallUI.fieldSelector(options)`；`DemoFieldSelector.create(options)` 仅作为历史页面兼容调用。组件根节点和子节点使用 `ui-field-selector*` canonical class，支持字段分组、必选字段、勾选、顺序调整和预览。
 
 历史页面中的 `.button`、`.panel`、`.metric-card`、`.badge`、`.empty-state`、`.data-table` 等 class 由 `TmallUI.upgradeLegacy()` 自动映射到 `ui-*` canonical class。新代码不得再新增历史 class 的独立实现。
 

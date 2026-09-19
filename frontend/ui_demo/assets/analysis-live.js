@@ -25,12 +25,32 @@
   let currentConfig = null;
   let chartInstances = [];
 
+  function syncDateInputs(range) {
+    if (!range?.startDate || !range?.endDate) return;
+    $('#startDate').value = range.startDate;
+    $('#endDate').value = range.endDate;
+    $('#startDate').max = range.endDate;
+    $('#endDate').min = range.startDate;
+  }
+
   function init() {
-    // 设置默认日期（最近30天）
+    // 日期由共享时间范围控制，避免分析页与顶部选择器各自维护一份状态。
     const today = new Date();
     const thirtyDaysAgo = new Date(today.getTime() - 30 * 24 * 60 * 60 * 1000);
     $('#endDate').value = today.toISOString().slice(0, 10);
     $('#startDate').value = thirtyDaysAgo.toISOString().slice(0, 10);
+    syncDateInputs(window.TmallDateRange?.getState?.());
+    window.TmallDateRange?.subscribe?.((range) => {
+      syncDateInputs(range);
+      if (currentConfig) runAnalysis();
+    });
+    ['startDate', 'endDate'].forEach((id) => {
+      $(`#${id}`).addEventListener('change', () => {
+        const start = $('#startDate').value;
+        const end = $('#endDate').value;
+        if (start && end) window.TmallDateRange?.setRange?.(start, end, 'custom');
+      });
+    });
 
     // 绑定模板切换
     $$('.analysis-template').forEach((tpl) => {
@@ -58,10 +78,13 @@
     $('#metricSelect').value = tpl.metric;
     $('#dimensionSelect').value = tpl.dimension;
     $('#chartTypeSelect').value = tpl.chartType;
-    const today = new Date();
-    const start = new Date(today.getTime() - tpl.days * 24 * 60 * 60 * 1000);
-    $('#endDate').value = today.toISOString().slice(0, 10);
-    $('#startDate').value = start.toISOString().slice(0, 10);
+    const sharedRange = window.TmallDateRange?.getState?.();
+    if (sharedRange?.startDate && sharedRange?.endDate) syncDateInputs(sharedRange);
+    else {
+      const today = new Date();
+      const start = new Date(today.getTime() - tpl.days * 24 * 60 * 60 * 1000);
+      syncDateInputs({ startDate: start.toISOString().slice(0, 10), endDate: today.toISOString().slice(0, 10) });
+    }
   }
 
   async function runAnalysis() {

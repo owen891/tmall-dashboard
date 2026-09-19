@@ -238,11 +238,16 @@ class PromotionRepo:
     )
 
     @staticmethod
-    def creatives(start_date, end_date, product_id=None, channel=None, sort='clicks'):
+    def creatives(start_date, end_date, product_id=None, channel=None, sort='clicks', filters=None):
         """素材维度汇总：promotion_creative_daily × promotion_creatives（排除系统创意）。"""
         shop_id = get_shop_id()
         where = ['f.shop_id = ?', 'f.date BETWEEN ? AND ?']
         params = [shop_id, start_date, end_date]
+        filters = filters or {}
+        if filters.get('shop_label'):
+            label = filters['shop_label']
+            where.append("(f.product_id = '' OR p.shop_label = ? OR instr(',' || p.shop_label || ',', ',' || ? || ',') > 0)")
+            params.extend([label, label])
         if product_id:
             where.append('f.product_id = ?')
             params.append(product_id)

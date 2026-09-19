@@ -158,6 +158,8 @@
     'source-unavailable': '数据来源不可用', partial: '部分数据可用',
   };
   function renderDataState(container, state, details = {}) {
+    // TmallUI owns the canonical renderer; keep a local copy for pages that load api.js without ui-components.js.
+    if (window.TmallUI?.renderDataState) return window.TmallUI.renderDataState(container, state, details);
     if (!container) return;
     const key = stateLabels[state] ? state : 'calculation-failed';
     container.replaceChildren();

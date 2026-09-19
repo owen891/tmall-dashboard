@@ -46,6 +46,26 @@
 .ui-filter-toolbar__main { display: flex; min-width: 0; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
 .ui-table-wrap { max-width: 100%; overflow-x: auto; }
 .ui-data-table { width: 100%; min-width: 780px; border-collapse: collapse; font-size: var(--font-size-body); line-height: var(--line-height-body); }
+.ui-field-selector { min-width: 0; }
+.ui-field-selector__groups, .ui-field-selector__preview { min-width: 0; }
+.ui-field-selector__group { min-width: 0; }
+.ui-field-selector__item { min-width: 0; }
+.ui-field-selector__label { min-width: 0; }
+.ui-modal { width: min(560px, calc(100vw - 24px)); max-height: min(720px, calc(100dvh - 24px)); box-sizing: border-box; padding: 0; border: 1px solid var(--border-default); border-radius: var(--radius-lg); background: var(--surface-base); color: var(--text-primary); box-shadow: var(--elevation-lg); font-size: var(--font-size-secondary); line-height: var(--line-height-body); overflow: hidden; }
+.ui-modal--sm { width: min(420px, calc(100vw - 24px)); }
+.ui-modal--lg { width: min(820px, calc(100vw - 24px)); }
+.ui-modal--xl { width: min(960px, calc(100vw - 24px)); }
+.ui-modal[open] { display: grid; }
+.ui-modal:not([open]), .ui-modal[hidden] { display: none; }
+.ui-modal::backdrop { background: var(--overlay-backdrop); backdrop-filter: blur(2px); }
+.ui-modal__header { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-4); padding: var(--space-4) var(--space-5) var(--space-3); border-bottom: 1px solid var(--border-default); }
+.ui-modal__copy { min-width: 0; }
+.ui-modal__header h3 { margin: 0; font-size: var(--font-size-section); }
+.ui-modal__header p { margin: var(--space-1) 0 0; color: var(--text-secondary); font-size: var(--font-size-meta); }
+.ui-modal__close { flex: 0 0 auto; border: 0; }
+.ui-modal__body { display: grid; min-height: 0; gap: var(--space-3); padding: var(--space-4) var(--space-5); overflow-y: auto; overscroll-behavior: contain; }
+.ui-modal__body > p { margin: 0; color: var(--text-secondary); }
+.ui-modal__footer { display: flex; justify-content: flex-end; gap: var(--space-2); padding: var(--space-3) var(--space-5); border-top: 1px solid var(--border-default); }
 @media (max-width: 760px) {
   .ui-page-header { align-items: flex-start; flex-direction: column; }
   .ui-metric-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }

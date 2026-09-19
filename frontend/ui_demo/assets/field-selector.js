@@ -287,5 +287,4 @@
   }
 
   window.DemoFieldSelector = { create };
-  if (window.TmallUI) window.TmallUI.fieldSelector = create;
 })();

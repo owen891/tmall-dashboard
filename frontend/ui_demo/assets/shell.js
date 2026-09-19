@@ -385,6 +385,7 @@
   let draftStart = null;
   let state = { startDate: '', endDate: '', preset: params.get('preset') || '30d', compareMode: params.get('compare') || 'none' };
   let rangeReadyDispatched = false;
+  const rangeSubscribers = new Set();
 
   const rangeForPreset = (preset) => {
     const offsets = { today: 0, yesterday: 0, '7d': 6, '30d': 29, '90d': 89 };
@@ -413,6 +414,9 @@
     url.searchParams.set('compare', state.compareMode);
     if (writeHistory) history.pushState(null, '', url);
     window.dispatchEvent(new CustomEvent('tmall:date-range-change', { detail: { ...state } }));
+    rangeSubscribers.forEach((subscriber) => {
+      try { subscriber({ ...state }); } catch (error) { console.error('日期范围订阅回调失败', error); }
+    });
     if (!rangeReadyDispatched) {
       rangeReadyDispatched = true;
       window.dispatchEvent(new CustomEvent('tmall:date-range-ready', { detail: { ...state } }));
@@ -513,7 +517,26 @@
     trigger.focus();
   });
   if (compareSelect) compareSelect.value = state.compareMode;
-  window.TmallDateRange = { getState: () => ({ ...state }) };
+  const setSharedRange = (startValue, endValue, preset = 'custom') => {
+    if (!startValue || !endValue || !/^\d{4}-\d{2}-\d{2}$/.test(startValue) || !/^\d{4}-\d{2}-\d{2}$/.test(endValue)) return false;
+    const start = parseDate(startValue);
+    const end = parseDate(endValue);
+    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || start > end || end > anchorDate) return false;
+    applyRange(start, end, preset);
+    return true;
+  };
+  window.TmallDateRange = {
+    getState: () => ({ ...state }),
+    subscribe: (subscriber, immediate = true) => {
+      if (typeof subscriber !== 'function') return () => {};
+      rangeSubscribers.add(subscriber);
+      if (immediate && state.startDate && state.endDate) {
+        try { subscriber({ ...state }); } catch (error) { console.error('日期范围订阅回调失败', error); }
+      }
+      return () => rangeSubscribers.delete(subscriber);
+    },
+    setRange: setSharedRange,
+  };
   const restoreRangeFromUrl = () => {
     const currentParams = new URLSearchParams(window.location.search);
     let preset = currentParams.get('preset') || '30d';

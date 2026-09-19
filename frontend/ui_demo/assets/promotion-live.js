@@ -193,7 +193,7 @@
       end: range.endDate || `${state.period}-31`,
       group_by: groupBy,
     });
-    [['channel', '[data-promotion-channel]'], ['campaign_id', '[data-promotion-campaign]'], ['unit_id', '[data-promotion-unit]']].forEach(([key, selector]) => {
+    [['channel', '[data-promotion-channel]'], ['campaign_id', '[data-promotion-campaign]'], ['unit_id', '[data-promotion-unit]'], ['product_id', '[data-promotion-product]']].forEach(([key, selector]) => {
       const value = $(selector)?.value.trim();
       if (value) query.set(key, value);
     });
@@ -989,7 +989,7 @@
     if (Object.keys(state.capabilities).length && !DemoApi.can({ capabilities: state.capabilities }, 'can_drilldown')) return toast('当前数据不可下钻');
     if (!state.availableGrains.includes(level)) return toast('当前数据未导入该下钻粒度');
     const query = new URLSearchParams({start:range.startDate || `${state.period}-01`, end:range.endDate || `${state.period}-31`, group_by:level});
-    [['channel','[data-promotion-channel]'],['campaign_id','[data-promotion-campaign]'],['unit_id','[data-promotion-unit]']].forEach(([key, selector]) => { const value = $(selector).value.trim(); if (value) query.set(key, value); });
+    [['channel','[data-promotion-channel]'],['campaign_id','[data-promotion-campaign]'],['unit_id','[data-promotion-unit]'],['product_id','[data-promotion-product]']].forEach(([key, selector]) => { const value = $(selector).value.trim(); if (value) query.set(key, value); });
     try { const response = await DemoApi.domainRequest(`/api/promotion?${query}`); renderDrilldown(Array.isArray(response.data?.rows) ? response.data.rows : [], level); } catch(error) { clearTable(error.message || '推广下钻加载失败'); }
   }
 
@@ -1284,7 +1284,7 @@
   function syncPromotionUrl() {
     const url = new URL(window.location.href);
     url.searchParams.set('tab', state.activeTab);
-    [['channel', '[data-promotion-channel]'], ['campaign_id', '[data-promotion-campaign]'], ['unit_id', '[data-promotion-unit]']].forEach(([key, selector]) => {
+    [['channel', '[data-promotion-channel]'], ['campaign_id', '[data-promotion-campaign]'], ['unit_id', '[data-promotion-unit]'], ['product_id', '[data-promotion-product]']].forEach(([key, selector]) => {
       const value = $(selector)?.value.trim() || '';
       if (value) url.searchParams.set(key, value);
       else url.searchParams.delete(key);
@@ -1293,7 +1293,7 @@
   }
 
   function restorePromotionUrl() {
-    [['channel', '[data-promotion-channel]'], ['campaign_id', '[data-promotion-campaign]'], ['unit_id', '[data-promotion-unit]']].forEach(([key, selector]) => {
+    [['channel', '[data-promotion-channel]'], ['campaign_id', '[data-promotion-campaign]'], ['unit_id', '[data-promotion-unit]'], ['product_id', '[data-promotion-product]']].forEach(([key, selector]) => {
       const input = $(selector);
       if (input) input.value = initialPromotionParams.get(key) || '';
     });
@@ -1454,7 +1454,7 @@
   }
 
   function bindPageFilters() {
-    ['[data-promotion-channel]', '[data-promotion-campaign]', '[data-promotion-unit]'].forEach((selector) => {
+    ['[data-promotion-channel]', '[data-promotion-campaign]', '[data-promotion-unit]', '[data-promotion-product]'].forEach((selector) => {
       const input = $(selector);
       if (!input) return;
       let timer = null;

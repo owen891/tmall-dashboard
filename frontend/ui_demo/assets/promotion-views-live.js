@@ -33,6 +33,7 @@
     planTypeRows: [],
     campaignRows: [],
     creativeRows: [],
+    allCreativeRows: [],
     creativesMode: 'cards',
     structureProduct: null,
     charts: [],
@@ -129,12 +130,21 @@
         renderCreativeBoard();
       });
     });
+    $('[data-promotion-creatives-search]')?.addEventListener('input', () => {
+      state.creativePage = 1;
+      const term = ($('[data-promotion-creatives-search]')?.value || '').trim().toLowerCase();
+      state.creativeRows = state.allCreativeRows.filter((row) => (
+        !term || `${row.creative_id} ${row.creative_name || ''} ${row.product_name || row.title || ''}`.toLowerCase().includes(term)
+      ));
+      renderCreativeBoard();
+    });
     $('[data-promotion-creatives-sort]')?.addEventListener('change', () => { state.creativePage = 1; loadCreatives(); });
     $('[data-promotion-creatives-product]')?.addEventListener('change', () => { state.creativePage = 1; loadCreatives(); });
     $('[data-promotion-creatives-refresh]')?.addEventListener('click', loadCreatives);
-    $('[data-promotion-campaign-sort]')?.addEventListener('change', () => { state.campaignPage = 1; renderCampaignTable(); });
+    $('[data-promotion-campaign-search]')?.addEventListener('input', () => { renderCampaignTable(); });
+    $('[data-promotion-campaign-sort]')?.addEventListener('change', () => { renderCampaignTable(); });
     $('[data-promotion-campaign-plan-type]')?.addEventListener('change', () => { state.campaignPage = 1; renderCampaignTable(); });
-    $('[data-promotion-campaign-channel]')?.addEventListener('change', () => { state.campaignPage = 1; renderCampaignTable(); });
+    $('[data-promotion-campaign-channel]')?.addEventListener('change', () => { renderCampaignTable(); });
     $('[data-promotion-campaigns-refresh]')?.addEventListener('click', loadCampaigns);
     window.addEventListener('tmall:export', (event) => {
       const { start, end } = range();
@@ -313,7 +323,6 @@
     try {
       const response = await DemoApi.domainRequest(`/api/promotion?${query}`);
       state.campaignRows = Array.isArray(response.data?.rows) ? response.data.rows : [];
-      state.campaignPage = 1;
       fillCampaignFilters();
       renderCampaignTable();
     } catch (error) {
@@ -350,13 +359,17 @@
     const channelFilter = $('[data-promotion-campaign-channel]')?.value || '';
     const typeFilter = $('[data-promotion-campaign-plan-type]')?.value || '';
     const sortKey = $('[data-promotion-campaign-sort]')?.value || 'ad_spend';
-    let rows = state.campaignRows.filter((row) => (
-      (!channelFilter || row.channel === channelFilter) && (!typeFilter || row.plan_type === typeFilter)
-    ));
+    const search = ($('[data-promotion-campaign-search]')?.value || '').trim().toLowerCase();
+    let rows = state.campaignRows.filter((row) => {
+      if (channelFilter && row.channel !== channelFilter) return false;
+      if (typeFilter && row.plan_type !== typeFilter) return false;
+      if (search) {
+        const haystack = `${row.campaign_id} ${row.campaign_name || ''}`.toLowerCase();
+        if (!haystack.includes(search)) return false;
+      }
+      return true;
+    });
     rows = [...rows].sort((a, b) => (Number(b[sortKey] || 0) || 0) - (Number(a[sortKey] || 0) || 0));
-    const totalPages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
-    if (state.campaignPage > totalPages) state.campaignPage = 1;
-    const pageRows = rows.slice((state.campaignPage - 1) * PAGE_SIZE, state.campaignPage * PAGE_SIZE);
     const countBadge = $('[data-promotion-campaigns-count]');
     if (countBadge) countBadge.textContent = `${rows.length} 个计划`;
     if (!rows.length) {
@@ -364,8 +377,8 @@
       renderPager($('[data-promotion-campaigns-pager]'), { page: 1, pageSize: PAGE_SIZE, total: 0, onPage: () => {} });
       return;
     }
-    body.innerHTML = pageRows.map((row, index) => `
-      <tr class="promotion-campaign-row" data-campaign-index="${(state.campaignPage - 1) * PAGE_SIZE + index}">
+    body.innerHTML = rows.map((row, index) => `
+      <tr class="promotion-campaign-row" data-campaign-index="${index}">
         <td class="t-clamp" title="${esc(row.campaign_name || row.campaign_id || '')}"><strong>${esc(row.campaign_name || `计划 ${row.campaign_id || ''}`)}</strong> ${row.plan_type ? `<span class="plan-type-badge plan-type-badge--${esc(row.plan_type)}">${esc(row.plan_type)}</span>` : ''}</td>
         <td>${esc(row.channel || '--')}</td>
         <td>${money(row.ad_spend)}</td>
@@ -379,10 +392,7 @@
     $$('tr.promotion-campaign-row', body).forEach((row) => {
       row.addEventListener('click', () => toggleCampaignDetail(row));
     });
-    renderPager($('[data-promotion-campaigns-pager]'), {
-      page: state.campaignPage, pageSize: PAGE_SIZE, total: rows.length,
-      onPage: (page) => { state.campaignPage = page; renderCampaignTable(); },
-    });
+    // 分页/排序由共享 table-controls 组件接管(自动挂载)
   }
 
   async function toggleCampaignDetail(row) {
@@ -425,7 +435,11 @@
     wrap.innerHTML = '<div class="empty-state"><span>加载中…</span></div>';
     try {
       const response = await DemoApi.domainRequest(`/api/promotion/creatives?${new URLSearchParams({ start, end, sort, ...(product ? { product_id: product } : {}) })}`);
-      state.creativeRows = Array.isArray(response.data?.rows) ? response.data.rows : [];
+      state.allCreativeRows = Array.isArray(response.data?.rows) ? response.data.rows : [];
+      const term = ($('[data-promotion-creatives-search]')?.value || '').trim().toLowerCase();
+      state.creativeRows = state.allCreativeRows.filter((row) => (
+        !term || `${row.creative_id} ${row.creative_name || ''} ${row.product_name || row.title || ''}`.toLowerCase().includes(term)
+      ));
       state.creativePage = 1;
       fillCreativeProductFilter();
       renderCreativeBoard();
@@ -468,9 +482,6 @@
     const tableWrap = $('[data-promotion-creative-table-wrap]');
     if (!cards || !tableWrap) return;
     const rows = state.creativeRows;
-    const totalPages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
-    if (state.creativePage > totalPages) state.creativePage = 1;
-    const pageRows = rows.slice((state.creativePage - 1) * PAGE_SIZE, state.creativePage * PAGE_SIZE);
     const countBadge = $('[data-promotion-creatives-count]');
     if (countBadge) countBadge.textContent = `${rows.length} 个素材`;
     cards.hidden = state.creativesMode !== 'cards';
@@ -484,6 +495,9 @@
       return;
     }
     if (state.creativesMode === 'cards') {
+      const totalPages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
+      if (state.creativePage > totalPages) state.creativePage = 1;
+      const pageRows = rows.slice((state.creativePage - 1) * PAGE_SIZE, state.creativePage * PAGE_SIZE);
       cards.innerHTML = pageRows.map((row) => {
         const rowBadges = badges.get(row.creative_id) || [];
         const badgeHtml = Array.isArray(rowBadges)
@@ -510,7 +524,7 @@
     } else {
       const body = $('[data-promotion-creative-body]');
       if (body) {
-        body.innerHTML = pageRows.map((row) => `
+        body.innerHTML = rows.map((row) => `
           <tr>
             <td class="t-clamp" title="${esc(row.creative_name || row.creative_id)}">${esc((row.creative_name || row.creative_id).slice(0, 40))}${(row.creative_name || '').length > 40 ? '…' : ''}<br><span class="promotion-campaign-product__sub">${esc((row.product_name || row.title || '').slice(0, 30))}</span></td>
             <td>${esc(row.channel || '--')}</td>
@@ -525,8 +539,9 @@
       }
     }
     if (window.lucide?.createIcons) window.lucide.createIcons();
+    // 卡片模式用自定义分页;表格模式的分页/排序由共享 table-controls 接管
     renderPager($('[data-promotion-creatives-pager]'), {
-      page: state.creativePage, pageSize: PAGE_SIZE, total: rows.length,
+      page: state.creativePage, pageSize: PAGE_SIZE, total: state.creativesMode === 'cards' ? rows.length : 0,
       onPage: (page) => { state.creativePage = page; renderCreativeBoard(); },
     });
   }

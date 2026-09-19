@@ -167,9 +167,9 @@ class PromotionService:
             },
         }
 
-    def creatives(self, start_date, end_date, product_id=None, channel=None, sort='clicks'):
+    def creatives(self, start_date, end_date, product_id=None, channel=None, sort='clicks', filters=None):
         """素材看板数据：每个素材一行（CTR/CVR/加购/花费等）。"""
-        rows = PromotionRepo.creatives(start_date, end_date, product_id, channel, sort)
+        rows = PromotionRepo.creatives(start_date, end_date, product_id, channel, sort, filters)
         result = []
         for row in rows:
             spend = float(row['ad_spend'] or 0)

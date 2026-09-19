@@ -1,5 +1,8 @@
 /* 推广分析 4 视图扩展样式（总览渠道卡 / 计划看板 / 素材看板 / 结构抽屉） */
-    .promotion-view-tabs { display: flex; width: 100%; margin-bottom: 16px; }
+    /* hidden 属性会被组件的 display 规则覆盖,这里显式压住 */
+.promotion-creative-cards[hidden],
+[data-promotion-creative-table-wrap][hidden] { display: none !important; }
+.promotion-view-tabs { display: flex; width: 100%; margin-bottom: 16px; }
 .promotion-view-tabs button { flex: 1; justify-content: center; min-width: 0; }
     .promotion-view-tabs button { display: inline-flex; align-items: center; gap: 6px; }
     .promotion-view-tabs button svg { width: 15px; height: 15px; }
@@ -39,3 +42,4 @@
     .plan-type-badge--控投产 { border-color: var(--brand); color: var(--brand); }
 .promotion-pager { display: flex; align-items: center; gap: 10px; padding: 8px 4px 2px; font-size: 12px; color: var(--text-secondary); }
 .promotion-pager__info { margin-right: auto; }
+.promotion-pager:empty { display: none; }
