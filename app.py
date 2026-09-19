@@ -9,7 +9,6 @@ import os
 import logging
 import time
 from db import get_db, get_db_path, init_db
-from api.data_api import data_bp
 from api.imports_api import imports_bp
 from api.overview_api import overview_bp
 from api.goals_api import goals_bp
@@ -114,7 +113,6 @@ def create_app(config=None):
 
     orm_db.init_app(app)
     app.register_blueprint(status_bp)
-    app.register_blueprint(data_bp)
     app.register_blueprint(imports_bp)
     app.register_blueprint(overview_bp)
     app.register_blueprint(goals_bp)
@@ -171,8 +169,8 @@ def create_app(config=None):
 
     @app.before_request
     def reject_legacy_single_shop_scope_at_app_level():
-        # Legacy routes now live on separate blueprints, so the former
-        # data_bp.before_request hook must be enforced at application scope.
+        # Legacy routes live on separate blueprints, so single-shop scope
+        # rejection must be enforced at application scope.
         return reject_legacy_single_shop_request()
 
     @app.before_request
