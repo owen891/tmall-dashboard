@@ -12,10 +12,11 @@
   --color-gray-500: #6b7280;
   --color-gray-700: #374151;
   --color-gray-900: #111827;
-  --color-orange-100: #eef2ff;
-  --color-orange-400: #818cf8;
-  --color-orange-500: #6366f1;
-  --color-orange-600: #4f46e5;
+  /* Indigo family (the product brand color). Previously mislabeled "orange". */
+  --color-indigo-100: #eef2ff;
+  --color-indigo-400: #818cf8;
+  --color-indigo-500: #6366f1;
+  --color-indigo-600: #4f46e5;
   --color-green-100: #ecfdf5;
   --color-green-600: #10b981;
   --color-amber-100: #fffbeb;
@@ -88,9 +89,9 @@
   --border-warning-subtle: var(--color-warning-border);
   --border-info-subtle: var(--color-blue-100);
   --border-danger-subtle: var(--color-red-200);
-  --brand: var(--color-orange-500);
-  --brand-hover: var(--color-orange-600);
-  --brand-tint: var(--color-orange-100);
+  --brand: var(--color-indigo-500);
+  --brand-hover: var(--color-indigo-600);
+  --brand-tint: var(--color-indigo-100);
   --success: var(--color-green-600);
   --success-tint: var(--color-green-100);
   --warning: var(--color-amber-600);

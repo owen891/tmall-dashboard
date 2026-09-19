@@ -187,8 +187,13 @@
     return { visitors: visitorsSeen ? visitors : null, payment_conversion_rate: visitorsSeen && buyersSeen && visitors > 0 ? buyers / visitors : null };
   }
 
-  function renderKpis(overview, comparison, matrix) {
+  function renderKpis(overview, comparison, matrix, targets) {
     const fallback = deriveKpiFallback(matrix);
+    const progressByKey = {
+      payment_amount: targets?.gsv_progress,
+      net_sales: targets?.net_sales_progress,
+      ad_spend: targets?.ad_progress,
+    };
     const metrics = [
       ['payment_amount', moneyWan],
       ['net_sales', moneyWan],
@@ -210,7 +215,7 @@
       textAll(`[data-overview-kpi="${key}"]`, value == null ? '--' : formatter(value));
       document.querySelectorAll(`[data-overview-kpi="${key}"]`).forEach((node) => {
         const card = node.closest('.overview-v2-kpi');
-        if (card) card.style.setProperty('--kpi-progress', value == null ? '0%' : '100%');
+        const p = progressByKey[key]; const pct = p == null ? 0 : Math.max(0, Math.min(100, Number(p) || 0)); if (card) card.style.setProperty('--kpi-progress', pct + '%');
       });
       const compareKey = { payment_amount: 'gmv', net_sales: 'net_sales', visitors: 'visitors', ad_spend: 'ad_spend', ad_roi: 'roi', refund_rate: 'refund_rate', payment_conversion_rate: 'conversion', expense_ratio: 'expense_ratio' }[key];
       const change = compareKey && comparison?.kpi_compare?.[compareKey];
@@ -468,7 +473,7 @@
     try { matrix = await DemoApi.domainRequest('/api/overview/daily-matrix?' + overviewParams.toString()); } catch (error) { renderMatrixStatus(null, 'error'); setTableStatus($('[data-overview-home-matrix]'), '日度矩阵暂无数据；请导入日度明细后重试', matrixVisibleColumns.length, () => guardedLoad(state)); }
     if (token !== requestToken) return;
     const rows = unwrap(trend, 'data');
-    renderKpis(overviewResponse.data, comparison, matrix.data); renderContext(overviewResponse.data); renderTrend(rows); renderTargets(targets); await loadGoalLayers(state, token); if (token !== requestToken) return; renderAnomalies(anomalies, () => guardedLoad(state)); renderHomeMatrix(matrix.data || {});
+    renderKpis(overviewResponse.data, comparison, matrix.data, targets); renderContext(overviewResponse.data); renderTrend(rows); renderTargets(targets); await loadGoalLayers(state, token); if (token !== requestToken) return; renderAnomalies(anomalies, () => guardedLoad(state)); renderHomeMatrix(matrix.data || {});
   }
 
   function guardedLoad(detail) {

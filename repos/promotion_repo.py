@@ -228,9 +228,18 @@ class PromotionRepo:
         mapping = [('channel', 'channels'), ('campaign', 'campaigns'), ('unit', 'units'), ('product', 'products')]
         return [grain for grain, column in mapping if row[column]]
 
+    # 系统自动生成的创意（智能创意/黑盒/主图自动命名的创意_时间戳/店铺直达）
+    # 对运营没有评估价值，素材看板默认不展示；原始数据仍保留在库中。
+    SYSTEM_CREATIVE_SQL = (
+        "COALESCE(c.creative_name, '') NOT LIKE '%智能创意%'"
+        " AND COALESCE(c.creative_name, '') NOT LIKE '%黑盒%'"
+        " AND COALESCE(c.creative_name, '') NOT GLOB '创意_[0-9]*'"
+        " AND COALESCE(c.channel, '') != '店铺直达'"
+    )
+
     @staticmethod
     def creatives(start_date, end_date, product_id=None, channel=None, sort='clicks'):
-        """素材维度汇总：promotion_creative_daily × promotion_creatives。"""
+        """素材维度汇总：promotion_creative_daily × promotion_creatives（排除系统创意）。"""
         shop_id = get_shop_id()
         where = ['f.shop_id = ?', 'f.date BETWEEN ? AND ?']
         params = [shop_id, start_date, end_date]
@@ -262,6 +271,7 @@ class PromotionRepo:
                         ON c.shop_id = f.shop_id AND c.creative_id = f.creative_id
                     LEFT JOIN products p ON p.product_id = f.product_id
                     WHERE {' AND '.join(where)}
+                      AND {PromotionRepo.SYSTEM_CREATIVE_SQL}
                     GROUP BY c.creative_id, f.product_id, f.channel
                     ORDER BY {order_column} DESC''', params,
             ).fetchall()
@@ -298,7 +308,7 @@ class PromotionRepo:
         shop_id = get_shop_id()
         with get_db() as connection:
             rows = connection.execute(
-                '''SELECT ci.product_id, MAX(ci.product_name) AS product_name,
+                f'''SELECT ci.product_id, MAX(ci.product_name) AS product_name,
                           MAX(ci.image_url) AS image_url,
                           MAX(COALESCE(NULLIF(p.title, ''), ci.product_name)) AS title,
                           COUNT(c.creative_id) AS creative_count
@@ -306,6 +316,7 @@ class PromotionRepo:
                    LEFT JOIN products p ON p.product_id = ci.product_id
                    LEFT JOIN promotion_creatives c
                        ON c.shop_id = ci.shop_id AND c.product_id = ci.product_id
+                       AND {PromotionRepo.SYSTEM_CREATIVE_SQL}
                    WHERE ci.shop_id = ? AND ci.campaign_id = ?
                    GROUP BY ci.product_id ORDER BY product_name''',
                 [shop_id, campaign_id],

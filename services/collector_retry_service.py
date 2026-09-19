@@ -130,6 +130,7 @@ def _run_retry(run_id, plan, *, collectors_dir, python_executable, script_name, 
                 page_no=unit['page_no'], status='queued', row_count=unit['row_count'],
             )
         env = os.environ.copy()
+        env['PYTHONIOENCODING'] = 'utf-8'
         env['TMALL_RETRY_UNITS_JSON'] = json.dumps(plan['units'], ensure_ascii=False)
         path = str(Path(collectors_dir) / script_name)
         proc = subprocess.run(

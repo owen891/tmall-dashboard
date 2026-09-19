@@ -14,10 +14,20 @@ param(
 
 $ErrorActionPreference = "Continue"
 
+# powershell.exe -File passes comma-separated sources as a single argument.
+$Sources = @($Sources | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+
+# Scheduled Python processes write to a pipe, which otherwise defaults to GBK.
+# Use the same encoding on both sides so status symbols and Chinese survive.
+$env:PYTHONIOENCODING = 'utf-8'
+$OutputEncoding = [System.Text.UTF8Encoding]::new($false)
+[Console]::OutputEncoding = $OutputEncoding
+
 # ==================== 配置 ====================
 $ChromePath = "C:\Program Files\Google\Chrome\Application\chrome.exe"
-$ChromeDebugPort = 9222
-$ChromeUserDataDir = "$env:LOCALAPPDATA\Google\Chrome\User Data Debug"
+$ChromeDebugPort = if ($env:TMALL_CDP_PORT) { [int]$env:TMALL_CDP_PORT } else { 9223 }
+$ChromeUserDataDir = "$env:LOCALAPPDATA\TmallDashboard\CollectorChrome"
+$ChromeHeadless = if ($env:TMALL_CHROME_HEADLESS) { $env:TMALL_CHROME_HEADLESS -eq '1' } else { $true }
 $DashboardUrl = "http://127.0.0.1:5000"
 $ProjectRoot = if ($env:TMALL_PROJECT_ROOT) { $env:TMALL_PROJECT_ROOT } else { Split-Path -Parent $PSScriptRoot }
 $PythonPath = if ($env:TMALL_COLLECT_PYTHON) { $env:TMALL_COLLECT_PYTHON } else { Join-Path $ProjectRoot '.venv\Scripts\python.exe' }
@@ -31,10 +41,23 @@ $CloseChromeAfterCollect = $false
 
 $BIUsername = $env:BI_USERNAME
 $BIPassword = $env:BI_PASSWORD
-if ($Sources | Where-Object { $_ -like 'bi_*' }) {
-    if ([string]::IsNullOrWhiteSpace($BIUsername) -or [string]::IsNullOrWhiteSpace($BIPassword)) {
-        throw 'BI_USERNAME and BI_PASSWORD must be set for BI collection.'
+$CredentialFile = if ($env:TMALL_CREDENTIAL_FILE) { $env:TMALL_CREDENTIAL_FILE } else { 'E:\桌面\AI\BI.txt' }
+if (([string]::IsNullOrWhiteSpace($BIUsername) -or [string]::IsNullOrWhiteSpace($BIPassword)) -and (Test-Path -LiteralPath $CredentialFile)) {
+    $credentialLines = Get-Content -LiteralPath $CredentialFile -Encoding UTF8
+    for ($i = 0; $i -lt $credentialLines.Count; $i++) {
+        if ($credentialLines[$i] -match '^账号[：:]\s*(.+)$' -and $i + 1 -lt $credentialLines.Count) {
+            $fileUsername = $Matches[1].Trim()
+            if ($credentialLines[$i + 1] -match '^密码[：:]\s*(.+)$') {
+                $filePassword = $Matches[1].Trim()
+                if ([string]::IsNullOrWhiteSpace($BIUsername)) { $BIUsername = $fileUsername }
+                if ([string]::IsNullOrWhiteSpace($BIPassword)) { $BIPassword = $filePassword }
+            }
+            if (-not [string]::IsNullOrWhiteSpace($BIUsername) -and -not [string]::IsNullOrWhiteSpace($BIPassword)) { break }
+        }
     }
+}
+if ($Sources | Where-Object { $_ -like 'bi_*' }) {
+    # auto_login_bi.py also reads credentials saved in the dashboard settings.
 }
 
 $sourceNames = @{
@@ -91,13 +114,15 @@ if (Test-ChromeDebug) {
     Write-Log "  ✓ Chrome调试模式已在运行"
 } else {
     Write-Log "  启动Chrome调试模式..."
-    Start-Process -FilePath $ChromePath -ArgumentList @(
+    $chromeArgs = @(
         "--remote-debugging-port=$ChromeDebugPort",
         "--remote-allow-origins=*",
-        "--user-data-dir=$ChromeUserDataDir",
+        "--user-data-dir=`"$ChromeUserDataDir`"",
         "--no-first-run",
         "--no-default-browser-check"
-    ) -WindowStyle Normal
+    )
+    if ($ChromeHeadless) { $chromeArgs += '--headless=new'; $chromeArgs += '--disable-gpu' }
+    Start-Process -FilePath $ChromePath -ArgumentList $chromeArgs -WindowStyle Hidden
 
     for ($i = 0; $i -lt $ChromeStartTimeout; $i++) {
         Start-Sleep -Seconds 1
@@ -110,10 +135,15 @@ Write-Log "`n[3/6] 自动登录BI页面并打开采集页面..."
 if ($needBIPage -or $needOtherPages) {
     $autoLoginScript = Join-Path $ProjectRoot "scripts\auto_login_bi.py"
     $loginArgs = @($autoLoginScript)
+    if (-not $needBIPage) { $loginArgs += '--skip-bi-login' }
     if ($BIUsername) { $env:BI_USERNAME = $BIUsername }
     if ($BIPassword) { $env:BI_PASSWORD = $BIPassword }
     $loginOutput = & $PythonPath @loginArgs 2>&1
     foreach ($line in $loginOutput) { Write-Log "  $line" }
+    if ($LASTEXITCODE -ne 0) {
+        Write-Log "  ✗ 页面准备/登录失败，退出码: $LASTEXITCODE；已停止，不会触发采集任务" "ERROR"
+        exit 1
+    }
     Write-Log "  等待页面加载..."
     Start-Sleep -Seconds 5
 } else {
@@ -123,19 +153,6 @@ if ($needBIPage -or $needOtherPages) {
 # 3b. 万相台自动登录（cookie 持久化，只在过期时才账密登录）
 if ($Sources -contains 'wanxiangtai') {
     Write-Log "`n[3b] 检查万相台登录态..."
-    $credFile = "E:\桌面\AI\BI.txt"
-    if (Test-Path $credFile) {
-        $lines = Get-Content $credFile -Encoding UTF8
-        for ($i = 0; $i -lt $lines.Count; $i++) {
-            if ($lines[$i] -match '^账号[：:]\s*(.+)$' -and $i + 1 -lt $lines.Count) {
-                $env:WXT_USERNAME = $Matches[1].Trim()
-                if ($lines[$i+1] -match '^密码[：:]\s*(.+)$') {
-                    $env:WXT_PASSWORD = $Matches[1].Trim()
-                }
-                break
-            }
-        }
-    }
     $wxtLoginScript = Join-Path $ProjectRoot "scripts\auto_login_wanxiangtai.py"
     $wxtOutput = & $PythonPath $wxtLoginScript 2>&1
     foreach ($line in $wxtOutput) { Write-Log "  $line" }

@@ -6,8 +6,8 @@
   <title>推广分析 | 天猫数据仪表盘</title>
   <link rel="stylesheet" href="../assets/tokens.css">
   <link rel="stylesheet" href="../assets/shell.css">
-  <link rel="stylesheet" href="../assets/components.css">
-  <link rel="stylesheet" href="../assets/promotion-views.css">
+  <link rel="stylesheet" href="../assets/components.css?v=20260919d">
+  <link rel="stylesheet" href="../assets/promotion-views.css?v=20260919h">
   <script src="../assets/lucide-custom.min.js"></script>
     <script src="../assets/echarts-custom.min.js"></script>
 </head>
@@ -101,17 +101,6 @@
           <p class="promotion-channel-cards__footnote" data-promotion-plan-types-note></p>
         </section>
 
-        <section class="promotion-board-grid" aria-label="推广经营看板分区">
-          <article class="promotion-board-panel">
-            <div class="promotion-board-panel__header"><div><h3>渠道 / 计划概览</h3><p>先定位推广花费与推广成交来源，再下钻到单元和商品。</p></div><span class="badge badge--info" data-promotion-plan-count>加载中…</span></div>
-            <div data-promotion-plan-board><div class="promotion-board-empty">正在加载计划概览…</div></div>
-          </article>
-          <article class="promotion-board-panel">
-            <div class="promotion-board-panel__header"><div><h3>商品推广经营概览</h3><p>推广成交与链接净销售并列，费比按推广花费 / 链接 GSV计算。</p></div><span class="badge badge--info" data-promotion-product-board-count>加载中…</span></div>
-            <div data-promotion-product-board><div class="promotion-board-empty">正在加载商品概览…</div></div>
-          </article>
-        </section>
-
         <section class="section-grid">
           <article class="chart-panel panel">
             <div class="panel__header"><div><h3 class="panel__title">推广趋势</h3><p class="panel__hint" data-promotion-period>加载中…</p></div><span class="badge badge--success">真实数据</span></div>
@@ -144,6 +133,7 @@
               <tbody data-promotion-campaigns-body><tr><td>加载中…</td></tr></tbody>
             </table>
           </div>
+          <div class="promotion-pager" data-promotion-campaigns-pager></div>
         </section>
         </div>
 
@@ -205,6 +195,7 @@
               <tbody data-promotion-creative-body><tr><td>加载中…</td></tr></tbody>
             </table>
           </div>
+          <div class="promotion-pager" data-promotion-creatives-pager></div>
         </section>
         </div>
       </main>
@@ -311,7 +302,7 @@
   <script src="../assets/field-template-manager.js"></script>
   <script src="../assets/alert-rules.js"></script>
   <script src="../assets/product-detail-dialog.js"></script>
-  <script src="../assets/promotion-live.js"></script>
-  <script src="../assets/promotion-views-live.js"></script>
+  <script src="../assets/promotion-live.js?v=20260919a"></script>
+  <script src="../assets/promotion-views-live.js?v=20260919a"></script>
 </body>
 </html>

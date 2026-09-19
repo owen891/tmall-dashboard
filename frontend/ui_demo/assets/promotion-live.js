@@ -892,7 +892,10 @@
           const cell = document.createElement('td');
           const identity = element('div', 'product-identity promotion-product-identity');
           const title = element('div', 'product-title');
-          title.append(element('strong', '', productTitle(row)), element('span', '', productId(row) || '无商品 ID'));
+          const nameText = productTitle(row);
+          const nameNode = element('strong', '', nameText);
+          nameNode.title = nameText;
+          title.append(nameNode, element('span', '', productId(row) || '无商品 ID'));
           identity.append(productThumbnail(row), title);
           cell.appendChild(identity);
           tr.appendChild(cell);

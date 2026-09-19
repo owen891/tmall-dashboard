@@ -16,6 +16,13 @@ from services.field_catalog import get_field_catalog
 
 DEFAULTS = {
     'shop_name': '', 'timezone': 'Asia/Shanghai', 'currency': 'CNY',
+    # Collector credentials are stored locally and never returned in clear text
+    # by the general settings API.
+    'collector_credentials': {
+        'bi': {'username': '', 'password': ''},
+        'sycm': {'username': '', 'password': ''},
+        'wanxiangtai': {'username': '', 'password': ''},
+    },
     'category_mode_default': 'sock',
     'category_modes': [
         {'value': 'all', 'label': '全部品类', 'shop_label': None, 'enabled': True, 'system': True},
@@ -109,6 +116,24 @@ class SettingsValidationError(ValueError):
 
 class SettingsService:
     @staticmethod
+    def _mask_collector_credentials(credentials):
+        credentials = credentials if isinstance(credentials, dict) else {}
+        # Migrate the former single-account shape as BI credentials.
+        if 'username' in credentials or 'password' in credentials:
+            credentials = {'bi': credentials}
+        result = {}
+        for key in ('bi', 'sycm', 'wanxiangtai'):
+            item = credentials.get(key) if isinstance(credentials.get(key), dict) else {}
+            result[key] = {'username': str(item.get('username') or '').strip(), 'password_set': bool(item.get('password'))}
+        return result
+
+    def get_collector_credentials(self):
+        persisted = SettingsRepo.get_all().get('collector_credentials', DEFAULTS['collector_credentials'])
+        if not isinstance(persisted, dict): return deepcopy(DEFAULTS['collector_credentials'])
+        if 'username' in persisted or 'password' in persisted: persisted = {'bi': persisted}
+        return {key: {'username': str((persisted.get(key) or {}).get('username') or '').strip(), 'password': str((persisted.get(key) or {}).get('password') or '')} for key in ('bi', 'sycm', 'wanxiangtai')}
+
+    @staticmethod
     def _number(value, label, *, minimum=None, strict=False):
         if isinstance(value, bool):
             raise SettingsValidationError(f'{label}必须是数字')
@@ -179,6 +204,7 @@ class SettingsService:
         if values.get('category_mode_default') not in enabled_modes:
             values['category_mode_default'] = enabled_modes[0]
         values['field_catalog'] = get_field_catalog()
+        values['collector_credentials'] = self._mask_collector_credentials(values.get('collector_credentials'))
         return values
 
     @staticmethod
@@ -215,6 +241,22 @@ class SettingsService:
         if unknown:
             raise SettingsValidationError(f'不允许修改配置：{", ".join(sorted(unknown))}')
         values = {key: payload[key] for key in payload}
+        if 'collector_credentials' in values:
+            credentials = values['collector_credentials']
+            if not isinstance(credentials, dict):
+                raise SettingsValidationError('采集账号配置格式错误')
+            if 'username' in credentials or 'password' in credentials: credentials = {'bi': credentials}
+            existing = self.get_collector_credentials()
+            normalized = {}
+            for key in ('bi', 'sycm', 'wanxiangtai'):
+                item = credentials.get(key) if isinstance(credentials.get(key), dict) else {}
+                username = str(item.get('username') or '').strip()
+                password = item.get('password')
+                if password is None or str(password) == '': password = existing.get(key, {}).get('password', '')
+                password = str(password)
+                if username and not password: raise SettingsValidationError(f'{key}采集账号必须填写密码')
+                normalized[key] = {'username': username, 'password': password}
+            values['collector_credentials'] = normalized
         if 'classification_dictionaries' in values:
             try:
                 values['classification_dictionaries'] = normalize_dictionaries(
@@ -386,6 +428,7 @@ class SettingsService:
             try:
                 SettingsRepo.upsert(values, connection=connection)
                 after = {**before, **values}
+                after['collector_credentials'] = self._mask_collector_credentials(values.get('collector_credentials', before.get('collector_credentials')))
                 AuditRepo.record('settings', 'global', 'update', operator, reason, before, after, connection=connection)
                 connection.commit()
             except Exception:

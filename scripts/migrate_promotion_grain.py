@@ -88,6 +88,19 @@ def main():
     ''')
     tagged = cur.rowcount
 
+    # 维度报表上线(2026-08-20 起逐日回填)之前，campaign/unit 行全部来自
+    # 月度汇总导入，落在月末日期。打 *_month 标后不参与日粒度报表视图，
+    # 避免跨月查询把整月花费算进月末一天。
+    cur.execute('''
+        UPDATE promotion_daily_facts SET grain = grain || '_month'
+        WHERE grain IN ('campaign', 'unit')
+          AND grain NOT LIKE '%_month'
+          AND strftime('%d', date) >= '28'
+          AND COALESCE(source_batch_id, '') NOT IN (
+              SELECT id FROM import_batches WHERE quality_summary LIKE '维度采集v4%')
+    ''')
+    month_tagged = cur.rowcount
+
     cur.execute(
         "DELETE FROM paid_detail WHERE date_range GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]_[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'"
     )
@@ -96,7 +109,7 @@ def main():
 
     remaining = cur.execute(
         "SELECT COUNT(*) FROM promotion_daily_facts WHERE grain = ''").fetchone()[0]
-    print(f'\n已打标 {tagged} 行，剩余未打标 {remaining} 行')
+    print(f'\n已打标 {tagged} 行，月度汇总行 {month_tagged} 行，剩余未打标 {remaining} 行')
     print(f'已删除 paid_detail 污染行 {deleted_paid} 行')
     conn.close()
     return 0

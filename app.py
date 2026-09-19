@@ -300,7 +300,7 @@ def create_app(config=None):
             return redirect('/reviews')
         if page == 'manage':
             return redirect('/settings')
-        if page not in {'overview', 'analysis', 'products', 'promotion', 'keyword-promotion', 'market-ranking', 'lifecycle', 'reviews', 'data-center', 'settings', 'goals', 'flow-source', 'rival-analysis', 'data-collection'}:
+        if page not in {'overview', 'analysis', 'products', 'promotion', 'keyword-promotion', 'market-ranking', 'lifecycle', 'reviews', 'data-center', 'settings', 'goals', 'flow-source', 'rival-analysis', 'data-collection', 'component-catalog'}:
             return jsonify({'error': 'page not found'}), 404
         return send_from_directory(os.path.join(demo_root, 'pages'), f'{page}.html', max_age=0)
 

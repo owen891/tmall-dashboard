@@ -131,6 +131,7 @@
         ['data-collection', '数据采集', 'download', 'data-collection'],
         ['data-center', '数据中心', 'database', 'data-center'],
         ['settings', '设置', 'settings', 'settings'],
+        ['component-catalog', '组件目录', 'component', 'catalog'],
       ],
     },
   ];
@@ -221,9 +222,9 @@
       </select>
     </div>`;
   header.innerHTML = `
-    <div class="demo-topbar__heading"><h1 class="demo-topbar__title">${currentMeta[0]}</h1><span class="demo-topbar__eyebrow">${currentMeta[1]}</span></div>
-    ${categoryMarkup}
-    <div class="demo-period" role="group" aria-label="统计时间">
+    <div class="demo-topbar__filters">
+      ${categoryMarkup}
+      <div class="demo-period" role="group" aria-label="统计时间">
       <select class="demo-period__select" data-date-preset aria-label="快捷时间范围">
         <option value="today">今日</option><option value="yesterday">昨日</option><option value="7d">近7天</option><option value="30d" selected>近30天</option><option value="90d">近90天</option><option value="this_week">本周</option><option value="last_week">上周</option><option value="this_month">本月</option><option value="last_month">上月</option><option value="custom">自定义</option>
       </select>
@@ -233,6 +234,7 @@
         <div class="demo-calendar__toolbar"><button type="button" data-calendar-nav="-1" aria-label="上两个月">‹</button><strong>自定义日期范围</strong><button type="button" data-calendar-nav="1" aria-label="下两个月">›</button></div>
         <div class="demo-calendar__months"><section data-calendar-month="0"></section><section data-calendar-month="1"></section></div>
         <div class="demo-calendar__footer"><span data-calendar-help>请选择开始日期</span><button class="button button--ghost" type="button" data-calendar-cancel>取消</button></div>
+      </div>
       </div>
     </div>
     <div class="demo-topbar__tools"><button class="button demo-import-trigger" type="button" data-open-toolbox title="导入数据"><i data-lucide="upload"></i><span>导入数据</span></button><button class="demo-tool demo-mobile-nav" type="button" title="打开导航" aria-label="打开导航" aria-expanded="false" data-mobile-nav><i data-lucide="menu"></i></button><button class="demo-tool" type="button" title="刷新" aria-label="刷新" data-demo-refresh><i data-lucide="refresh-cw"></i></button><button class="demo-tool" type="button" title="导出" aria-label="导出当前表格" data-demo-export><i data-lucide="download"></i></button><button class="demo-tool" type="button" title="切换深色主题" aria-label="切换深色主题" data-demo-theme><i data-lucide="moon"></i></button></div>`;

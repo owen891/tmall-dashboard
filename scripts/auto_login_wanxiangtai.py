@@ -22,12 +22,38 @@ import time
 import urllib.request
 import websocket
 
-CDP_PORT = int(os.environ.get('TMALL_CDP_PORT', '9222'))
+CDP_PORT = int(os.environ.get('TMALL_CDP_PORT', '9223'))
 WXT_URL = 'https://one.alimama.com/'
 TAOBAO_LOGIN_URL = 'https://login.taobao.com/member/login.jhtml?redirectURL=https%3A%2F%2Fone.alimama.com%2F&style=mini&newMini2=true'
 
 USERNAME = os.environ.get('WXT_USERNAME', '')
 PASSWORD = os.environ.get('WXT_PASSWORD', '')
+
+if not USERNAME or not PASSWORD:
+    try:
+        db_path = os.environ.get('TMALL_DB_PATH') or os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'data', 'dashboard.db')
+        with __import__('sqlite3').connect(db_path) as _conn:
+            _row = _conn.execute("SELECT setting_value FROM app_settings WHERE setting_key = 'collector_credentials'").fetchone()
+        if _row:
+            _payload = json.loads(_row[0])
+            if 'username' in _payload or 'password' in _payload: _payload = {'bi': _payload}
+            _item = _payload.get('wanxiangtai') or {}
+            USERNAME = USERNAME or str(_item.get('username') or '').strip()
+            PASSWORD = PASSWORD or str(_item.get('password') or '')
+    except Exception:
+        pass
+
+# Backward-compatible fallback for the legacy local credential file.
+if not USERNAME or not PASSWORD:
+    try:
+        _lines = open(os.environ.get('TMALL_CREDENTIAL_FILE', r'E:\桌面\AI\BI.txt'), encoding='utf-8').read().splitlines()
+        for _i, _line in enumerate(_lines[:-1]):
+            if _line.startswith(('账号：', '账号:')) and _lines[_i + 1].startswith(('密码：', '密码:')):
+                USERNAME = USERNAME or _line[3:].lstrip('：:').strip()
+                PASSWORD = PASSWORD or _lines[_i + 1][3:].lstrip('：:').strip()
+                break
+    except (OSError, UnicodeError):
+        pass
 
 
 def get_tabs():
@@ -41,8 +67,8 @@ def get_browser_ws():
 
 
 def create_tab(url):
-    ws = websocket.create_connection(get_browser_ws(), timeout=10)
-    ws.send(json.dumps({'id': 1, 'method': 'Target.createTarget', 'params': {'url': url}}))
+    ws = websocket.create_connection(get_browser_ws(), timeout=10, suppress_origin=True)
+    ws.send(json.dumps({'id': 1, 'method': 'Target.createTarget', 'params': {'url': url, 'background': True}}))
     while True:
         msg = json.loads(ws.recv())
         if msg.get('id') == 1:
@@ -59,7 +85,7 @@ def find_tab(url_contains):
 
 
 def cdp_eval(ws_url, expression, timeout=15):
-    ws = websocket.create_connection(ws_url, timeout=timeout)
+    ws = websocket.create_connection(ws_url, timeout=timeout, suppress_origin=True)
     ws.send(json.dumps({'id': 1, 'method': 'Runtime.evaluate', 'params': {
         'expression': expression, 'returnByValue': True, 'awaitPromise': True
     }}))

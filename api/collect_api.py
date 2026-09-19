@@ -179,6 +179,7 @@ def _build_result_event(source_key, run_id, *, status, return_code=None,
 # 采集脚本路径：允许部署环境覆盖，保留旧路径作为兼容 fallback。
 COLLECTORS_DIR = os.environ.get('TMALL_COLLECTORS_DIR', r'E:\www\BI采集\collectors')
 VENV_PYTHON = os.environ.get('TMALL_COLLECT_PYTHON', sys.executable)
+CDP_PORT = int(os.environ.get('TMALL_CDP_PORT', '9223'))
 
 # 数据源配置
 DATA_SOURCES = {
@@ -396,41 +397,61 @@ def get_collect_alerts():
 
 
 
+_prepare_lock = threading.Lock()
+
+
 def check_collect_env(source_key):
-    """采集前环境检查，返回错误信息或None"""
-    import urllib.request
-    
-    # 需要 Chrome 调试模式的数据源
-    chrome_sources = ['sycm_flow', 'sycm_item_flow', 'sycm_market', 'wanxiangtai']
-    if source_key in chrome_sources:
-        try:
-            req = urllib.request.Request('http://127.0.0.1:9222/json/version')
-            with urllib.request.urlopen(req, timeout=2) as resp:
-                if resp.status != 200:
-                    raise Exception('Chrome调试端口响应异常')
-        except Exception as e:
-            return ('Chrome 调试模式未启动！请运行 scripts\\start-chrome-debug.ps1 '
-                    '启动 Chrome 调试模式（端口9222），并登录生意参谋/万相台后再触发采集。')
-    
-    # 需要 BI 接口的数据源
-    bi_sources = ['bi_daily']
-    if source_key in bi_sources:
-        # BI接口检查（宽松检查，只检查端口是否可达）
-        bi_ports = [8000, 8080, 5001]
-        bi_available = False
-        for port in bi_ports:
-            try:
-                req = urllib.request.Request(f'http://127.0.0.1:{port}/')
-                with urllib.request.urlopen(req, timeout=1) as resp:
-                    bi_available = True
-                    break
-            except:
-                continue
-        # BI接口检查改为警告而非阻止（因为接口URL可能不同）
-        # if not bi_available:
-        #     return 'BI接口服务未启动，请检查BI服务是否运行（通常在端口8000/8080）'
-    
-    return None
+    """Every trigger must pass browser preparation, including direct API calls."""
+    ok, output = prepare_collect_pages([source_key])
+    return None if ok else output
+
+
+
+def prepare_collect_pages(source_keys):
+    """Start the shared CDP pages and verify the BI login before collection."""
+    requested = set(source_keys or DATA_SOURCES)
+    if requested == {'bi_monthly'}:
+        return True, '月度聚合不需要浏览器'
+    needs_bi = bool(requested & {'bi_daily'})
+    script = PROJECT_ROOT / 'scripts' / 'auto_login_bi.py'
+    if not script.exists():
+        return False, f'页面准备脚本不存在: {script}'
+    args = [VENV_PYTHON, '-u', str(script), '--sources', ','.join(sorted(requested))]
+    if not needs_bi:
+        args.append('--skip-bi-login')
+    env = os.environ.copy()
+    env['PYTHONIOENCODING'] = 'utf-8'
+    env['TMALL_CDP_PORT'] = str(CDP_PORT)
+    env['TMALL_DB_PATH'] = current_app.config['DATABASE_PATH']
+    try:
+        result = subprocess.run(
+            args, cwd=str(PROJECT_ROOT), env=env,
+            capture_output=True, text=True, encoding='utf-8', errors='replace',
+            timeout=180,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return False, f'页面准备执行失败: {exc}'
+    output = (result.stdout or '') + (result.stderr or '')
+    if result.returncode != 0:
+        tail = '\n'.join(output.splitlines()[-8:])
+        return False, f'页面准备失败（返回码 {result.returncode}）:\n{tail}'
+    return True, output
+
+
+@collect_bp.route('/api/collect/prepare', methods=['POST'])
+def prepare_collect():
+    """Prepare the browser pages required by manual collection."""
+    data = request.get_json() or {}
+    source_keys = data.get('sources') or list(DATA_SOURCES)
+    if isinstance(source_keys, str):
+        source_keys = [source_keys]
+    invalid = [key for key in source_keys if key not in DATA_SOURCES]
+    if invalid:
+        return failure('INVALID_SOURCE', f'无效的数据源: {", ".join(invalid)}')
+    ok, output = prepare_collect_pages(source_keys)
+    if not ok:
+        return failure('PREPARE_FAILED', output)
+    return success({'sources': source_keys, 'output': output[-4000:]})
 
 
 @collect_bp.route('/api/collect/trigger', methods=['POST'])
@@ -538,9 +559,10 @@ def trigger_collect():
                 save_collect_state()
                 try:
                     process_env = os.environ.copy()
+                    process_env['PYTHONIOENCODING'] = 'utf-8'
                     process_env['TMALL_COLLECT_RUN_ID'] = run_id
                     process_env['TMALL_DB_PATH'] = db_path
-                    process_env['TMALL_CDP_PORT'] = process_env.get('TMALL_CDP_PORT', '9222')
+                    process_env['TMALL_CDP_PORT'] = str(CDP_PORT)
                     process_env['TMALL_COLLECTOR_VERSION'] = APP_VERSION
                     proc = subprocess.Popen(
                         [VENV_PYTHON, '-u', script_path],

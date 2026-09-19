@@ -19,6 +19,16 @@
     if (dirtyStatus) dirtyStatus.textContent = isDirty ? '有未保存修改' : '已保存';
     if (discardButton) discardButton.disabled = !isDirty;
     document.querySelector('[data-settings-savebar]')?.classList.toggle('is-dirty', isDirty);
+    const pill = document.querySelector('[data-settings-save-pill]');
+    if (pill) {
+      pill.dataset.tone = isDirty ? 'warning' : 'success';
+      pill.replaceChildren(
+        document.createElement('i'),
+        document.createTextNode(isDirty ? '未保存' : '已保存'),
+      );
+      const glyph = pill.querySelector('i');
+      if (glyph) { glyph.dataset.lucide = isDirty ? 'pencil' : 'check'; window.lucide?.createIcons(); }
+    }
   };
   const markDirty = () => setDirty(true);
   const categoryRoot = document.querySelector('[data-category-modes]');
@@ -44,17 +54,39 @@
   document.querySelector('[data-category-add]')?.addEventListener('click', () => { markDirty(); templateState.category_modes.push({ value: `custom_${Date.now()}`, label: '', shop_label: '', enabled: true, system: false }); renderCategoryModes(); categoryRoot?.lastElementChild?.querySelector('input')?.focus(); });
   const tabLinks = [...document.querySelectorAll('[data-settings-tab]')];
   const tabPanels = [...document.querySelectorAll('[data-settings-tab-panel]')];
+  // 六个管理型分区做页签（store/goals/templates/classification 属设置表单，
+  // 共用底部保存条；alerts/scans 各自独立、即时生效）。纯展示的指标口径收进弹窗。
+  const SETTINGS_TABS = ['store', 'goals', 'templates', 'classification', 'alerts', 'scans'];
+  const FORM_TABS = new Set(['store', 'goals', 'templates', 'classification']);
+  const HASH_ALIASES = { '#settings-import-scans': 'scans' };
   function selectSettingsTab(tab, updateHash = true) {
-    const activeTab = tabLinks.some((link) => link.dataset.settingsTab === tab) ? tab : 'store';
+    const activeTab = SETTINGS_TABS.includes(tab) ? tab : 'store';
     tabLinks.forEach((link) => {
       const active = link.dataset.settingsTab === activeTab;
       link.setAttribute('aria-current', String(active));
+      if (link.tagName === 'BUTTON') link.setAttribute('aria-pressed', String(active));
     });
     tabPanels.forEach((panel) => { panel.hidden = panel.dataset.settingsTabPanel !== activeTab; });
+    if (form) form.hidden = !FORM_TABS.has(activeTab);
     if (updateHash) history.replaceState(null, '', `#settings-${activeTab}`);
   }
   tabLinks.forEach((link) => link.addEventListener('click', (event) => { event.preventDefault(); selectSettingsTab(link.dataset.settingsTab); }));
-  selectSettingsTab(window.location.hash === '#settings-goals' ? 'goals' : 'store', false);
+  document.querySelectorAll('[data-settings-tab-goto]').forEach((button) => {
+    button.addEventListener('click', () => selectSettingsTab(button.dataset.settingsTabGoto));
+  });
+  document.querySelectorAll('[data-settings-dialog-open]').forEach((button) => {
+    button.addEventListener('click', () => {
+      document.querySelector(`dialog[data-settings-dialog="${button.dataset.settingsDialogOpen}"]`)?.showModal();
+    });
+  });
+  document.querySelectorAll('[data-settings-dialog-close]').forEach((button) => {
+    button.addEventListener('click', () => button.closest('dialog')?.close());
+  });
+  const initialHash = window.location.hash;
+  const initialTab = HASH_ALIASES[initialHash]
+    || SETTINGS_TABS.find((name) => initialHash === `#settings-${name}`)
+    || (initialHash === '#settings-goals' ? 'goals' : null);
+  selectSettingsTab(initialTab || 'store', false);
   window.addEventListener('beforeunload', (event) => { if (isDirty) { event.preventDefault(); event.returnValue = ''; } });
 
   function renderDictionaries() {
@@ -79,32 +111,15 @@
       section.appendChild(rows); return section;
     }));
   }
-  const templatePanel = document.createElement('section');
-  templatePanel.className = 'plain-panel panel settings-template-panel';
-  templatePanel.id = 'settings-templates';
+  // 模板面板骨架在 settings.html 中静态声明（#settings-templates，页签之一），
+  // 这里只填充标题与网格内容。
+  const templatePanel = document.getElementById('settings-templates');
   templatePanel.innerHTML = `
     <div class="panel__header"><div><h3 class="panel__title">导入与视图模板</h3><p class="panel__hint">将常用报表列和商品视图保存为业务模板。</p></div></div>
     <div class="settings-template-grid">
       <div><h4>报表字段映射</h4><div class="filter-group"><select class="select" data-template-source aria-label="报表类型"></select><select class="select" data-template-map-key aria-label="业务字段"></select><input class="input" data-template-map-column placeholder="报表中的列名" aria-label="报表中的列名"><button class="button" type="button" data-template-add-map>添加</button></div><div data-template-mappings></div></div>
       <div><h4>商品视图</h4><div class="filter-group"><input class="input" data-template-view-label placeholder="新视图名称" aria-label="新视图名称"><select class="select" data-template-view-columns multiple size="5" aria-label="显示字段"></select><button class="button" type="button" data-template-add-view>保存视图</button></div><div data-template-views></div></div>
     </div>`;
-  const templateHost = form.closest('.settings-main') || form.parentElement;
-  templateHost.appendChild(templatePanel);
-  const templateHeader = templatePanel.querySelector('.panel__header');
-  const templateGrid = templatePanel.querySelector('.settings-template-grid');
-  const templateToggle = document.createElement('button');
-  templateToggle.type = 'button';
-  templateToggle.className = 'button button--ghost';
-  templateToggle.textContent = '展开模板';
-  templateToggle.setAttribute('aria-expanded', 'false');
-  templateHeader.appendChild(templateToggle);
-  templateGrid.hidden = true;
-  templateToggle.addEventListener('click', () => {
-    const expanded = templateGrid.hidden;
-    templateGrid.hidden = !expanded;
-    templateToggle.textContent = expanded ? '收起模板' : '展开模板';
-    templateToggle.setAttribute('aria-expanded', String(expanded));
-  });
   const sourceSelect = templatePanel.querySelector('[data-template-source]');
   Object.entries(sourceLabels).forEach(([key, label]) => sourceSelect.add(new Option(label, key)));
   const mappingKeySelect = templatePanel.querySelector('[data-template-map-key]');
@@ -129,7 +144,7 @@
   }
   templatePanel.querySelector('[data-template-add-map]').addEventListener('click', () => { const source = sourceSelect.value; const key = mappingKeySelect.value; const column = mappingColumnInput.value.trim(); if (!column) return; markDirty(); templateState.mapping_templates[source] ||= {}; templateState.mapping_templates[source][key] = column; mappingColumnInput.value = ''; renderTemplates(); });
   templatePanel.querySelector('[data-template-add-view]').addEventListener('click', () => { const label = templatePanel.querySelector('[data-template-view-label]').value.trim(); const columns = [...viewColumnsSelect.selectedOptions].map((option) => option.value); if (!label || !columns.length) return; markDirty(); const key = `custom_${Date.now()}`; templateState.view_templates[key] = { label, columns }; templatePanel.querySelector('[data-template-view-label]').value = ''; [...viewColumnsSelect.options].forEach((option) => { option.selected = false; }); renderTemplates(); });
-  const set = (data) => { renderProductViewOptions(data); Object.entries(data).forEach(([key, value]) => { if (form.elements[key] && value !== null && typeof value !== 'object') form.elements[key].value = value; }); const thresholds = data.lifecycle_thresholds || {}; form.elements.continuous_days.value = thresholds.continuous_days ?? 60; form.elements.seasonal_months.value = thresholds.seasonal_months ?? 12; templateState.mapping_templates = data.mapping_templates || {}; templateState.view_templates = data.view_templates || {}; templateState.classification_dictionaries = structuredClone(data.classification_dictionaries || templateState.classification_dictionaries); templateState.category_modes = structuredClone(data.category_modes || []); templateState.category_mode_default = data.category_mode_default || 'sock'; document.querySelector('[data-settings-shop-scope]')?.replaceChildren(document.createTextNode(data.shop_scope?.shop_id || 'default')); DemoLabels.setDictionaries(templateState.classification_dictionaries); renderTemplates(); renderDictionaries(); renderCategoryModes(); setDirty(false); const summary = (key) => document.querySelector(`[data-settings-summary="${key}"]`); if (summary('status')) summary('status').textContent = '已保存'; if (summary('annual_target')) summary('annual_target').textContent = `¥${Number(data.annual_target_default || 0).toLocaleString('zh-CN')}`; if (summary('view')) summary('view').textContent = data.product_view_template || 'operate'; };
+  const set = (data) => { renderProductViewOptions(data); Object.entries(data).forEach(([key, value]) => { if (form.elements[key] && value !== null && typeof value !== 'object') form.elements[key].value = value; }); const rawCredentials = data.collector_credentials || {}; const credentials = rawCredentials.bi || rawCredentials; form.elements.collector_username.value = credentials.username || ''; form.elements.collector_password.value = ''; const credentialsStatus = document.querySelector('[data-collector-credentials-status]'); if (credentialsStatus) { credentialsStatus.replaceChildren(document.createTextNode(credentials.password_set ? 'BI账号已配置（留空表示不修改）' : '未配置')); credentialsStatus.dataset.tone = credentials.password_set ? 'success' : 'muted'; } const storeBadge = document.querySelector('[data-tree-badge="store"]'); if (storeBadge) storeBadge.textContent = credentials.password_set ? '已配置' : ''; const thresholds = data.lifecycle_thresholds || {}; form.elements.continuous_days.value = thresholds.continuous_days ?? 60; form.elements.seasonal_months.value = thresholds.seasonal_months ?? 12; templateState.mapping_templates = data.mapping_templates || {}; templateState.view_templates = data.view_templates || {}; templateState.classification_dictionaries = structuredClone(data.classification_dictionaries || templateState.classification_dictionaries); templateState.category_modes = structuredClone(data.category_modes || []); templateState.category_mode_default = data.category_mode_default || 'sock'; document.querySelector('[data-settings-shop-scope]')?.replaceChildren(document.createTextNode(data.shop_scope?.shop_id || 'default')); DemoLabels.setDictionaries(templateState.classification_dictionaries); renderTemplates(); renderDictionaries(); renderCategoryModes(); setDirty(false); const heroName = document.querySelector('[data-settings-hero-name]'); if (heroName) heroName.textContent = data.shop_name || '未命名店铺'; const heroScope = document.querySelector('[data-settings-hero-scope]'); if (heroScope) heroScope.textContent = `scope ${data.shop_scope?.shop_id || 'default'}`; const summary = (key) => document.querySelector(`[data-settings-summary="${key}"]`); if (summary('status')) summary('status').textContent = '已保存'; if (summary('annual_target')) summary('annual_target').textContent = `¥${Number(data.annual_target_default || 0).toLocaleString('zh-CN')}`; if (summary('view')) summary('view').textContent = data.product_view_template || 'operate'; };
   const clearStatus = () => { status.replaceChildren(); status.classList.remove('data-state'); };
   const renderState = (state, details = {}) => DemoApi.renderDataState(status, state, { retry: load, ...details });
   const load = async () => { renderState('loading'); try { settingsPayload = await DemoApi.domainRequest('/api/settings'); set(settingsPayload.data); clearStatus(); } catch (error) { renderState('source-unavailable', { message: error.message || '设置加载失败' }); } };
@@ -144,11 +159,13 @@
     if (discardButton) discardButton.disabled = true;
     renderState('loading');
     try {
-      const response = await DemoApi.domainRequest('/api/settings', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ shop_name: data.get('shop_name'), timezone: data.get('timezone'), currency: data.get('currency'), week_starts_on: data.get('week_starts_on'), annual_target_default: Number(data.get('annual_target_default') || 0), growth_multiplier: Number(data.get('growth_multiplier') || 1), overachievement_threshold: Number(data.get('overachievement_threshold') || 1), lifecycle_thresholds: { continuous_days: Number(data.get('continuous_days') || 60), seasonal_months: Number(data.get('seasonal_months') || 12) }, mapping_templates: templateState.mapping_templates, view_templates: templateState.view_templates, classification_dictionaries: templateState.classification_dictionaries, category_modes: templateState.category_modes, category_mode_default: templateState.category_mode_default, product_view_template: data.get('product_view_template') }) });
+      const existingCredentials = settingsPayload.data?.collector_credentials || {};
+      const response = await DemoApi.domainRequest('/api/settings', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ shop_name: data.get('shop_name'), timezone: data.get('timezone'), currency: data.get('currency'), week_starts_on: data.get('week_starts_on'), collector_credentials: { bi: { username: data.get('collector_username'), password: data.get('collector_password') }, sycm: existingCredentials.sycm || {}, wanxiangtai: existingCredentials.wanxiangtai || {} }, annual_target_default: Number(data.get('annual_target_default') || 0), growth_multiplier: Number(data.get('growth_multiplier') || 1), overachievement_threshold: Number(data.get('overachievement_threshold') || 1), lifecycle_thresholds: { continuous_days: Number(data.get('continuous_days') || 60), seasonal_months: Number(data.get('seasonal_months') || 12) }, mapping_templates: templateState.mapping_templates, view_templates: templateState.view_templates, classification_dictionaries: templateState.classification_dictionaries, category_modes: templateState.category_modes, category_mode_default: templateState.category_mode_default, product_view_template: data.get('product_view_template') }) });
       settingsPayload = response;
       set(response.data);
       clearStatus();
       status.textContent = '设置已保存';
+      document.querySelectorAll('dialog[data-settings-dialog][open]').forEach((dialog) => dialog.close());
     } catch (error) {
       renderState('calculation-failed', { message: error.message || '保存失败' });
     } finally {
@@ -200,6 +217,31 @@
     const glyph = document.createElement('i'); glyph.dataset.lucide = icon; button.appendChild(glyph); button.addEventListener('click', handler); return button;
   };
   const formatScanTime = (value) => value ? new Intl.DateTimeFormat('zh-CN', { dateStyle: 'medium', timeStyle: 'medium', hour12: false, timeZone: 'Asia/Shanghai' }).format(new Date(value)) : '--';
+  // 常见 cron 表达式的人话说明；解析不了就不显示提示。
+  const WEEKDAY_NAMES = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
+  const humanizeCron = (expr) => {
+    const parts = String(expr || '').trim().split(/\s+/);
+    if (parts.length !== 5) return '';
+    const [minute, hour, dayOfMonth, month, weekday] = parts;
+    const pad = (value) => String(value).padStart(2, '0');
+    if (/^\d+$/.test(minute) && /^\d+$/.test(hour) && dayOfMonth === '*' && month === '*' && weekday === '*') {
+      return `每天 ${pad(hour)}:${pad(minute)}`;
+    }
+    if (minute.startsWith('*/') && hour === '*' && dayOfMonth === '*' && month === '*' && weekday === '*') {
+      return `每 ${minute.slice(2)} 分钟`;
+    }
+    if (/^\d+$/.test(minute) && /^\d+$/.test(hour) && dayOfMonth === '*' && month === '*' && /^\d+$/.test(weekday)) {
+      return `每${WEEKDAY_NAMES[Number(weekday)] || '周'} ${pad(hour)}:${pad(minute)}`;
+    }
+    if (/^\d+$/.test(minute) && /^\d+$/.test(hour) && /^\d+$/.test(dayOfMonth) && month === '*' && weekday === '*') {
+      return `每月 ${Number(dayOfMonth)} 日 ${pad(hour)}:${pad(minute)}`;
+    }
+    return '';
+  };
+  const updateScanBadges = (jobs) => {
+    const headerBadge = document.querySelector('[data-scan-count]');
+    if (headerBadge) headerBadge.textContent = `${jobs.length} 个任务`;
+  };
   function renderScanJobs() {
     if (!scanBody) return;
     scanBody.replaceChildren();
@@ -208,7 +250,7 @@
       const row = document.createElement('tr');
       const task = document.createElement('td'); const name = document.createElement('strong'); name.textContent = job.task_name || '未命名任务'; const folder = document.createElement('div'); folder.className = 'panel__hint'; folder.textContent = job.folder_path || '--'; task.append(name, folder); row.appendChild(task);
       appendTextCell(row, scanSourceLabels[job.source_type] || job.source_type);
-      appendTextCell(row, job.cron_expr || '--');
+      const cronCell = document.createElement('td'); const cronText = document.createTextNode(job.cron_expr || '--'); cronCell.appendChild(cronText); const cronHint = humanizeCron(job.cron_expr); if (cronHint) { const hint = document.createElement('div'); hint.className = 'scan-cron-hint'; hint.textContent = cronHint; cronCell.appendChild(hint); } row.appendChild(cronCell);
       appendTextCell(row, job.status === 'error' ? '配置异常' : (job.enabled ? (job.status === 'active' ? '已启用' : job.status) : '已停用'));
       appendTextCell(row, formatScanTime(job.last_run));
       const actions = document.createElement('td'); actions.className = 'table-actions';
@@ -229,8 +271,8 @@
     if (!scanBody) return;
     const token = ++scanLoadToken;
     const loading = document.createElement('tr'); const cell = appendTextCell(loading, '正在加载扫描任务…'); cell.colSpan = 6; scanBody.replaceChildren(loading);
-    try { const response = await DemoApi.domainRequest('/api/import-scans'); if (token !== scanLoadToken) return; scanState.environment = response.scan_environment || null; renderScanEnvironment(scanState.environment); setScanCapabilityState(); scanState.jobs = Array.isArray(response.data) ? response.data.filter((job) => job && typeof job === 'object') : []; renderScanJobs(); setScanStatus(''); }
-    catch (error) { if (token !== scanLoadToken) return; scanState.jobs = []; renderScanJobs(); setScanStatus(formatScanFormError(error)); }
+    try { const response = await DemoApi.domainRequest('/api/import-scans'); if (token !== scanLoadToken) return; scanState.environment = response.scan_environment || null; renderScanEnvironment(scanState.environment); setScanCapabilityState(); scanState.jobs = Array.isArray(response.data) ? response.data.filter((job) => job && typeof job === 'object') : []; renderScanJobs(); updateScanBadges(scanState.jobs); setScanStatus(''); }
+    catch (error) { if (token !== scanLoadToken) return; scanState.jobs = []; renderScanJobs(); updateScanBadges(scanState.jobs); setScanStatus(formatScanFormError(error)); }
   }
   function openScanDialog(job = null) {
     scanState.editingId = job?.id ?? null; scanForm.reset(); scanForm.elements.file_pattern.value = job?.file_pattern || '*.xlsx;*.xls;*.csv;*.zip'; scanForm.elements.cron_expr.value = job?.cron_expr || '* * * * *'; scanForm.elements.source_type.value = job?.source_type || 'auto'; scanForm.elements.enabled.checked = job ? Boolean(job.enabled) : true;

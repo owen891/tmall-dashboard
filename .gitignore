@@ -91,3 +91,6 @@ ui-manage-toolbox-check.png
 /logs/
 /archive/
 /*.png
+
+# 前端运行时下载产物
+/frontend/ui_demo/assets/downloads/

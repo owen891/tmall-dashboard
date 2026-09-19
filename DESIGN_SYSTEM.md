@@ -1292,6 +1292,33 @@ const DATA\_STATES = \['loading', 'no-data', 'insufficient-data', 'missing-field
 
 ## 十一、禁止事项
 
+### 11.1 UI 组件系统入口（现行规则）
+
+公共 UI 的唯一运行时入口是 `window.TmallUI`，实现位于 `frontend/ui_demo/assets/ui-components.js`。基础组件和页面组合必须优先使用以下 API：
+
+```js
+TmallUI.button(options)
+TmallUI.badge(label, tone)
+TmallUI.metricCard(options)
+TmallUI.metricGrid(cards)
+TmallUI.panel(options)
+TmallUI.pageHeader(options)
+TmallUI.filterToolbar(content, actions)
+TmallUI.table(options)
+TmallUI.dataState(state, details)
+```
+
+历史页面中的 `.button`、`.panel`、`.metric-card`、`.badge`、`.empty-state`、`.data-table` 等 class 由 `TmallUI.upgradeLegacy()` 自动映射到 `ui-*` canonical class。新代码不得再新增历史 class 的独立实现。
+
+组件契约目录位于 `/component-catalog`。提交前运行：
+
+```text
+python scripts/check_ui_contract.py
+pytest -q tests/test_ui_system_contract.py
+```
+
+`TmallUI.audit()` 可在浏览器开发工具中检查当前页面是否存在未接入公共组件契约的节点。
+
 
 
 1. **禁止硬编码颜色 / 字体 / 间距** — 必须用 CSS 变量

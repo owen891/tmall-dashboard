@@ -6,6 +6,11 @@
   const logTitle = document.querySelector('[data-log-title]');
   const logContent = document.querySelector('[data-log-content]');
   const logClose = document.querySelector('[data-log-close]');
+  const credentialsForm = document.querySelector('[data-collect-credentials-form]');
+  const credentialsStatus = document.querySelector('[data-collect-credentials-status]');
+  const credentialsMessage = document.querySelector('[data-collect-credentials-message]');
+  const credentialsDialog = document.querySelector('[data-collect-credentials-dialog]');
+  let credentialState = {};
 
   const freshnessLabels = {
     'today': '今日已更新',
@@ -87,6 +92,50 @@
       }
     } catch (e) {
       grid.innerHTML = `<div style="grid-column:1/-1;text-align:center;color:#ef4444;padding:48px;">加载失败: ${e.message}</div>`;
+    }
+  }
+
+  async function loadCredentials() {
+    if (!credentialsForm) return;
+    try {
+      const response = await fetch('/api/settings');
+      const result = await response.json();
+      if (!result.ok) throw new Error(result.message || '读取失败');
+      const credentials = result.data?.collector_credentials || {};
+      credentialState = credentials;
+      for (const key of ['bi', 'sycm', 'wanxiangtai']) { const item = credentials[key] || {}; credentialsForm.elements[`${key}_username`].value = item.username || ''; credentialsForm.elements[`${key}_password`].value = ''; }
+      credentialsStatus.textContent = ['bi', 'sycm', 'wanxiangtai'].every(key => credentials[key]?.password_set) ? '全部已配置' : '部分未配置';
+      credentialsMessage.textContent = '密码已配置的账号，留空密码提交可保持原密码。';
+    } catch (error) {
+      credentialsStatus.textContent = '读取失败';
+      credentialsMessage.textContent = error.message || '采集账号读取失败';
+    }
+  }
+
+  async function saveCredentials(event) {
+    event.preventDefault();
+    const button = credentialsForm.querySelector('button[type="submit"]');
+    const credentials = {};
+    for (const key of ['bi', 'sycm', 'wanxiangtai']) credentials[key] = { username: credentialsForm.elements[`${key}_username`].value.trim(), password: credentialsForm.elements[`${key}_password`].value };
+    if (Object.entries(credentials).some(([key, item]) => item.username && !item.password && !credentialState[key]?.password_set)) { credentialsMessage.textContent = '新填写账号时必须同时填写密码；已有账号可留空密码。'; return; }
+    button.disabled = true;
+    credentialsMessage.textContent = '保存中…';
+    try {
+      const response = await fetch('/api/settings', {
+        method: 'PUT', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ collector_credentials: credentials })
+      });
+      const result = await response.json();
+      if (!result.ok) throw new Error(result.message || '保存失败');
+      for (const key of ['bi', 'sycm', 'wanxiangtai']) credentialsForm.elements[`${key}_password`].value = '';
+      credentialsStatus.textContent = '已保存';
+      credentialsMessage.textContent = '采集账号已保存。';
+      credentialState = result.data?.collector_credentials || credentialState;
+      setTimeout(() => credentialsDialog?.close(), 350);
+    } catch (error) {
+      credentialsMessage.textContent = error.message || '采集账号保存失败';
+    } finally {
+      button.disabled = false;
     }
   }
 
@@ -204,6 +253,12 @@
     }
 
     try {
+      const prepare = await fetch('/api/collect/prepare', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sources: [sourceKey] })
+      });
+      const prepared = await prepare.json();
+      if (!prepared.ok) throw new Error(prepared.message || '页面准备失败');
       const resp = await fetch('/api/collect/trigger', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -237,6 +292,12 @@
       const result = await resp.json();
       if (result.ok) {
         const sources = result.data.sources.filter(s => s.status !== 'running');
+        const prepare = await fetch('/api/collect/prepare', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sources: sources.map(source => source.key) })
+        });
+        const prepared = await prepare.json();
+        if (!prepared.ok) throw new Error(prepared.message || '页面准备失败');
         for (const source of sources) {
           await fetch('/api/collect/trigger', {
             method: 'POST',
@@ -333,10 +394,21 @@
   if (collectAllBtn) {
     collectAllBtn.addEventListener('click', collectAll);
   }
+  if (credentialsForm) {
+    credentialsForm.addEventListener('submit', saveCredentials);
+  }
+  document.querySelector('[data-collect-credentials-open]')?.addEventListener('click', () => {
+    loadCredentials();
+    credentialsDialog?.showModal();
+  });
+  document.querySelectorAll('[data-collect-credentials-close]').forEach((button) => {
+    button.addEventListener('click', () => credentialsDialog?.close());
+  });
 
   // 初始化
   loadStatus();
   loadHealth();
+  loadCredentials();
   // 每30秒自动刷新状态（页面不可见时暂停，节省资源）
   let statusTimer = setInterval(() => {
     if (document.visibilityState === 'visible') {

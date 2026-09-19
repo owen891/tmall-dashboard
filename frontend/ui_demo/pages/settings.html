@@ -3,67 +3,120 @@
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
   <title>设置 | 天猫数据仪表盘</title>
-  <link rel="stylesheet" href="../assets/tokens.css"><link rel="stylesheet" href="../assets/shell.css"><link rel="stylesheet" href="../assets/components.css">
+  <link rel="stylesheet" href="../assets/tokens.css"><link rel="stylesheet" href="../assets/shell.css"><link rel="stylesheet" href="../assets/components.css?v=20260919d">
+  <link rel="stylesheet" href="../assets/settings-views.css?v=20260919g">
   <script src="../assets/lucide-custom.min.js"></script>
 </head>
 <body data-page="settings">
   <div class="demo-app"><aside class="demo-sidebar" data-shell-sidebar></aside><div class="demo-main">
     <header class="demo-topbar" data-shell-header></header><main class="demo-page"><aside data-right-rail hidden aria-label="辅助信息"></aside>
-      <div class="demo-page__intro"><div><h2>设置</h2><p>维护店铺默认配置；核心指标公式不可编辑。</p></div></div>
-      <section class="metric-grid settings-summary-grid" aria-label="设置摘要">
-        <article class="metric-card"><div class="metric-card__label">配置状态</div><div class="metric-card__value settings-summary__value" data-settings-summary="status">--</div><div class="metric-card__meta">保存后即时生效</div></article>
-        <article class="metric-card"><div class="metric-card__label">年度目标</div><div class="metric-card__value settings-summary__value" data-settings-summary="annual_target">--</div><div class="metric-card__meta">默认目标值</div></article>
-        <article class="metric-card"><div class="metric-card__label">当前视图</div><div class="metric-card__value settings-summary__value settings-summary__value--text" data-settings-summary="view">--</div><div class="metric-card__meta">商品列表字段模板</div></article>
-        <article class="metric-card"><div class="metric-card__label">预警规则</div><div class="metric-card__value settings-summary__value" data-settings-summary="rules">--</div><div class="metric-card__meta">可在下方维护</div></article>
+      <div class="demo-page__intro"><div><h2>设置中心</h2><p>常用配置在页面上直接维护；纯展示的口径说明收进弹窗。</p></div>
+        <div class="demo-page__actions"><button class="button button--ghost" type="button" data-settings-dialog-open="formula"><i data-lucide="dollar-sign"></i>指标口径</button></div>
+      </div>
+
+      <section class="settings-hero" aria-label="当前店铺">
+        <span class="settings-hero__avatar" aria-hidden="true"><i data-lucide="settings"></i></span>
+        <div class="settings-hero__identity">
+          <h3 class="settings-hero__name" data-settings-hero-name>正在读取店铺信息…</h3>
+          <p class="settings-hero__meta">
+            <span class="settings-chip" data-settings-hero-scope>scope --</span>
+            <span class="settings-chip"><i data-lucide="calendar"></i>Asia/Shanghai</span>
+            <span class="settings-chip"><i data-lucide="dollar-sign"></i>CNY</span>
+          </p>
+        </div>
+        <span class="settings-save-pill" data-settings-save-pill data-tone="success"><i data-lucide="check"></i>已保存</span>
       </section>
+
+      <div class="settings-tabs-row">
+        <div class="segmented settings-tabs" role="group" aria-label="设置分区">
+          <button type="button" data-settings-tab="store" aria-pressed="true"><i data-lucide="settings"></i><span>店铺配置</span></button>
+          <button type="button" data-settings-tab="goals" aria-pressed="false"><i data-lucide="target"></i><span>目标设置</span></button>
+          <button type="button" data-settings-tab="templates" aria-pressed="false"><i data-lucide="file-text"></i><span>字段与视图模板</span></button>
+          <button type="button" data-settings-tab="classification" aria-pressed="false"><i data-lucide="tag"></i><span>品类与分类</span></button>
+          <button type="button" data-settings-tab="alerts" aria-pressed="false"><i data-lucide="activity"></i><span>预警规则</span></button>
+          <button type="button" data-settings-tab="scans" aria-pressed="false"><i data-lucide="search"></i><span>本地导入扫描</span></button>
+        </div>
+      </div>
+
       <div class="settings-workspace">
-      <nav class="settings-tree" aria-label="设置分区">
-        <a href="#settings-store" data-settings-tab="store" aria-current="true">店铺配置</a>
-        <a href="#settings-goals" data-settings-tab="goals">目标设置</a>
-        <a href="#settings-templates">字段与视图模板</a>
-        <a href="#classificationDictionaryTitle">分类字典</a>
-        <a href="#alertRulesTitle">预警规则</a>
-        <a href="#settings-formula">指标口径</a>
-        <a href="#settings-import-scans">本地导入扫描</a>
-      </nav>
       <div class="settings-main">
-      <section class="plain-panel panel" id="settings-store" data-settings-form-panel><form class="modal-form__body" id="settings-form" data-settings-form>
+
+      <section class="panel" id="settings-store" data-settings-form-panel><form class="settings-form" id="settings-form" data-settings-form>
         <div class="settings-tab-panel" data-settings-tab-panel="store">
-        <label>店铺名<input class="input" name="shop_name"></label>
-        <div class="settings-scope-info"><span class="panel__hint">当前店铺 scope</span><strong data-settings-shop-scope>default</strong><span class="panel__hint">当前数据域仍按单店迁移状态运行，暂不支持在此切换其他店铺。</span></div>
-        <label>时区<input class="input" name="timezone" value="Asia/Shanghai" readonly></label>
-        <label>货币<input class="input" name="currency" value="CNY" readonly></label>
-        <label>周起始日<select class="select" name="week_starts_on"><option value="monday">周一</option><option value="sunday">周日</option></select></label>
+          <div class="set-card-grid">
+            <section class="set-card set-card--wide">
+              <div class="set-card__header"><i data-lucide="settings"></i><div><h4>店铺身份</h4><p>店铺名用于页面展示；时区与货币决定数据汇总口径。</p></div></div>
+              <label class="set-field">店铺名<input class="input" name="shop_name" placeholder="例如：派米袜子旗舰店"></label>
+              <div class="set-chip-row">
+                <label class="set-field set-field--chip">时区<input class="input" name="timezone" value="Asia/Shanghai" readonly></label>
+                <label class="set-field set-field--chip">货币<input class="input" name="currency" value="CNY" readonly></label>
+                <label class="set-field set-field--chip">周起始日<select class="select" name="week_starts_on"><option value="monday">周一</option><option value="sunday">周日</option></select></label>
+              </div>
+            </section>
+            <section class="set-card">
+              <div class="set-card__header"><i data-lucide="users"></i><div><h4>采集账号</h4><p>用于自动登录 BI 采集页面。</p></div></div>
+              <p class="set-status-pill" data-collector-credentials-status data-tone="muted">未配置</p>
+              <label class="set-field">账号名称<input class="input" name="collector_username" autocomplete="username" placeholder="请输入 BI 账号"></label>
+              <label class="set-field">登录密码<input class="input" type="password" name="collector_password" autocomplete="new-password" placeholder="已配置时留空表示保持不变"></label>
+              <p class="set-note"><i data-lucide="check"></i>密码只保存到本机，不会在设置接口或日志中回显。</p>
+            </section>
+            <section class="set-card">
+              <div class="set-card__header"><i data-lucide="database"></i><div><h4>数据口径</h4><p>当前数据域按单店迁移状态运行，暂不支持切换其他店铺。</p></div></div>
+              <div class="set-scope-row"><span>店铺 scope</span><strong data-settings-shop-scope>default</strong></div>
+              <label class="set-field">连续有效天数<input class="input" name="continuous_days" type="number" inputmode="numeric" min="1" step="1" value="60" autocomplete="off"></label>
+              <label class="set-field">季节判断最少完整月数<input class="input" name="seasonal_months" type="number" inputmode="numeric" min="1" step="1" value="12" autocomplete="off"></label>
+              <p class="set-note"><i data-lucide="lightbulb"></i>以上两项用于商品生命周期与季节属性判定。</p>
+            </section>
+            <section class="set-card">
+              <div class="set-card__header"><i data-lucide="file-text"></i><div><h4>商品视图</h4><p>商品列表页默认加载的字段模板。</p></div></div>
+              <label class="set-field">当前商品视图<select class="select" name="product_view_template"><option value="operate">基础经营</option><option value="select">选款</option><option value="paid">推广效率</option><option value="refund">退款售后</option><option value="lifecycle">生命周期</option></select></label>
+              <button class="button button--ghost" type="button" data-settings-tab-goto="templates"><i data-lucide="file-text"></i>管理字段与视图模板</button>
+            </section>
+          </div>
         </div>
         <div class="settings-tab-panel" data-settings-tab-panel="goals" id="settings-goals">
-        <div class="settings-form-section"><h3>销售目标设置</h3><p>这里维护年度默认值；本周、本月、季度和年度目标在“经营目标”页拆解并锁定。</p></div>
-        <label>年度销售目标默认值（元）<input class="input" type="number" inputmode="decimal" name="annual_target_default" min="0" step="0.01" autocomplete="off"></label>
-        <label>增长倍率<input class="input" type="number" inputmode="decimal" name="growth_multiplier" min="0.01" step="0.01" autocomplete="off"></label>
-        <label>超额完成阈值<input class="input" type="number" inputmode="decimal" name="overachievement_threshold" min="0.01" step="0.01" autocomplete="off"></label>
-        <div class="settings-goal-link"><span>需要调整本周 / 本月 / 季度 / 年度目标金额？前往经营目标页。</span><a class="button" href="/goals">打开经营目标</a></div>
+          <div class="set-card-grid">
+            <section class="set-card">
+              <div class="set-card__header"><i data-lucide="target"></i><div><h4>年度销售目标默认值</h4><p>未在经营目标页单独设定时的兜底值。</p></div></div>
+              <label class="set-field">金额（元）<input class="input" type="number" inputmode="decimal" name="annual_target_default" min="0" step="0.01" autocomplete="off" placeholder="例如 12000000"></label>
+            </section>
+            <section class="set-card">
+              <div class="set-card__header"><i data-lucide="trending-up"></i><div><h4>增长倍率</h4><p>目标拆解时的默认增长系数。</p></div></div>
+              <label class="set-field">倍率<input class="input" type="number" inputmode="decimal" name="growth_multiplier" min="0.01" step="0.01" autocomplete="off"></label>
+            </section>
+            <section class="set-card">
+              <div class="set-card__header"><i data-lucide="sparkles"></i><div><h4>超额完成阈值</h4><p>达成率超过该倍数时，经营目标页标记为超额完成。</p></div></div>
+              <label class="set-field">阈值<input class="input" type="number" inputmode="decimal" name="overachievement_threshold" min="0.01" step="0.01" autocomplete="off"></label>
+            </section>
+            <section class="set-card set-card--wide set-card--link">
+              <div><h4>需要调整本周 / 本月 / 季度 / 年度目标金额？</h4><p>目标拆解与锁定在经营目标页完成，此处仅维护默认值。</p></div>
+              <a class="button button--primary" href="/goals"><i data-lucide="target"></i>打开经营目标</a>
+            </section>
+          </div>
         </div>
-        <div class="settings-tab-panel" data-settings-tab-panel="store">
-        <label>连续有效天数<input class="input" name="continuous_days" type="number" inputmode="numeric" min="1" step="1" value="60" autocomplete="off"></label>
-        <label>季节判断最少完整月数<input class="input" name="seasonal_months" type="number" inputmode="numeric" min="1" step="1" value="12" autocomplete="off"></label>
-        <label>当前商品视图<select class="select" name="product_view_template"><option value="operate">基础经营</option><option value="select">选款</option><option value="paid">推广效率</option><option value="refund">退款售后</option><option value="lifecycle">生命周期</option></select></label>
-        </div>
-        <section class="settings-category-panel settings-tab-panel" data-settings-tab-panel="store" aria-labelledby="categoryModesTitle">
-          <div class="panel__header"><div><h3 class="panel__title" id="categoryModesTitle">品类定义</h3><p class="panel__hint">品类通过商品表的 `shop_label` 标签匹配。可为同一标签设置更易读的业务名称。</p></div><button class="button button--ghost" type="button" data-category-add><i data-lucide="plus"></i>新增品类</button></div>
-          <div class="settings-category-list" data-category-modes></div>
+        <section class="plain-panel panel settings-template-panel settings-tab-panel" id="settings-templates" data-settings-tab-panel="templates"></section>
+        <section class="settings-category-panel settings-tab-panel" data-settings-tab-panel="classification" aria-labelledby="categoryModesTitle">
+          <div class="set-card set-card--wide">
+            <div class="set-card__header"><i data-lucide="tag"></i><div><h4 id="categoryModesTitle">品类定义</h4><p>品类通过商品表的 `shop_label` 标签匹配。可为同一标签设置更易读的业务名称。</p></div><button class="button button--ghost" type="button" data-category-add><i data-lucide="plus"></i>新增品类</button></div>
+            <div class="settings-category-list" data-category-modes></div>
+            <p class="set-note"><i data-lucide="lightbulb"></i>商品分层、风格等分类字典在下方“商品分类字典”中维护，随本页一起保存。</p>
+          </div>
         </section>
         <div class="settings-savebar" data-settings-savebar><span class="settings-savebar__dirty" data-settings-dirty role="status" aria-live="polite">已保存</span><button class="button button--ghost" type="button" data-settings-discard disabled>放弃修改</button><button class="button button--primary" type="submit">保存设置</button><p data-settings-status role="status" aria-live="polite"></p></div>
       </form></section>
-      <section class="plain-panel panel" aria-labelledby="classificationDictionaryTitle">
+
+      <section class="panel" aria-labelledby="classificationDictionaryTitle" id="settings-classification" data-settings-tab-panel="classification">
         <div class="panel__header"><div><h3 class="panel__title" id="classificationDictionaryTitle">商品分类字典</h3><p class="panel__hint">维护分层、风格、生命周期和季节属性；停用后不影响历史商品。</p></div></div>
         <div class="classification-dictionaries" data-classification-dictionaries></div>
       </section>
-      <section class="plain-panel panel" data-alert-rules-root aria-labelledby="alertRulesTitle">
-        <div class="panel__header"><div><h3 class="panel__title" id="alertRulesTitle">预警规则</h3><p class="panel__hint">统一维护店铺和推广商品的预警阈值。</p></div><button class="button" type="button" data-alert-rules-open><i data-lucide="plus"></i>新增规则</button></div>
+
+      <section class="panel" data-alert-rules-root aria-labelledby="alertRulesTitle" id="settings-alerts" data-settings-tab-panel="alerts">
+        <div class="panel__header"><div><h3 class="panel__title" id="alertRulesTitle">预警规则</h3><p class="panel__hint">统一维护店铺和推广商品的预警阈值，保存后即时生效。</p></div><button class="button" type="button" data-alert-rules-open><i data-lucide="plus"></i>新增规则</button></div>
         <div data-alert-rules-list aria-live="polite"></div>
       </section>
-      <section class="plain-panel panel" id="settings-formula"><div class="panel__header"><div><h3 class="panel__title">指标口径</h3><p class="panel__hint">核心指标公式不可编辑</p></div></div><p>净销售额 = 支付金额 - 成功退款金额；退款率与费比均按汇总后再计算。</p></section>
-      <section class="plain-panel panel" id="settings-import-scans" aria-labelledby="importScanTitle">
-        <div class="panel__header"><div><h3 class="panel__title" id="importScanTitle">本地导入扫描</h3><p class="panel__hint">按计划扫描本机固定文件夹，复用导入预览、质量校验和批次审计。</p><p class="panel__hint" data-scan-environment aria-live="polite">正在读取扫描环境…</p></div><button class="button" type="button" data-scan-create><i data-lucide="folder-plus"></i>新增任务</button></div>
+
+      <section class="panel" id="settings-import-scans" aria-labelledby="importScanTitle" data-settings-tab-panel="scans">
+        <div class="panel__header"><div><h3 class="panel__title" id="importScanTitle">本地导入扫描</h3><p class="panel__hint">按计划扫描本机固定文件夹，复用导入预览、质量校验和批次审计。</p><p class="panel__hint" data-scan-environment aria-live="polite">正在读取扫描环境…</p></div><span class="badge badge--info" data-scan-count>--</span><button class="button" type="button" data-scan-create><i data-lucide="plus"></i>新增任务</button></div>
         <div class="data-table-wrap"><table class="data-table"><thead><tr><th>任务</th><th>来源</th><th>计划</th><th>状态</th><th>最近运行</th><th>操作</th></tr></thead><tbody data-scan-jobs><tr><td colspan="6">加载中…</td></tr></tbody></table></div>
         <p class="panel__hint" data-scan-status role="status" aria-live="polite"></p>
       </section>
@@ -71,6 +124,21 @@
       </div>
     </main>
   </div></div>
+
+  <dialog class="modal-form panel" data-settings-dialog="formula" aria-labelledby="settingsFormulaTitle">
+    <div class="modal-form__header"><div><h3 id="settingsFormulaTitle">指标口径</h3><p class="panel__hint">核心指标公式不可编辑</p></div><button class="button button--ghost" type="button" data-settings-dialog-close aria-label="关闭"><i data-lucide="x"></i></button></div>
+    <div class="modal-form__body">
+      <div class="set-formula-list">
+        <div class="set-formula-row"><span>净销售额</span><code>支付金额 - 成功退款金额</code></div>
+        <div class="set-formula-row"><span>退款率</span><code>成功退款金额 ÷ 支付金额</code></div>
+        <div class="set-formula-row"><span>费比</span><code>推广花费 ÷ 链接 GSV</code></div>
+        <div class="set-formula-row"><span>汇总口径</span><code>退款率与费比均按汇总后再计算</code></div>
+      </div>
+      <p class="set-note"><i data-lucide="lightbulb"></i>公式由系统内置，页面上的指标均按此口径计算，如需调整请联系开发。</p>
+    </div>
+    <div class="modal-form__footer"><button class="button button--primary" type="button" data-settings-dialog-close>完成</button></div>
+  </dialog>
+
   <dialog class="modal-form" data-scan-dialog aria-labelledby="scanDialogTitle">
     <form method="dialog" data-scan-form>
       <div class="modal-form__header"><h3 id="scanDialogTitle">新增扫描任务</h3><button class="button button--ghost" type="button" data-scan-close aria-label="关闭"><i data-lucide="x"></i></button></div>
@@ -98,6 +166,6 @@
     <div class="modal-form__body"><h4>最近运行</h4><div class="data-table-wrap"><table class="data-table"><thead><tr><th>开始时间</th><th>状态</th><th>导入</th><th>阻塞</th><th>失败</th></tr></thead><tbody data-scan-runs></tbody></table></div><h4>发现文件</h4><div class="data-table-wrap"><table class="data-table"><thead><tr><th>文件</th><th>状态</th><th>批次</th><th>更新时间</th><th>操作</th></tr></thead><tbody data-scan-files></tbody></table></div></div>
     <div class="modal-form__footer"><button class="button" type="button" data-scan-detail-close>关闭</button></div>
   </dialog>
-  <script src="../assets/api.js"></script><script src="../assets/navigation.js"></script><script src="../assets/labels.js"></script><script src="../assets/shell.js"></script><script src="../assets/alert-rules.js"></script><script src="../assets/settings-live.js"></script>
+  <script src="../assets/api.js"></script><script src="../assets/navigation.js"></script><script src="../assets/labels.js"></script><script src="../assets/shell.js"></script><script src="../assets/alert-rules.js"></script><script src="../assets/settings-live.js?v=20260919g"></script>
 </body>
 </html>
