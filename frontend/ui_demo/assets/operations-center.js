@@ -87,18 +87,18 @@
     const copy = document.createElement('div'); copy.className = 'operations-center__item-copy';
     const head = document.createElement('div'); head.className = 'operations-center__item-head';
     const title = document.createElement('strong'); title.textContent = actionTitle(action); head.appendChild(title);
-    const source = document.createElement('span'); source.className = 'badge badge--info'; source.textContent = '运营动作'; head.appendChild(source);
+    const source = document.createElement('span'); source.className = 'ui-badge ui-badge--info'; source.textContent = '运营动作'; head.appendChild(source);
     const meta = document.createElement('span'); meta.className = 'operations-center__item-meta'; meta.textContent = actionMeta(action);
     const purpose = document.createElement('p'); purpose.className = 'operations-center__item-purpose'; purpose.textContent = `目的：${actionPurpose(action)}`;
     const detail = document.createElement('p'); detail.className = 'operations-center__item-detail'; detail.textContent = `执行：${actionDetail(action)}`;
     copy.append(head, meta, purpose, detail);
-    const status = document.createElement('span'); status.className = `badge badge--${tone}`; status.textContent = stateLabels[action.status] || action.status || '--';
+    const status = document.createElement('span'); status.className = `ui-badge ui-badge--${tone}`; status.textContent = stateLabels[action.status] || action.status || '--';
     if (compact) head.appendChild(status); else item.append(marker, copy, status);
     if (!compact) {
       const actions = document.createElement('div'); actions.className = 'operations-center__item-actions';
-      const link = document.createElement('a'); link.className = 'button button--ghost operations-center__item-link'; link.href = '/reviews'; link.textContent = '处理'; actions.appendChild(link);
+      const link = document.createElement('a'); link.className = 'ui-button ui-button--ghost operations-center__item-link'; link.href = '/reviews'; link.textContent = '处理'; actions.appendChild(link);
       if (deletableStatuses.has(action.status)) {
-        const remove = document.createElement('button'); remove.type = 'button'; remove.className = 'button button--ghost button--danger'; remove.dataset.actionDelete = action.id; remove.setAttribute('data-action-delete', action.id); remove.setAttribute('aria-label', `删除${actionTitle(action)}`); remove.innerHTML = '<i data-lucide="trash-2" aria-hidden="true"></i><span>删除</span>';
+        const remove = document.createElement('button'); remove.type = 'button'; remove.className = 'ui-button ui-button--ghost ui-button--danger'; remove.dataset.actionDelete = action.id; remove.setAttribute('data-action-delete', action.id); remove.setAttribute('aria-label', `删除${actionTitle(action)}`); remove.innerHTML = '<i data-lucide="trash-2" aria-hidden="true"></i><span>删除</span>';
         remove.addEventListener('click', () => deleteAction(action, remove));
         actions.appendChild(remove);
       }
@@ -116,12 +116,12 @@
     const copy = document.createElement('div'); copy.className = 'operations-center__item-copy';
     const head = document.createElement('div'); head.className = 'operations-center__item-head';
     const title = document.createElement('strong'); title.textContent = anomaly.label || anomaly.metric || '指标异常';
-    const source = document.createElement('span'); source.className = 'badge badge--warning'; source.textContent = '异常提醒'; head.append(title, source);
+    const source = document.createElement('span'); source.className = 'ui-badge ui-badge--warning'; source.textContent = '异常提醒'; head.append(title, source);
     const change = Number(anomaly.change || 0);
     const meta = document.createElement('span'); meta.className = 'operations-center__item-meta'; meta.textContent = `较上期 ${change > 0 ? '+' : ''}${change.toFixed(1)}% · 需要关注`;
     const detail = document.createElement('p'); detail.textContent = `当前值 ${Number(anomaly.current || 0).toLocaleString('zh-CN')}，建议进入经营复盘确认原因。`;
     copy.append(head, meta, detail); item.append(marker, copy);
-    const status = document.createElement('span'); status.className = `badge badge--${severe ? 'danger' : 'warning'}`; status.textContent = severe ? '高风险' : '需关注'; item.appendChild(status);
+    const status = document.createElement('span'); status.className = `ui-badge ui-badge--${severe ? 'danger' : 'warning'}`; status.textContent = severe ? '高风险' : '需关注'; item.appendChild(status);
     return item;
   }
   function buildLogItem(log) {
@@ -130,7 +130,7 @@
     const copy = document.createElement('div'); copy.className = 'operations-center__item-copy';
     const head = document.createElement('div'); head.className = 'operations-center__item-head';
     const title = document.createElement('strong'); title.textContent = log.action || '系统操作';
-    const source = document.createElement('span'); source.className = 'badge badge--info'; source.textContent = '系统通知'; head.append(title, source);
+    const source = document.createElement('span'); source.className = 'ui-badge ui-badge--info'; source.textContent = '系统通知'; head.append(title, source);
     const detail = document.createElement('p'); detail.textContent = log.detail || '--';
     const meta = document.createElement('span'); meta.className = 'operations-center__item-meta'; meta.textContent = `${log.operator || '系统'} · ${formatDateTime(log.created_at)}`;
     copy.append(head, detail, meta); item.append(marker, copy); return item;
@@ -171,7 +171,7 @@
     $('[data-operations-calendar-date]').textContent = date || '选择日期';
     $('[data-operations-calendar-count]').textContent = `${rows.length} 项`;
     const target = $('[data-operations-calendar-details]'); target.replaceChildren();
-    if (!rows.length) { const empty = document.createElement('div'); empty.className = 'empty-state'; empty.appendChild(Object.assign(document.createElement('span'), { textContent: '当天暂无运营动作' })); target.appendChild(empty); return; }
+    if (!rows.length) { const empty = document.createElement('div'); empty.className = 'ui-empty-state'; empty.appendChild(Object.assign(document.createElement('span'), { textContent: '当天暂无运营动作' })); target.appendChild(empty); return; }
     rows.forEach((action) => target.appendChild(buildActionItem(action, true)));
     window.lucide?.createIcons?.();
   }
@@ -207,11 +207,11 @@
     $('[data-operations-calendar-count]').textContent = '0 项';
     const target = $('[data-operations-calendar-details]');
     target.replaceChildren();
-    const empty = document.createElement('div'); empty.className = 'empty-state';
+    const empty = document.createElement('div'); empty.className = 'ui-empty-state';
     empty.appendChild(Object.assign(document.createElement('span'), { textContent: message }));
     if (retry) {
       const button = document.createElement('button');
-      button.type = 'button'; button.className = 'button button--ghost'; button.textContent = '重试计划日历';
+      button.type = 'button'; button.className = 'ui-button ui-button--ghost'; button.textContent = '重试计划日历';
       button.addEventListener('click', retry); empty.appendChild(button);
     }
     target.appendChild(empty);

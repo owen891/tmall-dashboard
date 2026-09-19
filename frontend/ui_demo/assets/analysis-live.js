@@ -164,7 +164,7 @@
       tableCard.style.gridColumn = '1 / -1';
       tableCard.innerHTML = `
         <div class="analysis-chart__header"><h3 class="analysis-chart__title">商品明细 TOP ${config.topN}</h3></div>
-        <div class="data-table-wrap"><table class="data-table">
+        <div class="ui-table-wrap"><table class="ui-data-table">
           <thead><tr><th>排名</th><th>商品</th><th class="num">${metricLabels[config.metric]}</th><th class="num">占比</th></tr></thead>
           <tbody>${data.products.slice(0, config.topN).map((p, i) => `
             <tr><td>${i + 1}</td><td>${p.title || p.name || '--'}</td>
@@ -183,7 +183,7 @@
     card.innerHTML = `
       <div class="analysis-chart__header">
         <h3 class="analysis-chart__title">${title}</h3>
-        <span class="badge badge--secondary">${chartTypeLabels[chartType]}</span>
+        <span class="ui-badge ui-badge--secondary">${chartTypeLabels[chartType]}</span>
       </div>
       <div class="analysis-chart__canvas"></div>
     `;
@@ -292,8 +292,8 @@
           <div class="analysis-saved__meta">${metricLabels[item.config.metric]} · ${dimensionLabels[item.config.dimension]} · ${item.config.startDate} ~ ${item.config.endDate}</div>
         </div>
         <div class="analysis-saved__actions">
-          <button class="button button--ghost button--sm" data-load="${item.id}">加载</button>
-          <button class="button button--ghost button--sm" data-delete="${item.id}">删除</button>
+          <button class="ui-button ui-button--ghost ui-button--sm" data-load="${item.id}">加载</button>
+          <button class="ui-button ui-button--ghost ui-button--sm" data-delete="${item.id}">删除</button>
         </div>
       </div>
     `).join('');

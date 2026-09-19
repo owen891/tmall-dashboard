@@ -10,16 +10,16 @@ PAGES = ROOT / "frontend" / "ui_demo" / "pages"
 
 def test_canonical_ui_registry_exposes_required_components():
     source = (ASSETS / "ui-components.js").read_text(encoding="utf-8")
-    for name in ("format", "button", "badge", "emptyState", "dataState", "metricCard", "metricGrid", "panel", "pageHeader", "filterToolbar", "table", "setState", "fieldSelector"):
+    for name in ("format", "button", "badge", "emptyState", "dataState", "metricCard", "metricGrid", "panel", "pageHeader", "filterToolbar", "table", "setState", "fieldSelector", "modal", "confirm"):
         assert name in source
-    for legacy, canonical in (("button", "ui-button"), ("metric-card", "ui-metric-card"), ("panel", "ui-panel"), ("empty-state", "ui-empty-state"), ("demo-page__intro", "ui-page-header"), ("data-table", "ui-data-table")):
-        assert f"{legacy}: '{canonical}'" in source or f"'{legacy}': '{canonical}'" in source
+    assert "legacyMap" not in source
+    assert "upgradeLegacy" not in source
 
 
 def test_ui_audit_is_exposed():
     source = (ASSETS / "ui-components.js").read_text(encoding="utf-8")
     assert "const audit" in source
-    assert "api.audit = audit" in source
+    assert "fieldSelector, audit" in source
 
 
 def test_component_catalog_covers_page_compositions():
@@ -54,18 +54,67 @@ def test_field_selector_is_shared_and_exposes_canonical_classes():
     assert "ui-field-selector__preview" in source
 
 
-def test_legacy_panels_keep_padding_while_structured_panels_do_not():
+def test_field_selector_consumers_use_the_shared_tmall_ui_entrypoint():
+    for name in ("keyword-promotion-live.js", "lifecycle-live.js", "overview-live.js", "products-live.js", "promotion-live.js"):
+        source = (ASSETS / name).read_text(encoding="utf-8")
+        assert "TmallUI.fieldSelector" in source, name
+        assert "DemoFieldSelector" not in source, name
+
+
+def test_field_selector_only_uses_icons_available_in_the_custom_bundle():
+    source = (ASSETS / "field-selector.js").read_text(encoding="utf-8")
+    bundle = (ASSETS / "lucide-custom.min.js").read_text(encoding="utf-8")
+    assert "arrow-up" not in source
+    assert "arrow-down" not in source
+    assert "chevron-right" in source
+    assert "icons/chevron-right.js" in bundle
+
+
+def test_all_field_selector_dialogs_have_shared_layout_guardrails():
+    styles = (ASSETS / "components.css").read_text(encoding="utf-8")
+    for dialog in ("promotion-field-dialog", "overview-matrix-columns-dialog", "products-columns-dialog", "lifecycle-columns-dialog"):
+        assert f".{dialog} .field-selection-layout.ui-field-selector" in styles, dialog
+    source = (ASSETS / "field-selector.js").read_text(encoding="utf-8")
+    assert "ui-field-selector__ui-button" not in source
+    assert "ui-field-selector__button--${direction}" in source
+    assert "root.className = 'ui-field-selector'" in source
+    for name in ("keyword-promotion-live.js", "lifecycle-live.js", "overview-live.js", "products-live.js", "promotion-live.js"):
+        consumer = (ASSETS / name).read_text(encoding="utf-8")
+        assert "className: '" not in consumer or "field-selection" not in consumer
+
+
+def test_canonical_panels_have_padding_and_no_legacy_component_selectors():
     source = (ASSETS / "components.css").read_text(encoding="utf-8")
-    assert re.search(r"\.panel\s*\{[^}]*padding:\s*var\(--space-4\)", source)
-    assert re.search(r"\.ui-panel\s*\{(?![^}]*padding:)\s*[^}]*border:", source)
-    assert len(re.findall(r"(?m)^\.ui-panel\s*\{", source)) == 1
+    assert re.search(r"\.ui-panel\s*\{[^}]*padding:\s*var\(--space-4\)", source)
+    assert not re.search(r"(?m)^\.(?:panel|plain-panel|metric-card|button|badge|data-table|data-table-wrap|empty-state|section-toolbar|metric-grid)\b", source)
 
 
-def test_runtime_upgrade_handles_dynamic_nodes_without_global_node_constructor():
+def test_runtime_upgrade_shim_is_removed_and_audit_is_canonical():
     source = (ASSETS / "ui-components.js").read_text(encoding="utf-8")
     assert "const isElement" in source
     assert "instanceof Node" not in source
-    assert "new MutationObserver" in source
+    assert "new MutationObserver" not in source
+    assert "legacyMap" not in source
+    assert "const legacyNames" in source
+
+
+
+
+def test_title_width_and_truncation_contract():
+    tokens = (ASSETS / "tokens.css").read_text(encoding="utf-8")
+    styles = (ASSETS / "components.css").read_text(encoding="utf-8")
+    for token in ("--title-width-sm", "--title-width-md", "--title-width-lg", "--title-width-page"):
+        assert token in tokens
+    for rule in (".ui-panel__title", ".ui-metric-card__label", ".product-title__link", "text-overflow: ellipsis", "white-space: nowrap"):
+        assert rule in styles
+
+
+def test_shared_contract_rejects_legacy_assets():
+    sys.path.insert(0, str(ROOT / "scripts"))
+    from check_ui_contract import validate_scripts, validate_styles, validate_title_contract
+    assert validate_scripts() == []
+    assert validate_styles() == []
+    assert validate_title_contract() == []
 
 
 def test_pages_keep_shared_shell_and_design_tokens():
@@ -85,10 +134,31 @@ def test_shared_date_range_supports_late_subscribers_and_analysis_sync():
     assert "subscribe: (subscriber, immediate = true)" in shell
     assert "setRange: setSharedRange" in shell
     assert "window.TmallDateRange?.subscribe?.((range) =>" in analysis
-    assert "if (currentConfig) runAnalysis();" in analysis
     assert "window.TmallDateRange?.setRange?.(start, end, 'custom')" in analysis
+    assert "if (currentConfig) runAnalysis();" in analysis
 
 
+def test_snapshot_pages_do_not_offer_unsupported_date_range():
+    shell = (ASSETS / "shell.js").read_text(encoding="utf-8")
+    for page in ("data-center", "data-collection", "settings", "goals"):
+        assert page in shell
+
+
+def test_sycm_pages_forward_shared_end_date():
+    for name, endpoint in (("flow-source-live.js", "flow-source/summary"), ("rival-analysis-live.js", "rival-shops/summary")):
+        source = (ASSETS / name).read_text(encoding="utf-8")
+        assert "tmall:date-range-change" in source
+        assert "window.TmallDateRange?.getState?.().endDate" in source
+        assert endpoint in source
+
+
+def test_market_and_keyword_pages_forward_shared_date_range():
+    market = (ASSETS / "market-ranking-live.js").read_text(encoding="utf-8")
+    keyword = (ASSETS / "keyword-promotion-live.js").read_text(encoding="utf-8")
+    assert "analysis_date" in market
+    assert "tmall:date-range-change" in market
+    assert "start: dateRange().startDate" in keyword
+    assert "end: dateRange().endDate" in keyword
 def test_products_pilot_uses_canonical_ui_contract():
     source = (PAGES / "products.html").read_text(encoding="utf-8")
     assert "ui-metric-card" in source

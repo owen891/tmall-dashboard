@@ -1,4 +1,4 @@
-// 推广分析 4 视图扩展：总览（渠道效率 / 投放方式）、计划看板、商品结构抽屉、素材看板。
+// 推广分析视图扩展：总览（渠道效率 / 投放方式）、计划看板、商品结构抽屉。
 // 数据来自推广域 API 的计划/创意维度报表（万相台无界），商品行不带渠道归属。
 (function () {
   const $ = (selector, root = document) => root.querySelector(selector);
@@ -27,20 +27,15 @@
     '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
   }[ch]));
 
+  const storedView = sessionStorage.getItem('promotion.view');
   const state = {
-    view: sessionStorage.getItem('promotion.view') || 'overview',
+    view: new Set(['overview', 'plans', 'products']).has(storedView) ? storedView : 'overview',
     channelRows: [],
     planTypeRows: [],
     campaignRows: [],
-    creativeRows: [],
-    allCreativeRows: [],
-    creativesMode: 'cards',
     structureProduct: null,
     charts: [],
-    campaignPage: 1,
-    creativePage: 1,
   };
-  const PAGE_SIZE = 20;
 
   function range() {
     const rangeState = window.TmallDateRange?.getState?.() || {};
@@ -71,20 +66,6 @@
     return 'danger';
   }
 
-  function renderPager(container, { page, pageSize, total, onPage }) {
-    if (!container) return;
-    const totalPages = Math.max(1, Math.ceil(total / pageSize));
-    if (total <= pageSize) {
-      container.innerHTML = '';
-      return;
-    }
-    container.innerHTML = `
-      <span class="promotion-pager__info">第 ${page} / ${totalPages} 页，共 ${total.toLocaleString('zh-CN')} 行</span>
-      <button class="button button--ghost" type="button" data-pager-prev ${page <= 1 ? 'disabled' : ''}>上一页</button>
-      <button class="button button--ghost" type="button" data-pager-next ${page >= totalPages ? 'disabled' : ''}>下一页</button>`;
-    container.querySelector('[data-pager-prev]')?.addEventListener('click', () => onPage(Math.max(1, page - 1)));
-    container.querySelector('[data-pager-next]')?.addEventListener('click', () => onPage(Math.min(totalPages, page + 1)));
-  }
 
   function exportCsv(filename, headers, rows) {
     const escapeCell = (value) => {
@@ -113,37 +94,15 @@
     });
     if (view === 'overview') loadOverview();
     if (view === 'plans') loadCampaigns();
-    if (view === 'creatives') loadCreatives();
   }
 
   function bindViewTabs() {
     $$('[data-promotion-view]').forEach((button) => {
       button.addEventListener('click', () => switchView(button.dataset.promotionView));
     });
-    $$('[data-promotion-creatives-mode-value]').forEach((button) => {
-      button.addEventListener('click', () => {
-        state.creativesMode = button.dataset.promotionCreativesModeValue;
-        state.creativePage = 1;
-        $$('[data-promotion-creatives-mode-value]').forEach((item) => {
-          item.setAttribute('aria-pressed', String(item === button));
-        });
-        renderCreativeBoard();
-      });
-    });
-    $('[data-promotion-creatives-search]')?.addEventListener('input', () => {
-      state.creativePage = 1;
-      const term = ($('[data-promotion-creatives-search]')?.value || '').trim().toLowerCase();
-      state.creativeRows = state.allCreativeRows.filter((row) => (
-        !term || `${row.creative_id} ${row.creative_name || ''} ${row.product_name || row.title || ''}`.toLowerCase().includes(term)
-      ));
-      renderCreativeBoard();
-    });
-    $('[data-promotion-creatives-sort]')?.addEventListener('change', () => { state.creativePage = 1; loadCreatives(); });
-    $('[data-promotion-creatives-product]')?.addEventListener('change', () => { state.creativePage = 1; loadCreatives(); });
-    $('[data-promotion-creatives-refresh]')?.addEventListener('click', loadCreatives);
     $('[data-promotion-campaign-search]')?.addEventListener('input', () => { renderCampaignTable(); });
     $('[data-promotion-campaign-sort]')?.addEventListener('change', () => { renderCampaignTable(); });
-    $('[data-promotion-campaign-plan-type]')?.addEventListener('change', () => { state.campaignPage = 1; renderCampaignTable(); });
+    $('[data-promotion-campaign-plan-type]')?.addEventListener('change', () => { renderCampaignTable(); });
     $('[data-promotion-campaign-channel]')?.addEventListener('change', () => { renderCampaignTable(); });
     $('[data-promotion-campaigns-refresh]')?.addEventListener('click', loadCampaigns);
     window.addEventListener('tmall:export', (event) => {
@@ -156,14 +115,6 @@
             row.campaign_id, row.campaign_name, row.plan_type, row.channel,
             row.ad_spend, row.attributed_payment_amount, row.roi, row.ctr, row.cvr,
             row.cart_adds, row.cart_cost, row.new_buyers, row.new_customer_cost,
-          ]));
-      } else if (state.view === 'creatives' && state.creativeRows.length) {
-        event.preventDefault();
-        exportCsv(`推广素材_${start}_${end}.csv`,
-          ['创意ID', '创意名', '所属商品', '渠道', '点击率', '转化率', '加购率', '点击量', '花费', '加购成本', 'ROI'],
-          state.creativeRows.map((row) => [
-            row.creative_id, row.creative_name, row.product_name || row.title, row.channel,
-            row.ctr, row.cvr, row.cart_rate, row.clicks, row.ad_spend, row.cart_cost, row.roi,
           ]));
       }
     });
@@ -186,7 +137,7 @@
       renderPlanTypes();
     } catch (error) {
       const cards = $('[data-promotion-channel-cards]');
-      if (cards) cards.innerHTML = `<div class="empty-state"><span>${esc(error.message || '渠道数据加载失败')}</span></div>`;
+      if (cards) cards.innerHTML = `<div class="ui-empty-state"><span>${esc(error.message || '渠道数据加载失败')}</span></div>`;
     }
   }
 
@@ -197,7 +148,7 @@
     const countBadge = $('[data-promotion-channel-cards-count]');
     if (countBadge) countBadge.textContent = `${rows.length} 个渠道`;
     if (!rows.length) {
-      wrap.innerHTML = '<div class="empty-state"><span>当前范围没有渠道推广数据</span></div>';
+      wrap.innerHTML = '<div class="ui-empty-state"><span>当前范围没有渠道推广数据</span></div>';
       const note = $('[data-promotion-channel-cards-note]');
       if (note) note.textContent = '';
       return;
@@ -299,7 +250,7 @@
     const bestCtr = withCtr.length ? withCtr.reduce((a, b) => (a.ctr >= b.ctr ? a : b)) : null;
     body.innerHTML = rows.map((row) => `
       <tr>
-        <td><span class="plan-type-badge plan-type-badge--${esc(row.plan_type)}">${esc(row.plan_type)}</span>${bestRoi && row === bestRoi ? ' <span class="badge badge--success">ROI 最高</span>' : ''}${bestCtr && row === bestCtr ? ' <span class="badge badge--info">CTR 最高</span>' : ''}</td>
+        <td><span class="plan-type-badge plan-type-badge--${esc(row.plan_type)}">${esc(row.plan_type)}</span>${bestRoi && row === bestRoi ? ' <span class="ui-badge ui-badge--success">ROI 最高</span>' : ''}${bestCtr && row === bestCtr ? ' <span class="ui-badge ui-badge--info">CTR 最高</span>' : ''}</td>
         <td>${row.plan_count}</td>
         <td>${money(row.ad_spend)}</td>
         <td>${money(row.attributed_payment_amount)}</td>
@@ -374,11 +325,10 @@
     if (countBadge) countBadge.textContent = `${rows.length} 个计划`;
     if (!rows.length) {
       body.innerHTML = '<tr><td colspan="9">当前筛选范围没有计划数据</td></tr>';
-      renderPager($('[data-promotion-campaigns-pager]'), { page: 1, pageSize: PAGE_SIZE, total: 0, onPage: () => {} });
       return;
     }
     body.innerHTML = rows.map((row, index) => `
-      <tr class="promotion-campaign-row" data-campaign-index="${index}">
+      <tr class="promotion-campaign-row" data-campaign-id="${esc(row.campaign_id || '')}">
         <td class="t-clamp" title="${esc(row.campaign_name || row.campaign_id || '')}"><strong>${esc(row.campaign_name || `计划 ${row.campaign_id || ''}`)}</strong> ${row.plan_type ? `<span class="plan-type-badge plan-type-badge--${esc(row.plan_type)}">${esc(row.plan_type)}</span>` : ''}</td>
         <td>${esc(row.channel || '--')}</td>
         <td>${money(row.ad_spend)}</td>
@@ -401,7 +351,7 @@
       existing.remove();
       return;
     }
-    const campaignId = state.campaignRows[Number(row.dataset.campaignIndex)]?.campaign_id;
+    const campaignId = row.dataset.campaignId;
     if (!campaignId) return;
     const detail = document.createElement('tr');
     detail.className = 'promotion-campaign-row__detail';
@@ -424,127 +374,6 @@
     }
   }
 
-  // ── 素材看板 ───────────────────────────────────────────────────────────
-
-  async function loadCreatives() {
-    const wrap = $('[data-promotion-creative-cards]');
-    if (!wrap) return;
-    const { start, end } = range();
-    const product = $('[data-promotion-creatives-product]')?.value || '';
-    const sort = $('[data-promotion-creatives-sort]')?.value || 'clicks';
-    wrap.innerHTML = '<div class="empty-state"><span>加载中…</span></div>';
-    try {
-      const response = await DemoApi.domainRequest(`/api/promotion/creatives?${new URLSearchParams({ start, end, sort, ...(product ? { product_id: product } : {}) })}`);
-      state.allCreativeRows = Array.isArray(response.data?.rows) ? response.data.rows : [];
-      const term = ($('[data-promotion-creatives-search]')?.value || '').trim().toLowerCase();
-      state.creativeRows = state.allCreativeRows.filter((row) => (
-        !term || `${row.creative_id} ${row.creative_name || ''} ${row.product_name || row.title || ''}`.toLowerCase().includes(term)
-      ));
-      state.creativePage = 1;
-      fillCreativeProductFilter();
-      renderCreativeBoard();
-    } catch (error) {
-      wrap.innerHTML = `<div class="empty-state"><span>${esc(error.message || '素材数据加载失败')}</span></div>`;
-    }
-  }
-
-  function fillCreativeProductFilter() {
-    const select = $('[data-promotion-creatives-product]');
-    if (!select || select.options.length > 1) return;
-    const products = new Map();
-    state.creativeRows.forEach((row) => {
-      if (row.product_id) products.set(row.product_id, row.product_name || row.title || row.product_id);
-    });
-    [...products.entries()].sort((a, b) => String(a[1]).localeCompare(String(b[1]), 'zh-CN')).forEach(([id, name]) => {
-      const option = document.createElement('option');
-      option.value = id;
-      option.textContent = String(name).slice(0, 22);
-      select.appendChild(option);
-    });
-  }
-
-  function creativeBadges(rows) {
-    const withCtr = rows.filter((row) => row.ctr != null && Number(row.clicks) > 0);
-    const withCvr = rows.filter((row) => row.cvr != null && Number(row.clicks) > 0);
-    const withCart = rows.filter((row) => row.cart_cost != null);
-    const bestCtr = withCtr.length ? withCtr.reduce((a, b) => (a.ctr >= b.ctr ? a : b)) : null;
-    const bestCvr = withCvr.length ? withCvr.reduce((a, b) => (a.cvr >= b.cvr ? a : b)) : null;
-    const bestCart = withCart.length ? withCart.reduce((a, b) => (a.cart_cost <= b.cart_cost ? a : b)) : null;
-    const badgeMap = new Map();
-    if (bestCtr) badgeMap.set(bestCtr.creative_id, ['CTR 最高', '']);
-    if (bestCvr) badgeMap.set(bestCvr.creative_id, [...(badgeMap.get(bestCvr.creative_id) || []), 'CVR 最高', 'cvr']);
-    if (bestCart) badgeMap.set(bestCart.creative_id, [...(badgeMap.get(bestCart.creative_id) || []), '加购成本最低', 'cart']);
-    return badgeMap;
-  }
-
-  function renderCreativeBoard() {
-    const cards = $('[data-promotion-creative-cards]');
-    const tableWrap = $('[data-promotion-creative-table-wrap]');
-    if (!cards || !tableWrap) return;
-    const rows = state.creativeRows;
-    const countBadge = $('[data-promotion-creatives-count]');
-    if (countBadge) countBadge.textContent = `${rows.length} 个素材`;
-    cards.hidden = state.creativesMode !== 'cards';
-    tableWrap.hidden = state.creativesMode !== 'table';
-    const badges = creativeBadges(rows);
-    if (!rows.length) {
-      cards.innerHTML = '<div class="empty-state"><span>当前范围没有素材数据</span></div>';
-      const body = $('[data-promotion-creative-body]');
-      if (body) body.innerHTML = '<tr><td>当前范围没有素材数据</td></tr>';
-      renderPager($('[data-promotion-creatives-pager]'), { page: 1, pageSize: PAGE_SIZE, total: 0, onPage: () => {} });
-      return;
-    }
-    if (state.creativesMode === 'cards') {
-      const totalPages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
-      if (state.creativePage > totalPages) state.creativePage = 1;
-      const pageRows = rows.slice((state.creativePage - 1) * PAGE_SIZE, state.creativePage * PAGE_SIZE);
-      cards.innerHTML = pageRows.map((row) => {
-        const rowBadges = badges.get(row.creative_id) || [];
-        const badgeHtml = Array.isArray(rowBadges)
-          ? rowBadges.filter((_, index) => index % 2 === 0).map((label, idx) => `<span class="promotion-creative-card__badge${rowBadges[idx * 2 + 1] ? ` promotion-creative-card__badge--${rowBadges[idx * 2 + 1]}` : ''}">${esc(label)}</span>`).join('')
-          : `<span class="promotion-creative-card__badge">${esc(rowBadges[0] || '')}</span>`;
-        return `
-        <article class="promotion-creative-card" title="花费 ${money(row.ad_spend)} · ROI ${ratio(row.roi)}">
-          <div class="promotion-creative-card__badges">${badgeHtml}</div>
-          ${row.image_url ? `<img class="promotion-creative-card__thumb" src="${esc(row.image_url)}" alt="${esc(row.creative_name || '')}" loading="lazy">` : '<div class="promotion-creative-card__thumb-placeholder"><i data-lucide="image"></i></div>'}
-          <div class="promotion-creative-card__body">
-            <div class="promotion-creative-card__name">${esc(row.creative_name || row.creative_id)}</div>
-            <div class="promotion-creative-card__product">${esc(row.product_name || row.title || '--')}</div>
-            <div class="promotion-creative-card__metrics">
-              <span>点击率 <b>${percent(row.ctr)}</b></span>
-              <span>转化率 <b>${percent(row.cvr)}</b></span>
-              <span>加购率 <b>${percent(row.cart_rate)}</b></span>
-              <span>点击量 <b>${Number(row.clicks || 0).toLocaleString('zh-CN')}</b></span>
-              <span>花费 <b>${moneyCompact(row.ad_spend)}</b></span>
-              <span>加购成本 <b>${row.cart_cost != null ? moneyCompact(row.cart_cost) : '--'}</b></span>
-            </div>
-          </div>
-        </article>`;
-      }).join('');
-    } else {
-      const body = $('[data-promotion-creative-body]');
-      if (body) {
-        body.innerHTML = rows.map((row) => `
-          <tr>
-            <td class="t-clamp" title="${esc(row.creative_name || row.creative_id)}">${esc((row.creative_name || row.creative_id).slice(0, 40))}${(row.creative_name || '').length > 40 ? '…' : ''}<br><span class="promotion-campaign-product__sub">${esc((row.product_name || row.title || '').slice(0, 30))}</span></td>
-            <td>${esc(row.channel || '--')}</td>
-            <td>${percent(row.ctr)}</td>
-            <td>${percent(row.cvr)}</td>
-            <td>${percent(row.cart_rate)}</td>
-            <td>${Number(row.clicks || 0).toLocaleString('zh-CN')}</td>
-            <td>${money(row.ad_spend)}</td>
-            <td>${row.cart_cost != null ? money(row.cart_cost) : '--'}</td>
-            <td>${ratio(row.roi)}</td>
-          </tr>`).join('');
-      }
-    }
-    if (window.lucide?.createIcons) window.lucide.createIcons();
-    // 卡片模式用自定义分页;表格模式的分页/排序由共享 table-controls 接管
-    renderPager($('[data-promotion-creatives-pager]'), {
-      page: state.creativePage, pageSize: PAGE_SIZE, total: state.creativesMode === 'cards' ? rows.length : 0,
-      onPage: (page) => { state.creativePage = page; renderCreativeBoard(); },
-    });
-  }
 
   // ── 商品推广结构抽屉 ───────────────────────────────────────────────────
 
@@ -568,7 +397,7 @@
         const productId = button.dataset.promotionDrill;
         if (!productId || button.nextElementSibling?.dataset.promotionStructure) return;
         const structureButton = document.createElement('button');
-        structureButton.className = 'button button--ghost';
+        structureButton.className = 'ui-button ui-button--ghost';
         structureButton.type = 'button';
         structureButton.dataset.promotionStructure = productId;
         structureButton.textContent = '结构';
@@ -607,7 +436,7 @@
         const mix = Array.isArray(response.data?.channel_mix) ? response.data.channel_mix : [];
         const instance = chart('#promotionStructureMix');
         if (!mix.length) {
-          body.innerHTML = '<div class="empty-state"><span>该商品暂无渠道归因数据</span></div>';
+          body.innerHTML = '<div class="ui-empty-state"><span>该商品暂无渠道归因数据</span></div>';
           return;
         }
         instance.setOption({
@@ -620,11 +449,11 @@
         });
         body.insertAdjacentHTML('beforeend', `<p class="promotion-channel-cards__footnote">左：各渠道花费占比；右：各渠道成交占比。${esc((response.limitations || []).join(' '))}</p>`);
       } catch (error) {
-        body.innerHTML = `<div class="empty-state"><span>${esc(error.message || '结构数据加载失败')}</span></div>`;
+        body.innerHTML = `<div class="ui-empty-state"><span>${esc(error.message || '结构数据加载失败')}</span></div>`;
       }
     }
     if (tab === 'campaigns') {
-      body.innerHTML = '<div class="data-table-wrap"><table class="data-table"><thead><tr><th>计划</th><th>渠道</th><th>花费</th><th>ROI</th><th>加购成本</th></tr></thead><tbody><tr><td>加载中…</td></tr></tbody></table></div>';
+      body.innerHTML = '<div class="ui-table-wrap"><table class="ui-data-table"><thead><tr><th>计划</th><th>渠道</th><th>花费</th><th>ROI</th><th>加购成本</th></tr></thead><tbody><tr><td>加载中…</td></tr></tbody></table></div>';
       try {
         const response = await DemoApi.domainRequest(`/api/promotion/product-detail?${new URLSearchParams({ start, end, product_id: productId })}`);
         const campaigns = Array.isArray(response.data?.campaigns) ? response.data.campaigns : [];
@@ -642,25 +471,13 @@
             <td>${row.cart_cost != null ? money(row.cart_cost) : '--'}</td>
           </tr>`).join('');
       } catch (error) {
-        body.innerHTML = `<div class="empty-state"><span>${esc(error.message || '计划数据加载失败')}</span></div>`;
+        body.innerHTML = `<div class="ui-empty-state"><span>${esc(error.message || '计划数据加载失败')}</span></div>`;
       }
     }
     if (tab === 'creatives') {
-      switchView('creatives');
-      const select = $('[data-promotion-creatives-product]');
-      if (select) {
-        // 商品可能还没出现在下拉选项里（素材数据未加载或被筛掉），补一个选项
-        // 保证过滤不静默丢失。
-        if (state.structureProduct && !Array.from(select.options).some((option) => option.value === state.structureProduct)) {
-          const option = document.createElement('option');
-          option.value = state.structureProduct;
-          option.textContent = `商品 ${state.structureProduct}`;
-          select.appendChild(option);
-        }
-        select.value = state.structureProduct;
-      }
+      // 素材表现已拆到独立看板页,带商品 ID 跳转
       dialog.close();
-      loadCreatives();
+      window.location.href = `/creative-board?product_id=${encodeURIComponent(state.structureProduct || '')}`;
     }
   }
 
@@ -673,7 +490,6 @@
     window.addEventListener('tmall:date-range-change', () => {
       if (state.view === 'overview') loadOverview();
       if (state.view === 'plans') loadCampaigns();
-      if (state.view === 'creatives') loadCreatives();
     });
     window.addEventListener('tmall:refresh', () => switchView(state.view));
     if (!window.TmallDateRange) switchView(state.view);

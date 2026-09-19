@@ -13,6 +13,12 @@
     kwCategory: '',
     kwType: '',
   };
+  let initialized = false;
+  const selectedDate = () => window.TmallDateRange?.getState?.().endDate || '';
+  const withDate = (url) => {
+    const date = selectedDate();
+    return date ? `${url}${url.includes('?') ? '&' : '?'}analysis_date=${encodeURIComponent(date)}` : url;
+  };
 
   function $(sel) { return document.querySelector(sel); }
   function $$(sel) { return Array.from(document.querySelectorAll(sel)); }
@@ -39,7 +45,7 @@
 
   // ===== 加载数据 =====
   async function loadSummary() {
-    const r = await fetch(API_BASE + '/summary');
+    const r = await fetch(withDate(API_BASE + '/summary'));
     const d = await r.json();
     if (!d.ok) throw new Error(d.message || '加载失败');
     state.summary = d.data;
@@ -48,7 +54,7 @@
   }
 
   async function loadFilters() {
-    const r = await fetch(API_BASE + '/filters');
+    const r = await fetch(withDate(API_BASE + '/filters'));
     const d = await r.json();
     if (!d.ok) throw new Error(d.message || '加载失败');
     state.listTypes = d.data.list_types;
@@ -60,7 +66,7 @@
     let url = API_BASE + '/products?';
     if (state.filterCategory) url += 'category=' + encodeURIComponent(state.filterCategory) + '&';
     if (state.filterListType) url += 'list_type=' + encodeURIComponent(state.filterListType) + '&';
-    const r = await fetch(url);
+    const r = await fetch(withDate(url));
     const d = await r.json();
     return d.ok ? d.data : [];
   }
@@ -69,13 +75,13 @@
     let url = API_BASE + '/keywords?';
     if (state.kwCategory) url += 'category=' + encodeURIComponent(state.kwCategory) + '&';
     if (state.kwType) url += 'keyword_type=' + encodeURIComponent(state.kwType) + '&';
-    const r = await fetch(url);
+    const r = await fetch(withDate(url));
     const d = await r.json();
     return d.ok ? d.data : [];
   }
 
   async function loadOverlapShops() {
-    const r = await fetch(API_BASE + '/overlap-shops');
+    const r = await fetch(withDate(API_BASE + '/overlap-shops'));
     const d = await r.json();
     return d.ok ? d.data : [];
   }
@@ -205,12 +211,12 @@
     }
     tbody.innerHTML = products.map(p => {
       const rankBadge = p.rank <= 3
-        ? `<span class="badge badge--${p.rank === 1 ? 'danger' : p.rank === 2 ? 'warning' : 'success'}">${p.rank}</span>`
-        : `<span class="badge badge--muted">${p.rank}</span>`;
+        ? `<span class="ui-badge ui-badge--${p.rank === 1 ? 'danger' : p.rank === 2 ? 'warning' : 'success'}">${p.rank}</span>`
+        : `<span class="ui-badge ui-badge--muted">${p.rank}</span>`;
       return `<tr>
         <td>${rankBadge}</td>
-        <td><span class="badge badge--info">${escapeHtml(p.category)}</span></td>
-        <td><span class="badge badge--muted">${escapeHtml(p.list_type)}</span></td>
+        <td><span class="ui-badge ui-badge--info">${escapeHtml(p.category)}</span></td>
+        <td><span class="ui-badge ui-badge--muted">${escapeHtml(p.list_type)}</span></td>
         <td style="max-width:300px">${escapeHtml(p.title || '-')}</td>
         <td style="color:var(--text-secondary)">${escapeHtml(p.shop || '-')}</td>
         <td style="font-family:var(--font-mono)">${fmtInt(p.buyers)}</td>
@@ -372,7 +378,7 @@ async function init() {
       renderMetrics(summary);
       renderCategoryComparison(summary.categories);
       renderFilters();
-      bindEvents();
+      if (!initialized) bindEvents();
 
       const [products, keywords, overlapShops] = await Promise.all([
         loadProducts(), loadKeywords(), loadOverlapShops()
@@ -382,18 +388,24 @@ async function init() {
       renderOverlapShops(overlapShops);
 
       // 加载生意参谋数据
-      loadSycmCategories();
-      loadSycmItemRank();
-      loadSycmSearchRank();
-      bindSycmFilters();
+      if (!initialized) {
+        loadSycmCategories();
+        loadSycmItemRank();
+        loadSycmSearchRank();
+        bindSycmFilters();
+        initialized = true;
+      }
 
       window.lucide?.createIcons();
     } catch (e) {
       console.error('市场分析加载失败:', e);
       document.querySelector('.demo-page').innerHTML =
         `<div style="padding:40px;text-align:center;color:var(--danger)">加载失败：${e.message}</div>`;
-    }
+}
+
   }
+
+  window.addEventListener('tmall:date-range-change', () => init());
 
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', init);

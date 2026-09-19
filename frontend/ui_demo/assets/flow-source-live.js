@@ -49,8 +49,9 @@
   }
 
   // 加载所有渠道数据
-  async function loadAllChannels() {
-    const r = await fetch(API_BASE + '/flow-source/detail');
+  async function loadAllChannels(date) {
+    const query = date ? `?date=${encodeURIComponent(date)}` : '';
+    const r = await fetch(API_BASE + '/flow-source/detail' + query);
     const d = await r.json();
     if (!d.ok) throw new Error(d.message || '加载失败');
     state.allChannels = d.data.channels;
@@ -259,16 +260,18 @@
   }
 
   // 初始化
-  async function init() {
+  async function init(detail) {
     try {
+      const date = detail?.endDate || window.TmallDateRange?.getState?.().endDate || '';
+      const query = date ? `?date=${encodeURIComponent(date)}` : '';
       // 加载汇总数据
-      const r = await fetch(API_BASE + '/flow-source/summary');
+      const r = await fetch(API_BASE + '/flow-source/summary' + query);
       const d = await r.json();
       if (!d.ok) throw new Error(d.message || '加载失败');
       state.summary = d.data;
 
       // 加载所有渠道数据
-      await loadAllChannels();
+      await loadAllChannels(date);
 
       // 构建树形结构
       state.tree = buildTree();
@@ -288,5 +291,6 @@
     }
   }
 
-  init();
+  window.addEventListener('tmall:date-range-change', (event) => init(event.detail));
+  init(window.TmallDateRange?.getState?.());
 })();

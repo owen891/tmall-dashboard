@@ -49,16 +49,18 @@
   }
 
   // 加载数据
-  async function loadSummary() {
-    const r = await fetch(API_BASE + '/rival-shops/summary');
+  async function loadSummary(date) {
+    const query = date ? `?date=${encodeURIComponent(date)}` : '';
+    const r = await fetch(API_BASE + '/rival-shops/summary' + query);
     const d = await r.json();
     if (!d.ok) throw new Error(d.message || '加载失败');
     state.summary = d.data;
     return d.data;
   }
 
-  async function loadShops() {
-    const r = await fetch(API_BASE + '/rival-shops/list');
+  async function loadShops(date) {
+    const query = date ? `?date=${encodeURIComponent(date)}` : '';
+    const r = await fetch(API_BASE + '/rival-shops/list' + query);
     const d = await r.json();
     if (!d.ok) throw new Error(d.message || '加载失败');
     state.shops = d.data.shops;
@@ -66,8 +68,9 @@
     return d.data.shops;
   }
 
-  async function loadItems() {
-    const r = await fetch(API_BASE + '/rival-items/list');
+  async function loadItems(date) {
+    const query = date ? `?date=${encodeURIComponent(date)}` : '';
+    const r = await fetch(API_BASE + '/rival-items/list' + query);
     const d = await r.json();
     if (!d.ok) throw new Error(d.message || '加载失败');
     state.items = d.data.items;
@@ -284,9 +287,10 @@
   }
 
   // 初始化
-  async function init() {
+  async function init(detail) {
     try {
-      await Promise.all([loadSummary(), loadShops(), loadItems()]);
+      const date = detail?.endDate || window.TmallDateRange?.getState?.().endDate || '';
+      await Promise.all([loadSummary(date), loadShops(date), loadItems(date)]);
       renderMetrics();
       renderUvChart();
       renderBuyerChart();
@@ -302,5 +306,6 @@
     }
   }
 
-  init();
+  window.addEventListener('tmall:date-range-change', (event) => init(event.detail));
+  init(window.TmallDateRange?.getState?.());
 })();

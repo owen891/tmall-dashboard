@@ -69,7 +69,7 @@
     content.append(title, detail);
     const controls = document.createElement('div'); controls.className = 'button-row';
     (transitions[action.status] || []).forEach((target) => {
-      const button = document.createElement('button'); button.type = 'button'; button.className = 'button button--ghost'; button.textContent = `转为${actionStatus(target)}`;
+      const button = document.createElement('button'); button.type = 'button'; button.className = 'ui-button ui-button--ghost'; button.textContent = `转为${actionStatus(target)}`;
       button.addEventListener('click', async () => {
         const body = { capability_key: 'product-detail.review_action', status: target, version: action.version };
         if (target === 'blocked') { body.blocked_reason = window.prompt('请输入阻塞原因') || ''; body.expected_recovery_at = window.prompt('请输入预计恢复日期（YYYY-MM-DD）') || ''; if (!body.blocked_reason || !body.expected_recovery_at) return; }
@@ -78,12 +78,12 @@
       }); controls.appendChild(button);
     });
     if (action.status === 'observing') {
-      const button = document.createElement('button'); button.type = 'button'; button.className = 'button button--ghost'; button.textContent = '重新计算观察窗口';
+      const button = document.createElement('button'); button.type = 'button'; button.className = 'ui-button ui-button--ghost'; button.textContent = '重新计算观察窗口';
       button.addEventListener('click', async () => { button.disabled = true; try { await DemoApi.domainRequest('/api/actions/recalculate', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ capability_key: 'product-detail.review_action' }) }); await load(); } catch (error) { mutationError(error, '重新计算观察窗口失败，请重试'); } finally { if (button.isConnected) button.disabled = false; } }); controls.appendChild(button);
     }
     if (action.status === 'pending_review') {
       const form = document.createElement('form'); form.className = 'modal-form__body';
-      form.innerHTML = '<label>是否有效<select class="select" name="effective" aria-label="复盘结论是否有效"><option value="true">有效</option><option value="false">无效</option></select></label><label>变更原因<input class="input" name="reason" required></label><label>复盘结论<input class="input" name="conclusion" required></label><label>后续动作<input class="input" name="next_action" required></label><label>复盘人<input class="input" name="reviewer" value="运营人员" required></label><button class="button button--primary" type="submit">提交复盘</button>';
+      form.innerHTML = '<label>是否有效<select class="select" name="effective" aria-label="复盘结论是否有效"><option value="true">有效</option><option value="false">无效</option></select></label><label>变更原因<input class="input" name="reason" required></label><label>复盘结论<input class="input" name="conclusion" required></label><label>后续动作<input class="input" name="next_action" required></label><label>复盘人<input class="input" name="reviewer" value="运营人员" required></label><button class="ui-button ui-button--primary" type="submit">提交复盘</button>';
       form.addEventListener('submit', async (event) => { event.preventDefault(); const values = Object.fromEntries(new FormData(form)); const submit = form.querySelector('button[type="submit"]'); if (submit) submit.disabled = true; try { await requestAction(action, '/review', { ...values, capability_key: 'product-detail.review_action', effective: values.effective === 'true', version: action.version }); await load(); } catch (error) { mutationError(error, '提交复盘失败，请重试'); } finally { if (submit?.isConnected) submit.disabled = false; } }); content.appendChild(form);
     }
     card.append(content, controls); return card;

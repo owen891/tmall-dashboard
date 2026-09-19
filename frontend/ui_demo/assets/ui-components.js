@@ -296,56 +296,30 @@
     ok.addEventListener('click', () => { resolve(true); dialog.close(); });
     dialog.open();
   });
-  const legacyMap = Object.freeze({
-    button: 'ui-button',
-    'metric-card': 'ui-metric-card',
-    badge: 'ui-badge',
-    panel: 'ui-panel',
-    'plain-panel': 'ui-panel',
-    'empty-state': 'ui-empty-state',
-    'demo-page__intro': 'ui-page-header',
-    'section-toolbar': 'ui-filter-toolbar',
-    'data-table-wrap': 'ui-table-wrap',
-    'data-table': 'ui-data-table',
-  });
-  const upgradeLegacy = (root = document) => {
-    Object.entries(legacyMap).forEach(([legacy, canonical]) => {
-      if (root.nodeType === 1 && root.classList.contains(legacy)) root.classList.add(canonical);
-      root.querySelectorAll(`.${legacy}`).forEach((node) => node.classList.add(canonical));
-    });
-    const candidates = root.nodeType === 1 ? [root, ...root.querySelectorAll('*')] : [...root.querySelectorAll('*')];
-    candidates.filter((node) => node.matches?.('.badge--success, .badge--warning, .badge--danger, .badge--info, .badge--brand, .badge--purple, .badge--muted')).forEach((node) => {
-      const tone = [...node.classList].find((name) => name.startsWith('badge--'))?.replace('badge--', '');
-      if (tone) node.classList.add(`ui-badge--${tone}`);
-    });
-    candidates.filter((node) => node.matches?.('.button--primary, .button--danger, .button--ghost')).forEach((node) => {
-      const variant = [...node.classList].find((name) => name.startsWith('button--'))?.replace('button--', '');
-      if (variant) node.classList.add(`ui-button--${variant}`);
-    });
-    return root;
-  };
-  const api = { text, create, clear, escape, formatDateTime, format, status, renderDataState, icon, button, badge, emptyState, dataState, metricCard, metricGrid, panel, pageHeader, filterToolbar, table, setState, modal, confirm, fieldSelector, upgradeLegacy };
   const audit = (root = document) => {
     const issues = [];
-    root.querySelectorAll('.metric-card, .panel, .plain-panel, .button, .badge, .empty-state, .section-toolbar, .data-table-wrap, .data-table').forEach((node) => {
-      const canonical = [...node.classList].some((name) => name.startsWith('ui-'));
-      if (!canonical) issues.push({ node, message: '公共组件缺少 ui-* canonical class' });
+    const legacyNames = new Set([
+      'button', 'button--primary', 'button--ghost', 'button--danger', 'button--icon', 'button--sm',
+      'badge', 'badge--brand', 'badge--success', 'badge--warning', 'badge--danger', 'badge--info', 'badge--purple', 'badge--muted',
+      'panel', 'plain-panel', 'metric-card', 'metric-card--drillable', 'data-table-wrap', 'data-table-wrap--discoverable',
+      'data-table', 'empty-state', 'section-toolbar', 'demo-page__intro', 'metric-grid',
+    ]);
+    const candidates = root.nodeType === 1 ? [root, ...root.querySelectorAll('[class]')] : [...root.querySelectorAll('[class]')];
+    candidates.forEach((node) => {
+      [...node.classList].filter((name) => legacyNames.has(name)).forEach((name) => {
+        issues.push({ node, message: `发现 legacy class：${name}` });
+      });
+    });
+    root.querySelectorAll('.ui-data-table').forEach((tableNode) => {
+      if (!tableNode.closest('.ui-table-wrap') && tableNode.dataset.tableControls !== 'true') {
+        issues.push({ node: tableNode, message: '数据表缺少 ui-table-wrap 容器' });
+      }
+    });
+    root.querySelectorAll('.ui-empty-state[data-state]').forEach((node) => {
+      if (!node.querySelector('strong')) issues.push({ node, message: '带状态的空态缺少标题节点' });
     });
     return issues;
   };
-  api.audit = audit;
+  const api = { text, create, clear, escape, formatDateTime, format, status, renderDataState, icon, button, badge, emptyState, dataState, metricCard, metricGrid, panel, pageHeader, filterToolbar, table, setState, modal, confirm, fieldSelector, audit };
   window.TmallUI = Object.freeze(api);
-  const startLegacyUpgrade = () => {
-    upgradeLegacy();
-    if (window.MutationObserver && document.body) {
-      const observer = new MutationObserver((records) => {
-        records.forEach((record) => record.addedNodes.forEach((node) => {
-          if (isElement(node)) upgradeLegacy(node);
-        }));
-      });
-      observer.observe(document.body, { childList: true, subtree: true });
-    }
-  };
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', startLegacyUpgrade, { once: true });
-  else startLegacyUpgrade();
 })();

@@ -45,8 +45,8 @@
       const enabledLabel = document.createElement('label'); enabledLabel.className = 'classification-row__toggle'; const enabled = document.createElement('input'); enabled.type = 'checkbox'; enabled.checked = item.enabled !== false; enabled.addEventListener('change', () => { markDirty(); item.enabled = enabled.checked; }); enabledLabel.append(enabled, document.createTextNode('启用'));
       const defaultLabel = document.createElement('label'); defaultLabel.className = 'classification-row__toggle'; const radio = document.createElement('input'); radio.type = 'radio'; radio.name = 'category_mode_default'; radio.checked = templateState.category_mode_default === item.value; radio.disabled = item.enabled === false; radio.addEventListener('change', () => { if (radio.checked) { markDirty(); templateState.category_mode_default = item.value; renderCategoryModes(); } }); defaultLabel.append(radio, document.createTextNode('默认'));
       row.append(value, label, mapping, enabledLabel, defaultLabel);
-      if (item.system) { const badge = document.createElement('span'); badge.className = 'badge'; badge.textContent = '内置'; row.appendChild(badge); }
-      else { const remove = document.createElement('button'); remove.type = 'button'; remove.className = 'button button--ghost'; remove.textContent = '移除'; remove.addEventListener('click', () => { markDirty(); templateState.category_modes.splice(index, 1); if (templateState.category_mode_default === item.value) templateState.category_mode_default = 'all'; renderCategoryModes(); }); row.appendChild(remove); }
+      if (item.system) { const badge = document.createElement('span'); badge.className = 'ui-badge'; badge.textContent = '内置'; row.appendChild(badge); }
+      else { const remove = document.createElement('button'); remove.type = 'button'; remove.className = 'ui-button ui-button--ghost'; remove.textContent = '移除'; remove.addEventListener('click', () => { markDirty(); templateState.category_modes.splice(index, 1); if (templateState.category_mode_default === item.value) templateState.category_mode_default = 'all'; renderCategoryModes(); }); row.appendChild(remove); }
       return row;
     }));
     window.lucide?.createIcons();
@@ -94,7 +94,7 @@
       const section = document.createElement('section'); section.className = 'classification-group';
       const heading = document.createElement('div'); heading.className = 'classification-group__header';
       const name = document.createElement('h4'); name.textContent = title;
-      const add = document.createElement('button'); add.type = 'button'; add.className = 'button button--ghost'; add.textContent = '新增';
+      const add = document.createElement('button'); add.type = 'button'; add.className = 'ui-button ui-button--ghost'; add.textContent = '新增';
       add.addEventListener('click', () => { markDirty(); templateState.classification_dictionaries[group].push({ value: '', label: '', enabled: true, system: false }); renderDictionaries(); section.querySelector('.classification-row:last-child input')?.focus(); });
       heading.append(name, add); section.appendChild(heading);
       const rows = document.createElement('div'); rows.className = 'classification-group__rows';
@@ -103,8 +103,8 @@
         const label = document.createElement('input'); label.className = 'input'; label.value = item.label || ''; label.placeholder = '中文名称'; label.setAttribute('aria-label', `${title}中文名称`); label.addEventListener('input', () => { markDirty(); item.label = label.value; });
         const enabled = document.createElement('label'); enabled.className = 'classification-row__toggle'; const checkbox = document.createElement('input'); checkbox.type = 'checkbox'; checkbox.checked = item.enabled !== false; checkbox.addEventListener('change', () => { markDirty(); item.enabled = checkbox.checked; }); enabled.append(checkbox, document.createTextNode('启用'));
         row.append(label, enabled);
-        if (item.system) { const badge = document.createElement('span'); badge.className = 'badge'; badge.textContent = '内置'; row.appendChild(badge); }
-        else { const remove = document.createElement('button'); remove.type = 'button'; remove.className = 'button button--ghost'; remove.textContent = '移除'; remove.addEventListener('click', () => { markDirty(); templateState.classification_dictionaries[group].splice(index, 1); renderDictionaries(); }); row.appendChild(remove); }
+        if (item.system) { const badge = document.createElement('span'); badge.className = 'ui-badge'; badge.textContent = '内置'; row.appendChild(badge); }
+        else { const remove = document.createElement('button'); remove.type = 'button'; remove.className = 'ui-button ui-button--ghost'; remove.textContent = '移除'; remove.addEventListener('click', () => { markDirty(); templateState.classification_dictionaries[group].splice(index, 1); renderDictionaries(); }); row.appendChild(remove); }
         rows.appendChild(row);
       });
       if (!rows.children.length) { const empty = document.createElement('p'); empty.className = 'panel__hint'; empty.textContent = '暂无分类，点击新增开始维护。'; rows.appendChild(empty); }
@@ -117,17 +117,26 @@
   templatePanel.innerHTML = `
     <div class="panel__header"><div><h3 class="panel__title">导入与视图模板</h3><p class="panel__hint">将常用报表列和商品视图保存为业务模板。</p></div></div>
     <div class="settings-template-grid">
-      <div><h4>报表字段映射</h4><div class="filter-group"><select class="select" data-template-source aria-label="报表类型"></select><select class="select" data-template-map-key aria-label="业务字段"></select><input class="input" data-template-map-column placeholder="报表中的列名" aria-label="报表中的列名"><button class="button" type="button" data-template-add-map>添加</button></div><div data-template-mappings></div></div>
-      <div><h4>商品视图</h4><div class="filter-group"><input class="input" data-template-view-label placeholder="新视图名称" aria-label="新视图名称"><select class="select" data-template-view-columns multiple size="5" aria-label="显示字段"></select><button class="button" type="button" data-template-add-view>保存视图</button></div><div data-template-views></div></div>
+      <div><h4>报表字段映射</h4><div class="filter-group"><select class="select" data-template-source aria-label="报表类型"></select><select class="select" data-template-map-key aria-label="业务字段"></select><input class="input" data-template-map-column placeholder="报表中的列名" aria-label="报表中的列名"><button class="ui-button" type="button" data-template-add-map>添加</button></div><div data-template-mappings></div></div>
+      <div><h4>商品视图</h4><div class="filter-group"><input class="input" data-template-view-label placeholder="新视图名称" aria-label="新视图名称"><div class="settings-template-field-selector" data-settings-view-field-selector></div><button class="ui-button" type="button" data-template-add-view>保存视图</button></div><div data-template-views></div></div>
     </div>`;
   const sourceSelect = templatePanel.querySelector('[data-template-source]');
   Object.entries(sourceLabels).forEach(([key, label]) => sourceSelect.add(new Option(label, key)));
   const mappingKeySelect = templatePanel.querySelector('[data-template-map-key]');
   Object.entries(fieldLabels).forEach(([key, label]) => mappingKeySelect.add(new Option(label, key)));
   const mappingColumnInput = templatePanel.querySelector('[data-template-map-column]');
-  const viewColumnsSelect = templatePanel.querySelector('[data-template-view-columns]');
-  Object.entries(columnLabels).forEach(([key, label]) => viewColumnsSelect.add(new Option(label, key)));
-  const listRow = (copy, locked, remove) => { const row = document.createElement('div'); row.className = 'status-list__item'; const label = document.createElement('span'); label.className = 'status-list__label'; label.textContent = copy; row.appendChild(label); if (locked) { const badge = document.createElement('span'); badge.className = 'badge'; badge.textContent = '内置'; row.appendChild(badge); } else if (remove) { const button = document.createElement('button'); button.type = 'button'; button.className = 'button button--ghost'; button.textContent = '移除'; button.addEventListener('click', () => { markDirty(); remove(); }); row.appendChild(button); } return row; };
+  let selectedViewColumns = [];
+  const viewSelector = window.TmallUI?.fieldSelector?.({
+    root: templatePanel.querySelector('[data-settings-view-field-selector]'),
+    groups: [{ label: '商品字段', fields: Object.entries(columnLabels).map(([key, label]) => ({ key, label })) }],
+    selected: [],
+    availableTitle: '可选字段',
+    availableHint: '选择商品视图要展示的字段',
+    previewTitle: '字段预览',
+    previewHint: '按表格列顺序展示',
+    onChange: (selected) => { selectedViewColumns = selected; },
+  });
+  const listRow = (copy, locked, remove) => { const row = document.createElement('div'); row.className = 'status-list__item'; const label = document.createElement('span'); label.className = 'status-list__label'; label.textContent = copy; row.appendChild(label); if (locked) { const badge = document.createElement('span'); badge.className = 'ui-badge'; badge.textContent = '内置'; row.appendChild(badge); } else if (remove) { const button = document.createElement('button'); button.type = 'button'; button.className = 'ui-button ui-button--ghost'; button.textContent = '移除'; button.addEventListener('click', () => { markDirty(); remove(); }); row.appendChild(button); } return row; };
   function renderTemplates() {
     const mappings = templatePanel.querySelector('[data-template-mappings]');
     const mapRows = Object.entries(templateState.mapping_templates).flatMap(([source, mapping]) => Object.entries(mapping).map(([key, column]) => listRow(`${sourceLabels[source] || '其他报表'}: ${fieldLabels[key] || '其他字段'} → ${column}`, false, () => { delete templateState.mapping_templates[source][key]; renderTemplates(); })));
@@ -143,7 +152,7 @@
     select.value = templates[data.product_view_template] ? data.product_view_template : Object.keys(templates)[0] || '';
   }
   templatePanel.querySelector('[data-template-add-map]').addEventListener('click', () => { const source = sourceSelect.value; const key = mappingKeySelect.value; const column = mappingColumnInput.value.trim(); if (!column) return; markDirty(); templateState.mapping_templates[source] ||= {}; templateState.mapping_templates[source][key] = column; mappingColumnInput.value = ''; renderTemplates(); });
-  templatePanel.querySelector('[data-template-add-view]').addEventListener('click', () => { const label = templatePanel.querySelector('[data-template-view-label]').value.trim(); const columns = [...viewColumnsSelect.selectedOptions].map((option) => option.value); if (!label || !columns.length) return; markDirty(); const key = `custom_${Date.now()}`; templateState.view_templates[key] = { label, columns }; templatePanel.querySelector('[data-template-view-label]').value = ''; [...viewColumnsSelect.options].forEach((option) => { option.selected = false; }); renderTemplates(); });
+  templatePanel.querySelector('[data-template-add-view]').addEventListener('click', () => { const label = templatePanel.querySelector('[data-template-view-label]').value.trim(); const columns = [...selectedViewColumns]; if (!label || !columns.length) return; markDirty(); const key = `custom_${Date.now()}`; templateState.view_templates[key] = { label, columns }; templatePanel.querySelector('[data-template-view-label]').value = ''; selectedViewColumns = []; viewSelector?.clear({ notify: false }); renderTemplates(); });
   const set = (data) => { renderProductViewOptions(data); Object.entries(data).forEach(([key, value]) => { if (form.elements[key] && value !== null && typeof value !== 'object') form.elements[key].value = value; }); const rawCredentials = data.collector_credentials || {}; const credentials = rawCredentials.bi || rawCredentials; form.elements.collector_username.value = credentials.username || ''; form.elements.collector_password.value = ''; const credentialsStatus = document.querySelector('[data-collector-credentials-status]'); if (credentialsStatus) { credentialsStatus.replaceChildren(document.createTextNode(credentials.password_set ? 'BI账号已配置（留空表示不修改）' : '未配置')); credentialsStatus.dataset.tone = credentials.password_set ? 'success' : 'muted'; } const storeBadge = document.querySelector('[data-tree-badge="store"]'); if (storeBadge) storeBadge.textContent = credentials.password_set ? '已配置' : ''; const thresholds = data.lifecycle_thresholds || {}; form.elements.continuous_days.value = thresholds.continuous_days ?? 60; form.elements.seasonal_months.value = thresholds.seasonal_months ?? 12; templateState.mapping_templates = data.mapping_templates || {}; templateState.view_templates = data.view_templates || {}; templateState.classification_dictionaries = structuredClone(data.classification_dictionaries || templateState.classification_dictionaries); templateState.category_modes = structuredClone(data.category_modes || []); templateState.category_mode_default = data.category_mode_default || 'sock'; document.querySelector('[data-settings-shop-scope]')?.replaceChildren(document.createTextNode(data.shop_scope?.shop_id || 'default')); DemoLabels.setDictionaries(templateState.classification_dictionaries); renderTemplates(); renderDictionaries(); renderCategoryModes(); setDirty(false); const heroName = document.querySelector('[data-settings-hero-name]'); if (heroName) heroName.textContent = data.shop_name || '未命名店铺'; const heroScope = document.querySelector('[data-settings-hero-scope]'); if (heroScope) heroScope.textContent = `scope ${data.shop_scope?.shop_id || 'default'}`; const summary = (key) => document.querySelector(`[data-settings-summary="${key}"]`); if (summary('status')) summary('status').textContent = '已保存'; if (summary('annual_target')) summary('annual_target').textContent = `¥${Number(data.annual_target_default || 0).toLocaleString('zh-CN')}`; if (summary('view')) summary('view').textContent = data.product_view_template || 'operate'; };
   const clearStatus = () => { status.replaceChildren(); status.classList.remove('data-state'); };
   const renderState = (state, details = {}) => DemoApi.renderDataState(status, state, { retry: load, ...details });
@@ -213,7 +222,7 @@
   };
   const appendTextCell = (row, value) => { const cell = document.createElement('td'); cell.textContent = value ?? '--'; row.appendChild(cell); return cell; };
   const scanAction = (icon, label, handler) => {
-    const button = document.createElement('button'); button.type = 'button'; button.className = 'button button--ghost'; button.title = label; button.setAttribute('aria-label', label);
+    const button = document.createElement('button'); button.type = 'button'; button.className = 'ui-button ui-button--ghost'; button.title = label; button.setAttribute('aria-label', label);
     const glyph = document.createElement('i'); glyph.dataset.lucide = icon; button.appendChild(glyph); button.addEventListener('click', handler); return button;
   };
   const formatScanTime = (value) => value ? new Intl.DateTimeFormat('zh-CN', { dateStyle: 'medium', timeStyle: 'medium', hour12: false, timeZone: 'Asia/Shanghai' }).format(new Date(value)) : '--';

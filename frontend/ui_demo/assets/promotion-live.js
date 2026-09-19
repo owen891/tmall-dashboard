@@ -412,7 +412,7 @@
     const item = element('div', `alert-list__item ${severityClass(alert.severity)}`.trim());
     const copy = element('div');
     copy.append(element('strong', '', text(alert.title, productId(alert) || '商品')), element('span', '', text(alert.message, '指标异常')));
-    const button = element('button', 'button button--ghost', '查看商品');
+    const button = element('button', 'ui-button ui-button--ghost', '查看商品');
     button.type = 'button';
     button.dataset.promotionDrill = productId(alert);
     button.addEventListener('click', () => openProductDetail(alert, button));
@@ -424,7 +424,7 @@
     container.replaceChildren();
     if (!rows.length) {
       if (!emptyMessage) return;
-      const empty = element('div', 'empty-state');
+      const empty = element('div', 'ui-empty-state');
       empty.append(element('strong', '', '当前月份没有触发推广预警'), element('span', '', '预警由 API 按商品推广 ROI 与推广花费规则计算。'));
       container.appendChild(empty);
       return;
@@ -703,10 +703,9 @@
     }));
     const config = { groups, selected };
     if (!fieldSelector) {
-      fieldSelector = DemoFieldSelector.create({
+      fieldSelector = TmallUI.fieldSelector({
         root: $('[data-promotion-field-selector]'),
         ...config,
-        className: 'promotion-field-selection-layout',
         availableTitleId: 'promotionAvailableFieldsTitle',
         previewTitleId: 'promotionFieldPreviewTitle',
         availableHint: '勾选当前 TAB 的字段',
@@ -879,7 +878,7 @@
       const tr = document.createElement('tr');
       const cell = tr.insertCell();
       cell.colSpan = Math.max(columns.length, 1);
-      const empty = element('div', 'empty-state');
+      const empty = element('div', 'ui-empty-state');
       empty.append(element('strong', '', activeDefinition(tab).empty), element('span', '', '可调整日期范围，或先导入对应月度报表。'));
       cell.appendChild(empty);
       body.appendChild(tr);
@@ -903,7 +902,7 @@
         }
         if (column.key === 'action') {
           const action = document.createElement('td');
-          const button = element('button', 'button button--ghost', '明细');
+          const button = element('button', 'ui-button ui-button--ghost', '明细');
           button.type = 'button';
           button.dataset.promotionDrill = productId(row);
           button.addEventListener('click', () => openPromotionDetail(row, button));
@@ -933,7 +932,7 @@
     const row = document.createElement('tr');
     const cell = row.insertCell();
     cell.colSpan = 1;
-    const empty = element('div', 'empty-state');
+    const empty = element('div', 'ui-empty-state');
     empty.append(element('strong', '', '当前数据库未提供计划、创意、地域或内容归因'), element('span', '', '页面不会用商品或渠道数据伪造这些层级。导入对应明细后再开放相关分析。'));
     cell.appendChild(empty);
     body.appendChild(row);
@@ -1066,7 +1065,7 @@
     body.replaceChildren();
     tabs.hidden = sourceState !== 'available';
     if (sourceState !== 'available') {
-      body.append(element('div', 'empty-state', sourceState === 'loading' ? '正在加载推广明细…' : '推广明细加载失败，请稍后重试。'));
+      body.append(element('div', 'ui-empty-state', sourceState === 'loading' ? '正在加载推广明细…' : '推广明细加载失败，请稍后重试。'));
       return;
     }
 
@@ -1077,7 +1076,7 @@
     overview.setAttribute('aria-labelledby', 'promotion-detail-tab-overview');
     overview.tabIndex = 0;
 
-    const summary = element('section', 'plain-panel panel promotion-detail-summary');
+    const summary = element('section', 'ui-panel promotion-detail-summary');
     const summaryHeader = element('div', 'panel__header');
     const summaryCopy = element('div');
     summaryCopy.append(element('h3', 'panel__title', '推广经营汇总'), element('p', 'promotion-detail-note', `${productTitle(product)} · ${state.period || '--'} 数据范围`));
@@ -1096,7 +1095,7 @@
     );
     summary.appendChild(metrics);
 
-    const attribution = element('section', 'plain-panel panel');
+    const attribution = element('section', 'ui-panel');
     attribution.append(element('h3', 'panel__title', '归因构成'), element('p', 'promotion-detail-note', '推广成交按当前导入事实汇总，未提供的计划字段不会补造。'));
     const attributionList = element('div', 'status-list');
     [
@@ -1117,11 +1116,11 @@
     unitsPanel.setAttribute('role', 'tabpanel');
     unitsPanel.setAttribute('aria-labelledby', 'promotion-detail-tab-units');
     unitsPanel.tabIndex = 0;
-    const detail = element('section', 'plain-panel panel');
+    const detail = element('section', 'ui-panel');
     detail.append(element('h3', 'panel__title', '计划 / 单元明细'), element('p', 'promotion-detail-note', '按计划和单元粒度展示，不与上方商品汇总重复相加。'));
     const wrap = element('div', 'promotion-detail-table-wrap');
     if (!units.length) {
-      wrap.appendChild(element('div', 'empty-state', '当前商品没有可用的计划 / 单元明细。'));
+      wrap.appendChild(element('div', 'ui-empty-state', '当前商品没有可用的计划 / 单元明细。'));
     } else {
       const table = document.createElement('table');
       table.className = 'promotion-detail-table';
@@ -1170,7 +1169,7 @@
     } catch (error) {
       if (requestToken !== state.promotionDetailRequest) return;
       renderPromotionDetail(product, [], 'error');
-      const hint = $('[data-promotion-dialog-body] .empty-state');
+      const hint = $('[data-promotion-dialog-body] .ui-empty-state');
       if (hint) hint.appendChild(element('span', '', error.message || '接口暂时不可用。'));
     }
   }
@@ -1183,7 +1182,7 @@
     $('[data-promotion-dialog-tabs]').hidden = true;
     const body = $('[data-promotion-dialog-body]');
     body.replaceChildren();
-    const intro = element('section', 'plain-panel panel');
+    const intro = element('section', 'ui-panel');
     intro.append(element('h3', 'panel__title', '如何使用本页数据'), element('p', 'panel__hint', '总览与趋势按商品级推广记录汇总。关键词、人群、站内渠道为同一商品记录上的不同投放字段，不能与总览相加。'));
     const list = element('div', 'status-list');
     [['商品表现', '可查看单商品推广花费、推广成交与推广 ROI。'], ['关键词 / 人群 / 站内渠道', '只展示已有月度聚合字段，不宣称词、计划或人群包级归因。'], ['未提供归因', '计划、创意、地域和内容数据未入库，因此保持不可用状态。']].forEach(([label, value]) => {

@@ -196,7 +196,7 @@
         const resolution = batch.quality_summary?.source_resolution || {};
         const qualityText = `${DemoLabels.label('quality', batch.quality_summary?.conclusion, batch.status === 'completed' ? '通过' : '--')} · 补齐 ${resolution.fallback_filled || 0} · 参考 ${resolution.reference_only || 0} · 冲突 ${resolution.conflicts || 0}${resolution.conflicts ? '（主源保留）' : ''} · 汇总剔除 ${batch.quality_summary?.excluded_summary_rows || 0}`;
         [batch.source_filename, sourceLabels[batch.source_type] || '其他报表', shortHash(batch.source_hash), range?.start && range?.end ? `${range.start} ~ ${range.end}` : '--', qualityText, `${batch.inserted_count || 0} / ${batch.updated_count || 0} / ${batch.invalid_rows || 0}`, batch.completed_at || '--'].forEach((value, index) => { const cell = document.createElement('td'); cell.textContent = value; if (index === 2) cell.title = batch.source_hash || ''; if (index === 4) cell.title = JSON.stringify(resolution); if (index === 5) cell.className = 'num'; row.appendChild(cell); });
-        const cell = document.createElement('td'); const button = document.createElement('button'); button.className = 'button button--ghost'; button.type = 'button'; button.textContent = batch.status === 'completed' ? '撤销' : '已撤销'; button.disabled = batch.status !== 'completed' || (Object.keys(importCapabilities).length > 0 && !DemoApi.can({ capabilities: importCapabilities }, 'can_revert'));
+        const cell = document.createElement('td'); const button = document.createElement('button'); button.className = 'ui-button ui-button--ghost'; button.type = 'button'; button.textContent = batch.status === 'completed' ? '撤销' : '已撤销'; button.disabled = batch.status !== 'completed' || (Object.keys(importCapabilities).length > 0 && !DemoApi.can({ capabilities: importCapabilities }, 'can_revert'));
         button.addEventListener('click', async () => {
           if (button.disabled) return;
           const impact = `影响：撤销 ${batch.source_filename}，恢复该批次覆盖前的数据；${batch.inserted_count || 0} 条新增记录将被移除，${batch.updated_count || 0} 条更新将回退。`;
@@ -325,7 +325,7 @@
         listText(domain.consumer_pages), listText(domain.limitations)
       ].forEach((value) => row.append(make('td', value)));
       const action = make('td');
-      const button = make('button', '查看', 'button button--ghost');
+      const button = make('button', '查看', 'ui-button ui-button--ghost');
       button.type = 'button';
       button.dataset.capabilityDomain = domain.key;
       button.addEventListener('click', () => openDetail(domain, button));
@@ -456,7 +456,7 @@
       const surfaceCount = (catalog.surfaces || []).filter((surface) => surface.trigger_capability === capability.key).length;
       row.append(make('td', surfaceCount ? `${surfaceCount} 个` : '--'));
       const action = make('td');
-      const button = make('button', '查看', 'button button--ghost');
+      const button = make('button', '查看', 'ui-button ui-button--ghost');
       button.type = 'button';
       button.addEventListener('click', () => openDetail(page, capability, button));
       action.append(button); row.append(action);

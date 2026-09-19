@@ -72,12 +72,12 @@
     if (!node) return;
     node.replaceChildren();
     const wrap = document.createElement('div');
-    wrap.className = `empty-state${kind === 'error' ? ' is-error' : ''}`;
+    wrap.className = `ui-empty-state${kind === 'error' ? ' is-error' : ''}`;
     wrap.appendChild(item('span', message));
     if (retry) {
       const button = document.createElement('button');
       button.type = 'button';
-      button.className = 'button button--ghost';
+      button.className = 'ui-button ui-button--ghost';
       button.setAttribute('data-overview-retry', 'true');
       button.textContent = '重试';
       button.addEventListener('click', retry);
@@ -94,7 +94,7 @@
     if (retry) {
       const button = document.createElement('button');
       button.type = 'button';
-      button.className = 'button button--ghost';
+      button.className = 'ui-button ui-button--ghost';
       button.setAttribute('data-overview-retry', 'true');
       button.textContent = '重试';
       button.addEventListener('click', retry);
@@ -272,7 +272,7 @@
       else if (['completed', 'observing'].includes(todo.status)) value.classList.add('status-list__value--success');
       row.append(item('span', `${todo.product_title || todo.product_id} · ${DemoLabels.label('action', todo.action_type, todo.action_type || '运营动作')}${todo.overdue ? ' · 已逾期' : ''}`, 'status-list__label'), value);
       return row;
-    }) : [item('div', '当前没有待办动作', 'empty-state')];
+    }) : [item('div', '当前没有待办动作', 'ui-empty-state')];
     const pending = todos.filter((todo) => ['pending_review', 'blocked', 'pending_execution', 'executing'].includes(todo.status)).length;
     textAll('[data-overview-summary="actions"]', String(pending).padStart(2, '0'));
     window.dispatchEvent(new CustomEvent('tmall:overview-actions-ready', { detail: { todos } }));
@@ -286,7 +286,7 @@
     const target = $('#overviewHomeTrend');
     if (!target) return;
     if (!rows.length) {
-      target.replaceChildren(item('div', '当前周期暂无趋势数据', 'empty-state'));
+      target.replaceChildren(item('div', '当前周期暂无趋势数据', 'ui-empty-state'));
       target.setAttribute('aria-label', '当前周期暂无趋势数据');
       return;
     }
@@ -398,7 +398,7 @@
       row.append(head, progress, item('div', value || '尚未创建目标', 'overview-v2-target__meta')); return row;
     });
     root.className = 'overview-v2-targets';
-    root.replaceChildren(...(cards.length ? cards : [item('div', '当前年度尚未创建目标', 'empty-state')]));
+      root.replaceChildren(...(cards.length ? cards : [item('div', '当前年度尚未创建目标', 'ui-empty-state')]));
   }
 
   function renderAnomalies(data, retry) {
@@ -567,10 +567,9 @@
   function renderMatrixColumnSelector(selected = matrixVisibleColumns) {
     const config = { groups: [{ label: '日度经营指标', fields: matrixColumns }], selected: normalizeMatrixColumns(selected) };
     if (!matrixColumnSelector) {
-      matrixColumnSelector = DemoFieldSelector.create({
+      matrixColumnSelector = TmallUI.fieldSelector({
         root: $('[data-overview-matrix-field-selector]'),
         ...config,
-        className: 'overview-matrix-field-selection',
         availableTitleId: 'overviewMatrixAvailableFieldsTitle',
         previewTitleId: 'overviewMatrixPreviewFieldsTitle',
         optionDataAttribute: 'data-overview-matrix-field-key',

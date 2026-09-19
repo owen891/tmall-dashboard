@@ -50,7 +50,7 @@
 
   function makeIconButton(icon, label, action) {
     const button = document.createElement('button');
-    button.className = 'button button--ghost button--icon';
+    button.className = 'ui-button ui-button--ghost ui-button--icon';
     button.type = 'button';
     button.title = label;
     button.setAttribute('aria-label', label);
@@ -62,7 +62,7 @@
   function renderPreview(data) {
     const basis = data.allocation_basis || '等待年度目标';
     previewBasis.textContent = basis;
-    previewBasis.className = `badge ${basis === '去年同期销售占比' ? 'badge--success' : 'badge--muted'}`;
+    previewBasis.className = `ui-badge ${basis === '去年同期销售占比' ? 'ui-badge--success' : 'ui-badge--muted'}`;
     previewBody.replaceChildren(...(data.months || []).map((month) => {
       const row = document.createElement('tr');
       [month.period_key, money(month.prior_year_net_sales), month.allocation_ratio == null ? '--' : `${(month.allocation_ratio * 100).toFixed(2)}%`, money(month.suggested_target)]
@@ -77,7 +77,7 @@
     const year = Number(form.elements.year.value);
     if (!Number.isFinite(annualTarget) || annualTarget < 0 || !Number.isInteger(year)) {
       previewBasis.textContent = '等待年度目标';
-      previewBasis.className = 'badge badge--muted';
+      previewBasis.className = 'ui-badge ui-badge--muted';
       setTableMessage(previewBody, 4, '输入年度总目标后显示分配预览');
       return;
     }
@@ -90,7 +90,7 @@
     } catch (error) {
       if (token !== previewToken) return;
       previewBasis.textContent = '预览失败';
-      previewBasis.className = 'badge badge--danger';
+      previewBasis.className = 'ui-badge ui-badge--danger';
       setTableMessage(previewBody, 4, error.message || '分配预览失败');
     }
   }
@@ -121,12 +121,12 @@
       targetCell.append(input);
       const sourceCell = row.insertCell();
       const source = document.createElement('span');
-      source.className = `badge ${month.source === 'manual' ? 'badge--warning' : 'badge--muted'}`;
+      source.className = `ui-badge ${month.source === 'manual' ? 'ui-badge--warning' : 'ui-badge--muted'}`;
       source.textContent = month.source === 'manual' ? '手动调整' : '自动分配';
       sourceCell.append(source);
       const stateCell = row.insertCell();
       const state = document.createElement('span');
-      state.className = `badge ${completeLocked ? 'badge--muted' : 'badge--success'}`;
+      state.className = `ui-badge ${completeLocked ? 'ui-badge--muted' : 'ui-badge--success'}`;
       state.textContent = completeLocked ? '已锁定' : '可编辑';
       stateCell.append(state);
       const actionsCell = row.insertCell();

@@ -34,7 +34,7 @@
       const actions = allActions.filter((item) => item && (!selected || item.status === selected));
       if (!actions.length) { list.textContent = selected ? '当前状态没有动作。' : '当前没有动作。'; renderDataState('no-data', { message: selected ? '当前状态没有动作。' : '当前没有动作。' }); return; }
       list.replaceChildren(...actions.map((action) => {
-        const container = document.createElement('details'); container.className = 'plain-panel panel';
+        const container = document.createElement('details'); container.className = 'ui-panel';
         const cardSummary = document.createElement('summary'); cardSummary.textContent = `${action.product_id} · ${DemoLabels.label('action', action.action_type, action.action_type)} · ${labels[action.status] || action.status || '--'}`;
         const form = document.createElement('form'); form.className = 'modal-form__body';
         const heading = document.createElement('h3'); heading.textContent = `${action.product_id} · ${DemoLabels.label('action', action.action_type, action.action_type)}`;
@@ -47,12 +47,12 @@
         form.append(heading, state, purpose, detail, result, history);
         const hasObservation = action.before_metric_value != null && action.after_metric_value != null;
         if (action.status === 'pending_review' && hasObservation) {
-          form.insertAdjacentHTML('beforeend', '<label>是否有效<select class="select" name="effective"><option value="true">有效</option><option value="false">无效</option></select></label><label>原因<textarea class="input" name="reason" required></textarea></label><label>结论<textarea class="input" name="conclusion" required></textarea></label><label>后续动作<input class="input" name="next_action" required></label><label>复盘人<input class="input" name="reviewer" value="运营人员" required></label><button class="button button--primary" type="submit">完成复盘</button><p role="status"></p>');
+          form.insertAdjacentHTML('beforeend', '<label>是否有效<select class="select" name="effective"><option value="true">有效</option><option value="false">无效</option></select></label><label>原因<textarea class="input" name="reason" required></textarea></label><label>结论<textarea class="input" name="conclusion" required></textarea></label><label>后续动作<input class="input" name="next_action" required></label><label>复盘人<input class="input" name="reviewer" value="运营人员" required></label><button class="ui-button ui-button--primary" type="submit">完成复盘</button><p role="status"></p>');
           form.addEventListener('submit', async (event) => { event.preventDefault(); const data = new FormData(form); const message = form.querySelector('[role=status]'); const submit = form.querySelector('button[type="submit"]'); const key = `review:${action.id}`; if (pendingMutations.has(key)) return; pendingMutations.add(key); if (submit) submit.disabled = true; try { await DemoApi.domainRequest(`/api/actions/${action.id}/review`, json({ version: action.version, effective: data.get('effective') === 'true', reason: data.get('reason'), conclusion: data.get('conclusion'), next_action: data.get('next_action'), reviewer: data.get('reviewer') })); message.textContent = '已完成复盘'; await load(); } catch (error) { message.textContent = error.message || '复盘提交失败，请重试'; } finally { pendingMutations.delete(key); if (submit?.isConnected) submit.disabled = false; } });
         } else if (action.status === 'pending_review') {
           const waiting = document.createElement('p'); waiting.className = 'panel__hint'; waiting.textContent = '等待观察数据后再复盘'; form.appendChild(waiting);
         } else if (nextStatus[action.status]) {
-          const button = document.createElement('button'); button.type = 'button'; button.className = 'button'; button.textContent = `转为${labels[nextStatus[action.status]]}`;
+          const button = document.createElement('button'); button.type = 'button'; button.className = 'ui-button'; button.textContent = `转为${labels[nextStatus[action.status]]}`;
           button.disabled = Object.keys(actionPayload.capabilities || {}).length > 0 && !DemoApi.can(actionPayload, 'can_transition');
           button.addEventListener('click', async () => { if (Object.keys(actionPayload.capabilities || {}).length > 0 && !DemoApi.can(actionPayload, 'can_transition')) return; const key = `transition:${action.id}`; if (pendingMutations.has(key)) return; pendingMutations.add(key); button.disabled = true; const payload = { version: action.version, status: nextStatus[action.status] }; try { await DemoApi.domainRequest(`/api/actions/${action.id}/transition`, json(payload)); await load(); } catch (error) { status.textContent = error.message || '状态更新失败，请重试'; } finally { pendingMutations.delete(key); if (button.isConnected) button.disabled = false; } }); form.appendChild(button);
         }

@@ -1,13 +1,13 @@
 /* 关键词选品页面样式 */
 
 /* 指标卡片 */
-.metric-grid {
+.ui-metric-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
   gap: 12px;
   margin-bottom: 20px;
 }
-.metric-card {
+.ui-metric-card {
   background: var(--surface-1, #fff);
   border: 1px solid var(--border, #e5e7eb);
   border-radius: 8px;
@@ -186,7 +186,7 @@
   .kp-field-group__items {
     grid-template-columns: repeat(2, 1fr);
   }
-  .metric-grid {
+  .ui-metric-grid {
     grid-template-columns: repeat(2, 1fr);
   }
 }

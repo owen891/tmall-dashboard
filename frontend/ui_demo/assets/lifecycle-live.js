@@ -96,7 +96,7 @@
     const metrics = $('[data-lifecycle-metrics]', dialog);
     const chartGrid = $('.lifecycle-chart-grid', dialog);
     const insights = $('[data-lifecycle-insights]', dialog);
-    const table = [...dialog.children].find((item) => item.matches('article.plain-panel'));
+    const table = [...dialog.children].find((item) => item.matches('article.ui-panel'));
     const scaleChart = chartGrid?.querySelector('.lifecycle-chart-panel:first-child');
     const efficiencyChart = chartGrid?.querySelector('.lifecycle-chart-panel:nth-child(2)');
     if (!metrics || !chartGrid || !insights || !table || !scaleChart || !efficiencyChart) return null;
@@ -227,6 +227,7 @@
       identity.className = 'lifecycle-assessment-product';
       const title = document.createElement('strong');
       title.textContent = DemoLabels.clean(entry.title, '') || '未命名商品';
+      title.title = title.textContent;
       const productId = document.createElement('span');
       productId.textContent = `ID ${DemoLabels.clean(entry.product_id, '--')}`;
       identity.append(title, productId);
@@ -237,7 +238,7 @@
       appendAssessmentCell(row, assessmentEvidence(entry));
       const action = document.createElement('button');
       action.type = 'button';
-      action.className = 'button button--ghost';
+      action.className = 'ui-button ui-button--ghost';
       action.textContent = entry.locked ? '查看调整' : '调整';
       action.disabled = Object.keys(assessmentPayload.capabilities || {}).length > 0 && !DemoApi.can(assessmentPayload, 'can_edit_stage');
       action.addEventListener('click', () => openAssessmentEditor(entry));
@@ -322,7 +323,7 @@
   }
 
   function tierClass(tier) {
-    return ({ '利润款': 'badge--success', '引流款': 'badge--info', '爆款': 'badge--warning', '形象款': 'badge--purple' })[tier] || 'badge--muted';
+    return ({ '利润款': 'ui-badge--success', '引流款': 'ui-badge--info', '爆款': 'ui-badge--warning', '形象款': 'ui-badge--purple' })[tier] || 'ui-badge--muted';
   }
 
   function renderCards() {
@@ -347,7 +348,7 @@
       const thumbnailUrl = String(record.image_url || '').trim();
       const image = '<span class="product-thumb product-thumb--placeholder" aria-hidden="true"><i data-lucide="image"></i></span>';
       const trend = growth === null ? '无环比' : `${growth >= 0 ? '上升' : '下降'} ${percent(Math.abs(growth))}`;
-      card.innerHTML = `<span class="lifecycle-card__header">${image}<span><span class="lifecycle-card__title">${escapeHtml(record.title || '未命名商品')}</span><span class="lifecycle-card__meta"><span class="badge ${tierClass(record.tier)}">${escapeHtml(DemoLabels.classification('tiers', record.tier, '未分层'))}</span><span class="badge badge--muted">${escapeHtml(DemoLabels.classification('styles', record.style, '未分类'))}</span></span></span></span><span class="lifecycle-card__stats"><span class="lifecycle-card__stat"><strong>${money(sum(rows, 'gsv'))}</strong><span>累计 GSV</span></span><span class="lifecycle-card__stat"><strong>${count(rows.length)}</strong><span>活跃月数</span></span><span class="lifecycle-card__stat"><strong class="lifecycle-card__trend ${growth > 0.05 ? 'is-up' : growth < -0.05 ? 'is-down' : ''}">${trend}</strong><span>最近月环比</span></span></span>`;
+      card.innerHTML = `<span class="lifecycle-card__header">${image}<span><span class="lifecycle-card__title" title="${escapeHtml(record.title || '未命名商品')}">${escapeHtml(record.title || '未命名商品')}</span><span class="lifecycle-card__meta"><span class="ui-badge ${tierClass(record.tier)}">${escapeHtml(DemoLabels.classification('tiers', record.tier, '未分层'))}</span><span class="ui-badge ui-badge--muted">${escapeHtml(DemoLabels.classification('styles', record.style, '未分类'))}</span></span></span></span><span class="lifecycle-card__stats"><span class="lifecycle-card__stat"><strong>${money(sum(rows, 'gsv'))}</strong><span>累计 GSV</span></span><span class="lifecycle-card__stat"><strong>${count(rows.length)}</strong><span>活跃月数</span></span><span class="lifecycle-card__stat"><strong class="lifecycle-card__trend ${growth > 0.05 ? 'is-up' : growth < -0.05 ? 'is-down' : ''}">${trend}</strong><span>最近月环比</span></span></span>`;
       if (thumbnailUrl) {
         const image = document.createElement('img');
         image.className = 'product-thumb';
@@ -520,16 +521,15 @@
   }
 
   function renderLifecycleColumnSelector(selected = state.detailFields) {
-    if (!lifecycleColumnsDialog || !window.DemoFieldSelector) return;
+    if (!lifecycleColumnsDialog || !window.TmallUI) return;
     const config = {
       groups: lifecycleDetailFieldGroups,
       selected: normalizeLifecycleDetailFields(selected),
     };
     if (!lifecycleColumnSelector) {
-      lifecycleColumnSelector = DemoFieldSelector.create({
+      lifecycleColumnSelector = TmallUI.fieldSelector({
         root: $('[data-lifecycle-field-selector]'),
         ...config,
-        className: 'lifecycle-field-selection-layout',
         availableTitleId: 'lifecycleAvailableFieldsTitle',
         previewTitleId: 'lifecycleFieldPreviewTitle',
         optionDataAttribute: 'data-lifecycle-field-key',

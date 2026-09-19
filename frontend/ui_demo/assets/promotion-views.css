@@ -1,7 +1,4 @@
-/* 推广分析 4 视图扩展样式（总览渠道卡 / 计划看板 / 素材看板 / 结构抽屉） */
-    /* hidden 属性会被组件的 display 规则覆盖,这里显式压住 */
-.promotion-creative-cards[hidden],
-[data-promotion-creative-table-wrap][hidden] { display: none !important; }
+/* 推广分析视图扩展样式（总览渠道卡 / 计划看板 / 结构抽屉）。 */
 .promotion-view-tabs { display: flex; width: 100%; margin-bottom: 16px; }
 .promotion-view-tabs button { flex: 1; justify-content: center; min-width: 0; }
     .promotion-view-tabs button { display: inline-flex; align-items: center; gap: 6px; }
@@ -16,19 +13,6 @@
     .promotion-channel-card__metrics { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 10px; font-size: 12px; color: var(--text-secondary); }
     .promotion-channel-card__metrics b { color: var(--text-primary); font-weight: 600; }
     .promotion-channel-cards__footnote { font-size: 12px; color: var(--text-secondary); margin: 4px 0 0; }
-    .promotion-creative-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 12px; padding: 4px 0 12px; }
-    .promotion-creative-card { border: 1px solid var(--border-default); border-radius: 10px; overflow: hidden; background: var(--surface-base); display: flex; flex-direction: column; position: relative; }
-    .promotion-creative-card__badges { position: absolute; top: 6px; left: 6px; display: flex; gap: 4px; flex-wrap: wrap; z-index: 1; }
-    .promotion-creative-card__badge { font-size: 10px; padding: 2px 6px; border-radius: var(--radius-full); background: var(--success); color: var(--color-white); font-weight: 600; }
-    .promotion-creative-card__badge--cvr { background: var(--info); }
-    .promotion-creative-card__badge--cart { background: var(--warning); }
-    .promotion-creative-card__thumb { aspect-ratio: 1; width: 100%; object-fit: cover; background: var(--surface-muted); }
-    .promotion-creative-card__thumb-placeholder { aspect-ratio: 1; width: 100%; display: flex; align-items: center; justify-content: center; color: var(--text-tertiary); background: var(--surface-muted); }
-    .promotion-creative-card__body { padding: 10px 12px; display: flex; flex-direction: column; gap: 4px; font-size: 12px; }
-    .promotion-creative-card__name { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .promotion-creative-card__product { color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .promotion-creative-card__metrics { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 8px; color: var(--text-secondary); }
-    .promotion-creative-card__metrics b { color: var(--text-primary); }
     .promotion-campaign-row__detail td { background: var(--surface-muted); }
     .promotion-campaign-products { display: flex; flex-wrap: wrap; gap: 10px; padding: 8px 4px; }
     .promotion-campaign-product { display: flex; gap: 8px; align-items: center; border: 1px solid var(--border-default); border-radius: 8px; padding: 6px 10px 6px 6px; background: var(--surface-base); max-width: 320px; }

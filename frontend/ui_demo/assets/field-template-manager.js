@@ -64,12 +64,12 @@
       input.setAttribute('aria-label', `模板名称 ${template.label || key}`);
       const save = document.createElement('button');
       save.type = 'button';
-      save.className = 'button button--ghost';
+      save.className = 'ui-button ui-button--ghost';
       save.dataset.fieldTemplateSave = key;
       save.textContent = '保存';
       const cancel = document.createElement('button');
       cancel.type = 'button';
-      cancel.className = 'button button--ghost';
+      cancel.className = 'ui-button ui-button--ghost';
       cancel.dataset.fieldTemplateCancel = key;
       cancel.textContent = '取消';
       row.append(input, save, cancel);

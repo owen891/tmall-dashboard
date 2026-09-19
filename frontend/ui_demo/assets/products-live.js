@@ -1,4 +1,4 @@
-﻿(function () {
+(function () {
   const makeProductPlaceholder = (item, productId) => {
     const placeholder = document.createElement('span');
     placeholder.className = 'product-thumb product-thumb--placeholder';
@@ -402,7 +402,7 @@
 
   function badge(value, fallback) {
     const item = document.createElement('span');
-    item.className = 'badge badge--muted';
+    item.className = 'ui-badge ui-badge--muted';
     item.textContent = value || fallback || '--';
     return item;
   }
@@ -593,7 +593,8 @@
       titleButton.type = 'button';
       titleButton.className = 'product-title__link';
       titleButton.textContent = item.title || '未命名商品';
-      titleButton.setAttribute('aria-label', `查看商品详情：${escapeHtml(item.title || id || '未命名商品')}`);
+      titleButton.title = item.title || '未命名商品';
+      titleButton.setAttribute('aria-label', `查看商品详情：${item.title || id || '未命名商品'}`);
       titleButton.addEventListener('click', () => openProductDetail(item, titleButton));
       const sub = document.createElement('span');
       sub.textContent = id || '--';
@@ -605,8 +606,8 @@
       const healthCell = document.createElement('div');
       healthCell.className = 'products-health-cell';
       const healthBadge = badge(health.label, health.label);
-      healthBadge.classList.remove('badge--muted');
-      healthBadge.classList.add(`badge--${health.tone}`);
+      healthBadge.classList.remove('ui-badge--muted');
+      healthBadge.classList.add(`ui-badge--${health.tone}`);
       healthCell.appendChild(healthBadge);
        const healthTableCell = addCell(row, healthCell, '', 'health');
        healthTableCell.dataset.sortValue = String(health.sortValue);
@@ -684,7 +685,7 @@
       identity.append(title, code);
       const detail = document.createElement('button');
       detail.type = 'button';
-      detail.className = 'button button--ghost';
+      detail.className = 'ui-button ui-button--ghost';
       detail.textContent = '详情';
       detail.addEventListener('click', () => openProductDetail(item, detail));
       header.append(identity, detail);
@@ -750,10 +751,9 @@
       selected,
     };
     if (!columnSelector) {
-      columnSelector = DemoFieldSelector.create({
+      columnSelector = TmallUI.fieldSelector({
         root: $('[data-products-field-selector]'),
         ...config,
-        className: 'products-field-selection-layout',
         availableTitleId: 'productsAvailableFieldsTitle',
         previewTitleId: 'productsFieldPreviewTitle',
         optionDataAttribute: 'data-products-column-key',

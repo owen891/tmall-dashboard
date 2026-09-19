@@ -16,24 +16,24 @@
     <div class="demo-main">
       <header class="demo-topbar" data-shell-header></header>
       <main class="demo-page"><aside data-right-rail hidden aria-label="辅助信息"></aside>
-        <div class="demo-page__intro">
+        <div class="ui-page-header">
           <div>
             <h2>商品运营</h2>
             <p>数据库商品经营表现</p>
           </div>
           <div class="demo-page__actions">
-            <button class="button" type="button" data-capability-key="products.list" data-products-reset><i data-lucide="rotate-ccw"></i>重置</button>
+            <button class="ui-button" type="button" data-capability-key="products.list" data-products-reset><i data-lucide="rotate-ccw"></i>重置</button>
           </div>
         </div>
 
-        <section class="metric-grid">
-          <article class="metric-card ui-metric-card"><div class="metric-card__label ui-metric-card__label">数据库商品总数</div><div class="metric-card__value ui-metric-card__value" data-products-kpi="total">--</div></article>
-          <article class="metric-card ui-metric-card"><div class="metric-card__label ui-metric-card__label">当前页销售额</div><div class="metric-card__value ui-metric-card__value" data-products-kpi="sales">--</div></article>
-          <article class="metric-card ui-metric-card"><div class="metric-card__label ui-metric-card__label">当前页推广花费</div><div class="metric-card__value ui-metric-card__value" data-products-kpi="spend">--</div></article>
-          <article class="metric-card ui-metric-card"><div class="metric-card__label ui-metric-card__label">当前页 ROI</div><div class="metric-card__value ui-metric-card__value" data-products-kpi="roi">--</div></article>
+        <section class="ui-metric-grid">
+          <article class="ui-metric-card"><div class="metric-card__label ui-metric-card__label">数据库商品总数</div><div class="metric-card__value ui-metric-card__value" data-products-kpi="total">--</div></article>
+          <article class="ui-metric-card"><div class="metric-card__label ui-metric-card__label">当前页销售额</div><div class="metric-card__value ui-metric-card__value" data-products-kpi="sales">--</div></article>
+          <article class="ui-metric-card"><div class="metric-card__label ui-metric-card__label">当前页推广花费</div><div class="metric-card__value ui-metric-card__value" data-products-kpi="spend">--</div></article>
+          <article class="ui-metric-card"><div class="metric-card__label ui-metric-card__label">当前页 ROI</div><div class="metric-card__value ui-metric-card__value" data-products-kpi="roi">--</div></article>
         </section>
 
-        <section class="plain-panel panel ui-panel">
+        <section class="ui-panel">
           <div class="panel__header product-list__header">
             <div>
               <h3 class="panel__title">商品列表</h3>
@@ -47,11 +47,11 @@
                 <button type="button" data-products-view="refund" aria-pressed="false">退款</button>
                 <button type="button" data-products-view="lifecycle" aria-pressed="false">生命周期</button>
               </div>
-              <button class="button" type="button" data-products-columns-open><i data-lucide="settings-2"></i>列设置</button>
+              <button class="ui-button" type="button" data-products-columns-open><i data-lucide="settings-2"></i>列设置</button>
             </div>
           </div>
 
-          <div class="section-toolbar product-filters" data-products-filter-toolbar>
+          <div class="ui-filter-toolbar product-filters" data-products-filter-toolbar>
             <div class="product-filters__main">
               <label class="product-filters__search">
                 <span class="sr-only">搜索商品</span>
@@ -79,8 +79,8 @@
               </div>
             </div>
             <div class="product-filters__actions">
-              <button class="button" type="button" data-products-more-filters-toggle aria-controls="products-more-filters" aria-expanded="false"><i data-lucide="sliders-horizontal"></i><span>更多筛选</span></button>
-              <button class="button" type="button" data-capability-key="products.catalog_edit" data-products-starred aria-pressed="false"><i data-lucide="star"></i><span>当前页收藏</span></button>
+              <button class="ui-button" type="button" data-products-more-filters-toggle aria-controls="products-more-filters" aria-expanded="false"><i data-lucide="sliders-horizontal"></i><span>更多筛选</span></button>
+              <button class="ui-button" type="button" data-capability-key="products.catalog_edit" data-products-starred aria-pressed="false"><i data-lucide="star"></i><span>当前页收藏</span></button>
             </div>
             <div id="products-more-filters" class="product-filters__advanced" data-products-more-filters hidden>
               <select class="select" data-products-style aria-label="筛选风格"><option value="">全部风格</option></select>
@@ -97,15 +97,15 @@
             <select class="select" data-products-batch-field aria-label="批量字段"><option value="tier">批量分层</option><option value="style">批量风格</option></select>
             <input class="input" data-products-batch-value list="products-tier-options" placeholder="输入或选择分层/风格…" aria-label="批量字段值" autocomplete="off">
             <datalist id="products-tier-options" data-products-batch-options></datalist>
-            <button class="button button--primary" type="button" data-capability-key="products.catalog_edit" data-products-batch-apply><i data-lucide="check"></i>应用</button>
+            <button class="ui-button ui-button--primary" type="button" data-capability-key="products.catalog_edit" data-products-batch-apply><i data-lucide="check"></i>应用</button>
             <input class="input" data-products-batch-tag placeholder="批量新增标签…" aria-label="批量新增标签" autocomplete="off">
-            <button class="button" type="button" data-capability-key="products.catalog_edit" data-products-batch-tag-apply><i data-lucide="tag"></i>打标</button>
-            <button class="button" type="button" data-capability-key="products.catalog_edit" data-products-batch-star><i data-lucide="star"></i>收藏</button>
-            <button class="button" type="button" data-capability-key="products.list" data-products-batch-copy aria-label="复制选中商品 ID"><i data-lucide="copy"></i>复制商品 ID</button>
+            <button class="ui-button" type="button" data-capability-key="products.catalog_edit" data-products-batch-tag-apply><i data-lucide="tag"></i>打标</button>
+            <button class="ui-button" type="button" data-capability-key="products.catalog_edit" data-products-batch-star><i data-lucide="star"></i>收藏</button>
+            <button class="ui-button" type="button" data-capability-key="products.list" data-products-batch-copy aria-label="复制选中商品 ID"><i data-lucide="copy"></i>复制商品 ID</button>
           </div>
 
-          <div class="data-table-wrap data-table-wrap--discoverable">
-            <table class="data-table product-table" data-table-pagination="server">
+          <div class="ui-table-wrap ui-table-wrap--discoverable">
+            <table class="ui-data-table product-table" data-table-pagination="server">
               <thead><tr data-products-head></tr></thead>
               <tbody data-products-body>
                 <tr><td colspan="13">加载中…</td></tr>
@@ -113,7 +113,7 @@
             </table>
           </div>
           <div class="products-mobile-summary" data-products-mobile-summary aria-label="商品摘要" hidden></div>
-          <div class="section-toolbar table-controls table-controls--server" data-products-pagination>
+          <div class="ui-filter-toolbar table-controls table-controls--server" data-products-pagination>
             <span class="panel__hint table-controls__summary" data-products-page-summary>--</span>
             <label class="table-controls__page-size">每页
               <select class="select" data-products-page-size aria-label="商品列表每页显示行数">
@@ -125,8 +125,8 @@
               行
             </label>
             <div class="table-controls__nav">
-              <button class="button table-controls__button" type="button" data-products-prev><i data-lucide="chevron-left"></i>上一页</button>
-              <button class="button table-controls__button" type="button" data-products-next>下一页<i data-lucide="chevron-right"></i></button>
+              <button class="ui-button table-controls__button" type="button" data-products-prev><i data-lucide="chevron-left"></i>上一页</button>
+              <button class="ui-button table-controls__button" type="button" data-products-next>下一页<i data-lucide="chevron-right"></i></button>
             </div>
           </div>
         </section>
@@ -134,36 +134,36 @@
     </div>
   </div>
 
-  <dialog class="modal-form panel products-columns-dialog" data-products-columns-dialog data-modal-kind="config" aria-labelledby="productsColumnsTitle" hidden>
+  <dialog class="modal-form ui-panel products-columns-dialog" data-products-columns-dialog data-modal-kind="config" aria-labelledby="productsColumnsTitle" hidden>
     <div class="modal-form__header">
       <div>
         <h3 id="productsColumnsTitle">列设置</h3>
         <p class="panel__hint">选择商品列表中需要展示的字段</p>
       </div>
-      <button class="button button--ghost" type="button" data-products-columns-close aria-label="关闭列设置"><i data-lucide="x"></i></button>
+      <button class="ui-button ui-button--ghost" type="button" data-products-columns-close aria-label="关闭列设置"><i data-lucide="x"></i></button>
     </div>
     <div class="products-columns-dialog__body">
       <div class="field-template-bar">
         <div class="field-template-bar__current">当前显示 <strong data-products-visible-count>--</strong> 个字段</div>
         <div class="field-template-bar__controls">
           <select class="select" data-products-template-select aria-label="选择字段模板"></select>
-          <button class="button" type="button" data-products-template-apply>使用模板</button>
-          <button class="button" type="button" data-products-columns-select-all>全选</button>
-          <button class="button" type="button" data-products-columns-clear-all>清空</button>
-          <button class="button" type="button" data-products-columns-reset><i data-lucide="rotate-ccw"></i>恢复经营模板</button>
+          <button class="ui-button" type="button" data-products-template-apply>使用模板</button>
+          <button class="ui-button" type="button" data-products-columns-select-all>全选</button>
+          <button class="ui-button" type="button" data-products-columns-clear-all>清空</button>
+          <button class="ui-button" type="button" data-products-columns-reset><i data-lucide="rotate-ccw"></i>恢复经营模板</button>
         </div>
       </div>
       <div data-products-field-selector></div>
       <div class="products-template-save">
         <input class="input" name="products_template_name" autocomplete="off" data-products-template-name placeholder="自定义模板名称" aria-label="自定义模板名称">
-        <button class="button" type="button" data-products-template-save><i data-lucide="save"></i>保存为模板</button>
+        <button class="ui-button" type="button" data-products-template-save><i data-lucide="save"></i>保存为模板</button>
       </div>
       <div class="saved-template-list field-template-manager" data-products-template-manager aria-label="字段模板管理"></div>
       <p class="products-columns-dialog__status" data-products-columns-status aria-live="polite"></p>
     </div>
     <div class="modal-form__footer">
-      <button class="button" type="button" data-products-columns-close>取消</button>
-      <button class="button button--primary" type="button" data-products-columns-apply><i data-lucide="check"></i>应用字段</button>
+      <button class="ui-button" type="button" data-products-columns-close>取消</button>
+      <button class="ui-button ui-button--primary" type="button" data-products-columns-apply><i data-lucide="check"></i>应用字段</button>
     </div>
   </dialog>
 

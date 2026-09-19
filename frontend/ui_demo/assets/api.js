@@ -169,7 +169,7 @@
     const title = document.createElement('strong'); title.textContent = stateLabels[key];
     const body = document.createElement('span'); body.textContent = details.message || details.reason || '';
     container.append(title, body);
-    if (details.retry) { const button = document.createElement('button'); button.type = 'button'; button.className = 'button button--ghost'; button.textContent = '重试'; button.addEventListener('click', details.retry); container.appendChild(button); }
+    if (details.retry) { const button = document.createElement('button'); button.type = 'button'; button.className = 'ui-button ui-button--ghost'; button.textContent = '重试'; button.addEventListener('click', details.retry); container.appendChild(button); }
   }
   window.DemoApi = { request, domainRequest, optional, context, can, loadPageCapabilities, canPage, renderDataState };
   loadPageCapabilities().catch(() => {});

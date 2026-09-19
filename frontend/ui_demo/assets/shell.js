@@ -113,6 +113,7 @@
         ['flow-source', '流量来源', 'git-branch', 'flow-source'],
         ['rival-analysis', '竞店竞品', 'users', 'rival-analysis'],
         ['promotion', '推广分析', 'megaphone', 'promotion'],
+        ['creative-board', '素材点击率', 'image', 'creative-board'],
         ['keyword-promotion', '关键词选品', 'filter', 'keyword-promotion'],
         ['market-ranking', '市场分析', 'trending-up', 'market-ranking'],
         ['lifecycle', '生命周期', 'refresh-cw', 'lifecycle'],
@@ -141,6 +142,7 @@
     'flow-source': ['流量来源', '生意参谋第一次访问来源，渠道结构与转化分析'],
     'rival-analysis': ['竞店竞品', '竞店核心指标对比与竞品商品分析'],
     promotion: ['推广分析', '按投放粒度解释花费、成交与投产效率'],
+    'creative-board': ['素材点击率', '按单品沉淀素材历史点击质量'],
     'keyword-promotion': ['关键词选品', '按属性标签筛选推广效果好的标品商品'],
     'market-ranking': ['市场分析', '生意参谋市场排行，类目对比与热卖趋势洞察'],
     lifecycle: ['生命周期', '按商品查看跨月经营表现与累计贡献'],
@@ -209,12 +211,12 @@
         <div class="demo-sidebar__meta-actions">
           <a class="demo-sidebar__meta-action" href="https://github.com/owen891/tmall-dashboard" target="_blank" rel="noreferrer" aria-label="GitHub 仓库" title="GitHub 仓库"><svg class="demo-sidebar__github-icon" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.043-1.61-4.043-1.61-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.084-.73.084-.73 1.205.085 1.84 1.237 1.84 1.237 1.07 1.835 2.809 1.305 3.495.998.108-.776.418-1.305.762-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.292-1.552 3.297-1.23 3.297-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12" /></svg><span class="demo-sidebar__meta-action-label">GitHub</span></a>
           <a class="demo-sidebar__meta-action" href="https://gitcode.com/owen891/tmall-dashboard/releases" target="_blank" rel="noreferrer" aria-label="更新说明" title="更新说明"><i data-lucide="file-text" aria-hidden="true"></i><span class="demo-sidebar__meta-action-label">更新说明</span></a>
-          <button class="button button--ghost demo-sidebar__update" type="button" data-sidebar-check-update aria-label="检查升级" title="检查升级"><i data-lucide="refresh-cw" aria-hidden="true"></i><span>检查升级</span></button>
+          <button class="ui-button ui-button--ghost demo-sidebar__update" type="button" data-sidebar-check-update aria-label="检查升级" title="检查升级"><i data-lucide="refresh-cw" aria-hidden="true"></i><span>检查升级</span></button>
         </div>
       </div>
     </div>`;
 
-  const hideCategoryPages = new Set(['data-center', 'settings', 'manage', 'catalog']);
+  const hideCategoryPages = new Set(['data-center', 'settings', 'manage', 'catalog', 'creative-board']);
   const categoryMarkup = hideCategoryPages.has(currentPage) ? '' : `
     <div class="demo-category" role="group" aria-label="品类模式">
       <select class="demo-period__select demo-category__select" data-category-mode aria-label="品类模式">
@@ -233,11 +235,11 @@
       <div class="demo-period__popover" data-period-popover hidden>
         <div class="demo-calendar__toolbar"><button type="button" data-calendar-nav="-1" aria-label="上两个月">‹</button><strong>自定义日期范围</strong><button type="button" data-calendar-nav="1" aria-label="下两个月">›</button></div>
         <div class="demo-calendar__months"><section data-calendar-month="0"></section><section data-calendar-month="1"></section></div>
-        <div class="demo-calendar__footer"><span data-calendar-help>请选择开始日期</span><button class="button button--ghost" type="button" data-calendar-cancel>取消</button></div>
+        <div class="demo-calendar__footer"><span data-calendar-help>请选择开始日期</span><button class="ui-button ui-button--ghost" type="button" data-calendar-cancel>取消</button></div>
       </div>
       </div>
     </div>
-    <div class="demo-topbar__tools"><button class="button demo-import-trigger" type="button" data-open-toolbox title="导入数据"><i data-lucide="upload"></i><span>导入数据</span></button><button class="demo-tool demo-mobile-nav" type="button" title="打开导航" aria-label="打开导航" aria-expanded="false" data-mobile-nav><i data-lucide="menu"></i></button><button class="demo-tool" type="button" title="刷新" aria-label="刷新" data-demo-refresh><i data-lucide="refresh-cw"></i></button><button class="demo-tool" type="button" title="导出" aria-label="导出当前表格" data-demo-export><i data-lucide="download"></i></button><button class="demo-tool" type="button" title="切换深色主题" aria-label="切换深色主题" data-demo-theme><i data-lucide="moon"></i></button></div>`;
+    <div class="demo-topbar__tools"><button class="ui-button demo-import-trigger" type="button" data-open-toolbox title="导入数据"><i data-lucide="upload"></i><span>导入数据</span></button><button class="demo-tool demo-mobile-nav" type="button" title="打开导航" aria-label="打开导航" aria-expanded="false" data-mobile-nav><i data-lucide="menu"></i></button><button class="demo-tool" type="button" title="刷新" aria-label="刷新" data-demo-refresh><i data-lucide="refresh-cw"></i></button><button class="demo-tool" type="button" title="导出" aria-label="导出当前表格" data-demo-export><i data-lucide="download"></i></button><button class="demo-tool" type="button" title="切换深色主题" aria-label="切换深色主题" data-demo-theme><i data-lucide="moon"></i></button></div>`;
 
   const categorySelect = header.querySelector('[data-category-mode]');
   const CATEGORY_STORAGE_KEY = 'dashboard.categoryMode';
@@ -260,10 +262,11 @@
     }).catch(() => {});
   }
 
-  if (currentPage === 'lifecycle') header.querySelector('.demo-period').hidden = true;
+  const pagesWithoutDateRange = new Set(['data-center', 'data-collection', 'settings', 'goals', 'creative-board']);
+  if (currentPage === 'lifecycle' || pagesWithoutDateRange.has(currentPage)) header.querySelector('.demo-period').hidden = true;
   if (currentPage === 'overview') {
     header.querySelector('.demo-topbar__tools').insertAdjacentHTML('beforeend', `
-      <button class="button button--primary demo-overview-action" type="button" aria-label="新增运营动作" title="新增运营动作" data-capability-key="overview.create_action" data-overview-action-open><i data-lucide="plus"></i><span>新增运营动作</span></button>`);
+      <button class="ui-button ui-button--primary demo-overview-action" type="button" aria-label="新增运营动作" title="新增运营动作" data-capability-key="overview.create_action" data-overview-action-open><i data-lucide="plus"></i><span>新增运营动作</span></button>`);
     apiReady.then((api) => api?.loadPageCapabilities?.('overview')).catch(() => {});
   }
 
@@ -271,14 +274,14 @@
     <div class="demo-shell-status" data-demo-status role="status" aria-live="polite" aria-atomic="true"></div>
     <div class="demo-toast" data-demo-toast role="status" aria-live="polite" aria-atomic="true"></div>
     <dialog class="toolbox-dialog" data-toolbox-dialog data-modal-kind="flow" aria-labelledby="toolboxTitle">
-      <div class="toolbox-dialog__header"><div><h2 id="toolboxTitle">数据工具箱</h2><span class="panel__hint">数据导入与自动任务</span><span class="panel__hint" data-flow-impact>\u5f71\u54cd\u8303\u56f4\uff1a\u4ec5\u5f53\u524d\u5bfc\u5165\u6279\u6b21\u53ca\u5176\u5bfc\u5165\u8bb0\u5f55</span></div><button class="button button--ghost" type="button" data-close-toolbox aria-label="关闭"><i data-lucide="x"></i></button></div>
+      <div class="toolbox-dialog__header"><div><h2 id="toolboxTitle">数据工具箱</h2><span class="panel__hint">数据导入与自动任务</span><span class="panel__hint" data-flow-impact>\u5f71\u54cd\u8303\u56f4\uff1a\u4ec5\u5f53\u524d\u5bfc\u5165\u6279\u6b21\u53ca\u5176\u5bfc\u5165\u8bb0\u5f55</span></div><button class="ui-button ui-button--ghost" type="button" data-close-toolbox aria-label="关闭"><i data-lucide="x"></i></button></div>
       <div class="toolbox-dialog__body">
         <div class="toolbox-tools" role="tablist" aria-label="选择工具">
           <button class="toolbox-tool" id="toolbox-tab-import" role="tab" type="button" aria-selected="true" aria-pressed="true" aria-controls="toolbox-panel-import" data-tool="import"><strong>经营数据导入</strong><span>使用现有导入服务处理 Excel 工作簿</span></button>
           <button class="toolbox-tool" id="toolbox-tab-scan" role="tab" type="button" aria-selected="false" aria-pressed="false" aria-controls="toolbox-panel-scan" data-tool="scan"><strong>文件夹扫描任务</strong><span>扫描指定文件夹并自动导入新报表</span></button>
         </div>
-        <section class="plain-panel panel" id="toolbox-panel-import" role="tabpanel" aria-labelledby="toolbox-tab-import" data-tool-panel="import"><div class="panel__header"><div><h3 class="panel__title">导入经营数据</h3><p class="panel__hint">先预览文件、确认字段映射和质量，再写入数据库</p></div><span class="badge badge--info">表格</span></div><label class="upload-zone" for="demoImportFile"><span><i data-lucide="file-up"></i><strong data-import-file-name>选择表格文件</strong><span>支持 .xlsx / .xls / .csv / .zip；可多选，文件选择器内可按 Ctrl+A 全选</span></span></label><input class="sr-only" id="demoImportFile" data-import-file type="file" accept=".xlsx,.xls,.csv,.zip" multiple><div class="section-toolbar toolbox-import-actions"><button class="button button--primary" type="button" data-import-preview><i data-lucide="scan-search"></i>预览并校验</button><button class="button button--primary" type="button" data-import-confirm disabled><i data-lucide="database"></i>确认导入</button></div><div class="import-progress" aria-hidden="true"><span data-import-progress></span></div><div class="import-result" data-import-result role="status" aria-live="polite">等待选择文件</div><section class="import-preview-panel" data-import-preview-panel hidden><div class="import-preview-panel__summary"><div class="toolbox-import-tabs" data-import-preview-tabs role="tablist" aria-label="预览文件"></div><p class="panel__hint" data-import-quality>选择文件后查看质量摘要</p><p class="panel__hint" data-import-quality-detail>未发现异常行</p></div><div class="data-table-wrap"><table class="data-table import-preview-table"><thead><tr><th>原始列</th><th>推断类型</th><th>标准字段映射</th><th>匹配状态</th><th>样例</th></tr></thead><tbody data-import-fields></tbody></table></div></section></section>
-        <section class="plain-panel panel" id="toolbox-panel-scan" role="tabpanel" aria-labelledby="toolbox-tab-scan" data-tool-panel="scan" hidden><div class="panel__header"><div><h3 class="panel__title">文件夹扫描任务</h3><p class="panel__hint">定期检查指定文件夹，新文件会复用导入校验和批次审计</p></div><button class="button button--ghost" type="button" data-refresh-scans aria-label="刷新扫描任务"><i data-lucide="refresh-cw"></i>刷新</button></div><div class="modal-form__body toolbox-scan-form"><label>任务名称<input class="input" name="scan_name" data-scan-name placeholder="例如：每日经营数据扫描" autocomplete="off"></label><label>扫描文件夹<span class="toolbox-scan-folder"><input class="input" name="scan_folder" data-scan-folder placeholder="请选择或输入本机文件夹绝对路径" autocomplete="off"><button class="button" type="button" data-select-scan-folder hidden><i data-lucide="folder-open"></i>选择文件夹</button></span></label><div class="filter-group"><label>文件匹配规则<input class="input" name="scan_pattern" data-scan-pattern value="*.xlsx;*.xls;*.csv;*.zip" autocomplete="off"></label><label>报表来源<select class="select" name="scan_source" data-scan-source><option value="auto">自动识别</option><option value="product_day">商品日度</option><option value="dmp_product_day">DMP 商品日度</option><option value="store_day">店铺日度</option><option value="refund_day">退款日度</option><option value="customer_day">客户日度</option><option value="product_week">商品周度</option><option value="product_month">商品月度</option><option value="promotion_channel_day">推广渠道日度</option><option value="promotion_campaign_day">推广计划日度</option><option value="promotion_unit_day">推广单元日度</option><option value="promotion_product_day">推广商品日度</option></select></label></div><div class="filter-group"><label>扫描频率<select class="select" name="scan_frequency" data-scan-frequency><option value="daily">每天</option><option value="weekly">每周一</option><option value="monthly">每月 1 日</option></select></label><label>扫描时间<input class="input" name="scan_time" data-scan-time type="time" value="08:00" autocomplete="off"></label></div><label class="toolbox-scan-enabled"><input type="checkbox" name="scan_enabled" data-scan-enabled checked> 创建后立即启用</label><button class="button button--primary" type="button" data-add-scan><i data-lucide="folder-plus"></i>添加扫描任务</button><div class="import-result" data-scan-result role="status" aria-live="polite">等待创建任务</div></div><div class="data-table-wrap toolbox-scan-table"><table class="data-table"><thead><tr><th>任务与文件夹</th><th>计划</th><th>状态</th><th>最近运行</th><th>操作</th></tr></thead><tbody data-scan-list><tr><td colspan="5">加载中…</td></tr></tbody></table></div></section>
+        <section class="ui-panel" id="toolbox-panel-import" role="tabpanel" aria-labelledby="toolbox-tab-import" data-tool-panel="import"><div class="panel__header"><div><h3 class="panel__title">导入经营数据</h3><p class="panel__hint">先预览文件、确认字段映射和质量，再写入数据库</p></div><span class="ui-badge ui-badge--info">表格</span></div><label class="upload-zone" for="demoImportFile"><span><i data-lucide="file-up"></i><strong data-import-file-name>选择表格文件</strong><span>支持 .xlsx / .xls / .csv / .zip；可多选，文件选择器内可按 Ctrl+A 全选</span></span></label><input class="sr-only" id="demoImportFile" data-import-file type="file" accept=".xlsx,.xls,.csv,.zip" multiple><div class="ui-filter-toolbar toolbox-import-actions"><button class="ui-button ui-button--primary" type="button" data-import-preview><i data-lucide="scan-search"></i>预览并校验</button><button class="ui-button ui-button--primary" type="button" data-import-confirm disabled><i data-lucide="database"></i>确认导入</button></div><div class="import-progress" aria-hidden="true"><span data-import-progress></span></div><div class="import-result" data-import-result role="status" aria-live="polite">等待选择文件</div><section class="import-preview-panel" data-import-preview-panel hidden><div class="import-preview-panel__summary"><div class="toolbox-import-tabs" data-import-preview-tabs role="tablist" aria-label="预览文件"></div><p class="panel__hint" data-import-quality>选择文件后查看质量摘要</p><p class="panel__hint" data-import-quality-detail>未发现异常行</p></div><div class="ui-table-wrap"><table class="ui-data-table import-preview-table"><thead><tr><th>原始列</th><th>推断类型</th><th>标准字段映射</th><th>匹配状态</th><th>样例</th></tr></thead><tbody data-import-fields></tbody></table></div></section></section>
+        <section class="ui-panel" id="toolbox-panel-scan" role="tabpanel" aria-labelledby="toolbox-tab-scan" data-tool-panel="scan" hidden><div class="panel__header"><div><h3 class="panel__title">文件夹扫描任务</h3><p class="panel__hint">定期检查指定文件夹，新文件会复用导入校验和批次审计</p></div><button class="ui-button ui-button--ghost" type="button" data-refresh-scans aria-label="刷新扫描任务"><i data-lucide="refresh-cw"></i>刷新</button></div><div class="modal-form__body toolbox-scan-form"><label>任务名称<input class="input" name="scan_name" data-scan-name placeholder="例如：每日经营数据扫描" autocomplete="off"></label><label>扫描文件夹<span class="toolbox-scan-folder"><input class="input" name="scan_folder" data-scan-folder placeholder="请选择或输入本机文件夹绝对路径" autocomplete="off"><button class="ui-button" type="button" data-select-scan-folder hidden><i data-lucide="folder-open"></i>选择文件夹</button></span></label><div class="filter-group"><label>文件匹配规则<input class="input" name="scan_pattern" data-scan-pattern value="*.xlsx;*.xls;*.csv;*.zip" autocomplete="off"></label><label>报表来源<select class="select" name="scan_source" data-scan-source><option value="auto">自动识别</option><option value="product_day">商品日度</option><option value="dmp_product_day">DMP 商品日度</option><option value="store_day">店铺日度</option><option value="refund_day">退款日度</option><option value="customer_day">客户日度</option><option value="product_week">商品周度</option><option value="product_month">商品月度</option><option value="promotion_channel_day">推广渠道日度</option><option value="promotion_campaign_day">推广计划日度</option><option value="promotion_unit_day">推广单元日度</option><option value="promotion_product_day">推广商品日度</option></select></label></div><div class="filter-group"><label>扫描频率<select class="select" name="scan_frequency" data-scan-frequency><option value="daily">每天</option><option value="weekly">每周一</option><option value="monthly">每月 1 日</option></select></label><label>扫描时间<input class="input" name="scan_time" data-scan-time type="time" value="08:00" autocomplete="off"></label></div><label class="toolbox-scan-enabled"><input type="checkbox" name="scan_enabled" data-scan-enabled checked> 创建后立即启用</label><button class="ui-button ui-button--primary" type="button" data-add-scan><i data-lucide="folder-plus"></i>添加扫描任务</button><div class="import-result" data-scan-result role="status" aria-live="polite">等待创建任务</div></div><div class="ui-table-wrap toolbox-scan-table"><table class="ui-data-table"><thead><tr><th>任务与文件夹</th><th>计划</th><th>状态</th><th>最近运行</th><th>操作</th></tr></thead><tbody data-scan-list><tr><td colspan="5">加载中…</td></tr></tbody></table></div></section>
       </div>
     </dialog>`);
 
@@ -314,7 +317,7 @@
     showToast(`当前页面不支持${labels}筛选，已保留在地址中`, { duration: 5000 });
   };
   discloseUnsupportedFilters();
-  const visibleTables = () => Array.from(document.querySelectorAll('.data-table')).filter((table) => {
+  const visibleTables = () => Array.from(document.querySelectorAll('.ui-data-table')).filter((table) => {
     if (table.closest('[hidden]')) return false;
     const toolboxParent = table.closest('[data-toolbox-dialog]');
     if (toolboxParent && !toolboxParent.open) return false;
@@ -324,7 +327,7 @@
   });
   const csvCell = (value) => `"${String(value ?? '').replace(/\s+/g, ' ').trim().replace(/"/g, '""')}"`;
   const tableToCsv = (table, index) => {
-    const title = table.closest('.panel')?.querySelector('.panel__title')?.textContent?.trim() || `表格 ${index + 1}`;
+    const title = table.closest('.ui-panel')?.querySelector('.panel__title')?.textContent?.trim() || `表格 ${index + 1}`;
     const rows = Array.from(table.querySelectorAll('tr')).filter((row) => {
       const style = window.getComputedStyle(row);
       return style.display !== 'none' && style.visibility !== 'hidden';
@@ -403,15 +406,17 @@
   const dispatchRange = (writeHistory = true) => {
     range.textContent = `${state.startDate} ~ ${state.endDate}`;
     const url = new URL(window.location.href);
-    if (['data-center', 'settings'].includes(currentPage)) {
+    if (pagesWithoutDateRange.has(currentPage)) {
       url.searchParams.delete('start');
       url.searchParams.delete('end');
+      url.searchParams.delete('preset');
+      url.searchParams.delete('compare');
     } else {
       url.searchParams.set('start', state.startDate);
       url.searchParams.set('end', state.endDate);
+      url.searchParams.set('preset', state.preset);
+      url.searchParams.set('compare', state.compareMode);
     }
-    url.searchParams.set('preset', state.preset);
-    url.searchParams.set('compare', state.compareMode);
     if (writeHistory) history.pushState(null, '', url);
     window.dispatchEvent(new CustomEvent('tmall:date-range-change', { detail: { ...state } }));
     rangeSubscribers.forEach((subscriber) => {
@@ -760,7 +765,7 @@
     document.querySelector('[data-import-preview-tabs]')?.replaceChildren(...importPreviewQueue.map((item, index) => {
       const tab = document.createElement('button');
       tab.type = 'button';
-      tab.className = 'button button--ghost toolbox-import-tab';
+      tab.className = 'ui-button ui-button--ghost toolbox-import-tab';
       tab.role = 'tab';
       tab.dataset.importPreviewFile = String(index);
       tab.setAttribute('aria-selected', String(index === activeImportPreviewIndex));
@@ -954,7 +959,7 @@
   const scanAction = (icon, label, handler) => {
     const button = document.createElement('button');
     button.type = 'button';
-    button.className = 'button button--ghost';
+    button.className = 'ui-button ui-button--ghost';
     button.title = label;
     button.setAttribute('aria-label', label);
     button.innerHTML = `<i data-lucide="${icon}"></i>`;
@@ -1002,7 +1007,7 @@
       const statusCell = row.insertCell();
       const badge = document.createElement('span');
       const isRunning = job.status === 'running';
-      badge.className = `badge ${isRunning || job.enabled ? 'badge--success' : ''}`.trim();
+      badge.className = `ui-badge ${isRunning || job.enabled ? 'ui-badge--success' : ''}`.trim();
       badge.textContent = job.enabled ? '已启用' : '已停用';
       badge.textContent = isRunning ? '正在扫描' : (job.enabled ? '已启用' : '已停用');
       statusCell.appendChild(badge);

@@ -82,7 +82,7 @@
   }
 
   function tableHost(table) {
-    return table.closest('.data-table-wrap') || table.parentElement;
+    return table.closest('.ui-table-wrap') || table.parentElement;
   }
 
   function currentHeaderRow(table) {
@@ -220,7 +220,7 @@
     nav.className = 'table-controls__nav';
     const previous = document.createElement('button');
     previous.type = 'button';
-    previous.className = 'button table-controls__button';
+    previous.className = 'ui-button table-controls__button';
     previous.setAttribute('data-table-prev', '');
     previous.setAttribute('aria-label', '上一页');
     previous.append(document.createElement('i'));
@@ -231,7 +231,7 @@
     summary.setAttribute('data-table-summary', '');
     const next = document.createElement('button');
     next.type = 'button';
-    next.className = 'button table-controls__button';
+    next.className = 'ui-button table-controls__button';
     next.setAttribute('data-table-next', '');
     next.setAttribute('aria-label', '下一页');
     next.append(document.createTextNode('下一页'));
@@ -498,14 +498,14 @@
   }
 
   function isManagedTable(table) {
-    return table instanceof HTMLTableElement && (table.classList.contains('data-table') || table.dataset.tableControls === 'true');
+    return table instanceof HTMLTableElement && (table.classList.contains('ui-data-table') || table.dataset.tableControls === 'true');
   }
 
   function managedTablesWithin(node) {
     if (node.nodeType !== Node.ELEMENT_NODE) return [];
     return [
-      ...(node.matches?.('table.data-table, table[data-table-controls="true"]') ? [node] : []),
-      ...(node.querySelectorAll ? [...node.querySelectorAll('table.data-table, table[data-table-controls="true"]')] : []),
+      ...(node.matches?.('table.ui-data-table, table[data-table-controls="true"]') ? [node] : []),
+      ...(node.querySelectorAll ? [...node.querySelectorAll('table.ui-data-table, table[data-table-controls="true"]')] : []),
     ];
   }
 
@@ -554,7 +554,7 @@
   }
 
   function refreshAll() {
-    document.querySelectorAll('table.data-table, table[data-table-controls="true"]').forEach(enhanceTable);
+    document.querySelectorAll('table.ui-data-table, table[data-table-controls="true"]').forEach(enhanceTable);
     liveStates.forEach((state) => { updateStickyHeader(state.table, state); updateStickyFooter(state.table, state); });
   }
 

@@ -37,7 +37,7 @@
 
     function makeHeading(id, title, hint) {
       const heading = document.createElement('div');
-      heading.className = 'field-selection-pane__heading';
+      heading.className = 'ui-field-selector__heading';
       const strong = document.createElement('strong');
       strong.id = id;
       strong.textContent = title;
@@ -126,7 +126,7 @@
       list.replaceChildren();
       if (!selected.length) {
         const empty = document.createElement('li');
-        empty.className = 'field-order-preview__empty ui-field-selector__empty';
+        empty.className = 'ui-field-selector__empty';
         empty.textContent = options.emptyText || '尚未选择字段';
         list.appendChild(empty);
         return;
@@ -136,7 +136,7 @@
         if (!field) return;
         const isLocked = field.required || field.locked;
         const item = document.createElement('li');
-        item.className = 'field-order-preview__item ui-field-selector__item';
+        item.className = 'ui-field-selector__item';
         item.setAttribute(options.previewDataAttribute || 'data-field-preview-key', key);
         item.dataset.fieldPreviewPosition = String(position);
         item.draggable = false;
@@ -144,18 +144,18 @@
         item.setAttribute('aria-grabbed', position === draggedPosition ? 'true' : 'false');
 
         const index = document.createElement('span');
-        index.className = 'field-order-preview__index ui-field-selector__index';
+        index.className = 'ui-field-selector__index';
         index.textContent = String(position + 1);
         const label = document.createElement('span');
-        label.className = 'field-order-preview__label ui-field-selector__label';
+        label.className = 'ui-field-selector__label';
         label.textContent = field.label;
         const actions = document.createElement('span');
-        actions.className = 'field-order-preview__actions ui-field-selector__actions';
+        actions.className = 'ui-field-selector__actions';
 
-        [['arrow-up', -1, '上移'], ['arrow-down', 1, '下移']].forEach(([icon, offset, name]) => {
+        [['chevron-right', -1, '上移', 'is-up'], ['chevron-right', 1, '下移', 'is-down']].forEach(([icon, offset, name, direction]) => {
           const button = document.createElement('button');
           button.type = 'button';
-          button.className = 'button button--ghost field-order-preview__button ui-field-selector__button';
+          button.className = `ui-button ui-button--ghost ui-field-selector__button ui-field-selector__button--${direction}`;
           button.setAttribute('aria-label', `${name}${field.label}`);
           button.title = `${name}${field.label}`;
           button.disabled = position + offset < 0 || position + offset >= selected.length;
@@ -205,7 +205,7 @@
       const container = root.querySelector('[data-field-selector-options]');
       container.replaceChildren(...groups.map((group) => {
         const section = document.createElement('section');
-        section.className = 'field-group ui-field-selector__group';
+        section.className = 'ui-field-selector__group';
         const heading = document.createElement('strong');
         heading.textContent = group.label;
         section.appendChild(heading);
@@ -232,25 +232,25 @@
     }
 
     function renderShell() {
-      root.className = `field-selection-layout ui-field-selector ${options.className || ''}`.trim();
+      root.className = 'ui-field-selector';
       const availableTitleId = options.availableTitleId || `fieldSelectorAvailable-${Math.random().toString(36).slice(2)}`;
       const previewTitleId = options.previewTitleId || `fieldSelectorPreview-${Math.random().toString(36).slice(2)}`;
 
       const available = document.createElement('section');
-      available.className = 'field-selection-pane ui-field-selector__available';
+      available.className = 'ui-field-selector__available';
       available.setAttribute('aria-labelledby', availableTitleId);
       available.appendChild(makeHeading(availableTitleId, options.availableTitle || '可选字段', options.availableHint || '勾选要展示的字段'));
       const optionsRoot = document.createElement('div');
-      optionsRoot.className = 'field-group-grid ui-field-selector__groups';
+      optionsRoot.className = 'ui-field-selector__groups';
       optionsRoot.dataset.fieldSelectorOptions = '';
       available.appendChild(optionsRoot);
 
       const preview = document.createElement('section');
-      preview.className = 'field-preview-pane ui-field-selector__preview-pane';
+      preview.className = 'ui-field-selector__preview-pane';
       preview.setAttribute('aria-labelledby', previewTitleId);
       preview.appendChild(makeHeading(previewTitleId, options.previewTitle || '字段预览', options.previewHint || '按表格列顺序展示'));
       const previewRoot = document.createElement('ol');
-      previewRoot.className = 'field-order-preview ui-field-selector__preview';
+      previewRoot.className = 'ui-field-selector__preview';
       previewRoot.dataset.fieldSelectorPreview = '';
       preview.appendChild(previewRoot);
 

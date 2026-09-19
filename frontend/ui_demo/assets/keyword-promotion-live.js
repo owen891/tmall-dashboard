@@ -3,6 +3,7 @@
 
   const API_BASE = '/api/keyword-promotion';
   const STORAGE_KEY = 'tmall-kp-visible-columns';
+  const dateRange = () => window.TmallDateRange?.getState?.() || {};
 
   // ===== 字段定义（分组） =====
   const FIELD_GROUPS = [
@@ -344,7 +345,8 @@
   // ===== 加载汇总 =====
   async function loadSummary() {
     try {
-      const params = new URLSearchParams(state.filters);
+      const range = dateRange();
+      const params = new URLSearchParams({ ...state.filters, start: range.startDate || '', end: range.endDate || '' });
       const res = await fetch(`${API_BASE}/summary?${params}`);
       const data = await res.json();
       if (!data.ok) return;
@@ -370,6 +372,8 @@
     try {
       const params = new URLSearchParams({
         ...state.filters,
+        start: dateRange().startDate || '',
+        end: dateRange().endDate || '',
         sort_by: state.sortBy,
         sort_order: state.sortOrder,
         page: state.page,
@@ -438,11 +442,11 @@
       groups: FIELD_GROUPS.map(g => ({ label: g.label, fields: g.columns })),
       selected,
     };
-    if (!columnSelector && window.DemoFieldSelector) {
-      columnSelector = DemoFieldSelector.create({
+    if (!window.TmallUI?.fieldSelector) return;
+    if (!columnSelector) {
+      columnSelector = TmallUI.fieldSelector({
         root: $('[data-kp-field-selector]'),
         ...config,
-        className: 'products-field-selection-layout',
         availableTitleId: 'kpAvailableFieldsTitle',
         previewTitleId: 'kpFieldPreviewTitle',
         optionDataAttribute: 'data-kp-column-key',
@@ -451,30 +455,6 @@
       });
     } else if (columnSelector) {
       columnSelector.setConfig(config);
-    } else {
-      // 降级：简单checkbox
-      const container = $('[data-kp-field-selector]');
-      container.innerHTML = FIELD_GROUPS.map(group => `
-        <div class="kp-field-group">
-          <div class="kp-field-group__title">${group.label}</div>
-          <div class="kp-field-group__items">
-            ${group.columns.map(col => `
-              <label class="kp-field-item">
-                <input type="checkbox" value="${col.key}" ${selected.includes(col.key) ? 'checked' : ''}>
-                <span>${col.label}</span>
-              </label>
-            `).join('')}
-          </div>
-        </div>
-      `).join('');
-      container.querySelectorAll('input[type="checkbox"]').forEach(cb => {
-        cb.addEventListener('change', () => {
-          let cur = selectedDialogColumns();
-          if (cb.checked) { if (!cur.includes(cb.value)) cur.push(cb.value); }
-          else { cur = cur.filter(k => k !== cb.value); }
-          updateColumnsDialogStatus();
-        });
-      });
     }
     renderTemplateSelect();
     renderTemplateManager();
@@ -502,8 +482,8 @@
       <div class="field-template-manager__item">
         <span>${key} (${custom[key].length}个字段)</span>
         <div>
-          <button class="button button--ghost" type="button" data-kp-template-load="${key}">应用</button>
-          <button class="button button--ghost" type="button" data-kp-template-delete="${key}"><i data-lucide="trash-2"></i></button>
+          <button class="ui-button ui-button--ghost" type="button" data-kp-template-load="${key}">应用</button>
+          <button class="ui-button ui-button--ghost" type="button" data-kp-template-delete="${key}"><i data-lucide="trash-2"></i></button>
         </div>
       </div>
     `).join('');
@@ -691,6 +671,7 @@
     state.filters = buildFilters();
     loadSummary();
     loadProducts();
+    window.addEventListener('tmall:date-range-change', () => reload());
     if (window.lucide) lucide.createIcons();
   }
 

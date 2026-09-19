@@ -184,7 +184,7 @@
       const recordCount = source.record_count ? source.record_count.toLocaleString('zh-CN') : '0';
 
       return `
-        <article class="plain-panel panel collect-source-card" data-source="${escapeHtml(source.key)}">
+        <article class="ui-panel collect-source-card" data-source="${escapeHtml(source.key)}">
           <div class="collect-source-card__header">
             <div>
               <h4 class="collect-source-card__title">${escapeHtml(source.name)}</h4>
@@ -221,10 +221,10 @@
             </div>
           ` : ''}
           <div class="collect-source-card__actions">
-            <button class="button button--primary" type="button" data-action="trigger" data-source="${escapeHtml(source.key)}" ${isRunning ? 'disabled' : ''}>
+            <button class="ui-button ui-button--primary" type="button" data-action="trigger" data-source="${escapeHtml(source.key)}" ${isRunning ? 'disabled' : ''}>
               <i data-lucide="play"></i><span>${isRunning ? '采集中' : '立即采集'}</span>
             </button>
-            <button class="button" type="button" data-action="view-log" data-source="${source.key}">
+            <button class="ui-button" type="button" data-action="view-log" data-source="${source.key}">
               <i data-lucide="file-text"></i><span>查看日志</span>
             </button>
           </div>

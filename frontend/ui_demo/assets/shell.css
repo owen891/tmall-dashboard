@@ -97,14 +97,14 @@ dialog { overscroll-behavior: contain; }
 .toolbox-tool[aria-pressed="true"] { border-color: var(--brand); background: var(--brand-tint); }
 .toolbox-tool strong { font-size: var(--font-size-secondary); }
 .toolbox-tool span { color: var(--text-secondary); font-size: var(--font-size-meta); }
-.toolbox-dialog .panel,
-.toolbox-dialog .plain-panel,
-.toolbox-dialog .data-table-wrap,
+.toolbox-dialog .ui-panel,
+.toolbox-dialog .ui-panel,
+.toolbox-dialog .ui-table-wrap,
 .toolbox-dialog .modal-form__body,
 .toolbox-dialog .filter-group { min-width: 0; max-width: 100%; }
-.toolbox-dialog .data-table { width: 100%; min-width: 100%; table-layout: fixed; }
-.toolbox-dialog .data-table th,
-.toolbox-dialog .data-table td { overflow: hidden; text-overflow: ellipsis; }
+.toolbox-dialog .ui-data-table { width: 100%; min-width: 100%; table-layout: fixed; }
+.toolbox-dialog .ui-data-table th,
+.toolbox-dialog .ui-data-table td { overflow: hidden; text-overflow: ellipsis; }
 .toolbox-dialog [data-tool-panel="schedule"] .panel__header { margin-bottom: 10px; }
 .toolbox-dialog [data-tool-panel="schedule"] .modal-form__body { gap: 8px; }
 .toolbox-dialog [data-tool-panel="schedule"] .filter-group { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
@@ -203,9 +203,10 @@ body[data-page="overview"] .demo-topbar__tools > [data-demo-theme],
 body[data-page="overview"] .demo-topbar__tools > [data-demo-refresh] { display: none; }
 @keyframes demo-spin { to { transform: rotate(360deg); } }
 .demo-page { min-width: 0; max-width: 1680px; margin: 0 auto; padding: var(--space-8) max(var(--space-8), env(safe-area-inset-right)) var(--space-8) max(var(--space-8), env(safe-area-inset-left)); }
-.demo-page__intro { display: flex; align-items: flex-end; justify-content: space-between; gap: var(--space-4); margin-bottom: var(--space-5); }
-.demo-page__intro h2 { margin: 0 0 var(--space-1); color: var(--text-primary); font-size: var(--font-size-title); font-weight: 700; line-height: var(--line-height-title); text-wrap: balance; }
-.demo-page__intro p { max-width: 70ch; margin: 0; color: var(--text-secondary); font-size: var(--font-size-secondary); line-height: var(--line-height-secondary); }
+.ui-page-header { display: flex; align-items: flex-end; justify-content: space-between; gap: var(--space-4); margin-bottom: var(--space-5); }
+.ui-page-header__copy { min-width: 0; max-width: var(--title-width-page); }
+.ui-page-header h2 { max-width: 100%; margin: 0 0 var(--space-1); color: var(--text-primary); font-size: var(--font-size-title); font-weight: 700; line-height: var(--line-height-title); text-wrap: balance; }
+.ui-page-header p { max-width: 100%; margin: 0; color: var(--text-secondary); font-size: var(--font-size-secondary); line-height: var(--line-height-secondary); }
 .demo-page__actions { display: flex; gap: var(--space-2); flex-wrap: wrap; }
 @media (max-width: 1180px) {
   .demo-topbar__eyebrow, .demo-period__compare { display: none; }
@@ -230,7 +231,7 @@ body[data-page="overview"] .demo-topbar__tools > [data-demo-refresh] { display: 
   .demo-topbar__filters { min-width: 0; flex-basis: 100%; order: 2; overflow: hidden; }
   .demo-period { flex: 1 1 auto; overflow: hidden; }
   .demo-topbar__tools { margin-left: auto; }
-  .demo-page__intro { align-items: flex-start; flex-direction: column; }
+  .ui-page-header { align-items: flex-start; flex-direction: column; }
 }
 @media (max-width: 520px) {
   .demo-sidebar { position: fixed; width: var(--sidebar-width); transform: translateX(-100%); transition: transform .2s ease; }
@@ -252,7 +253,7 @@ body[data-page="overview"] .demo-topbar__tools > [data-demo-refresh] { display: 
   .demo-page { padding: var(--space-4) max(var(--space-3), env(safe-area-inset-right)) var(--space-4) max(var(--space-3), env(safe-area-inset-left)); }
   .toolbox-tools { grid-template-columns: 1fr; }
   .demo-period__popover { position: fixed; top: 112px; left: 12px; right: 12px; grid-template-columns: 1fr 1fr; min-width: 0; transform: none; }
-  .demo-period__popover .button { grid-column: 1 / -1; }
+  .demo-period__popover .ui-button { grid-column: 1 / -1; }
 }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; }

@@ -16,7 +16,7 @@
     else window.alert(message);
   };
   const setStatus = (message) => { const target = $('[data-manage-status]'); if (target) target.textContent = message; window.DemoShell?.setStatus?.(message); };
-  const badgeClass = (value) => value === 'error' ? 'badge--danger' : (doneStates.has(value) || value === 'active' ? 'badge--success' : (value === 'running' || value === 'in_progress' ? 'badge--warning' : 'badge--muted'));
+  const badgeClass = (value) => value === 'error' ? 'ui-badge--danger' : (doneStates.has(value) || value === 'active' ? 'ui-badge--success' : (value === 'running' || value === 'in_progress' ? 'ui-badge--warning' : 'ui-badge--muted'));
   const period = () => String((window.TmallDateRange?.getState?.().endDate || new Date().toISOString()).slice(0, 7));
   const canManage = (name) => Object.keys(state.capabilities).length > 0 && DemoApi.can({ capabilities: state.capabilities }, name);
   const applyCapabilities = () => {
@@ -36,12 +36,12 @@
   }
   function appendCell(row, value, className) { const cell = row.insertCell(); if (className) cell.className = className; if (value instanceof Node) cell.appendChild(value); else cell.textContent = value; return cell; }
   function button(label, icon, handler, title) {
-    const item = document.createElement('button'); item.type = 'button'; item.className = 'button button--ghost'; item.title = title || label; item.setAttribute('aria-label', title || label); item.textContent = label;
+    const item = document.createElement('button'); item.type = 'button'; item.className = 'ui-button ui-button--ghost'; item.title = title || label; item.setAttribute('aria-label', title || label); item.textContent = label;
     if (window.lucide && icon) { item.textContent = ''; const mark = document.createElement('i'); mark.setAttribute('data-lucide', icon); item.appendChild(mark); }
     item.addEventListener('click', handler); return item;
   }
   function actionGroup(actions) { const wrap = document.createElement('div'); wrap.className = 'filter-group'; actions.forEach((action) => wrap.appendChild(action)); return wrap; }
-  function badge(value, label) { const item = document.createElement('span'); const ratingClass = { A: 'badge--success', B: 'badge--info', C: 'badge--warning', D: 'badge--danger' }[value]; item.className = `badge ${ratingClass || badgeClass(value)}`; item.textContent = label || DemoLabels.label('status', value, statusLabels[value] || '--'); return item; }
+  function badge(value, label) { const item = document.createElement('span'); const ratingClass = { A: 'ui-badge--success', B: 'ui-badge--info', C: 'ui-badge--warning', D: 'ui-badge--danger' }[value]; item.className = `ui-badge ${ratingClass || badgeClass(value)}`; item.textContent = label || DemoLabels.label('status', value, statusLabels[value] || '--'); return item; }
 
   function renderMetrics() {
     const pending = state.tasks.filter((row) => !doneStates.has(row.status)).length;

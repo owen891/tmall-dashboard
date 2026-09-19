@@ -144,6 +144,10 @@
   --panel-border: var(--border-default);
   --panel-radius: var(--radius-lg);
   --panel-shadow: none;
+  --title-width-sm: 160px;
+  --title-width-md: 240px;
+  --title-width-lg: 360px;
+  --title-width-page: 720px;
   --dialog-bg: var(--surface-base);
   --dialog-radius: var(--radius-container);
   --dialog-shadow: var(--elevation-lg);

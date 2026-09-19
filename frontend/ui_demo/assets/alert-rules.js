@@ -30,7 +30,7 @@
     dialog.setAttribute('aria-labelledby', 'alertRuleDialogTitle');
     dialog.innerHTML = `
       <form method="dialog" data-alert-rule-form>
-        <div class="modal-form__header"><div><h3 id="alertRuleDialogTitle">预警规则</h3><p class="panel__hint">保存后立即影响对应业务页面。</p></div><button class="button button--ghost" type="button" data-alert-rule-close aria-label="关闭预警规则"><i data-lucide="x"></i></button></div>
+        <div class="modal-form__header"><div><h3 id="alertRuleDialogTitle">预警规则</h3><p class="panel__hint">保存后立即影响对应业务页面。</p></div><button class="ui-button ui-button--ghost" type="button" data-alert-rule-close aria-label="关闭预警规则"><i data-lucide="x"></i></button></div>
         <div class="modal-form__body alert-rule-grid">
           <label>规则名称<input class="input" name="name" required maxlength="60"></label>
           <label>作用域<select class="select" name="scope" required><option value="store">店铺</option><option value="promotion_product">推广商品</option></select></label>
@@ -41,7 +41,7 @@
           <label class="alert-rule-enabled"><input name="enabled" type="checkbox" checked>启用规则</label>
           <p class="modal-form__status" data-alert-rule-status role="status"></p>
         </div>
-        <div class="modal-form__footer"><button class="button" type="button" data-alert-rule-close>取消</button><button class="button button--primary" type="submit"><i data-lucide="save"></i>保存规则</button></div>
+        <div class="modal-form__footer"><button class="ui-button" type="button" data-alert-rule-close>取消</button><button class="ui-button ui-button--primary" type="submit"><i data-lucide="save"></i>保存规则</button></div>
       </form>`;
     document.body.appendChild(dialog);
     form = dialog.querySelector('[data-alert-rule-form]');
@@ -119,13 +119,13 @@
     const badges = document.createElement('div');
     badges.className = 'alert-rule-row__actions';
     const level = document.createElement('span');
-    level.className = `badge badge--${rule.level === 'danger' ? 'danger' : rule.level === 'warning' ? 'warning' : 'info'}`;
+    level.className = `ui-badge ui-badge--${rule.level === 'danger' ? 'danger' : rule.level === 'warning' ? 'warning' : 'info'}`;
     level.textContent = rule.enabled ? levelLabels[rule.level] : '已停用';
     const edit = document.createElement('button');
-    edit.type = 'button'; edit.className = 'button button--ghost'; edit.textContent = '编辑';
+    edit.type = 'button'; edit.className = 'ui-button ui-button--ghost'; edit.textContent = '编辑';
     edit.addEventListener('click', () => openDialog(edit, rule));
     const remove = document.createElement('button');
-    remove.type = 'button'; remove.className = 'button button--ghost'; remove.textContent = '删除';
+    remove.type = 'button'; remove.className = 'ui-button ui-button--ghost'; remove.textContent = '删除';
     remove.addEventListener('click', async () => {
       if (!window.confirm(`确认删除规则“${rule.name}”？`)) return;
       if (ruleMutationBusy) return;
@@ -168,7 +168,7 @@
       message.textContent = error.message || '规则加载失败';
       const retry = document.createElement('button');
       retry.type = 'button';
-      retry.className = 'button button--ghost';
+      retry.className = 'ui-button ui-button--ghost';
       retry.setAttribute('data-alert-rules-retry', 'true');
       retry.textContent = '重试';
       retry.addEventListener('click', () => renderRoot(root));

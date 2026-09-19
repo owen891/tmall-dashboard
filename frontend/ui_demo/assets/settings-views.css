@@ -78,7 +78,7 @@
 
 /* ── 扫描任务：表头计数与 cron 提示 ────────────────────────────────── */
 .settings-main [data-scan-jobs] .scan-cron-hint { margin-top: 2px; color: var(--text-tertiary); font-size: var(--font-size-meta); }
-.panel__header .badge { margin-right: var(--space-2); }
+.panel__header .ui-badge { margin-right: var(--space-2); }
 
 /* ── 响应式 ───────────────────────────────────────────────────────── */
 @media (max-width: 860px) {

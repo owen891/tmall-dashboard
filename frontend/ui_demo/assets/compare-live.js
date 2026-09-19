@@ -145,7 +145,7 @@
     row.appendChild(td);
     body.replaceChildren(row);
     const summary = document.createElement('div');
-    summary.className = 'empty-state';
+    summary.className = 'ui-empty-state';
     summary.appendChild(document.createTextNode(message));
     $('[data-compare-summary]').replaceChildren(summary);
   }

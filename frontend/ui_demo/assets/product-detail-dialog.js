@@ -40,7 +40,7 @@
     dialog.setAttribute('aria-labelledby', 'sharedProductDetailTitle');
     dialog.innerHTML = `
       <div class="product-detail-dialog__shell">
-        <div class="lifecycle-detail__header product-detail-dialog__header"><div class="lifecycle-detail__product"><span class="lifecycle-detail__image product-detail-dialog__image" data-shared-product-image aria-hidden="true"><i data-lucide="image"></i></span><div><h2 id="sharedProductDetailTitle" class="panel__title" data-shared-product-title>商品详情</h2><p class="panel__hint" data-shared-product-meta data-shared-product-subtitle>--</p><div class="lifecycle-detail__id" data-shared-product-id>--</div></div></div><button class="button button--ghost" type="button" data-shared-product-close aria-label="关闭商品详情"><i data-lucide="x"></i><span>关闭</span></button></div>
+        <div class="lifecycle-detail__header product-detail-dialog__header"><div class="lifecycle-detail__product"><span class="lifecycle-detail__image product-detail-dialog__image" data-shared-product-image aria-hidden="true"><i data-lucide="image"></i></span><div><h2 id="sharedProductDetailTitle" class="panel__title" data-shared-product-title>商品详情</h2><p class="panel__hint" data-shared-product-meta data-shared-product-subtitle>--</p><div class="lifecycle-detail__id" data-shared-product-id>--</div></div></div><button class="ui-button ui-button--ghost" type="button" data-shared-product-close aria-label="关闭商品详情"><i data-lucide="x"></i><span>关闭</span></button></div>
         <div class="product-detail-dialog__body" data-shared-product-body>
           <div class="lifecycle-detail-tabs product-detail-dialog__tabs" role="tablist" aria-label="商品详情分组">
             ${detailTabs.map(([id, label], index) => `<button class="lifecycle-detail-tab product-detail-dialog__tab" id="product-detail-tab-${id}" role="tab" type="button" data-product-detail-tab="${id}" aria-selected="${index === 0}" aria-controls="product-detail-panel-${id}" tabindex="${index === 0 ? 0 : -1}">${label}</button>`).join('')}
@@ -50,7 +50,7 @@
       </div>`;
     document.body.appendChild(dialog);
     body = dialog.querySelector('[data-shared-product-panels]');
-    const workbench = node('a', 'button button--ghost', '打开完整工作台');
+    const workbench = node('a', 'ui-button ui-button--ghost', '打开完整工作台');
     workbench.setAttribute('data-shared-product-workbench', '');
     workbench.setAttribute('aria-label', '打开完整商品详情工作台');
     workbench.href = '/products/';
@@ -101,7 +101,7 @@
   }
 
   function section(title, hint = '') {
-    const wrapper = node('section', 'plain-panel panel product-detail-section');
+    const wrapper = node('section', 'ui-panel product-detail-section');
     const header = node('div', 'panel__header');
     const copy = node('div');
     copy.append(node('h3', 'panel__title', title));
@@ -145,7 +145,7 @@
   }
 
   function renderOverviewTrend(rows) {
-    const wrapper = node('article', 'chart-panel panel lifecycle-chart-panel product-detail-overview-trend');
+    const wrapper = node('article', 'chart-panel ui-panel lifecycle-chart-panel product-detail-overview-trend');
     const header = node('div', 'panel__header product-detail-overview-trend__header');
     const copy = node('div');
     copy.append(node('h4', 'panel__title', '经营走势'), node('p', 'panel__hint', '与上方经营与推广指标同源，按月聚合查看销售、净销售与推广花费。'));
@@ -212,8 +212,8 @@
   function renderTrend(rows) {
     const wrapper = section('日趋势', '展示已入库的商品日度经营数据。');
     if (!rows?.length) { wrapper.append(node('p', 'panel__hint', '暂无日趋势数据')); return wrapper; }
-    const tableWrap = node('div', 'data-table-wrap');
-    const table = node('table', 'data-table');
+    const tableWrap = node('div', 'ui-table-wrap');
+    const table = node('table', 'ui-data-table');
     table.innerHTML = '<thead><tr><th>日期</th><th class="num">支付金额</th><th class="num">净销售额</th><th class="num">成功退款金额</th><th class="num">商品访客数</th><th class="num">推广花费</th></tr></thead>';
     const tbody = document.createElement('tbody');
     rows.slice(-31).reverse().forEach((row) => {
@@ -305,8 +305,8 @@
 
       // 渲染表格
       tableContainer.replaceChildren();
-      const tableWrap = node('div', 'data-table-wrap');
-      const table = node('table', 'data-table');
+      const tableWrap = node('div', 'ui-table-wrap');
+      const table = node('table', 'ui-data-table');
       table.innerHTML = '<thead><tr><th>渠道名称</th><th class="num">访客数</th><th class="num">访客占比</th><th class="num">支付金额</th><th class="num">支付买家</th><th class="num">支付转化率</th><th class="num">UV价值</th></tr></thead>';
       const tbody = document.createElement('tbody');
 
@@ -368,7 +368,7 @@
     notes.forEach((note) => {
       const row = node('div', 'status-list__item');
       row.append(node('span', 'status-list__label', note.note || ''));
-      const remove = node('button', 'button button--ghost', '删除'); remove.type = 'button';
+      const remove = node('button', 'ui-button ui-button--ghost', '删除'); remove.type = 'button';
       remove.addEventListener('click', async () => {
         if (!window.confirm('删除备注后无法恢复，确定删除吗？')) return;
         remove.disabled = true;
@@ -385,7 +385,7 @@
     });
     const form = node('div', 'filter-group');
     const input = node('input', 'input'); input.placeholder = '新增备注'; input.setAttribute('aria-label', '新增备注');
-    const add = node('button', 'button', '新增'); add.type = 'button';
+    const add = node('button', 'ui-button', '新增'); add.type = 'button';
     add.addEventListener('click', async () => {
       const note = input.value.trim();
       if (!note) return;
@@ -410,7 +410,7 @@
     (tags.length ? tags : ['暂无标签']).forEach((tag) => list.append(node('span', 'chip', tag)));
     const form = node('div', 'filter-group');
     const input = node('input', 'input'); input.placeholder = '新增标签'; input.setAttribute('aria-label', '新增标签');
-    const add = node('button', 'button', '新增'); add.type = 'button';
+    const add = node('button', 'ui-button', '新增'); add.type = 'button';
     add.addEventListener('click', async () => {
       const tag = input.value.trim();
       if (!tag) return;
@@ -435,13 +435,13 @@
     if (!actions.length) list.append(node('p', 'panel__hint', '暂无运营动作'));
     actions.forEach((action) => {
       const row = node('div', 'status-list__item');
-      row.append(node('span', 'status-list__label', `${text(action.planned_at || action.action_date)} ${text(action.action_type)} ${text(action.action_detail, '')}`.trim()), node('span', 'badge', text(action.status)));
+      row.append(node('span', 'status-list__label', `${text(action.planned_at || action.action_date)} ${text(action.action_type)} ${text(action.action_detail, '')}`.trim()), node('span', 'ui-badge', text(action.status)));
       list.appendChild(row);
     });
     const form = node('div', 'product-detail-action-form');
     const type = node('input', 'input'); type.placeholder = '动作类型'; type.setAttribute('aria-label', '动作类型');
     const detail = node('input', 'input'); detail.placeholder = '动作说明'; detail.setAttribute('aria-label', '动作说明');
-    const add = node('button', 'button button--primary', '新增动作'); add.type = 'button';
+    const add = node('button', 'ui-button ui-button--primary', '新增动作'); add.type = 'button';
     add.setAttribute('data-capability-key', 'product-detail.create_action');
     const canCreateAction = window.DemoApi?.canPage?.('product-detail', 'product-detail.create_action') === true;
     add.disabled = !canCreateAction;
@@ -528,7 +528,7 @@
   async function load() {
     const loadToken = ++token;
     destroyOverviewTrendChart();
-    body.replaceChildren(node('div', 'empty-state', '正在加载完整商品详情…'));
+    body.replaceChildren(node('div', 'ui-empty-state', '正在加载完整商品详情…'));
     const range = window.TmallDateRange?.getState?.() || {};
     const period = String(range.endDate || range.startDate || new Date().toISOString().slice(0, 10)).slice(0, 7);
     const id = encodeURIComponent(current.productId);
@@ -545,7 +545,7 @@
     if (loadToken !== token || !current) return;
     const [detailResult, notesResult, tagsResult, actionsResult, capabilityResult, flowSourceResult] = results;
     if (detailResult.status !== 'fulfilled') {
-      body.replaceChildren(node('div', 'empty-state', detailResult.reason?.message || '商品详情加载失败'));
+      body.replaceChildren(node('div', 'ui-empty-state', detailResult.reason?.message || '商品详情加载失败'));
       return;
     }
     const detail = detailResult.value.data || {};
@@ -606,13 +606,13 @@
     returnFocus = options.trigger || document.activeElement;
     dialog.showModal();
     document.body.classList.add('demo-scroll-lock');
-    load().catch((error) => body.replaceChildren(node('div', 'empty-state', error.message || '商品详情加载失败')));
+    load().catch((error) => body.replaceChildren(node('div', 'ui-empty-state', error.message || '商品详情加载失败')));
     window.lucide?.createIcons();
   }
 
   window.addEventListener('tmall:date-range-change', () => {
     if (!current || !dialog?.open) return;
-    load().catch((error) => body.replaceChildren(node('div', 'empty-state', error.message || '商品详情加载失败')));
+    load().catch((error) => body.replaceChildren(node('div', 'ui-empty-state', error.message || '商品详情加载失败')));
   });
 
   function close() {
