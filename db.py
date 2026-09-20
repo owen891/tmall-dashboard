@@ -1,5 +1,6 @@
 ﻿import sqlite3
 import os
+import time
 from contextlib import contextmanager
 import yaml
 from flask import current_app, g, has_app_context
@@ -83,8 +84,48 @@ def get_db(db_path=None):
     finally:
         conn.close()
 
+# 服务启动时可能正好撞上批量导入（如派米 BI 每日导入）长时间持有的写锁——
+# 那条路径是「一次 BEGIN IMMEDIATE 提交整批文件」，持锁可达数分钟。
+# 只靠 get_connection 的 30s busy_timeout 不够，init_db 会直接抛
+# "database is locked" 让服务起不来（2026-09-20 22:28 就是这么挂的）。
+# 这里对锁类错误做退避重试；正常启动路径没有任何额外开销。
+INIT_DB_LOCK_WAIT_SECONDS = 600
+
+
 def init_db(db_path=None):
+    deadline = time.monotonic() + INIT_DB_LOCK_WAIT_SECONDS
+    attempt = 0
+    while True:
+        try:
+            return _init_db(db_path)
+        except sqlite3.OperationalError as error:
+            message = str(error).lower()
+            if 'locked' not in message and 'busy' not in message:
+                raise
+            attempt += 1
+            if time.monotonic() >= deadline:
+                raise
+            wait = min(5 * attempt, 15)
+            print(f'init_db: 数据库被占用（{error}），{wait}s 后重试（第 {attempt} 次）', flush=True)
+            time.sleep(wait)
+
+
+def _init_db(db_path=None):
     conn = get_connection(db_path)
+    try:
+        _run_init_migrations(conn)
+        conn.commit()
+    except BaseException:
+        conn.rollback()
+        raise
+    finally:
+        # 迁移过程中任何异常（最典型的是 database is locked）都必须释放连接，
+        # 否则重试路径会不断堆积打开着的连接。
+        conn.close()
+    print(f"Database initialized: {db_path}")
+
+
+def _run_init_migrations(conn):
     cursor = conn.cursor()
     cursor.execute('''CREATE TABLE IF NOT EXISTS schema_migrations (
         version INTEGER PRIMARY KEY,
@@ -1164,7 +1205,11 @@ def init_db(db_path=None):
         cursor.execute("ALTER TABLE alert_rules ADD COLUMN name TEXT NOT NULL DEFAULT ''")
     if 'scope' not in alert_rule_columns:
         cursor.execute("ALTER TABLE alert_rules ADD COLUMN scope TEXT NOT NULL DEFAULT 'store'")
-    cursor.execute("UPDATE alert_rules SET name = metric || ' 预警' WHERE name = ''")
+    empty_alert_rule_count = cursor.execute(
+        "SELECT COUNT(*) FROM alert_rules WHERE name = ''"
+    ).fetchone()[0]
+    if empty_alert_rule_count:
+        cursor.execute("UPDATE alert_rules SET name = metric || ' 预警' WHERE name = ''")
     promotion_rule_count = cursor.execute(
         "SELECT COUNT(*) FROM alert_rules WHERE scope = 'promotion_product'"
     ).fetchone()[0]
@@ -1275,6 +1320,18 @@ def init_db(db_path=None):
         'guide_potential_ratio': 'REAL DEFAULT 0',
         'new_buyers': 'INTEGER DEFAULT 0',
         'new_buyer_ratio': 'REAL DEFAULT 0',
+        # 月度成本与利润（与 daily_data 同名同口径，可空 REAL，缺失必须保持 NULL）。
+        'product_cost': 'REAL',
+        'sales_cost': 'REAL',
+        'custom_cost': 'REAL',
+        'logistics_cost': 'REAL',
+        'other_cost': 'REAL',
+        'platform_fee': 'REAL',
+        'after_sales_loss': 'REAL',
+        'gross_profit': 'REAL',
+        'operating_profit': 'REAL',
+        'profit_rate': 'REAL',
+        'profit_target': 'REAL',
     }
     cursor.execute("PRAGMA table_info(monthly_data)")
     existing_monthly_cols = {row[1] for row in cursor.fetchall()}
@@ -1361,6 +1418,21 @@ def init_db(db_path=None):
         'cross_sell_categories': 'INTEGER DEFAULT 0',
         'category_width': 'INTEGER DEFAULT 0',
         'repurchase_users': 'INTEGER DEFAULT 0',
+        # 成本与利润字段（BI「运营视窗」原始列）。
+        # 刻意使用可空 REAL 而不是 `DEFAULT 0`：成本缺失必须表现为 NULL，
+        # 不能被静默默认成 0——否则「经营利润」会被高估成 净销售额−推广花费。
+        # 口径：利润=支付预估；商品成本=净货品成本(支付)；推广花费沿用账单口径的 ad_spend。
+        'product_cost': 'REAL',
+        'sales_cost': 'REAL',
+        'custom_cost': 'REAL',
+        'logistics_cost': 'REAL',
+        'other_cost': 'REAL',
+        'platform_fee': 'REAL',
+        'after_sales_loss': 'REAL',
+        'gross_profit': 'REAL',
+        'operating_profit': 'REAL',
+        'profit_rate': 'REAL',
+        'profit_target': 'REAL',
     }
     cursor.execute("PRAGMA table_info(daily_data)")
     existing_daily_cols = {row[1] for row in cursor.fetchall()}
@@ -1448,9 +1520,6 @@ def init_db(db_path=None):
         "INSERT OR REPLACE INTO schema_migrations(version, name, state) VALUES (?, ?, 'applied')",
         (SCHEMA_VERSION, 'legacy_schema_reconciliation'),
     )
-    conn.commit()
-    conn.close()
-    print(f"Database initialized: {db_path}")
 
 if __name__ == '__main__':
     init_db()

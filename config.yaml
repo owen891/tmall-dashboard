@@ -8,7 +8,10 @@ data:
   watch_folder: "~/Downloads/tmall_data/"
   backup_folder: "data/backups/"
   backup_on_import: true
-  max_backups: 30
+  # 保留策略：单份备份约 2.5GB（库本身 2.6GB）。
+  # 原值 30 份 ≈ 75GB，会把磁盘吃满，2026-09-20 已据此收紧。
+  max_backups: 4
+  max_backup_total_gb: 20
 
 thresholds:
   refund_warning: 0.20

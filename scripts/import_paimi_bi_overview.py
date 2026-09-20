@@ -28,6 +28,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from db import get_db_path, init_db  # noqa: E402
+from scripts.backup_retention import prune_backups, retention_settings  # noqa: E402
 
 DEFAULT_SOURCE = Path(r"E:\派米\BI数据源25.4-26.7")
 MISSING_MARKERS = {'', '-', '--', '—', '－', 'none', 'null', 'nan', 'n/a'}
@@ -258,6 +259,9 @@ def backup_database(db_path: Path, backup_dir: Path) -> Path:
     finally:
         destination.close()
         source.close()
+    # 每次导入都整库备份，必须裁剪；本次刚生成的这份予以保护。
+    keep_newest, max_total_bytes = retention_settings()
+    prune_backups(backup_dir, keep_newest=keep_newest, max_total_bytes=max_total_bytes, protected=[target])
     return target
 
 

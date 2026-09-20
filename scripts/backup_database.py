@@ -64,6 +64,13 @@ def main():
     parser.add_argument('--destination', default=None)
     args = parser.parse_args()
     report = backup_database(args.source, args.destination)
+    if args.destination is None:
+        # 默认落到 data/backups/：同样要裁剪，否则手工备份也会堆满磁盘
+        from backup_retention import prune_backups, retention_settings
+
+        keep_newest, max_total_bytes = retention_settings()
+        prune_backups(Path(report['destination']).parent, keep_newest=keep_newest,
+                      max_total_bytes=max_total_bytes, protected=[report['destination']])
     print(json.dumps(report, ensure_ascii=False, indent=2))
     raise SystemExit(0 if report['ok'] else 1)
 

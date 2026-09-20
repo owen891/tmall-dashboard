@@ -25,7 +25,8 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from db import get_db_path, init_db  # noqa: E402
+from db import get_db_path, get_shop_id, init_db  # noqa: E402
+from scripts.backup_retention import prune_backups, retention_settings  # noqa: E402
 from services.source_resolution_service import record_daily_observation  # noqa: E402
 from scripts.import_paimi_bi_overview import (  # noqa: E402
     clean_text,
@@ -62,14 +63,42 @@ DAILY_SPECS: dict[str, tuple[str, ...]] = {
     'ad_spend': ('推广花费(账单)',),
     'ad_roi': ('推广ROI(账单)', '推广投产(账单)', '推广ROI'),
     'repurchase_rate': ('复购率',),
+    # 成本与利润（口径：利润取「支付预估」、商品成本取「净货品成本(支付)」、
+    # 推广花费沿用账单口径）。别名按优先级排列，first_value 取第一个非空值。
+    # 校验式：利润(支付预估) = 净销售额(支付) − 销售费用(支付预估) − 自定义费用
+    #         − 净货品成本(支付) − 发货费用(支付) − 其他费用(支付)
+    'product_cost': ('净货品成本(支付)', '普通单净货品成本(支付)', '净货品成本(发货)'),
+    'sales_cost': ('销售费用(支付预估)', '销售费用(发货预估)', '销售费用(账单)'),
+    'custom_cost': ('自定义费用',),
+    'logistics_cost': ('发货费用(支付)', '普通单发货费用(支付)', '发货费用(发货)'),
+    'other_cost': ('其他费用(支付)', '其他费用(发货)'),
+    'platform_fee': ('平台花费(账单)', '平台花费(支付预估)', '天猫佣金(发货)'),
+    'after_sales_loss': ('退款货品成本', '普通单退款货品成本'),
+    'gross_profit': ('销售毛利(支付)', '预估销售毛利(支付)'),
+    'operating_profit': ('利润(支付预估)',),
+    'profit_rate': ('利润率(支付预估)',),
+    'profit_target': ('利润目标',),
 }
 
 
 def date_from_file(path: Path) -> str:
-    match = re.search(r'(20\d{2}-\d{2}-\d{2})(?:\.xlsx)?$', path.name)
+    # 浏览器重复下载会在文件名末尾追加 " (1)" / " (2)"，需要容忍。
+    match = re.search(r'(20\d{2}-\d{2}-\d{2})(?:\s*\(\d+\))?(?:\.xlsx)?$', path.name)
     if not match:
         raise ValueError(f'无法从文件名识别日度日期: {path.name}')
     return match.group(1)
+
+
+def report_date_or_none(path: Path) -> str | None:
+    """Scan-safe variant: the source folder may also hold non-daily workbooks.
+
+    ``sorted(files, key=date_from_file)`` would abort the whole run on a single
+    unrelated workbook, so directory scans must use this and skip instead.
+    """
+    try:
+        return date_from_file(path)
+    except ValueError:
+        return None
 
 
 def source_value(payload: dict[str, Any], aliases: tuple[str, ...]) -> float | None:
@@ -184,6 +213,10 @@ def import_file(connection: sqlite3.Connection, path: Path, dry_run: bool = Fals
                 source_filename=path.name,
                 source_batch_id=source_batch_id,
                 source_system=SOURCE_SYSTEM,
+                # 必须显式传入店铺 scope。缺省值 'default' 会与既有数据
+                # （shop_id='3828498662'）分裂成两套行，同一商品同一天被
+                # 重复计入，品类汇总直接翻倍。
+                shop_id=get_shop_id(),
             )
             effective_fields.update(result.get('effective_fields') or [])
 
@@ -236,6 +269,9 @@ def backup_database(db_path: Path) -> Path:
     finally:
         destination.close()
         source.close()
+    # 每次导入都整库备份，必须裁剪；本次刚生成的这份予以保护。
+    keep_newest, max_total_bytes = retention_settings()
+    prune_backups(backup_dir, keep_newest=keep_newest, max_total_bytes=max_total_bytes, protected=[target])
     return target
 
 
@@ -265,7 +301,16 @@ def main() -> int:
     db_path = args.db.resolve()
     if not source.is_dir():
         raise SystemExit(f'数据源目录不存在: {source}')
-    files = sorted(source.glob('*.xlsx'), key=date_from_file)
+    files = []
+    skipped: list[str] = []
+    for candidate in source.glob('*.xlsx'):
+        if report_date_or_none(candidate) is None:
+            skipped.append(candidate.name)
+            continue
+        files.append(candidate)
+    files.sort(key=date_from_file)
+    if skipped:
+        print(f'跳过 {len(skipped)} 个无法识别日期的文件: {", ".join(sorted(skipped))}', flush=True)
     if args.dates:
         requested = set(args.dates)
         files = [path for path in files if date_from_file(path) in requested]

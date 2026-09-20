@@ -13,6 +13,7 @@ import yaml
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from db import get_connection, get_db_path, init_db
+from scripts.backup_retention import prune_backups, retention_settings
 from scripts.utils import clean_percentage, clean_number, clean_int, clean_month, parse_date_range, is_valid_row, classify_action
 from services.source_resolution_service import record_daily_observation
 from services.import_service import import_service
@@ -298,10 +299,11 @@ def backup_database():
         print(f"  WARNING: Backup failed integrity check, removed {backup_path}")
         return False
 
-    # 清理旧备份
-    backups = sorted(glob.glob(os.path.join(backup_dir, 'dashboard_*.db')))
-    while len(backups) > max_backups:
-        os.remove(backups.pop(0))
+    # 清理旧备份：按数量 + 总容量双重裁剪。
+    # 单份备份约 2.5GB，只按数量裁剪（旧配置 30 份）一样能吃掉几十 GB。
+    _keep_newest, _max_total_bytes = retention_settings()
+    prune_backups(backup_dir, keep_newest=max_backups, max_total_bytes=_max_total_bytes,
+                  pattern='dashboard_*.db', protected=[backup_path])
 
     print(f"  Backup: {backup_path}")
     return True
