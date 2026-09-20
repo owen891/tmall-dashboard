@@ -114,8 +114,13 @@
   // 加载单品流量来源数据（树形折叠展开）
   async function loadItemFlowSource(itemId) {
     try {
-      const r = await fetch(`/api/sycm/item-flow/summary?item_id=${encodeURIComponent(itemId)}`);
-      const d = await r.json();
+      const requestFor = (belong) => fetch(`/api/sycm/item-flow/summary?item_id=${encodeURIComponent(itemId)}&belong=${belong}`);
+      // 优先「全程来源」（有层级树可展开），没有数据时回退「第一次访问来源」
+      let d = await (await requestFor('all')).json();
+      if (d.ok && !((d.data || {}).channels || []).length) {
+        const fallback = await (await requestFor('farthest')).json();
+        if (fallback.ok) d = fallback;
+      }
       if (!d.ok) {
         const tbody = document.querySelector('[data-item-flow-table]');
         if (tbody) tbody.innerHTML = `<tr><td colspan="10" style="text-align:center;color:var(--text-tertiary);padding:24px">${d.message || '暂无流量来源数据'}</td></tr>`;
@@ -126,12 +131,13 @@
       const totalUv = data.total_uv || 0;
       const totalPay = data.total_pay_amount || 0;
 
-      // 构建树形结构：level=0 → level=1 → level=2
-      const level0 = channels.filter(ch => ch.level === 0);
+      // 根层渠道：parent_channel 指不到任何渠道的即为根层（两个口径通用）
+      const channelNames = new Set(channels.map(ch => ch.channel_name));
+      const level0 = channels.filter(ch => !ch.parent_channel || !channelNames.has(ch.parent_channel));
       const childrenMap = {};
       channels.forEach(ch => {
         const parent = ch.parent_channel || '';
-        if (parent && ch.level > 0) {
+        if (parent && channelNames.has(parent)) {
           if (!childrenMap[parent]) childrenMap[parent] = [];
           childrenMap[parent].push(ch);
         }
@@ -151,24 +157,16 @@
       tree.sort((a, b) => (b.uv || 0) - (a.uv || 0));
       tree.forEach(node => itemFlowExpanded.add(node.channel_name));
 
-      // 统计
-      let totalBuyers = 0;
-      let channelCount = 0;
-      function countChannels(nodes) {
-        nodes.forEach(node => {
-          channelCount++;
-          totalBuyers += node.pay_buyer_count || 0;
-          if (node.children.length) countChannels(node.children);
-        });
-      }
-      countChannels(tree);
-
       const setText2 = (sel, val) => { const el = document.querySelector(sel); if (el) el.textContent = val; };
-      setText2('[data-item-flow-date]', data.stat_date || '--');
-      setText2('[data-item-flow-total-uv]', totalUv.toLocaleString('zh-CN'));
-      setText2('[data-item-flow-total-pay]', '¥' + (totalPay >= 10000 ? (totalPay/10000).toFixed(1) + '万' : totalPay.toFixed(0)));
-      setText2('[data-item-flow-total-buyers]', totalBuyers.toLocaleString('zh-CN'));
-      setText2('[data-item-flow-channel-count]', channelCount);
+      // 卡片一律用商品维度去重值（渠道合计会把同一访客重复计入，与商品口径不可比）
+      const totals = data.product_totals || null;
+      const periodText = data.data_days > 1 ? `${data.start_date} ~ ${data.end_date}` : (data.start_date || '--');
+      const compactMoney = (value) => '¥' + (value >= 10000 ? (value / 10000).toFixed(1) + '万' : value.toFixed(0));
+      setText2('[data-item-flow-date]', periodText);
+      setText2('[data-item-flow-total-uv]', totals ? totals.visitors.toLocaleString('zh-CN') : '--');
+      setText2('[data-item-flow-total-pay]', totals ? compactMoney(totals.payment_amount) : '--');
+      setText2('[data-item-flow-total-buyers]', totals ? totals.buyers.toLocaleString('zh-CN') : '--');
+      setText2('[data-item-flow-channel-count]', level0.length);
 
       const tbody = document.querySelector('[data-item-flow-table]');
       if (!tbody) return;
