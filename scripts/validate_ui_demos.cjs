@@ -4,7 +4,7 @@ const { spawnSync } = require('node:child_process');
 
 const root = path.resolve(__dirname, '..', 'frontend', 'ui_demo');
 const pagesDir = path.join(root, 'pages');
-const required = ['overview', 'products', 'promotion', 'lifecycle', 'reviews', 'data-center', 'settings'];
+const required = ['overview', 'products', 'promotion', 'lifecycle', 'reviews', 'data-center', 'settings', 'creative-board'];
 const errors = [];
 const read = (file) => {
   try { return fs.readFileSync(file, 'utf8').replace(/\r\n?/g, '\n'); }
@@ -78,7 +78,7 @@ for (const hook of ['data-products-status', 'data-products-starred', 'data-produ
   assert(products.includes(hook), `products: missing workflow hook ${hook}`);
 }
 assert(products.includes('data-products-mobile-summary'), 'products: missing mobile summary workflow hook');
-assert(products.includes('data-table-wrap--discoverable'), 'products: missing horizontal scroll affordance hook');
+assert(products.includes('ui-table-wrap--discoverable'), 'products: missing horizontal scroll affordance hook');
 assert(products.includes('../assets/product-detail-dialog.js'), 'products: non-list surfaces must keep the shared product detail dialog dependency');
 assert(productsAdapter.includes('new URL(`/products/${id}`, window.location.origin)'), 'products: product rows must open the standalone detail workbench');
 assert(productsAdapter.includes("['preset', 'promotion_channel']") && productsAdapter.includes("['tier', 'lifecycle_stage']"), 'products: detail navigation must preserve supported context');
@@ -92,6 +92,15 @@ for (const hook of ['data-promotion-alerts', 'data-promotion-tabs', 'data-promot
 }
 const promotionAdapter = read(path.join(root, 'assets', 'promotion-live.js'));
 assert(promotionAdapter.includes("DemoApi.domainRequest('/api/promotion?"), 'promotion: primary data must use the promotion domain API');
+
+const creativeBoard = read(path.join(pagesDir, 'creative-board.html'));
+const creativeBoardAdapter = read(path.join(root, 'assets', 'creative-board-live.js'));
+const creativeBoardStyles = read(path.join(root, 'assets', 'creative-board.css'));
+assert(creativeBoard.includes('data-page="creative-board"'), 'creative-board: wrong data-page');
+assert(creativeBoard.includes('../assets/creative-board-live.js'), 'creative-board: missing live adapter');
+assert(creativeBoardAdapter.includes("DemoApi.domainRequest('/api/creative-board')"), 'creative-board: missing API request');
+assert(creativeBoardStyles.includes('@media (max-width: 900px)'), 'creative-board: missing narrow layout contract');
+assert(creativeBoardStyles.includes('@media (max-width: 560px)'), 'creative-board: missing mobile layout contract');
 
 const reviews = read(path.join(pagesDir, 'reviews.html'));
 assert(reviews.includes('data-reviews-list'), 'reviews: missing action-review surface');
@@ -123,10 +132,14 @@ assert(!settingsAdapter.includes('window.prompt('), 'settings: template manageme
 assert(settingsAdapter.includes('data-settings-dirty'), 'settings adapter: missing dirty-state behavior');
 const alertRules = read(path.join(root, 'assets', 'alert-rules.js'));
 assert(alertRules.includes('data-alert-rules-retry'), 'alert rules: failed loading must expose local retry');
-for (const hook of ['data-template-map-key', 'data-template-map-column', 'data-template-view-columns']) {
-  assert(settingsAdapter.includes(hook), `settings: missing structured template control ${hook}`);
+for (const hook of ['data-template-map-key', 'data-template-map-column']) {
+  assert(settingsAdapter.includes(hook), `settings: missing import mapping control ${hook}`);
 }
-
+assert(settings.includes('导入规则'), 'settings: missing import rules workspace');
+assert(settings.includes('href="/products"'), 'settings: missing products template ownership link');
+assert(!settingsAdapter.includes('data-settings-view-field-selector'), 'settings: duplicate product view editor remains');
+assert(!settingsAdapter.includes('view_templates'), 'settings: product view templates must remain on products page');
+assert(settingsAdapter.includes('mapping_templates: clone(templateDraft.mapping_templates)'), 'settings: import rules must save a minimal mapping payload');
 const shell = read(path.join(root, 'assets', 'shell.js'));
 const shellCss = read(path.join(root, 'assets', 'shell.css'));
 for (const value of ['today', 'yesterday', '7d', '30d', '90d', 'this_week', 'last_week', 'this_month', 'last_month', 'custom']) {
@@ -165,11 +178,11 @@ assert(!shell.includes('data-period-start') && !shell.includes('data-period-end'
 assert(/\.toolbox-dialog\s*{[^}]*max-height:\s*calc\(100dvh - 24px\)/i.test(shellCss), 'shell.css: toolbox dialog must be bounded by the viewport');
 assert(/\.toolbox-dialog__body\s*{[^}]*overflow-y:\s*auto/i.test(shellCss), 'shell.css: toolbox body must own vertical scrolling');
 assert(/\.toolbox-dialog__body\s*{[^}]*overflow-x:\s*hidden/i.test(shellCss), 'shell.css: toolbox body must prevent dialog-wide horizontal overflow');
-assert(/\.toolbox-dialog\s+\.data-table\s*{[^}]*min-width:\s*100%/i.test(shellCss), 'shell.css: toolbox tables must fit the dialog by default');
+assert(/\.toolbox-dialog\s+\.ui-data-table\s*\{[^}]*min-width:\s*100%/i.test(shellCss), 'shell.css: toolbox tables must fit the dialog by default');
 assert(/\.demo-tool\s*{[^}]*height:\s*var\(--icon-button-size\)/i.test(shellCss), 'shell.css: topbar icon buttons must use the shared size token');
 assert(/\.demo-tool\s+\.lucide\s*{[^}]*width:\s*var\(--icon-control\)/i.test(shellCss), 'shell.css: Lucide topbar icons must use the shared icon token');
 
-for (const adapter of ['overview-live.js', 'products-live.js', 'promotion-live.js', 'lifecycle-live.js']) {
+for (const adapter of ['overview-live.js', 'products-live.js', 'promotion-live.js', 'lifecycle-live.js', 'creative-board-live.js']) {
   const source = read(path.join(root, 'assets', adapter));
   assert(source.includes('DemoApi.request(') || source.includes('DemoApi.domainRequest('), `assets/${adapter}: must use required API requests`);
   assert(!source.includes('DemoApi.optional('), `assets/${adapter}: fallback is forbidden`);

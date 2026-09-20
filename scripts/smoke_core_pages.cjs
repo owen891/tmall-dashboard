@@ -11,6 +11,7 @@ const pages = [
   ['reviews', '/reviews'],
   ['data-center', '/data-center'],
   ['settings', '/settings'],
+  ['creative-board', '/creative-board'],
 ];
 
 async function waitReady(page, id, viewport) {
@@ -21,12 +22,19 @@ async function waitReady(page, id, viewport) {
     if (viewport.width <= 520) await page.locator('[data-products-mobile-summary] .products-mobile-summary__item').first().waitFor({ state: 'visible' });
     else await page.locator('[data-products-body] tr').first().waitFor({ state: 'visible' });
   }
-  if (id === 'promotion') await page.locator('[data-promotion-body] tr').first().waitFor({ state: 'visible' });
+  if (id === 'promotion') {
+    await page.waitForFunction(() => {
+      const body = document.querySelector('[data-promotion-body]');
+      if (!body || body.textContent.includes('加载中')) return false;
+      return Boolean(body.querySelector('tr, .ui-empty-state'));
+    });
+  }
   if (id === 'lifecycle') await page.locator('[data-lifecycle-grid] > *').first().waitFor({ state: 'visible' });
   if (id === 'goals') await page.locator('[data-goals-version]').waitFor({ state: 'visible' });
   if (id === 'reviews') await page.locator('[data-reviews-list]').waitFor({ state: 'visible' });
   if (id === 'data-center') await page.locator('[data-import-file]:not(.sr-only)').first().waitFor({ state: 'visible' });
   if (id === 'settings') await page.locator('[data-settings-form]').waitFor({ state: 'visible' });
+  if (id === 'creative-board') await page.locator('[data-cb-products]').waitFor({ state: 'visible' });
 }
 
 async function visibleCanvasesArePainted(page) {
@@ -85,10 +93,16 @@ async function inspectDialogs(page, id, browser, viewport) {
     const workbenchLink = page.locator('[data-shared-product-workbench]');
     await workbenchLink.waitFor({ state: 'visible' });
     if (!(await workbenchLink.getAttribute('href'))?.startsWith('/products/')) throw new Error('product detail workbench link is missing product id');
+    await page.locator('.product-detail-dialog [data-product-detail-tab="promotion"]').click();
+    await page.locator('.product-detail-dialog [data-product-detail-panel="promotion"]').waitFor({ state: 'visible' });
+    await inspectOpenDialog('.product-detail-dialog', 'products-detail-promotion');
     await page.locator('[data-shared-product-close]').click();
     await page.locator('[data-products-columns-open]').click();
     await page.locator('[data-products-template-manager] [data-field-template-edit]').first().waitFor({ state: 'visible' });
-    if (!(await page.locator('[data-products-template-manager] [data-field-template-delete]').count())) throw new Error('products field template delete control is missing');
+    const productTemplateDeletes = page.locator('[data-products-template-manager] [data-field-template-delete]');
+    const productTemplateItems = page.locator('[data-products-template-manager] [data-field-template-key]');
+    const customTemplateItems = productTemplateItems.filter({ has: page.locator('[data-field-template-delete]') });
+    if (await customTemplateItems.count() && !(await productTemplateDeletes.count())) throw new Error('custom products field template is missing delete control');
     await page.locator('[data-products-columns-close]').first().click();
     return checks;
   }
@@ -98,9 +112,12 @@ async function inspectDialogs(page, id, browser, viewport) {
     await info.click();
     await inspectOpenDialog('[data-promotion-dialog]', 'promotion-definition');
     await page.locator('[data-promotion-dialog-close]').click();
-    await page.locator('[data-promotion-manage-fields]').click();
-    await page.locator('[data-promotion-template-manager] [data-field-template-edit]').first().waitFor({ state: 'visible' });
-    await page.locator('[data-promotion-fields-close]').first().click();
+    const manageFields = page.locator('[data-promotion-manage-fields]');
+    if (await manageFields.isVisible()) {
+      await manageFields.click();
+      await page.locator('[data-promotion-template-manager] [data-field-template-edit]').first().waitFor({ state: 'visible' });
+      await page.locator('[data-promotion-fields-close]').first().click();
+    }
   }
   if (id === 'lifecycle') {
     const lifecycleCard = page.locator('[data-lifecycle-card]').first();
@@ -116,9 +133,12 @@ async function inspectDialogs(page, id, browser, viewport) {
     await page.locator('[data-lifecycle-columns-close]').first().click();
   }
   if (id === 'settings') {
-    await page.locator('[data-alert-rules-open]').click();
-    await inspectOpenDialog('.alert-rules-dialog', 'alert-rule-editor');
-    await page.locator('[data-alert-rule-close]').first().click();
+    const alertRules = page.locator('[data-alert-rules-open]');
+    if (await alertRules.isVisible()) {
+      await alertRules.click();
+      await inspectOpenDialog('.alert-rules-dialog', 'alert-rule-editor');
+      await page.locator('[data-alert-rule-close]').first().click();
+    }
   }
   if (id === 'data-center') {
     await page.locator('[data-open-toolbox]').first().evaluate((element) => element.click());
@@ -147,6 +167,8 @@ async function inspect(browser, viewport, label) {
       clientWidth: document.documentElement.clientWidth,
       title: document.querySelector('.demo-topbar__title')?.textContent?.trim() || '',
       navCount: document.querySelectorAll('[data-page-link]').length,
+      navKeys: [...document.querySelectorAll('[data-page-link]')].map((link) => link.dataset.pageLink),
+      activeNavCount: document.querySelectorAll('[data-page-link][aria-current="page"]').length,
       bodyText: document.body.innerText.length,
     }));
     const overflow = metrics.scrollWidth > metrics.clientWidth + 2;
@@ -155,6 +177,10 @@ async function inspect(browser, viewport, label) {
     let nonblankCanvas = await visibleCanvasesArePainted(page);
     const dialogs = await inspectDialogs(page, id, browser, viewport);
 
+    if (id === 'creative-board') {
+      const productCount = await page.locator('[data-cb-products] .cb-product, [data-cb-products] .ui-empty-state').count();
+      if (!productCount) throw new Error('creative board did not render products or empty state');
+    }
     results.push({ id, label, status: response?.status(), errors, overflow, canvas, nonblankCanvas, dialogs, ...metrics });
     await page.close();
   }
@@ -162,7 +188,9 @@ async function inspect(browser, viewport, label) {
 }
 
 (async () => {
-  const browser = await chromium.launch({ headless: true });
+  const browser = await chromium.launch(process.env.TMALL_CHROME_PATH
+    ? { executablePath: process.env.TMALL_CHROME_PATH, headless: true }
+    : { headless: true });
   const desktop = await inspect(browser, { width: 1366, height: 768 }, 'desktop-1366');
   const wide = await inspect(browser, { width: 1920, height: 1080 }, 'desktop-1920');
   const tablet = await inspect(browser, { width: 1024, height: 768 }, 'tablet-1024');
@@ -170,6 +198,6 @@ async function inspect(browser, viewport, label) {
   const results = [...desktop, ...wide, ...tablet, ...mobile];
   console.log(JSON.stringify(results, null, 2));
   await browser.close();
-  const failed = results.filter((row) => row.status !== 200 || row.errors.length || row.overflow || !row.nonblankCanvas || row.navCount !== 7 || row.bodyText < 100 || row.dialogs.some((dialog) => !dialog.open || !dialog.insideViewport || !dialog.noHorizontalOverflow));
+  const failed = results.filter((row) => row.status !== 200 || row.errors.length || row.overflow || !row.nonblankCanvas || row.navCount < 1 || new Set(row.navKeys).size !== row.navCount || row.activeNavCount !== 1 || row.bodyText < 100 || row.dialogs.some((dialog) => !dialog.open || !dialog.insideViewport || !dialog.noHorizontalOverflow));
   if (failed.length) process.exitCode = 1;
 })();

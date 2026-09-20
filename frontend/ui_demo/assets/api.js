@@ -130,7 +130,7 @@
     return payload;
   };
   async function loadPageCapabilities(pageKey = document.body?.dataset.page) {
-    if (!pageKey) return null;
+    if (!pageKey || pageKey === 'creative-board') return null;
     if (!pageCapabilityCache.has(pageKey)) {
       const query = `?page=${encodeURIComponent(pageKey)}`;
       const pending = domainRequest(`/api/page-capabilities${query}`);
