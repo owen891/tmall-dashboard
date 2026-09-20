@@ -40,6 +40,9 @@ class PromotionRepo:
         columns = PromotionRepo.GROUP_COLUMNS[group_by]
         grain_clause, grains = PromotionRepo._grain_filter(group_by)
         where = [f'({grain_clause})', 'pdf.shop_id = ?', 'pdf.date BETWEEN ? AND ?']
+        if group_by == 'product':
+            # 账户级总账行没有商品归属,不进商品排行(否则重复计账)
+            where.append("pdf.product_id != ''")
         params = [*grains, shop_id, start_date, end_date]
         for key in ('channel', 'campaign_id', 'unit_id', 'product_id'):
             if filters.get(key):
@@ -241,7 +244,7 @@ class PromotionRepo:
     def creatives(start_date, end_date, product_id=None, channel=None, sort='clicks', filters=None):
         """素材维度汇总：promotion_creative_daily × promotion_creatives（排除系统创意）。"""
         shop_id = get_shop_id()
-        where = ['f.shop_id = ?', 'f.date BETWEEN ? AND ?']
+        where = ['f.shop_id = ?', "f.product_id != ''", 'f.date BETWEEN ? AND ?']
         params = [shop_id, start_date, end_date]
         filters = filters or {}
         if filters.get('shop_label'):
@@ -284,7 +287,7 @@ class PromotionRepo:
 
     @staticmethod
     def campaigns_for_product(start_date, end_date, product_id):
-        """某商品关联的计划列表（计划粒度事实 × 计划商品映射）。"""
+        """某商品关联的计划列表（计划/单元事实 × 计划商品映射）。"""
         shop_id = get_shop_id()
         with get_db() as connection:
             rows = connection.execute(
@@ -294,16 +297,98 @@ class PromotionRepo:
                           SUM(f.attributed_payment_amount) AS attributed_payment_amount,
                           SUM(f.impressions) AS impressions, SUM(f.clicks) AS clicks,
                           SUM(f.payment_buyers) AS payment_buyers,
+                          SUM(COALESCE(f.direct_payment_amount, 0)) AS direct_payment_amount,
+                          SUM(COALESCE(f.indirect_payment_amount, 0)) AS indirect_payment_amount,
                           SUM(COALESCE(f.cart_adds, 0)) AS cart_adds,
                           SUM(COALESCE(f.new_buyers, 0)) AS new_buyers
                    FROM promotion_campaign_items ci
                    LEFT JOIN promotion_daily_facts f
                        ON f.shop_id = ci.shop_id AND f.campaign_id = ci.campaign_id
-                       AND f.grain = 'campaign' AND f.date BETWEEN ? AND ?
+                       AND f.grain IN ('campaign', 'unit') AND f.date BETWEEN ? AND ?
                    WHERE ci.shop_id = ? AND ci.product_id = ?
                    GROUP BY ci.campaign_id
+                   HAVING SUM(COALESCE(f.ad_spend, 0)) > 0
                    ORDER BY ad_spend DESC''',
                 [start_date, end_date, shop_id, product_id],
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    @staticmethod
+    def product_facts_for_product(start_date, end_date, product_id):
+        """商品总账兜底：当计划映射没有有效事实时提供商品级推广汇总。"""
+        shop_id = get_shop_id()
+        with get_db() as connection:
+            row = connection.execute(
+                '''SELECT ? AS campaign_id, '商品推广总账' AS campaign_name,
+                          MAX(channel) AS channel,
+                          SUM(ad_spend) AS ad_spend,
+                          SUM(attributed_payment_amount) AS attributed_payment_amount,
+                          SUM(impressions) AS impressions, SUM(clicks) AS clicks,
+                          SUM(payment_buyers) AS payment_buyers,
+                          SUM(COALESCE(direct_payment_amount, 0)) AS direct_payment_amount,
+                          SUM(COALESCE(indirect_payment_amount, 0)) AS indirect_payment_amount,
+                          SUM(COALESCE(cart_adds, 0)) AS cart_adds,
+                          SUM(COALESCE(new_buyers, 0)) AS new_buyers
+                   FROM promotion_daily_facts
+                   WHERE shop_id = ? AND grain = 'product' AND product_id = ?
+                     AND date BETWEEN ? AND ?''',
+                [f'product:{product_id}', shop_id, product_id, start_date, end_date],
+            ).fetchone()
+        return dict(row) if row and row['ad_spend'] is not None else None
+
+    @staticmethod
+    def product_behavior_for_period(start_date, end_date, product_id):
+        """商品经营侧潜客数据，按月份覆盖日期范围聚合。"""
+        with get_db() as connection:
+            row = connection.execute(
+                '''SELECT SUM(COALESCE(guide_visits, 0)) AS guide_visits,
+                          SUM(COALESCE(guide_visitors, 0)) AS guide_visitors,
+                          SUM(COALESCE(guide_potential, 0)) AS guide_potential,
+                          SUM(COALESCE(new_buyers, 0)) AS new_buyers
+                   FROM monthly_data
+                   WHERE product_id = ? AND month BETWEEN ? AND ?''',
+                [product_id, str(start_date)[:7], str(end_date)[:7]],
+            ).fetchone()
+        return dict(row) if row else {}
+
+    @staticmethod
+    def creative_board(shop_label=None):
+        """素材历史累计看板：以商品目录为主表关联人工素材，不含时间筛选。"""
+        shop_id = get_shop_id()
+        where = [
+            "COALESCE(p.product_id, '') != ''",
+            "c.creative_id IS NOT NULL",
+        ]
+        params = [shop_id]
+        if shop_label:
+            where.append("(COALESCE(p.shop_label, '') = ? OR instr(',' || COALESCE(p.shop_label, '') || ',', ',' || ? || ',') > 0)")
+            params.extend([shop_label, shop_label])
+        with get_db() as connection:
+            rows = connection.execute(
+                    f'''SELECT c.creative_id, MAX(c.creative_name) AS creative_name,
+                           MAX(c.image_url) AS image_url, MAX(c.creative_format) AS creative_format,
+                           p.product_id,
+                           MAX(COALESCE(NULLIF(p.title, ''), NULLIF(c.product_name, ''), p.product_id)) AS title,
+                           MAX(COALESCE(NULLIF(p.image_url, ''), '')) AS product_image,
+                           MAX(COALESCE(p.shop_label, '')) AS shop_label,
+                           COALESCE(SUM(f.ad_spend), 0) AS ad_spend,
+                           COALESCE(SUM(f.attributed_payment_amount), 0) AS attributed_payment_amount,
+                           COALESCE(SUM(f.impressions), 0) AS impressions,
+                           COALESCE(SUM(f.clicks), 0) AS clicks,
+                           COALESCE(SUM(f.payment_buyers), 0) AS payment_buyers,
+                           COALESCE(SUM(f.direct_payment_amount), 0) AS direct_payment_amount,
+                           COALESCE(SUM(f.cart_adds), 0) AS cart_adds,
+                           COALESCE(SUM(f.new_buyers), 0) AS new_buyers,
+                           MIN(f.date) AS first_date, MAX(f.date) AS last_date
+                     FROM products p
+                     LEFT JOIN promotion_creatives c
+                         ON c.shop_id = ? AND c.product_id = p.product_id
+                         AND {PromotionRepo.SYSTEM_CREATIVE_SQL}
+                     LEFT JOIN promotion_creative_daily f
+                         ON f.shop_id = c.shop_id AND f.creative_id = c.creative_id
+                     WHERE {' AND '.join(where)}
+                     GROUP BY c.creative_id, p.product_id
+                     ORDER BY ad_spend DESC, p.product_id''', params,
             ).fetchall()
         return [dict(row) for row in rows]
 
@@ -339,6 +424,8 @@ class PromotionRepo:
                           SUM(attributed_payment_amount) AS attributed_payment_amount,
                           SUM(impressions) AS impressions, SUM(clicks) AS clicks,
                           SUM(payment_buyers) AS payment_buyers,
+                          SUM(COALESCE(direct_payment_amount, 0)) AS direct_payment_amount,
+                          SUM(COALESCE(indirect_payment_amount, 0)) AS indirect_payment_amount,
                           SUM(COALESCE(cart_adds, 0)) AS cart_adds,
                           SUM(COALESCE(new_buyers, 0)) AS new_buyers
                    FROM promotion_daily_facts
@@ -356,13 +443,21 @@ class PromotionRepo:
             rows = connection.execute(
                 '''SELECT MAX(ci.channel) AS channel,
                           SUM(f.ad_spend) AS ad_spend,
-                          SUM(f.attributed_payment_amount) AS attributed_payment_amount
+                          SUM(f.attributed_payment_amount) AS attributed_payment_amount,
+                          SUM(f.impressions) AS impressions, SUM(f.clicks) AS clicks,
+                          SUM(f.payment_buyers) AS payment_buyers,
+                          SUM(COALESCE(f.direct_payment_amount, 0)) AS direct_payment_amount,
+                          SUM(COALESCE(f.indirect_payment_amount, 0)) AS indirect_payment_amount,
+                          SUM(COALESCE(f.cart_adds, 0)) AS cart_adds,
+                          SUM(COALESCE(f.new_buyers, 0)) AS new_buyers
                    FROM promotion_campaign_items ci
                    LEFT JOIN promotion_daily_facts f
                        ON f.shop_id = ci.shop_id AND f.campaign_id = ci.campaign_id
-                       AND f.grain = 'campaign' AND f.date BETWEEN ? AND ?
+                       AND f.grain IN ('campaign', 'unit') AND f.date BETWEEN ? AND ?
                    WHERE ci.shop_id = ? AND ci.product_id = ?
-                   GROUP BY ci.channel ORDER BY ad_spend DESC''',
+                   GROUP BY ci.channel
+                   HAVING SUM(COALESCE(f.ad_spend, 0)) > 0
+                   ORDER BY ad_spend DESC''',
                 [start_date, end_date, shop_id, product_id],
             ).fetchall()
         return [dict(row) for row in rows]

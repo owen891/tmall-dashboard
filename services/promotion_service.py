@@ -238,37 +238,103 @@ class PromotionService:
         result.sort(key=lambda item: item['ad_spend'], reverse=True)
         return {'rows': result, 'availability': 'available' if result else 'no-data'}
 
+    @staticmethod
+    def _detail_row_metrics(row, plan_type=None):
+        spend = float(row.get('ad_spend') or 0)
+        deal = float(row.get('attributed_payment_amount') or 0)
+        clicks = int(row.get('clicks') or 0)
+        impressions = int(row.get('impressions') or 0)
+        cart_adds = int(row.get('cart_adds') or 0)
+        payment_buyers = int(row.get('payment_buyers') or 0)
+        new_buyers = int(row.get('new_buyers') or 0)
+        direct = float(row.get('direct_payment_amount') or 0)
+        indirect = float(row.get('indirect_payment_amount') or 0)
+        normalized = {
+            **row,
+            'roi': round(deal / spend, 6) if spend else None,
+            'ctr': round(clicks / impressions, 6) if impressions else None,
+            'cpm': round(spend / impressions * 1000, 6) if impressions else None,
+            'cvr': round(payment_buyers / clicks, 6) if clicks else None,
+            'cpc': round(spend / clicks, 6) if clicks else None,
+            'cart_rate': round(cart_adds / clicks, 6) if clicks else None,
+            'cart_cost': round(spend / cart_adds, 6) if cart_adds else None,
+            'new_buyer_ratio': round(new_buyers / payment_buyers, 6) if payment_buyers else None,
+            'new_customer_cost': round(spend / new_buyers, 6) if new_buyers else None,
+            'direct_payment_amount': direct,
+            'indirect_payment_amount': indirect,
+            'paid_share': round((direct + indirect) / deal, 6) if deal else None,
+        }
+        if plan_type is not None:
+            normalized['plan_type'] = plan_type
+        return normalized
+
     def product_detail(self, start_date, end_date, product_id):
         """商品推广详情抽屉：计划列表 + 渠道花费结构。"""
         from db import get_shop_id
         if not product_id:
             raise PromotionValidationError('必须提供 product_id')
         campaigns = PromotionRepo.campaigns_for_product(start_date, end_date, product_id)
+        # 计划映射可能只覆盖部分历史数据；只有在计划事实没有有效花费时，
+        # 才使用商品粒度总账兜底，避免与计划行重复计账。
+        campaign_spend = sum(float(row['ad_spend'] or 0) for row in campaigns)
+        if not campaign_spend:
+            fallback = PromotionRepo.product_facts_for_product(start_date, end_date, product_id)
+            if fallback:
+                campaigns = [fallback]
         normalized_campaigns = []
         for row in campaigns:
-            spend = float(row['ad_spend'] or 0)
-            deal = float(row['attributed_payment_amount'] or 0)
-            clicks = int(row['clicks'] or 0)
-            impressions = int(row['impressions'] or 0)
-            cart_adds = int(row['cart_adds'] or 0)
-            normalized_campaigns.append({
-                **row,
-                'roi': round(deal / spend, 6) if spend else None,
-                'ctr': round(clicks / impressions, 6) if impressions else None,
-                'cart_cost': round(spend / cart_adds, 6) if cart_adds else None,
-                'plan_type': self.plan_type_of(row.get('campaign_name')),
-            })
+            normalized_campaigns.append(self._detail_row_metrics(row, self.plan_type_of(row.get('campaign_name'))))
         channel_mix = PromotionRepo.channel_mix_for_product(start_date, end_date, product_id)
+        if not channel_mix and normalized_campaigns:
+            channel_buckets = {}
+            for row in normalized_campaigns:
+                channel = row.get('channel') or '未标注渠道'
+                bucket = channel_buckets.setdefault(channel, {'channel': channel, 'ad_spend': 0, 'attributed_payment_amount': 0, 'impressions': 0, 'clicks': 0, 'payment_buyers': 0, 'cart_adds': 0, 'new_buyers': 0, 'direct_payment_amount': 0, 'indirect_payment_amount': 0})
+                bucket['ad_spend'] += float(row['ad_spend'] or 0)
+                bucket['attributed_payment_amount'] += float(row['attributed_payment_amount'] or 0)
+                for key in ('impressions', 'clicks', 'payment_buyers', 'cart_adds', 'new_buyers'):
+                    bucket[key] += int(row.get(key) or 0)
+                for key in ('direct_payment_amount', 'indirect_payment_amount'):
+                    bucket[key] += float(row.get(key) or 0)
+            channel_mix = sorted(channel_buckets.values(), key=lambda item: item['ad_spend'], reverse=True)
         total_mix_spend = sum(float(row['ad_spend'] or 0) for row in channel_mix)
-        normalized_mix = [{
-            **row,
-            'spend_share': round(float(row['ad_spend'] or 0) / total_mix_spend, 6) if total_mix_spend else None,
-        } for row in channel_mix]
+        normalized_mix = []
+        for row in channel_mix:
+            normalized_mix.append({
+                **self._detail_row_metrics(row),
+                'spend_share': round(float(row['ad_spend'] or 0) / total_mix_spend, 6) if total_mix_spend else None,
+            })
+        summary = {
+            'ad_spend': round(sum(float(row['ad_spend'] or 0) for row in normalized_campaigns), 6),
+            'attributed_payment_amount': round(sum(float(row['attributed_payment_amount'] or 0) for row in normalized_campaigns), 6),
+            'impressions': sum(int(row['impressions'] or 0) for row in normalized_campaigns),
+            'clicks': sum(int(row['clicks'] or 0) for row in normalized_campaigns),
+            'payment_buyers': sum(int(row['payment_buyers'] or 0) for row in normalized_campaigns),
+            'cart_adds': sum(int(row['cart_adds'] or 0) for row in normalized_campaigns),
+            'new_buyers': sum(int(row['new_buyers'] or 0) for row in normalized_campaigns),
+        }
+        spend = summary['ad_spend']
+        behavior = PromotionRepo.product_behavior_for_period(start_date, end_date, product_id)
+        guide_potential = int(behavior.get('guide_potential') or 0)
+        guide_visitors = int(behavior.get('guide_visitors') or 0)
+        summary.update({
+            'roi': round(summary['attributed_payment_amount'] / spend, 6) if spend else None,
+            'ctr': round(summary['clicks'] / summary['impressions'], 6) if summary['impressions'] else None,
+            'cvr': round(summary['payment_buyers'] / summary['clicks'], 6) if summary['clicks'] else None,
+            'cpc': round(spend / summary['clicks'], 6) if summary['clicks'] else None,
+            'cart_cost': round(spend / summary['cart_adds'], 6) if summary['cart_adds'] else None,
+            'new_customer_cost': round(spend / summary['new_buyers'], 6) if summary['new_buyers'] else None,
+            'new_buyer_ratio': round(summary['new_buyers'] / summary['payment_buyers'], 6) if summary['payment_buyers'] else None,
+            'guide_visitors': guide_visitors,
+            'guide_potential': guide_potential,
+            'guide_potential_ratio': round(guide_potential / guide_visitors, 6) if guide_visitors else None,
+        })
         return {
             'product_id': product_id,
+            'summary': summary,
             'campaigns': normalized_campaigns,
             'channel_mix': normalized_mix,
-            'limitations': (['渠道结构按推广该商品的计划的渠道归因，多商品计划会整体计入'] if normalized_mix else []),
+            'limitations': (['渠道结构按推广该商品的计划的渠道归因，多商品计划会整体计入'] if normalized_mix else []) + (['当前无可关联的计划事实，已使用商品推广总账兜底'] if normalized_campaigns and normalized_campaigns[0].get('campaign_id', '').startswith('product:') else []),
         }
 
     def campaign_detail(self, start_date, end_date, campaign_id):
@@ -294,6 +360,82 @@ class PromotionService:
                 'plan_type': self.plan_type_of(summary.get('campaign_name')),
             },
             'products': products,
+        }
+
+    def creative_board(self, shop_label=None):
+        """素材点击率看板：全历史累计,按单品分组返回创意及其指标。"""
+        rows = PromotionRepo.creative_board(shop_label)
+        products = {}
+        for row in rows:
+            spend = float(row['ad_spend'] or 0)
+            deal = float(row['attributed_payment_amount'] or 0)
+            clicks = int(row['clicks'] or 0)
+            impressions = int(row['impressions'] or 0)
+            cart_adds = int(row['cart_adds'] or 0)
+            new_buyers = int(row['new_buyers'] or 0)
+            creative = {
+                **row,
+                'ad_spend': round(spend, 6),
+                'roi': round(deal / spend, 6) if spend else None,
+                'ctr': round(clicks / impressions, 6) if impressions else None,
+                'cvr': round(int(row['payment_buyers'] or 0) / clicks, 6) if clicks else None,
+                'cart_rate': round(cart_adds / clicks, 6) if clicks else None,
+                'cart_cost': round(spend / cart_adds, 6) if cart_adds else None,
+            }
+            product_key = row['product_id'] or '_'
+            products.setdefault(product_key, {
+                'product_id': row['product_id'] or '_',
+                'title': row['title'] or '未命名商品',
+                'image_url': row['product_image'] or '',
+                'shop_label': row['shop_label'] or '未分类',
+                'creatives': [],
+                'ad_spend': 0.0, 'attributed_payment_amount': 0.0,
+                'clicks': 0, 'impressions': 0, 'cart_adds': 0,
+                'payment_buyers': 0, 'direct_payment_amount': 0.0,
+                'new_buyers': 0, 'first_date': None, 'last_date': None,
+            })
+            bucket = products[product_key]
+            if row.get('creative_id'):
+                bucket['creatives'].append(creative)
+            bucket['ad_spend'] += spend
+            bucket['attributed_payment_amount'] += deal
+            bucket['clicks'] += clicks
+            bucket['impressions'] += impressions
+            bucket['cart_adds'] += cart_adds
+            bucket['payment_buyers'] += int(row['payment_buyers'] or 0)
+            bucket['direct_payment_amount'] += float(row['direct_payment_amount'] or 0)
+            bucket['new_buyers'] += new_buyers
+            if row.get('first_date') and (not bucket['first_date'] or row['first_date'] < bucket['first_date']):
+                bucket['first_date'] = row['first_date']
+            if row.get('last_date') and (not bucket['last_date'] or row['last_date'] > bucket['last_date']):
+                bucket['last_date'] = row['last_date']
+        product_list = []
+        for bucket in products.values():
+            spend = bucket['ad_spend']
+            deal = bucket['attributed_payment_amount']
+            bucket['roi'] = round(deal / spend, 6) if spend else None
+            bucket['ctr'] = round(bucket['clicks'] / bucket['impressions'], 6) if bucket['impressions'] else None
+            bucket['cart_rate'] = round(bucket['cart_adds'] / bucket['clicks'], 6) if bucket['clicks'] else None
+            bucket['cvr'] = round(bucket['payment_buyers'] / bucket['clicks'], 6) if bucket['clicks'] else None
+            bucket['cart_cost'] = round(spend / bucket['cart_adds'], 6) if bucket['cart_adds'] else None
+            bucket['creatives'].sort(key=lambda c: (c['clicks'], c['ad_spend']), reverse=True)
+            product_list.append(bucket)
+        product_list.sort(key=lambda p: (p['ad_spend'], p['clicks']), reverse=True)
+        categories = {}
+        for bucket in product_list:
+            label = bucket['shop_label']
+            entry = categories.setdefault(label, {'label': label, 'product_count': 0, 'creative_count': 0})
+            entry['product_count'] += 1
+            entry['creative_count'] += len(bucket['creatives'])
+        return {
+            'products': product_list,
+            'categories': sorted(categories.values(), key=lambda c: -c['creative_count']),
+            'totals': {
+                'product_count': len(product_list),
+                'creative_count': sum(len(bucket['creatives']) for bucket in product_list),
+                'ad_spend': round(sum(float(r['ad_spend'] or 0) for r in rows), 6),
+                'clicks': sum(int(r['clicks'] or 0) for r in rows),
+            },
         }
 
     @staticmethod

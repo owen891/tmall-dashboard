@@ -17,6 +17,8 @@ def list_products():
                     'thickness', 'style', 'score_grade', 'suggested_action',
                     'keyword', 'min_spend', 'min_roi', 'shop_label')
     }
+    filters['start'] = request.args.get('start')
+    filters['end'] = request.args.get('end')
     filters = {k: v for k, v in filters.items() if v}
 
     sort_by = request.args.get('sort_by', 'total_score')
@@ -53,6 +55,8 @@ def summary():
                     'thickness', 'style', 'score_grade', 'suggested_action',
                     'keyword', 'min_spend', 'min_roi', 'shop_label')
     }
+    filters['start'] = request.args.get('start')
+    filters['end'] = request.args.get('end')
     filters = {k: v for k, v in filters.items() if v}
 
     result = keyword_promotion_service.summary(filters)

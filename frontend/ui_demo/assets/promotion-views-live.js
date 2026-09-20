@@ -84,6 +84,7 @@
   // ── 视图切换 ────────────────────────────────────────────────────────────
 
   function switchView(view) {
+    disposeCharts();
     state.view = view;
     sessionStorage.setItem('promotion.view', view);
     $$('[data-promotion-view]').forEach((button) => {
@@ -123,6 +124,7 @@
   // ── 总览：渠道效率卡 + 散点 + 环形 + 投放方式 ──────────────────────────
 
   async function loadOverview() {
+    disposeCharts();
     const { start, end } = range();
     const query = new URLSearchParams({ start, end, group_by: 'channel' });
     try {
@@ -329,7 +331,7 @@
     }
     body.innerHTML = rows.map((row, index) => `
       <tr class="promotion-campaign-row" data-campaign-id="${esc(row.campaign_id || '')}">
-        <td class="t-clamp" title="${esc(row.campaign_name || row.campaign_id || '')}"><strong>${esc(row.campaign_name || `计划 ${row.campaign_id || ''}`)}</strong> ${row.plan_type ? `<span class="plan-type-badge plan-type-badge--${esc(row.plan_type)}">${esc(row.plan_type)}</span>` : ''}</td>
+        <td class="t-clamp" title="${esc(row.campaign_name || row.campaign_id || '')}"><button type="button" class="promotion-campaign-toggle" aria-expanded="false" aria-controls="promotion-campaign-detail-${index}" data-campaign-toggle><strong>${esc(row.campaign_name || `计划 ${row.campaign_id || ''}`)}</strong> ${row.plan_type ? `<span class="plan-type-badge plan-type-badge--${esc(row.plan_type)}">${esc(row.plan_type)}</span>` : ''}</button></td>
         <td>${esc(row.channel || '--')}</td>
         <td>${money(row.ad_spend)}</td>
         <td>${money(row.attributed_payment_amount)}</td>
@@ -340,21 +342,27 @@
         <td>${row.new_customer_cost != null ? money(row.new_customer_cost) : '--'}</td>
       </tr>`).join('');
     $$('tr.promotion-campaign-row', body).forEach((row) => {
-      row.addEventListener('click', () => toggleCampaignDetail(row));
+      const toggle = $('[data-campaign-toggle]', row);
+      toggle?.addEventListener('click', () => toggleCampaignDetail(row));
     });
     // 分页/排序由共享 table-controls 组件接管(自动挂载)
   }
 
   async function toggleCampaignDetail(row) {
+    const toggle = $('[data-campaign-toggle]', row);
     const existing = row.nextElementSibling;
     if (existing?.classList.contains('promotion-campaign-row__detail')) {
       existing.remove();
+      toggle?.setAttribute('aria-expanded', 'false');
       return;
     }
     const campaignId = row.dataset.campaignId;
     if (!campaignId) return;
     const detail = document.createElement('tr');
     detail.className = 'promotion-campaign-row__detail';
+    const detailId = toggle?.getAttribute('aria-controls');
+    if (detailId) detail.id = detailId;
+    toggle?.setAttribute('aria-expanded', 'true');
     detail.innerHTML = '<td colspan="9">正在加载计划明细…</td>';
     row.after(detail);
     const { start, end } = range();

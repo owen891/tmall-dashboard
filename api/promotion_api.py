@@ -120,6 +120,32 @@ def promotion_campaign_detail():
     )
 
 
+@promotion_bp.route('/api/creative-board')
+def creative_board():
+    """素材点击率看板:全历史累计,按单品分组,按品类筛选(无时间维度)。"""
+    category = request.args.get('category')
+    category_filters = category_filters_from_request()
+    selected_label = category or category_filters.get('shop_label')
+    try:
+        result = promotion_service.creative_board(selected_label)
+    except PromotionValidationError as error:
+        return failure('VALIDATION_ERROR', str(error), status=422)
+    availability = 'available' if result['products'] else 'no-data'
+    missing_inputs = ['products'] if availability == 'no-data' else []
+    return success(
+        result,
+        availability=availability,
+        filters={**category_filters, 'category': category or '', 'category_mode': request.args.get('category_mode', '')},
+        missing_inputs=missing_inputs,
+        limitations=limitations_for(availability, missing_inputs=missing_inputs) + [
+            '素材指标为全部历史累计,不含时间维度;系统自动创意(智能创意/黑盒等)不在展示范围',
+            '商品目录中的单品全部展示,暂无人工素材的单品可进入明细后查看',
+        ],
+        evidence_level=evidence_level_for(availability, missing_inputs=missing_inputs),
+        evidence=[{'source': 'promotion_creative_daily', 'row_count': result['totals']['creative_count']}],
+    )
+
+
 @promotion_bp.route('/api/promotion/product-detail')
 def promotion_product_detail():
     """商品推广详情抽屉：该商品的计划列表 + 渠道花费结构。"""

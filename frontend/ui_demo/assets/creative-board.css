@@ -1,0 +1,70 @@
+/* 素材看板只补充页面结构,颜色、圆角、控件沿用全局设计系统。 */
+body[data-page="creative-board"] .demo-period { display: none !important; }
+body[data-page="creative-board"] .demo-category { display: block; }
+.cb-summary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--space-3); margin-bottom: var(--space-4); }
+body[data-page="creative-board"] .cb-summary .ui-metric-card { min-height: 104px; padding: var(--space-4); }
+.cb-toolbar { display: grid; grid-template-columns: minmax(240px, 360px); align-items: center; gap: var(--space-3); margin-bottom: var(--space-4); }
+.cb-category-tabs { display: flex; min-width: 0; overflow-x: auto; }
+.cb-category-tabs button { gap: 6px; white-space: nowrap; }
+.cb-category-tabs .cb-count { padding: 2px 7px; border: 1px solid var(--border-default); border-radius: var(--radius-full); background: var(--surface-muted); color: var(--text-tertiary); font-size: var(--font-size-meta); }
+.cb-search { width: 100%; max-width: none; }
+.cb-products-panel { min-width: 0; overflow: hidden; }
+.cb-products-header { align-items: center; }
+.cb-product-table { min-width: 900px; }
+.cb-product-table thead th:nth-child(1) { min-width: 260px; }
+.cb-product-table thead th:nth-child(2) { width: 64px; min-width: 64px; }
+.cb-product-table tbody tr { cursor: pointer; }
+.cb-product-table tbody tr:hover { background: var(--surface-muted); }
+.cb-product-table tbody tr:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: -2px; }
+.cb-product-cell { display: grid; min-width: 260px; gap: 2px; }
+.cb-product-cell strong { overflow: hidden; color: var(--text-primary); font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.cb-product-cell small { color: var(--text-tertiary); font-family: var(--font-mono); font-size: var(--font-size-meta); }
+.cb-image-cell { width: 64px; }
+.cb-image-cell img { width: 44px; height: 44px; object-fit: cover; border: 1px solid var(--border-default); border-radius: var(--radius-md); background: var(--surface-muted); }
+.cb-product-table td[data-tone="success"] { color: var(--success); font-weight: 600; }
+.cb-product-table td[data-tone="warning"] { color: var(--warning); font-weight: 600; }
+.cb-product-table td[data-tone="danger"] { color: var(--danger); font-weight: 600; }
+.cb-detail-dialog { width: min(980px, calc(100vw - 32px)); }
+.cb-detail-dialog__body { min-height: 0; }
+.cb-detail-summary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--space-3); padding: var(--space-3); border: 1px solid var(--border-default); border-radius: var(--radius-md); background: var(--surface-muted); }
+.cb-detail-summary span { display: grid; gap: 2px; color: var(--text-secondary); font-size: var(--font-size-meta); }
+.cb-detail-summary b { color: var(--text-primary); font-size: var(--font-size-body); font-variant-numeric: tabular-nums; }
+.cb-detail-list { display: grid; overflow: hidden; border: 1px solid var(--border-default); border-radius: var(--radius-md); }
+.cb-creative-row { display: grid; grid-template-columns: 56px minmax(220px, 1fr) minmax(420px, 1.4fr); gap: var(--space-3); align-items: center; padding: var(--space-3); border-bottom: 1px solid var(--border-default); }
+.cb-creative-row:last-child { border-bottom: 0; }
+.cb-creative-row:hover { background: var(--surface-muted); }
+.cb-creative-row__thumb { width: 56px; height: 56px; object-fit: cover; border: 1px solid var(--border-default); border-radius: var(--radius-md); background: var(--surface-muted); }
+.cb-creative-image { display: block; width: 56px; height: 56px; padding: 0; border: 0; background: transparent; cursor: zoom-in; }
+.cb-creative-image:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+.cb-creative-row__identity { display: grid; min-width: 0; gap: 3px; }
+.cb-creative-row__identity strong { overflow: hidden; color: var(--text-primary); font-size: var(--font-size-secondary); text-overflow: ellipsis; white-space: nowrap; }
+.cb-creative-row__identity small { color: var(--text-tertiary); font-size: var(--font-size-meta); }
+.cb-creative-row__badge { display: inline-block; margin-right: 4px; padding: 2px 6px; border-radius: var(--radius-full); background: var(--success-tint); color: var(--success); font-size: var(--font-size-meta); font-weight: 600; }
+.cb-creative-row__badge--cvr { background: var(--info-tint); color: var(--info); }
+.cb-creative-row__badge--cart { background: var(--warning-tint); color: var(--warning); }
+.cb-creative-row__stats { display: grid; grid-template-columns: repeat(6, minmax(50px, 1fr)); gap: var(--space-3); min-width: 0; }
+.cb-creative-row .num { display: grid; min-width: 0; gap: 2px; color: var(--text-secondary); font-size: var(--font-size-meta); }
+.cb-creative-row .num b { color: var(--text-primary); font-size: var(--font-size-secondary); font-variant-numeric: tabular-nums; }
+.cb-empty { padding: var(--space-6); color: var(--text-tertiary); text-align: center; }
+.cb-image-dialog { width: min(760px, calc(100vw - 32px)); }
+.cb-image-dialog__body { display: grid; min-height: 280px; place-items: center; padding: var(--space-5); background: var(--surface-muted); }
+.cb-image-dialog__body img { display: block; max-width: 100%; max-height: min(70vh, 680px); object-fit: contain; }
+@media (max-width: 1180px) {
+  .cb-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .cb-toolbar { grid-template-columns: 1fr; }
+  .cb-creative-row { grid-template-columns: 48px minmax(0, 1fr); }
+  .cb-creative-row__thumb { width: 48px; height: 48px; }
+  .cb-creative-row__stats { grid-column: 1 / -1; grid-row: 2; }
+}
+@media (max-width: 900px) {
+  .cb-product-table { min-width: 760px; }
+  .cb-creative-row__stats { grid-template-columns: repeat(3, minmax(50px, 1fr)); }
+}
+@media (max-width: 560px) {
+  .cb-summary { gap: var(--space-2); }
+  body[data-page="creative-board"] .cb-summary .ui-metric-card { min-height: 92px; padding: var(--space-3); }
+  .cb-detail-dialog { width: calc(100vw - 16px); }
+  .cb-detail-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .cb-creative-row { padding: var(--space-3); }
+  .cb-creative-row__stats { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-2); }
+}

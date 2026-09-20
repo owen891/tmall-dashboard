@@ -119,6 +119,10 @@
     ],
   };
   Object.entries(promotionTemplateOverrides).forEach(([tab, templates]) => { tabDefinitions[tab].templates = templates; });
+  if (window.DemoPromotionFields?.products) {
+    tabDefinitions.products.columns = window.DemoPromotionFields.products.columns;
+    tabDefinitions.products.templates = window.DemoPromotionFields.products.templates;
+  }
   const promotionBuiltinTemplateIds = new Set(Object.values(promotionTemplateOverrides).flat().map((template) => template.id));
 
   const storageKey = 'tmall_promotion_field_templates_v1';

@@ -41,6 +41,14 @@ class KeywordPromotionRepo:
         shop_id = get_shop_id()
         where = ['shop_id = ?']
         params = [shop_id]
+        start = str(filters.get('start') or '').replace('-', '')
+        end = str(filters.get('end') or '').replace('-', '')
+        if start:
+            where.append('(data_end_date IS NULL OR REPLACE(data_end_date, \'-\', \'\') >= ?)')
+            params.append(start)
+        if end:
+            where.append('(data_start_date IS NULL OR REPLACE(data_start_date, \'-\', \'\') <= ?)')
+            params.append(end)
 
         # 属性筛选
         for key, col in KeywordPromotionRepo.FILTER_COLUMNS.items():
@@ -103,6 +111,14 @@ class KeywordPromotionRepo:
         shop_id = get_shop_id()
         where = ['shop_id = ?']
         params = [shop_id]
+        start = str(filters.get('start') or '').replace('-', '')
+        end = str(filters.get('end') or '').replace('-', '')
+        if start:
+            where.append('(data_end_date IS NULL OR REPLACE(data_end_date, \'-\', \'\') >= ?)')
+            params.append(start)
+        if end:
+            where.append('(data_start_date IS NULL OR REPLACE(data_start_date, \'-\', \'\') <= ?)')
+            params.append(end)
 
         for key, col in KeywordPromotionRepo.FILTER_COLUMNS.items():
             val = filters.get(key)
