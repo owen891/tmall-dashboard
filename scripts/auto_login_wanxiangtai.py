@@ -179,9 +179,11 @@ def do_login():
     ''')
 
     if result == 'need_slider':
+        # 人工拖滑块往往要找窗口、切标签，120 秒太紧，默认放宽到 300 秒。
+        slider_wait = int(os.environ.get('TMALL_SLIDER_WAIT_SECONDS', '300'))
         print('\n[需要手动操作] 检测到滑块验证，请在 Chrome 浏览器中手动拖动滑块完成登录。')
-        print('[等待] 最多等待 120 秒...')
-        for i in range(60):
+        print(f'[等待] 最多等待 {slider_wait} 秒...')
+        for i in range(slider_wait // 2):
             time.sleep(2)
             tab = find_tab('one.alimama.com')
             if tab and 'login' not in tab.get('url', ''):

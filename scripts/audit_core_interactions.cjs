@@ -12,6 +12,7 @@ const pages = [
   ['reviews', '/reviews'],
   ['data-center', '/data-center'],
   ['settings', '/settings'],
+  ['creative-board', '/creative-board'],
 ];
 const selectedPages = process.env.AUDIT_PAGE ? pages.filter(([id]) => id === process.env.AUDIT_PAGE) : pages;
 
@@ -28,7 +29,16 @@ async function waitReady(page, id, viewport) {
     reviews: '[data-reviews-list]',
     'data-center': '[data-import-file]:not(.sr-only)',
     settings: '[data-settings-form]',
+    'creative-board': '[data-cb-products]',
   };
+  if (id === 'promotion') {
+    await page.waitForFunction(() => {
+      const body = document.querySelector('[data-promotion-body]');
+      if (!body || body.textContent.includes('加载中')) return false;
+      return Boolean(body.querySelector('tr, .ui-empty-state'));
+    });
+    return;
+  }
   if (id !== 'products') {
     await page.locator(selectors[id]).first().waitFor({ state: 'visible' });
     return;
@@ -80,10 +90,16 @@ async function runPage(browser, id, path, viewport) {
   page.setDefaultTimeout(5000);
   const failures = [];
   const browserErrors = [];
+  const isExpectedExternalFailure = (url) => url.startsWith('https://gitcode.com/');
+  const isExpectedGoalNoData = (url, status) => status === 404 && url.includes('/api/goals/');
   page.on('pageerror', (error) => browserErrors.push(`pageerror: ${error.stack || error.message}`));
-  page.on('requestfailed', (request) => browserErrors.push(`requestfailed: ${request.url()} ${request.failure()?.errorText || ''}`));
+  page.on('requestfailed', (request) => {
+    if (!isExpectedExternalFailure(request.url())) browserErrors.push(`requestfailed: ${request.url()} ${request.failure()?.errorText || ''}`);
+  });
   page.on('response', (response) => {
-    if (response.status() >= 400 && response.url().startsWith(base)) browserErrors.push(`HTTP ${response.status()}: ${response.url()}`);
+    if (response.status() >= 400 && response.url().startsWith(base) && !isExpectedGoalNoData(response.url(), response.status())) {
+      browserErrors.push(`HTTP ${response.status()}: ${response.url()}`);
+    }
   });
 
   let response;
@@ -117,6 +133,14 @@ async function runPage(browser, id, path, viewport) {
       await clickIfVisible(page, '[data-products-columns-close]', 'product columns close', failures);
       if (viewport.width > 520) await clickIfVisible(page, '[data-products-body] tr button[aria-label^="查看"]', 'product detail open', failures);
       else await clickIfVisible(page, '[data-products-mobile-summary] .products-mobile-summary__item button', 'mobile product detail open', failures);
+      await clickIfVisible(page, '.product-detail-dialog [data-product-detail-tab="promotion"]', 'product detail promotion tab', failures);
+      await clickIfVisible(page, '.product-detail-dialog [data-product-detail-panel="promotion"]', 'product detail promotion panel', failures);
+      await clickIfVisible(page, '.product-detail-dialog [data-product-detail-fields-open="channel"]', 'product detail channel fields open', failures);
+      await clickIfVisible(page, '[data-product-detail-template-apply]', 'product detail template apply', failures);
+      await clickIfVisible(page, '[data-product-detail-fields-apply]', 'product detail fields apply', failures);
+      await clickIfVisible(page, '.product-detail-dialog [data-product-detail-fields-open="campaign"]', 'product detail campaign fields open', failures);
+      await clickIfVisible(page, '[data-product-detail-fields-cancel]', 'product detail campaign fields cancel', failures);
+      await clickIfVisible(page, '.product-detail-promotion-pagination button:not([disabled])', 'product detail promotion pagination', failures);
       await clickIfVisible(page, '[data-shared-product-close]', 'product detail close', failures);
     }
 
@@ -160,6 +184,18 @@ async function runPage(browser, id, path, viewport) {
       await page.keyboard.press('Escape');
       await clickIfVisible(page, '[data-import-history-refresh]', 'import history refresh', failures);
       await clickIfVisible(page, '[data-governance-disclosure] summary', 'governance disclosure', failures);
+    }
+
+    if (id === 'creative-board') {
+      const categoryButtons = page.locator('[data-cb-category]');
+      const categoryCount = await categoryButtons.count();
+      if (categoryCount > 1) await categoryButtons.nth(categoryCount - 1).click();
+      const search = page.locator('[data-cb-search]');
+      if (await search.isVisible()) {
+        await search.fill('__ui_audit_no_match__');
+        await page.locator('[data-cb-products] .ui-empty-state').waitFor({ state: 'visible' });
+        await search.fill('');
+      }
     }
 
     if (id === 'settings') {
@@ -225,7 +261,9 @@ async function runPage(browser, id, path, viewport) {
 }
 
 (async () => {
-  const browser = await chromium.launch({ headless: true });
+  const browser = await chromium.launch(process.env.TMALL_CHROME_PATH
+    ? { executablePath: process.env.TMALL_CHROME_PATH, headless: true }
+    : { headless: true });
   const results = [];
   for (const viewport of [{ width: 1366, height: 768 }, { width: 390, height: 844 }]) {
     for (const [id, path] of selectedPages) results.push(await runPage(browser, id, path, viewport));

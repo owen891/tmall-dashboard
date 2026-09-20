@@ -19,6 +19,28 @@
 .market-keyword-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: var(--space-4); }
 .market-overlap-list { display: flex; flex-wrap: wrap; gap: var(--space-2); }
 .market-overlap-tag { padding: var(--space-1) var(--space-2); background: var(--surface-muted); border-radius: var(--radius-sm); font-size: var(--font-size-meta); color: var(--text-secondary); }
+.sycm-item-rank-table { min-width: 1080px; table-layout: fixed; }
+.sycm-item-rank-table th,
+.sycm-item-rank-table td { vertical-align: middle; }
+.sycm-item-rank-col--rank { width: 64px; }
+.sycm-item-rank-col--image { width: 84px; }
+.sycm-item-rank-col--category { width: 104px; }
+.sycm-item-rank-col--title { width: min(34vw, 360px); }
+.sycm-item-rank-col--shop { width: 180px; }
+.sycm-item-rank-col--visitors,
+.sycm-item-rank-col--buyers { width: 104px; }
+.sycm-item-rank-col--keyword { width: 160px; }
+.sycm-item-rank-table td:nth-child(2) { padding-block: var(--space-2); }
+.sycm-item-rank-image,
+.sycm-item-rank-image-placeholder { display: grid; width: 48px; height: 48px; place-items: center; border-radius: var(--radius-sm); background: var(--surface-muted); color: var(--text-tertiary); font-size: var(--font-size-meta); object-fit: cover; }
+.sycm-item-rank-title,
+.sycm-item-rank-shop,
+.sycm-item-rank-keyword { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sycm-item-rank-category { display: inline-block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; vertical-align: middle; white-space: nowrap; }
+.sycm-item-rank-wrap { overflow-x: auto; }
+@media (max-width: 900px) {
+  .sycm-item-rank-table { min-width: 980px; }
+}
 @media (max-width: 900px) { .market-chart-row, .market-keyword-grid { grid-template-columns: 1fr; } }
 </style>
 </head>
@@ -187,21 +209,32 @@
             </select>
           </div>
         </div>
-        <div class="ui-table-wrap">
-          <table class="ui-data-table">
+        <div class="ui-table-wrap sycm-item-rank-wrap">
+          <table class="ui-data-table sycm-item-rank-table">
+            <colgroup>
+              <col class="sycm-item-rank-col--rank">
+              <col class="sycm-item-rank-col--image">
+              <col class="sycm-item-rank-col--category">
+              <col class="sycm-item-rank-col--title">
+              <col class="sycm-item-rank-col--shop">
+              <col class="sycm-item-rank-col--visitors">
+              <col class="sycm-item-rank-col--buyers">
+              <col class="sycm-item-rank-col--keyword">
+            </colgroup>
             <thead>
               <tr>
-                <th style="width:50px">排名</th>
-                <th style="width:80px">类目</th>
+                <th>排名</th>
+                <th>商品图</th>
+                <th>类目</th>
                 <th>商品标题</th>
-                <th style="width:140px">店铺</th>
-                <th style="width:100px">访客数</th>
-                <th style="width:100px">支付买家</th>
-                <th style="width:120px">核心关键词</th>
+                <th>店铺</th>
+                <th class="num">访客数</th>
+                <th class="num">支付买家</th>
+                <th>核心关键词</th>
               </tr>
             </thead>
             <tbody data-sycm-item-rank-body>
-              <tr><td colspan="7" style="text-align:center;color:var(--text-tertiary);padding:24px">加载中…</td></tr>
+              <tr><td colspan="8" style="text-align:center;color:var(--text-tertiary);padding:24px">加载中…</td></tr>
             </tbody>
           </table>
         </div>

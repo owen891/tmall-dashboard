@@ -55,6 +55,7 @@ dialog { overscroll-behavior: contain; }
 .demo-brand__name { display: grid; gap: 0; color: var(--text-primary); font-family: var(--font-display); font-size: var(--font-size-body); font-weight: 700; line-height: var(--line-height-secondary); }
 .demo-nav { flex: 1; overflow: auto; padding: var(--space-4) var(--space-3); scrollbar-width: thin; }
 .demo-nav__section { display: grid; gap: var(--space-1); }
+.demo-nav__section--primary { padding-bottom: var(--space-1); border-bottom: 1px solid var(--border-default); }
 .demo-nav__section + .demo-nav__section { margin-top: var(--space-5); }
 .demo-nav__label { margin: 0; padding: 0 var(--space-3) var(--space-2); color: var(--text-tertiary); font-size: var(--font-size-meta); font-weight: 700; letter-spacing: .06em; line-height: var(--line-height-meta); text-transform: uppercase; }
 .demo-nav__group { display: grid; gap: var(--space-1); }
@@ -75,6 +76,7 @@ dialog { overscroll-behavior: contain; }
 .demo-nav__item .lucide { width: var(--icon-nav); height: var(--icon-nav); color: currentColor; stroke-width: 1.75; }
 .demo-nav__badge { display:grid; min-width:20px; height:20px; margin-left:auto; place-items:center; padding:0 var(--space-1); border-radius:var(--radius-full); background:var(--danger-tint); color:var(--danger); font-size:var(--font-size-meta); font-variant-numeric:tabular-nums; }
 .demo-nav__badge[hidden] { display:none; }
+.demo-nav-backdrop { display: none; }
 .demo-sidebar__footer { flex: 0 0 auto; border-top: 1px solid var(--border-default); }
 .demo-sidebar__meta { min-width: 0; }
 .demo-sidebar__meta-row { display: flex; min-height: 30px; align-items: center; gap: var(--space-2); padding: var(--space-1) var(--space-4) 0; }
@@ -216,28 +218,18 @@ body[data-page="overview"] .demo-topbar__tools > [data-demo-refresh] { display: 
   .demo-page { padding: var(--space-5) max(var(--space-4), env(safe-area-inset-right)) var(--space-5) max(var(--space-4), env(safe-area-inset-left)); }
 }
 @media (max-width: 760px) {
-  .demo-sidebar { width: 72px; }
-  .demo-brand { justify-content: center; padding-inline: 0; }
-  .demo-brand__name, .demo-nav__item span, .demo-nav__label, .demo-nav__badge, .demo-sidebar__version, .demo-sidebar__update-status { display: none; }
-  .demo-nav__item { justify-content: center; padding-inline: 0; }
-  .demo-sidebar__meta-row { justify-content: center; gap: var(--space-1); padding-inline: 0; }
-  .demo-sidebar__meta-actions { justify-content: center; gap: var(--space-1); padding-inline: 0; }
-  .demo-sidebar__meta-row .status-dot { display: none; }
-  .demo-sidebar__meta-action, .demo-sidebar__update { width: 20px; min-width: 20px; height: 20px; min-height: 20px; padding: 0; justify-content: center; }
-  .demo-sidebar__meta-actions .demo-sidebar__update { min-height: 20px; padding: 0; }
-  .demo-sidebar__meta-action > span, .demo-sidebar__update > span { display: none; }
-  .demo-main { margin-left: 72px; }
+  .demo-sidebar { position: fixed; width: min(var(--sidebar-width), calc(100vw - 48px)); transform: translateX(-100%); transition: transform .2s ease; }
+  .demo-sidebar.is-open { transform: translateX(0); }
+  .demo-main { margin-left: 0; }
+  .demo-nav-backdrop.is-visible { position: fixed; inset: 0; z-index: 19; display: block; border: 0; background: var(--overlay-backdrop); }
   .demo-topbar { flex-wrap: wrap; gap: var(--space-2); padding-block: var(--space-2); }
   .demo-topbar__filters { min-width: 0; flex-basis: 100%; order: 2; overflow: hidden; }
   .demo-period { flex: 1 1 auto; overflow: hidden; }
   .demo-topbar__tools { margin-left: auto; }
   .ui-page-header { align-items: flex-start; flex-direction: column; }
 }
-@media (max-width: 520px) {
-  .demo-sidebar { position: fixed; width: var(--sidebar-width); transform: translateX(-100%); transition: transform .2s ease; }
-  .demo-sidebar.is-open { transform: translateX(0); }
+@media (max-width: 760px) {
   .demo-nav__item { min-height: var(--control-height-touch); }
-  .demo-main { margin-left: 0; }
   .demo-period__trigger { min-width: 0; min-height: var(--control-height-touch); flex: 1; }
   .demo-calendar__months { grid-template-columns: 1fr; }
   .demo-calendar__months section:last-child { display: none; }

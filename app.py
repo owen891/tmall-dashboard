@@ -11,6 +11,7 @@ import time
 from db import get_db, get_db_path, init_db
 from api.imports_api import imports_bp
 from api.overview_api import overview_bp
+from api.category_analysis_api import category_analysis_bp
 from api.goals_api import goals_bp
 from api.actions_api import actions_bp
 from api.settings_api import settings_bp
@@ -115,6 +116,7 @@ def create_app(config=None):
     app.register_blueprint(status_bp)
     app.register_blueprint(imports_bp)
     app.register_blueprint(overview_bp)
+    app.register_blueprint(category_analysis_bp)
     app.register_blueprint(goals_bp)
     app.register_blueprint(actions_bp)
     app.register_blueprint(settings_bp)
@@ -300,7 +302,7 @@ def create_app(config=None):
             return redirect('/reviews')
         if page == 'manage':
             return redirect('/settings')
-        if page not in {'overview', 'analysis', 'products', 'promotion', 'keyword-promotion', 'market-ranking', 'lifecycle', 'reviews', 'data-center', 'settings', 'goals', 'flow-source', 'rival-analysis', 'data-collection', 'component-catalog'}:
+        if page not in {'overview', 'analysis', 'category-dashboard', 'products', 'promotion', 'keyword-promotion', 'market-ranking', 'lifecycle', 'reviews', 'data-center', 'settings', 'goals', 'flow-source', 'rival-analysis', 'data-collection', 'component-catalog', 'creative-board'}:
             return jsonify({'error': 'page not found'}), 404
         return send_from_directory(os.path.join(demo_root, 'pages'), f'{page}.html', max_age=0)
 

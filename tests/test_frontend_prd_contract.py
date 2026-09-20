@@ -44,7 +44,9 @@ class FrontendPrdContractTests(unittest.TestCase):
 
     def test_reviews_all_status_option_does_not_secretly_request_pending_review(self):
         reviews = self.read('frontend/ui_demo/assets/reviews-live.js')
-        self.assertIn("const query = filter?.value ? `?limit=500&status=${encodeURIComponent(filter.value)}` : '?limit=500';", reviews)
+        self.assertIn("DemoApi.domainRequest('/api/actions?limit=500')", reviews)
+        self.assertIn("const selected = filter?.value || '';", reviews)
+        self.assertIn("(!selected || item.status === selected)", reviews)
         self.assertNotIn("'?limit=500&status=pending_review'", reviews)
 
     def test_overview_renders_all_seven_core_kpis_and_matrix_context(self):
@@ -357,8 +359,8 @@ class FrontendPrdContractTests(unittest.TestCase):
         self.assertIn(".catch((error) => { console.error(error); return { error: true }; })", overview)
         self.assertIn("window.dispatchEvent(new CustomEvent('tmall:overview-anomalies-ready'", overview)
         self.assertIn("{ detail: { anomalies: [] } }", overview)
-        self.assertIn("actualAvailable", overview)
-        self.assertIn("不可计算", overview)
+        self.assertIn("const progressFor = (actualKey, targetKey, progress)", overview)
+        self.assertIn("actualValue = (key, formatter)", overview)
 
     def test_settings_does_not_expose_raw_json_editors(self):
         page = self.read('frontend/ui_demo/pages/settings.html')
@@ -495,10 +497,22 @@ class FrontendPrdContractTests(unittest.TestCase):
         self.assertIn("document.createElement('details')", reviews)
         self.assertIn('等待观察数据后再复盘', reviews)
 
-    def test_settings_view_selector_uses_persisted_template_keys(self):
+    def test_settings_import_rules_are_the_only_settings_mapping_editor(self):
         page = self.read('frontend/ui_demo/pages/settings.html')
-        for key in ('value="operate"', 'value="select"', 'value="paid"', 'value="refund"', 'value="lifecycle"'):
-            self.assertIn(key, page)
+        settings = self.read('frontend/ui_demo/assets/settings-live.js')
+        products = self.read('frontend/ui_demo/assets/products-live.js')
+        self.assertIn('<span>导入规则</span>', page)
+        self.assertIn('data-template-mappings', settings)
+        self.assertIn('body: JSON.stringify({ mapping_templates: clone(templateDraft.mapping_templates) })', settings)
+        for hook in ('data-template-default-view', 'data-template-add-view', 'data-settings-view-field-selector', 'data-template-views'):
+            self.assertNotIn(hook, page)
+            self.assertNotIn(hook, settings)
+        for field in ('view_templates', 'product_view_template'):
+            self.assertNotIn(field, settings)
+        self.assertIn('data-products-template-select', products)
+        self.assertIn('data-products-template-save', products)
+        self.assertIn('async function updateProductTemplate', products)
+        self.assertIn('async function deleteProductTemplate', products)
 
     def test_chart_adapter_preserves_page_chart_options(self):
         charts = self.read('frontend/ui_demo/assets/charts.js')
@@ -538,6 +552,16 @@ class FrontendPrdContractTests(unittest.TestCase):
         self.assertIn('button.disabled = position + offset < 0 || position + offset >= selected.length', selector)
         self.assertIn('requiredKeys', selector)
         self.assertIn('input.disabled = field.required || field.locked', selector)
+        self.assertIn('function removeField(position)', selector)
+        self.assertIn("dataset.lucide = 'trash-2'", selector)
+        self.assertIn('Number(field.nonempty_count || 0) > 0', adapter)
+        self.assertIn('function classifyBiField(field)', adapter)
+        self.assertIn("return '交易与收益'", adapter)
+        self.assertIn("return '推广与投放'", adapter)
+        self.assertIn("return '流量与转化'", adapter)
+        self.assertIn("return '商品与库存'", adapter)
+        self.assertIn("return '其他 BI 字段'", adapter)
+        self.assertNotIn("columnGroups.push({ label: 'BI 数据源字段'", adapter)
 
         settings_tree = ast.parse(self.read('services/settings_service.py'))
         view_columns_node = next(
@@ -573,7 +597,7 @@ class FrontendPrdContractTests(unittest.TestCase):
         script = self.read('frontend/ui_demo/assets/products-live.js')
         selector = self.read('frontend/ui_demo/assets/field-selector.js')
         self.assertIn('data-products-field-selector', page)
-        self.assertIn('DemoFieldSelector.create', script)
+        self.assertIn('TmallUI.fieldSelector', script)
         self.assertIn("previewDataAttribute: 'data-products-preview-key'", script)
         self.assertIn('function renderPreview', selector)
         options_block = script[script.index('function renderColumnOptions('):script.index('function openColumnsDialog(')]
@@ -589,7 +613,41 @@ class FrontendPrdContractTests(unittest.TestCase):
             page = self.read(f'frontend/ui_demo/pages/{page_name}.html')
             script = self.read(f'frontend/ui_demo/assets/{script_name}')
             self.assertIn('../assets/field-selector.js', page)
-            self.assertIn('DemoFieldSelector.create', script)
+            self.assertIn('TmallUI.fieldSelector', script)
+
+    def test_creative_board_is_an_all_time_category_scoped_page(self):
+        page = self.read('frontend/ui_demo/pages/creative-board.html')
+        styles = self.read('frontend/ui_demo/assets/creative-board.css')
+        adapter = self.read('frontend/ui_demo/assets/creative-board-live.js')
+        shell = self.read('frontend/ui_demo/assets/shell.js')
+        self.assertIn('<body data-page="creative-board">', page)
+        self.assertIn('../assets/creative-board.css?', page)
+        self.assertIn('../assets/creative-board-live.js?', page)
+        self.assertIn('DemoApi.domainRequest(\'/api/creative-board\')', adapter)
+        self.assertIn("params.get('category')", adapter)
+        self.assertIn("params.get('product_id')", adapter)
+        self.assertIn("params.get('q')", adapter)
+        self.assertIn("url.searchParams.set('q'", adapter)
+        self.assertIn('data-cb-categories', page)
+        self.assertIn('data-cb-search', page)
+        self.assertIn('data-cb-category', adapter)
+        self.assertIn('history.replaceState', adapter)
+        self.assertNotIn('start:', adapter)
+        self.assertNotIn('end:', adapter)
+        self.assertIn("'creative-board'", shell)
+        self.assertIn('body[data-page="creative-board"] .demo-period', styles)
+        self.assertIn('body[data-page="creative-board"] .demo-category', styles)
+        self.assertIn("pagesWithoutDateRange", shell)
+
+    def test_promotion_outer_view_restores_products_without_confusing_inner_tab(self):
+        page = self.read('frontend/ui_demo/pages/promotion.html')
+        views = self.read('frontend/ui_demo/assets/promotion-views-live.js')
+        product_adapter = self.read('frontend/ui_demo/assets/promotion-live.js')
+        self.assertIn('data-promotion-view="products"', page)
+        self.assertIn('data-promotion-view-panel="products"', page)
+        self.assertIn("new Set(['overview', 'plans', 'products']).has(storedView)", views)
+        self.assertIn("initialPromotionParams.get('tab')", product_adapter)
+        self.assertIn("data-promotion-tab=\"products\"", page)
 
     def test_import_history_uses_its_own_status_region_and_shortens_hashes(self):
         page = self.read('frontend/ui_demo/pages/data-center.html')
@@ -635,11 +693,15 @@ class FrontendPrdContractTests(unittest.TestCase):
         self.assertIn('const builtinTemplates = Object.fromEntries', adapter)
         self.assertIn('promotionBuiltinTemplateIds.has(id)', adapter)
 
-    def test_template_configuration_uses_server_as_the_single_source(self):
+    def test_template_configuration_keeps_product_templates_on_products_page(self):
         settings = self.read('frontend/ui_demo/assets/settings-live.js')
+        products = self.read('frontend/ui_demo/assets/products-live.js')
         promotion = self.read('frontend/ui_demo/assets/promotion-live.js')
-        self.assertIn('renderProductViewOptions', settings)
-        self.assertIn("data.view_templates", settings)
+        self.assertIn('templateDraft.mapping_templates', settings)
+        self.assertNotIn('templateDraft.view_templates', settings)
+        self.assertNotIn('templateDraft.product_view_template', settings)
+        self.assertIn("'/api/settings'", products)
+        self.assertIn('view_templates', products)
         self.assertIn("'/api/settings'", promotion)
         self.assertIn('promotion_view_templates', promotion)
         self.assertNotIn("localStorage.setItem(storageKey", promotion)
@@ -750,8 +812,19 @@ class FrontendPrdContractTests(unittest.TestCase):
         self.assertIn("dialog.className = 'lifecycle-detail product-detail-dialog'", component)
         self.assertIn('lifecycle-detail__header', component)
         self.assertIn('lifecycle-detail-tabs', component)
-        for tab in ('overview', 'trend', 'lifecycle', 'collaboration'):
+        for tab in ('overview', 'promotion', 'trend', 'flow-source', 'lifecycle', 'collaboration'):
             self.assertIn(f"['{tab}'", component)
+        self.assertIn('../assets/ui-components.js', self.read('frontend/ui_demo/pages/products.html'))
+        self.assertIn('../assets/promotion-field-definitions.js', self.read('frontend/ui_demo/pages/products.html'))
+        self.assertIn('TmallUI?.table', component)
+        self.assertIn('openPromotionFieldDialog', component)
+        self.assertIn('DemoFieldTemplateManager', component)
+        self.assertIn('function renderPromotion', component)
+        self.assertIn('product-detail-promotion-grid', component)
+        self.assertIn('加购成本', component)
+        self.assertIn('拉新成本', component)
+        self.assertIn('引导潜客占比', component)
+        self.assertIn('.product-detail-promotion-metrics', self.read('frontend/ui_demo/assets/components.css'))
         self.assertIn("setAttribute('role', 'tabpanel')", component)
 
     def test_dynamic_dialogs_declare_registered_modal_kinds(self):
@@ -801,7 +874,7 @@ class FrontendPrdContractTests(unittest.TestCase):
         self.assertIn('grid-template-columns: minmax(0, 1fr)', styles)
         self.assertIn('.lifecycle-detail__header { position: sticky; top: 0; z-index: 3; display: flex; min-width: 0', styles)
         self.assertIn('.lifecycle-detail__product { display: flex; min-width: 0; flex: 1 1 auto', styles)
-        self.assertIn('.lifecycle-detail-panel > .plain-panel { min-width: 0; margin-bottom: 0; }', styles)
+        self.assertIn('.lifecycle-detail-panel > .ui-panel { min-width: 0; margin-bottom: 0; }', styles)
 
     def test_lifecycle_field_settings_cover_monthly_operating_sections(self):
         lifecycle = self.read('frontend/ui_demo/assets/lifecycle-live.js')
@@ -828,14 +901,14 @@ class FrontendPrdContractTests(unittest.TestCase):
         self.assertIn('.product-detail-meta dd', styles)
         self.assertIn('font-size: var(--font-size-secondary); line-height: var(--line-height-body)', styles)
         self.assertIn('.alert-rule-row > div:first-child strong', styles)
-        self.assertIn('.plain-panel > p:not(.panel__hint)', styles)
+        self.assertIn('.ui-panel > p:not(.panel__hint)', styles)
 
     def test_promotion_field_selection_uses_a_separate_order_preview(self):
         page = self.read('frontend/ui_demo/pages/promotion.html')
         script = self.read('frontend/ui_demo/assets/promotion-live.js')
         selector = self.read('frontend/ui_demo/assets/field-selector.js')
         self.assertIn('data-promotion-field-selector', page)
-        self.assertIn('DemoFieldSelector.create', script)
+        self.assertIn('TmallUI.fieldSelector', script)
         self.assertIn("previewDataAttribute: 'data-promotion-preview-key'", script)
         self.assertIn('function renderPreview', selector)
 
@@ -933,7 +1006,7 @@ class FrontendPrdContractTests(unittest.TestCase):
         self.assertIn('[data-products-more-filters][hidden] { display: none; }', components)
         self.assertIn('min-height: 40px', components)
         self.assertIn('min-height: 44px', components)
-        self.assertIn('body[data-page="promotion"] .metric-grid { grid-template-columns: repeat(12, minmax(0, 1fr)); }', components)
+        self.assertIn('body[data-page="promotion"] .ui-metric-grid { grid-template-columns: repeat(12, minmax(0, 1fr)); }', components)
         self.assertIn('.field-order-preview__button { width: 44px; min-width: 44px; height: 44px; }', components)
         self.assertNotIn('<img data-detail-image', lifecycle_page)
         self.assertIn('new Image(52, 52)', lifecycle)
@@ -983,9 +1056,12 @@ class FrontendPrdContractTests(unittest.TestCase):
         self.assertIn('button.disabled = true;', data_center)
         self.assertIn('批次撤销失败，请重试', data_center)
         self.assertIn('finally {', data_center)
-        self.assertIn('let saving = false;', settings)
-        self.assertIn("saveButton.setAttribute('aria-busy', 'true')", settings)
-        self.assertIn('discardButton.disabled = !isDirty', settings)
+        self.assertIn('const savingState = { core: false, templates: false, classification: false };', settings)
+        self.assertIn('const setButtonBusy = (button, busy, idleLabel)', settings)
+        self.assertIn("button.toggleAttribute('aria-busy', busy)", settings)
+        self.assertIn('discard.disabled = !dirty || Boolean(savingState[domain])', settings)
+        self.assertIn('savingState.templates = true;', settings)
+        self.assertIn('finally { savingState.templates = false;', settings)
         self.assertIn("state.selectedFields[tab] = previousSelectedFields", promotion)
         self.assertIn("actionButton.setAttribute('aria-busy', 'true')", promotion)
         self.assertIn('await deletePromotionTemplate(remove.dataset.promotionDeleteTemplate)', promotion)

@@ -267,7 +267,7 @@ class AppFactoryTests(unittest.TestCase):
         from app import create_app
 
         with create_app({'TESTING': True}).test_client() as client:
-            for path in ('/', '/products', '/promotion', '/lifecycle', '/reviews', '/data-center', '/settings'):
+            for path in ('/', '/products', '/promotion', '/creative-board', '/lifecycle', '/reviews', '/data-center', '/settings'):
                 with self.subTest(path=path):
                     response = client.get(path)
                     self.assertEqual(response.status_code, 200)

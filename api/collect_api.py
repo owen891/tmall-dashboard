@@ -187,8 +187,11 @@ DATA_SOURCES = {
         'name': 'BI商品日度',
         'table': 'daily_data',
         'date_col': 'date',
-        'script': 'collect_overview_daily.py',
-        'description': 'BI商品总览日度数据采集',
+        # 用全量采集器：先取 BI 表格的全部 676 列、分批写入列模板再取数合并。
+        # 旧的 collect_overview_daily.py 只拿默认列模板的 59 个字段，
+        # 浏览量/退款金额/加购件数/收藏人数等十余个指标会全部落 0。
+        'script': 'collect_overview_full.py',
+        'description': 'BI商品总览日度全量采集（676字段）',
     },
     'bi_monthly': {
         'name': 'BI商品月度',
@@ -532,7 +535,9 @@ def trigger_collect():
     # 后台运行采集脚本（带超时和重试）
     MAX_RETRIES = 2
     RETRY_DELAY = 30  # 秒
-    COLLECT_TIMEOUT = 300  # 5分钟
+    # 全量 BI 采集需要分批设置列模板（676 列 / 每批 23 列 ≈ 30 批），
+    # 单轮远超旧的 300 秒上限，放宽到 900 秒。
+    COLLECT_TIMEOUT = 900  # 15分钟
 
     def run_collection():
         all_output = []
@@ -564,6 +569,9 @@ def trigger_collect():
                     process_env['TMALL_DB_PATH'] = db_path
                     process_env['TMALL_CDP_PORT'] = str(CDP_PORT)
                     process_env['TMALL_COLLECTOR_VERSION'] = APP_VERSION
+                    # 单品流量采集的商品数上限。采集器默认已是 200，这里再固化一次，
+                    # 避免部署环境未设置时回落到旧的 50 造成覆盖度断崖。
+                    process_env.setdefault('TMALL_ITEM_MAX_ITEMS', '200')
                     proc = subprocess.Popen(
                         [VENV_PYTHON, '-u', script_path],
                         cwd=COLLECTORS_DIR,

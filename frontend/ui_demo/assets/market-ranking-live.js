@@ -308,22 +308,22 @@
       const tbody = document.querySelector('[data-sycm-item-rank-body]');
       if (!tbody) return;
       if (!d.ok || !d.data.items.length) {
-        tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--text-tertiary);padding:24px">暂无数据</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--text-tertiary);padding:24px">暂无数据</td></tr>';
         return;
       }
       tbody.innerHTML = d.data.items.map((item, idx) => {
         const img = item.pic_url
-          ? `<img loading="lazy" src="${item.pic_url}" alt="" style="width:40px;height:40px;object-fit:cover;border-radius:4px;" onerror="this.style.display='none'">`
-          : '';
+          ? `<img loading="lazy" src="${escapeHtml(item.pic_url)}" alt="${escapeHtml(item.title || '商品图片')}" class="sycm-item-rank-image" onerror="this.style.display='none'">`
+          : '<span class="sycm-item-rank-image-placeholder" aria-hidden="true">暂无</span>';
         return `<tr>
           <td>${idx + 1}</td>
           <td>${img}</td>
-          <td>${item.cate_name}</td>
-          <td>${item.title || '-'}</td>
-          <td>${item.shop_name || '-'}</td>
+          <td><span class="sycm-item-rank-category">${escapeHtml(item.cate_name || '-')}</span></td>
+          <td class="sycm-item-rank-title" title="${escapeHtml(item.title || '-')}" >${escapeHtml(item.title || '-')}</td>
+          <td class="sycm-item-rank-shop" title="${escapeHtml(item.shop_name || '-')}" >${escapeHtml(item.shop_name || '-')}</td>
           <td class="num">${fmtWan(item.uv)}</td>
           <td class="num">${fmtWan(item.pay_buyer_count)}</td>
-          <td>${item.core_keyword || '-'}</td>
+          <td class="sycm-item-rank-keyword" title="${escapeHtml(item.core_keyword || '-')}" >${escapeHtml(item.core_keyword || '-')}</td>
         </tr>`;
       }).join('');
     } catch (e) {

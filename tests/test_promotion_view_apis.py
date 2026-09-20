@@ -31,6 +31,9 @@ class PromotionViewApiTests(unittest.TestCase):
                 INSERT INTO products (product_id, title, image_url) VALUES
                     ('p1', '演示凉感四件套', 'https://cdn.example.com/p1.jpg'),
                     ('p2', '演示纯棉袜子', '');
+                INSERT INTO monthly_data (product_id, month, guide_visitors, guide_potential)
+                VALUES ('p1', '2026-04', 100, 12);
+                UPDATE products SET shop_label = '标品袜子' WHERE product_id = 'p1';
                 -- 计划粒度行（维度报表回填形态：channel=场景，带计划名与行为指标）
                 INSERT INTO promotion_daily_facts
                     (date, channel, campaign_id, campaign_name, grain, cart_adds, cart_cost, new_buyers,
@@ -55,7 +58,8 @@ class PromotionViewApiTests(unittest.TestCase):
                     ('default', 'cr2', '创意乙', '', 'p1', '演示凉感四件套', '人群推广'),
                     ('default', 'cr3', '商品p1_智能创意_20260821_134418', '', 'p1', '演示凉感四件套', '关键词推广'),
                     ('default', 'cr4', '创意_20260821000000_p1', '', 'p1', '演示凉感四件套', '关键词推广'),
-                    ('default', 'cr5', '黑盒创意测试', '', 'p1', '演示凉感四件套', '关键词推广');
+                    ('default', 'cr5', '黑盒创意测试', '', 'p1', '演示凉感四件套', '关键词推广'),
+                    ('default', 'cr6', '未关联素材', '', '', '', '关键词推广');
                 INSERT INTO promotion_creative_daily
                     (shop_id, date, channel, creative_id, product_id, ad_spend,
                      attributed_payment_amount, impressions, clicks, payment_buyers, cart_adds, new_buyers)
@@ -65,7 +69,8 @@ class PromotionViewApiTests(unittest.TestCase):
                     ('default', '2026-04-01', '人群推广',   'cr2', 'p1', 5, 0, 100, 2, 0, 0, 0),
                     ('default', '2026-04-01', '关键词推广', 'cr3', 'p1', 99, 0, 100, 2, 0, 0, 0),
                     ('default', '2026-04-01', '关键词推广', 'cr4', 'p1', 99, 0, 100, 2, 0, 0, 0),
-                    ('default', '2026-04-01', '关键词推广', 'cr5', 'p1', 99, 0, 100, 2, 0, 0, 0);
+                    ('default', '2026-04-01', '关键词推广', 'cr5', 'p1', 99, 0, 100, 2, 0, 0, 0),
+                    ('default', '2025-01-01', '关键词推广', 'cr6', '', 999, 999, 100, 99, 0, 0, 0);
                 -- 计划×商品映射
                 INSERT INTO promotion_campaign_items
                     (shop_id, campaign_id, product_id, campaign_name, product_name, image_url, channel)
@@ -115,7 +120,20 @@ class PromotionViewApiTests(unittest.TestCase):
         self.assertEqual(by_type['控成本']['plan_count'], 1)
         self.assertEqual(by_type['控成本']['cart_cost'], 200.0)
 
-    def test_creatives_endpoint_aggregates_with_image(self):
+    def test_product_detail_returns_complete_campaign_and_channel_metrics(self):
+        response = self.client.get('/api/promotion/product-detail?start=2026-04-01&end=2026-04-02&product_id=p1')
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()['data']
+        campaign = next(row for row in payload['campaigns'] if row['campaign_id'] == 'c1')
+        channel = next(row for row in payload['channel_mix'] if row['channel'] == '关键词推广')
+        for row in (campaign, channel):
+            for key in ('impressions', 'clicks', 'ctr', 'cpm', 'payment_buyers', 'cvr', 'cpc', 'cart_adds', 'cart_rate', 'cart_cost', 'new_buyers', 'new_buyer_ratio', 'new_customer_cost', 'direct_payment_amount', 'indirect_payment_amount', 'paid_share'):
+                self.assertIn(key, row)
+        self.assertEqual(campaign['cart_adds'], 6)
+        self.assertAlmostEqual(campaign['cpc'], 150 / 140, places=6)
+        self.assertAlmostEqual(channel['cart_cost'], 150 / 6, places=6)
+
+
         response = self.client.get('/api/promotion/creatives?start=2026-04-01&end=2026-04-02&sort=clicks')
         self.assertEqual(response.status_code, 200)
         rows = response.get_json()['data']['rows']
@@ -142,7 +160,41 @@ class PromotionViewApiTests(unittest.TestCase):
         rows = response.get_json()['data']['rows']
         self.assertEqual(rows, [])
 
-    def test_product_detail_returns_channel_mix_and_campaigns(self):
+    def test_creative_board_aggregates_all_history_by_product(self):
+        response = self.client.get('/api/creative-board')
+        self.assertEqual(response.status_code, 200)
+        data = response.get_json()['data']
+        self.assertEqual(data['totals']['product_count'], 1)
+        self.assertEqual(data['totals']['creative_count'], 2)
+        self.assertAlmostEqual(data['totals']['ad_spend'], 35.0, places=6)
+        self.assertEqual(data['totals']['clicks'], 62)
+        self.assertEqual(len(data['products']), 1)
+        product = data['products'][0]
+        self.assertEqual(product['product_id'], 'p1')
+        self.assertEqual(product['shop_label'], '标品袜子')
+        creatives = {row['creative_id']: row for row in product['creatives']}
+        self.assertEqual(set(creatives), {'cr1', 'cr2'})
+        self.assertAlmostEqual(creatives['cr1']['ad_spend'], 30.0, places=6)
+        self.assertEqual(creatives['cr1']['clicks'], 60)
+        self.assertEqual(creatives['cr1']['first_date'], '2026-04-01')
+        self.assertEqual(creatives['cr1']['last_date'], '2026-04-02')
+
+    def test_creative_board_ignores_time_params_and_filters_category(self):
+        all_time = self.client.get('/api/creative-board?start=1900-01-01&end=1900-01-02').get_json()['data']
+        category = self.client.get('/api/creative-board?category=%E6%A0%87%E5%93%81%E8%A2%9C%E5%AD%90').get_json()['data']
+        empty = self.client.get('/api/creative-board?category=%E9%9D%9E%E6%A0%87%E5%93%81%E8%A2%9C%E5%AD%90').get_json()['data']
+        self.assertEqual(all_time['totals'], category['totals'])
+        self.assertEqual([row['product_id'] for row in category['products']], ['p1'])
+        self.assertEqual(empty['products'], [])
+
+    def test_creative_board_excludes_unlinked_and_system_creatives(self):
+        response = self.client.get('/api/creative-board')
+        data = response.get_json()['data']
+        names = [creative['creative_name'] for product in data['products'] for creative in product['creatives']]
+        self.assertEqual(names, ['创意甲', '创意乙'])
+        self.assertNotIn('未关联素材', names)
+        self.assertFalse(any(product['product_id'] in ('', '_') for product in data['products']))
+
         response = self.client.get('/api/promotion/product-detail?start=2026-04-01&end=2026-04-02&product_id=p1')
         self.assertEqual(response.status_code, 200)
         data = response.get_json()['data']
@@ -150,9 +202,37 @@ class PromotionViewApiTests(unittest.TestCase):
         self.assertAlmostEqual(mix['关键词推广']['ad_spend'], 150.0, places=6)
         self.assertAlmostEqual(mix['人群推广']['ad_spend'], 200.0, places=6)
         self.assertAlmostEqual(mix['关键词推广']['spend_share'], 150.0 / 350.0, places=6)
+        self.assertAlmostEqual(data['summary']['ad_spend'], 350.0, places=6)
+        self.assertAlmostEqual(data['summary']['attributed_payment_amount'], 600.0, places=6)
+        self.assertAlmostEqual(data['summary']['roi'], 600.0 / 350.0, places=6)
+        self.assertAlmostEqual(data['summary']['ctr'], 200 / 2300, places=6)
+        self.assertAlmostEqual(data['summary']['cvr'], 18 / 200, places=6)
+        self.assertEqual(data['summary']['cart_adds'], 7)
+        self.assertAlmostEqual(data['summary']['cart_cost'], 350 / 7, places=6)
+        self.assertAlmostEqual(data['summary']['new_customer_cost'], 350 / 3, places=6)
+        self.assertAlmostEqual(data['summary']['guide_potential_ratio'], 12 / 100, places=6)
         self.assertEqual(len(data['campaigns']), 2)
         plans = {row['campaign_id']: row for row in data['campaigns']}
         self.assertEqual(plans['c1']['plan_type'], '控点击')
+        self.assertAlmostEqual(plans['c1']['cart_cost'], 150 / 6, places=6)
+        self.assertAlmostEqual(plans['c1']['new_customer_cost'], 150 / 3, places=6)
+
+    def test_product_detail_falls_back_to_product_fact_when_plan_fact_is_missing(self):
+        from db import get_db
+        with get_db(self.path) as conn:
+            conn.execute(
+                "INSERT INTO promotion_daily_facts (date, channel, product_id, grain, ad_spend, attributed_payment_amount, impressions, clicks, payment_buyers, cart_adds, new_buyers) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                ('2026-04-01', '全部', 'p2', 'product', 80, 200, 1000, 50, 4, 8, 2),
+            )
+            conn.commit()
+        response = self.client.get('/api/promotion/product-detail?start=2026-04-01&end=2026-04-02&product_id=p2')
+        self.assertEqual(response.status_code, 200)
+        data = response.get_json()['data']
+        self.assertEqual(len(data['campaigns']), 1)
+        self.assertEqual(data['campaigns'][0]['campaign_id'], 'product:p2')
+        self.assertEqual(data['channel_mix'][0]['channel'], '全部')
+        self.assertEqual(data['summary']['cart_adds'], 8)
+        self.assertAlmostEqual(data['summary']['new_customer_cost'], 40.0, places=6)
 
     def test_campaign_detail_returns_products_from_edges(self):
         response = self.client.get('/api/promotion/campaign-detail?start=2026-04-01&end=2026-04-02&campaign_id=c1')

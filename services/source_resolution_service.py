@@ -29,6 +29,12 @@ DAILY_FIELD_COLUMNS = {
     'bounce_rate': 'bounce_rate',
     'avg_stay_duration': 'avg_stay_duration',
     'favorite_cart_rate': 'favorite_cart_rate',
+    # Derived by the BI collectors (cart_users / product_visitors and
+    # favorite_users / product_visitors). They used to be dropped silently
+    # because they were missing from this whitelist, leaving both columns
+    # permanently zero in daily_data.
+    'cart_rate': 'cart_rate',
+    'fav_rate': 'fav_rate',
     'repurchase_rate': 'repurchase_rate',
     'ad_spend': 'ad_spend',
     'ad_roi': 'ad_roi',
@@ -65,6 +71,23 @@ DAILY_FIELD_COLUMNS = {
     'cross_sell_categories': 'cross_sell_categories',
     'category_width': 'category_width',
     'repurchase_users': 'repurchase_users',
+    # 成本与利润字段（来源：BI 运营视窗「商品总览」）。
+    # 口径统一为「支付预估」：利润(支付预估)
+    #   = 净销售额(支付) − 销售费用(支付预估) − 自定义费用
+    #     − 净货品成本(支付) − 发货费用(支付) − 其他费用(支付)
+    # 该式已在 2025-09-01 / 2025-09-15 / 2026-08-15 / 2026-09-10 四个日期上
+    # 做逐商品回归，聚合误差 < 0.1 元；商品成本取「净货品成本(支付)」。
+    'product_cost': 'product_cost',
+    'sales_cost': 'sales_cost',
+    'custom_cost': 'custom_cost',
+    'logistics_cost': 'logistics_cost',
+    'other_cost': 'other_cost',
+    'platform_fee': 'platform_fee',
+    'after_sales_loss': 'after_sales_loss',
+    'gross_profit': 'gross_profit',
+    'operating_profit': 'operating_profit',
+    'profit_rate': 'profit_rate',
+    'profit_target': 'profit_target',
 }
 
 PRIMARY_SOURCES = {

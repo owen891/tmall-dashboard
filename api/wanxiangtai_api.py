@@ -277,6 +277,34 @@ def import_data():
             # 创意报表的事实行只写 promotion_creative_daily，不进主事实表，
             # 否则会在 promotion_daily_facts 里留下无主键维度的幽灵行。
             facts_to_store = rows if report_type != 'creative' else []
+
+            # 账户总账行(grain='account', 无计划/商品归属)是账户级汇总口径，与
+            # campaign/product 明细求和互斥。一旦同日混入，会让当日花费虚高数倍
+            # （2026-09-13 曾混入 141,471 的跨口径总账，真实花费仅 44,847）。
+            # 因此：同日已有明细时，丢弃总账行，仅保留明细口径。
+            dropped_account = 0
+            if facts_to_store:
+                kept = []
+                for row in facts_to_store:
+                    if (row.get('grain') == 'account'
+                            and not row.get('campaign_id') and not row.get('product_id')):
+                        has_detail = conn.execute(
+                            '''SELECT 1 FROM promotion_daily_facts
+                               WHERE shop_id = ? AND date = ?
+                                 AND grain IN ('campaign', 'product') LIMIT 1''',
+                            (shop_id, row.get('date'))
+                        ).fetchone()
+                        if has_detail:
+                            dropped_account += 1
+                            continue
+                    kept.append(row)
+                facts_to_store = kept
+            if dropped_account:
+                current_app.logger.warning(
+                    '万相台导入：丢弃 %d 行账户总账(grain=account)，同日已存在明细口径',
+                    dropped_account,
+                )
+
             for row in facts_to_store:
                 # 检查是否已存在（UPSERT）
                 existing = conn.execute(

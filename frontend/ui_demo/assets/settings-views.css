@@ -30,8 +30,8 @@
 .settings-workspace { grid-template-columns: minmax(0, 1fr); }
 .settings-tabs-row { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); flex-wrap: wrap; margin-bottom: var(--space-4); }
 .settings-tabs-wrap { min-width: 0; flex: 1; }
-.settings-tabs { display: flex; width: 100%; }
-.settings-tabs button { flex: 1; justify-content: center; gap: 6px; white-space: nowrap; min-width: 0; }
+.settings-tabs { display: flex; width: 100%; overflow-x: auto; }
+.settings-tabs button { display: inline-flex; flex: 1 0 148px; align-items: center; justify-content: center; gap: 6px; white-space: nowrap; min-width: 0; }
 .settings-tabs button > svg { width: 14px; height: 14px; flex: 0 0 auto; }
 
 /* ── 卡片网格：每个页签由功能卡片组成 ──────────────────────────────── */
@@ -92,3 +92,10 @@
 .settings-chip { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; padding: 3px 10px; border-radius: var(--radius-full); border: 1px solid var(--border-default); background: var(--surface-base); color: var(--text-secondary); font-size: var(--font-size-meta); }
 .settings-chip svg { width: 12px; height: 12px; }
 .settings-tree__badge:empty { display: none; }
+
+@media (max-width: 560px) {
+  body[data-page="settings"] .settings-main > .settings-template-panel,
+  body[data-page="settings"] .settings-main > .settings-category-panel {
+    padding-bottom: calc(var(--control-height-touch) + var(--space-6) + var(--space-4));
+  }
+}

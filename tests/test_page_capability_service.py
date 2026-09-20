@@ -15,7 +15,7 @@ class PageCapabilityServiceTests(unittest.TestCase):
     def tearDown(self):
         self.temp_dir.cleanup()
 
-    def test_registry_has_eleven_unique_pages_and_valid_surfaces(self):
+    def test_registry_has_twelve_unique_pages_and_valid_surfaces(self):
         from services.page_capability_service import (
             PAGE_DEFINITIONS,
             SURFACE_DEFINITIONS,
@@ -24,8 +24,8 @@ class PageCapabilityServiceTests(unittest.TestCase):
 
         result = validate_registry()
         self.assertEqual(result['errors'], [])
-        self.assertEqual(len(PAGE_DEFINITIONS), 11)
-        self.assertEqual(len({item['key'] for item in PAGE_DEFINITIONS}), 11)
+        self.assertEqual(len(PAGE_DEFINITIONS), 12)
+        self.assertEqual(len({item['key'] for item in PAGE_DEFINITIONS}), 12)
         self.assertGreaterEqual(len(SURFACE_DEFINITIONS), 1)
         self.assertTrue(all(item['modal_kind'] in {
             'detail', 'edit', 'config', 'flow'
@@ -80,7 +80,7 @@ class PageCapabilityServiceTests(unittest.TestCase):
         from services.page_capability_service import build_page_catalog
 
         result = build_page_catalog(self.app.config['DATABASE_PATH'])
-        self.assertEqual(result['summary']['page_count'], 11)
+        self.assertEqual(result['summary']['page_count'], 12)
         self.assertEqual(result['summary']['unclassified'], 0)
         self.assertFalse(result['summary']['can_release'])
         overview = next(item for item in result['pages'] if item['key'] == 'overview')

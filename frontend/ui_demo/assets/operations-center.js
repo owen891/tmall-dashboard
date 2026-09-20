@@ -96,7 +96,7 @@
     if (compact) head.appendChild(status); else item.append(marker, copy, status);
     if (!compact) {
       const actions = document.createElement('div'); actions.className = 'operations-center__item-actions';
-      const link = document.createElement('a'); link.className = 'ui-button ui-button--ghost operations-center__item-link'; link.href = '/reviews'; link.textContent = '处理'; actions.appendChild(link);
+      const link = document.createElement('a'); link.className = 'ui-button ui-button--ghost operations-center__item-link'; link.href = `/reviews?action=${encodeURIComponent(action.id)}`; link.textContent = '处理'; actions.appendChild(link);
       if (deletableStatuses.has(action.status)) {
         const remove = document.createElement('button'); remove.type = 'button'; remove.className = 'ui-button ui-button--ghost ui-button--danger'; remove.dataset.actionDelete = action.id; remove.setAttribute('data-action-delete', action.id); remove.setAttribute('aria-label', `删除${actionTitle(action)}`); remove.innerHTML = '<i data-lucide="trash-2" aria-hidden="true"></i><span>删除</span>';
         remove.addEventListener('click', () => deleteAction(action, remove));

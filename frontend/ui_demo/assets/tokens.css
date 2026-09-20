@@ -155,6 +155,8 @@
   --ring-info: 0 0 0 1px var(--info);
   --ring-success: 0 0 0 1px var(--success);
   --swatch-inset-shadow: inset 0 0 0 1px var(--border-strong);
+  --drag-over-shadow: 0 0 0 3px var(--brand-tint);
+  --drag-over-line-shadow: inset 0 3px 0 var(--brand);
 
   /* Compatibility aliases used by existing pages. */
   --page: var(--surface-page);

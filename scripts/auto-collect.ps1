@@ -36,7 +36,8 @@ $LogDir = if ($env:TMALL_LOG_DIR) { $env:TMALL_LOG_DIR } else { Join-Path $Proje
 if (-not (Test-Path -LiteralPath $PythonPath)) { throw "采集 Python 不存在: $PythonPath" }
 
 $ChromeStartTimeout = 30
-$CollectWaitTimeout = 600
+# Must exceed COLLECT_TIMEOUT in api/collect_api.py (900s for full-column BI collection).
+$CollectWaitTimeout = if ($env:TMALL_COLLECT_WAIT_TIMEOUT) { [int]$env:TMALL_COLLECT_WAIT_TIMEOUT } else { 1200 }
 $CloseChromeAfterCollect = $false
 
 $BIUsername = $env:BI_USERNAME
@@ -91,14 +92,31 @@ Write-Log "  RPA 自动化采集开始"
 Write-Log "  采集数据源: $($Sources -join ', ')"
 Write-Log "========================================"
 
-# 1. 检查看板服务
+# 1. 检查看板服务；不在则自动拉起。
+# 计划任务只负责触发采集，原先看板没启动就直接 exit 1，整批采集静默跳过。
 Write-Log "`n[1/6] 检查看板服务状态..."
-try {
-    $resp = Invoke-WebRequest -Uri "$DashboardUrl/api/health" -UseBasicParsing -TimeoutSec 5
+function Test-Dashboard {
+    try {
+        $null = Invoke-WebRequest -Uri "$DashboardUrl/api/health" -UseBasicParsing -TimeoutSec 5
+        return $true
+    } catch { return $false }
+}
+if (Test-Dashboard) {
     Write-Log "  ✓ 看板服务运行正常"
-} catch {
-    Write-Log "  ✗ 看板服务未启动: $($_.Exception.Message)" "ERROR"
-    exit 1
+} else {
+    Write-Log "  看板服务未启动，尝试自动拉起..."
+    $dashboardScript = Join-Path $ProjectRoot 'app.py'
+    Start-Process -FilePath $PythonPath -ArgumentList "`"$dashboardScript`"" `
+        -WorkingDirectory $ProjectRoot -WindowStyle Hidden
+    $dashboardReady = $false
+    for ($i = 0; $i -lt 60; $i++) {
+        Start-Sleep -Seconds 1
+        if (Test-Dashboard) { Write-Log "  ✓ 看板服务已启动（$($i+1)秒）"; $dashboardReady = $true; break }
+    }
+    if (-not $dashboardReady) {
+        Write-Log "  ✗ 看板服务自动启动失败，无法触发采集" "ERROR"
+        exit 1
+    }
 }
 
 # 2. 启动Chrome调试模式
@@ -195,6 +213,18 @@ for ($i = 0; $i -lt $CollectWaitTimeout; $i += 10) {
     Write-Log "  已等待 $($i+10)秒: 运行中=$running, 完成=$completed, 失败=$failed"
     if ($running -eq 0) { Write-Log "  ✓ 全部完成"; break }
 }
+
+# 5b. 聚合店铺日汇总（从 daily_data 补 store_daily_facts）
+Write-Log "`n[5b] 聚合店铺日汇总..."
+$aggScript = Join-Path $ProjectRoot "scripts\aggregate_store_daily.py"
+if (Test-Path $aggScript) {
+    $aggOutput = & $PythonPath $aggScript 2>&1
+    foreach ($line in $aggOutput) { Write-Log "  $line" }
+    if ($LASTEXITCODE -ne 0) { Write-Log "  WARN 聚合脚本退出码: $LASTEXITCODE" }
+} else {
+    Write-Log "  WARN 聚合脚本不存在: $aggScript"
+}
+
 
 # 6. 输出最终状态
 Write-Log "`n[6/6] 最终状态:"

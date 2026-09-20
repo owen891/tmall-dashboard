@@ -4,6 +4,7 @@
     let groups = [];
     let fieldsByKey = new Map();
     let selected = [];
+    let searchQuery = '';
     let draggedPosition = -1;
     let dragOverPosition = -1;
 
@@ -33,6 +34,17 @@
 
     function notify() {
       options.onChange?.([...selected]);
+    }
+
+    function removeField(position) {
+      const field = fieldsByKey.get(selected[position]);
+      const requiredCount = requiredKeys().length;
+      if (!field || field.required || field.locked || position < requiredCount) return;
+      selected = selected.filter((_, index) => index !== position);
+      renderOptions();
+      renderPreview();
+      notify();
+      window.lucide?.createIcons();
     }
 
     function makeHeading(id, title, hint) {
@@ -167,6 +179,19 @@
           actions.appendChild(button);
         });
 
+        if (!isLocked) {
+          const removeButton = document.createElement('button');
+          removeButton.type = 'button';
+          removeButton.className = 'ui-button ui-button--ghost ui-field-selector__button ui-field-selector__button--remove';
+          removeButton.setAttribute('aria-label', `删除${field.label}`);
+          removeButton.title = `删除${field.label}`;
+          const removeIcon = document.createElement('i');
+          removeIcon.dataset.lucide = 'trash-2';
+          removeButton.appendChild(removeIcon);
+          removeButton.addEventListener('click', () => removeField(position));
+          actions.appendChild(removeButton);
+        }
+
         item.append(index, label, actions);
         item.addEventListener('pointerdown', (event) => {
           if (isLocked || event.button !== 0 || event.target.closest('button')) return;
@@ -203,13 +228,21 @@
 
     function renderOptions() {
       const container = root.querySelector('[data-field-selector-options]');
+      const query = searchQuery.trim().toLowerCase();
+      let visibleCount = 0;
       container.replaceChildren(...groups.map((group) => {
+        const visibleFields = group.fields.filter((field) => {
+          if (!query) return true;
+          return `${field.label} ${field.key}`.toLowerCase().includes(query);
+        });
+        if (!visibleFields.length) return null;
+        visibleCount += visibleFields.length;
         const section = document.createElement('section');
         section.className = 'ui-field-selector__group';
         const heading = document.createElement('strong');
         heading.textContent = group.label;
         section.appendChild(heading);
-        group.fields.forEach((field) => {
+        visibleFields.forEach((field) => {
           const label = document.createElement('label');
           const input = document.createElement('input');
           input.type = 'checkbox';
@@ -228,7 +261,14 @@
           section.appendChild(label);
         });
         return section;
-      }));
+      }).filter(Boolean));
+      const empty = root.querySelector('[data-field-selector-empty]');
+      if (empty) {
+        empty.hidden = visibleCount > 0;
+        empty.textContent = query ? `没有匹配“${searchQuery.trim()}”的字段` : '暂无可选字段';
+      }
+      const status = root.querySelector('[data-field-selector-search-status]');
+      if (status) status.textContent = query ? `搜索结果 ${visibleCount} 个字段` : `共 ${visibleCount} 个字段`;
     }
 
     function renderShell() {
@@ -240,15 +280,44 @@
       available.className = 'ui-field-selector__available';
       available.setAttribute('aria-labelledby', availableTitleId);
       available.appendChild(makeHeading(availableTitleId, options.availableTitle || '可选字段', options.availableHint || '勾选要展示的字段'));
+      const searchWrap = document.createElement('label');
+      searchWrap.className = 'ui-field-selector__search';
+      const searchLabel = document.createElement('span');
+      searchLabel.className = 'sr-only';
+      searchLabel.textContent = '搜索字段';
+      const searchInput = document.createElement('input');
+      searchInput.className = 'input';
+      searchInput.type = 'search';
+      searchInput.placeholder = options.searchPlaceholder || '搜索字段名称或 key';
+      searchInput.setAttribute('aria-label', '搜索字段');
+      searchInput.setAttribute('aria-controls', `${availableTitleId}-options`);
+      searchInput.autocomplete = 'off';
+      searchInput.addEventListener('input', () => {
+        searchQuery = searchInput.value;
+        renderOptions();
+      });
+      searchWrap.append(searchLabel, searchInput);
+      available.appendChild(searchWrap);
       const optionsRoot = document.createElement('div');
       optionsRoot.className = 'ui-field-selector__groups';
+      optionsRoot.id = `${availableTitleId}-options`;
       optionsRoot.dataset.fieldSelectorOptions = '';
-      available.appendChild(optionsRoot);
+      const optionsEmpty = document.createElement('p');
+      optionsEmpty.className = 'ui-field-selector__empty ui-field-selector__options-empty';
+      optionsEmpty.dataset.fieldSelectorEmpty = '';
+      optionsEmpty.setAttribute('role', 'status');
+      optionsEmpty.hidden = true;
+      available.append(optionsRoot, optionsEmpty);
+      const searchStatus = document.createElement('span');
+      searchStatus.className = 'sr-only';
+      searchStatus.dataset.fieldSelectorSearchStatus = '';
+      searchStatus.setAttribute('aria-live', 'polite');
+      available.appendChild(searchStatus);
 
       const preview = document.createElement('section');
       preview.className = 'ui-field-selector__preview-pane';
       preview.setAttribute('aria-labelledby', previewTitleId);
-      preview.appendChild(makeHeading(previewTitleId, options.previewTitle || '字段预览', options.previewHint || '按表格列顺序展示'));
+      preview.appendChild(makeHeading(previewTitleId, options.previewTitle || '字段预览', options.previewHint || '拖动字段行调整顺序'));
       const previewRoot = document.createElement('ol');
       previewRoot.className = 'ui-field-selector__preview';
       previewRoot.dataset.fieldSelectorPreview = '';
@@ -261,6 +330,7 @@
       groups = normalizeGroups(config.groups);
       fieldsByKey = new Map(groups.flatMap((group) => group.fields).map((field) => [field.key, field]));
       selected = normalizeSelected(config.selected);
+      searchQuery = '';
       renderShell();
       renderOptions();
       renderPreview();

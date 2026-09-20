@@ -54,7 +54,32 @@ def test_field_selector_is_shared_and_exposes_canonical_classes():
     assert "ui-field-selector__preview" in source
 
 
-def test_field_selector_consumers_use_the_shared_tmall_ui_entrypoint():
+def test_field_selector_supports_search_and_visible_drag_feedback():
+    source = (ASSETS / "field-selector.js").read_text(encoding="utf-8")
+    styles = (ASSETS / "components.css").read_text(encoding="utf-8")
+    for marker in (
+        "searchQuery",
+        "type = 'search'",
+        "搜索字段名称或 key",
+        "data-field-selector-empty",
+        "没有匹配",
+        "data-field-selector-search-status",
+        "function removeField(position)",
+        "aria-label', `删除${field.label}`",
+        "dataset.lucide = 'trash-2'",
+        "if (!isLocked)",
+    ):
+        assert marker in source
+    for marker in (
+        ".ui-field-selector__search",
+        ".ui-field-selector__item.is-dragging",
+        ".ui-field-selector__item.is-drag-over",
+        ".ui-field-selector__preview.is-drag-over-end",
+        ".ui-field-selector__button--remove:not(:disabled):hover",
+    ):
+        assert marker in styles
+
+
     for name in ("keyword-promotion-live.js", "lifecycle-live.js", "overview-live.js", "products-live.js", "promotion-live.js"):
         source = (ASSETS / name).read_text(encoding="utf-8")
         assert "TmallUI.fieldSelector" in source, name
@@ -68,16 +93,24 @@ def test_field_selector_only_uses_icons_available_in_the_custom_bundle():
     assert "arrow-down" not in source
     assert "chevron-right" in source
     assert "icons/chevron-right.js" in bundle
+    assert "trash-2" in source
+    assert "Trash2:re" in bundle
 
 
 def test_all_field_selector_dialogs_have_shared_layout_guardrails():
     styles = (ASSETS / "components.css").read_text(encoding="utf-8")
     for dialog in ("promotion-field-dialog", "overview-matrix-columns-dialog", "products-columns-dialog", "lifecycle-columns-dialog"):
-        assert f".{dialog} .field-selection-layout.ui-field-selector" in styles, dialog
+        assert f".{dialog} .ui-field-selector" in styles, dialog
+    for page in ("promotion.html", "overview.html", "products.html", "lifecycle.html", "keyword-promotion.html"):
+        source = (PAGES / page).read_text(encoding="utf-8")
+        assert "ui-field-selector-dialog" in source, page
+    assert ".ui-field-selector-dialog" in styles
     source = (ASSETS / "field-selector.js").read_text(encoding="utf-8")
     assert "ui-field-selector__ui-button" not in source
     assert "ui-field-selector__button--${direction}" in source
     assert "root.className = 'ui-field-selector'" in source
+    for legacy in ("field-selection-layout", "field-selection-pane", "field-group-grid", "field-order-preview", "field-preview-pane"):
+        assert f"{legacy} " not in source and f"'{legacy}'" not in source
     for name in ("keyword-promotion-live.js", "lifecycle-live.js", "overview-live.js", "products-live.js", "promotion-live.js"):
         consumer = (ASSETS / name).read_text(encoding="utf-8")
         assert "className: '" not in consumer or "field-selection" not in consumer
@@ -159,6 +192,20 @@ def test_market_and_keyword_pages_forward_shared_date_range():
     assert "tmall:date-range-change" in market
     assert "start: dateRange().startDate" in keyword
     assert "end: dateRange().endDate" in keyword
+
+
+def test_sycm_product_ranking_columns_match_rendered_rows():
+    page = (PAGES / "market-ranking.html").read_text(encoding="utf-8")
+    source = (ASSETS / "market-ranking-live.js").read_text(encoding="utf-8")
+    assert "sycm-item-rank-table" in page
+    assert page.count('<col class="sycm-item-rank-col--') == 8
+    assert '<th>商品图</th>' in page
+    assert '<td colspan="8"' in page
+    assert "sycm-item-rank-image" in source
+    assert "sycm-item-rank-title" in source
+    assert "sycm-item-rank-keyword" in source
+
+
 def test_products_pilot_uses_canonical_ui_contract():
     source = (PAGES / "products.html").read_text(encoding="utf-8")
     assert "ui-metric-card" in source

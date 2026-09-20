@@ -87,19 +87,36 @@
     columnsByKey.clear();
     columns.forEach((column) => columnsByKey.set(column.key, column));
   }
+  function classifyBiField(field) {
+    const group = String(field.group || '').trim();
+    if (group && group !== 'BI 数据源字段') return group;
+    const text = `${field.label || ''} ${field.key || ''}`.toLowerCase();
+    if (/(销售|成交|支付|订单|买家|退款|利润|毛利|成本|客单)/.test(text)) return '交易与收益';
+    if (/(推广|广告|投放|花费|费用|点击|展现|曝光|roi|cpc|cpm)/.test(text)) return '推广与投放';
+    if (/(访客|流量|转化|访问|浏览|收藏|加购|搜索|uv|pv)/.test(text)) return '流量与转化';
+    if (/(库存|商品|款式|尺码|颜色|供应|采购)/.test(text)) return '商品与库存';
+    return '其他 BI 字段';
+  }
+
   function ingestBiFieldCatalog(catalog) {
     const dynamic = Array.isArray(catalog)
-      ? catalog.filter((field) => field && field.source_type === 'bi_monthly_overview' && field.key && field.label)
+      ? catalog.filter((field) => field && field.source_type === 'bi_monthly_overview' && field.key && field.label && Number(field.nonempty_count || 0) > 0)
       : [];
     if (!dynamic.length) return;
     const known = new Set(columnGroups.flatMap((group) => group.columns.map((column) => column.key)));
-    const newColumns = dynamic
+    const grouped = new Map();
+    dynamic
       .filter((field) => !known.has(field.key))
-      .map((field) => ({ key: field.key, label: field.label, format: field.format || 'text' }));
-    if (!newColumns.length) return;
-    const group = columnGroups.find((item) => item.label === 'BI 数据源字段');
-    if (group) group.columns.push(...newColumns);
-    else columnGroups.push({ label: 'BI 数据源字段', columns: newColumns });
+      .forEach((field) => {
+        const group = classifyBiField(field);
+        if (!grouped.has(group)) grouped.set(group, []);
+        grouped.get(group).push({ key: field.key, label: field.label, format: field.format || 'text' });
+      });
+    grouped.forEach((columns, label) => {
+      const group = columnGroups.find((item) => item.label === label);
+      if (group) group.columns.push(...columns);
+      else columnGroups.push({ label, columns });
+    });
     rebuildColumns();
   }
   rebuildColumns();
@@ -361,7 +378,7 @@
     const useDaily = shouldUseDailyData();
     const dim = useDaily ? 'daily' : 'monthly';
 
-    const params = new URLSearchParams({ dim: 'monthly', limit: String(state.pageSize), offset: String((state.page - 1) * state.pageSize) });
+    const params = new URLSearchParams({ dim, limit: String(state.pageSize), offset: String((state.page - 1) * state.pageSize) });
     if (useDaily) {
       const range = currentRange();
       if (range.startDate) params.set('start', range.startDate);
@@ -1109,6 +1126,12 @@
     $('[data-products-status-filter]').value = 'active';
     $('[data-products-sort]').value = 'payment_amount';
     $('[data-products-order]').value = 'desc';
+    const lifecycleFilter = $('[data-products-lifecycle-stage]');
+    const seasonalityFilter = $('[data-products-seasonality]');
+    const pendingActionFilter = $('[data-products-pending-action]');
+    if (lifecycleFilter) lifecycleFilter.value = '';
+    if (seasonalityFilter) seasonalityFilter.value = '';
+    if (pendingActionFilter) pendingActionFilter.value = '';
     state.starredOnly = false;
     state.page = 1;
     $('[data-products-starred]').setAttribute('aria-pressed', 'false');

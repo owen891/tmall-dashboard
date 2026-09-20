@@ -5,6 +5,14 @@ const root = path.resolve(__dirname, '..', 'frontend', 'ui_demo', 'assets');
 const tokens = fs.readFileSync(path.join(root, 'tokens.css'), 'utf8');
 const shared = ['shell.css', 'components.css']
   .map((file) => ({ file, css: fs.readFileSync(path.join(root, file), 'utf8') }));
+const pageStyles = [
+  'analysis.css',
+  'creative-board.css',
+  'keyword-promotion.css',
+  'promotion-views.css',
+  'settings-views.css',
+].map((file) => ({ file, css: fs.readFileSync(path.join(root, file), 'utf8') }));
+const styles = [...shared, ...pageStyles];
 const errors = [];
 
 function assert(condition, message) {
@@ -17,7 +25,7 @@ function hasRawBoxShadow(css) {
 }
 
 for (const name of [
-  '--color-orange-600', '--surface-page', '--text-primary', '--border-default',
+  '--color-indigo-600', '--surface-page', '--text-primary', '--border-default',
   '--font-size-body', '--font-size-meta', '--font-size-title', '--font-size-kpi',
   '--icon-control', '--button-primary-bg', '--panel-radius', '--dialog-shadow',
   '--focus-ring', '--overlay-backdrop', '--icon-button-size', '--control-height',
@@ -25,7 +33,7 @@ for (const name of [
   assert(tokens.includes(name), `tokens.css: missing ${name}`);
 }
 
-for (const { file, css } of shared) {
+for (const { file, css } of styles) {
   assert(!/font-weight:\s*650\b/.test(css), `${file}: unsupported font-weight 650`);
   assert(!/font-size:\s*(?:9|10|25)px\b/.test(css), `${file}: unsupported font-size`);
   assert(!/font:\s*(?:[4-9]00\s+)?(?:9|10|25)px\b/.test(css), `${file}: unsupported font shorthand`);
@@ -40,7 +48,7 @@ assert(
   'shell.css: icon buttons must use a shared size token',
 );
 assert(
-  /\.button\s*\{[\s\S]*?min-height:\s*var\(--control-height\)/.test(shared[1].css),
+  /\.ui-button\s*\{[\s\S]*?min-height:\s*var\(--button-height\)/.test(shared[1].css),
   'components.css: buttons must use shared control height',
 );
 assert(

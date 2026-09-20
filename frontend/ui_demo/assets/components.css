@@ -374,7 +374,10 @@ input[type="checkbox"], input[type="radio"] { width: 18px; height: 18px; margin:
 .product-table th:first-child, .product-table td:first-child { width: 38px; min-width: 38px; }
 .product-table [data-product-view][hidden] { display: none; }
 .products-health-cell { min-width: 0; }
-.product-field-controls { display: flex; align-items: center; gap: 8px; }
+.product-field-controls { display: flex; min-width: 0; flex: 1 1 auto; align-items: center; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
+.product-field-controls > .segmented { min-width: 0; flex: 0 1 auto; max-width: 100%; }
+.product-field-controls > [data-products-columns-open] { flex: 0 0 auto; white-space: nowrap; }
+body[data-page="products"] .product-list__header > div:first-child { min-width: 0; flex: 1 1 220px; }
 .products-columns-dialog { display: flex; width: min(960px, calc(100vw - 24px)); max-height: min(760px, calc(100vh - 24px)); border: 1px solid var(--border-default); border-radius: var(--radius-lg); background: var(--surface-base); color: var(--text-primary); box-shadow: var(--elevation-lg); overflow: hidden; flex-direction: column; }
 .modal-form.products-columns-dialog[open] { display: flex; }
 .products-columns-dialog > .modal-form__header, .products-columns-dialog > .modal-form__footer { flex: 0 0 auto; }
@@ -478,10 +481,6 @@ input[type="checkbox"], input[type="radio"] { width: 18px; height: 18px; margin:
 .settings-template-grid .filter-group { align-items: start; flex-wrap: wrap; }
 .settings-template-grid .status-list__item { margin-top: 6px; }
 .settings-template-field-selector { min-width: 0; margin: var(--space-2) 0; }
-.settings-template-field-selector .ui-field-selector { min-height: 260px; grid-template-columns: minmax(0, 1fr) minmax(220px, .8fr); gap: var(--space-3); }
-.settings-template-field-selector .ui-field-selector__groups { grid-template-columns: 1fr; max-height: 260px; }
-.settings-template-field-selector .ui-field-selector__preview-pane { padding-left: var(--space-3); }
-.settings-template-field-selector .ui-field-selector__item { min-height: 34px; }
 @media (max-width: 780px) { .settings-template-grid { grid-template-columns: 1fr; } }
 .classification-dictionaries { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 .classification-group { min-width: 0; border: 1px solid var(--border-default); border-radius: var(--radius-md); overflow: hidden; }
@@ -872,7 +871,7 @@ body[data-page="reviews"] [data-period-review-list] .status-list__item strong { 
 .settings-form-section p { margin: var(--space-1) 0 0; color: var(--text-secondary); font-size: var(--font-size-meta); }
 .settings-goal-link { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); grid-column: 1 / -1; padding: var(--space-2) var(--space-3); border: 1px solid var(--border-default); border-radius: var(--radius-md); background: var(--surface-muted); color: var(--text-secondary); font-size: var(--font-size-meta); }
 .settings-goal-link a { flex: 0 0 auto; text-decoration: none; }
-.settings-tab-panel { display: contents; }
+.settings-tab-panel { display: block; }
 .settings-tab-panel[hidden] { display: none; }
 .settings-section--collapsible > .panel__header { margin-bottom: 0; }
 .toolbox-import-actions { margin-top: var(--space-2); }
@@ -906,10 +905,15 @@ body[data-page="reviews"] [data-period-review-list] .status-list__item strong { 
 .data-governance-disclosure > summary span:last-child { color: var(--text-secondary); font-size: var(--font-size-meta); font-weight: 400; }
 .data-governance-disclosure__body { display: grid; gap: var(--space-4); margin-top: var(--space-3); }
 .data-governance-disclosure__body > .ui-panel { margin-bottom: 0; }
-.settings-savebar { position: sticky; top: calc(100dvh - var(--control-height-touch) - var(--space-3)); z-index: 4; display: flex; min-height: var(--control-height-touch); align-items: center; justify-content: flex-end; gap: var(--space-2); grid-column: 1 / -1; padding: var(--space-2); border: 1px solid var(--border-default); border-radius: var(--radius-md); background: color-mix(in srgb, var(--surface-base) 94%, transparent); box-shadow: var(--elevation-md); }
+.settings-savebar { position: sticky; top: calc(100dvh - var(--control-height-touch) - var(--space-3)); z-index: 4; display: flex; min-height: var(--control-height-touch); align-items: center; justify-content: flex-end; gap: var(--space-2); grid-column: 1 / -1; margin-top: var(--space-4); padding: var(--space-2); border: 1px solid var(--border-default); border-radius: var(--radius-md); background: color-mix(in srgb, var(--surface-base) 94%, transparent); box-shadow: var(--elevation-md); }
 .settings-savebar__dirty { margin-right: auto; color: var(--text-secondary); font-size: var(--font-size-meta); }
 .settings-savebar.is-dirty .settings-savebar__dirty { color: var(--warning); font-weight: 600; }
 .settings-savebar [data-settings-status] { margin: 0; }
+.settings-dictionary-section { margin-top: var(--space-5); padding-top: var(--space-4); border-top: 1px solid var(--border-default); }
+.settings-dictionary-section .panel__header { margin-bottom: var(--space-3); }
+.settings-category-panel { display: grid; gap: var(--space-4); margin-top: 0; padding-top: 0; border-top: 0; }
+.settings-template-panel { display: grid; gap: var(--space-4); }
+.settings-main > .ui-panel[data-settings-form-panel][hidden] { display: none; }
 .products-mobile-summary { display: none; }
 .products-mobile-summary__item { display: grid; gap: var(--space-3); padding: var(--space-3); border: 1px solid var(--border-default); border-radius: var(--radius-md); background: var(--surface-base); }
 .products-mobile-summary__header { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-3); }
@@ -927,6 +931,7 @@ body[data-page="reviews"] [data-period-review-list] .status-list__item strong { 
   .overview-decision__item strong { font-size: var(--font-size-label); }
   .overview-v2-secondary-kpis > summary, .data-governance-disclosure > summary { align-items: flex-start; flex-direction: column; gap: var(--space-1); }
   .settings-main [data-settings-form] { padding-bottom: calc(var(--control-height-touch) + var(--space-6)); }
+  .settings-template-panel, .settings-category-panel { padding-bottom: calc(var(--control-height-touch) + var(--space-6)); }
   .settings-savebar { position: fixed; right: 0; bottom: 0; left: 0; top: auto; margin: 0; border-radius: 0; }
   .ui-table-wrap--discoverable { padding-bottom: var(--space-5); }
   .ui-table-wrap--discoverable::after { position: absolute; right: var(--space-2); bottom: var(--space-1); display: block; padding: 0 var(--space-2); border: 1px solid var(--border-default); border-radius: var(--radius-sm); background: var(--surface-base); color: var(--text-secondary); content: '向右滚动查看其余列'; font-size: var(--font-size-meta); line-height: var(--line-height-meta); pointer-events: none; }
@@ -1141,6 +1146,14 @@ body[data-page="goals"] .ui-table-wrap { max-height: none; }
 .product-detail-metric-group__grid .detail-metric { min-width: 0; min-height: 66px; padding: 10px; border-color: color-mix(in srgb, var(--border-default) 78%, transparent); background: var(--surface-base); }
 .product-detail-metric-group__grid .detail-metric strong { font-size: var(--font-size-secondary); }
 .product-detail-overview-trend { min-width: 0; }
+.product-detail-promotion-metrics { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin: 0 0 12px; }
+.product-detail-promotion-metrics .detail-metric { min-width: 0; min-height: 66px; padding: 10px; background: var(--surface-base); }
+.product-detail-promotion-metrics .detail-metric strong { overflow: hidden; font-size: var(--font-size-secondary); text-overflow: ellipsis; white-space: nowrap; }
+.product-detail-promotion-grid { display: flex; min-width: 0; gap: 12px; flex-direction: column; }
+.product-detail-promotion-block { min-width: 0; padding: 11px; border: 1px solid var(--border-default); border-radius: var(--radius-md); background: var(--surface-muted); }
+.product-detail-promotion-block__title { margin: 0 0 8px; color: var(--text-secondary); font-size: var(--font-size-secondary); font-weight: 600; }
+.product-detail-promotion-table { min-width: 620px; }
+.product-detail-promotion-note { margin: 10px 0 0; }
 .product-detail-overview-trend__header { padding-bottom: 10px; }
 .product-detail-overview-trend__header h4 { margin: 0; font-size: var(--font-size-label); }
 .product-detail-overview-trend__header p { margin: 3px 0 0; color: var(--text-secondary); font-size: var(--font-size-meta); line-height: var(--line-height-secondary); }
@@ -1154,10 +1167,12 @@ body[data-page="goals"] .ui-table-wrap { max-height: none; }
 @media (max-width: 900px) {
   .product-detail-metric-groups { grid-template-columns: 1fr; }
   .product-detail-metric-group__grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .product-detail-promotion-metrics { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
 @media (max-width: 640px) {
   .product-detail-metric-group__grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .product-detail-meta, .product-detail-action-form { grid-template-columns: 1fr; }
+  .product-detail-promotion-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 .promotion-template-bar__status { display: flex; min-width: 0; align-items: center; gap: 7px; color: var(--text-secondary); font-size: var(--font-size-meta); }
 .promotion-template-bar__status strong { overflow: hidden; color: var(--text-primary); font-size: var(--font-size-meta); text-overflow: ellipsis; white-space: nowrap; }
@@ -1401,8 +1416,7 @@ body[data-page="goals"] .ui-table-wrap { max-height: none; }
 .promotion-detail-table__name span { color: var(--text-secondary); font-size: var(--font-size-meta); }
 .promotion-detail-note { margin: 0; color: var(--text-secondary); font-size: var(--font-size-meta); line-height: var(--line-height-secondary); }
 
-/* Shared field-selector visual contract. Page classes may provide content-specific
-   sizing, but the component primitives keep one layout and interaction language. */
+/* Shared field-selector visual contract. All pages use this geometry. */
 .ui-field-selector {
   display: grid;
   width: 100%;
@@ -1414,19 +1428,42 @@ body[data-page="goals"] .ui-table-wrap { max-height: none; }
 }
 .ui-field-selector__available,
 .ui-field-selector__preview-pane { min-width: 0; min-height: 0; }
+.ui-field-selector__available,
+.ui-field-selector__preview-pane { display: flex; flex-direction: column; }
+.ui-field-selector__heading { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-2); margin-bottom: var(--space-2); }
+.ui-field-selector__heading strong { color: var(--text-primary); font-size: var(--font-size-secondary); }
+.ui-field-selector__heading span { color: var(--text-secondary); font-size: var(--font-size-meta); }
+.ui-field-selector__search { position: relative; display: block; margin: 0 0 var(--space-2); }
+.ui-field-selector__search .input { width: 100%; min-width: 0; padding-inline: 10px; }
+.ui-field-selector__search .input[type='search'] { appearance: auto; }
+.ui-field-selector__options-empty { min-height: 96px; margin: var(--space-2) 0 0; border: 1px dashed var(--border-strong); border-radius: var(--radius-md); background: var(--surface-muted); }
 .ui-field-selector__preview-pane { padding-left: var(--space-5); border-left: 1px solid var(--border-default); }
-.ui-field-selector__groups { min-height: 0; max-height: none; gap: var(--space-3); overflow-y: auto; }
-.ui-field-selector__group { padding: var(--space-3); border: 1px solid var(--border-default); border-radius: var(--radius-md); background: var(--surface-base); }
-.ui-field-selector__group strong { margin-bottom: var(--space-2); color: var(--text-primary); }
-.ui-field-selector__group label { min-height: 34px; margin-top: 2px; padding: 5px 7px; border-radius: var(--radius-sm); }
+.ui-field-selector__groups { display: grid; grid-template-columns: 1fr; align-content: start; min-height: 0; max-height: none; gap: var(--space-3); overflow-y: auto; }
+.ui-field-selector__group { display: flex; min-width: 0; flex-wrap: wrap; align-content: flex-start; align-items: center; gap: var(--space-1) var(--space-2); padding: var(--space-3); border: 1px solid var(--border-default); border-radius: var(--radius-md); background: var(--surface-base); }
+.ui-field-selector__group > strong { display: block; flex: 0 0 100%; margin-bottom: var(--space-1); }
+.ui-field-selector__group label { display: inline-flex; min-width: max-content; min-height: 34px; align-items: center; margin: 0; padding: 5px 7px; border-radius: var(--radius-sm); white-space: nowrap; }
 .ui-field-selector__group label:hover { background: var(--surface-muted); }
-.ui-field-selector__preview { min-height: 0; border: 1px solid var(--border-default); border-radius: var(--radius-md); background: var(--surface-base); }
+.ui-field-selector__preview { position: relative; min-height: 0; border: 1px solid var(--border-default); border-radius: var(--radius-md); background: var(--surface-base); }
 .ui-field-selector__item { min-height: 44px; padding: 6px 9px; }
+.ui-field-selector__item { position: relative; display: grid; grid-template-columns: 24px minmax(0, 1fr) auto; align-items: center; gap: var(--space-2); border-bottom: 1px solid var(--border-default); cursor: grab; touch-action: none; transition: background var(--duration-fast), border-color var(--duration-fast), box-shadow var(--duration-fast), transform var(--duration-fast); }
+.ui-field-selector__item:last-child { border-bottom: 0; }
+.ui-field-selector__item.is-dragging { z-index: 1; border-color: color-mix(in srgb, var(--brand) 45%, var(--border-default)); background: var(--brand-tint); box-shadow: var(--elevation-md); opacity: .96; cursor: grabbing; transform: scale(1.01); }
+.ui-field-selector__item.is-drag-over { box-shadow: var(--drag-over-line-shadow); }
+.ui-field-selector__item.is-drag-over::before { position: absolute; top: -2px; right: 8px; left: 8px; height: 4px; border-radius: var(--radius-full); background: var(--brand); content: ''; pointer-events: none; }
+.ui-field-selector__preview.is-drag-over-end { padding-bottom: 8px; }
+.ui-field-selector__preview.is-drag-over-end::after { position: absolute; right: 8px; bottom: 3px; left: 8px; height: 4px; border-radius: var(--radius-full); background: var(--brand); box-shadow: var(--drag-over-shadow); content: ''; pointer-events: none; }
+.ui-field-selector__index { display: grid; width: 22px; height: 22px; place-items: center; border-radius: 50%; background: var(--surface-muted); color: var(--text-secondary); font-size: var(--font-size-meta); font-variant-numeric: tabular-nums; }
+.ui-field-selector__label { min-width: 0; overflow: hidden; color: var(--text-primary); font-size: var(--font-size-meta); text-overflow: ellipsis; white-space: nowrap; }
+.ui-field-selector__actions { display: flex; gap: var(--space-1); }
+.ui-field-selector__empty { display: grid; min-height: 120px; padding: var(--space-4); place-items: center; color: var(--text-secondary); font-size: var(--font-size-meta); text-align: center; }
+.ui-field-selector__empty[hidden] { display: none; }
 .ui-field-selector__button { width: 28px; min-width: 28px; height: 28px; min-height: 28px; padding: 0; border: 1px solid var(--border-default); border-radius: var(--radius-sm); background: var(--surface-muted); }
 .ui-field-selector__button .lucide { width: var(--icon-inline); height: var(--icon-inline); color: currentColor; }
 .ui-field-selector__button--is-up .lucide { transform: rotate(-90deg); }
 .ui-field-selector__button--is-down .lucide { transform: rotate(90deg); }
 .ui-field-selector__button:not(:disabled):hover { border-color: var(--brand); background: var(--brand-tint); color: var(--brand); }
+.ui-field-selector__button--remove:not(:disabled):hover,
+.ui-field-selector__button--remove:not(:disabled):focus-visible { border-color: var(--danger); background: var(--danger-tint); color: var(--danger); }
 .overview-matrix-columns-dialog .ui-field-selector,
 .products-columns-dialog .ui-field-selector,
 .lifecycle-columns-dialog .ui-field-selector,
@@ -1447,13 +1484,14 @@ body[data-page="goals"] .ui-table-wrap { max-height: none; }
 .overview-matrix-columns-dialog .ui-field-selector__groups,
 .products-columns-dialog .ui-field-selector__groups,
 .lifecycle-columns-dialog .ui-field-selector__groups,
-.promotion-field-dialog .ui-field-selector__groups { grid-template-columns: repeat(2, minmax(0, 1fr)); min-height: 0; max-height: none; overflow-y: auto; }
+.promotion-field-dialog .ui-field-selector__groups { grid-template-columns: 1fr !important; min-height: 0; max-height: none; overflow-y: auto; }
 .overview-matrix-columns-dialog .ui-field-selector__preview,
 .products-columns-dialog .ui-field-selector__preview,
 .lifecycle-columns-dialog .ui-field-selector__preview,
 .promotion-field-dialog .ui-field-selector__preview { min-height: 0; overflow-y: auto; }
 @media (max-width: 700px) {
   .ui-field-selector { min-height: 0; grid-template-columns: 1fr; grid-template-rows: minmax(220px, 1fr) minmax(220px, .9fr); gap: var(--space-4); overflow: visible; }
+  .ui-field-selector__groups { grid-template-columns: 1fr; }
   .ui-field-selector__preview-pane { padding: var(--space-4) 0 0; border-top: 1px solid var(--border-default); border-left: 0; }
   .overview-matrix-columns-dialog .ui-field-selector,
   .products-columns-dialog .ui-field-selector,
@@ -1479,7 +1517,7 @@ body[data-page="goals"] .ui-table-wrap { max-height: none; }
 .promotion-field-dialog .field-selection-layout.ui-field-selector .ui-field-selector__groups,
 .promotion-field-dialog .promotion-field-selection-layout.ui-field-selector .ui-field-selector__groups {
   display: grid !important;
-  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  grid-template-columns: 1fr !important;
   max-height: none !important;
   overflow-y: auto !important;
 }
@@ -1502,7 +1540,7 @@ body[data-page="goals"] .ui-table-wrap { max-height: none; }
 .products-columns-dialog .field-selection-layout.ui-field-selector .ui-field-selector__groups,
 .lifecycle-columns-dialog .field-selection-layout.ui-field-selector .ui-field-selector__groups {
   display: grid !important;
-  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  grid-template-columns: 1fr !important;
   max-height: none !important;
   overflow-y: auto !important;
 }
@@ -1547,7 +1585,171 @@ body[data-page="goals"] .ui-table-wrap { max-height: none; }
   }
 }
 
-@media (max-width: 960px) {
+.products-columns-dialog__body > [data-kp-field-selector] .ui-field-selector__groups,
+.products-columns-dialog__body > [data-products-field-selector] .ui-field-selector__groups,
+.lifecycle-columns-dialog .modal-form__body > [data-lifecycle-field-selector] .ui-field-selector__groups,
+.promotion-field-dialog .modal-form__body > [data-promotion-field-selector] .ui-field-selector__groups {
+  grid-template-columns: 1fr !important;
+}
+.products-columns-dialog__body > [data-kp-field-selector] .ui-field-selector__group,
+.products-columns-dialog__body > [data-products-field-selector] .ui-field-selector__group,
+.lifecycle-columns-dialog .modal-form__body > [data-lifecycle-field-selector] .ui-field-selector__group,
+.promotion-field-dialog .modal-form__body > [data-promotion-field-selector] .ui-field-selector__group {
+  display: flex;
+  flex-wrap: wrap;
+  align-content: flex-start;
+  align-items: center;
+}
+.products-columns-dialog__body > [data-kp-field-selector] .ui-field-selector__group label,
+.products-columns-dialog__body > [data-products-field-selector] .ui-field-selector__group label,
+.lifecycle-columns-dialog .modal-form__body > [data-lifecycle-field-selector] .ui-field-selector__group label,
+.promotion-field-dialog .modal-form__body > [data-promotion-field-selector] .ui-field-selector__group label {
+  display: inline-flex;
+  min-width: max-content;
+  align-items: center;
+  margin: 0;
+  white-space: nowrap;
+}
+
+.products-columns-dialog__body > [data-kp-field-selector] .ui-field-selector__group,
+.products-columns-dialog__body > [data-products-field-selector] .ui-field-selector__group,
+.lifecycle-columns-dialog .modal-form__body > [data-lifecycle-field-selector] .ui-field-selector__group,
+.promotion-field-dialog .modal-form__body > [data-promotion-field-selector] .ui-field-selector__group {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-content: flex-start;
+  align-items: center;
+  gap: 4px 8px;
+  padding: 10px;
+  overflow: visible;
+}
+.products-columns-dialog__body > [data-kp-field-selector] .ui-field-selector__group > strong,
+.products-columns-dialog__body > [data-products-field-selector] .ui-field-selector__group > strong,
+.lifecycle-columns-dialog .modal-form__body > [data-lifecycle-field-selector] .ui-field-selector__group > strong,
+.promotion-field-dialog .modal-form__body > [data-promotion-field-selector] .ui-field-selector__group > strong {
+  display: block;
+  flex: 0 0 100%;
+  margin: 0 0 4px;
+  padding: 0 2px 7px;
+  border-bottom: 1px solid var(--border-default);
+  color: var(--text-primary);
+  font-size: var(--font-size-meta);
+  font-weight: 700;
+}
+.products-columns-dialog__body > [data-kp-field-selector] .ui-field-selector__group label,
+.products-columns-dialog__body > [data-products-field-selector] .ui-field-selector__group label,
+.lifecycle-columns-dialog .modal-form__body > [data-lifecycle-field-selector] .ui-field-selector__group label,
+.promotion-field-dialog .modal-form__body > [data-promotion-field-selector] .ui-field-selector__group label {
+  display: inline-flex;
+  min-width: max-content;
+  min-height: 32px;
+  align-items: center;
+  gap: 5px;
+  margin: 0;
+  padding: 4px 7px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  font-size: var(--font-size-meta);
+  line-height: var(--line-height-secondary);
+  white-space: nowrap;
+}
+.products-columns-dialog__body > [data-kp-field-selector] .ui-field-selector__group label:hover,
+.products-columns-dialog__body > [data-products-field-selector] .ui-field-selector__group label:hover,
+.lifecycle-columns-dialog .modal-form__body > [data-lifecycle-field-selector] .ui-field-selector__group label:hover,
+.promotion-field-dialog .modal-form__body > [data-promotion-field-selector] .ui-field-selector__group label:hover { border-color: var(--border-default); background: var(--surface-muted); }
+.products-columns-dialog__body > [data-kp-field-selector] .ui-field-selector__group label:has(input:checked),
+.products-columns-dialog__body > [data-products-field-selector] .ui-field-selector__group label:has(input:checked),
+.lifecycle-columns-dialog .modal-form__body > [data-lifecycle-field-selector] .ui-field-selector__group label:has(input:checked),
+.promotion-field-dialog .modal-form__body > [data-promotion-field-selector] .ui-field-selector__group label:has(input:checked) { border-color: color-mix(in srgb, var(--brand) 28%, var(--border-default)); background: var(--brand-tint); color: var(--text-primary); }
+
+
+.products-columns-dialog__body > [data-kp-field-selector],
+.products-columns-dialog__body > [data-products-field-selector],
+.lifecycle-columns-dialog .modal-form__body > [data-lifecycle-field-selector],
+.promotion-field-dialog .modal-form__body > [data-promotion-field-selector] {
+  display: grid;
+  min-height: 0;
+  overflow: hidden;
+  flex: 1 1 360px;
+}
+.products-columns-dialog__body > [data-kp-field-selector] .ui-field-selector,
+.products-columns-dialog__body > [data-products-field-selector] .ui-field-selector,
+.lifecycle-columns-dialog .modal-form__body > [data-lifecycle-field-selector] .ui-field-selector,
+.promotion-field-dialog .modal-form__body > [data-promotion-field-selector] .ui-field-selector {
+  min-height: 0 !important;
+  height: auto !important;
+  flex: 1 1 auto !important;
+  grid-template-rows: minmax(0, 1fr) !important;
+}
+.products-columns-dialog__body > .products-template-save,
+.lifecycle-columns-dialog .modal-form__body > .promotion-template-save,
+.promotion-field-dialog .modal-form__body > .promotion-template-editor,
+.products-columns-dialog__body > .field-template-manager,
+.lifecycle-columns-dialog .modal-form__body > .field-template-manager {
+  flex: 0 0 auto;
+}
+
+
+
+.overview-matrix-columns-dialog__body > [data-overview-matrix-field-selector] {
+  display: grid;
+  min-height: 0;
+  overflow: hidden;
+  flex: 1 1 360px;
+}
+.overview-matrix-columns-dialog__body > [data-overview-matrix-field-selector] .ui-field-selector {
+  min-height: 0 !important;
+  height: auto !important;
+  flex: 1 1 auto !important;
+  grid-template-rows: minmax(0, 1fr) !important;
+}
+.overview-matrix-columns-dialog__body > [data-overview-matrix-field-selector] .ui-field-selector__groups {
+  display: grid !important;
+  grid-template-columns: 1fr !important;
+  min-height: 0;
+  max-height: none;
+  overflow-y: auto;
+}
+.overview-matrix-columns-dialog__body > [data-overview-matrix-field-selector] .ui-field-selector__group {
+  display: flex !important;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-content: flex-start;
+  align-items: center;
+  gap: 4px 8px;
+  padding: 10px;
+  overflow: visible;
+}
+.overview-matrix-columns-dialog__body > [data-overview-matrix-field-selector] .ui-field-selector__group > strong {
+  display: block;
+  flex: 0 0 100%;
+  margin: 0 0 4px;
+  padding: 0 2px 7px;
+  border-bottom: 1px solid var(--border-default);
+  color: var(--text-primary);
+  font-size: var(--font-size-meta);
+  font-weight: 700;
+}
+.overview-matrix-columns-dialog__body > [data-overview-matrix-field-selector] .ui-field-selector__group label {
+  display: inline-flex;
+  min-width: max-content;
+  min-height: 32px;
+  align-items: center;
+  gap: 5px;
+  margin: 0;
+  padding: 4px 7px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  font-size: var(--font-size-meta);
+  line-height: var(--line-height-secondary);
+  white-space: nowrap;
+}
+.overview-matrix-columns-dialog__body > [data-overview-matrix-field-selector] .ui-field-selector__group label:hover { border-color: var(--border-default); background: var(--surface-muted); }
+.overview-matrix-columns-dialog__body > [data-overview-matrix-field-selector] .ui-field-selector__group label:has(input:checked) { border-color: color-mix(in srgb, var(--brand) 28%, var(--border-default)); background: var(--brand-tint); color: var(--text-primary); }
+
   .promotion-board-grid, .promotion-command { grid-template-columns: 1fr; }
   .promotion-command__signals { padding: var(--space-4) 0 0; border-top: 1px solid var(--border-default); border-left: 0; }
 }
@@ -1566,3 +1768,260 @@ body[data-page="goals"] .ui-table-wrap { max-height: none; }
   .promotion-funnel__step { padding: var(--space-3); }
   .promotion-command__signals { padding-top: var(--space-3); }
 }
+
+
+.product-detail-promotion-field-dialog {
+  width: min(1120px, calc(100vw - 32px)) !important;
+  max-width: calc(100vw - 32px) !important;
+  min-height: min(620px, calc(100dvh - 32px)) !important;
+  max-height: min(760px, calc(100dvh - 32px)) !important;
+}
+.product-detail-promotion-field-dialog > .modal-form__body > [data-product-detail-field-selector] {
+  display: grid !important;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden !important;
+  flex: 1 1 auto;
+}
+.product-detail-promotion-field-dialog .ui-field-selector {
+  display: grid !important;
+  min-width: 0;
+  min-height: 360px !important;
+  grid-template-columns: minmax(0, 1.08fr) minmax(320px, .92fr) !important;
+  grid-template-rows: minmax(0, 1fr) !important;
+  gap: var(--space-5) !important;
+  overflow: hidden !important;
+}
+.product-detail-promotion-field-dialog .ui-field-selector__groups { min-height: 0; overflow-y: auto !important; }
+.product-detail-promotion-field-dialog .ui-field-selector__preview-pane { min-width: 0; min-height: 0; overflow: hidden; }
+.product-detail-promotion-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  padding-top: var(--space-3);
+}
+@media (max-width: 700px) {
+  .product-detail-promotion-field-dialog {
+    width: calc(100vw - 16px) !important;
+    max-width: calc(100vw - 16px) !important;
+    min-height: 0 !important;
+    max-height: calc(100dvh - 16px) !important;
+  }
+  .product-detail-promotion-field-dialog .ui-field-selector {
+    min-height: 0 !important;
+    grid-template-columns: 1fr !important;
+    grid-template-rows: minmax(220px, 1fr) minmax(220px, .9fr) !important;
+    overflow: visible !important;
+  }
+  .product-detail-promotion-field-dialog .ui-field-selector__preview-pane {
+    padding: var(--space-4) 0 0 !important;
+    border-top: 1px solid var(--border-default);
+    border-left: 0;
+  }
+}
+
+/* One field-selector dialog contract. The page-specific dialog names above are
+   retained for behavior hooks, but they must not change the component geometry. */
+.ui-field-selector-dialog:not([open]) { display: none !important; }
+.ui-field-selector-dialog {
+  display: grid !important;
+  width: min(1120px, calc(100vw - 32px)) !important;
+  max-width: calc(100vw - 32px) !important;
+  min-height: min(620px, calc(100dvh - 32px)) !important;
+  max-height: min(760px, calc(100dvh - 32px)) !important;
+  grid-template-rows: auto minmax(0, 1fr) auto !important;
+  overflow: hidden !important;
+}
+.ui-field-selector-dialog[open] { display: grid !important; }
+.ui-field-selector-dialog > .modal-form__header,
+.ui-field-selector-dialog > .modal-form__footer { flex: 0 0 auto; }
+.ui-field-selector-dialog > .modal-form__body,
+.ui-field-selector-dialog > .products-columns-dialog__body,
+.ui-field-selector-dialog > .overview-matrix-columns-dialog__body {
+  display: flex !important;
+  min-height: 0;
+  box-sizing: border-box;
+  overflow: hidden !important;
+  flex: 1 1 auto;
+  flex-direction: column;
+}
+.ui-field-selector-dialog > .modal-form__body,
+.ui-field-selector-dialog > .products-columns-dialog__body,
+.ui-field-selector-dialog > .overview-matrix-columns-dialog__body { padding: var(--space-4) var(--space-5); }
+.ui-field-selector-dialog > [class*="__body"] > [data-products-field-selector],
+.ui-field-selector-dialog > [class*="__body"] > [data-kp-field-selector],
+.ui-field-selector-dialog > [class*="__body"] > [data-lifecycle-field-selector],
+.ui-field-selector-dialog > [class*="__body"] > [data-overview-matrix-field-selector],
+.ui-field-selector-dialog > [class*="__body"] > [data-promotion-field-selector] {
+  display: grid !important;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden !important;
+  flex: 1 1 auto;
+}
+.ui-field-selector-dialog .ui-field-selector {
+  display: grid !important;
+  width: 100%;
+  min-width: 0;
+  min-height: 360px !important;
+  height: auto !important;
+  grid-template-columns: minmax(0, 1.08fr) minmax(320px, .92fr) !important;
+  grid-template-rows: minmax(0, 1fr) !important;
+  gap: var(--space-5) !important;
+  overflow: hidden !important;
+  flex: 1 1 auto !important;
+}
+.ui-field-selector-dialog .ui-field-selector__groups {
+  display: grid !important;
+  grid-template-columns: 1fr !important;
+  min-height: 0;
+  max-height: none !important;
+  overflow-y: auto !important;
+}
+.ui-field-selector-dialog .ui-field-selector__preview-pane {
+  min-width: 0;
+  min-height: 0;
+  padding: 0 0 0 var(--space-5) !important;
+  border-top: 0 !important;
+  border-left: 1px solid var(--border-default) !important;
+}
+.ui-field-selector-dialog .ui-field-selector__preview { min-height: 0; overflow-y: auto; }
+.ui-field-selector-dialog > .modal-form__footer { padding: var(--space-3) var(--space-5); }
+@media (max-width: 700px) {
+  .ui-field-selector-dialog {
+    width: calc(100vw - 16px) !important;
+    max-width: calc(100vw - 16px) !important;
+    min-height: 0 !important;
+    max-height: calc(100dvh - 16px) !important;
+  }
+  .ui-field-selector-dialog .ui-field-selector {
+    min-height: 0 !important;
+    grid-template-columns: 1fr !important;
+    grid-template-rows: minmax(220px, 1fr) minmax(220px, .9fr) !important;
+    gap: var(--space-4) !important;
+    overflow: visible !important;
+  }
+  .ui-field-selector-dialog .ui-field-selector__groups { grid-template-columns: 1fr !important; }
+  .ui-field-selector-dialog .ui-field-selector__preview-pane {
+    padding: var(--space-4) 0 0 !important;
+    border-top: 1px solid var(--border-default) !important;
+    border-left: 0 !important;
+  }
+  .ui-field-selector-dialog > .modal-form__body,
+  .ui-field-selector-dialog > .products-columns-dialog__body,
+  .ui-field-selector-dialog > .overview-matrix-columns-dialog__body { overflow-y: auto !important; }
+  .ui-field-selector-dialog > [class*="__body"] > [data-products-field-selector],
+  .ui-field-selector-dialog > [class*="__body"] > [data-kp-field-selector],
+  .ui-field-selector-dialog > [class*="__body"] > [data-lifecycle-field-selector],
+  .ui-field-selector-dialog > [class*="__body"] > [data-overview-matrix-field-selector],
+  .ui-field-selector-dialog > [class*="__body"] > [data-promotion-field-selector] { overflow: visible !important; }
+}
+
+/* Override the last remaining legacy selectors with the same specificity they
+   used, so no page can change the shared selector's geometry. */
+.ui-field-selector-dialog > [class*="__body"] > [data-products-field-selector] .ui-field-selector,
+.ui-field-selector-dialog > [class*="__body"] > [data-kp-field-selector] .ui-field-selector,
+.ui-field-selector-dialog > [class*="__body"] > [data-lifecycle-field-selector] .ui-field-selector,
+.ui-field-selector-dialog > [class*="__body"] > [data-overview-matrix-field-selector] .ui-field-selector,
+.ui-field-selector-dialog > [class*="__body"] > [data-promotion-field-selector] .ui-field-selector {
+  min-height: 360px !important;
+  height: auto !important;
+  grid-template-rows: minmax(0, 1fr) !important;
+  flex: 1 1 auto !important;
+}
+.ui-field-selector-dialog > [class*="__body"] > [data-products-field-selector] .ui-field-selector__groups,
+.ui-field-selector-dialog > [class*="__body"] > [data-kp-field-selector] .ui-field-selector__groups,
+.ui-field-selector-dialog > [class*="__body"] > [data-lifecycle-field-selector] .ui-field-selector__groups,
+.ui-field-selector-dialog > [class*="__body"] > [data-overview-matrix-field-selector] .ui-field-selector__groups,
+.ui-field-selector-dialog > [class*="__body"] > [data-promotion-field-selector] .ui-field-selector__groups {
+  grid-template-columns: 1fr !important;
+}
+@media (max-width: 700px) {
+  .ui-field-selector-dialog > [class*="__body"] > [data-products-field-selector] .ui-field-selector,
+  .ui-field-selector-dialog > [class*="__body"] > [data-kp-field-selector] .ui-field-selector,
+  .ui-field-selector-dialog > [class*="__body"] > [data-lifecycle-field-selector] .ui-field-selector,
+  .ui-field-selector-dialog > [class*="__body"] > [data-overview-matrix-field-selector] .ui-field-selector,
+  .ui-field-selector-dialog > [class*="__body"] > [data-promotion-field-selector] .ui-field-selector {
+    min-height: 0 !important;
+    grid-template-columns: 1fr !important;
+    grid-template-rows: minmax(220px, 1fr) minmax(220px, .9fr) !important;
+  }
+  .ui-field-selector-dialog > [class*="__body"] > [data-products-field-selector] .ui-field-selector__groups,
+  .ui-field-selector-dialog > [class*="__body"] > [data-kp-field-selector] .ui-field-selector__groups,
+  .ui-field-selector-dialog > [class*="__body"] > [data-lifecycle-field-selector] .ui-field-selector__groups,
+  .ui-field-selector-dialog > [class*="__body"] > [data-overview-matrix-field-selector] .ui-field-selector__groups,
+  .ui-field-selector-dialog > [class*="__body"] > [data-promotion-field-selector] .ui-field-selector__groups { grid-template-columns: 1fr !important; }
+}
+
+/* ===== 渠道树：折叠展开 =====
+   product-detail-live.js / product-detail-dialog.js / flow-source-live.js
+   三处都用 .channel-cell + .toggle-btn 渲染渠道层级，此前没有任何样式，
+   展开按钮和渠道名挤在一起、叶子节点也带一个默认按钮样式，观感很乱。 */
+.channel-cell {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+.channel-cell .toggle-btn {
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  background: var(--surface-base);
+  color: var(--text-secondary);
+  font-size: var(--font-size-meta);
+  line-height: 1;
+  cursor: pointer;
+  user-select: none;
+  transition: border-color var(--duration-fast), color var(--duration-fast);
+}
+.channel-cell .toggle-btn:hover {
+  border-color: var(--brand);
+  color: var(--brand);
+}
+.channel-cell .toggle-btn--empty {
+  border-color: transparent;
+  background: transparent;
+  color: var(--text-tertiary);
+  cursor: default;
+}
+.channel-cell .channel-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.channel-cell .channel-name--clickable {
+  color: var(--brand);
+  cursor: pointer;
+}
+.channel-cell .channel-name--clickable:hover { text-decoration: underline; }
+
+/* ===== 表头排序按钮（付费推广的渠道/计划两张表）=====
+   这两张表自己分页，全局 table-controls 的排序只排 DOM 里已切好的当前页，
+   所以关掉全局排序、改由表头按钮在**全量**行上排序
+   （见 product-detail-dialog.js 的 sortedPromotionRows）。 */
+.promotion-sort-button {
+  display: inline-flex;
+  align-items: center;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+.promotion-sort-button:hover { color: var(--brand); }
+
+/* ===== panel__actions：板块头部的右侧操作区 =====
+   推广模块和流量结构的「字段设置」按钮都挂在这个类上，
+   但此前 CSS 里一个定义都没有（布局全靠 .panel__header 的 space-between 撑）。
+   语义与既有的 .panel__tools 保持一致。 */
+.panel__actions { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }

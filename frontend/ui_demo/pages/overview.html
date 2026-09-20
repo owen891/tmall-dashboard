@@ -1,4 +1,4 @@
-﻿<!doctype html>
+<!doctype html>
 <html lang="zh-CN">
 <head>
   <meta charset="utf-8">
@@ -6,7 +6,7 @@
   <title>数据概览 | 天猫数据仪表盘</title>
   <link rel="stylesheet" href="../assets/tokens.css">
   <link rel="stylesheet" href="../assets/shell.css">
-  <link rel="stylesheet" href="../assets/components.css">
+  <link rel="stylesheet" href="../assets/components.css?v=20260919-field-selector3">
   <script src="../assets/lucide-custom.min.js"></script>
   <script src="../assets/echarts-custom.min.js"></script>
 </head>
@@ -29,7 +29,7 @@
 
         <section class="overview-v2-context" aria-label="数据上下文">
           <div class="overview-v2-context__copy"><strong>数据上下文</strong><span data-overview-context>加载中…</span></div>
-          <div class="overview-v2-context__meta"><span class="overview-v2-status">质量通过</span><span data-overview-summary-meta="freshness">最近导入</span></div>
+          <div class="overview-v2-context__meta"><span class="overview-v2-status" data-overview-quality data-availability="loading">加载中</span><span data-overview-summary-meta="freshness">最近导入</span></div>
           <span class="sr-only" data-overview-summary="target">--</span><span class="sr-only" data-overview-summary="actions">--</span><span class="sr-only" data-overview-summary="freshness">--</span><span class="sr-only" data-overview-kpi="expense_ratio">--</span><span class="sr-only" data-overview-kpi="average_order_value">--</span><span class="sr-only" data-overview-kpi="returning_buyer_ratio">--</span>
         </section>
 
@@ -117,7 +117,7 @@
     </form>
   </dialog>
 
-  <dialog class="modal-form overview-matrix-columns-dialog" data-overview-matrix-columns-dialog data-modal-kind="config" aria-labelledby="overviewMatrixColumnsTitle" hidden>
+  <dialog class="modal-form ui-field-selector-dialog overview-matrix-columns-dialog" data-overview-matrix-columns-dialog data-modal-kind="config" aria-labelledby="overviewMatrixColumnsTitle" hidden>
     <div class="modal-form__header"><div><h3 id="overviewMatrixColumnsTitle">日度矩阵字段设置</h3><p>选择展示字段并拖动调整列顺序</p></div><button class="ui-button ui-button--ghost ui-button--icon" type="button" data-overview-matrix-columns-close aria-label="关闭字段设置"><i data-lucide="x"></i></button></div>
     <div class="overview-matrix-columns-dialog__body">
       <div class="field-template-bar">

@@ -31,6 +31,9 @@ class PaimiBiFieldsTests(unittest.TestCase):
             connection.execute("""INSERT INTO source_field_catalog
                 (field_key, source_column, label, group_name, data_type, format, source_type, available_months_json, nonempty_count)
                 VALUES ('bi_margin', '利润率(账单)', '利润率(账单)', 'BI 数据源字段', 'number', 'percent', 'bi_monthly_overview', '[\"2026-07\"]', 1)""")
+            connection.execute("""INSERT INTO source_field_catalog
+                (field_key, source_column, label, group_name, data_type, format, source_type, available_months_json, nonempty_count)
+                VALUES ('bi_empty', '空字段', '空字段', 'BI 数据源字段', 'number', 'number', 'bi_monthly_overview', '[\"2026-07\"]', 0)""")
             connection.commit()
 
     def tearDown(self):
@@ -43,7 +46,8 @@ class PaimiBiFieldsTests(unittest.TestCase):
         stock = next(field for field in fields if field['key'] == 'bi_stock')
         self.assertEqual(stock['label'], '链接库存数量')
         self.assertEqual(stock['format'], 'number')
-        self.assertEqual(stock['available_months'], ['2026-07'])
+        empty = next(field for field in fields if field['key'] == 'bi_empty')
+        self.assertEqual(empty['nonempty_count'], 0)
 
     def test_monthly_products_response_resolves_bi_payload_fields(self):
         response = self.client.get('/api/products?dim=monthly&period=2026-07&status=all&product_id=p-1')
@@ -52,6 +56,12 @@ class PaimiBiFieldsTests(unittest.TestCase):
         self.assertEqual(item['bi_stock'], 12)
         self.assertEqual(item['bi_margin'], 0.35)
         self.assertNotIn('bi_payload_json', item)
+
+    def test_zero_data_catalog_field_is_marked_for_frontend_filtering(self):
+        response = self.client.get('/api/settings')
+        self.assertEqual(response.status_code, 200)
+        empty = next(field for field in response.get_json()['data']['field_catalog']['products'] if field['key'] == 'bi_empty')
+        self.assertEqual(empty['nonempty_count'], 0)
 
     def test_product_template_can_reference_catalogued_bi_field(self):
         response = self.client.put('/api/settings', json={

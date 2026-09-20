@@ -33,7 +33,7 @@ class NavigationContractTests(unittest.TestCase):
             self.assertIn('../assets/navigation.js', self.read(f'frontend/ui_demo/pages/{page}'))
 
     def test_navigation_helper_loads_before_shell_on_every_routed_page(self):
-        for page in ('overview.html', 'products.html', 'product-detail.html', 'promotion.html', 'lifecycle.html', 'goals.html', 'reviews.html', 'data-center.html', 'settings.html'):
+        for page in ('overview.html', 'products.html', 'product-detail.html', 'promotion.html', 'lifecycle.html', 'goals.html', 'reviews.html', 'data-center.html', 'settings.html', 'creative-board.html', 'component-catalog.html'):
             content = self.read(f'frontend/ui_demo/pages/{page}')
             navigation = content.find('../assets/navigation.js')
             shell = content.find('../assets/shell.js')
@@ -62,6 +62,16 @@ class NavigationContractTests(unittest.TestCase):
         self.assertIn('data-product-detail-panel', page)
         self.assertIn('data-product-detail-back', page)
         self.assertIn('../assets/navigation.js', page)
+
+    def test_shell_navigation_is_grouped_by_user_workflow(self):
+        shell = self.read('frontend/ui_demo/assets/shell.js')
+        for label in ('店铺', '商品', '付费', '市场', '工具'):
+            self.assertIn(f"label: '{label}'", shell)
+        self.assertNotIn("label: '开发工具'", shell)
+        self.assertNotIn("['component-catalog', '组件目录'", shell)
+        self.assertIn("const activePageMap = { 'product-detail': 'products' }", shell)
+        self.assertIn("className = 'demo-nav-backdrop'", shell)
+        self.assertIn("matchMedia('(max-width: 760px)')", shell)
 
 
 if __name__ == '__main__':

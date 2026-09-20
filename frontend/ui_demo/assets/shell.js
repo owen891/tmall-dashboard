@@ -56,29 +56,54 @@
         reportError('resource_error', e.target.src || e.target.href, '', 0, 0, null);
       }
     }, true);
+
+    window.TmallFrontendErrors = { report: reportError };
   })();
 
   const assetBase = new URL('.', document.currentScript?.src || window.location.href);
-  const loadScript = (src) => new Promise((resolve, reject) => {
-    const script = document.createElement('script');
-    script.src = src;
-    script.onload = resolve;
-    script.onerror = reject;
-    document.head.appendChild(script);
+  const pendingScripts = new Map();
+  const loadScriptOnce = (src) => {
+    const href = new URL(src, assetBase).href;
+    if (pendingScripts.has(href)) return pendingScripts.get(href);
+    const existing = [...document.scripts].find((script) => {
+      try { return new URL(script.src, document.baseURI).href === href; } catch (_) { return false; }
+    });
+    if (existing) return Promise.resolve(existing);
+    const promise = new Promise((resolve, reject) => {
+      const script = document.createElement('script');
+      script.src = href;
+      script.dataset.tmallRuntimeAsset = 'true';
+      script.onload = () => resolve(script);
+      script.onerror = () => reject(new Error(`前端资源加载失败: ${href}`));
+      document.head.appendChild(script);
+    }).catch((error) => {
+      pendingScripts.delete(href);
+      window.TmallFrontendErrors?.report('resource_load_failed', error.message, href, 0, 0, error);
+      throw error;
+    });
+    pendingScripts.set(href, promise);
+    return promise;
+  };
+  const loadOptionalScript = (name) => loadScriptOnce(new URL(name, assetBase).href).catch((error) => {
+    console.error(`[tmall] optional asset unavailable: ${name}`, error);
+    return null;
   });
 
-  loadScript(new URL('table-controls.js', assetBase).href).catch(() => {});
-  loadScript(new URL('ui-components.js', assetBase).href).catch(() => {});
-  loadScript(new URL('version.js', assetBase).href)
-    .then(() => loadScript(new URL('version-check.js', assetBase).href))
-    .catch(() => {});
-  loadScript(new URL('desktop-integration.js', assetBase).href).catch(() => {});
+  loadOptionalScript('table-controls.js');
+  loadOptionalScript('ui-components.js');
+  loadScriptOnce(new URL('version.js', assetBase).href)
+    .then(() => loadScriptOnce(new URL('version-check.js', assetBase).href))
+    .catch((error) => {
+      window.TmallFrontendErrors?.report('runtime_bootstrap_failed', error.message, error.stack || '', 0, 0, error);
+      console.error('[tmall] version check unavailable', error);
+    });
+  loadOptionalScript('desktop-integration.js');
 
   const liveAdapters = { overview: 'overview-live.js', products: 'products-live.js', promotion: 'promotion-live.js', 'keyword-promotion': 'keyword-promotion-live.js', 'market-ranking': 'market-ranking-live.js', 'flow-source': 'flow-source-live.js', 'rival-analysis': 'rival-analysis-live.js' };
   const liveAdapter = liveAdapters[document.body.dataset.page];
   const apiReady = window.DemoApi
     ? Promise.resolve(window.DemoApi)
-    : loadScript(new URL('api.js', assetBase).href).then(() => window.DemoApi);
+    : loadScriptOnce(new URL('api.js', assetBase).href).then(() => window.DemoApi);
   const requestApi = async (path, options) => {
     const api = await apiReady;
     if (!api?.request) throw new Error('API 客户端不可用');
@@ -103,36 +128,54 @@
   window.TmallScanUi = { errorMessage: scanErrorMessage };
   const DATA_STATES = ['loading', 'no-data', 'insufficient-data', 'missing-fields', 'calculation-failed', 'source-unavailable', 'partial'];
   window.TmallDataStates = Object.freeze(DATA_STATES.slice());
-  if (liveAdapter && !window.DemoApi) apiReady.then(() => loadScript(new URL(liveAdapter, assetBase).href)).catch(() => {});
+  if (liveAdapter && !window.DemoApi) {
+    apiReady
+      .then(() => loadScriptOnce(new URL(liveAdapter, assetBase).href))
+      .catch((error) => {
+        window.TmallFrontendErrors?.report('page_bootstrap_failed', error.message, liveAdapter, 0, 0, error);
+        console.error(`[tmall] page adapter unavailable: ${liveAdapter}`, error);
+      });
+  }
   const navGroups = [
     {
-      label: '经营分析',
+      label: '店铺',
       items: [
         ['overview', '数据概览', 'layout-dashboard', 'overview'],
-        ['products', '商品运营', 'package', 'products'],
-        ['flow-source', '流量来源', 'git-branch', 'flow-source'],
-        ['rival-analysis', '竞店竞品', 'users', 'rival-analysis'],
-        ['promotion', '推广分析', 'megaphone', 'promotion'],
-        ['creative-board', '素材点击率', 'image', 'creative-board'],
-        ['keyword-promotion', '关键词选品', 'filter', 'keyword-promotion'],
-        ['market-ranking', '市场分析', 'trending-up', 'market-ranking'],
-        ['lifecycle', '生命周期', 'refresh-cw', 'lifecycle'],
-        ['analysis', '自定义分析', 'bar-chart-3', 'analysis'],
-      ],
-    },
-    {
-      label: '运营管理',
-      items: [
+        ['category-dashboard', '品类经营看板', 'panels-top-left', 'category-dashboard'],
+        ['goals', '经营目标', 'target', 'goals'],
         ['reviews', '经营复盘', 'clipboard-check', 'reviews'],
       ],
     },
     {
-      label: '系统',
+      label: '商品',
       items: [
+        ['products', '商品运营', 'package', 'products'],
+        ['lifecycle', '生命周期', 'refresh-cw', 'lifecycle'],
+        ['keyword-promotion', '关键词选品', 'filter', 'keyword-promotion'],
+      ],
+    },
+    {
+      label: '付费',
+      items: [
+        ['promotion', '推广分析', 'megaphone', 'promotion'],
+        ['creative-board', '素材点击率', 'image', 'creative-board'],
+        ['flow-source', '流量来源', 'git-branch', 'flow-source'],
+      ],
+    },
+    {
+      label: '市场',
+      items: [
+        ['rival-analysis', '竞店竞品', 'users', 'rival-analysis'],
+        ['market-ranking', '市场分析', 'trending-up', 'market-ranking'],
+      ],
+    },
+    {
+      label: '工具',
+      items: [
+        ['analysis', '自定义分析', 'bar-chart-3', 'analysis'],
         ['data-collection', '数据采集', 'download', 'data-collection'],
         ['data-center', '数据中心', 'database', 'data-center'],
         ['settings', '设置', 'settings', 'settings'],
-        ['component-catalog', '组件目录', 'component', 'catalog'],
       ],
     },
   ];
@@ -147,6 +190,7 @@
     'market-ranking': ['市场分析', '生意参谋市场排行，类目对比与热卖趋势洞察'],
     lifecycle: ['生命周期', '按商品查看跨月经营表现与累计贡献'],
     analysis: ['自定义分析', '自由选择指标、维度与时间范围生成分析图表'],
+    'category-dashboard': ['品类经营看板', '按日、周、月和自定义周期跟踪品类经营表现'],
     'data-collection': ['数据采集', '各数据源采集状态管理与手动触发'],
     reviews: ['经营复盘', '查看待复盘动作与经营周期差异'],
     'data-center': ['数据中心', '导入、校验和管理经营数据'],
@@ -156,6 +200,8 @@
     overview: ['数据概览', '店铺经营核心指标与趋势']
   };
   const currentPage = document.body.dataset.page || 'products';
+  const activePageMap = { 'product-detail': 'products' };
+  const activePage = activePageMap[currentPage] || currentPage;
   const currentMeta = meta[currentPage] || meta.products;
   const isCatalog = currentPage === 'catalog';
   const storageKey = 'tmall-demo-theme';
@@ -169,7 +215,7 @@
   document.documentElement.dataset.theme = theme;
   const themeColorMeta = document.head.querySelector('meta[name="theme-color"]') || document.head.appendChild(Object.assign(document.createElement('meta'), { name: 'theme-color' }));
   const route = (page) => {
-    const path = page === 'overview' ? '/' : `/${page}`;
+    const path = page === 'overview' ? '/' : (page === 'catalog' ? '/component-catalog' : `/${page}`);
     return window.DemoNavigation?.fromCurrent ? window.DemoNavigation.fromCurrent(path) : path;
   };
   const sidebar = document.querySelector('[data-shell-sidebar]');
@@ -200,7 +246,7 @@
       <div class="demo-brand__mark" aria-hidden="true">TM</div>
       <div class="demo-brand__name"><strong>天猫数据</strong><strong>仪表盘</strong></div>
     </div>
-    <nav class="demo-nav" aria-label="主导航">${navGroups.map((group) => `<section class="demo-nav__section"><h2 class="demo-nav__label">${group.label}</h2><div class="demo-nav__group">${group.items.map(([id, label, iconName, page]) => `<a class="demo-nav__item" data-page-link="${id}" href="${route(page)}" aria-label="${label}" title="${label}"><i data-lucide="${iconName}"></i><span>${label}</span>${id === 'reviews' ? '<b class="demo-nav__badge" data-nav-action-count hidden aria-label="待处理动作数量"></b>' : ''}</a>`).join('')}</div></section>`).join('')}</nav>
+    <nav class="demo-nav" aria-label="主导航">${navGroups.map((group, groupIndex) => `<section class="demo-nav__section${groupIndex === 0 ? ' demo-nav__section--primary' : ''}"><h2 class="demo-nav__label">${group.label}</h2><div class="demo-nav__group">${group.items.map(([id, label, iconName, page]) => `<a class="demo-nav__item" data-page-link="${id}" href="${route(page)}" aria-label="${label}" title="${label}"><i data-lucide="${iconName}"></i><span>${label}</span>${id === 'reviews' ? '<b class="demo-nav__badge" data-nav-action-count hidden aria-label="待处理动作数量"></b>' : ''}</a>`).join('')}</div></section>`).join('')}</nav>
     <div class="demo-sidebar__footer">
       <div class="demo-sidebar__meta" data-sidebar-meta role="group" aria-label="版本与项目链接">
         <div class="demo-sidebar__meta-row">
@@ -216,7 +262,7 @@
       </div>
     </div>`;
 
-  const hideCategoryPages = new Set(['data-center', 'settings', 'manage', 'catalog', 'creative-board']);
+  const hideCategoryPages = new Set(['data-center', 'settings', 'manage', 'catalog']);
   const categoryMarkup = hideCategoryPages.has(currentPage) ? '' : `
     <div class="demo-category" role="group" aria-label="品类模式">
       <select class="demo-period__select demo-category__select" data-category-mode aria-label="品类模式">
@@ -598,15 +644,27 @@
     showToast(theme === 'dark' ? '已切换深色主题' : '已切换浅色主题');
   });
   document.querySelectorAll('[data-page-link]').forEach((link) => {
-    if (link.dataset.pageLink === currentPage) link.setAttribute('aria-current', 'page');
+    const targetPage = link.dataset.pageLink === 'component-catalog' ? 'catalog' : link.dataset.pageLink;
+    if (targetPage === activePage) link.setAttribute('aria-current', 'page');
     link.addEventListener('click', () => closeMobileNavigation(false));
   });
   const mobileNav = header.querySelector('[data-mobile-nav]');
+  const mobileNavBackdrop = document.createElement('button');
+  mobileNavBackdrop.className = 'demo-nav-backdrop';
+  mobileNavBackdrop.type = 'button';
+  mobileNavBackdrop.setAttribute('aria-label', '关闭导航');
+  mobileNavBackdrop.hidden = true;
+  document.body.appendChild(mobileNavBackdrop);
   let mobileNavReturnFocus = null;
+  const isMobileDrawer = () => window.matchMedia('(max-width: 760px)').matches;
   const setSidebarState = (open) => {
     sidebar.classList.toggle('is-open', open);
-    sidebar.toggleAttribute('inert', !open && window.matchMedia('(max-width: 900px)').matches);
-    sidebar.setAttribute('aria-hidden', String(!open && window.matchMedia('(max-width: 900px)').matches));
+    const drawerMode = isMobileDrawer();
+    const hidden = drawerMode && !open;
+    sidebar.toggleAttribute('inert', hidden);
+    sidebar.setAttribute('aria-hidden', String(hidden));
+    mobileNavBackdrop.hidden = !(drawerMode && open);
+    mobileNavBackdrop.classList.toggle('is-visible', drawerMode && open);
   };
   const closeMobileNavigation = (restoreFocus = true) => {
     if (!sidebar.classList.contains('is-open')) return;
@@ -624,6 +682,9 @@
     document.body.classList.add('demo-scroll-lock');
     window.setTimeout(() => sidebar.querySelector('[data-page-link]')?.focus(), 0);
   });
+  mobileNavBackdrop.addEventListener('click', () => closeMobileNavigation());
+  window.addEventListener('resize', () => setSidebarState(sidebar.classList.contains('is-open')));
+  setSidebarState(false);
   document.addEventListener('keydown', (event) => {
     if (event.key === 'Escape' && sidebar.classList.contains('is-open')) {
       event.preventDefault();

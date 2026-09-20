@@ -20,6 +20,7 @@
     'conversion-funnel': { metric: 'payment_conversion_rate', dimension: 'date', chartType: 'line', days: 30 },
     'product-ranking': { metric: 'payment_amount', dimension: 'product', chartType: 'bar', days: 30 },
     'ad-performance': { metric: 'ad_spend', dimension: 'date', chartType: 'line', days: 30 },
+    'category-period': { metric: 'payment_amount', grain: 'month', compareMode: 'yoy', days: 30 },
   };
 
   let currentConfig = null;
@@ -64,6 +65,18 @@
     // 绑定生成按钮
     $('#runAnalysisBtn').addEventListener('click', runAnalysis);
     $('#saveAnalysisBtn').addEventListener('click', saveAnalysis);
+    ['categorySelect', 'categoryGrainSelect', 'categoryMetricSelect', 'compareModeSelect', 'categoryStartDate', 'categoryEndDate', 'compareStartDate', 'compareEndDate'].forEach((id) => {
+      $(`#${id}`)?.addEventListener('change', () => {
+        if ($('#categoryAnalysisConfig') && !$('#categoryAnalysisConfig').hidden) {
+          if (id === 'categoryStartDate' || id === 'categoryEndDate') {
+            window.TmallDateRange?.setRange?.($('#categoryStartDate').value, $('#categoryEndDate').value, 'custom');
+          }
+          syncCategoryCompareDates();
+          if (id !== 'compareStartDate' && id !== 'compareEndDate') runCategoryAnalysis();
+        }
+      });
+    });
+    loadCategoryModes();
 
     // 加载已保存的分析
     loadSavedAnalysis();
@@ -73,6 +86,20 @@
   }
 
   function applyTemplate(name) {
+    const categoryPanel = $('#categoryAnalysisConfig');
+    const legacyConfig = document.querySelector('.analysis-config');
+    if (categoryPanel) categoryPanel.hidden = name !== 'category-period';
+    if (legacyConfig) legacyConfig.hidden = name === 'category-period';
+    if (name === 'category-period') {
+      const tpl = templates[name];
+      $('#categoryMetricSelect').value = tpl.metric;
+      $('#categoryGrainSelect').value = tpl.grain;
+      $('#compareModeSelect').value = tpl.compareMode;
+      $('#categoryStartDate').value = $('#startDate').value;
+      $('#categoryEndDate').value = $('#endDate').value;
+      syncCategoryCompareDates();
+      return;
+    }
     const tpl = templates[name];
     if (!tpl) return;
     $('#metricSelect').value = tpl.metric;
@@ -88,6 +115,9 @@
   }
 
   async function runAnalysis() {
+    if (document.querySelector('.analysis-template--active')?.dataset.template === 'category-period') {
+      return runCategoryAnalysis();
+    }
     const config = {
       metric: $('#metricSelect').value,
       dimension: $('#dimensionSelect').value,
@@ -107,6 +137,126 @@
     } catch (error) {
       chartsContainer.innerHTML = `<div class="analysis-empty"><p>加载失败：${error.message}</p></div>`;
     }
+  }
+
+  function dateShift(date, years, days) {
+    const value = new Date(`${date}T00:00:00`);
+    value.setDate(value.getDate() + (days || 0));
+    value.setFullYear(value.getFullYear() + (years || 0));
+    return value.toISOString().slice(0, 10);
+  }
+
+  function syncCategoryCompareDates() {
+    const mode = $('#compareModeSelect')?.value;
+    const start = $('#categoryStartDate')?.value;
+    const end = $('#categoryEndDate')?.value;
+    const fields = $('#categoryCompareDates');
+    if (!fields || !start || !end) return;
+    fields.hidden = mode !== 'custom';
+    if (mode === 'yoy') {
+      $('#compareStartDate').value = dateShift(start, -1);
+      $('#compareEndDate').value = dateShift(end, -1);
+    } else if (mode === 'previous') {
+      const span = Math.round((new Date(`${end}T00:00:00`) - new Date(`${start}T00:00:00`)) / 86400000) + 1;
+      $('#compareEndDate').value = dateShift(start, 0, -1);
+      $('#compareStartDate').value = dateShift(start, 0, -span);
+    }
+  }
+
+  function categoryConfig() {
+    const mode = $('#compareModeSelect').value;
+    syncCategoryCompareDates();
+    return {
+      categoryMode: $('#categorySelect').value,
+      grain: $('#categoryGrainSelect').value,
+      metric: $('#categoryMetricSelect').value,
+      compareMode: mode,
+      startDate: $('#categoryStartDate').value,
+      endDate: $('#categoryEndDate').value,
+      compareStartDate: mode === 'none' ? '' : $('#compareStartDate').value,
+      compareEndDate: mode === 'none' ? '' : $('#compareEndDate').value,
+      topN: parseInt($('#topNSelect').value, 10),
+    };
+  }
+
+  async function loadCategoryModes() {
+    try {
+      const payload = await DemoApi.domainRequest('/api/settings');
+      const modes = payload?.data?.category_modes || payload?.data?.configured_category_modes || [];
+      const select = $('#categorySelect');
+      if (!select || !modes.length) return;
+      const selected = select.value;
+      select.innerHTML = modes.filter((item) => item && item.enabled !== false)
+        .map((item) => `<option value="${String(item.value)}">${String(item.label)}</option>`).join('');
+      if ([...select.options].some((option) => option.value === selected)) select.value = selected;
+    } catch (_error) {
+      // Keep built-in options available when settings are temporarily unavailable.
+    }
+  }
+
+  async function runCategoryAnalysis() {
+    const config = categoryConfig();
+    currentConfig = { template: 'category-period', ...config };
+    const container = $('#analysisCharts');
+    container.innerHTML = '<div class="analysis-empty"><p>加载中...</p></div>';
+    try {
+      const payload = await fetchCategoryAnalysis(config);
+      renderCategoryAnalysis(config, payload?.data || payload || {});
+    } catch (error) {
+      container.innerHTML = `<div class="analysis-empty"><p>加载失败：${error.message}</p></div>`;
+    }
+  }
+
+  async function fetchCategoryAnalysis(config) {
+    const params = new URLSearchParams({ category_mode: config.categoryMode, grain: config.grain, start: config.startDate, end: config.endDate, compare_mode: config.compareMode, metric: config.metric, top_n: config.topN });
+    if (config.compareStartDate) params.set('compare_start', config.compareStartDate);
+    if (config.compareEndDate) params.set('compare_end', config.compareEndDate);
+    return DemoApi.domainRequest(`/api/category-analysis/compare?${params}`);
+  }
+
+  function renderCategoryAnalysis(config, data) {
+    const container = $('#analysisCharts');
+    container.innerHTML = '';
+    const current = data.current_period || {};
+    const compare = data.compare_period || {};
+    const change = data.change || {};
+    const quality = data.data_quality || {};
+    const label = metricLabels[config.metric] || config.metric;
+    const cards = document.createElement('div');
+    cards.className = 'category-analysis-kpis';
+    cards.innerHTML = [
+      ['当前周期', current.value, current.daily_average],
+      ['对比周期', compare.value, compare.daily_average],
+      ['变化额', change.amount, null],
+      ['增长率', change.rate, null],
+    ].map(([title, value, daily]) => `<div class="category-analysis-kpi"><span>${title}</span><strong>${title === '增长率' ? formatValue(value, 'payment_conversion_rate') : formatValue(value, config.metric)}</strong>${daily != null ? `<small>日均 ${formatValue(daily, config.metric)}</small>` : ''}</div>`).join('');
+    container.appendChild(cards);
+    const trend = data.trend || [];
+    if (trend.length) {
+      const categories = trend.map((item) => item.period || item.date || item.label || '');
+      const values = trend.map((item) => item.value ?? item[config.metric] ?? 0);
+      container.appendChild(createChartCard(`${label}趋势`, 'line', categories, [values], [label]));
+    }
+    const breakdown = data.profit_breakdown;
+    if (breakdown) {
+      const card = document.createElement('div'); card.className = 'analysis-chart category-analysis-breakdown';
+      // 与品类经营看板保持同一口径：利润取 BI「利润(支付预估)」，
+      // 扣减项为 销售费用/自定义费用/净货品成本/发货费用/其他费用。
+      const basisLabel = breakdown.basis === 'bi' ? 'BI 利润(支付预估)' : breakdown.basis === 'derived' ? '公式推导' : '成本口径不可用';
+      const breakdownRows = [['净销售额', 'net_sales'], ['净货品成本', 'product_cost'], ['销售费用', 'sales_cost'], ['自定义费用', 'custom_cost'], ['发货费用', 'logistics_cost'], ['其他费用', 'other_cost'], ['经营利润', 'operating_profit']];
+      card.innerHTML = `<div class="analysis-chart__header"><h3 class="analysis-chart__title">利润拆解</h3><span class="ui-badge ui-badge--secondary">${basisLabel}</span></div><div class="category-analysis-breakdown__list">${breakdownRows.map(([name, key]) => `<div><span>${name}</span><strong>${formatValue(breakdown[key], 'payment_amount')}</strong></div>`).join('')}</div>`;
+      container.appendChild(card);
+    }
+    const qualityCard = document.createElement('div'); qualityCard.className = 'analysis-chart category-analysis-quality';
+    qualityCard.innerHTML = `<div class="analysis-chart__header"><h3 class="analysis-chart__title">数据完整度</h3></div><p>${quality.is_partial_period ? '当前周期为部分周期。' : '当前周期完整。'} ${quality.missing_fields?.length ? `缺少字段：${quality.missing_fields.join('、')}` : '未发现缺失字段。'}</p><small>数据来源：${(quality.source_tables || []).join('、') || '接口聚合结果'}</small>`;
+    container.appendChild(qualityCard);
+    const contributors = data.contributors || {};
+    [['增长商品', contributors.up], ['下滑商品', contributors.down]].forEach(([title, rows]) => {
+      if (!rows?.length) return;
+      const card = document.createElement('div'); card.className = 'analysis-chart';
+      card.innerHTML = `<div class="analysis-chart__header"><h3 class="analysis-chart__title">${title}</h3></div><div class="ui-table-wrap"><table class="ui-data-table"><thead><tr><th>商品</th><th class="num">贡献金额</th><th class="num">贡献率</th></tr></thead><tbody>${rows.slice(0, config.topN).map((row) => `<tr><td>${row.title || row.name || row.product_name || '--'}</td><td class="num">${formatValue(row.amount ?? row.value, 'payment_amount')}</td><td class="num">${formatValue(row.rate, 'payment_conversion_rate')}</td></tr>`).join('')}</tbody></table></div>`;
+      container.appendChild(card);
+    });
   }
 
   async function fetchAnalysisData(config) {
@@ -249,7 +399,7 @@
 
   function formatValue(value, metric) {
     if (value == null) return '--';
-    if (metric === 'payment_conversion_rate' || metric === 'expense_ratio') {
+    if (metric === 'payment_conversion_rate' || metric === 'expense_ratio' || metric === 'profit_rate') {
       return (value * 100).toFixed(2) + '%';
     }
     if (metric === 'payment_amount' || metric === 'net_sales' || metric === 'ad_spend' || metric === 'average_order_value') {

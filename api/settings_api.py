@@ -12,7 +12,10 @@ def get_settings():
     payload = settings_service.get()
     from services.category_mode_service import available_labels
     from services.shop_scope_service import current_request_shop_id
-    payload['category_modes'] = available_labels()
+    configured_modes = payload.get('category_modes', [])
+    discovered_modes = available_labels()
+    payload['configured_category_modes'] = configured_modes
+    payload['category_modes'] = discovered_modes
     payload['shop_scope'] = {
         'shop_id': current_request_shop_id(),
         'supports_multi_shop': False,

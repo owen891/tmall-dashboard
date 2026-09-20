@@ -9,11 +9,15 @@ from api.api_response import success, failure
 market_ranking_bp = Blueprint('market_ranking', __name__, url_prefix='/api/market-ranking')
 
 
-def get_latest_run_id():
+def get_latest_run_id(analysis_date=None):
     """获取最新分析批次ID"""
     conn = get_connection()
     c = conn.cursor()
-    c.execute('SELECT id FROM market_analysis_runs ORDER BY analysis_date DESC LIMIT 1')
+    if analysis_date:
+        c.execute('''SELECT id FROM market_analysis_runs
+                     WHERE analysis_date <= ? ORDER BY analysis_date DESC LIMIT 1''', (analysis_date,))
+    else:
+        c.execute('SELECT id FROM market_analysis_runs ORDER BY analysis_date DESC LIMIT 1')
     row = c.fetchone()
     conn.close()
     return row[0] if row else None
@@ -22,7 +26,7 @@ def get_latest_run_id():
 @market_ranking_bp.route('/summary', methods=['GET'])
 def summary():
     """汇总数据：类目统计+总览指标"""
-    run_id = get_latest_run_id()
+    run_id = get_latest_run_id(request.args.get('analysis_date'))
     if not run_id:
         return failure('NO_DATA', '暂无市场分析数据')
 
@@ -85,7 +89,7 @@ def summary():
 @market_ranking_bp.route('/category-stats', methods=['GET'])
 def category_stats():
     """类目统计详情"""
-    run_id = get_latest_run_id()
+    run_id = get_latest_run_id(request.args.get('analysis_date'))
     if not run_id:
         return failure('NO_DATA', '暂无市场分析数据')
 
@@ -110,7 +114,7 @@ def category_stats():
 @market_ranking_bp.route('/products', methods=['GET'])
 def products():
     """商品榜单，支持category和list_type筛选"""
-    run_id = get_latest_run_id()
+    run_id = get_latest_run_id(request.args.get('analysis_date'))
     if not run_id:
         return failure('NO_DATA', '暂无市场分析数据')
 
@@ -145,7 +149,7 @@ def products():
 @market_ranking_bp.route('/keywords', methods=['GET'])
 def keywords():
     """关键词，支持category和keyword_type筛选"""
-    run_id = get_latest_run_id()
+    run_id = get_latest_run_id(request.args.get('analysis_date'))
     if not run_id:
         return failure('NO_DATA', '暂无市场分析数据')
 
@@ -179,7 +183,7 @@ def keywords():
 @market_ranking_bp.route('/overlap-shops', methods=['GET'])
 def overlap_shops():
     """重叠店铺（同时在两个类目在榜的店铺）"""
-    run_id = get_latest_run_id()
+    run_id = get_latest_run_id(request.args.get('analysis_date'))
     if not run_id:
         return failure('NO_DATA', '暂无市场分析数据')
 
@@ -195,7 +199,7 @@ def overlap_shops():
 @market_ranking_bp.route('/filters', methods=['GET'])
 def filters():
     """筛选选项"""
-    run_id = get_latest_run_id()
+    run_id = get_latest_run_id(request.args.get('analysis_date'))
     if not run_id:
         return failure('NO_DATA', '暂无市场分析数据')
 

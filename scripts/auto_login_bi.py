@@ -18,6 +18,10 @@ from pathlib import Path
 CDP_PORT = int(os.environ.get('TMALL_CDP_PORT', '9223'))
 BI_URL = "https://primeet.ecbis.cn/workTable/workTableHome"
 BI_LOGIN_URL = "https://primeet.ecbis.cn/login"
+# collect_overview_daily.py / collect_overview_full.py 取数时要求浏览器里已打开
+# URL 含 productOverview 的标签页，否则直接抛「未找到 productOverview 页面标签」。
+# 登录脚本必须把这个页面准备好，日常自动采集才不会空跑。
+BI_OVERVIEW_URL = "https://primeet.ecbis.cn/workTable/productOverview"
 SYCM_URL = "https://sycm.taobao.com/"
 WANXIANGTAI_URL = "https://one.alimama.com/"
 
@@ -117,6 +121,58 @@ def get_page_ws(url_contains):
     return None
 
 
+def get_taobao_cookies():
+    """通过 CDP 取出 taobao/tmall/sycm 域下的 cookie 串。"""
+    ws_url = get_page_ws('sycm.taobao.com') or get_page_ws('taobao.com')
+    if not ws_url:
+        return ''
+    ws = websocket.create_connection(ws_url, suppress_origin=True)
+    ws.settimeout(20)
+    try:
+        ws.send(json.dumps({"id": 1, "method": "Network.enable"}))
+        ws.recv()
+        ws.send(json.dumps({"id": 2, "method": "Network.getAllCookies"}))
+        result = json.loads(ws.recv())
+    finally:
+        ws.close()
+    cookies = result.get('result', {}).get('cookies', [])
+    return "; ".join(
+        f"{c['name']}={c['value']}"
+        for c in cookies
+        if any(d in c.get('domain', '') for d in ('taobao', 'tmall', 'sycm'))
+    )
+
+
+def sycm_session_valid():
+    """真正验证生意参谋登录态。
+
+    只看页面是否存在会误判：SSO 完成后 sycm 标签常驻在
+    /custom/login.htm，页面在并不代表 cookie 有效；失效时接口返回
+    {"code":5810,"msg":"You must login system first."}。
+    """
+    cookie_str = get_taobao_cookies()
+    if not cookie_str:
+        return False
+    probe = (
+        'https://sycm.taobao.com/flow/new/monitor/item/tops/rank.json'
+        '?dateRange={d}%7C{d}&dateType=day&pageSize=1&page=1'
+        '&order=desc&orderBy=uv&device=2&indexCode=uv'
+        '&_={ts}&token=df5be3e45'
+    ).format(d=time.strftime('%Y-%m-%d', time.localtime(time.time() - 86400)),
+              ts=int(time.time() * 1000))
+    req = urllib.request.Request(probe, headers={
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        'Referer': 'https://sycm.taobao.com/flow/monitor/itemsource',
+        'Cookie': cookie_str,
+    })
+    try:
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            data = json.loads(resp.read().decode('utf-8', 'replace'))
+        return data.get('code') == 0
+    except Exception:
+        return False
+
+
 def cdp_evaluate(ws_url, expression, await_promise=False):
     """在指定页面执行JavaScript"""
     ws = websocket.create_connection(ws_url, suppress_origin=True)
@@ -158,26 +214,76 @@ def cdp_navigate(ws_url, url):
 
 
 def login_taobao_tab(username, password):
-    """Fill the shared Taobao login page used by SYCM, if it is present."""
+    """Fill the shared Taobao login page used by SYCM, if it is present.
+
+    历史坑（2026-09-20 实测）：光填账号密码点「登录」不会成功——
+      1. 页面会先弹「服务协议及隐私保护」浮层，必须点【同意】；
+      2. 下方「已阅读并同意以下协议」复选框默认未勾选，登录按钮点了也会被拦回。
+    因此这里按「关弹窗 → 勾协议 → 填账号密码 → 点登录」的顺序处理，
+    并在点击后回读页面状态（是否出现图片验证码）以便上层给出准确提示。
+    """
     ws_url = get_page_ws('login.taobao.com')
     if not ws_url:
         return False
     result = cdp_evaluate(ws_url, f'''(function() {{
+        const log = [];
+        const visible = el => !!(el && el.offsetParent);
+        const clickByText = (text) => {{
+            const el = [...document.querySelectorAll('button,a,input[type=submit],span,div')]
+              .filter(e => visible(e) && (e.innerText || e.value || '').trim() === text)
+              .pop();
+            if (el) {{ el.click(); return true; }}
+            return false;
+        }};
+
+        // 1) 关掉「服务协议及隐私保护」浮层
+        if (clickByText('同意')) log.push('agreement_dialog_clicked');
+
+        // 2) 勾选协议复选框
+        const cb = document.getElementById('fm-agreement-checkbox');
+        if (cb && !cb.checked) {{ cb.click(); log.push('checkbox_checked'); }}
+
+        // 3) 填写账号密码
         const user = document.getElementById('fm-login-id');
         const pass = document.getElementById('fm-login-password');
-        if (!user || !pass) return 'inputs_not_found';
+        if (!user || !pass) return 'inputs_not_found|' + log.join(',');
+        user.focus();
         user.value = {json.dumps(username)};
         user.dispatchEvent(new Event('input', {{bubbles:true}}));
+        user.dispatchEvent(new Event('change', {{bubbles:true}}));
+        pass.focus();
         pass.value = {json.dumps(password)};
         pass.dispatchEvent(new Event('input', {{bubbles:true}}));
-        const btn = [...document.querySelectorAll('button,a,input[type=submit]')]
-          .find(el => el.offsetParent && (el.innerText || '').trim() === '登录');
-        if (btn) {{ btn.click(); return 'clicked'; }}
-        return 'button_not_found';
+        pass.dispatchEvent(new Event('change', {{bubbles:true}}));
+
+        // 4) 再确认一次协议（部分版本点击密码框后会重绘）
+        const cb2 = document.getElementById('fm-agreement-checkbox');
+        if (cb2 && !cb2.checked) {{ cb2.click(); log.push('checkbox_rechecked'); }}
+
+        // 5) 提交
+        if (clickByText('登录')) log.push('login_clicked');
+        else log.push('login_button_missing');
+        return log.join(',');
     }})()''')
     print(f'  生意参谋登录表单: {result}')
-    time.sleep(8)
-    return not bool(get_page_ws('login.taobao.com'))
+    time.sleep(10)
+
+    # 回读：仍在登录页 → 看是否出现图片验证码 / 错误提示
+    ws_url = get_page_ws('login.taobao.com')
+    if not ws_url:
+        return True
+    state = cdp_evaluate(ws_url, '''(function() {
+        const code = document.getElementById('fm-login-checkcode');
+        const err = [...document.querySelectorAll('.login-error,.error-msg,[class*=error]')]
+          .map(e => (e.innerText || '').trim()).filter(Boolean).slice(0, 3);
+        return JSON.stringify({
+            captcha: !!(code && code.offsetParent),
+            error: err,
+            text: (document.body.innerText || '').replace(/\\s+/g, ' ').slice(0, 200)
+        });
+    })()''')
+    print(f'  登录页状态: {state}')
+    return False
 
 
 def login_bi(username, password):
@@ -323,12 +429,20 @@ def main():
                 login_success = False
             else:
                 login_success = login_bi(args.bi_username, args.bi_password)
+        if login_success and not get_page_ws('productOverview'):
+            print("  打开BI商品总览页...")
+            create_target(get_browser_ws(), BI_OVERVIEW_URL)
+            time.sleep(5)
+            if not get_page_ws('productOverview'):
+                print("  ✗ BI商品总览页未打开，商品日度采集将失败")
+                login_success = False
     if any(source.startswith('sycm_') for source in sources):
         sycm_ws = get_page_ws('sycm.taobao.com')
-        sycm_url = cdp_evaluate(sycm_ws, 'window.location.href') if sycm_ws else ''
-        # SYCM keeps the shell at /custom/login.htm even after SSO; the
-        # collector validates the actual cookies through CDP.
-        if not sycm_ws:
+        # 页面常在 /custom/login.htm（SSO 外壳），页面存在 ≠ 会话有效；
+        # 必须真实调一次接口确认，否则会带着过期 cookie 空跑且静默"成功"。
+        sycm_ok = sycm_session_valid()
+        print(f"  生意参谋会话: {'有效' if sycm_ok else '已失效'}")
+        if not sycm_ws or not sycm_ok:
             sycm_user, sycm_password = load_platform_credentials('sycm')
             if not sycm_user or not sycm_password:
                 print('SYCM_LOGIN_REQUIRED: 生意参谋账号配置为空')

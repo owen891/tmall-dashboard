@@ -150,7 +150,10 @@ DOMAIN_DEFINITIONS = OrderedDict([
     }),
     ('actions', {
         'label': '\u8fd0\u8425\u52a8\u4f5c',
-        'source_tables': ('product_actions', 'operation_actions'),
+        # product_actions is the formal workflow source. operation_actions is
+        # a frozen legacy read-only surface and must not make the formal
+        # action capability appear partially unavailable when it is empty.
+        'source_tables': ('product_actions',),
         'grain': ('product_id', 'action_date'),
         'date_column': 'planned_at',
         'entity_column': 'product_id',

@@ -21,6 +21,12 @@ PAGE_DEFINITIONS = (
         ),
     },
     {
+        'key': 'category-dashboard', 'label': '品类经营看板', 'page_type': 'primary', 'route': '/category-dashboard',
+        'core_question': '品类规模、趋势和利润如何变化',
+        'data_domains': ('product_master', 'product_daily', 'product_weekly', 'product_monthly'),
+        'capability_keys': ('category-dashboard.view', 'category-dashboard.filter', 'category-dashboard.export'),
+    },
+    {
         'key': 'products', 'label': '商品经营', 'page_type': 'primary', 'route': '/products',
         'core_question': '哪些商品需要处理',
         'data_domains': ('product_master', 'product_daily', 'actions'),
@@ -41,7 +47,7 @@ PAGE_DEFINITIONS = (
     {
         'key': 'reviews', 'label': '经营复盘', 'page_type': 'primary', 'route': '/reviews',
         'core_question': '哪个动作是否有效',
-        'data_domains': ('actions', 'product_weekly'),
+        'data_domains': ('actions',),
         'capability_keys': ('reviews.list_actions', 'reviews.review_action', 'reviews.period_compare'),
     },
     {
@@ -94,6 +100,9 @@ CAPABILITY_DEFINITIONS = (
     {'key': 'overview.export', 'page_key': 'overview', 'label': '导出经营矩阵', 'mode': 'export', 'support_level': 'conditional', 'data_domains': ('store_daily',), 'metric_keys': (), 'api_endpoints': ('GET /api/overview/daily-matrix',)},
     {'key': 'overview.create_action', 'page_key': 'overview', 'label': '创建运营动作', 'mode': 'mutate', 'support_level': 'conditional', 'data_domains': ('product_master',), 'metric_keys': (), 'api_endpoints': ('POST /api/actions',)},
     {'key': 'overview.delete_action', 'page_key': 'overview', 'label': '删除运营动作', 'mode': 'mutate', 'support_level': 'conditional', 'data_domains': ('actions',), 'metric_keys': (), 'api_endpoints': ('DELETE /api/actions/:id',)},
+    {'key': 'category-dashboard.view', 'page_key': 'category-dashboard', 'label': '查看品类经营看板', 'mode': 'observe', 'support_level': 'conditional', 'data_domains': ('product_master', 'product_daily', 'product_weekly', 'product_monthly'), 'metric_keys': ('net_sales', 'payment_conversion_rate', 'average_order_value', 'expense_ratio'), 'api_endpoints': ('GET /api/category-analysis/matrix', 'GET /api/category-analysis/compare')},
+    {'key': 'category-dashboard.filter', 'page_key': 'category-dashboard', 'label': '筛选品类和分析周期', 'mode': 'analyze', 'support_level': 'conditional', 'data_domains': ('product_master', 'product_daily', 'product_weekly', 'product_monthly'), 'metric_keys': ('net_sales', 'payment_conversion_rate', 'average_order_value', 'expense_ratio'), 'api_endpoints': ('GET /api/category-analysis/matrix', 'GET /api/category-analysis/compare')},
+    {'key': 'category-dashboard.export', 'page_key': 'category-dashboard', 'label': '导出品类看板结果', 'mode': 'export', 'support_level': 'unsupported', 'data_domains': ('product_daily', 'product_weekly', 'product_monthly'), 'metric_keys': (), 'api_endpoints': ()},
     {'key': 'products.list', 'page_key': 'products', 'label': '查看和筛选商品', 'mode': 'observe', 'support_level': 'supported', 'data_domains': ('product_master',), 'metric_keys': (), 'api_endpoints': ('GET /api/products',)},
     {'key': 'products.export', 'page_key': 'products', 'label': '导出商品结果', 'mode': 'export', 'support_level': 'conditional', 'data_domains': ('product_master',), 'metric_keys': (), 'api_endpoints': ('GET /api/products',)},
     {'key': 'products.create_action', 'page_key': 'products', 'label': '创建经营动作', 'mode': 'mutate', 'support_level': 'conditional', 'data_domains': ('product_master', 'actions'), 'metric_keys': (), 'api_endpoints': ('POST /api/actions',)},
@@ -107,8 +116,11 @@ CAPABILITY_DEFINITIONS = (
     {'key': 'lifecycle.edit_stage', 'page_key': 'lifecycle', 'label': '调整生命周期阶段', 'mode': 'mutate', 'support_level': 'conditional', 'data_domains': ('lifecycle',), 'metric_keys': (), 'api_endpoints': ('PUT /api/lifecycle/:product_id',)},
     {'key': 'lifecycle.export', 'page_key': 'lifecycle', 'label': '导出生命周期数据', 'mode': 'export', 'support_level': 'conditional', 'data_domains': ('lifecycle', 'product_monthly'), 'metric_keys': (), 'api_endpoints': ('GET /api/lifecycle/assessments',)},
     {'key': 'reviews.list_actions', 'page_key': 'reviews', 'label': '查看待复盘动作', 'mode': 'observe', 'support_level': 'supported', 'data_domains': ('actions',), 'metric_keys': (), 'api_endpoints': ('GET /api/actions/pending-review',)},
-    {'key': 'reviews.review_action', 'page_key': 'reviews', 'label': '完成动作复盘', 'mode': 'workflow', 'support_level': 'conditional', 'data_domains': ('actions', 'product_weekly'), 'metric_keys': (), 'api_endpoints': ('POST /api/actions/:id/review',)},
-    {'key': 'reviews.period_compare', 'page_key': 'reviews', 'label': '查看周期复盘', 'mode': 'analyze', 'support_level': 'conditional', 'data_domains': ('product_weekly',), 'metric_keys': (), 'api_endpoints': ('GET /api/period-reviews',)},
+    # Weekly facts are not required to advance or review a formal action.
+    {'key': 'reviews.review_action', 'page_key': 'reviews', 'label': '完成动作复盘', 'mode': 'workflow', 'support_level': 'conditional', 'data_domains': ('actions',), 'metric_keys': (), 'api_endpoints': ('POST /api/actions/:id/review',)},
+    # Period reviews are human-entered records and can be viewed and saved
+    # without weekly source facts.
+    {'key': 'reviews.period_compare', 'page_key': 'reviews', 'label': '查看周期复盘', 'mode': 'analyze', 'support_level': 'supported', 'data_domains': (), 'metric_keys': (), 'api_endpoints': ('GET /api/period-reviews',)},
     {'key': 'data-center.view_catalog', 'page_key': 'data-center', 'label': '查看数据能力目录', 'mode': 'observe', 'support_level': 'supported', 'data_domains': ('imports',), 'metric_keys': (), 'api_endpoints': ('GET /api/data-capabilities',)},
     {'key': 'data-center.import', 'page_key': 'data-center', 'label': '预览与确认导入', 'mode': 'workflow', 'support_level': 'supported', 'data_domains': ('imports',), 'metric_keys': (), 'api_endpoints': ('POST /api/imports/preview', 'POST /api/imports')},
     {'key': 'data-center.revert', 'page_key': 'data-center', 'label': '撤销导入批次', 'mode': 'workflow', 'support_level': 'conditional', 'data_domains': ('imports',), 'metric_keys': (), 'api_endpoints': ('POST /api/imports/:id/revert',)},
@@ -151,6 +163,7 @@ SURFACE_DEFINITIONS = (
 _REGISTRY_OWNER = 'tm-dashboard'
 _PAGE_TARGET_FILES = {
     'overview': ('frontend/ui_demo/pages/overview.html', 'frontend/ui_demo/assets/overview-live.js'),
+    'category-dashboard': ('frontend/ui_demo/pages/category-dashboard.html', 'frontend/ui_demo/assets/category-dashboard-live.js'),
     'products': ('frontend/ui_demo/pages/products.html', 'frontend/ui_demo/assets/products-live.js'),
     'promotion': ('frontend/ui_demo/pages/promotion.html', 'frontend/ui_demo/assets/promotion-live.js'),
     'lifecycle': ('frontend/ui_demo/pages/lifecycle.html', 'frontend/ui_demo/assets/lifecycle-live.js'),
@@ -240,8 +253,8 @@ def validate_registry(app=None):
     page_keys = [item['key'] for item in PAGE_DEFINITIONS]
     capability_keys = [item['key'] for item in CAPABILITY_DEFINITIONS]
     surface_keys = [item['key'] for item in SURFACE_DEFINITIONS]
-    if len(PAGE_DEFINITIONS) != 11:
-        errors.append('expected eleven page definitions')
+    if len(PAGE_DEFINITIONS) != 12:
+        errors.append('expected twelve page definitions')
     for label, keys in (('page', page_keys), ('capability', capability_keys), ('surface', surface_keys)):
         duplicates = sorted(key for key, count in Counter(keys).items() if count > 1)
         if duplicates:

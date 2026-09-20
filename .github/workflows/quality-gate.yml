@@ -70,6 +70,7 @@ jobs:
           TMALL_SMOKE_BASE: http://127.0.0.1:8770
         run: |
           node scripts/smoke_core_pages.cjs
+          node scripts/browser_prd_gates.cjs
           TMALL_CAPABILITY_ONLY=1 node scripts/browser_prd_gates.cjs
           node scripts/audit_core_interactions.cjs
 

@@ -1,4 +1,4 @@
-﻿<!doctype html>
+<!doctype html>
 <html lang="zh-CN">
 <head>
   <meta charset="utf-8">
@@ -6,7 +6,7 @@
   <title>生命周期 | 天猫数据仪表盘</title>
   <link rel="stylesheet" href="../assets/tokens.css">
   <link rel="stylesheet" href="../assets/shell.css">
-  <link rel="stylesheet" href="../assets/components.css">
+  <link rel="stylesheet" href="../assets/components.css?v=20260919-field-selector3">
   <script src="../assets/lucide-custom.min.js"></script>
   <script src="../assets/echarts-custom.min.js"></script>
   <script src="../assets/charts.js"></script>
@@ -85,7 +85,7 @@
           <div class="lifecycle-insights" data-lifecycle-insights aria-label="最近月经营结论"></div>
           <article class="ui-panel"><div class="panel__header"><div><h3 class="panel__title">月度明细</h3><p class="panel__hint">图表的可读数据表</p></div><button class="ui-button ui-button--ghost" type="button" data-lifecycle-columns-open><i data-lucide="settings-2"></i><span>字段设置</span></button></div><div class="ui-table-wrap"><table class="ui-data-table"><thead><tr data-lifecycle-detail-head></tr></thead><tbody data-lifecycle-detail-body></tbody></table></div></article>
         </dialog>
-        <dialog class="modal-form lifecycle-columns-dialog" data-lifecycle-columns-dialog data-modal-kind="config" hidden aria-labelledby="lifecycle-columns-title">
+        <dialog class="modal-form ui-field-selector-dialog lifecycle-columns-dialog" data-lifecycle-columns-dialog data-modal-kind="config" hidden aria-labelledby="lifecycle-columns-title">
           <div class="modal-form__header">
             <div><h3 id="lifecycle-columns-title">字段设置</h3><p>选择月度明细表中需要展示的字段，并调整列顺序</p></div>
             <button class="ui-button ui-button--ghost ui-button--icon" type="button" data-lifecycle-columns-close aria-label="关闭字段设置"><i data-lucide="x"></i></button>

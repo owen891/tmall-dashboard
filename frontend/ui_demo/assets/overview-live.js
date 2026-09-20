@@ -251,7 +251,26 @@
     deltaNode?.classList.toggle('delta--positive', delta != null && delta >= 0);
     deltaNode?.classList.toggle('delta--negative', delta != null && delta < 0);
   }
-  function renderContext(overview) {
+  function renderQuality(availability, details = {}) {
+    const node = $('[data-overview-quality]');
+    if (!node) return;
+    const labels = {
+      available: ['数据可用', 'success'],
+      partial: ['部分可用', 'warning'],
+      'insufficient-data': ['数据不足', 'warning'],
+      'no-data': ['暂无数据', 'muted'],
+      'missing-fields': ['字段缺失', 'warning'],
+      'source-unavailable': ['来源不可用', 'danger'],
+      'calculation-failed': ['计算失败', 'danger'],
+    };
+    const [label, tone] = labels[availability] || ['状态未知', 'muted'];
+    node.textContent = label;
+    node.dataset.availability = availability || 'calculation-failed';
+    node.className = `overview-v2-status ui-badge--${tone}`;
+    const missing = details.missing_fields?.length ? `；缺失字段 ${details.missing_fields.join('、')}` : '';
+    node.title = `${label}${missing}`;
+  }
+  function renderContext(overview, response = {}) {
     const context = overview.context || {}; const batch = context.latest_import;
     const missing_date_ranges = overview.missing_date_ranges || [];
     const source_batches = overview.source_batches || [];
@@ -320,14 +339,14 @@
   function renderTargets(data) {
     const target = data?.target || {};
     const actual = data?.actual || {};
-    const actualAvailable = data?.actual && data.actual.gsv != null;
+    const actualValue = (key, formatter) => actual[key] == null ? '不可计算' : formatter(actual[key]);
     const targetValue = (key) => target[key] == null ? '--' : moneyWan(target[key]);
-    const actualValue = (key) => actualAvailable ? moneyWan(actual[key]) : '不可计算';
+    const progressFor = (actualKey, targetKey, progress) => actual[actualKey] == null || target[targetKey] == null ? null : progress;
     const values = [
-      ['支付金额', `${actualValue('gsv')} / ${targetValue('target_gsv')}`, data?.gsv_progress],
-      ['推广花费', `${actualAvailable ? moneyWan(actual.ad_spend) : '不可计算'} / ${targetValue('target_ad_spend')}`, data?.ad_progress],
-      ['净销售额', `${actualAvailable ? moneyWan(actual.net_sales) : '不可计算'} / ${target.target_net_sales == null ? '--' : moneyWan(target.target_net_sales)}`, data?.net_sales_progress],
-      ['商品访客数', actualAvailable ? numberWan(actual.visitors) : '不可计算', null]
+      ['支付金额', `${actualValue('gsv', moneyWan)} / ${targetValue('target_gsv')}`, progressFor('gsv', 'target_gsv', data?.gsv_progress)],
+      ['推广花费', `${actualValue('ad_spend', moneyWan)} / ${targetValue('target_ad_spend')}`, progressFor('ad_spend', 'target_ad_spend', data?.ad_progress)],
+      ['净销售额', `${actualValue('net_sales', moneyWan)} / ${target.target_net_sales == null ? '--' : moneyWan(target.target_net_sales)}`, progressFor('net_sales', 'target_net_sales', data?.net_sales_progress)],
+      ['商品访客数', actualValue('visitors', numberWan), null]
     ];
     const renderRows = () => values.map(([label, value, progress]) => {
       const row = document.createElement('div');
@@ -473,7 +492,7 @@
     try { matrix = await DemoApi.domainRequest('/api/overview/daily-matrix?' + overviewParams.toString()); } catch (error) { renderMatrixStatus(null, 'error'); setTableStatus($('[data-overview-home-matrix]'), '日度矩阵暂无数据；请导入日度明细后重试', matrixVisibleColumns.length, () => guardedLoad(state)); }
     if (token !== requestToken) return;
     const rows = unwrap(trend, 'data');
-    renderKpis(overviewResponse.data, comparison, matrix.data, targets); renderContext(overviewResponse.data); renderTrend(rows); renderTargets(targets); await loadGoalLayers(state, token); if (token !== requestToken) return; renderAnomalies(anomalies, () => guardedLoad(state)); renderHomeMatrix(matrix.data || {});
+    renderKpis(overviewResponse.data, comparison, matrix.data, targets); renderContext(overviewResponse.data, overviewResponse); renderQuality(overviewResponse.availability, overviewResponse); renderTrend(rows); renderTargets(targets); await loadGoalLayers(state, token); if (token !== requestToken) return; renderAnomalies(anomalies, () => guardedLoad(state)); renderHomeMatrix(matrix.data || {});
   }
 
   function guardedLoad(detail) {
@@ -486,6 +505,7 @@
     setStatus('[data-overview-home-targets]', '数据加载失败', 'error', () => guardedLoad());
     setTableStatus($('[data-overview-home-matrix]'), '数据加载失败', matrixVisibleColumns.length);
     renderMatrixStatus(null, 'error');
+    renderQuality('calculation-failed', { missing_fields: [] });
     DemoApi.renderDataState($('[data-overview-context]'), 'calculation-failed', { message: error.message });
     console.error(error);
   }

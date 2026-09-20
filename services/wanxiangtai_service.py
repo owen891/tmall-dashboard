@@ -268,6 +268,10 @@ class WanxiangtaiService:
         if ad_spend is None and attributed_payment is None:
             return None
 
+        grain = REPORT_TYPE_GRAIN.get(report_type, '')
+        if report_type == 'account' and not product_id:
+            # 账户报表里的总账行(无商品归属),单独标粒度,不进商品排行
+            grain = 'account'
         return {
             'date': fact_date,
             'channel': channel,
@@ -275,7 +279,7 @@ class WanxiangtaiService:
             'campaign_name': str(row.get('campaignName') or ''),
             'unit_id': unit_id,
             'product_id': product_id,
-            'grain': REPORT_TYPE_GRAIN.get(report_type, ''),
+            'grain': grain,
             'ad_spend': ad_spend,
             'attributed_payment_amount': attributed_payment,
             'impressions': impressions,

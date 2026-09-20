@@ -20,6 +20,23 @@
   const renderDataState = (state, details) => DemoApi.renderDataState(status, state, details);
   const sourceLabels = { product_day: '商品日度', dmp_product_day: 'DMP商品日度', store_day: '店铺日度', product_week: '商品周度', product_month: '商品月度', promotion_channel_day: '推广渠道日度', promotion_campaign_day: '推广计划日度', promotion_unit_day: '推广单元日度', promotion_product_day: '推广商品日度', refund_day: '退款日度', customer_day: '新老客日度' };
   const shortHash = (value) => value && value.length > 16 ? `${value.slice(0, 8)}...${value.slice(-6)}` : (value || '--');
+  const stepperSteps = [...document.querySelectorAll('.data-center-stepper__step')];
+  const setImportStep = (current, error = false) => {
+    stepperSteps.forEach((step, index) => {
+      const done = index < current;
+      step.classList.toggle('is-done', done);
+      step.classList.toggle('is-current', index === current && current < stepperSteps.length);
+      step.classList.toggle('is-error', error && index === current);
+      if (index === current && current < stepperSteps.length) step.setAttribute('aria-current', 'step');
+      else step.removeAttribute('aria-current');
+    });
+  };
+  setImportStep(0);
+  const confirmRevert = (impact) => {
+    const confirm = window.TmallUI?.confirm;
+    if (typeof confirm === 'function') return confirm({ title: '确认撤销导入批次？', message: impact, confirmLabel: '确认撤销', cancelLabel: '取消', tone: 'danger' });
+    return Promise.resolve(window.confirm(`确认撤销该批次？\n${impact}`));
+  };
   const loadSettings = async () => {
     try {
       settings = (await DemoApi.domainRequest('/api/settings')).data;
@@ -80,14 +97,13 @@
     const excluded = result.excluded_summary_rows ? `；剔除汇总行 ${result.excluded_summary_rows}` : '';
     quality.textContent = `已识别为${detectedSource}；有效 ${result.valid_rows}/${result.total_rows} 行，商品 ${result.product_count} 个，重复业务键 ${result.duplicate_keys} 个${excluded}${range}${estimate}${governance}`;
     const details = (result.invalid_details || []).slice(0, 25).map((item) => `第 ${item.row_number || '--'} 行 · ${item.standard_field || '--'} · ${item.raw_value || '--'} · ${item.reason || item.message}`).join('；');
-    if (details) quality.title = details;
+    const fieldWarnings = (result.field_warnings || []).slice(0, 25).map((item) => `row ${item.row_number || '--'} / ${item.standard_field || '--'} / ${item.reason || 'invalid field'}`).join('; ');
+    const qualityDetail = details || fieldWarnings || (result.invalid_field_count ? `${result.invalid_field_count} 个字段存在警告` : '未发现异常行');
     const detail = document.querySelector('[data-import-quality-detail]');
-    if (detail && !(result.invalid_details || []).length && result.invalid_field_count) {
-      detail.textContent = (result.field_warnings || []).slice(0, 25)
-        .map((item) => `row ${item.row_number || '--'} / ${item.standard_field || '--'} / ${item.reason || 'invalid field'}`)
-        .join('; ');
-    }
-    if (detail) detail.textContent = details || '未发现异常行';
+    if (detail) detail.textContent = qualityDetail;
+    if (details) quality.title = details;
+    else if (fieldWarnings) quality.title = fieldWarnings;
+    else quality.removeAttribute('title');
     fields.replaceChildren(...resultFields.map((field) => {
       const row = document.createElement('tr');
       const source = document.createElement('td'); source.textContent = field.source_column; row.appendChild(source);
@@ -100,6 +116,7 @@
         if (mapping.value) result.mapping[mapping.value] = field.source_column;
         field.standard_key = mapping.value;
         field.match_status = mapping.value ? 'manual' : 'unmatched';
+        matchCell.textContent = DemoLabels.label('match', field.match_status);
         result.required_unmapped = (result.mapping_schema?.required || []).filter((key) => !result.mapping[key]);
         text(status, result.required_unmapped.length ? `缺少必填映射：${result.required_unmapped.map((key) => DemoLabels.label('field', key, key)).join('、')}` : '映射完整，可以确认导入。');
       });
@@ -117,6 +134,7 @@
   previewButton?.addEventListener('click', async () => {
     const selectedFiles = Array.from(fileInput.files || []);
     if (!selectedFiles.length) return text(status, '请选择表格文件。');
+    setImportStep(0);
     previewButton.disabled = true; text(status, '正在读取并校验文件…');
     try {
       previewQueue = [];
@@ -136,19 +154,22 @@
         }
       }
       preview = previewQueue[0] || null;
-      if (preview) render(preview);
-      else panel.hidden = true;
+      if (preview) {
+        render(preview);
+        setImportStep(preview.required_unmapped?.length ? 1 : ((preview.invalid_rows || preview.duplicate_keys || preview.invalid_field_count) ? 2 : 1));
+      } else panel.hidden = true;
       const summary = `已预览 ${previewQueue.length}/${selectedFiles.length} 个文件`;
       text(status, previewErrors.length ? `${summary}；失败：${previewErrors.join('；')}` : `${summary}，确认后按顺序导入。`);
       showToast(previewErrors.length ? `预览完成：成功 ${previewQueue.length}/${selectedFiles.length} 个文件，失败 ${previewErrors.length} 个` : `预览完成：${previewQueue.length} 个文件，可确认导入`, { duration: 4500 });
-    } catch (error) { text(status, error.message || '预览失败。'); showToast(`预览失败：${error.message || '请检查文件'}`, { duration: 5000 }); }
+    } catch (error) { setImportStep(0, true); text(status, error.message || '预览失败。'); showToast(`预览失败：${error.message || '请检查文件'}`, { duration: 5000 }); }
     finally { previewButton.disabled = false; }
   });
   confirmButton?.addEventListener('click', async () => {
     if (Object.keys(importCapabilities).length && !DemoApi.can({ capabilities: importCapabilities }, 'can_import')) return text(status, '当前数据源不允许导入');
     const pending = previewQueue.length ? previewQueue : (preview ? [preview] : []);
-    if (pending.some((item) => item.invalid_rows || item.duplicate_keys)) return text(status, '质量校验未通过，请修正源文件后重新预览。');
-    if (!pending.length || pending.some((item) => (Array.isArray(item.required_unmapped) ? item.required_unmapped : []).length)) return text(status, '请先完成必填字段映射。');
+    if (pending.some((item) => item.invalid_rows || item.duplicate_keys)) { setImportStep(2, true); return text(status, '质量校验未通过，请修正源文件后重新预览。'); }
+    if (!pending.length || pending.some((item) => (Array.isArray(item.required_unmapped) ? item.required_unmapped : []).length)) { setImportStep(1, true); return text(status, '请先完成必填字段映射。'); }
+    setImportStep(3);
     confirmButton.disabled = true; text(status, '正在事务导入…');
     const failures = [];
     const failedPreviews = [];
@@ -174,9 +195,10 @@
       text(status, failures.length ? `${summary}；失败：${failures.join('；')}` : `${summary}。`);
       showToast(failures.length ? `导入完成：成功 ${results.length}/${pending.length} 个文件，失败 ${failures.length} 个` : `导入完成：${results.length} 个文件，新增 ${inserted}，更新 ${updated}`, { duration: 5000 });
       previewQueue = failedPreviews;
+      setImportStep(failures.length ? 3 : 4, failures.length > 0);
       loadHistory();
       confirmButton.disabled = !failures.length;
-    } catch (error) { text(status, error.message || '导入失败，未写入半成品。'); showToast(`导入失败：${error.message || '未写入半成品'}`, { duration: 5000 }); }
+    } catch (error) { setImportStep(3, true); text(status, error.message || '导入失败，未写入半成品。'); showToast(`导入失败：${error.message || '未写入半成品'}`, { duration: 5000 }); }
     finally { if (failures.length || status.textContent.includes('失败')) confirmButton.disabled = false; }
   });
   async function loadHistory() {
@@ -199,8 +221,8 @@
         const cell = document.createElement('td'); const button = document.createElement('button'); button.className = 'ui-button ui-button--ghost'; button.type = 'button'; button.textContent = batch.status === 'completed' ? '撤销' : '已撤销'; button.disabled = batch.status !== 'completed' || (Object.keys(importCapabilities).length > 0 && !DemoApi.can({ capabilities: importCapabilities }, 'can_revert'));
         button.addEventListener('click', async () => {
           if (button.disabled) return;
-          const impact = `影响：撤销 ${batch.source_filename}，恢复该批次覆盖前的数据；${batch.inserted_count || 0} 条新增记录将被移除，${batch.updated_count || 0} 条更新将回退。`;
-          if (!window.confirm(`确认撤销该批次？\n${impact}`)) return;
+          const impact = `影响范围：撤销 ${batch.source_filename}，恢复该批次覆盖前的数据；${batch.inserted_count || 0} 条新增记录将被移除，${batch.updated_count || 0} 条更新将回退。`;
+          if (!await confirmRevert(impact)) return;
           button.disabled = true;
           try {
             await DemoApi.domainRequest(`/api/imports/${encodeURIComponent(batch.id)}/revert`, { method: 'POST' });
