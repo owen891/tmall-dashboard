@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>品类经营看板 | 天猫数据仪表盘</title>
+  <link rel="stylesheet" href="../assets/tokens.css">
+  <link rel="stylesheet" href="../assets/shell.css">
+  <link rel="stylesheet" href="../assets/components.css">
+  <link rel="stylesheet" href="../assets/category-dashboard.css">
+  <script src="../assets/lucide-custom.min.js"></script>
+  <script src="../assets/echarts-custom.min.js"></script>
+</head>
+<body data-page="category-dashboard">
+  <div class="demo-app">
+    <aside class="demo-sidebar" data-shell-sidebar></aside>
+    <div class="demo-main">
+      <header class="demo-topbar" data-shell-header></header>
+      <main class="category-dashboard-page" id="main-content">
+        <header class="category-dashboard-header">
+          <div><div class="dashboard-eyebrow">品类经营</div><h1 id="dashboardTitle">标品袜子 · 本月经营</h1><p id="dashboardPeriodLabel">正在加载当前经营周期</p></div>
+          <button class="ui-button ui-button--primary" type="button" id="categoryDashboardRefresh"><i data-lucide="refresh-cw"></i><span>刷新</span></button>
+        </header>
+        <nav class="dashboard-mode-tabs" aria-label="看板模式">
+          <button type="button" class="is-active" data-dashboard-mode="month">本月经营</button>
+          <button type="button" data-dashboard-mode="week">本周经营</button>
+          <button type="button" data-dashboard-mode="custom">自定义周期</button>
+          <button type="button" data-dashboard-mode="annual">年度复盘</button>
+        </nav>
+        <section class="dashboard-controls" aria-label="看板条件">
+          <label class="dashboard-control dashboard-custom-only"><span>开始日期</span><input type="date" id="dashboardStart"></label>
+          <label class="dashboard-control dashboard-custom-only"><span>结束日期</span><input type="date" id="dashboardEnd"></label>
+          <label class="dashboard-control dashboard-metric-control"><span>主指标</span><select id="dashboardMetric"><option value="net_sales">净销售额</option><option value="payment_amount">支付金额</option><option value="payment_qty">支付件数</option><option value="visitors">访客数</option><option value="payment_conversion_rate">支付转化率</option><option value="average_order_value">客单价</option><option value="ad_spend">推广花费</option><option value="operating_profit">经营利润</option><option value="profit_rate">利润率</option></select></label>
+          <label class="dashboard-control dashboard-compare-control"><span>对比方式</span><select id="dashboardCompareMode"><option value="yoy">去年同期</option><option value="previous" selected>上一周期</option><option value="custom">自定义对比</option><option value="none">无对比</option></select></label>
+          <label class="dashboard-control dashboard-compare-custom"><span>对比开始</span><input type="date" id="dashboardCompareStart"></label>
+          <label class="dashboard-control dashboard-compare-custom"><span>对比结束</span><input type="date" id="dashboardCompareEnd"></label>
+          <label class="dashboard-control dashboard-annual-only"><span>复盘年度</span><select id="dashboardYears"><option value="2024,2025,2026">2024 / 2025 / 2026</option><option value="2023,2024,2025">2023 / 2024 / 2025</option><option value="2025,2026">2025 / 2026</option></select></label>
+        </section>
+        <div id="categoryDashboardState" class="dashboard-state" role="status" aria-live="polite"></div>
+        <section id="categoryDashboardKpis" class="dashboard-kpis"></section>
+        <section id="dashboardInsight" class="dashboard-insight"></section>
+        <section class="dashboard-grid dashboard-operating-view">
+          <article class="dashboard-panel dashboard-panel--wide"><header><div><h2>经营趋势</h2><span id="dashboardTrendMeta"></span></div><span class="dashboard-panel-label">当前周期</span></header><div id="categoryDashboardTrend" class="dashboard-chart"></div></article>
+          <article class="dashboard-panel"><header><div><h2>利润健康度</h2><span id="dashboardProfitBadge"></span></div></header><div id="categoryDashboardProfit" class="dashboard-breakdown"></div></article>
+          <article class="dashboard-panel"><header><div><h2>增长贡献</h2><span>同比增加最多</span></div></header><div id="categoryDashboardUp" class="dashboard-table"></div></article>
+          <article class="dashboard-panel"><header><div><h2>下滑拖累</h2><span>同比减少最多</span></div></header><div id="categoryDashboardDown" class="dashboard-table"></div></article>
+        </section>
+        <section id="dashboardAnnualView" class="dashboard-annual-view">
+          <header class="annual-view-header"><div><div class="dashboard-eyebrow">年度复盘</div><h2>多年度经营对比</h2><p>选择需要复盘的字段，每个字段独立展示月度、年度累计和同比。</p></div>
+            <fieldset class="dashboard-field-picker"><legend>复盘字段</legend><label><input type="checkbox" name="dashboardMatrixMetric" value="net_sales" checked>净销售额</label><label><input type="checkbox" name="dashboardMatrixMetric" value="payment_qty">支付件数</label><label><input type="checkbox" name="dashboardMatrixMetric" value="ad_spend">推广花费</label><label><input type="checkbox" name="dashboardMatrixMetric" value="operating_profit">经营利润</label><label><input type="checkbox" name="dashboardMatrixMetric" value="profit_rate">利润率</label></fieldset>
+          </header>
+          <div id="categoryDashboardYearReview" class="dashboard-year-review"></div>
+        </section>
+      </main>
+    </div>
+  </div>
+  <script src="../assets/api.js"></script><script src="../assets/navigation.js"></script><script src="../assets/shell.js"></script><script src="../assets/category-dashboard-live.js"></script>
+</body>
+</html>
