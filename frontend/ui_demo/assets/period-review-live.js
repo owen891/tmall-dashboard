@@ -1002,20 +1002,15 @@
 
 
   // ------------------------------------------------- 叶子类目近3周对比看板
-  function fmtWan(v) {
-    if (v === null || v === undefined || Number.isNaN(Number(v))) return '--';
-    const n = Number(v);
-    if (Math.abs(n) >= 10000) return `${(n / 10000).toFixed(1)}万`;
-    return n.toLocaleString('zh-CN', { maximumFractionDigits: 0 });
-  }
-  function fmtPct(v, digits = 1) {
-    if (v === null || v === undefined || Number.isNaN(Number(v))) return '--';
-    return `${(Number(v) * 100).toFixed(digits)}%`;
-  }
-  function fmtNum(v) {
-    if (v === null || v === undefined || Number.isNaN(Number(v))) return '--';
-    return Number(v).toLocaleString('zh-CN', { maximumFractionDigits: 0 });
-  }
+  // 格式化收敛到 DemoFormat（format.js 已在本页加载），无则本地兜底。
+  const fmtWan = window.DemoFormat?.fmtWan
+    || ((v) => v === null || v === undefined || Number.isNaN(Number(v)) ? '--' : (Math.abs(Number(v)) >= 10000 ? `${(Number(v) / 10000).toFixed(1)}万` : Number(v).toLocaleString('zh-CN', { maximumFractionDigits: 0 })));
+  const fmtPct = (v, digits = 1) => (v === null || v === undefined || Number.isNaN(Number(v))
+    ? '--'
+    : `${(Number(v) * 100).toFixed(digits)}%`);
+  const fmtNum = (v) => v === null || v === undefined || Number.isNaN(Number(v))
+    ? '--'
+    : Number(v).toLocaleString('zh-CN', { maximumFractionDigits: 0 });
   function deltaBadge(rate) {
     if (rate === null || rate === undefined || Number.isNaN(Number(rate))) return h('span', { class: 'lb-delta lb-delta--na', text: '--' });
     const n = Number(rate);
