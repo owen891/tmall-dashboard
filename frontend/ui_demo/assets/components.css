@@ -1060,7 +1060,6 @@ body[data-page="reviews"] [data-period-review-list] .status-list__item strong { 
 .overview-home-matrix .ui-data-table tbody td { font-variant-numeric:tabular-nums; }
 
 @media (max-width: 1000px) {
-  .overview-decision { grid-template-columns:1fr; }
   .overview-decision__items { grid-template-columns:repeat(3,minmax(0,1fr)); }
 }
 @media (max-width: 700px) {
@@ -1142,8 +1141,9 @@ body[data-page="reviews"] [data-period-review-list] .status-list__item strong { 
 @media (max-width: 640px) { .toolbox-scan-folder, .toolbox-scan-form .filter-group { grid-template-columns: 1fr; } }
 
 /* UX audit pass: decision hierarchy, resumable settings, and discoverable wide tables. */
-.overview-decision { display: grid; grid-template-columns: minmax(240px, .8fr) minmax(0, 1.2fr); gap: var(--space-4); align-items: stretch; margin-bottom: var(--space-6); padding: var(--space-5) var(--space-4); border: 1px solid var(--border-default); border-radius: var(--panel-radius); background: var(--surface-base); box-shadow: var(--elevation-sm); }
-.overview-decision__intro { display: grid; align-content: center; gap: var(--space-1); }
+.overview-decision { display: grid; gap: var(--space-3); margin-bottom: var(--space-6); padding: var(--space-4); border: 1px solid var(--border-default); border-radius: var(--panel-radius); background: var(--surface-base); box-shadow: var(--elevation-sm); }
+.overview-decision__intro { display: flex; min-width: 0; align-items: center; justify-content: space-between; gap: var(--space-4); }
+.overview-decision__intro > div:first-child { display: grid; gap: var(--space-1); }
 .overview-decision__intro h3 { margin: 0; font-size: var(--font-size-section); line-height: var(--line-height-section); }
 .overview-decision__intro p { margin: 0; color: var(--text-secondary); font-size: var(--font-size-secondary); }
 .section-kicker { display:inline-block; margin-bottom:var(--space-1); color: var(--brand); font-size: var(--font-size-meta); font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; }
@@ -1184,7 +1184,7 @@ body[data-page="reviews"] [data-period-review-list] .status-list__item strong { 
 .products-mobile-summary__metrics dd { margin: 0; color: var(--text-primary); font-family: var(--font-mono); font-size: var(--font-size-secondary); font-weight: 600; }
 
 @media (max-width: 560px) {
-  .overview-decision { grid-template-columns: 1fr; gap: var(--space-3); }
+  .overview-decision__intro { flex-wrap: wrap; }
   .overview-decision__items { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .overview-decision__item { padding: var(--space-2); }
   .overview-decision__item strong { font-size: var(--font-size-label); }

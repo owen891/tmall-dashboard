@@ -277,7 +277,15 @@
     const changes = overview.changes || [];
     const grain = overview.data_grain || context.data_grain;
     const grainLabel = grain === 'monthly' ? '月度数据' : '日度事实';
-    text($('[data-overview-context]'), batch ? `${grainLabel}覆盖 ${context.start_date || '--'} 至 ${context.end_date || '--'}；最近导入 ${batch.source_filename}（${batch.completed_at || '--'}）` : `当前没有导入的${grainLabel}。`);
+    const contextNode = $('[data-overview-context]');
+    if (batch) {
+      // 界面上只保留可读的日期覆盖信息，导入文件路径收进 tooltip，避免本地路径刷屏
+      text(contextNode, `${grainLabel}覆盖 ${context.start_date || '--'} 至 ${context.end_date || '--'} · 最近导入 ${batch.completed_at ? String(batch.completed_at).slice(0, 16) : '--'}`);
+      if (contextNode) contextNode.title = `最近导入文件：${batch.source_filename || '--'}（${batch.completed_at || '--'}）`;
+    } else {
+      text(contextNode, `当前没有导入的${grainLabel}。`);
+      if (contextNode) contextNode.title = '';
+    }
     const start = context.start_date;
     const end = context.end_date;
     const coverage = start && end ? (grain === 'monthly' ? Math.max(1, (new Date(`${end}-01T00:00:00`).getFullYear() - new Date(`${start}-01T00:00:00`).getFullYear()) * 12 + new Date(`${end}-01T00:00:00`).getMonth() - new Date(`${start}-01T00:00:00`).getMonth() + 1) : Math.max(1, Math.round((new Date(`${end}T00:00:00`) - new Date(`${start}T00:00:00`)) / 86400000) + 1)) : null;
@@ -293,7 +301,7 @@
       return row;
     }) : [item('div', '当前没有待办动作', 'ui-empty-state')];
     const pending = todos.filter((todo) => ['pending_review', 'blocked', 'pending_execution', 'executing'].includes(todo.status)).length;
-    textAll('[data-overview-summary="actions"]', String(pending).padStart(2, '0'));
+    textAll('[data-overview-summary="actions"]', String(pending));
     window.dispatchEvent(new CustomEvent('tmall:overview-actions-ready', { detail: { todos } }));
   }
 
@@ -368,7 +376,13 @@
     return `${date.getFullYear()}-W${String(week).padStart(2, '0')}`;
   }
 
-  async function loadGoalLayers(state, token = requestToken) {
+  // goals 年度目标缺失时，首页「目标完成度」回退展示 shop_targets 的月度净销售进度
+  const fallbackTargetSummary = (targets) => {
+    const progress = targets?.net_sales_progress;
+    textAll('[data-overview-summary="target"]', progress == null ? '--' : `${Number(progress).toFixed(1)}%`);
+  };
+
+  async function loadGoalLayers(state, token = requestToken, targets = null) {
     const year = Number(String(state?.endDate || formatLocalDate()).slice(0, 4));
     const targetRoots = [$('[data-overview-home-targets]')].filter(Boolean);
     try {
@@ -389,17 +403,17 @@
         row.append(item('span', `${label} · ${key}`, 'status-list__label'), item('span', `${money(done)} / ${money(target)} · ${rate}`, 'status-list__value'));
         return row;
       });
-      // goals 系统无任何目标数据时，保留 shop_targets（店铺目标）的渲染结果
+      // goals 系统无任何目标数据时，保留 shop_targets（店铺目标）的渲染结果，完成度回退到月度净销售进度
       const hasAnyGoal = levels.year != null || Object.values(levels).some((v) => v && typeof v === "object" && Object.keys(v).length > 0);
-      if (!hasAnyGoal) { textAll('[data-overview-summary="target"]', '--'); return; }
+      if (!hasAnyGoal) { fallbackTargetSummary(targets); return; }
       targetRoots.forEach((root) => root.replaceChildren(...rows.map((row) => row.cloneNode(true))));
       adaptHomeTargets();
       const annual = levels.year;
       const annualActual = actual.year;
       textAll('[data-overview-summary="target"]', annual == null ? '--' : `${Number(annual) ? (Number(annualActual || 0) / Number(annual) * 100).toFixed(1) : 0}%`);
     } catch (error) {
-      // goals 年度目标未创建时，保留 shop_targets 店铺目标的渲染结果（原覆盖行已移除）
-      textAll('[data-overview-summary="target"]', '--');
+      // goals 接口不可用时，保留 shop_targets 店铺目标的渲染结果，完成度回退到月度净销售进度
+      fallbackTargetSummary(targets);
     }
   }
 
@@ -433,6 +447,13 @@
     window.dispatchEvent(new CustomEvent('tmall:overview-anomalies-ready', { detail: { anomalies } }));
   }
 
+  // 表格横向溢出时给滚动容器打标记，驱动常显的“向右滚动”角标
+  function syncMatrixScrollHint() {
+    const wrap = document.querySelector('.overview-home-matrix .ui-table-wrap--discoverable');
+    if (!wrap) return;
+    wrap.classList.toggle('is-scrollable', wrap.scrollWidth - wrap.clientWidth > 4);
+  }
+
   function renderHomeMatrix(matrix) {
     const body = $('[data-overview-home-matrix]');
     if (!body) return;
@@ -454,6 +475,7 @@
       return tr;
     }));
     window.TmallTableControls?.refresh?.();
+    requestAnimationFrame(syncMatrixScrollHint);
   }
 
   async function load(detail) {
@@ -492,7 +514,7 @@
     try { matrix = await DemoApi.domainRequest('/api/overview/daily-matrix?' + overviewParams.toString()); } catch (error) { renderMatrixStatus(null, 'error'); setTableStatus($('[data-overview-home-matrix]'), '日度矩阵暂无数据；请导入日度明细后重试', matrixVisibleColumns.length, () => guardedLoad(state)); }
     if (token !== requestToken) return;
     const rows = unwrap(trend, 'data');
-    renderKpis(overviewResponse.data, comparison, matrix.data, targets); renderContext(overviewResponse.data, overviewResponse); renderQuality(overviewResponse.availability, overviewResponse); renderTrend(rows); renderTargets(targets); await loadGoalLayers(state, token); if (token !== requestToken) return; renderAnomalies(anomalies, () => guardedLoad(state)); renderHomeMatrix(matrix.data || {});
+    renderKpis(overviewResponse.data, comparison, matrix.data, targets); renderContext(overviewResponse.data, overviewResponse); renderQuality(overviewResponse.availability, overviewResponse); renderTrend(rows); renderTargets(targets); await loadGoalLayers(state, token, targets); if (token !== requestToken) return; renderAnomalies(anomalies, () => guardedLoad(state)); renderHomeMatrix(matrix.data || {});
   }
 
   function guardedLoad(detail) {
@@ -712,6 +734,7 @@
     window.DemoShell?.showToast?.('正在导出完整日度矩阵');
   });
   window.addEventListener('tmall:date-range-change', (event) => guardedLoad(event.detail));
+  window.addEventListener('resize', () => requestAnimationFrame(syncMatrixScrollHint));
   window.addEventListener('tmall:date-range-ready', (event) => guardedLoad(event.detail));
   window.addEventListener('tmall:refresh', () => guardedLoad());
   const initialRange = window.TmallDateRange?.getState?.();

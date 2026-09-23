@@ -1203,13 +1203,16 @@ def market_item_entities():
         return success({'entities': []})
     conn = get_connection()
     try:
+        link_join = '''LEFT JOIN market_item_links l ON l.item_id = r.item_id'''
         rows = conn.execute(f'''
             SELECT r.item_id AS entity_id, MAX(r.title) AS entity_name,
                    MAX(r.shop_name) AS shop_name, MAX(r.shop_id) AS shop_id,
+                   COALESCE(MAX(l.pic_url), MAX(r.pic_url)) AS pic_url,
+                   MAX(l.detail_url) AS detail_url,
                    COUNT(DISTINCT r.stat_date) AS observed_days,
                    MAX(r.stat_date) AS last_seen,
                    MAX(r.uv) AS latest_uv, MAX(r.pay_buyer_count) AS latest_pay_buyer_count
-            FROM sycm_market_item_rank r
+            FROM sycm_market_item_rank r {link_join}
             WHERE r.stat_date BETWEEN ? AND ? AND {_market_external_filter('r')}
             GROUP BY r.item_id
             ORDER BY observed_days DESC, latest_uv DESC, last_seen DESC, entity_name
@@ -1237,6 +1240,7 @@ def market_item_entities():
         latest = item['daily'][-1] if item['daily'] else {}
         item['latest_uv'] = latest.get('uv')
         item['latest_pay_buyer_count'] = latest.get('pay_buyer_count')
+        item['detail_url'] = item.get('detail_url') or f"https://item.taobao.com/item.htm?id={item['entity_id']}"
         entities.append(item)
     return success({'entities': entities})
 

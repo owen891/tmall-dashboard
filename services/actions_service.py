@@ -239,7 +239,7 @@ class ActionsService:
             raise ActionNotFoundError('动作不存在')
         if payload.get('version') != action['version']:
             raise ActionConflictError('动作版本已更新，请刷新后重试')
-        if action['status'] not in {'draft', 'pending_execution', 'blocked'}:
+        if action['status'] not in {'draft', 'pending_execution', 'blocked', 'cancelled'}:
             raise ActionConflictError(f'当前状态（{action["status"]}）不允许删除动作')
         if not ActionsRepo.delete(
             action_id, expected_version=action['version'], operator=payload.get('operator'),

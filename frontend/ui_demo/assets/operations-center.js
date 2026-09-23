@@ -47,11 +47,12 @@
       if (!key) return;
       merged.set(key, { ...(merged.get(key) || {}), ...action });
     });
-    return [...merged.values()];
+    // 已取消的动作按归档处理：不进提醒列表与计划日历
+    return [...merged.values()].filter((action) => action.status !== 'cancelled');
   }
   function isPending(action) { return ['pending_review', 'blocked', 'pending_execution', 'executing'].includes(action.status); }
   function actionTitle(action) { return `${action.product_title || action.product_id || '商品'} · ${actionType(action)}`; }
-  const deletableStatuses = new Set(['draft', 'pending_execution', 'blocked']);
+  const deletableStatuses = new Set(['draft', 'pending_execution', 'blocked', 'cancelled']);
   function actionDetail(action) { return action.action_detail || action.purpose_note || '已创建运营动作，等待后续处理。'; }
   function actionPurpose(action) { return action.purpose_note || '未填写动作目的'; }
   function actionMeta(action) {
@@ -91,7 +92,8 @@
     const meta = document.createElement('span'); meta.className = 'operations-center__item-meta'; meta.textContent = actionMeta(action);
     const purpose = document.createElement('p'); purpose.className = 'operations-center__item-purpose'; purpose.textContent = `目的：${actionPurpose(action)}`;
     const detail = document.createElement('p'); detail.className = 'operations-center__item-detail'; detail.textContent = `执行：${actionDetail(action)}`;
-    copy.append(head, meta, purpose, detail);
+    const hasRealPurpose = action.purpose_note && action.purpose_note !== action.action_detail;
+    copy.append(head, meta, hasRealPurpose ? purpose : detail);
     const status = document.createElement('span'); status.className = `ui-badge ui-badge--${tone}`; status.textContent = stateLabels[action.status] || action.status || '--';
     if (compact) head.appendChild(status); else item.append(marker, copy, status);
     if (!compact) {
@@ -161,6 +163,15 @@
     items.slice(0, 12).forEach((entry) => {
       feed.appendChild(entry.type === 'action' ? buildActionItem(entry.value) : entry.type === 'anomaly' ? buildAnomalyItem(entry.value) : buildLogItem(entry.value));
     });
+    // 提醒较少时在列表尾部引导创建动作，避免卡片下半段大面积空白
+    if (items.length < 3) {
+      const hint = document.createElement('div'); hint.className = 'operations-center__feed-hint ui-empty-state';
+      const label = document.createElement('span'); label.textContent = '没有更多提醒；记录运营动作后，这里会汇总待处理事项。'; hint.appendChild(label);
+      const create = document.createElement('button'); create.type = 'button'; create.className = 'ui-button ui-button--ghost'; create.innerHTML = '<i data-lucide="plus" aria-hidden="true"></i><span>新增运营动作</span>';
+      create.addEventListener('click', () => document.querySelector('[data-overview-action-open]')?.click());
+      hint.appendChild(create);
+      feed.appendChild(hint);
+    }
     $('[data-operations-feed-count]').textContent = String(Math.min(items.length, 12));
     $('[data-operations-feed-status]').textContent = state.sourceErrors.length ? `部分来源加载失败 · 已显示 ${items.length} 条可用提醒` : `${items.length} 条提醒`;
     window.lucide?.createIcons?.();
@@ -171,7 +182,7 @@
     $('[data-operations-calendar-date]').textContent = date || '选择日期';
     $('[data-operations-calendar-count]').textContent = `${rows.length} 项`;
     const target = $('[data-operations-calendar-details]'); target.replaceChildren();
-    if (!rows.length) { const empty = document.createElement('div'); empty.className = 'ui-empty-state'; empty.appendChild(Object.assign(document.createElement('span'), { textContent: '当天暂无运营动作' })); target.appendChild(empty); return; }
+    if (!rows.length) { const empty = document.createElement('div'); empty.className = 'ui-empty-state'; empty.appendChild(Object.assign(document.createElement('span'), { textContent: `${date || '当天'}暂无计划动作，可点击右上角“新增运营动作”创建。` })); target.appendChild(empty); return; }
     rows.forEach((action) => target.appendChild(buildActionItem(action, true)));
     window.lucide?.createIcons?.();
   }
@@ -183,12 +194,12 @@
     for (let index = 0; index < first; index += 1) { const button = document.createElement('button'); button.type = 'button'; button.className = 'operations-center__calendar-day is-muted'; button.disabled = true; cells.push(button); }
     for (let day = 1; day <= days; day += 1) {
       const date = `${state.viewYear}-${String(state.viewMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-      const button = document.createElement('button'); button.type = 'button'; button.className = 'operations-center__calendar-day'; button.dataset.operationsCalendarDate = date; if (date === today()) button.classList.add('is-today'); if (date === state.selectedDate) button.classList.add('is-selected');
+      const button = document.createElement('button'); button.type = 'button'; button.className = 'operations-center__calendar-day'; button.dataset.operationsCalendarDate = date; if (date === today()) button.classList.add('is-today'); if (date === state.selectedDate || (!state.selectedDate && date === today())) button.classList.add('is-selected');
       button.appendChild(Object.assign(document.createElement('span'), { className: 'operations-center__calendar-day-number', textContent: String(day) }));
       const count = (map[date] || []).length; if (count) { const marker = document.createElement('span'); marker.className = 'operations-center__calendar-day-count'; marker.textContent = String(count); marker.setAttribute('aria-label', `${count} 项运营动作`); button.appendChild(marker); } cells.push(button);
     }
     while (cells.length % 7) { const button = document.createElement('button'); button.type = 'button'; button.className = 'operations-center__calendar-day is-muted'; button.disabled = true; cells.push(button); }
-    grid.replaceChildren(...cells); renderCalendarDetails(state.selectedDate || `${state.viewYear}-${String(state.viewMonth + 1).padStart(2, '0')}-01`); window.lucide?.createIcons?.();
+    grid.replaceChildren(...cells); renderCalendarDetails(state.selectedDate || (state.viewYear === new Date().getFullYear() && state.viewMonth === new Date().getMonth() ? today() : `${state.viewYear}-${String(state.viewMonth + 1).padStart(2, '0')}-01`)); window.lucide?.createIcons?.();
   }
   function calendarMonthLabel() { return `${state.viewYear}年${state.viewMonth + 1}月`; }
   function calendarErrorMessage(error) {
@@ -239,7 +250,8 @@
         }
         return;
       }
-      state.calendarActions = Array.isArray(payload.data) ? payload.data : [];
+      // 已取消的动作视为归档，计划日历不再展示
+      state.calendarActions = Array.isArray(payload.data) ? payload.data.filter((action) => action.status !== 'cancelled') : [];
       $('[data-operations-calendar-status]').textContent = state.calendarActions.length ? `${state.calendarActions.length} 项计划动作` : '当前月份暂无运营动作';
       renderCalendar();
     } catch (error) {
