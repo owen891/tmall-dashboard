@@ -165,17 +165,27 @@
     availability: 'calculation-failed',
     evidence: [],
     urlFilters: null,
+    ruleKey: '',
+    rules: [],
+    ruleBoardExpanded: false,
     copyingIds: false,
+    periodDimension: 'daily',
+    displayMode: 'list',
+    timelineLimit: 3,
+    timelineRows: new Map(),
+    timelineToken: 0,
   };
 
-  const money = (value) => `¥${Number(value || 0).toLocaleString('zh-CN', { maximumFractionDigits: 2 })}`;
-  const number = (value) => Number(value || 0).toLocaleString('zh-CN');
-  const percent = (value) => `${(Number(value || 0) * 100).toFixed(2)}%`;
-  const decimal = (value) => Number(value || 0).toLocaleString('zh-CN', { maximumFractionDigits: 2 });
-  const field = (item, name) => Number(item?.[name] || 0);
+  const isMissing = (value) => value === null || value === undefined || value === '';
+  const numeric = (value) => isMissing(value) ? null : Number(value);
+  const money = (value) => isMissing(value) ? '--' : `¥${Number(value).toLocaleString('zh-CN', { maximumFractionDigits: 2 })}`;
+  const number = (value) => isMissing(value) ? '--' : Number(value).toLocaleString('zh-CN');
+  const percent = (value) => isMissing(value) ? '--' : `${(Number(value) * 100).toFixed(2)}%`;
+  const decimal = (value) => isMissing(value) ? '--' : Number(value).toLocaleString('zh-CN', { maximumFractionDigits: 2 });
+  const field = (item, name) => numeric(item?.[name]);
   const productId = (item) => String(item?.product_id || '');
-  const salesOf = (item) => field(item, 'payment_amount') || field(item, 'total_gmv');
-  const spendOf = (item) => field(item, 'ad_spend') || field(item, 'cost') || field(item, 'total_cost');
+  const salesOf = (item) => numeric(item?.payment_amount) ?? numeric(item?.total_gmv) ?? 0;
+  const spendOf = (item) => numeric(item?.ad_spend) ?? numeric(item?.cost) ?? numeric(item?.total_cost) ?? 0;
   const toast = (message) => window.DemoShell?.showToast ? window.DemoShell.showToast(message) : window.alert(message);
   const setStatus = (message) => {
     const status = $('[data-products-status]');
@@ -235,7 +245,10 @@
     body: JSON.stringify(body),
   });
   const asArray = (payload, key = 'data') => Array.isArray(payload) ? payload : (Array.isArray(payload?.[key]) ? payload[key] : []);
-  const filterKeys = ['search', 'tier', 'style', 'product_type', 'product_time_node', 'product_growth_stage', 'status', 'sort', 'order', 'lifecycle_stage', 'seasonality', 'has_pending_action'];
+  const filterKeys = ['search', 'tier', 'style', 'product_type', 'product_time_node', 'product_growth_stage', 'status', 'sort', 'order', 'lifecycle_stage', 'seasonality', 'has_pending_action', 'rule_key'];
+  const productsQuery = window.TmallRuntime?.createProductsQuery?.({ filterKeys });
+  const requestScope = window.TmallRuntime?.createRequestScope?.();
+  const eventScope = window.TmallRuntime?.createEventScope?.();
   const filterSelectors = {
     search: '[data-products-search]', tier: '[data-products-tier]', style: '[data-products-style]',
     product_type: '[data-products-type]', product_time_node: '[data-products-time-node]',
@@ -244,17 +257,29 @@
     seasonality: '[data-products-seasonality]', has_pending_action: '[data-products-pending-action]',
   };
   const restoreUrlState = () => {
-    const params = new URLSearchParams(window.location.search);
-    state.urlFilters = Object.fromEntries(filterKeys.filter((key) => params.has(key)).map((key) => [key, params.get(key) || '']));
-    const page = Number(params.get('page'));
-    const pageSize = Number(params.get('page_size'));
-    if (Number.isInteger(page) && page > 0) state.page = page;
-    if ([20, 50, 100, 200].includes(pageSize)) state.pageSize = pageSize;
-    state.starredOnly = params.get('starred') === '1';
+    const restored = productsQuery?.readUrl?.() || {};
+    state.urlFilters = restored.filters || {};
+    if (restored.page) state.page = restored.page;
+    if (restored.pageSize) state.pageSize = restored.pageSize;
+    state.starredOnly = Boolean(restored.starredOnly);
+    if (restored.displayMode) state.displayMode = restored.displayMode;
+    if (restored.dimension) state.periodDimension = restored.dimension;
   };
   const syncUrlState = () => {
     const url = new URL(window.location.href);
     const current = filters();
+    if (productsQuery?.syncUrl) {
+      history.replaceState(null, '', productsQuery.syncUrl(url, {
+        filters: current,
+        page: state.page,
+        pageSize: state.pageSize,
+        starredOnly: state.starredOnly,
+        displayMode: state.displayMode,
+        dimension: state.periodDimension,
+        timelineLimit: state.timelineLimit,
+      }));
+      return;
+    }
     filterKeys.forEach((key) => {
       if (current[key]) url.searchParams.set(key, current[key]);
       else url.searchParams.delete(key);
@@ -263,6 +288,8 @@
     url.searchParams.set('page_size', String(state.pageSize));
     if (state.starredOnly) url.searchParams.set('starred', '1');
     else url.searchParams.delete('starred');
+    url.searchParams.set('product_view', state.displayMode);
+    url.searchParams.set('product_dim', state.periodDimension);
     history.replaceState(null, '', url);
   };
 
@@ -273,6 +300,164 @@
     return { label: '健康', tone: 'success', reason: '当前范围内暂无待处理规则', sortValue: 0 };
   }
 
+  function renderRuleCards() {
+    const root = $('[data-product-rule-groups]');
+    const summary = $('[data-product-rule-summary]');
+    const status = $('[data-product-rule-status]');
+    const clear = $('[data-product-rule-clear]');
+    if (!root) return;
+    const toggle = $('[data-product-rule-toggle]');
+    state.ruleBoardExpanded = Boolean(state.ruleKey) || state.ruleBoardExpanded;
+    root.replaceChildren();
+    root.hidden = !state.ruleBoardExpanded;
+    if (summary) {
+      summary.replaceChildren();
+      state.rules.slice(0, 5).forEach((rule) => {
+        const item = document.createElement('span');
+        item.className = `product-rule-summary-item product-rule-summary-item--${rule.severity || 'info'}`;
+        item.textContent = `${rule.name} ${number(rule.matched_count)}件`;
+        summary.appendChild(item);
+      });
+      summary.hidden = state.ruleBoardExpanded || !state.rules.length;
+    }
+    if (toggle) {
+      toggle.textContent = state.ruleBoardExpanded ? '收起分群详情' : '展开分群详情';
+      toggle.setAttribute('aria-expanded', String(state.ruleBoardExpanded));
+    }
+    const groups = new Map();
+    state.rules.forEach((rule) => {
+      if (!groups.has(rule.group)) groups.set(rule.group, []);
+      groups.get(rule.group).push(rule);
+    });
+    groups.forEach((rules, groupName) => {
+      const section = document.createElement('section');
+      section.className = 'product-rule-group';
+      const heading = document.createElement('h4');
+      heading.textContent = groupName;
+      const cards = document.createElement('div');
+      cards.className = 'product-rule-group__cards';
+      rules.forEach((rule) => {
+        const card = document.createElement('article');
+        card.className = `product-rule-card product-rule-card--${rule.severity || 'info'}`;
+        card.classList.toggle('is-active', state.ruleKey === rule.key);
+        const title = document.createElement('strong');
+        title.textContent = rule.name;
+        const desc = document.createElement('span');
+        desc.className = 'product-rule-card__description';
+        desc.textContent = rule.description;
+        const meta = document.createElement('span');
+        meta.className = 'product-rule-card__meta';
+        const share = rule.share == null ? '--' : `${(Number(rule.share) * 100).toFixed(1)}%`;
+        meta.textContent = `${number(rule.matched_count)} 件 · ${share}`;
+        const actions = document.createElement('div');
+        actions.className = 'product-rule-card__actions';
+        const apply = document.createElement('button');
+        apply.type = 'button';
+        apply.className = 'ui-button ui-button--small';
+        apply.textContent = state.ruleKey === rule.key ? '取消筛选' : '查看商品';
+        apply.setAttribute('aria-pressed', String(state.ruleKey === rule.key));
+        apply.addEventListener('click', () => {
+          state.ruleKey = state.ruleKey === rule.key ? '' : rule.key;
+          state.page = 1;
+          state.urlFilters = null;
+          syncUrlState();
+          renderRuleCards();
+          load();
+        });
+        const inspect = document.createElement('button');
+        inspect.type = 'button';
+        inspect.className = 'ui-button ui-button--ghost ui-button--small';
+        inspect.innerHTML = '<i data-lucide="file-search"></i><span>规则详情</span>';
+        inspect.addEventListener('click', () => openRuleDetail(rule));
+        actions.append(apply, inspect);
+        card.append(title, desc, meta, actions);
+        cards.appendChild(card);
+      });
+      section.append(heading, cards);
+      root.appendChild(section);
+    });
+    if (!state.rules.length) root.innerHTML = '<p class="panel__hint">当前周期暂无可用经营分群</p>';
+    if (clear) clear.hidden = !state.ruleKey;
+    const active = state.rules.find((rule) => rule.key === state.ruleKey);
+    if (status) status.textContent = active ? `已应用分群：${active.name} · ${active.description}` : '按当前周期经营事实识别需要关注的商品集合';
+  }
+
+  let selectedRuleDetail = null;
+  function ruleConditionText(condition) {
+    if (!condition) return '无额外条件';
+    const value = condition.value == null ? '--' : condition.value;
+    const displayValue = condition.unit === '%' && typeof condition.value === 'number'
+      ? `${(condition.value * 100).toFixed(condition.value * 100 % 1 ? 1 : 0)}%`
+      : `${value}${condition.unit === '元' || condition.unit === '人' ? condition.unit : ''}`;
+    return `${condition.label || condition.field} ${condition.operator} ${displayValue}`;
+  }
+
+  function openRuleDetail(rule) {
+    selectedRuleDetail = rule;
+    const dialog = $('[data-product-rule-detail-dialog]');
+    if (!dialog) return;
+    $('[data-product-rule-detail-title]').textContent = `${rule.name} · 规则详情`;
+    $('[data-product-rule-detail-description]').textContent = rule.description || '查看规则定义、字段口径和当前周期命中证据';
+    const summary = $('[data-product-rule-detail-summary]');
+    summary.replaceChildren(...[
+      ['规则类型', ({ segmentation: '分群规则', alert: '预警规则', diagnosis: '诊断规则', recommendation: '动作建议规则' }[rule.rule_type] || '--')],
+      ['规则版本', rule.version || '--'], ['统计周期', rule.period || '--'],
+      ['命中商品', `${number(rule.matched_count)} 件`], ['覆盖占比', rule.share == null ? '--' : `${(Number(rule.share) * 100).toFixed(1)}%`],
+    ].map(([label, value]) => {
+      const item = document.createElement('div'); item.className = 'product-rule-detail-dialog__summary-item';
+      const name = document.createElement('span'); name.textContent = label;
+      const val = document.createElement('strong'); val.textContent = value;
+      item.append(name, val); return item;
+    }));
+    const conditions = $('[data-product-rule-detail-conditions]');
+    const conditionList = Array.isArray(rule.conditions) ? rule.conditions : [];
+    conditions.replaceChildren(...(conditionList.length ? conditionList : [{ label: '规则条件', field: 'SQL', operator: '=', value: rule.condition || '--' }]).map((condition) => {
+      const item = document.createElement('div'); item.className = 'product-rule-detail-dialog__condition';
+      item.textContent = ruleConditionText(condition); return item;
+    }));
+    const evidence = $('[data-product-rule-detail-evidence]');
+    const evidenceSummary = rule.evidence_summary || {};
+    evidence.replaceChildren(...[
+      ['来源表', evidenceSummary.source || 'monthly_data'], ['数据粒度', evidenceSummary.grain || 'product-month'],
+      ['覆盖商品', number(evidenceSummary.eligible_product_count ?? rule.eligible_count)],
+      ['命中集合', number(evidenceSummary.matched_product_count ?? rule.matched_count)],
+      ['覆盖状态', evidenceSummary.coverage || rule.availability || '--'],
+    ].map(([label, value]) => {
+      const item = document.createElement('div'); item.className = 'status-list__item';
+      const left = document.createElement('span'); left.className = 'status-list__label'; left.textContent = label;
+      const right = document.createElement('span'); right.className = 'status-list__value'; right.textContent = value;
+      item.append(left, right); return item;
+    }));
+    $('[data-product-rule-detail-query]').textContent = JSON.stringify({
+      rule_key: rule.key, period: rule.period, category_mode: state.categoryMode || null,
+      status: $('[data-products-status-filter]')?.value || 'active', matched_product_ids: rule.matched_product_ids || [],
+    }, null, 2);
+    dialog.hidden = false;
+    dialog.showModal?.();
+    window.lucide?.createIcons();
+  }
+
+  function closeRuleDetail() {
+    const dialog = $('[data-product-rule-detail-dialog]');
+    if (!dialog) return;
+    dialog.close?.(); dialog.hidden = true; selectedRuleDetail = null;
+  }
+
+  async function loadRuleCards() {
+    try {
+      const params = new URLSearchParams({ period: currentMonthPeriod(), status: $('[data-products-status-filter]')?.value || 'active' });
+      try { params.set('category_mode', localStorage.getItem('dashboard.categoryMode') || 'sock'); } catch (_) { params.set('category_mode', 'sock'); }
+      const response = await DemoApi.domainRequest(`/api/product-overview/rule-results?${params}`);
+      state.rules = Array.isArray(response.data?.rules) ? response.data.rules : [];
+      renderRuleCards();
+    } catch (error) {
+      state.rules = [];
+      renderRuleCards();
+      const status = $('[data-product-rule-status]');
+      if (status) status.textContent = error.message || '经营分群加载失败';
+    }
+  }
+
   function buildProductDetailUrl(item) {
     const id = encodeURIComponent(productId(item));
     const url = new URL(`/products/${id}`, window.location.origin);
@@ -280,12 +465,23 @@
     const range = currentRange();
     if (range.startDate) url.searchParams.set('start', range.startDate);
     if (range.endDate) url.searchParams.set('end', range.endDate);
-    ['preset', 'promotion_channel'].forEach((key) => {
-      const value = currentUrl.searchParams.get(key);
-      if (value) url.searchParams.set(key, value);
-    });
+      ['preset', 'promotion_channel'].forEach((key) => {
+        const value = currentUrl.searchParams.get(key);
+        if (value) url.searchParams.set(key, value);
+      });
+      ['category_mode', 'period', 'page', 'page_size', 'starred'].forEach((key) => {
+        const value = currentUrl.searchParams.get(key);
+        if (value) url.searchParams.set(key, value);
+      });
+      if (!url.searchParams.get('category_mode')) {
+        try { url.searchParams.set('category_mode', localStorage.getItem('dashboard.categoryMode') || 'sock'); } catch (_) {}
+      }
+      if (!url.searchParams.get('period')) url.searchParams.set('period', currentMonthPeriod());
     const currentFilters = filters();
     ['tier', 'lifecycle_stage'].forEach((key) => {
+      if (currentFilters[key]) url.searchParams.set(key, currentFilters[key]);
+    });
+    ['search', 'style', 'product_type', 'product_time_node', 'product_growth_stage', 'status', 'sort', 'order', 'seasonality', 'has_pending_action', 'rule_key'].forEach((key) => {
       if (currentFilters[key]) url.searchParams.set(key, currentFilters[key]);
     });
     return `${url.pathname}${url.search}`;
@@ -303,6 +499,15 @@
     return String(raw).slice(0, 7);
   }
 
+  function currentWeekPeriod() {
+    const range = currentRange();
+    const raw = range.endDate || range.startDate || new Date().toISOString().slice(0, 10);
+    const date = new Date(`${String(raw).slice(0, 10)}T00:00:00`);
+    const day = date.getDay();
+    date.setDate(date.getDate() - ((day + 6) % 7));
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+  }
+
   // 判断当前日期范围是否应该使用日度数据（单日范围使用日度，其他使用月度）
   function shouldUseDailyData() {
     const range = currentRange();
@@ -315,7 +520,7 @@
     body.replaceChildren();
     const row = document.createElement('tr');
     const cell = row.insertCell();
-    cell.colSpan = state.visibleColumns.length + 4;
+    cell.colSpan = state.visibleColumns.length + 3;
     cell.textContent = message;
     row.appendChild(cell);
     body.appendChild(row);
@@ -366,6 +571,7 @@
       lifecycle_stage: $('[data-products-lifecycle-stage]')?.value || '',
       seasonality: $('[data-products-seasonality]')?.value || '',
       has_pending_action: $('[data-products-pending-action]')?.value || '',
+      rule_key: state.ruleKey || '',
     };
     if (state.urlFilters) filterKeys.forEach((key) => {
       if (state.urlFilters[key] !== undefined) current[key] = state.urlFilters[key];
@@ -374,6 +580,17 @@
   }
 
   function buildProductsUrl() {
+    if (productsQuery?.buildApiUrl) {
+      const dimension = state.periodDimension;
+      return productsQuery.buildApiUrl({
+        range: currentRange(),
+        page: state.page,
+        pageSize: state.pageSize,
+        filters: filters(),
+        dimension,
+        period: dimension === 'weekly' ? currentWeekPeriod() : dimension === 'monthly' ? currentMonthPeriod() : '',
+      });
+    }
     // 单日范围使用日度数据，其他使用月度数据
     const useDaily = shouldUseDailyData();
     const dim = useDaily ? 'daily' : 'monthly';
@@ -404,6 +621,11 @@
     $('[data-products-kpi="sales"]').textContent = money(sales);
     $('[data-products-kpi="spend"]').textContent = money(spend);
     $('[data-products-kpi="roi"]').textContent = spend ? (sales / spend).toFixed(2) : '--';
+  }
+
+  function metricBarValue(item, key) {
+    const value = key === 'payment_amount' ? salesOf(item) : key === 'ad_spend' ? spendOf(item) : field(item, key);
+    return Number.isFinite(value) && value > 0 ? value : 0;
   }
 
   function metric(label, value) {
@@ -491,7 +713,7 @@
     const head = $('[data-products-head]');
     head.replaceChildren();
     const fixed = [
-      ['select', ''], ['star', '收藏'], ['title', '商品'], ['health', '健康状态']
+      ['select', ''], ['title', '商品']
     ];
     fixed.forEach(([key, label]) => {
       const th = document.createElement('th');
@@ -506,7 +728,20 @@
       } else th.textContent = label;
       head.appendChild(th);
     });
-    state.visibleColumns.forEach((key) => {
+    if (state.displayMode === 'timeline') {
+      const period = document.createElement('th');
+      period.dataset.fieldKey = 'period';
+      period.textContent = state.periodDimension === 'daily' ? '日期' : state.periodDimension === 'weekly' ? '周起始' : '月份';
+      head.appendChild(period);
+      const trend = document.createElement('th');
+      trend.dataset.fieldKey = 'timeline-trend';
+      trend.textContent = '环比';
+      trend.className = 'num';
+      head.appendChild(trend);
+    }
+    const displayColumns = state.displayMode === 'timeline' ? timelineColumns() : state.visibleColumns;
+    displayColumns.forEach((key) => {
+      if (state.displayMode === 'timeline' && key === 'trend_change') return;
       const column = columnsByKey.get(key);
       if (!column) return;
       const th = document.createElement('th');
@@ -526,11 +761,33 @@
     renderTable();
   }
 
+  function updateTimelineControls() {
+    document.body.dataset.productsDisplayMode = state.displayMode;
+    const tools = $('[data-products-timeline-tools]');
+    const fieldControls = document.querySelector('.product-control-group--fields');
+    const columnsButton = $('[data-products-columns-open]');
+    if (!tools) return;
+    tools.hidden = state.displayMode !== 'timeline';
+    if (fieldControls) fieldControls.hidden = state.displayMode === 'timeline';
+    // Column settings apply to both list and timeline metrics.
+    if (columnsButton) columnsButton.hidden = false;
+    document.querySelectorAll('[data-products-timeline-limit]').forEach((button) => {
+      button.setAttribute('aria-pressed', String(Number(button.dataset.productsTimelineLimit) === state.timelineLimit));
+    });
+  }
+
   function renderTable() {
+    updateTimelineControls();
+    if (state.displayMode === 'timeline') return renderTimelineTable();
     renderHeader();
     const body = $('[data-products-body]');
     body.replaceChildren();
     const rows = visibleRows();
+    const metricMax = {};
+    state.visibleColumns.forEach((key) => {
+      const column = columnsByKey.get(key);
+      if (column?.format) metricMax[key] = Math.max(...rows.map((item) => metricBarValue(item, key)), 0);
+    });
     updateKpis(rows);
     if (!rows.length) {
       setRowStatus(state.starredOnly ? '当前页没有收藏商品' : '当前条件暂无商品');
@@ -555,19 +812,7 @@
         else state.selected.delete(id);
         updateSelection();
       });
-      addCell(row, check);
-
-      const star = document.createElement('button');
-      star.type = 'button';
-      star.className = 'star-button';
-      star.dataset.capabilityKey = 'products.catalog_edit';
-      star.disabled = Object.keys(state.capabilities).length > 0 && !DemoApi.can({ capabilities: state.capabilities }, 'can_edit');
-      star.classList.toggle('is-active', Number(item.starred || 0) === 1);
-      star.innerHTML = '<i data-lucide="star"></i>';
-      star.setAttribute('aria-label', Number(item.starred || 0) === 1 ? '取消收藏' : '收藏');
-      star.setAttribute('aria-pressed', String(Number(item.starred || 0) === 1));
-      star.addEventListener('click', async () => toggleStar(item, star));
-      addCell(row, star);
+      addCell(row, check, '', 'select');
 
       const identity = document.createElement('div');
       identity.className = 'product-identity';
@@ -613,21 +858,24 @@
       titleButton.title = item.title || '未命名商品';
       titleButton.setAttribute('aria-label', `查看商品详情：${item.title || id || '未命名商品'}`);
       titleButton.addEventListener('click', () => openProductDetail(item, titleButton));
-      const sub = document.createElement('span');
-      sub.textContent = id || '--';
+      const sub = document.createElement('div');
+      sub.className = 'product-title__meta';
+      const star = document.createElement('button');
+      star.type = 'button';
+      star.className = 'star-button';
+      star.dataset.capabilityKey = 'products.catalog_edit';
+      star.disabled = Object.keys(state.capabilities).length > 0 && !DemoApi.can({ capabilities: state.capabilities }, 'can_edit');
+      star.classList.toggle('is-active', Number(item.starred || 0) === 1);
+      star.innerHTML = '<i data-lucide="star"></i>';
+      star.setAttribute('aria-label', Number(item.starred || 0) === 1 ? '取消收藏' : '收藏');
+      star.setAttribute('aria-pressed', String(Number(item.starred || 0) === 1));
+      star.addEventListener('click', async () => toggleStar(item, star));
+      const idLabel = document.createElement('span');
+      idLabel.textContent = id || '--';
       title.append(titleButton, sub);
+      sub.append(star, idLabel);
       identity.append(thumbnail, title);
-      addCell(row, identity);
-
-      const health = productHealth(item);
-      const healthCell = document.createElement('div');
-      healthCell.className = 'products-health-cell';
-      const healthBadge = badge(health.label, health.label);
-      healthBadge.classList.remove('ui-badge--muted');
-      healthBadge.classList.add(`ui-badge--${health.tone}`);
-      healthCell.appendChild(healthBadge);
-       const healthTableCell = addCell(row, healthCell, '', 'health');
-       healthTableCell.dataset.sortValue = String(health.sortValue);
+      addCell(row, identity, '', 'title');
 
        state.visibleColumns.forEach((key) => {
         const column = columnsByKey.get(key);
@@ -643,7 +891,12 @@
         else if (key === 'lifecycle_stage') addCell(row, DemoLabels.classification('lifecycle_stages', item.lifecycle_stage, item.lifecycle_stage || '--'), '', key);
         else if (key === 'seasonality') addCell(row, DemoLabels.classification('seasonal_attributes', item.seasonality, item.seasonality || '--'), '', key);
         else if (key === 'has_pending_action') addCell(row, badge(item.has_pending_action ? '有待办' : '无待办', '无待办'), '', key);
-        else addCell(row, formatColumnValue(item, column), column.format ? 'num' : '', key);
+        else {
+          const cell = addCell(row, formatColumnValue(item, column), column.format ? 'num metric-bar-cell' : '', key);
+          if (column.format && metricMax[key] > 0) {
+            cell.style.setProperty('--metric-fill', `${Math.round((metricBarValue(item, key) / metricMax[key]) * 100)}%`);
+          }
+        }
       });
 
       body.appendChild(row);
@@ -653,6 +906,174 @@
     updatePagination();
     updateSelection();
     window.lucide?.createIcons();
+  }
+
+  function timelineColumns() {
+    const monthlyUnsupported = new Set(['paid_ipv', 'organic_ipv', 'search_ipv', 'recommend_ipv']);
+    const selectedMetrics = state.visibleColumns.filter((key) => {
+      const column = columnsByKey.get(key);
+      return key !== 'trend_change'
+        && Boolean(column?.format)
+        && !(state.periodDimension === 'monthly' && monthlyUnsupported.has(key));
+    });
+    const fallback = ['payment_amount', 'net_sales', 'visitors', 'conversion', 'refund_rate', 'expense_ratio', 'ad_spend', 'roi', 'buyers', 'avg_order_value', 'repurchase_rate'];
+    return [...new Set(selectedMetrics.length ? selectedMetrics : fallback)].filter((key) => columnsByKey.has(key));
+  }
+
+  function renderTimelineProductCells(row, item, rowSpan) {
+    const id = productId(item);
+    const check = document.createElement('input');
+    check.type = 'checkbox';
+    check.value = id;
+    check.checked = state.selected.has(id);
+    check.setAttribute('aria-label', `选择商品 ${id}`);
+    check.addEventListener('change', () => {
+      if (check.checked) state.selected.add(id);
+      else state.selected.delete(id);
+      updateSelection();
+    });
+    const selectCell = addCell(row, check, '', 'select');
+    if (rowSpan > 1) selectCell.rowSpan = rowSpan;
+
+    const identity = document.createElement('div');
+    identity.className = 'product-identity';
+    const thumbnailUrl = String(item.image_url || '').trim();
+    const thumbnail = thumbnailUrl ? document.createElement('img') : makeProductPlaceholder(item, id);
+    if (thumbnailUrl) {
+      thumbnail.className = 'product-thumb';
+      thumbnail.alt = '';
+      thumbnail.loading = 'lazy';
+      thumbnail.referrerPolicy = 'no-referrer';
+      thumbnail.src = thumbnailUrl;
+      thumbnail.addEventListener('error', () => thumbnail.replaceWith(makeProductPlaceholder(item, id)), { once: true });
+    }
+    const title = document.createElement('div');
+    title.className = 'product-title';
+    const titleButton = document.createElement('button');
+    titleButton.type = 'button';
+    titleButton.className = 'product-title__link';
+    titleButton.textContent = item.title || '未命名商品';
+    titleButton.title = item.title || '未命名商品';
+    titleButton.setAttribute('aria-label', `查看商品详情：${item.title || id || '未命名商品'}`);
+    titleButton.addEventListener('click', () => openProductDetail(item, titleButton));
+    const sub = document.createElement('div');
+    sub.className = 'product-title__meta';
+    const star = document.createElement('button');
+    star.type = 'button';
+    star.className = 'star-button';
+    star.dataset.capabilityKey = 'products.catalog_edit';
+    star.disabled = Object.keys(state.capabilities).length > 0 && !DemoApi.can({ capabilities: state.capabilities }, 'can_edit');
+    star.classList.toggle('is-active', Number(item.starred || 0) === 1);
+    star.innerHTML = '<i data-lucide="star"></i>';
+    star.setAttribute('aria-label', Number(item.starred || 0) === 1 ? '取消收藏' : '收藏');
+    star.setAttribute('aria-pressed', String(Number(item.starred || 0) === 1));
+    star.addEventListener('click', async () => toggleStar(item, star));
+    const idLabel = document.createElement('span');
+    idLabel.textContent = id || '--';
+    title.append(titleButton, sub);
+    sub.append(star, idLabel);
+    identity.append(thumbnail, title);
+    const titleCell = addCell(row, identity, '', 'title');
+    if (rowSpan > 1) titleCell.rowSpan = rowSpan;
+
+  }
+
+  function appendTimelineMetrics(row, item, detail, metricMax) {
+    addCell(row, detail.period || '--', 'product-timeline-period', 'period');
+    const trendCell = addCell(row, '', 'num product-timeline-trend', 'timeline-trend');
+    const trend = detail.trend_change;
+    if (trend == null || !Number.isFinite(Number(trend))) {
+      trendCell.textContent = '--';
+    } else {
+      const value = Number(trend);
+      const tone = value > 0 ? 'up' : value < 0 ? 'down' : 'flat';
+      trendCell.classList.add(`product-timeline-trend--${tone}`);
+      trendCell.innerHTML = `<i data-lucide="${tone === 'up' ? 'trending-up' : tone === 'down' ? 'trending-down' : 'minus'}"></i><span>${percent(value)}</span>`;
+    }
+    timelineColumns().forEach((key) => {
+      const column = columnsByKey.get(key);
+      if (!column || key === 'trend_change') return;
+      const valueItem = { ...item, ...detail };
+      const cell = addCell(row, formatColumnValue(valueItem, column), column.format ? 'num metric-bar-cell' : '', key);
+      if (column.format && metricMax[key] > 0) {
+        cell.style.setProperty('--metric-fill', `${Math.round((metricBarValue(valueItem, key) / metricMax[key]) * 100)}%`);
+      }
+    });
+  }
+
+  function renderTimelineTable() {
+    renderHeader();
+    const body = $('[data-products-body]');
+    body.replaceChildren();
+    const rows = visibleRows();
+    const columns = timelineColumns();
+    updateTimelineControls();
+    updateKpis(rows);
+    if (!rows.length) {
+      setRowStatus(state.starredOnly ? '当前页没有收藏商品' : '当前条件暂无商品');
+      renderMobileSummary(rows);
+      applyFieldView();
+      updatePagination();
+      updateSelection();
+      return;
+    }
+    const metricMax = {};
+    columns.forEach((key) => {
+      const column = columnsByKey.get(key);
+      if (column?.format) {
+        metricMax[key] = Math.max(...rows.flatMap((item) => state.timelineRows.get(productId(item)) || []).map((item) => metricBarValue(item, key)), 0);
+      }
+    });
+    rows.forEach((item) => {
+      const id = productId(item);
+      const details = state.timelineRows.get(id) || [];
+      const periods = details.length ? details : [{ product_id: id, period: '--' }];
+      periods.forEach((detail, index) => {
+        const row = document.createElement('tr');
+        row.className = `product-timeline-row ${index === 0 ? 'product-timeline-row--first' : 'product-timeline-row--continuation'}`;
+        row.dataset.productId = id;
+        if (index === 0) renderTimelineProductCells(row, item, periods.length);
+        appendTimelineMetrics(row, item, detail, metricMax);
+        body.appendChild(row);
+      });
+    });
+    renderMobileSummary(rows);
+    applyFieldView();
+    updatePagination();
+    updateSelection();
+    window.lucide?.createIcons();
+  }
+
+  async function loadTimelineRows(renderAfter = true) {
+    const token = ++state.timelineToken;
+    const ids = visibleRows().map(productId).filter(Boolean);
+    state.timelineRows = new Map();
+    if (!ids.length) return;
+    const range = currentRange();
+    const params = new URLSearchParams({
+      dim: state.periodDimension,
+      product_ids: ids.join(','),
+      limit_periods: String(state.timelineLimit),
+    });
+    if (state.periodDimension !== 'monthly' && range.startDate) params.set('start', range.startDate);
+    if (range.endDate) params.set('end', range.endDate);
+    try {
+      const response = await DemoApi.domainRequest(`/api/products/timeline?${params.toString()}`);
+      if (token !== state.timelineToken) return;
+      const grouped = new Map();
+      asArray(response.data, 'rows').forEach((row) => {
+        if (!grouped.has(String(row.product_id))) grouped.set(String(row.product_id), []);
+        grouped.get(String(row.product_id)).push(row);
+      });
+      const maxPeriods = state.timelineLimit;
+      grouped.forEach((items, id) => grouped.set(id, items.slice(0, maxPeriods)));
+      state.timelineRows = grouped;
+      if (renderAfter) renderTable();
+    } catch (error) {
+      if (token !== state.timelineToken) return;
+      setStatus(error.message || '周期明细加载失败');
+      if (renderAfter) renderTable();
+    }
   }
 
   function updatePagination() {
@@ -951,18 +1372,20 @@
 
   async function load(detail) {
     const token = ++state.token;
+    const request = requestScope?.begin('products');
     currentRange(detail);
     renderDataState('loading');
     setRowStatus('加载中…');
     try {
-      const response = await DemoApi.domainRequest(buildProductsUrl());
+      const response = await DemoApi.domainRequest(buildProductsUrl(), request ? { signal: request.signal, timeoutMs: 20000 } : undefined);
       const payload = response.data;
       state.capabilities = response.capabilities || {};
       state.availability = response.availability || 'calculation-failed';
       state.evidence = Array.isArray(response.evidence) ? response.evidence : [];
-      if (token !== state.token) return;
+      if (token !== state.token || (request && !request.isCurrent())) return;
       state.rows = asArray(payload, 'rows');
       state.total = Number(payload?.total || state.rows.length);
+      if (state.displayMode === 'timeline') await loadTimelineRows(false);
       state.facets = payload?.facets || { tiers: [], styles: [], statuses: [] };
       state.selected.clear();
        fillSelect('[data-products-tier]', classificationValues('tier'), '全部分层');
@@ -993,13 +1416,15 @@
       renderTable();
       if (!state.rows.length) renderDataState('no-data', { message: '当前筛选条件没有商品。' });
       else {
-        const useDaily = shouldUseDailyData();
-        const dimLabel = useDaily ? '日度' : '月度';
-        const periodInfo = useDaily ? '' : (payload?.period ? `；数据月份 ${payload.period}` : '');
-        setStatus(`已按${dimLabel}口径加载 ${state.rows.length} 件商品，每页 ${state.pageSize} 件${periodInfo}`);
+        const dimLabel = ({ daily: '日', weekly: '周', monthly: '月' })[state.periodDimension] || '日';
+        const periodInfo = state.periodDimension === 'daily'
+          ? `${currentRange().startDate} ~ ${currentRange().endDate}`
+          : state.periodDimension === 'weekly' ? currentWeekPeriod() : currentMonthPeriod();
+        setStatus(`已按${dimLabel}视图加载 ${state.rows.length} 件商品 · ${periodInfo} · 每页 ${state.pageSize} 件`);
       }
     } catch (error) {
-      if (token !== state.token) return;
+      if (error?.name === 'AbortError' || (error?.code === 'REQUEST_TIMEOUT' && request && !request.isCurrent())) return;
+      if (token !== state.token || (request && !request.isCurrent())) return;
       state.rows = [];
       state.total = 0;
       state.availability = 'calculation-failed';
@@ -1009,6 +1434,7 @@
       renderDataState('calculation-failed', { message: error.message || '商品数据加载失败', retry: () => load() });
       toast('商品数据加载失败');
     }
+    request?.finish();
     if (window.lucide) window.lucide.createIcons();
   }
 
@@ -1133,8 +1559,10 @@
     if (seasonalityFilter) seasonalityFilter.value = '';
     if (pendingActionFilter) pendingActionFilter.value = '';
     state.starredOnly = false;
+    state.ruleKey = '';
     state.page = 1;
     $('[data-products-starred]').setAttribute('aria-pressed', 'false');
+    renderRuleCards();
     state.urlFilters = null;
     syncUrlState();
     load();
@@ -1174,6 +1602,57 @@
       setStatus(state.starredOnly ? '当前页收藏过滤已开启' : '当前页收藏过滤已关闭');
     });
     $('[data-products-reset]').addEventListener('click', resetFilters);
+    document.querySelectorAll('[data-products-period]').forEach((button) => button.addEventListener('click', () => {
+      const next = button.dataset.productsPeriod;
+      if (!['daily', 'weekly', 'monthly'].includes(next) || state.periodDimension === next) return;
+      state.periodDimension = next;
+      state.page = 1;
+      document.querySelectorAll('[data-products-period]').forEach((item) => item.setAttribute('aria-pressed', String(item.dataset.productsPeriod === next)));
+      syncUrlState();
+      load();
+    }));
+    document.querySelectorAll('[data-products-mode]').forEach((button) => button.addEventListener('click', () => {
+      const next = button.dataset.productsMode;
+      if (!['list', 'timeline'].includes(next) || state.displayMode === next) return;
+      state.displayMode = next;
+      state.page = 1;
+      state.timelineRows = new Map();
+      try { localStorage.setItem('tmall-products-display-mode', next); } catch {}
+      document.querySelectorAll('[data-products-mode]').forEach((item) => item.setAttribute('aria-pressed', String(item.dataset.productsMode === next)));
+      syncUrlState();
+      load();
+    }));
+    document.querySelectorAll('[data-products-timeline-limit]').forEach((button) => button.addEventListener('click', () => {
+      const next = Number(button.dataset.productsTimelineLimit);
+      if (![3, 6, 12].includes(next) || state.timelineLimit === next) return;
+      state.timelineLimit = next;
+      syncUrlState();
+      loadTimelineRows().catch((error) => toast(error.message || '周期明细加载失败'));
+    }));
+    $('[data-product-rule-clear]')?.addEventListener('click', () => {
+      state.ruleKey = '';
+      state.ruleBoardExpanded = false;
+      state.page = 1;
+      state.urlFilters = null;
+      syncUrlState();
+      renderRuleCards();
+      load();
+    });
+    $('[data-product-rule-toggle]')?.addEventListener('click', () => {
+      state.ruleBoardExpanded = !state.ruleBoardExpanded;
+      renderRuleCards();
+    });
+    document.querySelectorAll('[data-product-rule-detail-close]').forEach((button) => button.addEventListener('click', closeRuleDetail));
+    $('[data-product-rule-detail-apply]')?.addEventListener('click', () => {
+      if (!selectedRuleDetail) return;
+      state.ruleKey = selectedRuleDetail.key;
+      state.page = 1;
+      state.urlFilters = null;
+      syncUrlState();
+      closeRuleDetail();
+      renderRuleCards();
+      load();
+    });
     $('[data-products-prev]').addEventListener('click', () => {
       if (state.page > 1) {
         state.page -= 1;
@@ -1212,16 +1691,27 @@
     const range = currentRange();
     const start = range.startDate || '';
     const end = range.endDate || '';
-    const response = await fetch('/api/export', jsonOptions({
+    const exportPayload = {
       type: 'products',
-      dim: 'daily',
+      dim: state.periodDimension,
+      period: '',
       start,
       end,
       category_mode: (() => { try { return localStorage.getItem('dashboard.categoryMode') || 'sock'; } catch { return 'sock'; } })(),
       columns: ['title', 'product_id', ...state.visibleColumns],
       star_only: state.starredOnly,
       ...filters(),
-    }));
+    };
+    if (state.periodDimension === 'weekly') {
+      exportPayload.period = currentWeekPeriod();
+      exportPayload.start = '';
+      exportPayload.end = '';
+    } else if (state.periodDimension === 'monthly') {
+      exportPayload.period = currentMonthPeriod();
+      exportPayload.start = '';
+      exportPayload.end = '';
+    }
+    const response = await fetch('/api/export', jsonOptions(exportPayload));
     if (!response.ok) throw new Error(`导出失败 (${response.status})`);
     const blob = await response.blob();
     const url = URL.createObjectURL(blob);
@@ -1235,7 +1725,17 @@
 
   function openProductDetail(item, trigger = null) {
     const id = productId(item);
-    window.ProductDetailDialog?.open({ productId: id, title: item?.title || id, trigger: trigger || document.activeElement });
+    if (!id) {
+      showToast('当前商品缺少商品 ID');
+      return;
+    }
+    const sourceRule = state.rules.find((rule) => rule.key === state.ruleKey);
+    window.ProductDetailDialog?.open({ productId: id,
+      title: item?.title || id,
+      workbenchUrl: buildProductDetailUrl(item),
+      sourceRule: sourceRule ? { key: sourceRule.key, name: sourceRule.name, period: sourceRule.period } : null,
+      trigger: trigger || document.activeElement,
+    });
   }
 
   function initView(configuredDefault = null) {
@@ -1275,6 +1775,24 @@
   }
 
   restoreUrlState();
+  const initialDimension = new URL(window.location.href).searchParams.get('product_dim');
+  const initialDisplayMode = new URL(window.location.href).searchParams.get('product_view');
+  if (['list', 'timeline'].includes(initialDisplayMode)) state.displayMode = initialDisplayMode;
+  else {
+    try {
+      const savedDisplayMode = localStorage.getItem('tmall-products-display-mode');
+      if (['list', 'timeline'].includes(savedDisplayMode)) state.displayMode = savedDisplayMode;
+    } catch {}
+  }
+  if (['daily', 'weekly', 'monthly'].includes(initialDimension)) state.periodDimension = initialDimension;
+  const initialTimelineLimit = new URL(window.location.href).searchParams.get('timeline_limit');
+  if ([3, 6, 12].includes(Number(initialTimelineLimit))) state.timelineLimit = Number(initialTimelineLimit);
+  else if (productsQuery?.readUrl?.().timelineLimit) state.timelineLimit = productsQuery.readUrl().timelineLimit;
+  document.querySelectorAll('[data-products-mode]').forEach((button) => button.setAttribute('aria-pressed', String(button.dataset.productsMode === state.displayMode)));
+  document.querySelectorAll('[data-products-period]').forEach((button) => button.setAttribute('aria-pressed', String(button.dataset.productsPeriod === state.periodDimension)));
+  document.querySelectorAll('[data-products-timeline-limit]').forEach((button) => button.setAttribute('aria-pressed', String(Number(button.dataset.productsTimelineLimit) === state.timelineLimit)));
+  updateTimelineControls();
+  state.ruleKey = state.urlFilters?.rule_key || new URL(window.location.href).searchParams.get('rule_key') || '';
   bindFilters();
   $('[data-products-batch-field]').addEventListener('change', fillBatchOptions);
   fillBatchOptions();
@@ -1287,10 +1805,17 @@
     initView(configuredDefault);
     return configuredDefault;
   });
-  window.addEventListener('tmall:date-range-change', (event) => {
+  const onDateRangeChange = (event) => {
     state.page = 1;
-    dictionariesReady.then(() => load(event.detail));
-  });
-  window.addEventListener('tmall:refresh', () => dictionariesReady.then(() => load()));
-  dictionariesReady.then(() => load());
+    dictionariesReady.then(() => { loadRuleCards(); load(event.detail); });
+  };
+  const onRefresh = () => dictionariesReady.then(() => { loadRuleCards(); load(); });
+  if (eventScope) {
+    eventScope.on(window, 'tmall:date-range-change', onDateRangeChange);
+    eventScope.on(window, 'tmall:refresh', onRefresh);
+  } else {
+    window.addEventListener('tmall:date-range-change', onDateRangeChange);
+    window.addEventListener('tmall:refresh', onRefresh);
+  }
+  dictionariesReady.then(() => { loadRuleCards(); load(); });
 })();

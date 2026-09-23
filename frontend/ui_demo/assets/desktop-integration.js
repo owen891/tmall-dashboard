@@ -5,7 +5,7 @@
 
   const sidebar = panel.matches('[data-sidebar-meta]')
   const version = panel.querySelector(sidebar ? '[data-sidebar-version]' : '[data-desktop-version]')
-  const button = panel.querySelector(sidebar ? '[data-sidebar-check-update]' : '[data-desktop-check-update]')
+  const button = sidebar ? document.querySelector('[data-sidebar-check-update]') : panel.querySelector('[data-desktop-check-update]')
   const status = panel.querySelector(sidebar ? '[data-sidebar-update-status]' : '[data-desktop-update-status]')
 
   const project = window.TMALL_PROJECT || {

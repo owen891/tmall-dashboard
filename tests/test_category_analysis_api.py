@@ -9,6 +9,7 @@ import os
 import sys
 import tempfile
 import unittest
+from datetime import date, timedelta
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if PROJECT_ROOT not in sys.path:
@@ -95,12 +96,15 @@ class CategoryAnalysisApiContractTests(unittest.TestCase):
         self.assertEqual(data["current_period"]["days"], 2)
 
     def test_week_grain_normalizes_to_monday_sunday_and_returns_partial_status(self):
+        next_monday = date.today() + timedelta(days=(7 - date.today().weekday()) % 7)
+        next_sunday = next_monday + timedelta(days=6)
         data = self.get_json(
-            "category_mode=sock&grain=week&start=2026-09-14&end=2026-09-20&metric=payment_amount"
+            f"category_mode=sock&grain=week&start={next_monday.isoformat()}"
+            f"&end={next_sunday.isoformat()}&metric=payment_amount"
         )
         self.assertEqual(data["grain"], "week")
-        self.assertEqual(data["current_period"]["start"], "2026-09-14")
-        self.assertEqual(data["current_period"]["end"], "2026-09-20")
+        self.assertEqual(data["current_period"]["start"], next_monday.isoformat())
+        self.assertEqual(data["current_period"]["end"], next_sunday.isoformat())
         self.assertTrue(data["data_quality"]["is_partial_period"])
 
     def test_month_grain_supports_year_over_year_comparison(self):
@@ -169,6 +173,39 @@ class CategoryAnalysisApiContractTests(unittest.TestCase):
                 response = self.client.get(f"{self.endpoint}?{query}")
                 self.assertEqual(response.status_code, 422, response.get_data(as_text=True))
                 self.assertEqual(response.get_json()["code"], "VALIDATION_ERROR")
+
+    def test_leaf_weekly_board_shows_only_standard_on_sale_links(self):
+        from db import get_db
+
+        with get_db(self.database_path) as db:
+            db.executemany(
+                """INSERT INTO products (product_id, title, category, status, shop_label)
+                   VALUES (?, ?, ?, ?, ?)""",
+                [
+                    ("leaf-active-a", "Active A", "中筒袜", "active", "标品袜子"),
+                    ("leaf-active-b", "Active B", "中筒袜", "active", "标品袜子,畅销商品"),
+                    ("leaf-no-data", "No Data", "长筒袜", "active", "标品袜子"),
+                    ("leaf-inactive", "Inactive", "中筒袜", "inactive", "标品袜子"),
+                    ("leaf-other", "Other", "中筒袜", "active", "内裤"),
+                ],
+            )
+            db.execute(
+                """INSERT INTO daily_data (product_id, date, net_sales)
+                   VALUES ('leaf-active-a', '2026-09-20', 500)"""
+            )
+            db.commit()
+
+        response = self.client.get(
+            "/api/category-analysis/leaf-weekly-board?category_mode=all"
+        )
+        self.assertEqual(response.status_code, 200)
+        data = response.get_json()["data"]
+        row = next(item for item in data["rows"] if item["leaf"] == "中筒袜")
+        self.assertEqual(row["links_on_sale"], 2)
+        self.assertNotIn("links_total", row["weeks"]["w0"])
+        empty_week_row = next(item for item in data["rows"] if item["leaf"] == "长筒袜")
+        self.assertEqual(empty_week_row["links_on_sale"], 1)
+        self.assertIsNone(empty_week_row["weeks"]["w0"])
 
     def test_compare_period_requires_valid_order_and_dates(self):
         response = self.client.get(

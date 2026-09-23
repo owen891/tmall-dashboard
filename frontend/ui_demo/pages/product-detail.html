@@ -41,10 +41,26 @@
           <article class="ui-metric-card ui-metric-card--drillable" data-drill-metric="average_order_value"><div class="metric-card__label">客单价</div><div class="metric-card__value" data-product-detail-kpi="average_order_value">--</div><div class="metric-card__hint">支付金额 / 买家</div></article>
         </section>
 
+        <section class="ui-panel product-workbench__problem-context" data-product-problem-context hidden aria-labelledby="product-problem-context-title">
+          <div class="panel__header">
+            <div><h2 class="panel__title" id="product-problem-context-title">来源问题上下文</h2><p class="panel__hint">当前详情沿用列表分群的规则、周期与证据口径</p></div>
+            <a class="ui-button ui-button--ghost" href="#actions" data-product-problem-action-link><i data-lucide="arrow-up-right"></i><span>进入运营动作</span></a>
+          </div>
+          <div class="product-problem-context__grid">
+            <div class="status-list" data-product-problem-summary></div>
+            <div class="product-problem-context__checks" data-product-problem-checks></div>
+            <div class="product-problem-context__suggestions" data-product-problem-suggestions></div>
+          </div>
+        </section>
+
         <nav class="product-workbench__tabs" role="tablist" aria-label="商品详情分组">
           <button class="product-workbench__tab" type="button" role="tab" data-product-detail-tab="overview" aria-selected="true" aria-controls="product-detail-panel-overview">经营概览</button>
           <button class="product-workbench__tab" type="button" role="tab" data-product-detail-tab="trend" aria-selected="false" aria-controls="product-detail-panel-trend">日度趋势</button>
           <button class="product-workbench__tab" type="button" role="tab" data-product-detail-tab="flow-source" aria-selected="false" aria-controls="product-detail-panel-flow-source">流量来源</button>
+          <button class="product-workbench__tab" type="button" role="tab" data-product-detail-tab="search" aria-selected="false" aria-controls="product-detail-panel-search">搜索分析</button>
+          <button class="product-workbench__tab" type="button" role="tab" data-product-detail-tab="trade" aria-selected="false" aria-controls="product-detail-panel-trade">交易/售后</button>
+          <button class="product-workbench__tab" type="button" role="tab" data-product-detail-tab="promotion" aria-selected="false" aria-controls="product-detail-panel-promotion">推广分析</button>
+          <button class="product-workbench__tab" type="button" role="tab" data-product-detail-tab="granular" aria-selected="false" aria-controls="product-detail-panel-granular">SKU / 地域 / 小时</button>
           <button class="product-workbench__tab" type="button" role="tab" data-product-detail-tab="lifecycle" aria-selected="false" aria-controls="product-detail-panel-lifecycle">生命周期</button>
           <button class="product-workbench__tab" type="button" role="tab" data-product-detail-tab="actions" aria-selected="false" aria-controls="product-detail-panel-actions">运营动作</button>
           <button class="product-workbench__tab" type="button" role="tab" data-product-detail-tab="evidence" aria-selected="false" aria-controls="product-detail-panel-evidence">数据证据</button>
@@ -121,6 +137,78 @@
           </section>
         </section>
 
+        <section class="product-workbench__panel" data-product-detail-panel="search" id="product-detail-panel-search" role="tabpanel" aria-labelledby="product-detail-tab-search" hidden>
+          <section class="ui-panel">
+            <div class="panel__header"><div><h2 class="panel__title">商品搜索分析</h2><p class="panel__hint">使用商品经营事实中的搜索字段；未提供商品级关键词归因时不补造关键词明细</p></div><span class="ui-badge" data-product-search-status>--</span></div>
+            <div class="ui-metric-grid product-theme-metrics">
+              <article class="ui-metric-card"><div class="metric-card__label">搜索访客</div><div class="metric-card__value" data-product-search-kpi="search_visitors">--</div><div class="metric-card__hint">当前日期范围</div></article>
+              <article class="ui-metric-card"><div class="metric-card__label">搜索占比</div><div class="metric-card__value" data-product-search-kpi="search_ratio">--</div><div class="metric-card__hint">搜索访客 / 商品访客</div></article>
+              <article class="ui-metric-card"><div class="metric-card__label">搜索转化率</div><div class="metric-card__value" data-product-search-kpi="search_conversion">--</div><div class="metric-card__hint">搜索访客到支付</div></article>
+              <article class="ui-metric-card"><div class="metric-card__label">搜索点击率</div><div class="metric-card__value" data-product-search-kpi="search_click_rate">--</div><div class="metric-card__hint">来源字段可用时展示</div></article>
+            </div>
+            <div class="ui-table-wrap">
+              <table class="ui-data-table"><thead><tr><th>日期</th><th class="num">搜索访客</th><th class="num">搜索占比</th><th class="num">搜索转化率</th><th class="num">搜索点击率</th></tr></thead><tbody data-product-search-trend><tr><td colspan="5">加载中…</td></tr></tbody></table>
+            </div>
+          </section>
+          <section class="ui-panel">
+            <div class="panel__header"><div><h2 class="panel__title">关键词明细</h2><p class="panel__hint">只有存在商品级关键词与商品 ID 关联事实时才开放</p></div></div>
+            <div class="product-theme-unavailable" data-product-search-keywords>当前数据源没有可验证的商品级关键词归因，暂不展示关键词排名或标题建议。</div>
+          </section>
+        </section>
+
+        <section class="product-workbench__panel" data-product-detail-panel="trade" id="product-detail-panel-trade" role="tabpanel" aria-labelledby="product-detail-tab-trade" hidden>
+          <section class="ui-panel">
+            <div class="panel__header"><div><h2 class="panel__title">交易与售后</h2><p class="panel__hint">支付、退款、净销售与订单行为按当前日期范围拆解</p></div><span class="ui-badge" data-product-trade-status>待加载</span></div>
+            <div class="ui-metric-grid product-theme-metrics">
+              <article class="ui-metric-card"><div class="metric-card__label">支付金额</div><div class="metric-card__value" data-product-trade-kpi="payment_amount">--</div><div class="metric-card__hint">支付口径</div></article>
+              <article class="ui-metric-card"><div class="metric-card__label">退款金额</div><div class="metric-card__value" data-product-trade-kpi="refund_amount">--</div><div class="metric-card__hint">成功退款字段</div></article>
+              <article class="ui-metric-card"><div class="metric-card__label">退款率</div><div class="metric-card__value" data-product-trade-kpi="refund_rate">--</div><div class="metric-card__hint">退款金额 / 支付金额</div></article>
+              <article class="ui-metric-card"><div class="metric-card__label">净销售额</div><div class="metric-card__value" data-product-trade-kpi="net_sales">--</div><div class="metric-card__hint">支付金额 - 退款金额</div></article>
+            </div>
+            <div class="ui-table-wrap"><table class="ui-data-table"><thead><tr><th>日期</th><th class="num">支付金额</th><th class="num">退款金额</th><th class="num">退款率</th><th class="num">净销售额</th><th class="num">支付买家</th><th class="num">支付件数</th></tr></thead><tbody data-product-trade-trend><tr><td colspan="7">加载中…</td></tr></tbody></table></div>
+          </section>
+          <section class="ui-panel"><div class="panel__header"><div><h2 class="panel__title">当前数据边界</h2><p class="panel__hint">交易主题使用商品日事实；没有订单明细、SKU、区域或小时粒度时不做推断</p></div></div><div class="status-list" data-product-trade-limitations></div></section>
+        </section>
+
+        <section class="product-workbench__panel" data-product-detail-panel="promotion" id="product-detail-panel-promotion" role="tabpanel" aria-labelledby="product-detail-tab-promotion" hidden>
+          <section class="ui-panel">
+            <div class="panel__header"><div><h2 class="panel__title">商品推广分析</h2><p class="panel__hint">推广计划与渠道按当前日期范围汇总，不与商品经营总账重复相加</p></div><span class="ui-badge" data-product-promotion-status>待加载</span></div>
+            <div class="ui-metric-grid product-theme-metrics">
+              <article class="ui-metric-card"><div class="metric-card__label">推广花费</div><div class="metric-card__value" data-product-promotion-kpi="ad_spend">--</div><div class="metric-card__hint">推广事实</div></article>
+              <article class="ui-metric-card"><div class="metric-card__label">推广成交</div><div class="metric-card__value" data-product-promotion-kpi="attributed_payment_amount">--</div><div class="metric-card__hint">归因成交</div></article>
+              <article class="ui-metric-card"><div class="metric-card__label">ROI</div><div class="metric-card__value" data-product-promotion-kpi="roi">--</div><div class="metric-card__hint">归因成交 / 花费</div></article>
+              <article class="ui-metric-card"><div class="metric-card__label">点击转化率</div><div class="metric-card__value" data-product-promotion-kpi="cvr">--</div><div class="metric-card__hint">支付买家 / 点击</div></article>
+            </div>
+            <div class="ui-table-wrap"><table class="ui-data-table"><thead><tr><th>渠道</th><th class="num">花费</th><th class="num">成交</th><th class="num">花费占比</th><th class="num">ROI</th><th class="num">点击率</th><th class="num">转化率</th></tr></thead><tbody data-product-promotion-channels><tr><td colspan="7">加载中…</td></tr></tbody></table></div>
+          </section>
+          <section class="ui-panel">
+            <div class="panel__header"><div><h2 class="panel__title">计划拆解</h2><p class="panel__hint">点击计划可查看该计划的商品构成与汇总证据</p></div></div>
+            <div class="ui-table-wrap"><table class="ui-data-table"><thead><tr><th>计划</th><th>渠道</th><th>投放方式</th><th class="num">花费</th><th class="num">成交</th><th class="num">ROI</th><th class="num">点击</th><th class="num">转化率</th></tr></thead><tbody data-product-promotion-campaigns><tr><td colspan="8">加载中…</td></tr></tbody></table></div>
+            <div class="status-list" data-product-promotion-campaign-detail></div>
+            <p class="product-theme-limitations" data-product-promotion-limitations></p>
+          </section>
+        </section>
+
+        <section class="product-workbench__panel" data-product-detail-panel="granular" id="product-detail-panel-granular" role="tabpanel" aria-labelledby="product-detail-tab-granular" hidden>
+          <section class="ui-panel">
+            <div class="panel__header">
+              <div><h2 class="panel__title">深度粒度能力</h2><p class="panel__hint">按 SKU、地域和小时三个主题展示真实数据能力；没有事实表时不从商品日度总计反推。</p></div>
+              <span class="ui-badge" data-product-granular-status>待检查</span>
+            </div>
+            <div class="product-granular-grid" data-product-granular-themes>
+              <div class="product-theme-unavailable">加载数据能力状态…</div>
+            </div>
+          </section>
+          <section class="ui-panel product-granular-analysis" data-product-granular-analysis hidden>
+            <div class="panel__header"><div><h2 class="panel__title" data-product-granular-analysis-title>主题下钻</h2><p class="panel__hint">按当前日期范围聚合真实事实行，默认按核心经营指标降序。</p></div><span class="ui-badge" data-product-granular-analysis-status>未选择主题</span></div>
+            <div class="ui-table-wrap"><table class="ui-data-table"><thead data-product-granular-analysis-head></thead><tbody data-product-granular-analysis-body><tr><td>选择可用主题查看下钻结果</td></tr></tbody></table></div>
+          </section>
+          <section class="ui-panel">
+            <div class="panel__header"><div><h2 class="panel__title">能力边界</h2><p class="panel__hint">入口、粒度和数据来源分开呈现，避免将 BI 页面入口误认为已采集数据。</p></div></div>
+            <div class="status-list" data-product-granular-limitations></div>
+          </section>
+        </section>
+
         <section class="product-workbench__panel" data-product-detail-panel="lifecycle" id="product-detail-panel-lifecycle" role="tabpanel" aria-labelledby="product-detail-tab-lifecycle" hidden>
           <section class="ui-panel"><div class="panel__header"><div><h2 class="panel__title">生命周期判断</h2><p class="panel__hint" data-product-detail-confidence>--</p></div></div><div class="status-list"><div class="status-list__item"><span class="status-list__label">当前阶段</span><span class="status-list__value" data-product-detail-stage>--</span></div><div class="status-list__item"><span class="status-list__label">连续有效日</span><span class="status-list__value" data-product-detail-days>--</span></div><div class="status-list__item"><span class="status-list__label">判断依据</span><span class="status-list__value" data-product-detail-rationale>--</span></div></div></section>
           <section class="ui-panel"><div class="panel__header"><div><h2 class="panel__title">生命周期历史</h2><p class="panel__hint">阶段推荐、人工调整和操作记录</p></div></div><div class="ui-table-wrap"><table class="ui-data-table"><thead><tr><th>时间</th><th>推荐阶段</th><th>人工阶段</th><th>变更原因</th><th>操作人</th><th>版本</th></tr></thead><tbody data-product-detail-lifecycle-history><tr><td colspan="6">加载中…</td></tr></tbody></table></div></section>
@@ -128,7 +216,7 @@
 
         <section class="product-workbench__panel" data-product-detail-panel="actions" id="product-detail-panel-actions" role="tabpanel" aria-labelledby="product-detail-tab-actions" hidden>
           <section class="ui-panel"><div class="panel__header"><div><h2 class="panel__title">运营动作闭环</h2><p class="panel__hint">目的、动作、结果、复盘和历史版本</p></div></div><div class="status-list" data-product-detail-actions></div></section>
-          <section class="ui-panel"><form class="product-workbench__action-form" data-product-detail-action-form><div><h2 class="panel__title">新建运营动作</h2><p class="panel__hint">先记录可验证的动作，再在观察窗口结束后复盘。</p></div><div class="product-workbench__form-grid"><label>类型<input class="input" name="action_type" required></label><label>详情<input class="input" name="action_detail" required></label><label>目的<input class="input" name="purpose_note" required></label><label>计划日期<input class="input" name="planned_at" type="date" required></label></div><div class="product-workbench__form-actions"><button class="ui-button ui-button--primary" type="submit"><i data-lucide="check"></i><span>创建草稿</span></button><p data-product-detail-action-status role="status"></p></div></form></section>
+          <section class="ui-panel"><form class="product-workbench__action-form" data-product-detail-action-form><div><h2 class="panel__title">新建运营动作</h2><p class="panel__hint">先记录可验证的动作，再在观察窗口结束后复盘。</p></div><div class="product-workbench__form-grid"><label>类型<input class="input" name="action_type" required></label><label>详情<input class="input" name="action_detail" required></label><label>目的<input class="input" name="purpose_note" required></label><label>目标指标<select class="select" name="target_metric" required><option value="payment_amount">支付金额</option></select></label><label>观察窗口（天）<input class="input" name="observer_window_days" type="number" min="1" max="90" value="7" required></label><label>计划日期<input class="input" name="planned_at" type="date" required></label></div><div class="product-workbench__form-actions"><button class="ui-button ui-button--primary" type="submit"><i data-lucide="check"></i><span>创建草稿</span></button><p data-product-detail-action-status role="status"></p></div></form></section>
         </section>
 
         <section class="product-workbench__panel" data-product-detail-panel="evidence" id="product-detail-panel-evidence" role="tabpanel" aria-labelledby="product-detail-tab-evidence" hidden>
@@ -191,6 +279,34 @@
     .drill-modal__table .num{text-align:right;font-variant-numeric:tabular-nums}
     .drill-modal__table .up{color:#d4380d}
     .drill-modal__table .down{color:#389e0d}
+    .product-workbench__problem-context{margin-top:var(--space-4);border-left:3px solid var(--border-warning,#f0ad4e)}
+    .product-problem-context__grid{display:grid;grid-template-columns:minmax(220px,.8fr) minmax(280px,1.2fr) minmax(220px,.9fr);gap:var(--space-4)}
+    .product-problem-context__checks,.product-problem-context__suggestions{display:grid;gap:8px;align-content:start}
+    .product-problem-context__item{display:flex;justify-content:space-between;gap:12px;padding:9px 10px;border:1px solid var(--border-default);border-radius:var(--radius-md);background:var(--surface-base)}
+    .product-problem-context__item strong{font-weight:600}
+    .product-problem-context__item small{color:var(--text-tertiary)}
+    .product-problem-context__status--matched{color:var(--text-success,#16803c)}
+    .product-problem-context__status--not-matched{color:var(--text-tertiary)}
+    .product-problem-context__status--not-computable{color:var(--text-warning,#ad6800)}
+    @media (max-width:900px){.product-problem-context__grid{grid-template-columns:1fr}}
+    .product-theme-metrics{margin:0 0 var(--space-4)}
+    .product-theme-unavailable{padding:var(--space-4);border:1px dashed var(--border-default);border-radius:var(--radius-md);color:var(--text-secondary)}
+    .product-theme-limitations{margin:var(--space-3) 0 0;color:var(--text-tertiary);font-size:var(--font-size-secondary)}
+    .product-granular-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:var(--space-3)}
+    .product-granular-card{min-width:0;padding:var(--space-4);border:1px solid var(--border-default);border-radius:var(--radius-md);background:var(--surface-subtle)}
+    .product-granular-card__header{display:flex;align-items:center;justify-content:space-between;gap:var(--space-2)}
+    .product-granular-card__header h3{margin:0;color:var(--text-primary);font-size:var(--font-size-body);font-weight:700}
+    .product-granular-card__meta,.product-granular-card__coverage{margin:var(--space-3) 0 0;color:var(--text-secondary);font-size:var(--font-size-secondary);line-height:1.6}
+    .product-granular-card__capabilities{display:flex;flex-wrap:wrap;gap:var(--space-2);margin-top:var(--space-3)}
+    .product-granular-card__readiness{display:grid;gap:4px;margin-top:var(--space-3);padding-top:var(--space-3);border-top:1px solid var(--border-subtle)}
+    .product-granular-card__readiness p{margin:0;font-size:var(--font-size-secondary);line-height:1.5}
+    .product-granular-card__readiness .is-ready{color:var(--text-success,#16803c)}
+    .product-granular-card__readiness .is-blocked,.product-granular-card__missing{color:var(--text-warning,#ad6800)}
+    .product-granular-card__actions{display:flex;justify-content:flex-end;margin-top:var(--space-3)}
+    .product-granular-analysis[hidden]{display:none}
+    .product-granular-card__muted{color:var(--text-tertiary);font-size:var(--font-size-secondary)}
+    @media (max-width: 900px){.product-granular-grid{grid-template-columns:1fr}}
+    [data-product-promotion-campaigns] button{white-space:nowrap}
   </style>
   <script src="../assets/api.js"></script>
   <script src="../assets/navigation.js"></script>
@@ -199,5 +315,3 @@
   <script src="../assets/product-detail-live.js"></script>
 </body>
 </html>
-
-

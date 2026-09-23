@@ -7,6 +7,8 @@
 <link rel="stylesheet" href="../assets/tokens.css">
 <link rel="stylesheet" href="../assets/shell.css">
 <link rel="stylesheet" href="../assets/components.css">
+<link rel="stylesheet" href="../assets/market-ranking.css?v=20260923i">
+<script src="../assets/echarts-custom.min.js"></script>
 <style>
 .market-chart-row { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-4); margin-bottom: var(--space-4); }
 .market-chart-box { background: var(--surface-muted); border-radius: var(--radius-md); padding: var(--space-3); min-height: 280px; }
@@ -18,6 +20,7 @@
 .market-bar-value { width: 60px; font-size: var(--font-size-meta); font-family: var(--font-mono); color: var(--text-primary); flex-shrink: 0; }
 .market-keyword-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: var(--space-4); }
 .market-overlap-list { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.market-trend-note { margin: 0; color: var(--text-secondary); font-size: var(--font-size-meta); line-height: 1.5; }
 .market-overlap-tag { padding: var(--space-1) var(--space-2); background: var(--surface-muted); border-radius: var(--radius-sm); font-size: var(--font-size-meta); color: var(--text-secondary); }
 .sycm-item-rank-table { min-width: 1080px; table-layout: fixed; }
 .sycm-item-rank-table th,
@@ -38,8 +41,17 @@
 .sycm-item-rank-keyword { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sycm-item-rank-category { display: inline-block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; vertical-align: middle; white-space: nowrap; }
 .sycm-item-rank-wrap { overflow-x: auto; }
+.market-entity-grid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-4); margin-top: var(--space-4); }
+.market-entity-panel { min-width: 0; }
+.market-entity-toolbar { display: flex; gap: var(--space-2); align-items: center; flex-wrap: wrap; }
+.market-entity-toolbar select { min-width: 240px; max-width: 100%; }
+.market-entity-chart { height: 250px; margin-top: var(--space-3); }
+.market-entity-meta { color: var(--text-tertiary); font-size: var(--font-size-meta); margin: var(--space-2) 0 0; }
+.market-entity-table-wrap { overflow-x: auto; margin-top: var(--space-3); }
+.market-entity-table { min-width: 560px; }
 @media (max-width: 900px) {
   .sycm-item-rank-table { min-width: 980px; }
+  .market-entity-grid { grid-template-columns: 1fr; }
 }
 @media (max-width: 900px) { .market-chart-row, .market-keyword-grid { grid-template-columns: 1fr; } }
 </style>
@@ -58,6 +70,7 @@
         </div>
         <div class="demo-page__actions">
           <span class="ui-badge ui-badge--info" data-mr-period>--</span>
+          <span class="ui-badge ui-badge--warning" data-mr-freshness>批次状态读取中…</span>
         </div>
       </div>
 
@@ -85,8 +98,41 @@
         </article>
       </section>
 
+      <section class="market-command-grid" aria-label="市场判断摘要">
+        <section class="ui-panel market-command-panel">
+          <div class="panel__header">
+            <div><h3 class="panel__title">市场判断</h3><p class="panel__hint">先判断市场规模、集中度和变化方向，再进入榜单证据。</p></div>
+            <span class="ui-badge ui-badge--info">自动归纳</span>
+          </div>
+          <div class="market-command-list">
+            <div class="market-command-item"><strong>竞争格局</strong><span data-mr-insight-structure>正在读取类目结构…</span></div>
+            <div class="market-command-item"><strong>变化方向</strong><span data-mr-insight-trend>正在读取榜单趋势…</span></div>
+            <div class="market-command-item"><strong>机会入口</strong><span data-mr-insight-opportunity>正在生成机会建议…</span></div>
+            <div class="market-command-item"><strong>实际趋势</strong><span data-mr-insight-actual-trend>正在读取实际日期趋势…</span></div>
+          </div>
+        </section>
+        <section class="ui-panel market-command-panel">
+          <div class="panel__header">
+            <div><h3 class="panel__title">分析入口</h3><p class="panel__hint">类目看格局，商品看样本，关键词看需求。</p></div>
+          </div>
+          <div class="market-entry-grid">
+            <button type="button" class="market-entry-card is-active" data-market-entry="overview"><i data-lucide="layout-dashboard"></i><span><strong>市场总览</strong><small>类目对比与重叠店铺</small></span></button>
+            <button type="button" class="market-entry-card" data-market-entry="products"><i data-lucide="package"></i><span><strong>商品机会</strong><small>榜单商品与头部样本</small></span></button>
+            <button type="button" class="market-entry-card" data-market-entry="keywords"><i data-lucide="search"></i><span><strong>关键词机会</strong><small>搜索词与标题词结构</small></span></button>
+            <button type="button" class="market-entry-card" data-market-entry="sycm"><i data-lucide="database"></i><span><strong>生意参谋证据</strong><small>商品排行与搜索排行</small></span></button>
+          </div>
+        </section>
+      </section>
+
+      <nav class="market-workbench-tabs" role="tablist" aria-label="市场分析工作台">
+        <button type="button" class="is-active" data-market-tab="overview">市场总览</button>
+        <button type="button" data-market-tab="products">商品机会</button>
+        <button type="button" data-market-tab="keywords">关键词机会</button>
+        <button type="button" data-market-tab="sycm">生意参谋证据</button>
+      </nav>
+
       <!-- 类目统计对比 -->
-      <section class="ui-panel">
+      <section class="ui-panel" data-market-panel="overview">
         <div class="panel__header">
           <div>
             <h3 class="panel__title">类目核心指标对比</h3>
@@ -99,8 +145,8 @@
             <div data-mr-shop-type></div>
           </div>
           <div class="market-chart-box">
-            <div class="market-chart-title">排名趋势分布</div>
-            <div data-mr-trend></div>
+            <div class="market-chart-title">市场商品榜日均支付买家</div>
+            <div data-mr-product-trend style="height:240px"></div>
           </div>
         </div>
         <div class="market-chart-row">
@@ -109,14 +155,65 @@
             <div data-mr-concentration></div>
           </div>
           <div class="market-chart-box">
-            <div class="market-chart-title">估算总支付买家数</div>
-            <div data-mr-total-buyers></div>
+            <div class="market-chart-title">搜索需求热度与支付转化率</div>
+            <div data-mr-search-trend style="height:240px"></div>
           </div>
+        </div>
+        <p class="market-trend-note" data-mr-trend-coverage>正在读取市场日趋势及数据覆盖…</p>
+
+        <div class="market-entity-grid market-entity-lists">
+          <section class="ui-panel market-entity-panel">
+            <div class="panel__header"><div><h3 class="panel__title">市场店铺趋势</h3><p class="panel__hint">基础指标 + Mini 折线图，点击一行查看完整趋势</p></div></div>
+            <div class="market-list-toolbar"><span data-market-shop-count>正在读取店铺…</span><div class="market-mode-tabs" role="group" aria-label="店铺趋势视图"><button type="button" class="is-active" data-market-mode-kind="shop" data-market-mode="hot" aria-pressed="true">热卖</button><button type="button" data-market-mode-kind="shop" data-market-mode="surge" aria-pressed="false">飙升</button><button type="button" data-market-mode-kind="shop" data-market-mode="new" aria-pressed="false">新上榜</button><button type="button" data-market-mode-kind="shop" data-market-mode="stable" aria-pressed="false">持续在榜</button></div></div>
+            <p class="market-list-hint" data-market-shop-hint>按最新采集支付买家排序</p>
+            <div class="market-entity-list" data-market-shop-list><div class="market-list-empty">加载中…</div></div>
+            <div class="market-list-pager" data-market-shop-pager></div>
+          </section>
+          <section class="ui-panel market-entity-panel">
+            <div class="panel__header"><div><h3 class="panel__title">市场单品趋势</h3><p class="panel__hint">基础指标 + Mini 折线图，点击一行查看完整趋势</p></div></div>
+            <div class="market-list-toolbar"><span data-market-item-count>正在读取单品…</span><div class="market-mode-tabs" role="group" aria-label="单品趋势视图"><button type="button" class="is-active" data-market-mode-kind="item" data-market-mode="hot" aria-pressed="true">热卖</button><button type="button" data-market-mode-kind="item" data-market-mode="surge" aria-pressed="false">飙升</button><button type="button" data-market-mode-kind="item" data-market-mode="new" aria-pressed="false">新上榜</button><button type="button" data-market-mode-kind="item" data-market-mode="stable" aria-pressed="false">持续在榜</button></div></div>
+            <p class="market-list-hint" data-market-item-hint>按最新采集支付买家排序</p>
+            <div class="market-entity-list" data-market-item-list><div class="market-list-empty">加载中…</div></div>
+            <div class="market-list-pager" data-market-item-pager></div>
+          </section>
+        </div>
+      </section>
+
+      <div class="market-trend-modal" data-market-trend-modal hidden>
+        <div class="market-trend-modal__backdrop" data-market-trend-close></div>
+        <section class="market-trend-modal__dialog" role="dialog" aria-modal="true" aria-labelledby="market-trend-modal-title">
+          <header class="market-trend-modal__header"><div><h3 id="market-trend-modal-title" data-market-modal-title>趋势详情</h3><p data-market-modal-meta>正在读取…</p></div><button class="icon-button" type="button" data-market-trend-close aria-label="关闭"><i data-lucide="x"></i></button></header>
+          <div class="market-trend-modal__chart" data-market-modal-chart></div>
+          <div class="market-entity-table-wrap"><table class="ui-data-table market-entity-table"><thead><tr data-market-modal-head></tr></thead><tbody data-market-modal-body></tbody></table></div>
+          <section class="market-modal-items" data-market-modal-items hidden>
+            <div class="market-modal-items__header"><h4>店内上榜商品</h4><span data-market-modal-items-count></span></div>
+            <div class="market-modal-items__list" data-market-modal-items-list></div>
+          </section>
+        </section>
+      </div>
+
+      <section class="ui-panel" data-market-panel="overview">
+        <div class="panel__header">
+          <div><h3 class="panel__title">市场周期快照对比</h3><p class="panel__hint">按相同实体比较两个导出周期；区间数值保留原范围，中点仅作估算比较。</p></div>
+          <select class="select" data-market-snapshot-type aria-label="周期快照类型">
+            <option value="rival_shop">竞店周榜</option>
+            <option value="rival_item">竞品周榜</option>
+            <option value="item">市场商品榜</option>
+            <option value="search">搜索词榜</option>
+          </select>
+        </div>
+        <p class="market-entity-meta" data-market-snapshot-meta>正在读取周期快照…</p>
+        <div class="market-entity-chart" data-market-snapshot-chart></div>
+        <div class="market-entity-table-wrap">
+          <table class="ui-data-table market-entity-table">
+            <thead><tr><th>店铺 / 单品 / 关键词</th><th>前期估算</th><th>本期估算</th><th class="num">变化</th></tr></thead>
+            <tbody data-market-snapshot-body><tr><td colspan="4" style="text-align:center;color:var(--text-tertiary);padding:18px">加载中…</td></tr></tbody>
+          </table>
         </div>
       </section>
 
       <!-- 商品榜单 -->
-      <section class="ui-panel">
+      <section class="ui-panel" data-market-panel="products" hidden>
         <div class="panel__header">
           <div>
             <h3 class="panel__title">商品榜单</h3>
@@ -156,7 +253,7 @@
       </section>
 
       <!-- 关键词榜单 -->
-      <section class="ui-panel">
+      <section class="ui-panel" data-market-panel="keywords" hidden>
         <div class="panel__header">
           <div>
             <h3 class="panel__title">关键词洞察</h3>
@@ -184,7 +281,7 @@
       </section>
 
       <!-- 重叠店铺 -->
-      <section class="ui-panel">
+      <section class="ui-panel" data-market-panel="overview" hidden>
         <div class="panel__header">
           <div>
             <h3 class="panel__title">重叠店铺</h3>
@@ -197,11 +294,11 @@
       </section>
 
       <!-- 生意参谋 - 商品排行 -->
-      <section class="ui-panel" style="margin-top: var(--space-4);">
+      <section class="ui-panel" data-market-panel="sycm" hidden style="margin-top: var(--space-4);">
         <div class="panel__header">
           <div>
             <h3 class="panel__title">生意参谋 · 商品排行</h3>
-            <p class="panel__hint">按类目展示TOP商品，支持筛选</p>
+            <p class="panel__hint">按类目展示TOP商品，支持筛选 · <span data-sycm-item-date>数据日期 --</span></p>
           </div>
           <div class="panel__tools">
             <select class="select" data-sycm-cate-filter style="min-width:140px">
@@ -241,11 +338,11 @@
       </section>
 
       <!-- 生意参谋 - 搜索排行 -->
-      <section class="ui-panel" style="margin-top: var(--space-4);">
+      <section class="ui-panel" data-market-panel="sycm" hidden style="margin-top: var(--space-4);">
         <div class="panel__header">
           <div>
             <h3 class="panel__title">生意参谋 · 搜索排行</h3>
-            <p class="panel__hint">按类目展示TOP搜索词，支持筛选</p>
+            <p class="panel__hint">按类目展示TOP搜索词，支持筛选 · <span data-sycm-search-date>数据日期 --</span></p>
           </div>
           <div class="panel__tools">
             <select class="select" data-sycm-kw-cate-filter style="min-width:140px">
@@ -282,7 +379,6 @@
 <script src="../assets/navigation.js"></script>
 <script src="../assets/labels.js"></script>
 <script src="../assets/shell.js"></script>
-<script src="../assets/market-ranking-live.js"></script>
+<script src="../assets/market-ranking-live.js?v=20260923l"></script>
 </body>
 </html>
-

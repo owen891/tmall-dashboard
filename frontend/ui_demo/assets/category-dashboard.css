@@ -49,5 +49,24 @@
 .dashboard-review-block header span { color:var(--text-secondary); font-size:12px; }
 .dashboard-review-block .dashboard-table { max-height:350px; }
 .dashboard-review-block thead th, .dashboard-review-block tfoot th, .dashboard-review-block tfoot td { background:var(--surface-muted); font-weight:700; }
+@media (min-width: 1001px) {
+  .category-dashboard-page { max-width: 1680px; padding: 20px 32px 44px; }
+  .category-dashboard-header { margin-bottom: 14px; }
+  .dashboard-mode-tabs { position: sticky; top: calc(var(--topbar-height) - 1px); z-index: 6; margin-bottom: 10px; background: var(--surface-page); }
+  .dashboard-controls { gap: 10px; margin-bottom: 12px; padding: 10px 12px; border: 1px solid var(--border-default); border-radius: var(--radius-md); background: var(--surface-muted); }
+  .dashboard-control { min-width: 160px; }
+  .dashboard-kpis { gap: 10px; margin-bottom: 12px; }
+  .dashboard-kpi { min-height: 96px; padding: 14px; border-top: 3px solid var(--border-default); }
+  .dashboard-kpi strong { margin: 7px 0 4px; font-size: 22px; }
+  .dashboard-insight { margin-bottom: 12px; padding: 12px 14px; }
+  .dashboard-grid { gap: 12px; }
+  .dashboard-panel { padding: 16px; border-radius: var(--radius-md); }
+  .dashboard-chart { height: 280px; }
+  .dashboard-panel header, .annual-view-header { margin-bottom: 10px; }
+  .dashboard-breakdown div { padding-block: 9px; }
+  .dashboard-table { max-height: min(42vh, 420px); }
+  .dashboard-table thead th { position: sticky; top: 0; z-index: 1; background: var(--surface-muted); }
+  .dashboard-review-block .dashboard-table { max-height: min(44vh, 460px); }
+}
 @media (max-width:900px) { .dashboard-kpis { grid-template-columns:repeat(2,minmax(0,1fr)); } .annual-view-header { flex-direction:column; } }
 @media (max-width:620px) { .category-dashboard-page { padding:20px 14px 40px; } .category-dashboard-header { flex-direction:column; } .dashboard-mode-tabs { overflow:auto; } .dashboard-mode-tabs button { white-space:nowrap; padding-inline:12px; } .dashboard-kpis, .dashboard-grid { grid-template-columns:1fr; } .dashboard-panel--wide { grid-column:auto; } .dashboard-controls { display:grid; grid-template-columns:1fr 1fr; } .dashboard-control { min-width:0; } }

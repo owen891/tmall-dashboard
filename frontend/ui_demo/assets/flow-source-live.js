@@ -32,6 +32,15 @@
     return (Number(v) * 100).toFixed(2) + '%';
   }
 
+  function escapeHtml(value) {
+    return String(value ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/\"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
   // 渠道类型判断
   function getChannelType(name) {
     const paid = ['效果广告', '付费', '直通车', '超级推荐', '品销宝', '钻展', '万相台', '引力魔方', '站外广告', '内容广告', '品牌广告', '关键词推广', '人群推广', '智能场景', '超级直播', '超级短视频', '超级全域通', '竞争卡位', '品牌定制', '流量宝', '淘宝客'];
@@ -49,8 +58,11 @@
   }
 
   // 加载所有渠道数据
-  async function loadAllChannels(date) {
-    const query = date ? `?date=${encodeURIComponent(date)}` : '';
+  async function loadAllChannels(startDate, endDate) {
+    const params = new URLSearchParams();
+    if (startDate) params.set('start', startDate);
+    if (endDate) params.set('end', endDate);
+    const query = params.toString() ? `?${params.toString()}` : '';
     const r = await fetch(API_BASE + '/flow-source/detail' + query);
     const d = await r.json();
     if (!d.ok) throw new Error(d.message || '加载失败');
@@ -110,7 +122,11 @@
   // 渲染指标卡片
   function renderMetrics() {
     const summary = state.summary;
-    $('[data-flow-date]').textContent = summary.stat_date;
+    const startDate = summary.start_date || summary.stat_date;
+    const endDate = summary.end_date || summary.stat_date;
+    $('[data-flow-date]').textContent = startDate === endDate
+      ? `统计日 ${endDate}`
+      : `统计范围 ${startDate} ~ ${endDate}`;
     $('[data-flow-total-uv]').textContent = fmtInt(summary.total_uv);
     $('[data-flow-total-pay]').textContent = '¥' + fmtMoney(summary.total_pay_amount);
 
@@ -167,35 +183,40 @@
     });
   }
 
-  // 渲染树形表格
+  // Render the two tables that the current page exposes.
   function renderTreeTable() {
-    const tbody = $('[data-flow-table-body]');
+    const level1Body = $('[data-flow-level1-body]');
+    const level2Body = $('[data-flow-level2-body]');
+    const parentFilter = $('[data-flow-parent-filter]');
     const totalUv = state.summary.total_uv || 0;
+    const level1 = state.tree;
+    const selectedParent = parentFilter?.value || '';
+    const level2 = level1.flatMap((parent) => {
+      if (selectedParent && selectedParent !== parent.channel_name) return [];
+      return parent.children.map((child) => ({ ...child, parent_channel: parent.channel_name }));
+    });
 
-    if (!state.tree.length) {
-      tbody.innerHTML = '<tr><td colspan="14" style="text-align:center;color:var(--text-tertiary);padding:24px">暂无数据</td></tr>';
+    if (parentFilter && !parentFilter.dataset.ready) {
+      parentFilter.replaceChildren(new Option('全部一级渠道', ''));
+      level1.forEach((node) => parentFilter.add(new Option(node.channel_name, node.channel_name)));
+      parentFilter.dataset.ready = 'true';
+      parentFilter.addEventListener('change', renderTreeTable);
+    }
+
+    if (!level1.length) {
+      if (level1Body) level1Body.innerHTML = '<tr><td colspan="11" style="text-align:center;color:var(--text-tertiary);padding:24px">暂无数据</td></tr>';
+      if (level2Body) level2Body.innerHTML = '<tr><td colspan="10" style="text-align:center;color:var(--text-tertiary);padding:24px">暂无数据</td></tr>';
       return;
     }
 
-    let html = '';
-
-    function renderNode(node, totalUv) {
-      const isExpanded = state.expanded.has(node.channel_name);
-      const hasChildren = node.children.length > 0;
-      const indent = (node.level - 1) * 20;
-
-      const toggleBtn = hasChildren
-        ? `<span class="toggle-btn" data-toggle="${node.channel_name}">${isExpanded ? '−' : '+'}</span>`
-        : `<span class="toggle-btn toggle-btn--empty">·</span>`;
-
+    const renderLevel1Row = (node) => {
       const uvPct = totalUv > 0 ? (node.uv / totalUv) : 0;
       const avgPrice = node.pay_buyer_count > 0 ? node.pay_amount / node.pay_buyer_count : 0;
 
-      html += `<tr class="level-${node.level}">
+      return `<tr>
         <td>
-          <div class="channel-cell" style="padding-left:${indent}px">
-            ${toggleBtn}
-            <span class="channel-name ${hasChildren ? 'channel-name--clickable' : ''}" data-channel="${node.channel_name}">${node.channel_name}</span>
+          <div class="channel-cell">
+            <span class="channel-name">${escapeHtml(node.channel_name)}</span>
           </div>
         </td>
         <td>${getChannelBadge(node.channel_name)}</td>
@@ -207,63 +228,82 @@
         <td class="num">¥${avgPrice.toFixed(0)}</td>
         <td class="num">¥${(node.uv_value || 0).toFixed(2)}</td>
         <td class="num">${fmtInt(node.cart_buyer_count)}</td>
-        <td class="pct">${node.uv > 0 ? fmtPct2(node.cart_buyer_count / node.uv) : "--"}</td>
-        <td class="num">${fmtInt(node.collect_item_count)}</td>
         <td class="num">${fmtInt(node.new_uv)}</td>
-        <td class="num">${fmtInt(node.ad_click_count)}</td>
-        <td class="num">¥${fmtMoney(node.ad_pay_amount)}</td>
       </tr>`;
+    };
 
-      // 如果展开了，渲染子节点
-      if (isExpanded && hasChildren) {
-        node.children.forEach(child => renderNode(child, totalUv));
-      }
-    }
+    const renderLevel2Row = (node) => {
+      const uvPct = totalUv > 0 ? (node.uv / totalUv) : 0;
+      const avgPrice = node.pay_buyer_count > 0 ? node.pay_amount / node.pay_buyer_count : 0;
+      return `<tr>
+        <td><span class="channel-name">${escapeHtml(node.channel_name)}</span></td>
+        <td>${escapeHtml(node.parent_channel || '--')}</td>
+        <td class="num">${fmtInt(node.uv)}</td>
+        <td class="pct">${fmtPct1(uvPct)}</td>
+        <td class="num">¥${fmtMoney(node.pay_amount)}</td>
+        <td class="num">${fmtInt(node.pay_buyer_count)}</td>
+        <td class="pct">${fmtPct2(node.pay_rate)}</td>
+        <td class="num">¥${(node.uv_value || 0).toFixed(2)}</td>
+        <td class="num">${fmtInt(node.cart_buyer_count)}</td>
+        <td class="num">${fmtInt(node.new_uv)}</td>
+      </tr>`;
+    };
 
-    state.tree.forEach(node => renderNode(node, totalUv));
-    tbody.innerHTML = html;
-
-    // 绑定折叠/展开事件
-    tbody.querySelectorAll('[data-toggle]').forEach(el => {
-      el.addEventListener('click', (e) => {
-        e.stopPropagation();
-        const name = el.dataset.toggle;
-        if (state.expanded.has(name)) {
-          state.expanded.delete(name);
-        } else {
-          state.expanded.add(name);
-        }
-        renderTreeTable();
-      });
-    });
-
-    // 绑定渠道名称点击事件（也能触发展开/折叠）
-    tbody.querySelectorAll('.channel-name--clickable').forEach(el => {
-      el.addEventListener('click', () => {
-        const name = el.dataset.channel;
-        if (state.expanded.has(name)) {
-          state.expanded.delete(name);
-        } else {
-          state.expanded.add(name);
-        }
-        renderTreeTable();
-      });
-    });
+    if (level1Body) level1Body.innerHTML = level1.map(renderLevel1Row).join('');
+    if (level2Body) level2Body.innerHTML = level2.length
+      ? level2.map(renderLevel2Row).join('')
+      : '<tr><td colspan="10" style="text-align:center;color:var(--text-tertiary);padding:24px">暂无子渠道数据</td></tr>';
   }
 
   // 渲染统计
   function renderStats() {
     const counts = countLevels(state.tree);
-    $('[data-flow-l1-count]').textContent = counts.l1;
-    $('[data-flow-l2-count]').textContent = counts.l2;
-    $('[data-flow-l3-count]').textContent = counts.l3;
+    const l1 = $('[data-flow-l1-count]');
+    const l2 = $('[data-flow-l2-count]');
+    const l3 = $('[data-flow-l3-count]');
+    if (l1) l1.textContent = counts.l1;
+    if (l2) l2.textContent = counts.l2;
+    if (l3) l3.textContent = counts.l3;
+    const topShare = $('[data-flow-top-share]');
+    if (topShare) {
+      const totalUv = state.summary?.total_uv || 0;
+      const topUv = state.tree.slice(0, 3).reduce((sum, node) => sum + (node.uv || 0), 0);
+      topShare.textContent = totalUv ? fmtPct1(topUv / totalUv) : '--';
+    }
+  }
+
+  function renderCommandSummary() {
+    const leading = $('[data-flow-leading]');
+    const efficiency = $('[data-flow-efficiency]');
+    const opportunity = $('[data-flow-opportunity]');
+    if (!leading || !efficiency || !opportunity) return;
+    const channels = [...state.tree];
+    const totalUv = state.summary?.total_uv || 0;
+    const byUv = [...channels].sort((a, b) => (b.uv || 0) - (a.uv || 0));
+    const byRate = [...channels].sort((a, b) => (b.pay_rate || 0) - (a.pay_rate || 0));
+    const lead = byUv[0];
+    const best = byRate[0];
+    leading.textContent = lead
+      ? `${lead.channel_name}贡献访客最多，占整体 ${fmtPct1(totalUv ? lead.uv / totalUv : 0)}。`
+      : '暂无可判断的渠道数据。';
+    efficiency.textContent = best
+      ? `${best.channel_name}支付转化率最高，为 ${fmtPct2(best.pay_rate)}，建议关注其流量质量是否可复制。`
+      : '暂无足够数据判断渠道效率。';
+    opportunity.textContent = lead && best && lead.channel_name !== best.channel_name
+      ? `规模主力与效率主力不一致，优先拆解 ${lead.channel_name} 的二级渠道，寻找低效入口。`
+      : '优先从头部渠道的二级入口开始，核对访客、支付买家与 UV 价值。';
   }
 
   // 初始化
   async function init(detail) {
     try {
-      const date = detail?.endDate || window.TmallDateRange?.getState?.().endDate || '';
-      const query = date ? `?date=${encodeURIComponent(date)}` : '';
+      const range = detail || window.TmallDateRange?.getState?.() || {};
+      const startDate = range.startDate || range.endDate || '';
+      const endDate = range.endDate || range.startDate || '';
+      const params = new URLSearchParams();
+      if (startDate) params.set('start', startDate);
+      if (endDate) params.set('end', endDate);
+      const query = params.toString() ? `?${params.toString()}` : '';
       // 加载汇总数据
       const r = await fetch(API_BASE + '/flow-source/summary' + query);
       const d = await r.json();
@@ -271,7 +311,7 @@
       state.summary = d.data;
 
       // 加载所有渠道数据
-      await loadAllChannels(date);
+      await loadAllChannels(startDate, endDate);
 
       // 构建树形结构
       state.tree = buildTree();
@@ -284,10 +324,16 @@
       renderPieChart();
       renderBarChart();
       renderStats();
+      renderCommandSummary();
       renderTreeTable();
     } catch (err) {
       console.error('加载流量来源数据失败:', err);
-      $('[data-flow-table-body]').innerHTML = `<tr><td colspan="14" style="text-align:center;color:var(--text-danger);padding:24px">加载失败: ${err.message}</td></tr>`;
+      const bodies = ['[data-flow-level1-body]', '[data-flow-level2-body]', '[data-flow-table-body]']
+        .map((selector) => $(selector))
+        .filter(Boolean);
+      bodies.forEach((body) => {
+        body.innerHTML = `<tr><td colspan="14" style="text-align:center;color:var(--text-danger);padding:24px">加载失败: ${escapeHtml(err.message)}</td></tr>`;
+      });
     }
   }
 

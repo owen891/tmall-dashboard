@@ -7,6 +7,7 @@
 <link rel="stylesheet" href="../assets/tokens.css">
 <link rel="stylesheet" href="../assets/shell.css">
 <link rel="stylesheet" href="../assets/components.css">
+<link rel="stylesheet" href="../assets/rival-analysis.css?v=20260923a">
 <script src="../assets/lucide-custom.min.js"></script>
 <script src="../assets/echarts-custom.min.js"></script>
 <style>
@@ -34,6 +35,7 @@
 .rival-tabs { display: flex; gap: var(--space-2); margin-bottom: var(--space-4); }
 .rival-tab { padding: 8px 16px; border-radius: var(--radius-sm); cursor: pointer; font-size: var(--font-size-secondary); color: var(--text-secondary); background: var(--surface-muted); border: none; }
 .rival-tab.active { background: var(--primary-color); color: white; }
+.rival-period-notice { margin: 0 0 var(--space-4); padding: 10px 12px; border-left: 3px solid var(--primary-color); background: var(--surface-muted); color: var(--text-secondary); font-size: var(--font-size-meta); line-height: 1.5; }
 @media (max-width: 900px) { .rival-chart-row { grid-template-columns: 1fr; } }
 </style>
 </head>
@@ -47,7 +49,7 @@
       <div class="ui-page-header">
         <div>
           <h2>竞店竞品分析</h2>
-          <p>生意参谋 · 竞店核心指标对比 · 竞品商品洞察</p>
+          <p>生意参谋 · 当前按统计日展示竞店规模与竞品样本，不代表周期趋势或已验证打法</p>
         </div>
         <div class="demo-page__actions">
           <span class="ui-badge ui-badge--info" data-rival-date>--</span>
@@ -78,14 +80,52 @@
         </article>
       </section>
 
+      <section class="rival-command-grid" aria-label="竞争态势摘要">
+        <section class="ui-panel rival-command-panel">
+          <div class="panel__header">
+            <div><h3 class="panel__title">竞争态势</h3><p class="panel__hint">先判断竞争强度，再进入店铺或商品明细。</p></div>
+            <span class="ui-badge ui-badge--info">自动归纳</span>
+          </div>
+          <div class="rival-command-list">
+            <div class="rival-command-item"><strong>流量领先</strong><span data-rival-leading>正在读取竞店数据…</span></div>
+            <div class="rival-command-item"><strong>成交效率</strong><span data-rival-efficiency>正在读取转化数据…</span></div>
+            <div class="rival-command-item"><strong>跟进建议</strong><span data-rival-opportunity>正在生成对比建议…</span></div>
+          </div>
+        </section>
+        <section class="ui-panel rival-command-panel">
+          <div class="panel__header">
+            <div><h3 class="panel__title">分析入口</h3><p class="panel__hint">店铺看格局，商品看打法。</p></div>
+          </div>
+          <div class="rival-entry-grid">
+            <button type="button" class="rival-entry-card is-active" data-rival-entry="shops"><i data-lucide="users"></i><span><strong>竞店分析</strong><small>规模、效率、类型与排名</small></span></button>
+            <button type="button" class="rival-entry-card" data-rival-entry="items"><i data-lucide="package"></i><span><strong>竞品分析</strong><small>商品、卖点、流量与详情</small></span></button>
+          </div>
+        </section>
+      </section>
+      <div class="rival-period-notice" data-rival-trend-notice>正在读取所选范围的竞店覆盖与日均趋势…</div>
+
       <!-- 切换标签 -->
-      <div class="rival-tabs">
+      <div class="rival-tabs" role="tablist" aria-label="竞店竞品分析">
         <button class="rival-tab active" data-rival-tab="shops">竞店分析</button>
         <button class="rival-tab" data-rival-tab="items">竞品分析</button>
       </div>
 
       <!-- 竞店分析 -->
       <div data-rival-panel="shops">
+        <section class="ui-panel rival-detail-panel">
+          <div class="panel__header">
+            <div><h3 class="panel__title">单店逐日趋势</h3><p class="panel__hint">选择任一竞店，查看该店实际采集日的 UV、支付买家和支付转化率。</p></div>
+            <select class="select" data-rival-shop-select style="min-width:260px"><option value="">选择竞店</option></select>
+          </div>
+          <div class="rival-chart-box"><div id="rivalShopDetailChart" style="width:100%;height:280px;"></div></div>
+          <div class="rival-table-wrap"><table class="rival-table"><thead><tr><th>日期</th><th class="num">UV</th><th class="num">支付买家</th><th class="pct">支付转化率</th><th>采集状态</th></tr></thead><tbody data-rival-shop-detail-body><tr><td colspan="5" style="text-align:center;color:var(--text-tertiary);padding:20px">请选择竞店</td></tr></tbody></table></div>
+        </section>
+        <section class="rival-chart-row">
+          <div class="rival-chart-box">
+            <div class="rival-chart-title">竞店样本支付买家（当日汇总）</div>
+            <div id="rivalPeriodBuyerChart" style="width:100%;height:240px;"></div>
+          </div>
+        </section>
         <!-- 图表区域 -->
         <section class="rival-chart-row">
           <div class="rival-chart-box">
@@ -103,7 +143,14 @@
           <div class="panel__header">
             <div>
               <h3 class="panel__title">竞店明细</h3>
-              <p class="panel__hint">按访客数排序，展示各竞店核心指标</p>
+              <p class="panel__hint">支持类型筛选、名称搜索和表头排序；图表会同步当前筛选结果。</p>
+            </div>
+            <span class="ui-badge ui-badge--info"><span data-rival-filtered-count>--</span> 家</span>
+          </div>
+          <div class="ui-filter-toolbar rival-filter-toolbar">
+            <div class="ui-filter-toolbar__main">
+              <select class="select" data-rival-shop-type><option value="">全部类型</option><option value="tmall">天猫</option><option value="taobao">淘宝</option></select>
+              <input class="input" data-rival-shop-search placeholder="搜索店铺名称" type="search">
             </div>
           </div>
           <div class="rival-table-wrap">
@@ -111,11 +158,11 @@
               <thead>
                 <tr>
                   <th style="width:50px">排名</th>
-                  <th>店铺名称</th>
+                  <th data-sort="shop_name">店铺名称</th>
                   <th>类型</th>
-                  <th class="num">访客数</th>
-                  <th class="num">支付买家</th>
-                  <th class="pct">支付转化率</th>
+                  <th data-sort="uv" class="num">访客数</th>
+                  <th data-sort="pay_buyer_count" class="num">支付买家</th>
+                  <th data-sort="pay_rate" class="pct">支付转化率</th>
                   <th class="num">加购人数</th>
                   <th class="num">收藏人数</th>
                 </tr>
@@ -134,8 +181,19 @@
           <div class="panel__header">
             <div>
               <h3 class="panel__title">竞品商品</h3>
-              <p class="panel__hint">生意参谋推荐竞品，按访客数排序</p>
+              <p class="panel__hint">外部市场商品样本，已排除本店商品，按访客数排序</p>
             </div>
+          </div>
+          <p class="rival-period-notice" data-rival-item-trend-notice>正在读取竞品样本覆盖与趋势…</p>
+          <div class="panel__header">
+            <div><h3 class="panel__title">单品逐日趋势</h3><p class="panel__hint">选择任一竞品，查看该商品实际采集日的 UV、支付买家和支付转化率。</p></div>
+            <select class="select" data-rival-item-select style="min-width:360px"><option value="">选择竞品单品</option></select>
+          </div>
+          <div class="rival-chart-box"><div id="rivalItemDetailChart" style="width:100%;height:280px;"></div></div>
+          <div class="rival-table-wrap"><table class="rival-table"><thead><tr><th>日期</th><th class="num">UV</th><th class="num">支付买家</th><th class="pct">支付转化率</th><th>采集状态</th></tr></thead><tbody data-rival-item-detail-body><tr><td colspan="5" style="text-align:center;color:var(--text-tertiary);padding:20px">请选择竞品</td></tr></tbody></table></div>
+          <div class="rival-chart-box" style="margin-bottom:var(--space-3)">
+            <div class="rival-chart-title">竞品样本支付转化率</div>
+            <div id="rivalPeriodRateChart" style="width:100%;height:240px;"></div>
           </div>
           <div data-rival-items-list>
             <div style="text-align:center;color:var(--text-tertiary);padding:24px">加载中…</div>
@@ -151,6 +209,6 @@
 <script src="../assets/navigation.js"></script>
 <script src="../assets/labels.js"></script>
 <script src="../assets/shell.js"></script>
-<script src="../assets/rival-analysis-live.js"></script>
+<script src="../assets/rival-analysis-live.js?v=20260923f"></script>
 </body>
 </html>

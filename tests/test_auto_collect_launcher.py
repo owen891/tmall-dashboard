@@ -21,6 +21,11 @@ class AutoCollectLauncherTests(unittest.TestCase):
                     f'import sys\nprint({ascii(marker)})\nsys.exit({login_exit})\n',
                     encoding='utf-8',
                 )
+            (root / 'scripts' / 'aggregate_store_daily.py').write_text(
+                'import sys\n'
+                'sys.exit(0)\n',
+                encoding='utf-8',
+            )
             launcher = Path(__file__).resolve().parents[1] / 'scripts' / 'auto-collect.ps1'
             harness = root / 'harness.ps1'
             harness.write_text('''param([string]$Sources)

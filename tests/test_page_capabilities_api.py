@@ -22,7 +22,7 @@ class PageCapabilitiesApiTests(unittest.TestCase):
         payload = response.get_json()
 
         self.assertTrue(payload['ok'])
-        self.assertEqual(payload['data']['summary']['page_count'], 12)
+        self.assertEqual(payload['data']['summary']['page_count'], 13)
         self.assertIn('surfaces', payload['data'])
         self.assertIn('unsupported_capabilities', payload['data'])
         self.assertTrue(payload['capabilities']['can_view_registry'])
@@ -45,6 +45,15 @@ class PageCapabilitiesApiTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         capabilities = {item['key']: item for item in response.get_json()['data']['pages'][0]['capabilities']}
         self.assertEqual(capabilities['goals.bootstrap']['interaction_state'], 'enabled')
+
+    def test_product_detail_exposes_granular_capability_after_registry_reload(self):
+        response = self.client.get('/api/page-capabilities?page=product-detail')
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        capabilities = {item['key']: item for item in payload['data']['pages'][0]['capabilities']}
+        self.assertIn('product-detail.granular_analysis', capabilities)
+        self.assertIn(capabilities['product-detail.granular_analysis']['availability'], {'no-data', 'source-unavailable'})
+        self.assertEqual(capabilities['product-detail.granular_analysis']['interaction_state'], 'disabled')
 
 
 if __name__ == '__main__':

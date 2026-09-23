@@ -10,7 +10,20 @@
   const credentialsStatus = document.querySelector('[data-collect-credentials-status]');
   const credentialsMessage = document.querySelector('[data-collect-credentials-message]');
   const credentialsDialog = document.querySelector('[data-collect-credentials-dialog]');
+  const integrationGrid = document.querySelector('[data-integration-grid]');
+  const integrationDomain = document.querySelector('[data-integration-domain]');
+  const integrationReadiness = document.querySelector('[data-integration-readiness]');
   let credentialState = {};
+  let integrationCatalog = null;
+
+  const integrationDomainLabels = {
+    'tmall-dashboard': '天猫看板',
+    'ad-ctr-dashboard': '广告素材点击率',
+    inventory: '库存与补货',
+    'product-analysis': '商品与评价',
+    market: '市场与竞品',
+    review: '月度复盘',
+  };
 
   const freshnessLabels = {
     'today': '今日已更新',
@@ -22,8 +35,10 @@
 
   const statusLabels = {
     'idle': '空闲',
+    'queued': '排队中',
     'running': '采集中',
     'completed': '已完成',
+    'partial': '部分成功',
     'failed': '失败'
   };
 
@@ -32,6 +47,7 @@
     'queued': '#2563eb',
     'running': '#2563eb',
     'completed': '#16a34a',
+    'partial': '#d97706',
     'failed': '#dc2626',
     'timed_out': '#dc2626'
   };
@@ -160,11 +176,47 @@
     }
   }
 
+  function renderIntegrationCatalog() {
+    if (!integrationGrid || !integrationCatalog) return;
+    const domain = integrationDomain?.value || '';
+    const readiness = integrationReadiness?.value || '';
+    const sources = integrationCatalog.sources.filter((item) => (!domain || item.domain === domain) && (!readiness || item.readiness === readiness));
+    integrationGrid.innerHTML = sources.length ? sources.map((item) => {
+      const live = item.runtime_status && item.runtime_status !== 'manual' && item.runtime_status !== 'not_connected';
+      const freshness = item.freshness && item.freshness !== 'unknown' ? `<span class="integration-badge integration-badge--fresh">${escapeHtml(item.latest_date || item.freshness)}</span>` : '';
+      const issue = item.blocker || item.operational_issue;
+      return `<article class="integration-card"><div class="integration-card__header"><div><h4 class="integration-card__title">${escapeHtml(item.name)}</h4><p class="integration-card__meta">${escapeHtml(integrationDomainLabels[item.domain] || item.domain)} · ${escapeHtml(item.frequency)}</p></div><div class="integration-card__badges"><span class="integration-badge integration-badge--${escapeHtml(item.readiness)}">${escapeHtml(item.readiness_label)}</span>${freshness}</div></div><p class="integration-card__content">${escapeHtml(item.content)}</p><p class="integration-card__meta"><strong>依赖：</strong>${escapeHtml(item.dependency)}</p>${live ? `<p class="integration-card__meta"><strong>运行：</strong>${escapeHtml(item.runtime_status)} · ${escapeHtml(item.record_count ?? 0)} 条</p>` : ''}${issue ? `<p class="integration-card__issue"><strong>说明：</strong>${escapeHtml(issue)}</p>` : ''}</article>`;
+    }).join('') : '<div class="integration-empty">没有符合筛选条件的数据源</div>';
+    if (window.lucide) lucide.createIcons();
+  }
+
+  async function loadIntegrationCatalog() {
+    if (!integrationGrid) return;
+    try {
+      const response = await fetch('/api/data-integration/catalog');
+      const result = await response.json();
+      if (!result.ok) throw new Error(result.message || '整合目录加载失败');
+      integrationCatalog = result.data;
+      const current = integrationDomain?.value || '';
+      if (integrationDomain) {
+        integrationDomain.innerHTML = '<option value="">全部业务域</option>' + (result.data.domains || []).map((domain) => `<option value="${escapeHtml(domain)}">${escapeHtml(integrationDomainLabels[domain] || domain)}</option>`).join('');
+        integrationDomain.value = current;
+      }
+      for (const key of ['total', 'connected', 'planned', 'blocked']) {
+        const node = document.querySelector(`[data-integration-count="${key}"]`);
+        if (node) node.textContent = result.data.summary?.[key] ?? 0;
+      }
+      renderIntegrationCatalog();
+    } catch (error) {
+      integrationGrid.innerHTML = `<div class="integration-empty">加载失败：${escapeHtml(error.message)}</div>`;
+    }
+  }
+
   function renderSummary(sources) {
     const total = sources.length;
     const today = sources.filter(s => s.freshness === 'today').length;
     const stale = sources.filter(s => s.freshness === 'stale' || s.freshness === 'yesterday' || s.freshness === 'recent').length;
-    const running = sources.filter(s => s.status === 'running').length;
+    const running = sources.filter(s => s.status === 'running' || s.status === 'queued').length;
 
     document.querySelector('[data-collect-summary="total"]').textContent = total;
     document.querySelector('[data-collect-summary="today"]').textContent = today;
@@ -180,7 +232,7 @@
 
     grid.innerHTML = sources.map(source => {
       const freshness = source.freshness || 'unknown';
-      const isRunning = source.status === 'running';
+      const isRunning = source.status === 'running' || source.status === 'queued';
       const recordCount = source.record_count ? source.record_count.toLocaleString('zh-CN') : '0';
 
       return `
@@ -387,8 +439,11 @@
 
   const refreshBtn = document.querySelector('[data-collect-refresh]');
   if (refreshBtn) {
-    refreshBtn.addEventListener('click', () => { loadStatus(); loadHealth(); });
+    refreshBtn.addEventListener('click', () => { loadStatus(); loadHealth(); loadIntegrationCatalog(); });
   }
+  integrationDomain?.addEventListener('change', renderIntegrationCatalog);
+  integrationReadiness?.addEventListener('change', renderIntegrationCatalog);
+  document.querySelector('[data-integration-refresh]')?.addEventListener('click', loadIntegrationCatalog);
 
   const collectAllBtn = document.querySelector('[data-collect-all]');
   if (collectAllBtn) {
@@ -408,6 +463,7 @@
   // 初始化
   loadStatus();
   loadHealth();
+  loadIntegrationCatalog();
   loadCredentials();
   // 每30秒自动刷新状态（页面不可见时暂停，节省资源）
   let statusTimer = setInterval(() => {

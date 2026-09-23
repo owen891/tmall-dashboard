@@ -9,10 +9,10 @@
 <body data-page="data-center"><div class="demo-app"><aside class="demo-sidebar" data-shell-sidebar></aside><div class="demo-main"><header class="demo-topbar" data-shell-header></header><main class="demo-page"><aside data-right-rail hidden aria-label="辅助信息"></aside>
   <div class="ui-page-header"><div><h2>数据中心</h2><p>上传表格后先逐份预览字段映射和质量结果，确认后才会写入数据。</p></div></div>
   <section class="ui-metric-grid data-center-summary-grid" aria-label="数据中心摘要">
-    <article class="ui-metric-card"><div class="metric-card__label">可用数据域</div><div class="metric-card__value data-center-summary__value" data-data-center-summary="available">--</div><div class="metric-card__meta">当前可直接使用</div></article>
-    <article class="ui-metric-card"><div class="metric-card__label">部分可用</div><div class="metric-card__value data-center-summary__value" data-data-center-summary="partial">--</div><div class="metric-card__meta">存在字段或来源限制</div></article>
-    <article class="ui-metric-card"><div class="metric-card__label">导入批次</div><div class="metric-card__value data-center-summary__value" data-data-center-summary="batches">--</div><div class="metric-card__meta">可撤销并保留审计记录</div></article>
-    <article class="ui-metric-card"><div class="metric-card__label">最新数据日期</div><div class="metric-card__value data-center-summary__value" data-data-center-summary="latest">--</div><div class="metric-card__meta">来自最近成功批次</div></article>
+    <article class="ui-metric-card data-center-summary-card data-center-summary-card--available"><div class="metric-card__label">可用数据域</div><div class="metric-card__value data-center-summary__value" data-data-center-summary="available">--</div><div class="metric-card__meta">当前可直接使用</div></article>
+    <article class="ui-metric-card data-center-summary-card data-center-summary-card--partial"><div class="metric-card__label">部分可用</div><div class="metric-card__value data-center-summary__value" data-data-center-summary="partial">--</div><div class="metric-card__meta">存在字段或来源限制</div></article>
+    <article class="ui-metric-card data-center-summary-card"><div class="metric-card__label">导入批次</div><div class="metric-card__value data-center-summary__value" data-data-center-summary="batches">--</div><div class="metric-card__meta">可撤销并保留审计记录</div></article>
+    <article class="ui-metric-card data-center-summary-card"><div class="metric-card__label">最新数据日期</div><div class="metric-card__value data-center-summary__value" data-data-center-summary="latest">--</div><div class="metric-card__meta">来自最近成功批次</div></article>
   </section>
   <section class="ui-panel data-center-import-panel"><div class="panel__header"><div><h3 class="panel__title">经营报表导入</h3><p class="panel__hint">预览阶段不写正式表，质量门禁通过后才能确认。</p></div></div>
     <div class="data-center-stepper" aria-label="导入流程"><span class="data-center-stepper__step is-current" aria-current="step">1 上传</span><span class="data-center-stepper__step">2 字段映射</span><span class="data-center-stepper__step">3 质量校验</span><span class="data-center-stepper__step">4 确认入库</span></div>
@@ -22,7 +22,18 @@
     <p class="panel__hint" data-import-quality-detail>未发现异常行</p><div class="segmented" data-import-preview-tabs role="tablist" aria-label="预览文件"></div><div id="data-import-preview-tabpanel" role="tabpanel" tabindex="0" class="ui-table-wrap ui-table-wrap--discoverable"><table class="ui-data-table"><thead><tr><th>源列</th><th>推断类型</th><th>标准字段</th><th>匹配状态</th><th>样例</th></tr></thead><tbody data-import-fields></tbody></table></div>
   </section>
   <section class="ui-panel"><div class="panel__header"><div><h3 class="panel__title">导入批次</h3><p class="panel__hint">撤销会恢复该批次覆盖前的数据，并保留审计记录。</p></div><button class="ui-button" type="button" data-import-history-refresh><i data-lucide="refresh-cw"></i><span>刷新</span></button></div><p class="panel__hint" data-import-history-status role="status" aria-live="polite"></p><div class="ui-table-wrap"><table class="ui-data-table"><thead><tr><th>文件</th><th>报表类型</th><th>校验指纹</th><th>日期范围</th><th>质量</th><th>新增 / 更新 / 无效</th><th>完成时间</th><th>操作</th></tr></thead><tbody data-import-history><tr><td colspan="8">加载中…</td></tr></tbody></table></div></section>
-   <details class="data-governance-disclosure" data-governance-disclosure>
+  <section class="ui-panel" data-identity-review>
+    <div class="panel__header">
+      <div><h3 class="panel__title">商品身份审核</h3><p class="panel__hint">只处理推广侧无法自动确认的外部商品标识；系统不会自动创建或猜测商品。</p></div>
+      <button class="ui-button" type="button" data-identity-refresh><i data-lucide="refresh-cw"></i><span>刷新</span></button>
+    </div>
+    <p class="panel__hint" data-identity-status role="status" aria-live="polite">加载中…</p>
+    <div class="ui-table-wrap ui-table-wrap--discoverable">
+      <table class="ui-data-table"><thead><tr><th>外部标识</th><th>展示名称</th><th>推广证据</th><th>事实范围</th><th>花费</th><th>绑定已有商品</th><th>审核原因</th><th>操作</th></tr></thead>
+      <tbody data-identity-rows><tr><td colspan="8">加载中…</td></tr></tbody></table>
+    </div>
+  </section>
+  <details class="data-governance-disclosure" data-governance-disclosure>
      <summary><span>数据治理与能力说明</span><span>字段证据、数据域和页面消费范围</span></summary>
      <div class="data-governance-disclosure__body">
    <section class="ui-panel data-capability-map" data-capability-map>

@@ -50,7 +50,7 @@ class SourceResolutionTests(unittest.TestCase):
                 source_system='business_advisor', shop_id='default',
             )
             fact = connection.execute(
-                "SELECT ad_spend FROM daily_data WHERE product_id = 'p-paimi'"
+                "SELECT ad_spend, recommend_ipv, paid_ipv, organic_ipv, order_amount FROM daily_data WHERE product_id = 'p-paimi'"
             ).fetchone()
             lineage = connection.execute(
                 "SELECT effective_source_type FROM fact_field_lineage WHERE product_id = 'p-paimi' AND field_key = 'ad_spend'"
@@ -59,6 +59,10 @@ class SourceResolutionTests(unittest.TestCase):
             connection.close()
 
         self.assertEqual(fact['ad_spend'], 8.0)
+        self.assertIsNone(fact['recommend_ipv'])
+        self.assertIsNone(fact['paid_ipv'])
+        self.assertIsNone(fact['organic_ipv'])
+        self.assertIsNone(fact['order_amount'])
         self.assertEqual(lineage['effective_source_type'], 'paimi_bi_product_day')
 
     def test_zero_is_not_treated_as_missing_when_dmp_has_nonzero(self):

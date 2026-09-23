@@ -10,9 +10,10 @@
   let overviewTrendChart = null;
   const detailTabs = [
     ['overview', '经营概览'],
-    ['promotion', '付费推广'],
     ['trend', '日趋势'],
     ['flow-source', '流量结构'],
+    ['search', '搜索分析'],
+    ['promotion', '付费推广'],
     ['lifecycle', '生命周期'],
     ['collaboration', '协作记录'],
   ];
@@ -154,7 +155,8 @@
     const workbench = node('a', 'ui-button ui-button--ghost', '打开完整工作台');
     workbench.setAttribute('data-shared-product-workbench', '');
     workbench.setAttribute('aria-label', '打开完整商品详情工作台');
-    workbench.href = '/products';
+    workbench.setAttribute('aria-disabled', 'true');
+    workbench.tabIndex = -1;
     dialog.querySelector('.product-detail-dialog__header').insertBefore(workbench, dialog.querySelector('[data-shared-product-close]'));
     dialog.querySelector('[data-shared-product-close]').addEventListener('click', close);
     dialog.addEventListener('cancel', (event) => { event.preventDefault(); close(); });
@@ -215,7 +217,17 @@
 
   function renderIdentity(detail) {
     const product = detail.product || {};
-    dialog.querySelector('[data-shared-product-workbench]').href = `/products/${encodeURIComponent(product.product_id || current.productId)}`;
+    const workbench = dialog.querySelector('[data-shared-product-workbench]');
+    const productId = product.product_id || current.productId;
+    if (productId) {
+      workbench.href = `/products/${encodeURIComponent(productId)}`;
+      workbench.removeAttribute('aria-disabled');
+      workbench.tabIndex = 0;
+    } else {
+      workbench.removeAttribute('href');
+      workbench.setAttribute('aria-disabled', 'true');
+      workbench.tabIndex = -1;
+    }
     const wrapper = section('商品信息');
     const grid = node('dl', 'product-detail-meta');
     [
@@ -340,6 +352,50 @@
       tbody.appendChild(tr);
     });
     table.appendChild(tbody); tableWrap.appendChild(table); wrapper.appendChild(tableWrap);
+    return wrapper;
+  }
+
+  function renderSearch(detail) {
+    const summary = detail?.summary || {};
+    const rows = Array.isArray(detail?.daily_trend) ? detail.daily_trend : [];
+    const hasSearchFact = summary.search_visitors != null || rows.some((row) => row.search_visitors != null);
+    const wrapper = section('搜索分析', '使用商品经营事实中的搜索字段；没有商品级关键词归因时不补造关键词明细。');
+    const metrics = node('div', 'detail-metrics product-detail-search-metrics');
+    const ratio = summary.search_ratio;
+    metrics.append(
+      metric('搜索访客', hasSearchFact ? number(summary.search_visitors) : '--', '当前日期范围'),
+      metric('搜索占比', hasSearchFact ? percent(ratio) : '--', '搜索访客 ÷ 商品访客'),
+      metric('搜索转化率', summary.search_conversion == null ? '--' : percent(summary.search_conversion), '搜索访客到支付'),
+      metric('搜索点击率', summary.search_click_rate == null ? '--' : percent(summary.search_click_rate), '来源字段可用时展示'),
+    );
+    wrapper.appendChild(metrics);
+
+    const status = node('p', 'panel__hint', hasSearchFact
+      ? '搜索汇总字段可用；当前数据源未提供可验证的商品级关键词归因'
+      : '当前日期范围没有可用的商品级搜索字段，以下搜索指标显示为 --');
+    wrapper.appendChild(status);
+    if (rows.length) {
+      const tableWrap = node('div', 'ui-table-wrap');
+      const table = node('table', 'ui-data-table');
+      table.innerHTML = '<thead><tr><th>日期</th><th class="num">搜索访客</th><th class="num">搜索占比</th><th class="num">搜索转化率</th><th class="num">搜索点击率</th></tr></thead>';
+      const tbody = document.createElement('tbody');
+      rows.slice(-31).reverse().forEach((row) => {
+        const searchVisitors = row.search_visitors;
+        const searchRatio = row.search_ratio ?? (searchVisitors != null && row.product_visitors ? searchVisitors / row.product_visitors : null);
+        const tr = document.createElement('tr');
+        [row.date, searchVisitors == null ? '--' : number(searchVisitors), percent(searchRatio), percent(row.search_conversion), percent(row.search_click_rate)].forEach((value, index) => {
+          tr.appendChild(node('td', index ? 'num' : '', value));
+        });
+        tbody.appendChild(tr);
+      });
+      table.appendChild(tbody); tableWrap.appendChild(table); wrapper.appendChild(tableWrap);
+    }
+
+    const keywords = section('关键词明细', '只有存在商品级关键词与商品 ID 关联事实时才开放。');
+    keywords.appendChild(node('div', 'product-theme-unavailable', hasSearchFact
+      ? '当前数据源提供商品级搜索汇总，但没有可验证的商品级关键词归因，暂不展示关键词排名或标题建议。'
+      : '当前数据源没有可验证的商品级搜索字段，暂不展示搜索指标、关键词排名或标题建议。'));
+    wrapper.appendChild(keywords);
     return wrapper;
   }
 
@@ -891,6 +947,71 @@
     channel: { key: '', direction: '' },
     campaign: { key: '', direction: '' },
   };
+  let promotionCampaignDetailState = { campaignId: '', loading: false, payload: null, error: '' };
+
+  function renderPromotionCampaignDetail(target) {
+    if (!target) return;
+    target.replaceChildren();
+    const state = promotionCampaignDetailState;
+    if (!state.campaignId) {
+      target.appendChild(node('p', 'panel__hint', '点击推广计划名称查看计划构成与汇总证据。'));
+      return;
+    }
+    if (state.loading) {
+      target.appendChild(node('p', 'panel__hint', '正在加载计划下钻…'));
+      return;
+    }
+    if (state.error) {
+      target.appendChild(node('p', 'panel__hint', state.error));
+      return;
+    }
+    const data = state.payload?.data || {};
+    const summary = data.summary || {};
+    const heading = node('h4', 'product-detail-promotion-block__title', `计划下钻：${summary.campaign_name || state.campaignId}`);
+    const hint = node('p', 'panel__hint', `${summary.channel || '--'} · ${summary.plan_type || '--'} · 覆盖 ${number(data.products?.length || 0)} 个商品`);
+    const list = node('div', 'status-list');
+    list.append(
+      node('div', 'status-list__item', `花费 / 成交：${promotionFormat(summary.ad_spend, 'money')} / ${promotionFormat(summary.attributed_payment_amount, 'money')}`),
+      node('div', 'status-list__item', `ROI / 点击转化率：${summary.roi == null ? '--' : Number(summary.roi).toFixed(2)} / ${promotionFormat(summary.cvr, 'percent')}`),
+    );
+    target.append(heading, hint, list);
+    const products = Array.isArray(data.products) ? data.products : [];
+    if (!products.length) {
+      target.appendChild(node('p', 'panel__hint', '当前计划没有可验证的商品映射。'));
+      return;
+    }
+    const tableWrap = node('div', 'ui-table-wrap');
+    const table = node('table', 'ui-data-table');
+    table.innerHTML = '<thead><tr><th>商品</th><th>商品 ID</th><th class="num">创意数</th></tr></thead>';
+    const tbody = document.createElement('tbody');
+    products.forEach((product) => {
+      const tr = document.createElement('tr');
+      [product.title || product.product_name || '--', product.product_id || '--', number(product.creative_count)].forEach((value, index) => tr.appendChild(node('td', index === 2 ? 'num' : '', value)));
+      tbody.appendChild(tr);
+    });
+    table.appendChild(tbody);
+    tableWrap.appendChild(table);
+    target.appendChild(tableWrap);
+  }
+
+  async function loadPromotionCampaignDetail(campaignId) {
+    if (!current || !campaignId) return;
+    const range = window.TmallDateRange?.getState?.() || {};
+    promotionCampaignDetailState = { campaignId: String(campaignId), loading: true, payload: null, error: '' };
+    renderCurrentPanel();
+    try {
+      const query = new URLSearchParams({ campaign_id: String(campaignId) });
+      if (range.startDate) query.set('start', range.startDate);
+      if (range.endDate) query.set('end', range.endDate);
+      const payload = await DemoApi.domainRequest(`/api/promotion/campaign-detail?${query}`);
+      if (!current) return;
+      promotionCampaignDetailState = { campaignId: String(campaignId), loading: false, payload, error: '' };
+    } catch (error) {
+      if (!current) return;
+      promotionCampaignDetailState = { campaignId: String(campaignId), loading: false, payload: null, error: error.message || '计划下钻加载失败，请重试。' };
+    }
+    renderCurrentPanel();
+  }
 
   function promotionSortValue(row, column) {
     const raw = column.key === 'campaign_name' ? (row.campaign_name || row.campaign_id) : row[column.key];
@@ -956,6 +1077,21 @@
           });
           cell.replaceChildren(button);
         });
+        if (kind === 'campaign') {
+          const campaignColumnIndex = columns.findIndex((column) => column.key === 'campaign_name');
+          if (campaignColumnIndex >= 0) {
+            [...inner.querySelectorAll('tbody tr')].forEach((rowNode, index) => {
+              const rowData = visibleRows[index];
+              const cell = rowNode.children[campaignColumnIndex];
+              if (!cell || !rowData) return;
+              const drill = node('button', 'ui-button ui-button--link', rowData.campaign_name || rowData.campaign_id || '--');
+              drill.type = 'button';
+              drill.title = '查看计划商品构成';
+              drill.addEventListener('click', () => loadPromotionCampaignDetail(rowData.campaign_id));
+              cell.replaceChildren(drill);
+            });
+          }
+        }
       }
       const controls = node('div', 'product-detail-promotion-pagination');
       const summary = node('span', 'panel__hint', `${rows.length} 条 · 第 ${state.page}/${totalPages} 页`);
@@ -1024,6 +1160,12 @@
       tools.appendChild(fields); header.append(copy, tools); block.appendChild(header);
       if (!rows.length) block.appendChild(node('p', 'panel__hint', emptyMessage));
       else block.appendChild(renderPromotionTable(kind, rows));
+      if (kind === 'campaign') {
+        const detail = node('div', 'product-detail-promotion-campaign-detail');
+        detail.dataset.productDetailPromotionCampaignDetail = '';
+        renderPromotionCampaignDetail(detail);
+        block.appendChild(detail);
+      }
       return block;
     };
     body.append(addBlock('channel', '推广渠道汇总', Array.isArray(payload.channel_mix) ? payload.channel_mix : [], '当前日期范围暂无渠道推广数据'));
@@ -1161,6 +1303,7 @@
     }
     if (tab === 'promotion') panel.append(view.promotionError ? section('付费推广', '推广数据加载失败，不影响其他详情') : renderPromotion(view.promotion));
     if (tab === 'trend') panel.append(renderTrend(detail.daily_trend));
+    if (tab === 'search') panel.append(renderSearch(detail));
     if (tab === 'flow-source') {
       panel.append(view.flowSourceError && !view.flowSource
         ? section('流量结构', '流量来源加载失败，不影响其他详情')
@@ -1214,6 +1357,7 @@
 
   async function load() {
     const loadToken = ++token;
+    promotionCampaignDetailState = { campaignId: '', loading: false, payload: null, error: '' };
     destroyOverviewTrendChart();
     body.replaceChildren(node('div', 'ui-empty-state', '正在加载完整商品详情…'));
     const range = window.TmallDateRange?.getState?.() || {};
@@ -1242,7 +1386,10 @@
     const detail = detailResult.value.data || {};
     const product = detail.product || {};
     dialog.querySelector('[data-shared-product-title]').textContent = product.title || current.title || '商品详情';
-    dialog.querySelector('[data-shared-product-meta]').textContent = [product.category, product.style, statusLabel(product.status)].filter(Boolean).join(' · ') || '--';
+    const sourceMeta = current.sourceRule?.name
+      ? `来源分群：${current.sourceRule.name}${current.sourceRule.period ? ` · ${current.sourceRule.period}` : ''}`
+      : '';
+    dialog.querySelector('[data-shared-product-meta]').textContent = [product.category, product.style, statusLabel(product.status), sourceMeta].filter(Boolean).join(' · ') || '--';
     const selectedRange = range.startDate && range.endDate ? `${range.startDate} ~ ${range.endDate}` : '全量数据';
     dialog.querySelector('[data-shared-product-id]').textContent = `商品 ID ${product.product_id || current.productId} · 当前范围 ${selectedRange} · 数据截止 ${text(detail.summary?.data_cutoff_date)}`;
     const imageRoot = dialog.querySelector('[data-shared-product-image]');
@@ -1319,6 +1466,12 @@
     if (!options?.productId) return;
     ensureDialog();
     current = { ...options, productId: String(options.productId), activeTab: 'overview', view: null };
+    promotionCampaignDetailState = { campaignId: '', loading: false, payload: null, error: '' };
+    const workbench = dialog.querySelector('[data-shared-product-workbench]');
+    workbench.href = current.workbenchUrl || `/products/${encodeURIComponent(current.productId)}`;
+    if (!current.workbenchUrl && current.sourceRule?.key) workbench.href += `?rule_key=${encodeURIComponent(current.sourceRule.key)}`;
+    workbench.removeAttribute('aria-disabled');
+    workbench.tabIndex = 0;
     returnFocus = options.trigger || document.activeElement;
     dialog.showModal();
     document.body.classList.add('demo-scroll-lock');

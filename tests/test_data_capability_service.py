@@ -93,6 +93,25 @@ class DataCapabilityServiceTests(unittest.TestCase):
         )
         self.assertEqual([item['key'] for item in result['domains']], ['store_daily'])
 
+    def test_sku_region_and_product_hourly_are_explicitly_unavailable_without_facts(self):
+        from services.data_capability_service import build_catalog
+
+        result = build_catalog(self.app.config['DATABASE_PATH'])
+        domains = {item['key']: item for item in result['domains']}
+
+        for key, expected_table in (
+            ('product_sku_daily', 'product_sku_daily'),
+            ('product_region_daily', 'product_region_daily'),
+            ('product_hourly', 'product_hourly'),
+        ):
+            with self.subTest(domain=key):
+                domain = domains[key]
+                self.assertEqual(domain['availability'], 'source-unavailable')
+                self.assertEqual(domain['coverage']['row_count'], 0)
+                self.assertIn(expected_table, domain['source_tables'])
+                self.assertEqual(domain['capabilities'], [])
+                self.assertTrue(domain['limitations'])
+
     def test_product_fact_metric_evidence_uses_actual_source_columns(self):
         from db import get_db
         from services.data_capability_service import build_catalog

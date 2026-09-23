@@ -100,8 +100,8 @@
       page: 1,
       pageSize: Number(table.dataset.pageSize) || 20,
       controls: null,
+      controlsOffset: 0,
       sticky: null,
-      stickyFooter: null,
       bodyObserver: null,
       headObserver: null,
       sizeObserver: null,
@@ -306,65 +306,17 @@
     ) || null;
   }
 
-  function makeStickyFooter(table, state) {
-    if (state.stickyFooter || !state.host) return;
-    const root = document.createElement('div');
-    root.className = 'table-sticky-scrollbar';
-    const range = document.createElement('input');
-    range.className = 'table-sticky-scrollbar__range';
-    range.type = 'range';
-    range.min = '0';
-    range.step = '1';
-    range.value = '0';
-    const scroller = range;
-    scroller.setAttribute('aria-label', '横向滚动表格');
-    root.appendChild(range);
-    document.body.appendChild(root);
-    state.stickyFooter = { root, range, controls: null, controlsOffset: 0, syncing: false };
-    state.host.addEventListener('scroll', () => {
-      const footer = state.stickyFooter;
-      if (!footer || footer.syncing) return;
-      footer.syncing = true;
-      footer.range.value = String(state.host.scrollLeft);
-      footer.syncing = false;
-    });
-    range.addEventListener('input', () => {
-      const footer = state.stickyFooter;
-      if (!footer || footer.syncing) return;
-      footer.syncing = true;
-      state.host.scrollLeft = Number(footer.range.value);
-      footer.syncing = false;
-    });
-  }
-
-  function resetStickyFooter(footer) {
-    footer.root.classList.remove('is-visible');
-    footer.root.style.removeProperty('left');
-    footer.root.style.removeProperty('width');
-    footer.root.style.removeProperty('bottom');
-    if (!footer.controls) return;
-    footer.controls.classList.remove('is-table-sticky-footer');
-    footer.controls.style.removeProperty('left');
-    footer.controls.style.removeProperty('width');
-    footer.controls.style.removeProperty('bottom');
-  }
-
-  function updateStickyFooter(table, state) {
+  function updateStickyPagination(table, state) {
     if (!state.host) return;
-    makeStickyFooter(table, state);
-    const footer = state.stickyFooter;
-    if (!footer) return;
     const controls = findAssociatedControls(table, state.host);
-    if (footer.controls && footer.controls !== controls) resetStickyFooter(footer);
-    footer.controls = controls;
     const hostBox = state.host.getBoundingClientRect();
     const viewport = getStickyViewport(table);
     const tableInView = hostBox.top < viewport.bottom && hostBox.bottom > viewport.top;
     const viewportBottomOffset = Math.max(0, window.innerHeight - viewport.bottom);
     if (controls && !controls.classList.contains('is-table-sticky-footer')) {
-      footer.controlsOffset = Math.max(0, controls.getBoundingClientRect().top - hostBox.bottom);
+      state.controlsOffset = Math.max(0, controls.getBoundingClientRect().top - hostBox.bottom);
     }
-    const controlsShouldFloat = Boolean(controls) && tableInView && hostBox.bottom + footer.controlsOffset > viewport.bottom;
+    const controlsShouldFloat = Boolean(controls) && tableInView && hostBox.bottom + state.controlsOffset > viewport.bottom;
     controls?.classList.toggle('is-table-sticky-footer', controlsShouldFloat);
     if (controlsShouldFloat) {
       controls.style.left = `${hostBox.left}px`;
@@ -375,15 +327,6 @@
       controls.style.removeProperty('width');
       controls.style.removeProperty('bottom');
     }
-    const scrollbarShouldFloat = tableInView && state.host.scrollWidth > state.host.clientWidth && hostBox.bottom > viewport.bottom;
-    footer.root.classList.toggle('is-visible', scrollbarShouldFloat);
-    if (!scrollbarShouldFloat) return;
-    footer.range.max = String(Math.max(0, state.host.scrollWidth - state.host.clientWidth));
-    footer.range.value = String(Math.min(Number(footer.range.max), state.host.scrollLeft));
-    footer.root.style.left = `${hostBox.left}px`;
-    footer.root.style.width = `${hostBox.width}px`;
-    footer.root.style.bottom = `${viewportBottomOffset + (controlsShouldFloat ? controls.getBoundingClientRect().height + 6 : 6)}px`;
-    if (!footer.syncing) footer.range.value = String(state.host.scrollLeft);
   }
 
   function syncStickyColumnWidths(table, state) {
@@ -409,7 +352,7 @@
       state.stickySyncFrame = 0;
       syncStickyHeader(table, state);
       updateStickyHeader(table, state);
-      updateStickyFooter(table, state);
+      updateStickyPagination(table, state);
     });
   }
 
@@ -474,7 +417,7 @@
     state.sticky.root.style.height = `${headerBox.height}px`;
     state.sticky.table.style.transform = `translateX(-${state.host.scrollLeft || 0}px)`;
     syncStickyColumnWidths(table, state);
-    updateStickyFooter(table, state);
+    updateStickyPagination(table, state);
   }
 
   function scheduleRefresh(table, state) {
@@ -518,10 +461,6 @@
     state.sizeObserverTargets = [];
     if (state.stickySyncFrame) cancelAnimationFrame(state.stickySyncFrame);
     state.sticky?.root.remove();
-    if (state.stickyFooter) {
-      resetStickyFooter(state.stickyFooter);
-      state.stickyFooter.root.remove();
-    }
     state.controls?.root.remove();
     liveStates.delete(state);
     tableStates.delete(table);
@@ -555,7 +494,7 @@
 
   function refreshAll() {
     document.querySelectorAll('table.ui-data-table, table[data-table-controls="true"]').forEach(enhanceTable);
-    liveStates.forEach((state) => { updateStickyHeader(state.table, state); updateStickyFooter(state.table, state); });
+    liveStates.forEach((state) => { updateStickyHeader(state.table, state); updateStickyPagination(state.table, state); });
   }
 
   let viewportFrame = 0;
@@ -570,7 +509,7 @@
       liveStates.forEach((state) => {
         if (shouldResync) syncStickyHeader(state.table, state);
         updateStickyHeader(state.table, state);
-        updateStickyFooter(state.table, state);
+        updateStickyPagination(state.table, state);
       });
     });
   };

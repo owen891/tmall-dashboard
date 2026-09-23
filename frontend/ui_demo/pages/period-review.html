@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>周月复盘 | 天猫数据仪表盘</title>
+  <link rel="stylesheet" href="../assets/tokens.css">
+  <link rel="stylesheet" href="../assets/shell.css">
+  <link rel="stylesheet" href="../assets/components.css">
+  <link rel="stylesheet" href="../assets/period-review.css?v=20260923c">
+  <script src="../assets/lucide-custom.min.js"></script>
+</head>
+<body data-page="period-review">
+  <div class="demo-app">
+    <aside class="demo-sidebar" data-shell-sidebar></aside>
+    <div class="demo-main">
+      <header class="demo-topbar" data-shell-header></header>
+      <main class="demo-page">
+        <aside data-right-rail hidden aria-label="辅助信息"></aside>
+        <div class="ui-page-header pr-page-header">
+          <div>
+            <span class="section-kicker">经营决策工作台</span>
+            <h2>周月复盘</h2>
+            <p>先确认结果和变化，再定位商品、推广与执行问题，最后沉淀可验收的下一步动作。</p>
+          </div>
+          <div class="ui-filter-toolbar">
+            <button type="button" class="ui-button" data-pr-refresh><i data-lucide="refresh-cw"></i><span>刷新素材</span></button>
+            <button type="button" class="ui-button ui-button--primary" data-pr-save><i data-lucide="save"></i><span>保存复盘</span></button>
+          </div>
+        </div>
+
+        <section class="pr-control-strip" aria-label="legacy controls" hidden>
+          <nav class="pr-mode-tabs" aria-label="复盘周期">
+            <button type="button" class="is-active" data-pr-mode="week">周复盘</button>
+            <button type="button" data-pr-mode="month">月复盘</button>
+          </nav>
+          <div class="pr-control-strip__status">
+            <strong data-pr-period-label>正在读取时间范围…</strong>
+          </div>
+          <label class="pr-compact-field"><span>对比</span><select data-pr-compare aria-label="对比方式">
+            <option value="previous">环比上一期</option>
+            <option value="yoy">同比去年同期</option>
+            <option value="custom">自定义对比周期</option>
+            <option value="none">不对比</option>
+          </select></label>
+          <label class="pr-compact-field" data-pr-compare-period-field hidden><span>对比周期</span><select data-pr-compare-period aria-label="对比周期"></select></label>
+        </section>
+
+        <section class="ui-panel pr-toolbar" aria-label="复盘设置">
+          <div class="pr-toolbar__fields">
+            <label class="pr-field"><span>销售额目标（可空）</span><input type="number" min="0" step="100" data-pr-target placeholder="未设置"></label>
+            <label class="pr-field"><span>净利润额目标（可空）</span><input type="number" step="100" data-pr-target-profit placeholder="未设置"></label>
+            <label class="pr-field"><span>推广费目标（可空）</span><input type="number" min="0" step="100" data-pr-target-ad-spend placeholder="未设置"></label>
+            <label class="pr-field"><span>净费比目标 %（可空）</span><input type="number" min="0" step="0.01" data-pr-target-net-expense-ratio placeholder="如 23.70"></label>
+            <label class="pr-field"><span>复盘人</span><input type="text" data-pr-reviewer value="运营人员"></label>
+            <label class="pr-field"><span>状态</span><select data-pr-status><option value="draft">草稿</option><option value="final">已定稿</option></select></label>
+          </div>
+          <p class="pr-toolbar__status" data-pr-status-text role="status"></p>
+          <p class="pr-toolbar__status" data-pr-category-note role="status"></p>
+        </section>
+
+        <div class="pr-state" data-pr-state role="status" aria-live="polite"></div>
+
+        <section class="pr-command-center" data-pr-command-center hidden aria-label="复盘结论总览"></section>
+
+        <nav class="pr-workbench-tabs" aria-label="复盘工作区">
+          <button type="button" class="is-active" data-pr-workbench-tab="conclusion">结论与诊断</button>
+          <button type="button" data-pr-workbench-tab="products">货品与异常</button>
+          <button type="button" data-pr-workbench-tab="execution">动作与计划</button>
+          <button type="button" data-pr-workbench-tab="market">市场</button>
+          <button type="button" data-pr-workbench-tab="promotion">推广</button>
+          <button type="button" data-pr-workbench-tab="matrix">指标矩阵</button>
+          <button type="button" data-pr-workbench-tab="category">类目拆解</button>
+          <button type="button" data-pr-workbench-tab="history">历史与口径</button>
+        </nav>
+
+        <section class="pr-workbench-panel is-active" data-pr-workbench-panel="conclusion">
+          <section class="ui-panel pr-overview" data-pr-overview hidden aria-label="业绩全景"></section>
+          <section class="pr-sections" data-pr-sections aria-label="复盘结论"></section>
+        </section>
+
+        <section class="pr-workbench-panel" data-pr-workbench-panel="products">
+          <section class="pr-analysis-grid" data-pr-product-analysis aria-label="货品与异常"></section>
+        </section>
+
+        <section class="pr-workbench-panel" data-pr-workbench-panel="execution">
+          <section class="pr-analysis-grid" data-pr-execution-analysis aria-label="动作与计划"></section>
+        </section>
+
+        <section class="pr-workbench-panel" data-pr-workbench-panel="market">
+          <section class="pr-analysis-grid" data-pr-market-analysis aria-label="市场分析"></section>
+        </section>
+
+        <section class="pr-workbench-panel" data-pr-workbench-panel="promotion">
+          <section class="pr-analysis-grid" data-pr-channel-analysis aria-label="推广分析"></section>
+          <section class="pr-analysis-grid" data-pr-promotion-analysis aria-label="推广效率"></section>
+        </section>
+
+        <section class="pr-workbench-panel" data-pr-workbench-panel="matrix" aria-label="指标矩阵">
+          <section class="pr-analysis-grid" data-pr-matrix aria-label="周期指标矩阵"></section>
+        </section>
+
+        <section class="pr-workbench-panel" data-pr-workbench-panel="category" aria-label="类目拆解">
+          <section class="pr-analysis-grid" data-pr-category-breakdown aria-label="类目指标拆解"></section>
+        </section>
+
+        <section class="ui-panel pr-history-panel pr-workbench-panel" data-pr-workbench-panel="history" aria-label="历史复盘">
+          <div class="panel__header">
+            <div><h3 class="panel__title">历史复盘</h3><p class="panel__hint">点击任意一期可载入查看或继续编辑。</p></div>
+          </div>
+          <div class="pr-history__list" data-pr-history></div>
+        </section>
+      </main>
+    </div>
+  </div>
+  <script src="../assets/api.js"></script>
+  <script src="../assets/navigation.js"></script>
+  <script src="../assets/labels.js"></script>
+  <script src="../assets/shell.js?v=20260923q"></script>
+  <script src="../assets/period-review-live.js?v=20260923j"></script>
+</body>
+</html>

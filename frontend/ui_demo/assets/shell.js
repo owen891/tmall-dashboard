@@ -141,9 +141,10 @@
       label: '店铺',
       items: [
         ['overview', '数据概览', 'layout-dashboard', 'overview'],
-        ['category-dashboard', '品类经营看板', 'panels-top-left', 'category-dashboard'],
+        ['category-dashboard', '品类经营看板', 'pie-chart', 'category-dashboard'],
         ['goals', '经营目标', 'target', 'goals'],
         ['reviews', '经营复盘', 'clipboard-check', 'reviews'],
+        ['period-review', '周月复盘', 'file-text', 'period-review'],
       ],
     },
     {
@@ -193,6 +194,7 @@
     'category-dashboard': ['品类经营看板', '按日、周、月和自定义周期跟踪品类经营表现'],
     'data-collection': ['数据采集', '各数据源采集状态管理与手动触发'],
     reviews: ['经营复盘', '查看待复盘动作与经营周期差异'],
+    'period-review': ['周月复盘', '系统汇总业绩、目标差距、市场与动作素材，人工补结论与卡点'],
     'data-center': ['数据中心', '导入、校验和管理经营数据'],
     settings: ['设置', '维护店铺与业务默认配置'],
     goals: ['经营目标', '按年、季、月、周、日跟踪净销售目标'],
@@ -221,6 +223,7 @@
   const sidebar = document.querySelector('[data-shell-sidebar]');
   const header = document.querySelector('[data-shell-header]');
   if (!sidebar || !header) return;
+  sidebar.id = sidebar.id || 'demo-sidebar';
 
   // Lucide's public helper scans the whole document on every call. Most page
   // updates only add a few icons, so skip the scan when no unprocessed icons
@@ -249,18 +252,45 @@
     <nav class="demo-nav" aria-label="主导航">${navGroups.map((group, groupIndex) => `<section class="demo-nav__section${groupIndex === 0 ? ' demo-nav__section--primary' : ''}"><h2 class="demo-nav__label">${group.label}</h2><div class="demo-nav__group">${group.items.map(([id, label, iconName, page]) => `<a class="demo-nav__item" data-page-link="${id}" href="${route(page)}" aria-label="${label}" title="${label}"><i data-lucide="${iconName}"></i><span>${label}</span>${id === 'reviews' ? '<b class="demo-nav__badge" data-nav-action-count hidden aria-label="待处理动作数量"></b>' : ''}</a>`).join('')}</div></section>`).join('')}</nav>
     <div class="demo-sidebar__footer">
       <div class="demo-sidebar__meta" data-sidebar-meta role="group" aria-label="版本与项目链接">
-        <div class="demo-sidebar__meta-row">
-          <span class="status-dot" aria-label="系统正常" title="系统正常"></span>
-          <span class="demo-sidebar__version" data-sidebar-version>加载中…</span>
-          <span class="demo-sidebar__update-status" data-sidebar-update-status role="status" aria-live="polite"></span>
-        </div>
-        <div class="demo-sidebar__meta-actions">
-          <a class="demo-sidebar__meta-action" href="https://github.com/owen891/tmall-dashboard" target="_blank" rel="noreferrer" aria-label="GitHub 仓库" title="GitHub 仓库"><svg class="demo-sidebar__github-icon" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.043-1.61-4.043-1.61-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.084-.73.084-.73 1.205.085 1.84 1.237 1.84 1.237 1.07 1.835 2.809 1.305 3.495.998.108-.776.418-1.305.762-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.292-1.552 3.297-1.23 3.297-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12" /></svg><span class="demo-sidebar__meta-action-label">GitHub</span></a>
-          <a class="demo-sidebar__meta-action" href="https://gitcode.com/owen891/tmall-dashboard/releases" target="_blank" rel="noreferrer" aria-label="更新说明" title="更新说明"><i data-lucide="file-text" aria-hidden="true"></i><span class="demo-sidebar__meta-action-label">更新说明</span></a>
-          <button class="ui-button ui-button--ghost demo-sidebar__update" type="button" data-sidebar-check-update aria-label="检查升级" title="检查升级"><i data-lucide="refresh-cw" aria-hidden="true"></i><span>检查升级</span></button>
+        <div class="demo-sidebar__utility-row">
+          <div class="demo-sidebar__version-group">
+            <span class="status-dot" aria-label="系统正常" title="系统正常"></span>
+            <span class="demo-sidebar__version" data-sidebar-version>加载中…</span>
+            <span class="demo-sidebar__update-status" data-sidebar-update-status role="status" aria-live="polite"></span>
+          </div>
+          <div class="demo-sidebar__utility-actions">
+            <button class="demo-sidebar__meta-action" type="button" data-open-toolbox aria-label="导入数据" title="导入数据"><i data-lucide="upload" aria-hidden="true"></i><span class="demo-sidebar__meta-action-label">导入数据</span></button>
+            <button class="demo-sidebar__meta-action" type="button" data-demo-theme aria-label="切换深色主题" title="切换深色主题"><i data-lucide="moon" aria-hidden="true"></i><span class="demo-sidebar__meta-action-label">主题</span></button>
+          </div>
+          <div class="demo-sidebar__meta-actions">
+            <button class="demo-sidebar__meta-action" type="button" data-sidebar-version-trigger aria-label="查看版本与更新" title="查看版本与更新"><svg class="demo-sidebar__github-icon" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.043-1.61-4.043-1.61-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.084-.73.084-.73 1.205.085 1.84 1.237 1.84 1.237 1.07 1.835 2.809 1.305 3.495.998.108-.776.418-1.305.762-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.292-1.552 3.297-1.23 3.297-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12" /></svg><span class="demo-sidebar__meta-action-label">版本更新</span></button>
+            <a class="demo-sidebar__meta-action" href="https://github.com/owen891/tmall-dashboard" target="_blank" rel="noreferrer" aria-label="GitHub 仓库" title="GitHub 仓库"><svg class="demo-sidebar__github-icon" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.043-1.61-4.043-1.61-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.084-.73.084-.73 1.205.085 1.84 1.237 1.84 1.237 1.07 1.835 2.809 1.305 3.495.998.108-.776.418-1.305.762-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12" /></svg><span class="demo-sidebar__meta-action-label">GitHub</span></a>
+            <a class="demo-sidebar__meta-action" href="https://github.com/owen891/tmall-dashboard/releases" target="_blank" rel="noreferrer" aria-label="更新说明" title="更新说明"><i data-lucide="file-text" aria-hidden="true"></i><span class="demo-sidebar__meta-action-label">更新说明</span></a>
+          </div>
         </div>
       </div>
     </div>`;
+  sidebar.querySelectorAll('.demo-sidebar__meta-actions > a').forEach((link) => link.remove());
+  sidebar.insertAdjacentHTML('beforeend', `
+    <dialog class="demo-version-dialog" data-sidebar-version-dialog aria-labelledby="demoVersionDialogTitle">
+      <div class="demo-version-dialog__header">
+        <div>
+          <span class="demo-version-dialog__eyebrow">当前版本</span>
+          <h2 id="demoVersionDialogTitle" data-sidebar-dialog-version>加载中…</h2>
+          <p data-sidebar-dialog-status>可检查最新版本</p>
+        </div>
+        <button class="demo-version-dialog__refresh" type="button" data-sidebar-check-update aria-label="检查更新" title="检查更新"><i data-lucide="refresh-cw" aria-hidden="true"></i></button>
+      </div>
+      <div class="demo-version-dialog__actions">
+        <a class="demo-version-dialog__notes" href="https://github.com/owen891/tmall-dashboard/releases" target="_blank" rel="noreferrer"><i data-lucide="file-text" aria-hidden="true"></i><span>查看更新日志</span><i data-lucide="external-link" aria-hidden="true"></i></a>
+        <div class="demo-version-dialog__repo-list" aria-label="代码仓库">
+          <a class="demo-version-dialog__repo" href="https://github.com/owen891/tmall-dashboard" target="_blank" rel="noreferrer" aria-label="打开 GitHub 仓库"><svg class="demo-sidebar__github-icon demo-version-dialog__repo-mark" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.043-1.61-4.043-1.61-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.084-.73.084-.73 1.205.085 1.84 1.237 1.84 1.237 1.07 1.835 2.809 1.305 3.495.998.108-.776.418-1.305.762-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.292-1.552 3.297-1.23 3.297-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12" /></svg><span class="demo-version-dialog__repo-copy"><strong>GitHub</strong><code>owen891/tmall-dashboard</code></span><i data-lucide="external-link" aria-hidden="true"></i></a>
+          <a class="demo-version-dialog__repo" href="https://gitcode.com/owen891/tmall-dashboard" target="_blank" rel="noreferrer" aria-label="打开 GitCode 仓库"><i class="demo-version-dialog__repo-mark" data-lucide="git-branch" aria-hidden="true"></i><span class="demo-version-dialog__repo-copy"><strong>GitCode</strong><code>owen891/tmall-dashboard</code></span><i data-lucide="external-link" aria-hidden="true"></i></a>
+        </div>
+        <button class="demo-version-dialog__reload" type="button" data-sidebar-dialog-reload><i data-lucide="download" aria-hidden="true"></i><span>立即刷新</span></button>
+      </div>
+      <button class="demo-version-dialog__close" type="button" data-sidebar-dialog-close>关闭</button>
+    </dialog>`);
 
   const hideCategoryPages = new Set(['data-center', 'settings', 'manage', 'catalog']);
   const categoryMarkup = hideCategoryPages.has(currentPage) ? '' : `
@@ -269,7 +299,20 @@
         <option value="sock">标品袜子</option><option value="all">全部品类</option>
       </select>
     </div>`;
+  const periodReviewControls = currentPage === 'period-review' ? `
+    <div class="demo-period demo-period--review" role="group" aria-label="复盘粒度与对比">
+      <div class="pr-mode-tabs" role="tablist" aria-label="复盘周期">
+        <button type="button" class="is-active" data-pr-mode="week" role="tab" aria-selected="true">周复盘</button>
+        <button type="button" data-pr-mode="month" role="tab" aria-selected="false">月复盘</button>
+      </div>
+      <label class="pr-compact-field pr-review-period"><span>复盘周期</span><select data-pr-period aria-label="选择复盘周期"><option>加载中…</option></select></label>
+      <label class="pr-compact-field"><span>对比</span><select data-pr-compare aria-label="对比方式">
+        <option value="previous">环比上期</option><option value="yoy">同比去年同期</option><option value="custom">自定义对比周期</option><option value="none">不对比</option>
+      </select></label>
+      <label class="pr-compact-field" data-pr-compare-period-field hidden><span>周期</span><select data-pr-compare-period aria-label="对比周期"></select></label>
+    </div>` : '';
   header.innerHTML = `
+    <button class="demo-tool demo-sidebar-toggle" type="button" title="收起导航" aria-label="收起导航" aria-controls="demo-sidebar" aria-expanded="true" data-sidebar-toggle><i data-lucide="chevron-left"></i></button>
     <div class="demo-topbar__filters">
       ${categoryMarkup}
       <div class="demo-period" role="group" aria-label="统计时间">
@@ -284,8 +327,9 @@
         <div class="demo-calendar__footer"><span data-calendar-help>请选择开始日期</span><button class="ui-button ui-button--ghost" type="button" data-calendar-cancel>取消</button></div>
       </div>
       </div>
+      ${periodReviewControls}
     </div>
-    <div class="demo-topbar__tools"><button class="ui-button demo-import-trigger" type="button" data-open-toolbox title="导入数据"><i data-lucide="upload"></i><span>导入数据</span></button><button class="demo-tool demo-mobile-nav" type="button" title="打开导航" aria-label="打开导航" aria-expanded="false" data-mobile-nav><i data-lucide="menu"></i></button><button class="demo-tool" type="button" title="刷新" aria-label="刷新" data-demo-refresh><i data-lucide="refresh-cw"></i></button><button class="demo-tool" type="button" title="导出" aria-label="导出当前表格" data-demo-export><i data-lucide="download"></i></button><button class="demo-tool" type="button" title="切换深色主题" aria-label="切换深色主题" data-demo-theme><i data-lucide="moon"></i></button></div>`;
+    <div class="demo-topbar__tools"><button class="demo-tool demo-mobile-nav" type="button" title="打开导航" aria-label="打开导航" aria-expanded="false" data-mobile-nav><i data-lucide="menu"></i></button><button class="demo-tool" type="button" title="刷新" aria-label="刷新" data-demo-refresh><i data-lucide="refresh-cw"></i></button><button class="demo-tool" type="button" title="导出" aria-label="导出当前表格" data-demo-export><i data-lucide="download"></i></button></div>`;
 
   const categorySelect = header.querySelector('[data-category-mode]');
   const CATEGORY_STORAGE_KEY = 'dashboard.categoryMode';
@@ -293,15 +337,22 @@
   const hasStoredCategoryMode = () => { try { return Boolean(localStorage.getItem(CATEGORY_STORAGE_KEY)); } catch (_) { return false; } };
   const storeCategoryMode = (v) => { try { localStorage.setItem(CATEGORY_STORAGE_KEY, v); } catch (_) {} };
   if (categorySelect) {
+    let categoryChangedByUser = false;
     categorySelect.value = readCategoryMode();
-    categorySelect.addEventListener('change', () => { storeCategoryMode(categorySelect.value); window.location.reload(); });
+    categorySelect.addEventListener('change', () => {
+      categoryChangedByUser = true;
+      storeCategoryMode(categorySelect.value);
+      if (currentPage !== 'period-review') window.location.reload();
+    });
     requestApi('/api/settings').then((payload) => {
       const modes = payload?.data?.category_modes || payload?.category_modes || [];
       if (!Array.isArray(modes) || !modes.length) return;
       categorySelect.innerHTML = modes.filter((m) => m && m.enabled !== false).map((m) => `<option value="${String(m.value)}">${String(m.label)}</option>`).join('');
-      if (!hasStoredCategoryMode() && payload?.data?.category_mode_default) storeCategoryMode(payload.data.category_mode_default);
-      categorySelect.value = readCategoryMode();
-      if (!categorySelect.value && payload?.data?.category_mode_default) {
+      if (!categoryChangedByUser && !hasStoredCategoryMode() && payload?.data?.category_mode_default) {
+        storeCategoryMode(payload.data.category_mode_default);
+      }
+      if (!categoryChangedByUser) categorySelect.value = readCategoryMode();
+      if (!categorySelect.value && !categoryChangedByUser && payload?.data?.category_mode_default) {
         categorySelect.value = payload.data.category_mode_default;
         storeCategoryMode(categorySelect.value);
       }
@@ -401,12 +452,31 @@
     window.setTimeout(() => URL.revokeObjectURL(link.href), 0);
     showToast(`已导出 ${tables.length} 个表格`);
   };
-  const themeButton = header.querySelector('[data-demo-theme]');
+  const themeButton = document.querySelector('[data-demo-theme]');
+  const versionTrigger = document.querySelector('[data-sidebar-version-trigger]');
+  const versionLabel = document.querySelector('[data-sidebar-version]');
+  const versionStatus = document.querySelector('[data-sidebar-update-status]');
+  const versionDialog = document.querySelector('[data-sidebar-version-dialog]');
+  const dialogVersion = document.querySelector('[data-sidebar-dialog-version]');
+  const dialogStatus = document.querySelector('[data-sidebar-dialog-status]');
+  const syncVersionDialog = () => {
+    if (dialogVersion) dialogVersion.textContent = versionLabel?.textContent?.trim() || '加载中…';
+    if (dialogStatus) dialogStatus.textContent = versionStatus?.textContent?.trim() || '可检查最新版本';
+  };
+  const openVersionDialog = () => {
+    if (!versionDialog) return;
+    syncVersionDialog();
+    if (!versionDialog.open) versionDialog.showModal();
+  };
+  versionTrigger?.addEventListener('click', openVersionDialog);
+  document.querySelector('[data-sidebar-dialog-close]')?.addEventListener('click', () => versionDialog?.close());
+  document.querySelector('[data-sidebar-dialog-reload]')?.addEventListener('click', () => window.location.reload());
+  if (versionStatus) new MutationObserver(syncVersionDialog).observe(versionStatus, { childList: true, characterData: true, subtree: true });
   const syncThemeButton = () => {
     const dark = theme === 'dark';
     themeButton.setAttribute('aria-label', dark ? '切换浅色主题' : '切换深色主题');
     themeButton.setAttribute('title', dark ? '切换浅色主题' : '切换深色主题');
-    themeButton.innerHTML = `<i data-lucide="${dark ? 'sun' : 'moon'}"></i>`;
+    themeButton.innerHTML = `<i data-lucide="${dark ? 'lightbulb' : 'moon'}" aria-hidden="true"></i><span class="demo-sidebar__meta-action-label">主题</span>`;
     if (window.lucide) window.lucide.createIcons();
   };
   const setTheme = (nextTheme) => {
@@ -473,10 +543,12 @@
       window.dispatchEvent(new CustomEvent('tmall:date-range-ready', { detail: { ...state } }));
     }
   };
-  const applyRange = (start, end, preset = 'custom') => {
+  const applyRange = (start, end, preset = 'custom', allowFuture = false) => {
+    if (!allowFuture && end > anchorDate) return false;
     state = { ...state, startDate: formatDate(start), endDate: formatDate(end), preset };
     presetSelect.value = preset;
     dispatchRange();
+    return true;
   };
   const renderCalendar = () => {
     const startValue = draftStart ? formatDate(draftStart) : state.startDate;
@@ -576,6 +648,13 @@
     applyRange(start, end, preset);
     return true;
   };
+  const setReviewRange = (startValue, endValue) => {
+    if (!startValue || !endValue || !/^\d{4}-\d{2}-\d{2}$/.test(startValue) || !/^\d{4}-\d{2}-\d{2}$/.test(endValue)) return false;
+    const start = parseDate(startValue);
+    const end = parseDate(endValue);
+    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || start > end) return false;
+    return applyRange(start, end, 'custom', true);
+  };
   window.TmallDateRange = {
     getState: () => ({ ...state }),
     subscribe: (subscriber, immediate = true) => {
@@ -587,6 +666,7 @@
       return () => rangeSubscribers.delete(subscriber);
     },
     setRange: setSharedRange,
+    setReviewRange,
   };
   const restoreRangeFromUrl = () => {
     const currentParams = new URLSearchParams(window.location.search);
@@ -649,6 +729,31 @@
     link.addEventListener('click', () => closeMobileNavigation(false));
   });
   const mobileNav = header.querySelector('[data-mobile-nav]');
+  const sidebarToggle = header.querySelector('[data-sidebar-toggle]');
+  const sidebarStorageKey = 'tmall-demo-sidebar-collapsed';
+  const isDesktopSidebar = () => window.matchMedia('(min-width: 761px)').matches;
+  const readSidebarCollapsed = () => {
+    try { return localStorage.getItem(sidebarStorageKey) === 'true'; } catch (_) { return false; }
+  };
+  const storeSidebarCollapsed = (collapsed) => {
+    try { localStorage.setItem(sidebarStorageKey, String(collapsed)); } catch (_) {}
+  };
+  const setSidebarCollapsed = (collapsed, persist = true) => {
+    const active = Boolean(collapsed) && isDesktopSidebar();
+    document.body.classList.toggle('demo-sidebar-collapsed', active);
+    sidebar.classList.toggle('is-collapsed', active);
+    sidebarToggle?.setAttribute('aria-expanded', String(!active));
+    sidebarToggle?.setAttribute('aria-label', active ? '展开导航' : '收起导航');
+    sidebarToggle?.setAttribute('title', active ? '展开导航' : '收起导航');
+    const icon = sidebarToggle?.querySelector('[data-lucide], .lucide');
+    if (icon) {
+      icon.setAttribute('data-lucide', active ? 'chevron-right' : 'chevron-left');
+      icon.removeAttribute('data-lucide-rendered');
+      window.lucide?.createIcons?.();
+    }
+    if (persist && isDesktopSidebar()) storeSidebarCollapsed(active);
+  };
+  sidebarToggle?.addEventListener('click', () => setSidebarCollapsed(!document.body.classList.contains('demo-sidebar-collapsed')));
   const mobileNavBackdrop = document.createElement('button');
   mobileNavBackdrop.className = 'demo-nav-backdrop';
   mobileNavBackdrop.type = 'button';
@@ -683,8 +788,12 @@
     window.setTimeout(() => sidebar.querySelector('[data-page-link]')?.focus(), 0);
   });
   mobileNavBackdrop.addEventListener('click', () => closeMobileNavigation());
-  window.addEventListener('resize', () => setSidebarState(sidebar.classList.contains('is-open')));
+  window.addEventListener('resize', () => {
+    setSidebarState(sidebar.classList.contains('is-open'));
+    setSidebarCollapsed(readSidebarCollapsed(), false);
+  });
   setSidebarState(false);
+  setSidebarCollapsed(readSidebarCollapsed(), false);
   document.addEventListener('keydown', (event) => {
     if (event.key === 'Escape' && sidebar.classList.contains('is-open')) {
       event.preventDefault();

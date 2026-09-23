@@ -16,21 +16,58 @@
   async function request(path, options = {}) {
     const method = (options.method || 'GET').toUpperCase();
     path = withCategoryMode(path, method);
-    const response = await fetch(path, {
-      headers: { Accept: 'application/json', ...(options.headers || {}) },
-      ...options
-    });
-    if (!response.ok) {
-      const raw = await response.text();
-      let payload = null;
-      try { payload = raw ? JSON.parse(raw) : null; } catch (_) {}
-      const error = new Error(payload?.message || payload?.error || raw || `HTTP ${response.status}: ${path}`);
-      error.status = response.status;
-      error.code = payload?.code;
-      error.details = payload?.details || {};
-      throw error;
+    const { signal, timeoutMs, ...fetchOptions } = options;
+    let timeoutId = null;
+    let timeoutController = null;
+    let requestSignal = signal;
+    let detachAbort = null;
+    if (Number(timeoutMs) > 0 && typeof AbortController !== 'undefined') {
+      timeoutController = new AbortController();
+      timeoutId = window.setTimeout(() => timeoutController.abort(), Number(timeoutMs));
+      if (signal && typeof AbortSignal !== 'undefined' && typeof AbortSignal.any === 'function') {
+        requestSignal = AbortSignal.any([signal, timeoutController.signal]);
+      } else if (signal) {
+        const combinedController = new AbortController();
+        const abort = () => combinedController.abort();
+        signal.addEventListener('abort', abort, { once: true });
+        timeoutController.signal.addEventListener('abort', abort, { once: true });
+        detachAbort = () => {
+          signal.removeEventListener('abort', abort);
+          timeoutController.signal.removeEventListener('abort', abort);
+        };
+        requestSignal = combinedController.signal;
+      } else {
+        requestSignal = timeoutController.signal;
+      }
     }
-    return response.json();
+    try {
+      const response = await fetch(path, {
+        ...fetchOptions,
+        headers: { Accept: 'application/json', ...(fetchOptions.headers || {}) },
+        ...(requestSignal ? { signal: requestSignal } : {}),
+      });
+      if (!response.ok) {
+        const raw = await response.text();
+        let payload = null;
+        try { payload = raw ? JSON.parse(raw) : null; } catch (_) {}
+        const error = new Error(payload?.message || payload?.error || raw || `HTTP ${response.status}: ${path}`);
+        error.status = response.status;
+        error.code = payload?.code;
+        error.details = payload?.details || {};
+        throw error;
+      }
+      return response.json();
+    } catch (error) {
+      if (timeoutController?.signal.aborted && !signal?.aborted) {
+        const timeoutError = new Error(`Request timed out: ${path}`);
+        timeoutError.code = 'REQUEST_TIMEOUT';
+        throw timeoutError;
+      }
+      throw error;
+    } finally {
+      if (timeoutId !== null) window.clearTimeout(timeoutId);
+      detachAbort?.();
+    }
   }
 
   async function optional(path, fallback, options) {

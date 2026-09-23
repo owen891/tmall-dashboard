@@ -54,6 +54,72 @@ class CollectorApiRunTests(unittest.TestCase):
         source = response.get_json()['data']['sources'][0]
         self.assertIn('age_days', source)
 
+    def test_status_uses_durable_run_and_reconciles_stale_state(self):
+        from datetime import datetime, timedelta, timezone
+        from services.collector_run_service import create_run
+        from db import get_db
+
+        run_id = create_run('bi_daily', 'default', db_path=self.app.config['DATABASE_PATH'])
+        old = (datetime.now(timezone.utc) - timedelta(hours=3)).isoformat()
+        with self.app.app_context(), get_db() as conn:
+            conn.execute(
+                '''UPDATE collector_runs
+                   SET status='running', created_at=?, updated_at=?
+                   WHERE id=?''',
+                (old, old, run_id),
+            )
+            conn.commit()
+
+        response = self.client.get('/api/collect/status')
+        self.assertEqual(response.status_code, 200)
+        source = next(
+            item for item in response.get_json()['data']['sources']
+            if item['key'] == 'bi_daily'
+        )
+        self.assertEqual(source['status'], 'failed')
+        self.assertEqual(source['run_status'], 'failed')
+        self.assertEqual(source['run_id'], run_id)
+
+    def test_status_preserves_partial_run_state(self):
+        from services.collector_run_service import create_run, update_run
+        run_id = create_run('bi_daily', 'default', db_path=self.app.config['DATABASE_PATH'])
+        update_run(run_id, status='partial', db_path=self.app.config['DATABASE_PATH'],
+                   error_code='PARTIAL_RETRY', error_message='one unit unresolved')
+        response = self.client.get('/api/collect/status')
+        source = next(item for item in response.get_json()['data']['sources'] if item['key'] == 'bi_daily')
+        self.assertEqual(source['status'], 'partial')
+        self.assertEqual(source['run_status'], 'partial')
+
+    def test_log_recovers_durable_status_after_process_memory_is_empty(self):
+        from services.collector_run_service import create_run, update_run
+        import api.collect_api as collect_api
+
+        run_id = create_run('bi_daily', 'default', db_path=self.app.config['DATABASE_PATH'])
+        update_run(run_id, status='partial', db_path=self.app.config['DATABASE_PATH'],
+                   error_code='PARTIAL_RETRY', error_message='one unit unresolved')
+        with collect_api._state_lock:
+            collect_api.collect_tasks.pop('bi_daily', None)
+
+        response = self.client.get('/api/collect/log/bi_daily')
+        self.assertEqual(response.status_code, 200)
+        data = response.get_json()['data']
+        self.assertEqual(data['status'], 'partial')
+        self.assertEqual(data['run_status'], 'partial')
+        self.assertEqual(data['run_id'], run_id)
+        self.assertEqual(data['error'], 'one unit unresolved')
+
+    def test_health_marks_partial_run_as_degraded(self):
+        from services.collector_run_service import create_run, update_run
+        run_id = create_run('bi_daily', 'default', db_path=self.app.config['DATABASE_PATH'])
+        update_run(run_id, status='partial', db_path=self.app.config['DATABASE_PATH'],
+                   error_code='PARTIAL_RETRY', error_message='one unit unresolved')
+        response = self.client.get('/api/collect/health')
+        data = response.get_json()['data']
+        self.assertEqual(data['status'], 'degraded')
+        source = next(item for item in data['sources'] if item['source_key'] == 'bi_daily')
+        self.assertEqual(source['failed_runs_7d'], 1)
+        self.assertGreaterEqual(source['consecutive_failures'], 1)
+
     def test_trigger_exposes_run_id_for_existing_script(self):
         import api.collect_api as collect_api
 
@@ -112,6 +178,26 @@ class CollectorApiRunTests(unittest.TestCase):
         self.assertEqual(event['event'], 'result')
         self.assertEqual(event['schema_version'], 1)
         self.assertEqual(event['row_count'], 12)
+
+    def test_process_failure_classifies_cdp_unavailable_and_keeps_log_tail(self):
+        from api.collect_api import _classify_process_failure
+
+        code, message = _classify_process_failure([
+            'Traceback (most recent call last):',
+            'urllib.error.URLError: <urlopen error [WinError 10061] connection refused>',
+            'http://127.0.0.1:9223/json',
+        ], 1)
+        self.assertEqual(code, 'CDP_UNAVAILABLE')
+        self.assertIn('CDP', message)
+        self.assertIn('9223/json', message)
+
+    def test_process_failure_keeps_generic_return_code_and_tail(self):
+        from api.collect_api import _classify_process_failure
+
+        code, message = _classify_process_failure(['collector failed: bad schema'], 2)
+        self.assertEqual(code, 'PROCESS_FAILED')
+        self.assertIn('返回码 2', message)
+        self.assertIn('bad schema', message)
 
     def test_collector_alerts_endpoint_reads_persisted_alerts(self):
         from services.collector_run_service import record_health_alert

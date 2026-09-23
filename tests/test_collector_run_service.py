@@ -2,6 +2,8 @@ import json
 import os
 import tempfile
 import unittest
+from types import SimpleNamespace
+from unittest.mock import patch
 
 
 class CollectorRunServiceTests(unittest.TestCase):
@@ -142,6 +144,39 @@ class CollectorRunServiceTests(unittest.TestCase):
         names = {item['name'] for item in manifest['scripts']}
         self.assertIn('collector_healthcheck.py', names)
         self.assertTrue(all(len(item['sha256']) == 64 for item in manifest['scripts']))
+        self.assertEqual(manifest['cdp_port'], 9223)
+
+    def test_collector_cdp_defaults_are_aligned(self):
+        from pathlib import Path
+
+        root = Path(__file__).resolve().parents[1]
+        sources = [
+            (root / 'api' / 'collect_api.py').read_text(encoding='utf-8'),
+            (root / 'scripts' / 'auto_login_bi.py').read_text(encoding='utf-8'),
+            (root / 'scripts' / 'start-chrome-debug.ps1').read_text(encoding='utf-8'),
+            (root / 'scripts' / 'run_daily_collect.ps1').read_text(encoding='utf-8'),
+        ]
+        self.assertIn("TMALL_CDP_PORT', '9223'", sources[0])
+        self.assertIn("TMALL_CDP_PORT', '9223'", sources[1])
+        self.assertIn('else { 9223 }', sources[2])
+        self.assertIn('else { 9223 }', sources[3])
+        self.assertNotIn('else { 9222 }', sources[3])
+
+    def test_scheduled_collectors_keep_timeout_output_and_terminal_partial_states(self):
+        from pathlib import Path
+
+        root = Path(__file__).resolve().parents[1]
+        scheduled = (root / 'scripts' / 'run_daily_collect.ps1').read_text(encoding='utf-8')
+        automated = (root / 'scripts' / 'auto-collect.ps1').read_text(encoding='utf-8')
+        backup = (root / 'scripts' / 'run_daily_backup.ps1').read_text(encoding='utf-8')
+        self.assertIn('Test-Path -LiteralPath $stdoutPath', scheduled)
+        self.assertIn('Test-Path -LiteralPath $stderrPath', scheduled)
+        self.assertIn('collect_overview_full.py', scheduled)
+        self.assertNotIn('Script = "collect_overview_daily.py"', scheduled)
+        self.assertIn("$status -eq 'partial'", automated)
+        self.assertIn("$status -in @('queued', 'running')", automated)
+        self.assertIn("$env:TMALL_BACKUP_DIR", automated)
+        self.assertIn("$env:TMALL_BACKUP_DIR", backup)
 
     def test_production_audit_is_read_only_and_reports_database(self):
         from scripts.collector_production_audit import build_audit
@@ -164,13 +199,25 @@ class CollectorRunServiceTests(unittest.TestCase):
         finally:
             conn.close()
         archive_dir = Path(self.temp_dir.name) / 'archive'
+        backup_path = Path(self.temp_dir.name) / 'before-artifact-archive.db'
         plan = plan_archive(self.db_path, archive_dir, 30)
         self.assertEqual(len(plan), 1)
-        self.assertEqual(apply_archive(self.db_path, plan), 1)
+        result = apply_archive(self.db_path, plan, backup_path)
+        self.assertEqual(result['applied_count'], 1)
+        self.assertTrue(result['backup']['ok'])
+        self.assertTrue(backup_path.is_file())
         self.assertFalse(Path(artifact['path']).exists())
         self.assertTrue(Path(plan[0]['target']).exists())
+        conn = __import__('sqlite3').connect(self.db_path)
+        try:
+            catalog = conn.execute(
+                "SELECT source_table, source_batch_id, status FROM archive_catalog"
+            ).fetchall()
+        finally:
+            conn.close()
+        self.assertEqual(catalog, [('collector_artifacts', run_id, 'verified')])
 
-    def test_lineage_archive_exports_and_deletes_exact_date_range(self):
+    def test_lineage_archive_defaults_to_raw_only(self):
         import sqlite3
         from pathlib import Path
         from scripts.archive_lineage_raw import apply_archive, inspect
@@ -184,11 +231,108 @@ class CollectorRunServiceTests(unittest.TestCase):
         conn.commit(); conn.close()
         report = inspect(self.db_path, '2026-01-01')
         self.assertEqual(report['tables']['fact_field_lineage']['row_count'], 1)
+        self.assertEqual(report['archive_policy']['selected_tables'], ['bi_product_daily_raw'])
         result = apply_archive(self.db_path, '2026-01-01', Path(self.temp_dir.name) / 'lineage')
-        self.assertEqual(len(result['tables']), 3)
+        self.assertEqual(len(result['tables']), 1)
         conn = sqlite3.connect(self.db_path)
-        self.assertEqual(conn.execute("SELECT COUNT(*) FROM fact_field_lineage").fetchone()[0], 0)
+        self.assertEqual(conn.execute("SELECT COUNT(*) FROM fact_field_lineage").fetchone()[0], 1)
         self.assertEqual(conn.execute("SELECT COUNT(*) FROM bi_product_daily_raw").fetchone()[0], 1)
+        self.assertEqual(
+            conn.execute("SELECT source_table, row_count, status FROM archive_catalog").fetchone(),
+            ('bi_product_daily_raw', 1, 'verified'),
+        )
+        conn.close()
+
+    def test_lineage_archive_requires_explicit_derived_authorization(self):
+        import sqlite3
+        from pathlib import Path
+        from scripts.archive_lineage_raw import apply_archive
+        conn = sqlite3.connect(self.db_path)
+        conn.execute("INSERT INTO daily_data_observations (product_id, date, source_system, source_type, payload_json) VALUES ('p1','2025-01-01','test','test','{}')")
+        conn.commit(); conn.close()
+        with self.assertRaises(PermissionError):
+            apply_archive(
+                self.db_path, '2026-01-01', Path(self.temp_dir.name) / 'lineage',
+                tables=('daily_data_observations',),
+            )
+
+    def test_lineage_archive_blocks_derived_rows_used_by_daily_fact(self):
+        import sqlite3
+        from pathlib import Path
+        from scripts.archive_lineage_raw import apply_archive
+        conn = sqlite3.connect(self.db_path)
+        conn.execute("INSERT INTO daily_data (shop_id, product_id, date) VALUES ('default','p1','2025-01-01')")
+        conn.execute("INSERT INTO daily_data_observations (product_id, date, source_system, source_type, payload_json) VALUES ('p1','2025-01-01','test','test','{}')")
+        conn.commit(); conn.close()
+        with self.assertRaises(RuntimeError):
+            apply_archive(
+                self.db_path, '2026-01-01', Path(self.temp_dir.name) / 'lineage',
+                tables=('daily_data_observations',), allow_derived=True,
+            )
+
+    def test_lineage_archive_plan_reports_dependency_block(self):
+        import sqlite3
+        from scripts.archive_lineage_raw import inspect
+        conn = sqlite3.connect(self.db_path)
+        conn.execute("INSERT INTO daily_data (shop_id, product_id, date) VALUES ('default','p1','2025-01-01')")
+        conn.execute("INSERT INTO daily_data_observations (product_id, date, source_system, source_type, payload_json) VALUES ('p1','2025-01-01','test','test','{}')")
+        conn.commit(); conn.close()
+        report = inspect(
+            self.db_path, '2026-01-01', tables=('daily_data_observations',),
+        )
+        self.assertEqual(
+            report['archive_policy']['dependency_counts']['daily_data_observations'],
+            1,
+        )
+        self.assertEqual(
+            report['archive_policy']['blocked_tables'],
+            ['daily_data_observations'],
+        )
+        self.assertFalse(report['archive_policy']['can_apply'])
+
+    def test_lineage_archive_cli_requires_backup_for_apply(self):
+        from scripts.archive_lineage_raw import main
+        output = __import__('pathlib').Path(self.temp_dir.name) / 'archive.json'
+        with self.assertRaises(SystemExit) as raised:
+            main([
+                '--database', self.db_path,
+                '--apply',
+                '--output', str(output),
+            ])
+        self.assertEqual(raised.exception.code, 2)
+
+    def test_lineage_archive_cli_applies_after_integrity_checked_backup(self):
+        import json
+        import sqlite3
+        from pathlib import Path
+        from scripts.archive_lineage_raw import main
+
+        conn = sqlite3.connect(self.db_path)
+        conn.execute('CREATE TABLE bi_product_daily_raw (product_id TEXT, date TEXT, raw_data TEXT)')
+        conn.execute("INSERT INTO bi_product_daily_raw VALUES ('p1', '2025-01-01', '{}')")
+        conn.commit()
+        conn.close()
+
+        archive_dir = Path(self.temp_dir.name) / 'lineage'
+        backup = Path(self.temp_dir.name) / 'dashboard-before-archive.db'
+        output = Path(self.temp_dir.name) / 'archive.json'
+        exit_code = main([
+            '--database', self.db_path,
+            '--archive-dir', str(archive_dir),
+            '--backup-destination', str(backup),
+            '--apply',
+            '--output', str(output),
+            '--older-than-days', '30',
+        ])
+        self.assertEqual(exit_code, 0)
+        self.assertTrue(backup.is_file())
+        report = json.loads(output.read_text(encoding='utf-8'))
+        self.assertTrue(report['backup']['ok'])
+        self.assertEqual(report['applied']['tables'][0]['row_count'], 1)
+        cutoff = report['cutoff_date']
+        self.assertTrue((archive_dir / f'bi_product_daily_raw-before-{cutoff}.jsonl.gz').is_file())
+        conn = sqlite3.connect(self.db_path)
+        self.assertEqual(conn.execute('SELECT COUNT(*) FROM bi_product_daily_raw').fetchone()[0], 0)
         conn.close()
 
     def test_database_lease_blocks_duplicate_source_and_releases(self):
@@ -210,6 +354,102 @@ class CollectorRunServiceTests(unittest.TestCase):
         self.assertTrue(acquire_lease('sycm_item_flow', 'shop-a', first, db_path=self.db_path))
         update_run(first, status='failed', db_path=self.db_path, error_code='PROCESS_FAILED')
         self.assertTrue(acquire_lease('sycm_item_flow', 'shop-a', second, db_path=self.db_path))
+
+    def test_stale_run_is_failed_and_lease_is_released(self):
+        from datetime import datetime, timedelta, timezone
+        from services.collector_run_service import (
+            acquire_lease, create_run, get_run, reconcile_stale_runs,
+            upsert_checkpoint,
+        )
+
+        run_id = create_run('sycm_item_flow', 'shop-a', db_path=self.db_path)
+        upsert_checkpoint(
+            run_id, 'process', 'sycm_item_flow',
+            db_path=self.db_path, status='running',
+        )
+        self.assertTrue(acquire_lease(
+            'sycm_item_flow', 'shop-a', run_id,
+            db_path=self.db_path, ttl_seconds=1,
+        ))
+        now = datetime.now(timezone.utc) + timedelta(seconds=2)
+        old = (now - timedelta(hours=3)).isoformat()
+        conn = __import__('sqlite3').connect(self.db_path)
+        try:
+            conn.execute(
+                'UPDATE collector_runs SET status=?, updated_at=?, created_at=? WHERE id=?',
+                ('running', old, old, run_id),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        changed = reconcile_stale_runs(
+            db_path=self.db_path, stale_after_seconds=7200, now=now,
+        )
+        self.assertEqual([item['id'] for item in changed], [run_id])
+        run = get_run(run_id, db_path=self.db_path)
+        self.assertEqual(run['status'], 'failed')
+        self.assertEqual(run['error_code'], 'STALE_RUN')
+        conn = __import__('sqlite3').connect(self.db_path)
+        try:
+            self.assertIsNone(conn.execute(
+                'SELECT 1 FROM collector_leases WHERE run_id=?', (run_id,)
+            ).fetchone())
+            self.assertEqual(conn.execute(
+                'SELECT status, last_error_code FROM collector_checkpoints WHERE run_id=?',
+                (run_id,),
+            ).fetchone(), ('failed', 'STALE_RUN'))
+            self.assertIsNotNone(conn.execute(
+                '''SELECT 1 FROM collector_quality_results
+                   WHERE run_id=? AND rule_key='stale_run' ''',
+                (run_id,),
+            ).fetchone())
+        finally:
+            conn.close()
+
+    def test_active_lease_prevents_stale_run_reconciliation(self):
+        from datetime import datetime, timedelta, timezone
+        from services.collector_run_service import (
+            acquire_lease, create_run, get_run, reconcile_stale_runs,
+        )
+
+        run_id = create_run('sycm_item_flow', 'shop-a', db_path=self.db_path)
+        self.assertTrue(acquire_lease(
+            'sycm_item_flow', 'shop-a', run_id, db_path=self.db_path, ttl_seconds=3600,
+        ))
+        now = datetime.now(timezone.utc)
+        old = (now - timedelta(hours=3)).isoformat()
+        conn = __import__('sqlite3').connect(self.db_path)
+        try:
+            conn.execute(
+                'UPDATE collector_runs SET status=?, updated_at=?, created_at=? WHERE id=?',
+                ('running', old, old, run_id),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        self.assertEqual(
+            reconcile_stale_runs(
+                db_path=self.db_path, stale_after_seconds=7200, now=now,
+            ),
+            [],
+        )
+        self.assertEqual(get_run(run_id, db_path=self.db_path)['status'], 'running')
+
+    def test_latest_runs_are_isolated_by_shop(self):
+        from services.collector_run_service import create_run, latest_runs_by_source
+
+        first = create_run('bi_daily', 'shop-a', db_path=self.db_path)
+        second = create_run('bi_daily', 'shop-b', db_path=self.db_path)
+        self.assertEqual(
+            latest_runs_by_source(db_path=self.db_path, shop_id='shop-a')['bi_daily']['id'],
+            first,
+        )
+        self.assertEqual(
+            latest_runs_by_source(db_path=self.db_path, shop_id='shop-b')['bi_daily']['id'],
+            second,
+        )
 
     def test_checkpoint_is_idempotent_and_resumable(self):
         from services.collector_run_service import (
@@ -259,6 +499,38 @@ class CollectorRunServiceTests(unittest.TestCase):
         self.assertEqual(diff['recovered'], 1)
         self.assertEqual(diff['unresolved'], 1)
         self.assertEqual(diff['completion_rate'], 0.5)
+
+    def test_partial_retry_cannot_be_marked_as_succeeded(self):
+        from services.collector_retry_service import _run_retry, build_retry_plan
+        from services.collector_run_service import create_run, get_run, list_quality_results, upsert_checkpoint
+
+        parent = create_run('sycm_item_flow', 'default', db_path=self.db_path)
+        upsert_checkpoint(parent, 'product', 'a', db_path=self.db_path, status='failed')
+        upsert_checkpoint(parent, 'product', 'b', db_path=self.db_path, status='failed')
+        plan = build_retry_plan(parent, db_path=self.db_path)
+        child = create_run('sycm_item_flow', 'default', db_path=self.db_path,
+                           mode='retry', requested_by=f'retry:{parent}')
+
+        def emit_one_success(run_id, _lines, db_path=None):
+            upsert_checkpoint(run_id, 'product', 'a', db_path=db_path, status='succeeded', row_count=1)
+            return 1
+
+        with (
+            patch('services.collector_retry_service.subprocess.run', return_value=SimpleNamespace(
+                returncode=0, stdout='', stderr='')),
+            patch('api.collect_api._consume_structured_checkpoint_events', side_effect=emit_one_success),
+        ):
+            _run_retry(
+                child, plan, collectors_dir=self.temp_dir.name,
+                python_executable='python', script_name='collector.py', db_path=self.db_path,
+            )
+
+        result = get_run(child, db_path=self.db_path)
+        self.assertEqual(result['status'], 'partial')
+        self.assertEqual(result['error_code'], 'PARTIAL_RETRY')
+        quality = list_quality_results(child, db_path=self.db_path)
+        completion = next(item for item in quality if item['rule_key'] == 'retry_completion')
+        self.assertEqual(completion['status'], 'failed')
 
 
 if __name__ == '__main__':

@@ -21,6 +21,26 @@ class FrontendPrdContractTests(unittest.TestCase):
         self.assertNotIn('data-global-promotion-channel', shell)
         self.assertNotIn('TmallFilters', shell)
 
+    def test_period_review_controls_are_single_row_and_category_switch_persists_compare(self):
+        shell = self.read('frontend/ui_demo/assets/shell.js')
+        styles = self.read('frontend/ui_demo/assets/period-review.css')
+        page = self.read('frontend/ui_demo/pages/period-review.html')
+        review_controls = shell[shell.index('const periodReviewControls ='):shell.index("header.innerHTML =", shell.index('const periodReviewControls ='))]
+        self.assertIn('data-pr-period', review_controls)
+        self.assertIn('data-pr-compare', review_controls)
+        self.assertIn('data-pr-compare-period', review_controls)
+        self.assertNotIn('data-pr-period-label', review_controls)
+        self.assertIn('dashboard.categoryMode', shell)
+        self.assertIn('window.location.reload()', shell)
+        self.assertIn('categoryChangedByUser', shell)
+        self.assertIn('if (!categoryChangedByUser) categorySelect.value = readCategoryMode();', shell)
+        self.assertIn("if (currentPage !== 'period-review') window.location.reload();", shell)
+        self.assertIn("document.querySelector('[data-pr-category]') || document.querySelector('[data-category-mode]')", self.read('frontend/ui_demo/assets/period-review-live.js'))
+        self.assertIn('dashboard.periodReviewCompare', self.read('frontend/ui_demo/assets/period-review-live.js'))
+        self.assertIn('flex-wrap: nowrap;', styles)
+        self.assertIn('overflow-x: auto;', styles)
+        self.assertIn('20260923q', page)
+
     def test_quick_date_ranges_use_system_today_not_latest_imported_date(self):
         shell = self.read('frontend/ui_demo/assets/shell.js')
         self.assertIn('let anchorDate = new Date();', shell)
@@ -33,11 +53,13 @@ class FrontendPrdContractTests(unittest.TestCase):
         self.assertNotIn("window.TmallFilters?.toQuery?.()", export_handler)
         self.assertIn("overviewPayload?.capabilities?.can_export === false", export_handler)
 
-    def test_products_export_uses_current_daily_range_and_filters(self):
+    def test_products_export_uses_current_period_range_and_filters(self):
         products = self.read('frontend/ui_demo/assets/products-live.js')
-        self.assertIn("dim: 'daily'", products)
+        self.assertIn('dim: state.periodDimension', products)
         self.assertIn('start,', products)
         self.assertIn('end,', products)
+        self.assertIn("exportPayload.period = currentWeekPeriod()", products)
+        self.assertIn("exportPayload.period = currentMonthPeriod()", products)
         self.assertNotIn('TmallFilters', products)
         self.assertIn('...filters(),', products)
         self.assertIn('star_only: state.starredOnly', products)
@@ -770,6 +792,28 @@ class FrontendPrdContractTests(unittest.TestCase):
         for key in ('payment_qty', 'search_visitors', 'paid_ipv', 'organic_ipv', 'presale_amount', 'presale_qty', 'data_source'):
             self.assertIn(key, component)
 
+    def test_product_detail_themes_keep_search_and_promotion_workbench_contract(self):
+        page = self.read('frontend/ui_demo/pages/product-detail.html')
+        component = self.read('frontend/ui_demo/assets/product-detail-live.js')
+        for tab in ('search', 'promotion'):
+            self.assertIn(f'data-product-detail-tab="{tab}"', page)
+            self.assertIn(f'data-product-detail-panel="{tab}"', page)
+        for marker in ('renderSearchAnalysis', 'renderPromotionAnalysis', 'loadTheme', 'themeCache', '/promotion?', '/api/promotion/campaign-detail'):
+            self.assertIn(marker, component)
+        self.assertIn('tmall:date-range-change', component)
+        self.assertIn('themeCache.clear()', component)
+        self.assertIn('data-product-promotion-campaigns', page)
+
+    def test_product_detail_dialog_keeps_search_analysis_in_primary_detail_flow(self):
+        component = self.read('frontend/ui_demo/assets/product-detail-dialog.js')
+        styles = self.read('frontend/ui_demo/assets/components.css')
+        self.assertIn("['search', '搜索分析']", component)
+        self.assertIn('function renderSearch', component)
+        self.assertIn("if (tab === 'search') panel.append(renderSearch(detail));", component)
+        self.assertIn('search_visitors', component)
+        self.assertIn('product-detail-search-metrics', styles)
+        self.assertIn('商品级关键词归因', component)
+
     def test_product_detail_overview_has_linked_operating_trend(self):
         page = self.read('frontend/ui_demo/pages/products.html')
         component = self.read('frontend/ui_demo/assets/product-detail-dialog.js')
@@ -796,6 +840,13 @@ class FrontendPrdContractTests(unittest.TestCase):
         self.assertIn("params.set('start'", component)
         self.assertIn("params.set('end'", component)
         self.assertIn("tmall:date-range-change", component)
+
+    def test_product_detail_dialog_promotion_campaigns_support_plan_drilldown(self):
+        component = self.read('frontend/ui_demo/assets/product-detail-dialog.js')
+        self.assertIn('loadPromotionCampaignDetail', component)
+        self.assertIn('/api/promotion/campaign-detail?', component)
+        self.assertIn('查看计划商品构成', component)
+        self.assertIn('product-detail-promotion-campaign-detail', component)
 
     def test_centered_dialog_consolidation_removes_business_drawers(self):
         shell = self.read('frontend/ui_demo/assets/shell.js')

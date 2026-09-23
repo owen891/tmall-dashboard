@@ -49,6 +49,42 @@ body[data-page="creative-board"] .cb-summary .ui-metric-card { min-height: 104px
 .cb-image-dialog { width: min(760px, calc(100vw - 32px)); }
 .cb-image-dialog__body { display: grid; min-height: 280px; place-items: center; padding: var(--space-5); background: var(--surface-muted); }
 .cb-image-dialog__body img { display: block; max-width: 100%; max-height: min(70vh, 680px); object-fit: contain; }
+
+@media (min-width: 1181px) {
+  body[data-page="creative-board"] .demo-page { max-width: 1680px; }
+  .cb-summary { gap: var(--space-4); }
+  body[data-page="creative-board"] .cb-summary .ui-metric-card { min-height: 96px; padding: var(--space-4) var(--space-5); }
+  .cb-toolbar {
+    grid-template-columns: minmax(0, 1fr) minmax(260px, 340px);
+    gap: var(--space-4);
+    align-items: stretch;
+    padding: var(--space-2);
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-md);
+    background: var(--surface-muted);
+  }
+  .cb-category-tabs {
+    min-height: var(--control-height);
+    align-items: center;
+    gap: 4px;
+    padding: 3px;
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-sm);
+    background: var(--surface-base);
+  }
+  .cb-category-tabs button { min-height: 30px; padding-inline: 12px; }
+  .cb-search { min-height: var(--control-height); background: var(--surface-base); }
+  .cb-products-panel { box-shadow: var(--elevation-sm); }
+  .cb-products-panel .ui-table-wrap { max-height: min(58vh, 680px); overflow: auto; }
+  .cb-product-table thead th { position: sticky; top: 0; z-index: 1; background: var(--surface-muted); }
+  .cb-product-table tbody td { vertical-align: middle; }
+  .cb-detail-dialog__body { display: grid; gap: var(--space-4); }
+  .cb-detail-summary { padding: var(--space-4); }
+  .cb-detail-list { max-height: min(56vh, 620px); overflow: auto; }
+  .cb-creative-row { grid-template-columns: 64px minmax(260px, .8fr) minmax(520px, 1.5fr); padding: var(--space-4); }
+  .cb-creative-row__thumb, .cb-creative-image { width: 64px; height: 64px; }
+  .cb-creative-row__stats { gap: var(--space-4); }
+}
 @media (max-width: 1180px) {
   .cb-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .cb-toolbar { grid-template-columns: 1fr; }

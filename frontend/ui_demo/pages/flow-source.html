@@ -7,6 +7,7 @@
 <link rel="stylesheet" href="../assets/tokens.css">
 <link rel="stylesheet" href="../assets/shell.css">
 <link rel="stylesheet" href="../assets/components.css">
+<link rel="stylesheet" href="../assets/flow-source.css">
 <script src="../assets/lucide-custom.min.js"></script>
 <script src="../assets/echarts-custom.min.js"></script>
 <style>
@@ -29,6 +30,13 @@
 .flow-badge--paid { background: rgba(239, 68, 68, 0.1); color: #ef4444; }
 .flow-badge--free { background: rgba(34, 197, 94, 0.1); color: #22c55e; }
 .flow-badge--other { background: rgba(100, 116, 139, 0.1); color: #64748b; }
+@media (min-width: 1001px) {
+  .flow-chart-row { gap: 12px; margin-bottom: 12px; }
+  .flow-chart-box { min-height: 280px; padding: 12px; border: 1px solid var(--border-default); background: var(--surface-base); }
+  .flow-chart-title { margin-bottom: 10px; color: var(--text-primary); text-align: left; }
+  .flow-table-wrap { max-height: 520px; overflow: auto; }
+  .flow-table th { position: sticky; top: 0; z-index: 1; background: var(--surface-muted); }
+}
 @media (max-width: 900px) { .flow-chart-row { grid-template-columns: 1fr; } }
 </style>
 </head>
@@ -74,6 +82,37 @@
         </article>
       </section>
 
+      <section class="flow-command-grid" aria-label="流量来源经营判断">
+        <section class="ui-panel flow-command-panel">
+          <div class="panel__header">
+            <div>
+              <h3 class="panel__title">经营判断</h3>
+              <p class="panel__hint">先看流量规模、效率和下一步排查方向，再进入渠道明细。</p>
+            </div>
+            <span class="ui-badge ui-badge--info">自动归纳</span>
+          </div>
+          <div class="flow-command-list">
+            <div class="flow-command-item"><strong>规模主力</strong><span data-flow-leading>正在读取渠道贡献…</span></div>
+            <div class="flow-command-item"><strong>效率表现</strong><span data-flow-efficiency>正在读取渠道转化…</span></div>
+            <div class="flow-command-item"><strong>优先动作</strong><span data-flow-opportunity>正在生成排查建议…</span></div>
+          </div>
+        </section>
+        <section class="ui-panel flow-command-panel">
+          <div class="panel__header">
+            <div>
+              <h3 class="panel__title">渠道结构</h3>
+              <p class="panel__hint">一级渠道决定盘子，二级渠道用于定位具体入口。</p>
+            </div>
+          </div>
+          <div class="flow-structure-list">
+            <div class="flow-structure-row"><span>一级渠道</span><strong data-flow-l1-count>--</strong></div>
+            <div class="flow-structure-row"><span>二级渠道</span><strong data-flow-l2-count>--</strong></div>
+            <div class="flow-structure-row"><span>三级渠道</span><strong data-flow-l3-count>--</strong></div>
+            <div class="flow-structure-row"><span>头部渠道访客占比</span><strong data-flow-top-share>--</strong></div>
+          </div>
+        </section>
+      </section>
+
       <!-- 图表区域 -->
       <section class="flow-chart-row">
         <div class="flow-chart-box">
@@ -86,12 +125,11 @@
         </div>
       </section>
 
-      <!-- 一级渠道详细 -->
       <section class="ui-panel">
         <div class="panel__header">
           <div>
             <h3 class="panel__title">一级渠道明细</h3>
-            <p class="panel__hint">按访客数排序，展示各渠道核心指标</p>
+            <p class="panel__hint">按访客数排序，先判断渠道规模，再结合转化率和 UV 价值评估质量。</p>
           </div>
         </div>
         <div class="flow-table-wrap">

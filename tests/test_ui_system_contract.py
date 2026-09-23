@@ -177,12 +177,23 @@ def test_snapshot_pages_do_not_offer_unsupported_date_range():
         assert page in shell
 
 
-def test_sycm_pages_forward_shared_end_date():
-    for name, endpoint in (("flow-source-live.js", "flow-source/summary"), ("rival-analysis-live.js", "rival-shops/summary")):
-        source = (ASSETS / name).read_text(encoding="utf-8")
+def test_sycm_pages_forward_shared_date_range():
+    flow = (ASSETS / "flow-source-live.js").read_text(encoding="utf-8")
+    rival = (ASSETS / "rival-analysis-live.js").read_text(encoding="utf-8")
+    for source, endpoint in ((flow, "flow-source/summary"), (rival, "rival-shops/summary")):
         assert "tmall:date-range-change" in source
-        assert "window.TmallDateRange?.getState?.().endDate" in source
+        assert "TmallDateRange" in source
         assert endpoint in source
+    assert "const startDate = range.startDate" in flow
+    assert "const endDate = range.endDate" in flow
+    assert "params.set('start', startDate)" in flow
+    assert "params.set('end', endDate)" in flow
+    # rival 页同样要跟着共享时间范围走。shell.js 派发事件时 detail 就是 state 本身
+    # （{ startDate, endDate, preset, compareMode }），所以直接 init(event.detail)
+    # 与旧的「detail?.endDate || 全局 getState()」等价，不必逐字段取值。
+    assert "addEventListener('tmall:date-range-change'" in rival
+    assert "init(event.detail)" in rival
+    assert "init(window.TmallDateRange?.getState?.())" in rival
 
 
 def test_market_and_keyword_pages_forward_shared_date_range():

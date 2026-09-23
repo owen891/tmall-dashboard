@@ -1,10 +1,41 @@
+import sqlite3
+import tempfile
 import unittest
+from unittest.mock import patch
 
-from scripts.import_paimi_bi_daily import date_from_file, observation_from_payload
+from scripts.import_paimi_bi_daily import (
+    _insert_batch,
+    date_from_file,
+    observation_from_payload,
+)
 from pathlib import Path
 
 
 class PaimiBiDailyImportTests(unittest.TestCase):
+    def test_batch_uses_shop_scope_and_observation_uses_batch_id(self):
+        with tempfile.TemporaryDirectory(prefix='tmall-paimi-batch-') as root:
+            path = Path(root) / 'bi-2026-08-21.xlsx'
+            connection = sqlite3.connect(':memory:')
+            connection.executescript(
+                '''
+                CREATE TABLE import_batches (
+                    id TEXT PRIMARY KEY, shop_id TEXT NOT NULL DEFAULT 'default',
+                    source_type TEXT, source_filename TEXT, source_hash TEXT,
+                    status TEXT, quality_summary TEXT, completed_at TEXT
+                );
+                '''
+            )
+            with patch.dict('os.environ', {'TMALL_SHOP_ID': 'shop-a'}, clear=False):
+                batch_id = _insert_batch(connection, path, 'hash-a', '2026-08-21')
+            row = connection.execute(
+                'SELECT id, shop_id, source_filename FROM import_batches WHERE id = ?',
+                (batch_id,),
+            ).fetchone()
+            self.assertEqual(row[0], batch_id)
+            self.assertEqual(row[1], 'shop-a')
+            self.assertEqual(row[2], str(path))
+            connection.close()
+
     def test_filename_date_is_used_as_the_daily_fact_date(self):
         self.assertEqual(
             date_from_file(Path('商品总览_天猫_Primeet派米旗舰店_2026-08-21.xlsx')),
@@ -33,7 +64,7 @@ class PaimiBiDailyImportTests(unittest.TestCase):
         self.assertEqual(row['net_sales'], 1222.0)
         self.assertEqual(row['product_visitors'], 100.0)
         self.assertEqual(row['payment_conversion'], 0.125)
-        self.assertEqual(row['favorite_cart_rate'], 0.2)
+        self.assertEqual(row['cart_rate'], 0.2)
         self.assertEqual(row['ad_roi'], 24.69)
 
 

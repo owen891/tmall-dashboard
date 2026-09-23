@@ -1,0 +1,27 @@
+/* Desktop information architecture for the traffic-source workbench. */
+@media (min-width: 1001px) {
+  body[data-page="flow-source"] .demo-page { max-width: 1680px; }
+  body[data-page="flow-source"] .ui-page-header { margin-bottom: var(--space-3); }
+  body[data-page="flow-source"] .ui-metric-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--space-3); }
+  body[data-page="flow-source"] .ui-metric-card { min-height: 96px; padding: var(--space-4); }
+  body[data-page="flow-source"] .flow-command-grid { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(320px, .65fr); gap: var(--space-3); margin-bottom: var(--space-3); }
+  body[data-page="flow-source"] .flow-command-panel { min-height: 188px; padding: var(--space-4); }
+  body[data-page="flow-source"] .flow-command-list { display: grid; gap: 10px; margin-top: var(--space-3); }
+  body[data-page="flow-source"] .flow-command-item { display: grid; grid-template-columns: 112px minmax(0, 1fr); gap: var(--space-3); align-items: start; padding: 10px 12px; border: 1px solid var(--border-default); border-radius: var(--radius-sm); background: var(--surface-muted); }
+  body[data-page="flow-source"] .flow-command-item strong { color: var(--text-primary); font-size: var(--font-size-secondary); }
+  body[data-page="flow-source"] .flow-command-item span { color: var(--text-secondary); font-size: var(--font-size-meta); line-height: 1.55; }
+  body[data-page="flow-source"] .flow-structure-list { display: grid; gap: 12px; margin-top: var(--space-3); }
+  body[data-page="flow-source"] .flow-structure-row { display: flex; justify-content: space-between; gap: 12px; padding-bottom: 10px; border-bottom: 1px solid var(--border-default); }
+  body[data-page="flow-source"] .flow-structure-row:last-child { padding-bottom: 0; border-bottom: 0; }
+  body[data-page="flow-source"] .flow-structure-row span { color: var(--text-secondary); font-size: var(--font-size-meta); }
+  body[data-page="flow-source"] .flow-structure-row strong { color: var(--text-primary); font-family: var(--font-mono); }
+  body[data-page="flow-source"] .flow-chart-row { gap: var(--space-3); margin-bottom: var(--space-3); }
+  body[data-page="flow-source"] .flow-chart-box { min-height: 280px; padding: var(--space-3); border: 1px solid var(--border-default); background: var(--surface-base); }
+  body[data-page="flow-source"] .flow-chart-title { margin-bottom: var(--space-2); color: var(--text-primary); text-align: left; }
+  body[data-page="flow-source"] .ui-panel { padding: var(--space-4); }
+  body[data-page="flow-source"] .ui-panel .panel__header { padding-bottom: var(--space-3); border-bottom: 1px solid var(--border-default); }
+  body[data-page="flow-source"] .ui-panel .panel__header { margin-bottom: var(--space-3); }
+  body[data-page="flow-source"] .flow-table-wrap { max-height: min(48vh, 560px); overflow: auto; }
+  body[data-page="flow-source"] .flow-table th { position: sticky; top: 0; z-index: 1; padding-block: 8px; background: var(--surface-muted); }
+  body[data-page="flow-source"] .flow-table td { padding-block: 9px; }
+}

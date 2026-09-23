@@ -15,7 +15,7 @@ class PageCapabilityServiceTests(unittest.TestCase):
     def tearDown(self):
         self.temp_dir.cleanup()
 
-    def test_registry_has_twelve_unique_pages_and_valid_surfaces(self):
+    def test_registry_has_thirteen_unique_pages_and_valid_surfaces(self):
         from services.page_capability_service import (
             PAGE_DEFINITIONS,
             SURFACE_DEFINITIONS,
@@ -24,8 +24,8 @@ class PageCapabilityServiceTests(unittest.TestCase):
 
         result = validate_registry()
         self.assertEqual(result['errors'], [])
-        self.assertEqual(len(PAGE_DEFINITIONS), 12)
-        self.assertEqual(len({item['key'] for item in PAGE_DEFINITIONS}), 12)
+        self.assertEqual(len(PAGE_DEFINITIONS), 13)
+        self.assertEqual(len({item['key'] for item in PAGE_DEFINITIONS}), 13)
         self.assertGreaterEqual(len(SURFACE_DEFINITIONS), 1)
         self.assertTrue(all(item['modal_kind'] in {
             'detail', 'edit', 'config', 'flow'
@@ -67,6 +67,23 @@ class PageCapabilityServiceTests(unittest.TestCase):
         self.assertTrue(any(path.endswith('product-detail-dialog.js') for path in surface['target_files']))
         self.assertFalse(any(path.endswith('product-detail-dialog.js') for path in page['target_files']))
 
+    def test_product_detail_registers_granular_analysis_capability(self):
+        from services.page_capability_service import build_page_catalog
+
+        result = build_page_catalog(
+            self.app.config['DATABASE_PATH'],
+            page='product-detail',
+        )
+        page = result['pages'][0]
+        capability = next(item for item in page['capabilities'] if item['key'] == 'product-detail.granular_analysis')
+        self.assertEqual(capability['support_level'], 'conditional')
+        self.assertEqual(capability['interaction_state'], 'disabled')
+        self.assertEqual(
+            set(capability['data_domains']),
+            {'product_sku_daily', 'product_region_daily', 'product_hourly'},
+        )
+        self.assertIn('GET /api/products/:product_id/granular-capabilities', capability['api_endpoints'])
+
     def test_registry_endpoints_match_real_flask_routes(self):
         from services.page_capability_service import validate_registry, build_page_catalog
 
@@ -80,7 +97,7 @@ class PageCapabilityServiceTests(unittest.TestCase):
         from services.page_capability_service import build_page_catalog
 
         result = build_page_catalog(self.app.config['DATABASE_PATH'])
-        self.assertEqual(result['summary']['page_count'], 12)
+        self.assertEqual(result['summary']['page_count'], 13)
         self.assertEqual(result['summary']['unclassified'], 0)
         self.assertFalse(result['summary']['can_release'])
         overview = next(item for item in result['pages'] if item['key'] == 'overview')

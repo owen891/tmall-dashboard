@@ -60,8 +60,13 @@ class ProductPrdContractTests(unittest.TestCase):
         script = (Path(ROOT) / 'frontend/ui_demo/assets/products-live.js').read_text(encoding='utf-8')
         for hook in ('data-products-status', 'data-products-pending-action', 'data-products-mobile-summary'):
             self.assertIn(hook, page)
+        self.assertIn('data-product-rule-groups', page)
+        self.assertIn('data-product-rule-clear', page)
         self.assertIn('has_data', script)
         self.assertIn('has_pending_action', script)
+        self.assertIn('/api/product-overview/rule-results', script)
+        self.assertIn('rule_key', script)
+        self.assertIn('sourceRule', script)
         self.assertIn('missing facts are not zero', script)
 
     def test_unknown_sort_is_safe_and_count_uses_filters(self):

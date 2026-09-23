@@ -81,6 +81,22 @@
   color: var(--info);
 }
 
+@media (min-width: 1001px) {
+  body[data-page="keyword-promotion"] .demo-page { max-width: 1680px; }
+  body[data-page="keyword-promotion"] .ui-page-header { margin-bottom: var(--space-3); }
+  body[data-page="keyword-promotion"] .ui-metric-grid { grid-template-columns: repeat(6, minmax(0, 1fr)); gap: var(--space-3); }
+  body[data-page="keyword-promotion"] .ui-metric-card { min-height: 96px; padding: var(--space-4); }
+  body[data-page="keyword-promotion"] .ui-panel { padding: var(--space-4); }
+  body[data-page="keyword-promotion"] .product-list__header { align-items: center; padding-bottom: var(--space-3); border-bottom: 1px solid var(--border-default); }
+  body[data-page="keyword-promotion"] .product-list__header { margin-bottom: var(--space-3); }
+  body[data-page="keyword-promotion"] .product-field-controls { gap: var(--space-3); }
+  body[data-page="keyword-promotion"] .product-filters { margin-bottom: var(--space-3); }
+  body[data-page="keyword-promotion"] .ui-table-wrap { max-height: min(62vh, 720px); overflow: auto; }
+  body[data-page="keyword-promotion"] .product-table thead th { position: sticky; top: 0; z-index: 1; background: var(--surface-muted); }
+  body[data-page="keyword-promotion"] .product-table th { padding-block: 8px; }
+  body[data-page="keyword-promotion"] .product-table td { padding-block: 9px; }
+}
+
 /* 列设置弹窗 */
 .products-columns-dialog {
   width: 560px;
