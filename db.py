@@ -125,14 +125,34 @@ def _init_db(db_path=None):
     print(f"Database initialized: {db_path}")
 
 
+def _schema_is_current(conn):
+    """单调版本门：user_version 达标且台账有对应记录的库跳过全量重放。
+
+    SQLite 的 PRAGMA user_version 存储在文件头，读取代价极低；用它避免
+    每次启动都重放约 1200 行的「PRAGMA table_info 检查列」式迁移。
+    版本落后（升级部署）或记录缺失（异常状态）时返回 False，
+    走原有的全量重放路径。"""
+    cursor = conn.cursor()
+    if cursor.execute('PRAGMA user_version').fetchone()[0] != SCHEMA_VERSION:
+        return False
+    row = cursor.execute(
+        'SELECT COUNT(*) FROM schema_migrations WHERE version = ? AND state = ?',
+        (SCHEMA_VERSION, 'applied'),
+    ).fetchone()
+    return bool(row and row[0])
+
+
 def _run_init_migrations(conn):
     cursor = conn.cursor()
+    # 版本门依赖 schema_migrations 表存在；当前库没有时下列建表后立刻检查。
     cursor.execute('''CREATE TABLE IF NOT EXISTS schema_migrations (
         version INTEGER PRIMARY KEY,
         name TEXT NOT NULL,
         state TEXT NOT NULL DEFAULT 'applied',
         applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )''')
+    if _schema_is_current(conn):
+        return
 
     cursor.executescript('''
     CREATE TABLE IF NOT EXISTS products (
@@ -388,10 +408,9 @@ def _run_init_migrations(conn):
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         UNIQUE(shop_id, product_id, date, field_key)
     );
-    CREATE INDEX IF NOT EXISTS idx_fact_lineage_product_date
-        ON fact_field_lineage(shop_id, product_id, date);
-    CREATE INDEX IF NOT EXISTS idx_fact_lineage_source
-        ON fact_field_lineage(effective_source_system, field_key);
+    -- 附属索引已裁撤：所有在线查询走 UNIQUE(shop_id, product_id, date, field_key)
+    -- 自动索引；历史冗余 idx_fact_lineage_product_date / idx_fact_lineage_source
+    -- 由 db_migrations 外层 DROP 收尾（2026-09-23 体积治理）。
 
     CREATE TABLE IF NOT EXISTS reconciliation_results (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1085,6 +1104,17 @@ def _run_init_migrations(conn):
     CREATE INDEX IF NOT EXISTS idx_market_snapshot_rival_item_period ON market_snapshot_rival_items(period_start, period_end, item_id);
     CREATE INDEX IF NOT EXISTS idx_market_snapshot_rival_shop_period ON market_snapshot_rival_shops(period_start, period_end, shop_id);
 
+    CREATE TABLE IF NOT EXISTS market_item_links (
+        item_id TEXT PRIMARY KEY,
+        title TEXT,
+        pic_url TEXT,
+        detail_url TEXT,
+        source_filename TEXT NOT NULL,
+        period_start TEXT,
+        period_end TEXT,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+
     CREATE TABLE IF NOT EXISTS product_tags (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         product_id TEXT NOT NULL,
@@ -1768,6 +1798,11 @@ def _run_init_migrations(conn):
     # The latest-observation index has the old lookup key as its left prefix,
     # while also satisfying the common ORDER BY observed_at/id LIMIT 1 path.
     cursor.execute('DROP INDEX IF EXISTS idx_daily_observations_key')
+    # Lineage volume cleanup (2026-09-23): every online reader resolves lineage
+    # by (shop_id, product_id, date) via the UNIQUE auto-index, so these two
+    # legacy indexes were pure dead weight (~236 MiB on the live database).
+    cursor.execute('DROP INDEX IF EXISTS idx_fact_lineage_product_date')
+    cursor.execute('DROP INDEX IF EXISTS idx_fact_lineage_source')
     retention_defaults = [
         ('collector_data_staging', 'runtime', 'collector_data_staging', 14, 'purge_after_archive', 0),
         ('collector_artifacts', 'runtime', 'collector_artifacts', 30, 'archive', 0),
