@@ -9,46 +9,13 @@ from datetime import datetime
 """
 
 from flask import Blueprint, jsonify, request
-from utils.cache import cache as _ttl_cache
-from api.data_api import _aov_expression, _get_prev_month
+from api.data_api import _aov_expression, _get_prev_month, cached_api
 
 from db import get_db
 from api.api_response import failure, json_object, success
 
 
 reviews_bp = Blueprint('reviews', __name__)
-
-
-def _request_cache_key(prefix):
-    """生成基于请求路径和查询参数的缓存 key"""
-    params = sorted(request.args.items())
-    param_str = "&".join(f"{k}={v}" for k, v in params)
-    from flask import g
-    shop_id = getattr(getattr(g, 'shop_id', None), '__str__', lambda: 'default')()
-    return f"{prefix}:{request.path}:{shop_id}:{param_str}"
-
-
-def cached_api(prefix, ttl=60):
-    """API 缓存装饰器"""
-    def decorator(f):
-        def wrapped(*args, **kwargs):
-            key = _request_cache_key(prefix)
-            cached = _ttl_cache.get(key)
-            if cached is not None:
-                return jsonify(cached)
-            result = f(*args, **kwargs)
-            try:
-                if hasattr(result, 'status_code') and result.status_code == 200 and hasattr(result, 'get_json'):
-                    data = result.get_json()
-                    if data is not None:
-                        _ttl_cache.set(key, data, ttl)
-            except Exception:
-                pass
-            return result
-        wrapped.__name__ = getattr(f, '__name__', 'wrapped')
-        wrapped.__doc__ = getattr(f, '__doc__', '')
-        return wrapped
-    return decorator
 
 
 @reviews_bp.route('/api/reviews/summary', methods=['GET'])

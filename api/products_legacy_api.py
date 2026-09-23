@@ -9,7 +9,7 @@ from datetime import datetime
 
 import io
 import json
-from api.data_api import DIMENSION_MAP, _reject_legacy_shop_scope, _validate_period_arg, calc_score, get_prev_period
+from api.data_api import DIMENSION_MAP, _reject_legacy_shop_scope, _validate_period_arg, calc_score, cached_api, get_prev_period
 
 import pandas as pd
 from flask import Blueprint, current_app, g, jsonify, request
@@ -18,40 +18,10 @@ from db import get_db, get_shop_id
 from api.api_response import evidence_level_for, failure, json_object, limitations_for, success
 from services.category_mode_service import category_filters_from_request
 from services.shop_scope_service import reject_legacy_shop_scope
+from services.product_rules_service import condition_for_dimension, get_rule
 
 
 products_legacy_bp = Blueprint('products_legacy', __name__)
-
-
-def _request_cache_key(prefix):
-    params = sorted(request.args.items())
-    param_str = "&".join(f"{k}={v}" for k, v in params)
-    from flask import g
-    shop_id = getattr(getattr(g, 'shop_id', None), '__str__', lambda: 'default')()
-    return f"{prefix}:{request.path}:{shop_id}:{param_str}"
-
-
-def cached_api(prefix, ttl=60):
-    from utils.cache import cache as _ttl_cache
-    def decorator(f):
-        def wrapped(*args, **kwargs):
-            key = _request_cache_key(prefix)
-            cached = _ttl_cache.get(key)
-            if cached is not None:
-                return jsonify(cached)
-            result = f(*args, **kwargs)
-            try:
-                if hasattr(result, 'status_code') and result.status_code == 200 and hasattr(result, 'get_json'):
-                    data = result.get_json()
-                    if data is not None:
-                        _ttl_cache.set(key, data, ttl)
-            except Exception:
-                pass
-            return result
-        wrapped.__name__ = getattr(f, '__name__', 'wrapped')
-        wrapped.__doc__ = getattr(f, '__doc__', '')
-        return wrapped
-    return decorator
 
 
 @products_legacy_bp.route('/api/products', methods=['GET'])
@@ -77,6 +47,7 @@ def get_products():
     lifecycle_stage = request.args.get('lifecycle_stage', '')
     seasonality = request.args.get('seasonality', '')
     has_pending_action = request.args.get('has_pending_action', '')
+    rule_key = request.args.get('rule_key', '')
     unsupported = _reject_legacy_shop_scope(dimension)
     if unsupported:
         return unsupported
@@ -182,7 +153,31 @@ def get_products():
         _zero_extra = ',\n               '.join([f'0 as {c}' for c in ['industry_ctr','cross_sell_categories','guide_visits','guide_visitors','guide_potential','guide_potential_ratio','new_buyers','new_buyer_ratio']]) + ','
 
         monthly_only_cols = _monthly_ad_cols if dimension == 'monthly' else _zero_ad
-        monthly_traffic_cols = _monthly_traffic_cols if dimension in {'monthly', 'daily', 'weekly'} else _zero_traffic
+        # Daily BI facts carry the traffic split columns only when the source
+        # actually provides them. Keep NULL for unavailable paid/organic/
+        # recommendation traffic instead of manufacturing a real-looking 0.
+        if dimension == 'daily':
+            monthly_traffic_cols = '''d.paid_ipv as paid_ipv,
+                   d.organic_ipv as organic_ipv,
+                   COALESCE(d.search_ipv, 0) as search_ipv,
+                   d.recommend_ipv as recommend_ipv,'''
+        else:
+            monthly_traffic_cols = _monthly_traffic_cols if dimension == 'monthly' else _zero_traffic
+
+        payment_count_expr = 'COALESCE(d.payment_qty, 0)' if dimension in {'monthly', 'daily'} else '0'
+        uv_value_expr = 'COALESCE(d.uv_value, 0)' if dimension in {'monthly', 'daily'} else '0'
+        search_visitors_expr = (
+            'COALESCE(d.search_visitors, 0)' if dimension == 'monthly'
+            else ('COALESCE(d.search_ipv, 0)' if dimension == 'daily' else '0')
+        )
+        search_ratio_expr = (
+            'COALESCE(d.search_ratio, 0)' if dimension == 'monthly'
+            else ("CASE WHEN COALESCE(d.ipv, 0) > 0 THEN COALESCE(d.search_ipv, 0) * 1.0 / d.ipv ELSE NULL END" if dimension == 'daily' else '0')
+        )
+        search_conversion_expr = 'COALESCE(d.search_conversion, 0)' if dimension in {'monthly', 'daily'} else '0'
+        cart_qty_expr = 'COALESCE(d.cart_qty, 0)' if dimension in {'monthly', 'daily'} else '0'
+        fav_users_expr = 'COALESCE(d.fav_users, 0)' if dimension in {'monthly', 'daily'} else '0'
+        cart_users_expr = 'COALESCE(d.cart_users, 0)' if dimension in {'monthly', 'daily'} else '0'
         monthly_extra_cols = _monthly_extra_cols if dimension == 'monthly' else _zero_extra
         dmp_cols = '''COALESCE(d.repurchase_users, 0) as repurchase_users,
                    COALESCE(d.presale_amount, 0) as presale_amount,
@@ -226,6 +221,13 @@ def get_products():
                        current.ad_roi,
                        current.buyers,
                        current.avg_order_value,
+                       current.payment_qty,
+                       current.uv_value,
+                       current.search_visitors,
+                       current.search_conversion,
+                       current.cart_qty,
+                       current.fav_users,
+                       current.cart_users,
                        current.paid_ipv,
                        current.organic_ipv,
                        current.search_ipv,
@@ -248,15 +250,22 @@ def get_products():
                            SUM(net_sales) AS net_sales,
                            SUM(ipv) AS ipv,
                            SUM(pv) AS pv,
-                           AVG(payment_conversion) AS payment_conversion,
-                           AVG(cart_rate) AS cart_rate,
-                           AVG(fav_rate) AS fav_rate,
+                            CASE WHEN SUM(ipv) > 0 THEN SUM(buyers) * 1.0 / SUM(ipv) ELSE NULL END AS payment_conversion,
+                            CASE WHEN SUM(ipv) > 0 THEN SUM(cart_users) * 1.0 / SUM(ipv) ELSE NULL END AS cart_rate,
+                            CASE WHEN SUM(ipv) > 0 THEN SUM(fav_users) * 1.0 / SUM(ipv) ELSE NULL END AS fav_rate,
                            AVG(bounce_rate) AS bounce_rate,
                            AVG(avg_stay_duration) AS avg_stay_duration,
                            SUM(ad_spend) AS ad_spend,
-                           CASE WHEN SUM(ad_spend) > 0 THEN SUM(payment_amount) / SUM(ad_spend) ELSE 0 END AS ad_roi,
-                           SUM(buyers) AS buyers,
-                           CASE WHEN SUM(buyers) > 0 THEN SUM(payment_amount) / SUM(buyers) ELSE AVG(avg_order_value) END AS avg_order_value,
+                            CASE WHEN SUM(ad_spend) > 0 THEN SUM(net_sales) / SUM(ad_spend) ELSE NULL END AS ad_roi,
+                            SUM(buyers) AS buyers,
+                            CASE WHEN SUM(buyers) > 0 THEN SUM(payment_amount) / SUM(buyers) ELSE AVG(avg_order_value) END AS avg_order_value,
+                            SUM(payment_qty) AS payment_qty,
+                            AVG(uv_value) AS uv_value,
+                            SUM(search_ipv) AS search_visitors,
+                            CASE WHEN SUM(search_ipv) > 0 THEN SUM(search_payment_buyers) * 1.0 / SUM(search_ipv) ELSE NULL END AS search_conversion,
+                            SUM(cart_qty) AS cart_qty,
+                            SUM(fav_users) AS fav_users,
+                            SUM(cart_users) AS cart_users,
                            SUM(paid_ipv) AS paid_ipv,
                            SUM(organic_ipv) AS organic_ipv,
                            SUM(search_ipv) AS search_ipv,
@@ -300,6 +309,13 @@ def get_products():
             where_clauses.append('p.product_type = ?')
             where_params.append(product_type)
         _category_filters = category_filters_from_request()
+        # 经营分群和品类范围都代表“当前周期可审计的商品集合”。在这两种
+        # 场景下没有事实行的商品不能进入列表，否则卡片命中数与列表总数会漂移。
+        # 未带范围的旧调用继续保留 LEFT JOIN，以维持主档 partial 兼容语义。
+        require_period_facts = (
+            (dimension == 'daily' and bool(start and end and start == end))
+            or (dimension == 'monthly' and bool(_category_filters.get('shop_label') or rule_key))
+        )
         if _category_filters.get('shop_label'):
             _label = _category_filters['shop_label']
             where_clauses.append("(p.shop_label = ? OR instr(',' || p.shop_label || ',', ',' || ? || ',') > 0)")
@@ -328,6 +344,10 @@ def get_products():
         if product_id:
             where_clauses.append('p.product_id = ?')
             where_params.append(product_id)
+        if rule_key:
+            if not get_rule(rule_key):
+                return failure('VALIDATION_ERROR', 'invalid product rule', {'rule_key': rule_key}, status=422)
+            where_clauses.append(condition_for_dimension(rule_key, dimension))
         where_sql = ' AND '.join(where_clauses) or '1=1'
 
         query = f'''
@@ -345,13 +365,13 @@ def get_products():
                    COALESCE(d.ad_spend, 0) as ad_spend,
                    COALESCE(d.ad_roi, 0) as roi,
                    COALESCE(d.{('visitors' if dimension=='monthly' else 'ipv')}, 0) as visitors,
-                   {('COALESCE(d.payment_qty, 0)' if dimension=='monthly' else '0')} as payment_count,
+                    {payment_count_expr} as payment_count,
                    CASE WHEN COALESCE(d.payment_amount, 0) > 0 THEN COALESCE(d.refund_amount, 0) * 1.0 / d.payment_amount ELSE 0 END as refund_rate,
                    {('COALESCE(d.page_views, 0)' if dimension=='monthly' else ('COALESCE(d.pv, 0)' if dimension=='daily' else '0'))} as page_views,
-                   {('COALESCE(d.uv_value, 0)' if dimension=='monthly' else '0')} as uv_value,
-                   {('COALESCE(d.search_visitors, 0)' if dimension=='monthly' else '0')} as search_visitors,
-                   {('COALESCE(d.search_ratio, 0)' if dimension=='monthly' else '0')} as search_ratio,
-                   {('COALESCE(d.search_conversion, 0)' if dimension=='monthly' else '0')} as search_conversion,
+                    {uv_value_expr} as uv_value,
+                    {search_visitors_expr} as search_visitors,
+                    {search_ratio_expr} as search_ratio,
+                    {search_conversion_expr} as search_conversion,
                    COALESCE(d.cart_rate, 0) as cart_rate,
                    COALESCE(d.fav_rate, 0) as fav_rate,
                    COALESCE(d.bounce_rate, 0) as bounce_rate,
@@ -360,15 +380,15 @@ def get_products():
                    {repurchase_cross_cols}
                    {('COALESCE(d.buyers, 0)' if dimension!='weekly' else '0')} as buyers,
                    COALESCE(d.avg_order_value, 0) as avg_order_value,
-                   {('COALESCE(d.cart_qty, 0)' if dimension=='monthly' else '0')} as cart_qty,
-                   {('COALESCE(d.fav_users, 0)' if dimension=='monthly' else '0')} as fav_users,
+                    {cart_qty_expr} as cart_qty,
+                    {fav_users_expr} as fav_users,
                    {click_score_cols}
                    COALESCE(d.net_sales, 0) as net_sales,
                    CASE WHEN COALESCE(d.payment_amount, 0) > 0 THEN COALESCE(d.ad_spend, 0) * 1.0 / d.payment_amount ELSE NULL END as expense_ratio,
                    {('d.trend_change' if dimension == 'daily' and start and end else 'NULL')} as trend_change,
                    {monthly_traffic_cols}
                    {dmp_metric_cols}
-                   {('COALESCE(d.cart_users, 0)' if dimension=='monthly' else '0')} as cart_users,
+                    {cart_users_expr} as cart_users,
                    {monthly_extra_cols}
                    COALESCE(pd_latest.impressions, 0) as impressions,
                    COALESCE(pd_latest.clicks, 0) as clicks,
@@ -402,7 +422,7 @@ def get_products():
                    {bi_payload_select}
             FROM products p
             {legacy_lifecycle_join}
-            LEFT JOIN {data_relation} d ON {join_clause}
+            {'JOIN' if require_period_facts else 'LEFT JOIN'} {data_relation} d ON {join_clause}
             {bi_payload_join}
             {legacy_paid_join}
             WHERE {where_sql}
@@ -463,9 +483,12 @@ def get_products():
 
         # 获取总数（用于服务端分页）- 与主查询使用完全相同的WHERE条件
         count_query = f'''SELECT COUNT(*) as total FROM products p
-            LEFT JOIN lifecycle_profiles lp ON lp.product_id = p.product_id
+            {legacy_lifecycle_join}
+            {'JOIN' if require_period_facts else 'LEFT JOIN'} {data_relation} d ON {join_clause}
+            {bi_payload_join}
+            {legacy_paid_join}
             WHERE {where_sql}'''
-        count_params = list(where_params)
+        count_params = list(params[:-2])
         total_row = conn.execute(count_query, count_params).fetchone()
         total_count = total_row['total'] if total_row else 0
 
@@ -537,6 +560,149 @@ def get_products():
     )
 
 #
+
+@products_legacy_bp.route('/api/products/timeline', methods=['GET'])
+@cached_api('products-timeline', 30)
+def get_products_timeline():
+    """Return period-grain rows for the products currently shown in the list."""
+    dimension = request.args.get('dim', 'daily')
+    if dimension not in {'daily', 'weekly', 'monthly'}:
+        return failure('VALIDATION_ERROR', 'invalid dimension', {'dim': dimension}, status=422)
+    product_ids = [value.strip() for value in request.args.get('product_ids', '').split(',') if value.strip()]
+    if not product_ids:
+        return success({'rows': [], 'dimension': dimension, 'start': None, 'end': None}, availability='no-data')
+    if len(product_ids) > 200:
+        return failure('VALIDATION_ERROR', 'too many product_ids', status=422)
+    start = request.args.get('start', '').strip()
+    end = request.args.get('end', '').strip()
+    period = request.args.get('period', '').strip()
+    limit_periods = max(0, min(request.args.get('limit_periods', 0, type=int) or 0, 24))
+    invalid = _validate_period_arg(dimension, period) if period else None
+    if invalid:
+        return invalid
+    table = {'daily': 'daily_data', 'weekly': 'weekly_data', 'monthly': 'monthly_data'}[dimension]
+    date_col = {'daily': 'date', 'weekly': 'week_start', 'monthly': 'month'}[dimension]
+    visitors_col = {'daily': 'ipv', 'weekly': 'ipv', 'monthly': 'visitors'}[dimension]
+    paid_ipv_expr = 'd.paid_ipv' if dimension == 'daily' else ('COALESCE(d.paid_ipv, 0)' if dimension == 'weekly' else '0')
+    organic_ipv_expr = 'd.organic_ipv' if dimension == 'daily' else ('COALESCE(d.organic_ipv, 0)' if dimension == 'weekly' else '0')
+    search_ipv_expr = 'COALESCE(d.search_ipv, 0)' if dimension in {'daily', 'weekly'} else '0'
+    recommend_ipv_expr = 'd.recommend_ipv' if dimension == 'daily' else ('COALESCE(d.recommend_ipv, 0)' if dimension == 'weekly' else '0')
+    buyers_expr = 'COALESCE(d.buyers, 0)' if dimension in {'daily', 'monthly'} else '0'
+    shop_id = get_shop_id()
+    placeholders = ','.join('?' for _ in product_ids)
+    clauses = [f'd.product_id IN ({placeholders})']
+    params = list(product_ids)
+    if dimension == 'daily':
+        clauses.append('d.shop_id = ?')
+        params.append(shop_id)
+        if start:
+            clauses.append('d.date >= ?')
+            params.append(start)
+        if end:
+            clauses.append('d.date <= ?')
+            params.append(end)
+    elif dimension == 'weekly':
+        if start:
+            clauses.append('d.week_start >= ?')
+            params.append(start)
+        if end:
+            clauses.append('d.week_start <= ?')
+            params.append(end)
+    elif period:
+        clauses.append('d.month = ?')
+        params.append(period[:7])
+    elif start or end:
+        if start:
+            if not limit_periods:
+                clauses.append('d.month >= ?')
+                params.append(start[:7])
+        if end:
+            clauses.append('d.month <= ?')
+            params.append(end[:7])
+    with get_db() as conn:
+        rows = conn.execute(
+            f'''SELECT d.product_id, d.{date_col} AS period,
+                       COALESCE(d.payment_amount, 0) AS payment_amount,
+                       COALESCE(d.refund_amount, 0) AS refund_amount,
+                       COALESCE(d.net_sales, d.payment_amount - d.refund_amount, 0) AS net_sales,
+                       COALESCE(d.{visitors_col}, 0) AS visitors,
+                       COALESCE(d.payment_conversion, 0) AS conversion,
+                       COALESCE(d.ad_spend, 0) AS ad_spend,
+                       COALESCE(d.ad_roi, 0) AS roi,
+                       CASE WHEN COALESCE(d.payment_amount, 0) > 0
+                            THEN COALESCE(d.refund_amount, 0) * 1.0 / d.payment_amount ELSE 0 END AS refund_rate,
+                       CASE WHEN COALESCE(d.payment_amount, 0) > 0
+                            THEN COALESCE(d.ad_spend, 0) * 1.0 / d.payment_amount ELSE 0 END AS expense_ratio,
+                       {paid_ipv_expr} AS paid_ipv,
+                       {organic_ipv_expr} AS organic_ipv,
+                       {search_ipv_expr} AS search_ipv,
+                       {recommend_ipv_expr} AS recommend_ipv,
+                       COALESCE(d.repurchase_rate, 0) AS repurchase_rate,
+                       {buyers_expr} AS buyers,
+                       COALESCE(d.avg_order_value, 0) AS avg_order_value
+                FROM {table} d
+                WHERE {' AND '.join(clauses)}
+                ORDER BY d.product_id, d.{date_col} DESC''',
+            params,
+        ).fetchall()
+        if dimension == 'weekly' and not rows:
+            daily_clauses = [f'd.product_id IN ({placeholders})', 'd.shop_id = ?']
+            daily_params = list(product_ids) + [shop_id]
+            if start:
+                daily_clauses.append('d.date >= ?')
+                daily_params.append(start)
+            if end:
+                daily_clauses.append('d.date <= ?')
+                daily_params.append(end)
+            rows = conn.execute(
+                f'''SELECT d.product_id,
+                           date(d.date, '-' || ((CAST(strftime('%w', d.date) AS INTEGER) + 6) % 7) || ' days') AS period,
+                           SUM(COALESCE(d.payment_amount, 0)) AS payment_amount,
+                           SUM(COALESCE(d.refund_amount, 0)) AS refund_amount,
+                           SUM(COALESCE(d.net_sales, d.payment_amount - d.refund_amount, 0)) AS net_sales,
+                           SUM(COALESCE(d.ipv, 0)) AS visitors,
+                           AVG(COALESCE(d.payment_conversion, 0)) AS conversion,
+                           SUM(COALESCE(d.ad_spend, 0)) AS ad_spend,
+                           CASE WHEN SUM(COALESCE(d.ad_spend, 0)) > 0
+                                THEN SUM(COALESCE(d.payment_amount, 0)) / SUM(COALESCE(d.ad_spend, 0)) ELSE 0 END AS roi,
+                           CASE WHEN SUM(COALESCE(d.payment_amount, 0)) > 0
+                                THEN SUM(COALESCE(d.refund_amount, 0)) * 1.0 / SUM(COALESCE(d.payment_amount, 0)) ELSE 0 END AS refund_rate,
+                           CASE WHEN SUM(COALESCE(d.payment_amount, 0)) > 0
+                                THEN SUM(COALESCE(d.ad_spend, 0)) * 1.0 / SUM(COALESCE(d.payment_amount, 0)) ELSE 0 END AS expense_ratio,
+                           SUM(COALESCE(d.paid_ipv, 0)) AS paid_ipv,
+                           SUM(COALESCE(d.organic_ipv, 0)) AS organic_ipv,
+                           SUM(COALESCE(d.search_ipv, 0)) AS search_ipv,
+                           SUM(COALESCE(d.recommend_ipv, 0)) AS recommend_ipv,
+                           AVG(COALESCE(d.repurchase_rate, 0)) AS repurchase_rate,
+                           SUM(COALESCE(d.buyers, 0)) AS buyers,
+                           CASE WHEN SUM(COALESCE(d.buyers, 0)) > 0
+                                THEN SUM(COALESCE(d.payment_amount, 0)) / SUM(COALESCE(d.buyers, 0)) ELSE 0 END AS avg_order_value
+                    FROM daily_data d
+                    WHERE {' AND '.join(daily_clauses)}
+                    GROUP BY d.product_id, period
+                    ORDER BY d.product_id, period DESC''',
+                daily_params,
+            ).fetchall()
+    payload_rows = [dict(row) for row in rows]
+    by_product = {}
+    for row in payload_rows:
+        by_product.setdefault(str(row.get('product_id') or ''), []).append(row)
+    for product_rows in by_product.values():
+        for index, row in enumerate(product_rows):
+            previous = product_rows[index + 1].get('payment_amount') if index + 1 < len(product_rows) else None
+            current = row.get('payment_amount')
+            row['trend_change'] = ((float(current or 0) - float(previous)) / float(previous)) if previous not in (None, 0) else None
+        if limit_periods:
+            product_rows[:] = product_rows[:limit_periods]
+    if limit_periods:
+        payload_rows = [row for product_rows in by_product.values() for row in product_rows]
+    return success(
+        {'rows': payload_rows, 'dimension': dimension,
+         'start': payload_rows[-1]['period'] if payload_rows else None,
+         'end': payload_rows[0]['period'] if payload_rows else None},
+        availability='available' if payload_rows else 'no-data',
+        evidence=[{'source': table, 'row_count': len(payload_rows)}],
+    )
 
 @products_legacy_bp.route('/api/product_tags', methods=['GET'])
 def get_product_tags():

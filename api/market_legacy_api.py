@@ -10,47 +10,18 @@ from datetime import date
 
 import io
 import os
-from api.data_api import DIMENSION_MAP, _cleanup_upload_paths, _parse_keyword_date, _parse_keyword_number, _unique_upload_path, _upload_folder, _validate_period_arg
+from datetime import datetime
+from api.data_api import DIMENSION_MAP, _cleanup_upload_paths, _parse_keyword_date, _parse_keyword_number, _unique_upload_path, _upload_folder, _validate_period_arg, cached_api
 
 import pandas as pd
 from flask import Blueprint, current_app, g, jsonify, request
 
-from db import get_db
+from db import get_db, get_db_path
 from api.api_response import evidence_level_for, failure, limitations_for, success
 
 
 market_legacy_bp = Blueprint('market_legacy', __name__)
 
-
-def _request_cache_key(prefix):
-    params = sorted(request.args.items())
-    param_str = "&".join(f"{k}={v}" for k, v in params)
-    from flask import g
-    shop_id = getattr(getattr(g, 'shop_id', None), '__str__', lambda: 'default')()
-    return f"{prefix}:{request.path}:{shop_id}:{param_str}"
-
-
-def cached_api(prefix, ttl=60):
-    from utils.cache import cache as _ttl_cache
-    def decorator(f):
-        def wrapped(*args, **kwargs):
-            key = _request_cache_key(prefix)
-            cached = _ttl_cache.get(key)
-            if cached is not None:
-                return jsonify(cached)
-            result = f(*args, **kwargs)
-            try:
-                if hasattr(result, 'status_code') and result.status_code == 200 and hasattr(result, 'get_json'):
-                    data = result.get_json()
-                    if data is not None:
-                        _ttl_cache.set(key, data, ttl)
-            except Exception:
-                pass
-            return result
-        wrapped.__name__ = getattr(f, '__name__', 'wrapped')
-        wrapped.__doc__ = getattr(f, '__doc__', '')
-        return wrapped
-    return decorator
 
 
 @market_legacy_bp.route('/api/upload/keywords', methods=['POST'])
@@ -329,7 +300,18 @@ def upload_market():
                 status=422,
             )
 
-        count = import_market_data(identified['f30'], identified['f7'], identified['ft'])
+        backup_dir = os.path.join(os.path.dirname(get_db_path()), 'backups')
+        os.makedirs(backup_dir, exist_ok=True)
+        backup_destination = os.path.join(
+            backup_dir,
+            'dashboard-before-market-upload-%s.db' % datetime.now().strftime('%Y%m%d-%H%M%S-%f'),
+        )
+        count = import_market_data(
+            identified['f30'],
+            identified['f7'],
+            identified['ft'],
+            backup_destination=backup_destination,
+        )
         return jsonify({
             'success': True,
             'count': count,

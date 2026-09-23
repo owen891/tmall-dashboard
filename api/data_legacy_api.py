@@ -13,9 +13,10 @@ from services.category_mode_service import category_filters_from_request, shop_l
 """
 
 import io
+import json
 
 import openpyxl
-from api.data_api import DIMENSION_MAP, _aov_expression, _reject_legacy_shop_scope, _validate_period_arg, get_prev_period, _get_prev_month
+from api.data_api import DIMENSION_MAP, _aov_expression, _reject_legacy_shop_scope, _validate_period_arg, cached_api, get_prev_period, _get_prev_month
 from services.category_mode_service import mode_to_label
 
 from flask import Blueprint, current_app, g, jsonify, request, send_file
@@ -25,37 +26,6 @@ from api.api_response import failure, json_object, success
 
 
 data_legacy_bp = Blueprint('data_legacy', __name__)
-
-
-def _request_cache_key(prefix):
-    params = sorted(request.args.items())
-    param_str = "&".join(f"{k}={v}" for k, v in params)
-    from flask import g
-    shop_id = getattr(getattr(g, 'shop_id', None), '__str__', lambda: 'default')()
-    return f"{prefix}:{request.path}:{shop_id}:{param_str}"
-
-
-def cached_api(prefix, ttl=60):
-    from utils.cache import cache as _ttl_cache
-    def decorator(f):
-        def wrapped(*args, **kwargs):
-            key = _request_cache_key(prefix)
-            cached = _ttl_cache.get(key)
-            if cached is not None:
-                return jsonify(cached)
-            result = f(*args, **kwargs)
-            try:
-                if hasattr(result, 'status_code') and result.status_code == 200 and hasattr(result, 'get_json'):
-                    data = result.get_json()
-                    if data is not None:
-                        _ttl_cache.set(key, data, ttl)
-            except Exception:
-                pass
-            return result
-        wrapped.__name__ = getattr(f, '__name__', 'wrapped')
-        wrapped.__doc__ = getattr(f, '__doc__', '')
-        return wrapped
-    return decorator
 
 
 @data_legacy_bp.route('/api/compare', methods=['GET'])
@@ -315,12 +285,18 @@ def export_data():
         seasonality = data.get('seasonality', '')
         has_pending_action = data.get('has_pending_action', '')
         product_id = data.get('product_id', '')
+        rule_key = str(data.get('rule_key') or '').strip()
         star_only = data.get('star_only', False)
         export_cols = data.get('columns', [])
         start = data.get('start', '')
         end = data.get('end', '')
         sort_by = data.get('sort', 'payment_amount')
         order = data.get('order', 'desc')
+
+        rule_definition = None
+        if rule_key:
+            from services.product_rules_service import get_rule
+            rule_definition = get_rule(rule_key)
 
         if shop_id != 'default' and (lifecycle_stage or seasonality or has_pending_action not in ('', None, False, 'false', '0', 0)):
             return failure('UNSUPPORTED_SCOPE', '非 default 店铺暂不支持生命周期/动作旧表筛选', status=422)
@@ -380,6 +356,11 @@ def export_data():
         if export_label:
             where_clauses.append("(p.shop_label = ? OR instr(',' || p.shop_label || ',', ',' || ? || ',') > 0)")
             params.extend([export_label, export_label])
+        if rule_key:
+            from services.product_rules_service import condition_for_dimension, get_rule
+            if not get_rule(rule_key):
+                return failure('VALIDATION_ERROR', 'invalid product rule', {'rule_key': rule_key}, status=422)
+            where_clauses.append(condition_for_dimension(rule_key, dim))
         where_sql = (' AND ' + ' AND '.join(where_clauses)) if where_clauses else ''
 
         data_relation = table
@@ -459,6 +440,8 @@ def export_data():
             )'''
             join_clause = 'p.product_id = d.product_id'
             join_params = [shop_id, start, end, shop_id, start, end, start, start]
+
+        require_period_facts = dim == 'monthly' and bool(export_label or rule_key)
 
         # 如果指定了导出列，动态构建SELECT
         if export_cols:
@@ -579,7 +562,7 @@ def export_data():
             SELECT {select_clause}
                 FROM products p
                 {legacy_lifecycle_join}
-                LEFT JOIN {data_relation} d ON {join_clause}
+                {'JOIN' if require_period_facts else 'LEFT JOIN'} {data_relation} d ON {join_clause}
                 {legacy_paid_join}
                 WHERE 1=1{where_sql}
                 ORDER BY {sort_expression} {order_sql}
@@ -587,6 +570,24 @@ def export_data():
         ws.append(headers)
         for r in rows:
             ws.append(list(r))
+
+        # Keep the export auditable: the result sheet is accompanied by the
+        # exact period, rule, filters, sort and evidence context used to build it.
+        context_ws = wb.create_sheet('查询上下文')
+        context_ws.append(['字段', '值'])
+        context_rows = [
+            ('导出类型', export_type), ('数据维度', dim), ('周期', period or ''),
+            ('开始日期', start or ''), ('结束日期', end or ''), ('状态', status or ''),
+            ('规则键', rule_key), ('规则名称', (rule_definition or {}).get('name', '')),
+            ('规则版本', (rule_definition or {}).get('version', '')),
+            ('规则条件', (rule_definition or {}).get('conditions', '')),
+            ('搜索', search or ''), ('分层', tier or ''), ('风格', style or ''),
+            ('生命周期', lifecycle_stage or ''), ('季节属性', seasonality or ''),
+            ('收藏过滤', str(bool(star_only))), ('排序字段', sort_by or ''), ('排序方向', order or ''),
+            ('商品结果数', len(rows)), ('查询口径', '与商品列表当前筛选条件一致'),
+        ]
+        for key, value in context_rows:
+            context_ws.append([key, json.dumps(value, ensure_ascii=False) if isinstance(value, (dict, list)) else value])
 
     elif export_type == 'refund':
         ws.title = '退款数据'
