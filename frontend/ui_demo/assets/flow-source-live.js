@@ -332,6 +332,9 @@
     }
   }
 
-  window.addEventListener('tmall:date-range-change', (event) => init(event.detail));
-  init(window.TmallDateRange?.getState?.());
+  // 订阅样板收敛到 TmallRuntime.subscribeDateRange（runtime/date-range-scope.js）
+  window.TmallRuntime?.subscribeDateRange
+    ? window.TmallRuntime.subscribeDateRange((detail) => init(detail))
+    : (window.addEventListener('tmall:date-range-change', (event) => init(event.detail)),
+       init(window.TmallDateRange?.getState?.()));
 })();
