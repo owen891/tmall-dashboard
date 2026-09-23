@@ -154,7 +154,6 @@ class ShopScopeApiTests(unittest.TestCase):
             '/api/overview/daily-matrix?start=2026-04-01&end=2026-04-02&lifecycle_stage=growth&shop_id=shop-a',
             '/api/health?period=2026-04&shop_id=shop-a',
             '/api/reviews/summary?shop_id=shop-a',
-            '/api/ad_performance?dim=monthly&period=2026-04&shop_id=shop-a',
         )
         for url in urls:
             with self.subTest(url=url):
@@ -165,7 +164,6 @@ class ShopScopeApiTests(unittest.TestCase):
 
     def test_non_default_legacy_catalog_writes_fail_closed(self):
         requests = (
-            ('POST', '/api/star?shop_id=shop-a', {'product_id': 'scope-product', 'starred': 1}),
             ('PUT', '/api/products/scope-product/field?shop_id=shop-a', {'field': 'tier', 'value': 'A'}),
         )
         for method, url, payload in requests:

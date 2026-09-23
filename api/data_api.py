@@ -115,88 +115,6 @@ def _scheduled_matches(pattern):
     ]
 
 
-def _unique_upload_path(filename):
-    """Keep the original name for file classification while avoiding overwrites."""
-    safe_name = secure_filename(filename or '')
-    stem, suffix = os.path.splitext(safe_name)
-    upload_folder = _upload_folder()
-    candidate = os.path.join(upload_folder, safe_name)
-    if not os.path.exists(candidate):
-        return safe_name, candidate
-    safe_name = f'{stem}_{uuid.uuid4().hex[:8]}{suffix}'
-    return safe_name, os.path.join(upload_folder, safe_name)
-
-
-def _cleanup_upload_paths(paths):
-    """Remove files staged for synchronous legacy imports."""
-    for path in paths:
-        try:
-            os.unlink(path)
-        except FileNotFoundError:
-            continue
-        except OSError:
-            current_app.logger.warning('Unable to remove staged upload: %s', path)
-
-# 导入进度追踪（进程内存储）。终态记录只保留有限时间，避免长期运行
-# 的服务因为历史任务不断累积而增长内存。
-_import_progress = {}
-_import_progress_lock = threading.RLock()
-_IMPORT_PROGRESS_TTL_SECONDS = 24 * 60 * 60
-_IMPORT_PROGRESS_MAX_TERMINAL = 256
-
-
-def _prune_import_progress(now=None):
-    now = time.time() if now is None else now
-    terminal = {'completed', 'error'}
-    for task_id, progress in list(_import_progress.items()):
-        if progress.get('status') not in terminal:
-            continue
-        finished_at = progress.get('finished_at') or progress.get('started_at') or now
-        if now - float(finished_at) > _IMPORT_PROGRESS_TTL_SECONDS:
-            _import_progress.pop(task_id, None)
-
-    terminal_items = [
-        (task_id, progress)
-        for task_id, progress in _import_progress.items()
-        if progress.get('status') in terminal
-    ]
-    if len(terminal_items) > _IMPORT_PROGRESS_MAX_TERMINAL:
-        terminal_items.sort(key=lambda item: item[1].get('finished_at', 0))
-        for task_id, _ in terminal_items[:-_IMPORT_PROGRESS_MAX_TERMINAL]:
-            _import_progress.pop(task_id, None)
-
-
-def _set_import_progress(task_id, payload):
-    with _import_progress_lock:
-        _prune_import_progress()
-        _import_progress[task_id] = dict(payload)
-
-
-def _get_import_progress(task_id):
-    with _import_progress_lock:
-        _prune_import_progress()
-        progress = _import_progress.get(task_id)
-        return dict(progress) if progress is not None else None
-
-
-
-
-# These compatibility endpoints read tables that have no shop_id. Keep them
-# available for the default single-shop deployment, but never let a named
-# shop receive a silently mixed response.
-_LEGACY_SINGLE_SHOP_PATHS = {
-    '/api/refund_alert', '/api/ad_performance', '/api/ad_alerts', '/api/ad_trend',
-    '/api/traffic_structure', '/api/action_stats', '/api/anomalies',
-    '/api/health', '/api/reviews/summary', '/api/reviews/list', '/api/reviews/products',
-    '/api/review', '/api/funnel', '/api/industry_benchmark',
-    '/api/report', '/api/legacy/actions',
-    '/api/star', '/api/batch_update', '/api/batch_tags',
-    '/api/market/summary', '/api/market/keywords', '/api/market/need_stats',
-    '/api/market/rankings', '/api/market/histograms', '/api/market/opportunities',
-    '/api/market/reports', '/api/upload/reviews', '/api/upload/data',
-    '/api/keywords', '/api/alert_checks', '/api/chart_events',
-    '/api/notes', '/api/logs', '/api/product_tags',
-}
 
 
 def _aov_expression(dimension):
@@ -232,16 +150,6 @@ def get_prev_period(period, dim):
         return period
 
 
-def _fmt_wan(val):
-    """格式化金额为万元"""
-    if val is None:
-        return '--'
-    n = float(val)
-    if n == 0:
-        return '0'
-    if abs(n) < 10000:
-        return f"{n:,.0f}"
-    return f"{n / 10000:.1f}万"
 
 def calc_score(row):
     """计算商品综合评分（0-100分）"""
@@ -276,38 +184,7 @@ def _legacy_task_payload(row):
 # ==================== 搜索词效能 API ====================
 
 
-def _parse_keyword_date(value):
-    """Parse an explicit spreadsheet date without inventing a date."""
-    if value is None or (isinstance(value, float) and math.isnan(value)):
-        raise ValueError('日期不能为空')
-    text = str(value).strip()
-    if not text or text.lower() in {'nan', 'nat', 'none', 'null'}:
-        raise ValueError('日期不能为空')
-    try:
-        parsed = datetime.strptime(text, '%Y-%m-%d')
-    except ValueError:
-        try:
-            parsed = pd.to_datetime(value, errors='raise').to_pydatetime()
-        except (TypeError, ValueError, OverflowError):
-            raise ValueError('日期必须是有效日期，格式为 YYYY-MM-DD')
-    return parsed.strftime('%Y-%m-%d')
 
-
-def _parse_keyword_number(value, field, row_number):
-    if value is None or (isinstance(value, float) and math.isnan(value)):
-        raise ValueError(f'第{row_number}行「{field}」不能为空')
-    text = str(value).strip().replace(',', '').replace('，', '')
-    if not text:
-        raise ValueError(f'第{row_number}行「{field}」不能为空')
-    try:
-        number = float(text.rstrip('%'))
-    except (TypeError, ValueError):
-        raise ValueError(f'第{row_number}行「{field}」必须是数值')
-    if not math.isfinite(number):
-        raise ValueError(f'第{row_number}行「{field}」必须是有限数值')
-    if str(value).strip().endswith('%'):
-        number /= 100
-    return number
 
 # 预留接口：异常检测（前端暂未调用）
 

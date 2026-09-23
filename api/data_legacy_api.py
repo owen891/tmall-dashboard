@@ -687,17 +687,6 @@ def get_periods():
 # 预留接口：数据备份（前端暂未调用）
 #
 
-# ==================== 任务看板 API ====================
-
-def _legacy_task_payload(row):
-    item = dict(row)
-    if item.get('status') == 'in_progress':
-        item['status'] = 'doing'
-    return item
-
-
-#
-
 # ==================== Feature 7: 数据异常事件标注 ====================
 #
 

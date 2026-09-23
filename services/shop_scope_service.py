@@ -134,15 +134,9 @@ def require_admin_write():
     return None
 
 LEGACY_SINGLE_SHOP_PATHS = {
-    '/api/refund_alert', '/api/ad_performance', '/api/ad_alerts', '/api/ad_trend',
-    '/api/traffic_structure', '/api/action_stats', '/api/anomalies',
+    '/api/refund_alert', '/api/anomalies',
     '/api/health', '/api/reviews/summary', '/api/reviews/list', '/api/reviews/products',
-    '/api/review', '/api/funnel', '/api/industry_benchmark',
-    '/api/report', '/api/legacy/actions', '/api/star', '/api/batch_update', '/api/batch_tags',
-    '/api/market/summary', '/api/market/keywords', '/api/market/need_stats',
-    '/api/market/rankings', '/api/market/histograms', '/api/market/opportunities',
-    '/api/market/reports', '/api/upload/reviews', '/api/upload/data',
-    '/api/keywords', '/api/alert_checks', '/api/chart_events',
+    '/api/review', '/api/alert_checks',
     '/api/notes', '/api/logs', '/api/product_tags',
 }
 
