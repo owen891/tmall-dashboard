@@ -29,7 +29,7 @@ def build_manifest(collector_dir):
         'python': sys.executable,
         'python_version': platform.python_version(),
         'database_path': os.environ.get('TMALL_DB_PATH', ''),
-        'cdp_port': int(os.environ.get('TMALL_CDP_PORT', '9222')),
+        'cdp_port': int(os.environ.get('TMALL_CDP_PORT', '9223')),
         'collector_version': os.environ.get('TMALL_COLLECTOR_VERSION', 'unversioned'),
         'scripts': scripts,
     }

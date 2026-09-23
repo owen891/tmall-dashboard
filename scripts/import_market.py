@@ -8,13 +8,14 @@ import os
 import sys
 import json
 from datetime import datetime
+from pathlib import Path
 
 # 确保项目根目录在 sys.path 中
 _project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _project_root not in sys.path:
     sys.path.insert(0, _project_root)
 
-from db import get_connection
+from db import get_connection, get_db_path
 from scripts.market_analyzer import build_analysis_data, identify_files, extract_category_and_dates
 
 
@@ -37,7 +38,15 @@ def identify_market_files(file_paths):
     return {'f30': f30, 'f7': f7, 'ft': ft}
 
 
-def import_market_data(f30_path, f7_path, ft_path):
+def _default_backup_destination(prefix='dashboard-before-market-import'):
+    """Return a unique rollback snapshot path for a market write."""
+    backup_dir = Path(get_db_path()).resolve().parent / 'backups'
+    backup_dir.mkdir(parents=True, exist_ok=True)
+    stamp = datetime.now().strftime('%Y%m%d-%H%M%S-%f')
+    return str(backup_dir / f'{prefix}-{stamp}.db')
+
+
+def import_market_data(f30_path, f7_path, ft_path, backup_destination=None):
     """调用 market_analyzer 分析数据并导入数据库
 
     Args:
@@ -81,6 +90,16 @@ def import_market_data(f30_path, f7_path, ft_path):
             analysis_date = period_30d.strip()
     if not analysis_date:
         analysis_date = datetime.now().strftime('%Y-%m-%d')
+
+    # This function mutates two market tables. Keep the rollback snapshot
+    # explicit at the call boundary, while retaining a safe default for the
+    # standalone CLI and older integrations.
+    backup_destination = backup_destination or _default_backup_destination()
+    from scripts.backup_database import backup_database
+
+    backup = backup_database(get_db_path(), backup_destination)
+    if not backup['ok']:
+        raise RuntimeError('database backup integrity check failed')
 
     conn = get_connection()
     cursor = conn.cursor()
@@ -168,5 +187,10 @@ if __name__ == '__main__':
         print("用法: python import_market.py <30天文件> <7天文件> <趋势文件>")
         sys.exit(1)
 
-    count = import_market_data(f30_path, f7_path, ft_path)
+    count = import_market_data(
+        f30_path,
+        f7_path,
+        ft_path,
+        backup_destination=_default_backup_destination('dashboard-before-market-cli'),
+    )
     print("导入完成，共处理 %d 个关键词" % count)

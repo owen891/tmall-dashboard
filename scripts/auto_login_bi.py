@@ -283,6 +283,75 @@ def login_taobao_tab(username, password):
         });
     })()''')
     print(f'  登录页状态: {state}')
+    
+    # 解析是否需要人工操作
+    try:
+        state_data = json.loads(state) if state else {}
+        need_manual = state_data.get('captcha', False)
+    except:
+        need_manual = False
+    
+    # 进一步检测滑块/iframe验证
+    slider_check = cdp_evaluate(ws_url, '''(function() {
+        var iframes = document.querySelectorAll('iframe');
+        for (var i = 0; i < iframes.length; i++) {
+            var src = iframes[i].src || '';
+            if (src.indexOf('punish') >= 0 || src.indexOf('captcha') >= 0) return true;
+        }
+        if (document.querySelector('.nc_iconfont, .btn_slide, .nc-lang-cnt, [class*="slider"], [class*="captcha"]')) {
+            return true;
+        }
+        return false;
+    })()''')
+    if slider_check:
+        need_manual = True
+
+    if need_manual:
+        wait_seconds = int(os.environ.get('TMALL_SLIDER_WAIT_SECONDS', '600'))
+        
+        # 检查是否headless模式
+        try:
+            version_info = json.loads(urllib.request.urlopen(f'http://127.0.0.1:{CDP_PORT}/json/version', timeout=3).read())
+            is_headless = 'HeadlessChrome' in version_info.get('User-Agent', '')
+        except:
+            is_headless = False
+
+        print('\n' + '='*60)
+        print('⚠️  生意参谋登录需要人工操作（验证码/滑块）')
+        if is_headless:
+            print('⚠️  当前Chrome为无头模式，正在自动切换为有头窗口...')
+            subprocess.run(['taskkill', '/F', '/IM', 'chrome.exe', '/FI', f'COMMANDLINE eq *--remote-debugging-port={CDP_PORT}*'], 
+                         capture_output=True, shell=True)
+            time.sleep(3)
+            chrome_path = os.environ.get('TMALL_CHROME_PATH', r'C:\Program Files\Google\Chrome\Application\chrome.exe')
+            profile = os.environ.get('TMALL_CHROME_PROFILE') or str(
+                Path(os.environ['LOCALAPPDATA']) / 'TmallDashboard/CollectorChrome')
+            subprocess.Popen([
+                chrome_path, f'--remote-debugging-port={CDP_PORT}',
+                f'--remote-allow-origins=http://localhost:{CDP_PORT},http://127.0.0.1:{CDP_PORT}',
+                f'--user-data-dir={profile}', '--no-first-run', '--no-default-browser-check',
+                'https://sycm.taobao.com/'
+            ])
+            time.sleep(5)
+            print('✅ 已弹出Chrome窗口，请在浏览器中完成生意参谋登录')
+        else:
+            print('请在Chrome窗口中完成生意参谋登录')
+        print(f'[等待] 最多等待 {wait_seconds} 秒，每10秒检测一次登录状态...')
+        print('='*60 + '\n')
+
+        for i in range(wait_seconds // 10):
+            time.sleep(10)
+            if sycm_session_valid():
+                elapsed = (i+1) * 10
+                print(f'\n✅ [登录] 生意参谋登录成功！（耗时 {elapsed} 秒）')
+                return True
+            if (i+1) % 3 == 0:
+                remaining = wait_seconds - (i+1)*10
+                print(f'  仍在等待生意参谋登录... 剩余 {remaining} 秒')
+        
+        print('\n❌ [超时] 等待生意参谋人工登录超时')
+        return False
+    
     return False
 
 

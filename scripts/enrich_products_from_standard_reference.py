@@ -16,7 +16,6 @@ import hashlib
 import json
 import math
 import re
-import shutil
 import sqlite3
 from collections import Counter, defaultdict
 from pathlib import Path
@@ -449,7 +448,10 @@ def main() -> int:
     parser.add_argument('--database', type=Path, default=DEFAULT_DB)
     parser.add_argument('--report', type=Path, default=DEFAULT_REPORT)
     parser.add_argument('--apply', action='store_true', help='实际写入数据库；默认仅生成预览报告')
+    parser.add_argument('--backup-destination', help='Required with --apply: integrity-checked SQLite backup path')
     args = parser.parse_args()
+    if args.apply and not args.backup_destination:
+        parser.error('--backup-destination is required with --apply')
     if not args.workbook.exists():
         raise FileNotFoundError(f'参考文件不存在：{args.workbook}')
     if not args.database.exists():
@@ -486,18 +488,18 @@ def main() -> int:
             'sample': updates[:10],
         })
         if args.apply:
-            backup_dir = args.database.parent.parent / 'backups'
-            backup_dir.mkdir(parents=True, exist_ok=True)
-            stamp = dt.datetime.now().strftime('%Y%m%d-%H%M%S')
-            backup_path = backup_dir / f'{args.database.stem}-before-product-classification-{stamp}{args.database.suffix}'
             connection.close()
-            shutil.copy2(args.database, backup_path)
+            from scripts.backup_database import backup_database
+
+            backup = backup_database(args.database, args.backup_destination)
+            if not backup['ok']:
+                raise RuntimeError('database backup integrity check failed')
             connection = sqlite3.connect(args.database)
             connection.row_factory = sqlite3.Row
             ensure_schema(connection)
             written = apply_updates(connection, updates)
             connection.commit()
-            summary['backup'] = str(backup_path)
+            summary['backup'] = backup
             summary['updated_rows'] = written
         args.report.parent.mkdir(parents=True, exist_ok=True)
         args.report.write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding='utf-8')

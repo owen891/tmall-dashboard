@@ -158,9 +158,12 @@ if ($needBIPage -or $needOtherPages) {
     if ($BIPassword) { $env:BI_PASSWORD = $BIPassword }
     $loginOutput = & $PythonPath @loginArgs 2>&1
     foreach ($line in $loginOutput) { Write-Log "  $line" }
-    if ($LASTEXITCODE -ne 0) {
-        Write-Log "  ✗ 页面准备/登录失败，退出码: $LASTEXITCODE；已停止，不会触发采集任务" "ERROR"
-        exit 1
+    $biLoginFailed = ($LASTEXITCODE -ne 0)
+    if ($biLoginFailed) {
+        Write-Log "  ⚠ BI页面登录失败，将跳过BI相关采集任务，继续执行其他采集" "WARN"
+        # 从Sources中移除bi_*任务
+        $Sources = @($Sources | Where-Object { $_ -notlike 'bi_*' })
+        $needBIPage = $false
     }
     Write-Log "  等待页面加载..."
     Start-Sleep -Seconds 5
@@ -200,29 +203,38 @@ Write-Log "  成功触发 $($triggered.Count) 个任务"
 Write-Log "`n[5/6] 等待采集完成..."
 for ($i = 0; $i -lt $CollectWaitTimeout; $i += 10) {
     Start-Sleep -Seconds 10
-    $running = 0; $completed = 0; $failed = 0
+    $running = 0; $completed = 0; $partial = 0; $failed = 0; $unknown = 0
     foreach ($source in $triggered) {
         try {
             $resp = Invoke-WebRequest -Uri "$DashboardUrl/api/collect/log/$source" -UseBasicParsing -TimeoutSec 5
             $status = ($resp.Content | ConvertFrom-Json).data.status
-            if ($status -eq 'running') { $running++ }
+            if ($status -in @('queued', 'running')) { $running++ }
             elseif ($status -eq 'completed') { $completed++ }
-            elseif ($status -eq 'failed') { $failed++ }
+            elseif ($status -eq 'partial') { $partial++ }
+            elseif ($status -in @('failed', 'auth_required', 'blocked', 'cancelled', 'timed_out')) { $failed++ }
+            else { $unknown++ }
         } catch {}
     }
-    Write-Log "  已等待 $($i+10)秒: 运行中=$running, 完成=$completed, 失败=$failed"
-    if ($running -eq 0) { Write-Log "  ✓ 全部完成"; break }
+    Write-Log "  已等待 $($i+10)秒: 运行中=$running, 完成=$completed, 部分成功=$partial, 失败=$failed, 未知=$unknown"
+    if ($running -eq 0 -and $unknown -eq 0) { Write-Log "  ✓ 全部任务已结束"; break }
 }
 
 # 5b. 聚合店铺日汇总（从 daily_data 补 store_daily_facts）
 Write-Log "`n[5b] 聚合店铺日汇总..."
 $aggScript = Join-Path $ProjectRoot "scripts\aggregate_store_daily.py"
+$aggregateFailed = $false
 if (Test-Path $aggScript) {
-    $aggOutput = & $PythonPath $aggScript 2>&1
+    $backupDir = if ($env:TMALL_BACKUP_DIR) { $env:TMALL_BACKUP_DIR } else { Join-Path $ProjectRoot 'data\backups' }
+    if (-not (Test-Path -LiteralPath $backupDir)) {
+        New-Item -ItemType Directory -Path $backupDir -Force | Out-Null
+    }
+    $aggBackup = Join-Path $backupDir "aggregate-store-daily-$(Get-Date -Format 'yyyyMMdd-HHmmss').db"
+    $aggOutput = & $PythonPath $aggScript --apply --backup-destination $aggBackup 2>&1
     foreach ($line in $aggOutput) { Write-Log "  $line" }
-    if ($LASTEXITCODE -ne 0) { Write-Log "  WARN 聚合脚本退出码: $LASTEXITCODE" }
+    if ($LASTEXITCODE -ne 0) { Write-Log "  ✗ 聚合脚本退出码: $LASTEXITCODE" "ERROR"; $aggregateFailed = $true }
 } else {
-    Write-Log "  WARN 聚合脚本不存在: $aggScript"
+    Write-Log "  ✗ 聚合脚本不存在: $aggScript" "ERROR"
+    $aggregateFailed = $true
 }
 
 
@@ -235,13 +247,14 @@ foreach ($source in $triggered) {
         $resp = Invoke-WebRequest -Uri "$DashboardUrl/api/collect/log/$source" -UseBasicParsing -TimeoutSec 5
         $data = $resp.Content | ConvertFrom-Json
         if ($data.data.status -eq 'completed') { Write-Log "  ✓ $name : 成功"; $successCount++ }
-        elseif ($data.data.status -eq 'failed') { Write-Log "  ✗ $name : 失败 - $($data.data.error)"; $failCount++ }
-        else { Write-Log "  ⚠ $name : $($data.data.status)" }
-    } catch { Write-Log "  ? $name : 无法查询" }
+        elseif ($data.data.status -eq 'partial') { Write-Log "  ⚠ $name : 部分成功 - $($data.data.error)"; $failCount++ }
+        elseif ($data.data.status -in @('failed', 'auth_required', 'blocked', 'cancelled', 'timed_out')) { Write-Log "  ✗ $name : $($data.data.status) - $($data.data.error)"; $failCount++ }
+        else { Write-Log "  ✗ $name : 未完成（$($data.data.status)）"; $failCount++ }
+    } catch { Write-Log "  ✗ $name : 无法查询"; $failCount++ }
 }
 
 Write-Log "========================================"
 Write-Log "  成功: $successCount, 失败: $failCount"
 Write-Log "========================================"
 
-if ($failCount -gt 0) { exit 1 } else { exit 0 }
+if ($failCount -gt 0 -or $aggregateFailed) { exit 1 } else { exit 0 }

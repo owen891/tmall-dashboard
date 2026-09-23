@@ -16,11 +16,25 @@ import subprocess
 import sys
 import time
 import urllib.request
+from pathlib import Path
 
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+
+
+def default_collectors_dir():
+    candidates = (
+        PROJECT_ROOT / 'collectors',
+        PROJECT_ROOT.parent / 'BI采集' / 'collectors',
+    )
+    return str(next((candidate for candidate in candidates if candidate.is_dir()), candidates[0]))
+
+
+venv_python = PROJECT_ROOT / '.venv' / (Path('Scripts/python.exe') if os.name == 'nt' else Path('bin/python'))
 CDP_PORT = int(os.environ.get('TMALL_CDP_PORT', '9223'))
-PYTHON = os.environ.get('TMALL_COLLECT_PYTHON', r'E:\www\tmall-dashboard\.venv\Scripts\python.exe')
-COLLECTORS = os.environ.get('TMALL_COLLECTORS_DIR', r'E:\www\BI采集\collectors')
-DB_PATH = os.environ.get('TMALL_DB_PATH', r'E:\www\tmall-dashboard\data\dashboard.db')
+PYTHON = os.environ.get('TMALL_COLLECT_PYTHON', str(venv_python))
+COLLECTORS = os.environ.get('TMALL_COLLECTORS_DIR') or default_collectors_dir()
+DB_PATH = os.environ.get('TMALL_DB_PATH', str(PROJECT_ROOT / 'data' / 'dashboard.db'))
 WAIT_SECONDS = int(os.environ.get('TMALL_LOGIN_WAIT_SECONDS', '900'))
 
 

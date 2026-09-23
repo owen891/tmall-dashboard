@@ -15,12 +15,11 @@ apply 前会整库备份成 data/dashboard.db.bak_<时间戳>。
 import argparse
 import json
 import os
-import shutil
 import sqlite3
 import sys
 from datetime import datetime
 
-PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 DB_PATH = os.path.join(PROJECT_ROOT, 'data', 'dashboard.db')
 DEFAULT_JSON = os.path.join(PROJECT_ROOT, 'data',
                             'sycm_item_flow_0916_belong_all_backup_20260920.json')
@@ -50,8 +49,11 @@ def main():
     parser.add_argument('--belong', default='all')
     parser.add_argument('--apply', action='store_true')
     parser.add_argument('--dry-run', action='store_true')
+    parser.add_argument('--backup-destination', help='Required with --apply: integrity-checked SQLite backup path')
     args = parser.parse_args()
     apply_changes = args.apply and not args.dry_run
+    if apply_changes and not args.backup_destination:
+        parser.error('--backup-destination is required with --apply')
 
     rows = load_rows(args.json)
     print('备份文件: %s' % os.path.basename(args.json))
@@ -96,10 +98,13 @@ def main():
         conn.close()
         return 0
 
-    backup_path = '%s.bak_%s' % (DB_PATH, datetime.now().strftime('%Y%m%d_%H%M%S'))
     conn.close()
-    shutil.copy2(DB_PATH, backup_path)
-    print('已备份整库: %s' % os.path.basename(backup_path))
+    from scripts.backup_database import backup_database
+
+    backup = backup_database(DB_PATH, args.backup_destination)
+    if not backup['ok']:
+        raise RuntimeError('database backup integrity check failed')
+    print('已备份整库: %s' % os.path.basename(backup['destination']))
 
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
@@ -108,10 +113,17 @@ def main():
         payload_rows.append(tuple(
             json.dumps(row.get(col), ensure_ascii=False)
             if col == 'raw_data' else row.get(col) for col in COLUMNS))
-    cursor.executemany(
-        'INSERT OR REPLACE INTO sycm_item_flow_source_daily (%s) VALUES (%s)'
-        % (', '.join(COLUMNS), ', '.join('?' for _ in COLUMNS)), payload_rows)
-    conn.commit()
+    try:
+        cursor.executemany(
+            'INSERT OR REPLACE INTO sycm_item_flow_source_daily (%s) VALUES (%s)'
+            % (', '.join(COLUMNS), ', '.join('?' for _ in COLUMNS)), payload_rows)
+        integrity = conn.execute('PRAGMA integrity_check').fetchone()[0]
+        if integrity != 'ok':
+            raise RuntimeError('database integrity check failed before commit')
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
 
     for date in dates:
         summary = cursor.execute(

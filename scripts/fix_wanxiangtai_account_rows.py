@@ -12,10 +12,14 @@ campaign_id 为空的账户总账（grain='account'），其口径与当日的 c
 import argparse
 import json
 import os
-import shutil
 import sqlite3
 import sys
 from datetime import datetime
+from pathlib import Path
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 
 DB_PATH = os.environ.get(
     "TMALL_DB_PATH",
@@ -27,11 +31,17 @@ BACKUP_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file
 SANE_MIN, SANE_MAX = 20000.0, 80000.0
 
 
-def main():
+def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument("--apply", action="store_true", help="执行删除；默认仅预览")
+    ap.add_argument("--backup-destination", help="Required with --apply: integrity-checked SQLite backup path")
     ap.add_argument("--date", help="只处理指定日期，默认全部")
-    args = ap.parse_args()
+    args = ap.parse_args(argv)
+    if args.dry_run and args.apply:
+        ap.error("--dry-run and --apply are mutually exclusive")
+    if args.apply and not args.backup_destination:
+        ap.error("--backup-destination is required with --apply")
 
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
@@ -54,7 +64,7 @@ def main():
               % (r["date"], round(r["ad_spend"] or 0, 1), r["attributed_payment_amount"],
                  r["impressions"], (r["source_batch_id"] or "")[:8]))
 
-    if args.dry_run:
+    if not args.apply:
         print("\n[dry-run] 未做任何修改。")
         return 0
 
@@ -67,9 +77,12 @@ def main():
     print("\n已归档 -> %s" % out)
 
     # 2) 数据库整体备份
-    bak = DB_PATH + ".bak_" + stamp
-    shutil.copy2(DB_PATH, bak)
-    print("已备份数据库 -> %s" % bak)
+    from scripts.backup_database import backup_database
+
+    backup = backup_database(DB_PATH, args.backup_destination)
+    if not backup['ok']:
+        raise RuntimeError('database backup integrity check failed')
+    print("已备份数据库 -> %s" % backup['destination'])
 
     # 3) 删除
     dates = sorted({r["date"] for r in rows})
@@ -78,8 +91,12 @@ def main():
     if args.date:
         q += " AND date=?"
         p = (args.date,)
-    cur = conn.execute(q, p)
-    conn.commit()
+    try:
+        cur = conn.execute(q, p)
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
     print("已删除 %d 行" % cur.rowcount)
 
     # 4) 校验

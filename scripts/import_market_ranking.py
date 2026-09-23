@@ -2,14 +2,16 @@
 """市场分析数据建表+导入脚本
 从 analysis_result.json 导入店透视市场排行数据到看板数据库
 """
+import argparse
 import json
+import os
 import sqlite3
 from datetime import datetime
 
-DB_PATH = 'data/dashboard.db'
-JSON_PATH = r'E:\skill-dianshang\月复盘SKILL\analysis_result.json'
+DB_PATH = os.environ.get('TMALL_DB_PATH', 'data/dashboard.db')
+JSON_PATH = os.environ.get('TMALL_MARKET_RANKING_JSON', r'E:\skill-dianshang\月复盘SKILL\analysis_result.json')
 
-def create_tables(conn):
+def create_tables(conn, commit=True):
     c = conn.cursor()
     c.execute('''CREATE TABLE IF NOT EXISTS market_analysis_runs (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -75,10 +77,11 @@ def create_tables(conn):
     c.execute('CREATE INDEX IF NOT EXISTS idx_mp_run_cat ON market_products(run_id, category)')
     c.execute('CREATE INDEX IF NOT EXISTS idx_mp_list_type ON market_products(list_type)')
     c.execute('CREATE INDEX IF NOT EXISTS idx_mk_run_cat ON market_keywords(run_id, category)')
-    conn.commit()
+    if commit:
+        conn.commit()
     print("建表完成")
 
-def import_data(conn):
+def import_data(conn, commit=True):
     with open(JSON_PATH, 'r', encoding='utf-8') as f:
         data = json.load(f)
 
@@ -184,7 +187,8 @@ def import_data(conn):
         c.execute('''INSERT INTO market_overlap_shops (run_id, shop_name) VALUES (?, ?)''',
             (run_id, shop))
 
-    conn.commit()
+    if commit:
+        conn.commit()
 
     # 统计
     c.execute('SELECT COUNT(*) FROM market_products WHERE run_id=?', (run_id,))
@@ -196,8 +200,65 @@ def import_data(conn):
     c.execute('SELECT COUNT(*) FROM market_category_stats WHERE run_id=?', (run_id,))
     print(f"类目统计 {c.fetchone()[0]} 条")
 
+def preview_data(path):
+    with open(path, 'r', encoding='utf-8') as handle:
+        data = json.load(handle)
+    summary = {}
+    for category in ('mid', 'long'):
+        section = data.get(category) or {}
+        summary[category] = {
+            'products': sum(len(section.get(key) or []) for key in (
+                'top_buyers', 'top_visitors', 'top_shops', 'rising', 'falling', 'new_entries')),
+            'keywords': sum(len(section.get(key) or []) for key in ('keywords', 'title_keywords')),
+        }
+    summary['overlap_shops'] = len(data.get('overlap_shops') or [])
+    return summary
+
+
+def main(argv=None):
+    global JSON_PATH
+    parser = argparse.ArgumentParser(description='Import market ranking JSON safely.')
+    parser.add_argument('--db', default=DB_PATH)
+    parser.add_argument('--json', dest='json_path', default=JSON_PATH)
+    parser.add_argument('--apply', action='store_true', help='Persist tables and ranking rows.')
+    parser.add_argument('--backup-destination', help='Required with --apply: integrity-checked SQLite backup path.')
+    args = parser.parse_args(argv)
+    if args.apply and not args.backup_destination:
+        parser.error('--backup-destination is required with --apply')
+    if not os.path.isfile(args.json_path):
+        raise SystemExit(f'JSON does not exist: {args.json_path}')
+
+    summary = preview_data(args.json_path)
+    if not args.apply:
+        print(json.dumps({'mode': 'dry-run', 'database': os.path.abspath(args.db),
+                          'json': os.path.abspath(args.json_path), 'summary': summary},
+                         ensure_ascii=False, indent=2))
+        return 0
+
+    from scripts.backup_database import backup_database
+
+    backup = backup_database(args.db, args.backup_destination)
+    if not backup['ok']:
+        raise RuntimeError('database backup integrity check failed')
+    conn = sqlite3.connect(args.db)
+    try:
+        JSON_PATH = args.json_path
+        create_tables(conn, commit=False)
+        import_data(conn, commit=False)
+        integrity = conn.execute('PRAGMA integrity_check').fetchone()[0]
+        if integrity != 'ok':
+            raise RuntimeError('database integrity check failed before commit')
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+    print(json.dumps({'mode': 'apply', 'database': os.path.abspath(args.db),
+                      'json': os.path.abspath(args.json_path), 'backup': backup,
+                      'summary': summary}, ensure_ascii=False, indent=2))
+    return 0
+
+
 if __name__ == '__main__':
-    conn = sqlite3.connect(DB_PATH)
-    create_tables(conn)
-    import_data(conn)
-    conn.close()
+    raise SystemExit(main())

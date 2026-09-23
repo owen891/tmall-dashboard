@@ -4,15 +4,15 @@
 
 $ErrorActionPreference = "Continue"
 
-# 配置
-$PROJECT_DIR = "E:\www\tmall-dashboard"
-$VENV_PYTHON = "$PROJECT_DIR\.venv\Scripts\python.exe"
-$BACKUP_SCRIPT = "$PROJECT_DIR\scripts\backup_database.py"
-$DB_PATH = "$PROJECT_DIR\data\dashboard.db"
-$BACKUP_DIR = "$PROJECT_DIR\data\backups"
-$LOG_DIR = "$PROJECT_DIR\logs"
-$RETENTION_DAYS = 7
-$RETENTION_WEEKS = 4
+# 配置。计划任务可通过环境变量覆盖，默认跟随脚本所在项目目录。
+$PROJECT_DIR = if ($env:TMALL_PROJECT_ROOT) { $env:TMALL_PROJECT_ROOT } else { Split-Path -Parent $PSScriptRoot }
+$VENV_PYTHON = if ($env:TMALL_COLLECT_PYTHON) { $env:TMALL_COLLECT_PYTHON } else { Join-Path $PROJECT_DIR '.venv\Scripts\python.exe' }
+$BACKUP_SCRIPT = Join-Path $PROJECT_DIR 'scripts\backup_database.py'
+$DB_PATH = if ($env:TMALL_DB_PATH) { $env:TMALL_DB_PATH } else { Join-Path $PROJECT_DIR 'data\dashboard.db' }
+$BACKUP_DIR = if ($env:TMALL_BACKUP_DIR) { $env:TMALL_BACKUP_DIR } else { Join-Path $PROJECT_DIR 'data\backups' }
+$LOG_DIR = if ($env:TMALL_LOG_DIR) { $env:TMALL_LOG_DIR } else { Join-Path $PROJECT_DIR 'logs' }
+$RETENTION_DAYS = if ($env:TMALL_BACKUP_RETENTION_DAYS) { [int]$env:TMALL_BACKUP_RETENTION_DAYS } else { 7 }
+$RETENTION_WEEKS = if ($env:TMALL_BACKUP_RETENTION_WEEKS) { [int]$env:TMALL_BACKUP_RETENTION_WEEKS } else { 4 }
 
 # 创建日志目录
 if (-not (Test-Path $LOG_DIR)) {

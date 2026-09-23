@@ -51,7 +51,8 @@ DAILY_SPECS: dict[str, tuple[str, ...]] = {
     'product_visitors': ('访客数',),
     'page_views': ('浏览量', '商品浏览量'),
     'payment_conversion': ('支付转化率', '真实支付转化率'),
-    'favorite_cart_rate': ('加购率',),
+    'cart_rate': ('加购率',),
+    'fav_rate': ('收藏率',),
     'payment_buyers': ('支付人数',),
     'payment_unit_price': ('真实客单价', '实际客单价', '客单价'),
     'uv_value': ('访客价值',),
@@ -78,6 +79,19 @@ DAILY_SPECS: dict[str, tuple[str, ...]] = {
     'operating_profit': ('利润(支付预估)',),
     'profit_rate': ('利润率(支付预估)',),
     'profit_target': ('利润目标',),
+    # 推广平台明细。BI 导出的列会随版本增减，缺失时 first_value 返回 None，
+    # 该字段不会写入观测，最终在 daily_data 中保持 NULL 而不是 0。
+    # 注意：「万相台」「礼品费用」「全站推广」在部分周期整列为 '--'，
+    # 属于平台侧确实没有投放，不能当成 0 参与费比。
+    # 因此无界花费/无界成交实际改由 promotion_daily_facts 提供，
+    # 这里保留映射只为在 BI 真的导出数值时留一条兜底通路。
+    'wujie_spend': ('万相台',),
+    'wujie_payment': ('万相台成交金额',),
+    'product_sitewide_spend': ('货品全站推花费',),
+    'product_sitewide_payment': ('全站推广成交金额',),
+    'gift_cost': ('首单礼金', '品牌新享首单礼金'),
+    # 「商品营销托管」= 品牌新享营销托管软件服务费。
+    'brand_marketing_spend': ('品牌新享营销托管软件服务费',),
 }
 
 
@@ -167,12 +181,16 @@ def remove_absent_products_for_date(connection: sqlite3.Connection, stat_date: s
 
 def _insert_batch(connection: sqlite3.Connection, path: Path, source_hash: str, stat_date: str) -> str:
     batch_id = hashlib.sha256(f'{SOURCE_TYPE}:{path.name}:{source_hash}'.encode('utf-8')).hexdigest()[:32]
+    shop_id = get_shop_id()
     connection.execute(
-        """INSERT INTO import_batches (id, source_type, source_filename, source_hash, status, quality_summary)
-           VALUES (?, ?, ?, ?, 'running', ?)
-           ON CONFLICT(id) DO UPDATE SET source_hash=excluded.source_hash, status='running',
+        """INSERT INTO import_batches
+           (id, shop_id, source_type, source_filename, source_hash, status, quality_summary)
+           VALUES (?, ?, ?, ?, ?, 'running', ?)
+           ON CONFLICT(id) DO UPDATE SET shop_id=excluded.shop_id,
+             source_hash=excluded.source_hash, status='running',
              quality_summary=excluded.quality_summary, completed_at=NULL""",
-        (batch_id, SOURCE_TYPE, str(path), source_hash, json.dumps({'date': stat_date}, ensure_ascii=False)),
+        (batch_id, shop_id, SOURCE_TYPE, str(path), source_hash,
+         json.dumps({'date': stat_date}, ensure_ascii=False)),
     )
     return batch_id
 
@@ -180,7 +198,6 @@ def _insert_batch(connection: sqlite3.Connection, path: Path, source_hash: str, 
 def import_file(connection: sqlite3.Connection, path: Path, dry_run: bool = False) -> dict[str, Any]:
     stat_date = date_from_file(path)
     source_hash = file_hash(path)
-    source_batch_id = path.name
     batch_id = None if dry_run else _insert_batch(connection, path, source_hash, stat_date)
     rows = 0
     invalid_rows = 0
@@ -211,7 +228,7 @@ def import_file(connection: sqlite3.Connection, path: Path, dry_run: bool = Fals
                 observation,
                 SOURCE_TYPE,
                 source_filename=path.name,
-                source_batch_id=source_batch_id,
+                source_batch_id=batch_id,
                 source_system=SOURCE_SYSTEM,
                 # 必须显式传入店铺 scope。缺省值 'default' 会与既有数据
                 # （shop_id='3828498662'）分裂成两套行，同一商品同一天被

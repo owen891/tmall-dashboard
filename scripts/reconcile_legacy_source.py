@@ -300,10 +300,17 @@ def main(argv=None):
     parser.add_argument('--database', default=get_db_path())
     parser.add_argument('--source-file', required=True)
     parser.add_argument('--apply', action='store_true', help='精确匹配通过后写入批次、观察和血缘')
+    parser.add_argument('--backup-destination', help='Required with --apply: integrity-checked SQLite backup path')
     args = parser.parse_args(argv)
+    if args.apply and not args.backup_destination:
+        parser.error('--backup-destination is required with --apply')
     report = plan(os.path.abspath(args.database), args.source_file)
     output = {key: value for key, value in report.items() if key != 'matches'}
     if args.apply:
+        from scripts.backup_database import backup_database
+        output['backup'] = backup_database(args.database, args.backup_destination)
+        if not output['backup']['ok']:
+            raise RuntimeError('database backup integrity check failed')
         output['apply'] = apply_plan(report)
     print(json.dumps(output, ensure_ascii=False, indent=2))
     return 0 if report['eligible'] else 1

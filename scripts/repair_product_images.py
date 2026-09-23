@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import argparse
 import json
+import os
 import re
 import shutil
 import sqlite3
@@ -12,7 +14,7 @@ import xml.etree.ElementTree as ET
 from openpyxl import load_workbook
 
 ROOT = Path(__file__).resolve().parents[1]
-DB_PATH = ROOT / 'data' / 'demo' / 'dashboard.db'
+DB_PATH = Path(os.environ.get('TMALL_DB_PATH', ROOT / 'data' / 'dashboard.db'))
 IMAGE_BOOK = Path(r'E:\桌面\0817\标品货品0817.xlsx')
 OUT_DIR = ROOT / 'frontend' / 'ui_demo' / 'assets' / 'product-thumbs'
 REPORT_PATH = ROOT / 'data' / 'product_image_repair.json'
@@ -94,13 +96,37 @@ def parse_bi_urls() -> dict[str, str]:
         wb.close()
 
 
-def main() -> None:
-    if not DB_PATH.exists():
-        raise SystemExit(f'数据库不存在: {DB_PATH}')
-    if not IMAGE_BOOK.exists():
-        raise SystemExit(f'Excel 不存在: {IMAGE_BOOK}')
+def main(argv=None) -> None:
+    global IMAGE_BOOK
+    parser = argparse.ArgumentParser(description='Repair product image URLs from a BI workbook.')
+    parser.add_argument('--db', default=str(DB_PATH))
+    parser.add_argument('--image-book', default=str(IMAGE_BOOK))
+    parser.add_argument('--out-dir', default=str(OUT_DIR))
+    parser.add_argument('--report', default=str(REPORT_PATH))
+    parser.add_argument('--apply', action='store_true', help='Persist database and image-file changes.')
+    parser.add_argument('--backup-destination', help='Required with --apply: integrity-checked SQLite backup path.')
+    args = parser.parse_args(argv)
+    if args.apply and not args.backup_destination:
+        parser.error('--backup-destination is required with --apply')
 
-    conn = sqlite3.connect(DB_PATH, timeout=120)
+    db_path = Path(args.db).resolve()
+    IMAGE_BOOK = Path(args.image_book).resolve()
+    out_dir = Path(args.out_dir).resolve()
+    report_path = Path(args.report).resolve()
+    if not db_path.exists():
+        raise SystemExit(f'database does not exist: {db_path}')
+    if not IMAGE_BOOK.exists():
+        raise SystemExit(f'workbook does not exist: {IMAGE_BOOK}')
+
+    backup = None
+    if args.apply:
+        from scripts.backup_database import backup_database
+
+        backup = backup_database(db_path, args.backup_destination)
+        if not backup['ok']:
+            raise RuntimeError('database backup integrity check failed')
+
+    conn = sqlite3.connect(db_path, timeout=120)
     conn.row_factory = sqlite3.Row
     products = {str(row['product_id']): dict(row) for row in conn.execute('SELECT product_id, image_url FROM products')}
     print(f'products={len(products)}')
@@ -109,7 +135,8 @@ def main() -> None:
     bi_urls = parse_bi_urls()
     print(f'excel_formula_map={len(formula_map)} bi_urls={len(bi_urls)}')
 
-    OUT_DIR.mkdir(parents=True, exist_ok=True)
+    if args.apply:
+        out_dir.mkdir(parents=True, exist_ok=True)
     extracted = 0
     reused = 0
     missing_media = 0
@@ -125,11 +152,12 @@ def main() -> None:
             target = cell_map.get(image_id, '') if image_id else ''
             if target and target in zf.namelist():
                 suffix = Path(target).suffix.lower() or '.img'
-                out = OUT_DIR / f'{pid}{suffix}'
+                out = out_dir / f'{pid}{suffix}'
                 if not out.exists() or out.stat().st_size == 0:
-                    with zf.open(target) as src, out.open('wb') as dst:
-                        shutil.copyfileobj(src, dst, length=1024 * 1024)
-                    extracted += 1
+                    if args.apply:
+                        with zf.open(target) as src, out.open('wb') as dst:
+                            shutil.copyfileobj(src, dst, length=1024 * 1024)
+                        extracted += 1
                 else:
                     reused += 1
                 local_urls[pid] = f'/assets/product-thumbs/{out.name}'
@@ -149,17 +177,23 @@ def main() -> None:
         if pid not in local_urls:
             unresolved_bad.append(pid)
 
-    with conn:
-        for pid, url in local_urls.items():
-            conn.execute('UPDATE products SET image_url=?, updated_at=CURRENT_TIMESTAMP WHERE product_id=?', (url, pid))
-        # Do not keep known-dead numeric URLs: the UI will render its explicit
-        # placeholder instead of issuing a guaranteed 404 request.
-        for pid in unresolved_bad:
-            conn.execute("UPDATE products SET image_url='', updated_at=CURRENT_TIMESTAMP WHERE product_id=?", (pid,))
+    if args.apply:
+        try:
+            with conn:
+                for pid, url in local_urls.items():
+                    conn.execute('UPDATE products SET image_url=?, updated_at=CURRENT_TIMESTAMP WHERE product_id=?', (url, pid))
+                # Do not keep known-dead numeric URLs: the UI will render its explicit
+                # placeholder instead of issuing a guaranteed 404 request.
+                for pid in unresolved_bad:
+                    conn.execute("UPDATE products SET image_url='', updated_at=CURRENT_TIMESTAMP WHERE product_id=?", (pid,))
+        except Exception:
+            conn.rollback()
+            raise
 
     report = {
         'generated_at': datetime.now().isoformat(timespec='seconds'),
-        'database': str(DB_PATH),
+        'mode': 'apply' if args.apply else 'dry-run',
+        'database': str(db_path),
         'workbook': str(IMAGE_BOOK),
         'products': len(products),
         'excel_formula_products': len(formula_map),
@@ -173,8 +207,11 @@ def main() -> None:
         'known_bad_numeric_urls_repaired': len(bad_before) - len(unresolved_bad),
         'missing_media_for_formula_products': missing_media,
         'unresolved_product_ids': unresolved_bad,
+        'backup': backup,
     }
-    REPORT_PATH.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding='utf-8')
+    if args.apply:
+        report_path.parent.mkdir(parents=True, exist_ok=True)
+        report_path.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding='utf-8')
     print(json.dumps(report, ensure_ascii=False, indent=2))
 
 

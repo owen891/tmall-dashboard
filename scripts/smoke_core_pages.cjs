@@ -92,7 +92,10 @@ async function inspectDialogs(page, id, browser, viewport) {
     await inspectOpenDialog('.product-detail-dialog', 'products-detail');
     const workbenchLink = page.locator('[data-shared-product-workbench]');
     await workbenchLink.waitFor({ state: 'visible' });
-    if (!(await workbenchLink.getAttribute('href'))?.startsWith('/products/')) throw new Error('product detail workbench link is missing product id');
+    await page.waitForFunction(() => {
+      const href = document.querySelector('[data-shared-product-workbench]')?.getAttribute('href');
+      return Boolean(href && href.startsWith('/products/'));
+    }, { timeout: 5000 });
     await page.locator('.product-detail-dialog [data-product-detail-tab="promotion"]').click();
     await page.locator('.product-detail-dialog [data-product-detail-panel="promotion"]').waitFor({ state: 'visible' });
     await inspectOpenDialog('.product-detail-dialog', 'products-detail-promotion');

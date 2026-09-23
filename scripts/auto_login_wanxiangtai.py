@@ -19,6 +19,7 @@ import json
 import os
 import sys
 import time
+import subprocess
 import urllib.request
 import websocket
 
@@ -167,36 +168,84 @@ def do_login():
     print(f'  点击登录: {result}')
     time.sleep(5)
 
-    # 检查是否出现滑块
+    # 检查是否出现滑块/验证码/扫码等需要人工操作的场景
     result = cdp_eval(tab['webSocketDebuggerUrl'], '''
         (function() {
+            // 检测滑块验证iframe
             var iframes = document.querySelectorAll('iframe');
             for (var i = 0; i < iframes.length; i++) {
-                if (iframes[i].src && iframes[i].src.indexOf('punish') >= 0) return 'need_slider';
+                var src = iframes[i].src || '';
+                if (src.indexOf('punish') >= 0 || src.indexOf('captcha') >= 0) return 'need_slider';
             }
-            return 'no_slider';
+            // 检测页面上的滑块元素
+            if (document.querySelector('.nc_iconfont, .btn_slide, .nc-lang-cnt, [class*="slider"], [class*="captcha"]')) {
+                return 'need_slider';
+            }
+            // 检测是否出现扫码登录提示（页面上有二维码图片）
+            if (document.querySelector('.qrcode-img, .qrcode, [class*="qrcode"], [class*="qr-code"]')) {
+                return 'need_qrcode';
+            }
+            return 'no_verify';
         })()
     ''')
 
-    if result == 'need_slider':
-        # 人工拖滑块往往要找窗口、切标签，120 秒太紧，默认放宽到 300 秒。
-        slider_wait = int(os.environ.get('TMALL_SLIDER_WAIT_SECONDS', '300'))
-        print('\n[需要手动操作] 检测到滑块验证，请在 Chrome 浏览器中手动拖动滑块完成登录。')
-        print(f'[等待] 最多等待 {slider_wait} 秒...')
-        for i in range(slider_wait // 2):
-            time.sleep(2)
+    if result in ('need_slider', 'need_qrcode'):
+        verify_type = '滑块/验证码' if result == 'need_slider' else '扫码登录'
+        slider_wait = int(os.environ.get('TMALL_SLIDER_WAIT_SECONDS', '600'))
+        
+        # 检查当前是不是headless模式
+        try:
+            version_info = json.loads(urllib.request.urlopen(f'http://127.0.0.1:{CDP_PORT}/json/version', timeout=3).read())
+            is_headless = 'HeadlessChrome' in version_info.get('User-Agent', '')
+        except:
+            is_headless = False
+        
+        print('\n' + '='*60)
+        print(f'⚠️  检测到需要人工操作: {verify_type}')
+        if is_headless:
+            print('⚠️  当前Chrome为无头(后台)模式，正在自动切换为有头窗口...')
+            # 杀掉当前调试Chrome进程
+            subprocess.run(['taskkill', '/F', '/IM', 'chrome.exe', '/FI', f'COMMANDLINE eq *--remote-debugging-port={CDP_PORT}*'], 
+                         capture_output=True, shell=True)
+            time.sleep(3)
+            # 重新启动有头Chrome
+            chrome_path = r'C:\Program Files\Google\Chrome\Application\chrome.exe'
+            user_data_dir = os.path.expandvars(r'%LOCALAPPDATA%\TmallDashboard\CollectorChrome')
+            subprocess.Popen([
+                chrome_path,
+                f'--remote-debugging-port={CDP_PORT}',
+                '--remote-allow-origins=*',
+                f'--user-data-dir={user_data_dir}',
+                '--no-first-run',
+                '--no-default-browser-check',
+                'https://one.alimama.com/'
+            ])
+            time.sleep(5)
+            print('✅ 已弹出Chrome窗口，请在浏览器中完成登录操作')
+        else:
+            print('请在Chrome窗口中完成登录操作')
+        print(f'[等待] 最多等待 {slider_wait} 秒，每10秒检测一次登录状态...')
+        print('='*60 + '\n')
+        
+        for i in range(slider_wait // 10):
+            time.sleep(10)
             tab = find_tab('one.alimama.com')
             if tab and 'login' not in tab.get('url', ''):
-                print(f'\n[登录] 万相台登录成功！({i*2}秒)')
+                elapsed = (i+1) * 10
+                print(f'\n✅ [登录] 万相台登录成功！（耗时 {elapsed} 秒）')
                 return True
             tab = find_tab('login.taobao.com')
             if tab:
-                # 检查是否还在登录页
                 url = tab.get('url', '')
                 if 'login' not in url:
-                    print(f'\n[登录] 已跳转: {url[:60]}')
+                    print(f'\n✅ [登录] 已跳转到: {url[:60]}')
                     return True
-        print('[超时] 等待滑块完成超时')
+            # 每30秒打印一次等待提示
+            if (i+1) % 3 == 0:
+                remaining = slider_wait - (i+1)*10
+                print(f'  仍在等待登录完成... 剩余 {remaining} 秒')
+        
+        print('\n❌ [超时] 等待人工登录超时，未检测到成功登录')
         return False
 
     # 检查登录结果

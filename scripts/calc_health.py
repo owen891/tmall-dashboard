@@ -2,7 +2,7 @@ import sys
 import os
 import json
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from db import get_connection
+from db import get_connection, get_db_path
 
 # 12 dimensions with weights
 DIMENSIONS = [
@@ -20,8 +20,17 @@ DIMENSIONS = [
     {'key': 'search_ctr_vs_industry', 'weight': 0.10, 'label': '搜索点击率vs行业', 'higher_better': True},
 ]
 
-def calc_health_scores(period=None, dimension='monthly'):
+def calc_health_scores(period=None, dimension='monthly', apply=False, backup_destination=None):
     """计算商品健康度评分（12维度加权百分位）"""
+    if apply:
+        if not backup_destination:
+            raise ValueError('backup_destination is required when apply=True')
+        from scripts.backup_database import backup_database
+
+        backup = backup_database(get_db_path(), backup_destination)
+        if not backup['ok']:
+            raise RuntimeError('database backup integrity check failed')
+
     conn = get_connection()
 
     if dimension == 'monthly':
@@ -286,7 +295,10 @@ def calc_health_scores(period=None, dimension='monthly'):
 
         updated += 1
 
-    conn.commit()
+    if apply:
+        conn.commit()
+    else:
+        conn.rollback()
     conn.close()
     return updated
 
@@ -295,7 +307,16 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='计算商品健康度评分')
     parser.add_argument('--period', type=str, required=True, help='周期（如 2026-04）')
     parser.add_argument('--dimension', type=str, default='monthly', choices=['monthly', 'weekly'], help='数据维度')
+    parser.add_argument('--apply', action='store_true', help='Persist health scores; default is preview only.')
+    parser.add_argument('--backup-destination', help='Required with --apply: integrity-checked SQLite backup path')
     args = parser.parse_args()
+    if args.apply and not args.backup_destination:
+        parser.error('--backup-destination is required with --apply')
 
-    count = calc_health_scores(period=args.period, dimension=args.dimension)
+    count = calc_health_scores(
+        period=args.period,
+        dimension=args.dimension,
+        apply=args.apply,
+        backup_destination=args.backup_destination,
+    )
     print(f"健康度计算完成: {count} 个商品已更新")

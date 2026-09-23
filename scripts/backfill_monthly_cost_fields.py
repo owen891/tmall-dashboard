@@ -81,10 +81,18 @@ def main() -> int:
     parser.add_argument('--db', type=Path, default=Path(get_db_path()))
     parser.add_argument('--apply', action='store_true', help='Write changes (default is dry-run).')
     parser.add_argument('--months', nargs='*', help='Limit to YYYY-MM values.')
+    parser.add_argument('--backup-destination', help='Required with --apply: integrity-checked SQLite backup path.')
     args = parser.parse_args()
+    if args.apply and not args.backup_destination:
+        parser.error('--backup-destination is required with --apply')
 
     db_path = args.db.resolve()
-    init_db(str(db_path))
+    if args.apply:
+        from scripts.backup_database import backup_database
+        backup = backup_database(db_path, args.backup_destination)
+        if not backup['ok']:
+            raise RuntimeError('database backup integrity check failed')
+        init_db(str(db_path))
     connection = sqlite3.connect(db_path, timeout=300)
     connection.row_factory = sqlite3.Row
     connection.execute('PRAGMA busy_timeout=300000')

@@ -18,14 +18,14 @@ assert(/selectedOptions/.test(controls), 'table controls must sort selects by th
 assert(/querySelector\(['"]input/.test(controls), 'table controls must sort editable inputs by their current value');
 assert(/createElement\('colgroup'\)/.test(controls), 'sticky table headers must preserve original column widths with a colgroup');
 assert(/\.table-sticky-head__table th\.num \.table-sort-button \{ justify-content: flex-end; text-align: right; \}/.test(components), 'sticky numeric headers must align with right-aligned numeric table cells');
-assert(/table-sticky-scrollbar/.test(controls), 'table controls must provide a shared sticky horizontal scrollbar');
-assert(/table-sticky-scrollbar__range/.test(controls), 'sticky horizontal scrolling must expose a usable range control instead of only a native scrollbar');
+assert(!/table-sticky-scrollbar/.test(controls), 'table controls must not add a duplicate custom horizontal scrollbar');
+assert(!/stickyFooter/.test(controls), 'table controls must not retain custom scrollbar state');
 assert(/new ResizeObserver/.test(controls), 'sticky headers must resync after dynamic column-width changes');
 assert(/function getStickyViewport/.test(controls), 'sticky controls must use the dialog viewport when a table is inside a modal');
 assert(/viewport\.bottom/.test(controls), 'sticky controls must anchor to the active viewport bottom');
 assert(/is-table-sticky-footer/.test(controls), 'table controls must promote pagination while its table is in view');
 assert(/findAssociatedControls/.test(controls), 'server-rendered and generated pagination must use the same sticky-footer behavior');
-assert(/health\.sortValue/.test(products), 'product health must expose a stable business sort value');
+assert(!/\['health',\s*['"]健康状态['"]/.test(products), 'product health must not render as a fixed table column');
 assert(/dataset\.sortValue/.test(products), 'product cells must expose a stable sort value');
 assert(!/healthReason\.textContent/.test(products), 'product table health cells must not render secondary reason text');
 assert(/product-title__link/.test(products), 'product title must provide the detail drill-down entry');

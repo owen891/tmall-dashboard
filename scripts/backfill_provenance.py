@@ -89,7 +89,15 @@ def plan_backfill(connection):
     return eligible, skipped
 
 
-def run(database_path, apply=False):
+def run(database_path, apply=False, backup_destination=None):
+    if apply and not backup_destination:
+        raise ValueError('backup_destination is required when apply=True')
+    backup = None
+    if apply:
+        from scripts.backup_database import backup_database
+        backup = backup_database(database_path, backup_destination)
+        if not backup['ok']:
+            raise RuntimeError('database backup integrity check failed')
     with get_db(database_path) as connection:
         eligible, skipped = plan_backfill(connection)
         report = {
@@ -100,6 +108,7 @@ def run(database_path, apply=False):
                 for item in eligible
             ],
             'skipped': skipped,
+            'backup': backup,
             'written': 0,
         }
         if apply:
@@ -123,8 +132,13 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description='按精确导入批次恢复日事实来源记录。')
     parser.add_argument('--database', default=get_db_path())
     parser.add_argument('--apply', action='store_true', help='写入唯一匹配批次；默认只读预览')
+    parser.add_argument('--backup-destination', help='Required with --apply: integrity-checked SQLite backup path')
     args = parser.parse_args(argv)
-    print(json.dumps(run(os.path.abspath(args.database), apply=args.apply), ensure_ascii=False, indent=2))
+    if args.apply and not args.backup_destination:
+        parser.error('--backup-destination is required with --apply')
+    print(json.dumps(run(os.path.abspath(args.database), apply=args.apply,
+                         backup_destination=args.backup_destination),
+                      ensure_ascii=False, indent=2))
 
 
 if __name__ == '__main__':

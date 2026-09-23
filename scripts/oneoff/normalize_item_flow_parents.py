@@ -18,9 +18,7 @@
 """
 import argparse
 import os
-import shutil
 import sqlite3
-import time
 
 DB = os.environ.get('TMALL_DB_PATH', r'E:\www\tmall-dashboard\data\dashboard.db')
 
@@ -58,7 +56,10 @@ def shop_group_map(conn):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--apply', action='store_true', help='真正写库（默认只做 dry-run）')
+    ap.add_argument('--backup-destination', help='Required with --apply: integrity-checked SQLite backup path')
     args = ap.parse_args()
+    if args.apply and not args.backup_destination:
+        ap.error('--backup-destination is required with --apply')
 
     conn = sqlite3.connect(DB)
     conn.row_factory = sqlite3.Row
@@ -111,20 +112,30 @@ def main():
         conn.close()
         return 0
 
-    backup = DB + '.bak_parents_%s' % time.strftime('%Y%m%d_%H%M%S')
-    shutil.copy2(DB, backup)
-    print('\n已备份: %s' % backup)
+    from scripts.backup_database import backup_database
+
+    backup = backup_database(DB, args.backup_destination)
+    if not backup['ok']:
+        raise RuntimeError('database backup integrity check failed')
+    print('\n已备份: %s' % backup['destination'])
 
     cur = conn.cursor()
     total = 0
-    for (parent, new_parent, name, prefix), ids in fixes.items():
-        cur.execute(
-            '''UPDATE sycm_item_flow_source_daily
-               SET parent_channel = ?, level = CASE WHEN ? = '' THEN 0 ELSE level END
-               WHERE id IN (%s)''' % ','.join('?' for _ in ids),
-            [new_parent, new_parent] + ids)
-        total += cur.rowcount
-    conn.commit()
+    try:
+        for (parent, new_parent, name, prefix), ids in fixes.items():
+            cur.execute(
+                '''UPDATE sycm_item_flow_source_daily
+                   SET parent_channel = ?, level = CASE WHEN ? = '' THEN 0 ELSE level END
+                   WHERE id IN (%s)''' % ','.join('?' for _ in ids),
+                [new_parent, new_parent] + ids)
+            total += cur.rowcount
+        integrity = conn.execute('PRAGMA integrity_check').fetchone()[0]
+        if integrity != 'ok':
+            raise RuntimeError('database integrity check failed before commit')
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
     print('已修正 %d 行' % total)
     conn.close()
     return 0

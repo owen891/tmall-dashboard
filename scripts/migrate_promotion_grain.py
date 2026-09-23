@@ -30,9 +30,17 @@ def main():
     parser = argparse.ArgumentParser(description='promotion facts grain 标注迁移')
     parser.add_argument('--apply', action='store_true', help='实际执行（默认仅预览）')
     parser.add_argument('--db-path', default=os.environ.get('TMALL_DB_PATH'), help='数据库路径')
+    parser.add_argument('--backup-destination', help='Required with --apply: integrity-checked SQLite backup path')
     args = parser.parse_args()
+    if args.apply and not args.backup_destination:
+        parser.error('--backup-destination is required with --apply')
 
     db_path = args.db_path or db.get_db_path()
+    if args.apply:
+        from scripts.backup_database import backup_database
+        backup = backup_database(db_path, args.backup_destination)
+        if not backup['ok']:
+            raise RuntimeError('database backup integrity check failed')
     conn = db.get_connection(db_path)
     cur = conn.cursor()
 

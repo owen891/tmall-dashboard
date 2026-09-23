@@ -13,6 +13,14 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 
+def default_collectors_dir():
+    candidates = (
+        PROJECT_ROOT / 'collectors',
+        PROJECT_ROOT.parent / 'BI采集' / 'collectors',
+    )
+    return str(next((candidate for candidate in candidates if candidate.is_dir()), candidates[0]))
+
+
 def sha256(path):
     digest = hashlib.sha256()
     with path.open('rb') as handle:
@@ -83,7 +91,7 @@ def build_audit(database, collectors_dir, *, state_file=None, log_dir=None):
 def main():
     parser = argparse.ArgumentParser(description='Export a read-only collector production audit')
     parser.add_argument('--database', default=os.environ.get('TMALL_DB_PATH', str(PROJECT_ROOT / 'data' / 'dashboard.db')))
-    parser.add_argument('--collectors-dir', default=os.environ.get('TMALL_COLLECTORS_DIR', r'E:\www\BI采集\collectors'))
+    parser.add_argument('--collectors-dir', default=os.environ.get('TMALL_COLLECTORS_DIR') or default_collectors_dir())
     parser.add_argument('--output', required=True)
     args = parser.parse_args()
     report = build_audit(args.database, args.collectors_dir)

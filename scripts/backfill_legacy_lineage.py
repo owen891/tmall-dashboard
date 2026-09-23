@@ -187,12 +187,15 @@ def main():
     parser.add_argument('--database', required=True, help='数据库路径')
     parser.add_argument('--dry-run', action='store_true', help='只分析不写入')
     parser.add_argument('--execute', action='store_true', help='实际执行回填')
+    parser.add_argument('--backup-destination', help='Required with --execute: integrity-checked SQLite backup path')
     
     args = parser.parse_args()
     
     if not args.dry_run and not args.execute:
         logger.error("必须指定 --dry-run 或 --execute")
         sys.exit(1)
+    if args.execute and not args.backup_destination:
+        parser.error('--backup-destination is required with --execute')
     
     db_path = Path(args.database).resolve()
     if not db_path.exists():
@@ -200,6 +203,12 @@ def main():
         sys.exit(1)
     
     logger.info(f"连接数据库: {db_path}")
+    if args.execute:
+        from scripts.backup_database import backup_database
+
+        backup = backup_database(db_path, args.backup_destination)
+        if not backup['ok']:
+            raise RuntimeError('database backup integrity check failed')
     conn = sqlite3.connect(db_path)
     
     try:

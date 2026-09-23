@@ -5,7 +5,7 @@ param(
     [string]$Start = '',
     [string]$End = '',
     [string]$DbPath = $(if ($env:TMALL_DB_PATH) { $env:TMALL_DB_PATH } else { '' }),
-    [int]$CdpPort = $(if ($env:TMALL_CDP_PORT) { [int]$env:TMALL_CDP_PORT } else { 9222 }),
+    [int]$CdpPort = $(if ($env:TMALL_CDP_PORT) { [int]$env:TMALL_CDP_PORT } else { 9223 }),
     [string]$ResultFile = '',
     [string[]]$Sources = @()
 )
@@ -19,7 +19,7 @@ $ErrorActionPreference = "Continue"
 $ProjectRoot = if ($env:TMALL_PROJECT_ROOT) { $env:TMALL_PROJECT_ROOT } else { Split-Path -Parent $PSScriptRoot }
 $VENV_PYTHON = if ($env:TMALL_COLLECT_PYTHON) { $env:TMALL_COLLECT_PYTHON } else { Join-Path $ProjectRoot '.venv\Scripts\python.exe' }
 $COLLECTORS_DIR = if ($env:TMALL_COLLECTORS_DIR) { $env:TMALL_COLLECTORS_DIR } else {
-    $externalCollectors = 'E:\www\BI采集\collectors'
+    $externalCollectors = Join-Path (Split-Path -Parent $ProjectRoot) 'BI采集\collectors'
     if (Test-Path -LiteralPath $externalCollectors) { $externalCollectors } else { Join-Path $ProjectRoot 'collectors' }
 }
 $LOG_DIR = if ($env:TMALL_LOG_DIR) { $env:TMALL_LOG_DIR } else { Join-Path $ProjectRoot 'logs' }
@@ -34,7 +34,7 @@ if (-not (Test-Path -LiteralPath $COLLECTORS_DIR)) { throw "采集器目录不�
 
 # 采集顺序（有依赖关系的放后面）
 $COLLECTORS = @(
-    @{ Name = "BI商品日度"; Script = "collect_overview_daily.py" },
+    @{ Name = "BI商品日度"; Script = "collect_overview_full.py" },
     @{ Name = "BI商品月度"; Script = "aggregate_monthly.py" },
     @{ Name = "生意参谋-店铺流量"; Script = "collect_sycm_flow.py" },
     @{ Name = "生意参谋-单品流量"; Script = "collect_sycm_item_flow_v6.py" },
@@ -42,7 +42,7 @@ $COLLECTORS = @(
     @{ Name = "万相台推广"; Script = "collect_wanxiangtai_dims_v4.py" }
 )
 $sourceAliases = @{
-    bi_daily = 'collect_overview_daily'; bi_monthly = 'aggregate_monthly'
+    bi_daily = 'collect_overview_full'; bi_monthly = 'aggregate_monthly'
     sycm_flow = 'collect_sycm_flow'; sycm_item_flow = 'collect_sycm_item_flow_v6'
     sycm_market = 'collect_sycm_market'; wanxiangtai = 'collect_wanxiangtai_dims_v4'
 }
@@ -109,13 +109,20 @@ foreach ($collector in $COLLECTORS) {
             Write-Log "  ✗ $name 超时（$TIMEOUT_SECONDS 秒），终止进程" 
             Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
             $process.WaitForExit()
+            foreach ($outputPath in @($stdoutPath, $stderrPath)) {
+                if (Test-Path -LiteralPath $outputPath) {
+                    $timedOutOutput = Get-Content -LiteralPath $outputPath -Raw -Encoding UTF8 -ErrorAction SilentlyContinue
+                    if ($timedOutOutput) { Write-Log "  [timeout-output] $timedOutOutput" }
+                    Remove-Item -LiteralPath $outputPath -Force -ErrorAction SilentlyContinue
+                }
+            }
             $failCount++
             $resultRows += [ordered]@{ source = $collectorKey; name = $name; status = 'timed_out'; exit_code = 124; error = "timeout_seconds=$TIMEOUT_SECONDS" }
             continue
         }
 
         # 读取输出
-        if (Test-Path "$logFile.stdout.tmp") {
+        if (Test-Path -LiteralPath $stdoutPath) {
             $stdout = Get-Content $stdoutPath -Raw -Encoding UTF8
             if ($stdout) {
                 $stdout.Split("`n") | ForEach-Object {
@@ -124,7 +131,7 @@ foreach ($collector in $COLLECTORS) {
             }
             Remove-Item $stdoutPath -Force -ErrorAction SilentlyContinue
         }
-        if (Test-Path "$logFile.stderr.tmp") {
+        if (Test-Path -LiteralPath $stderrPath) {
             $stderr = Get-Content $stderrPath -Raw -Encoding UTF8
             if ($stderr) {
                 $stderr.Split("`n") | ForEach-Object {

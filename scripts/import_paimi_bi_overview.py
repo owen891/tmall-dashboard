@@ -211,10 +211,16 @@ def source_rows(path: Path, month: str):
         sheet = workbook['商品总览'] if '商品总览' in workbook.sheetnames else workbook[workbook.sheetnames[0]]
         rows = sheet.iter_rows(values_only=True)
         raw_headers = list(next(rows, ()))
-        # The second row repeats header labels in this export and is intentionally skipped.
-        next(rows, None)
+        # 第 2 行在多数导出里与第 1 行重复，但分组列（例如「推广花费(账单)明细」）
+        # 的真实字段名只出现在第 2 行。因此第 1 行先建索引（保持既有映射不变），
+        # 第 2 行只补第 1 行没有的名字，让子列也能被按名取到。
+        raw_sub_headers = list(next(rows, ()))
         header_indexes: dict[str, int] = {}
         for index, raw in enumerate(raw_headers):
+            header = clean_text(raw)
+            if header and header not in header_indexes:
+                header_indexes[header] = index
+        for index, raw in enumerate(raw_sub_headers):
             header = clean_text(raw)
             if header and header not in header_indexes:
                 header_indexes[header] = index

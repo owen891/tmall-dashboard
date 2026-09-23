@@ -1,75 +1,127 @@
-"""
-C4: 从 daily_data 按 shop_id+date 聚合，补 store_daily_facts。
+#!/usr/bin/env python3
+"""Backfill store-day facts from product-day facts safely.
 
-daily_data 是商品粒度（每个商品每天一行），聚合到店铺日粒度：
-  payment_amount             <- SUM(payment_amount)
-  successful_refund_amount    <- SUM(refund_amount)
-  product_visitors            <- SUM(ipv)
-  payment_buyers              <- SUM(buyers)
-  returning_payment_buyers    <- SUM(returning_payment_buyers)
-  ad_spend                    <- SUM(ad_spend)
+This replaces the old import-time one-off script. It is read-only by default;
+writing requires ``--apply`` and an explicit integrity-checked backup path.
 """
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
 import sqlite3
-from datetime import datetime
+from pathlib import Path
 
-DB = r'E:\www\tmall-dashboard\data\dashboard.db'
-SHOP_ID = '3828498662'
 
-con = sqlite3.connect(DB)
-cur = con.cursor()
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+DEFAULT_DB = Path(os.environ.get('TMALL_DB_PATH', PROJECT_ROOT / 'data' / 'dashboard.db'))
+DEFAULT_SHOP_ID = os.environ.get('TMALL_SHOP_ID', '3828498662')
 
-# 先看现状
-before = cur.execute("SELECT COUNT(*) FROM store_daily_facts WHERE shop_id=?", (SHOP_ID,)).fetchone()[0]
-print(f"聚合前 store_daily_facts {SHOP_ID} 行数: {before}")
 
-# 聚合
-cur.execute("""
-    INSERT INTO store_daily_facts
-        (shop_id, date, payment_amount, successful_refund_amount,
-         product_visitors, payment_buyers, returning_payment_buyers,
-         ad_spend, source_batch_id)
-    SELECT
-        ?,
-        date,
-        ROUND(SUM(COALESCE(payment_amount, 0)), 2),
-        ROUND(SUM(COALESCE(refund_amount, 0)), 2),
-        SUM(COALESCE(ipv, 0)),
-        SUM(COALESCE(buyers, 0)),
-        SUM(COALESCE(returning_payment_buyers, 0)),
-        ROUND(SUM(COALESCE(ad_spend, 0)), 2),
-        'aggregated_from_daily_data'
-    FROM daily_data
-    WHERE shop_id = ?
-    GROUP BY date
-    ON CONFLICT(shop_id, date) DO UPDATE SET
-        payment_amount = excluded.payment_amount,
-        successful_refund_amount = excluded.successful_refund_amount,
-        product_visitors = excluded.product_visitors,
-        payment_buyers = excluded.payment_buyers,
-        returning_payment_buyers = excluded.returning_payment_buyers,
-        ad_spend = excluded.ad_spend,
-        source_batch_id = excluded.source_batch_id
-""", (SHOP_ID, SHOP_ID))
+def main(argv=None):
+    parser = argparse.ArgumentParser(description='Backfill store daily facts from daily product facts.')
+    parser.add_argument('--db', default=str(DEFAULT_DB))
+    parser.add_argument('--shop-id', default=DEFAULT_SHOP_ID)
+    parser.add_argument('--lookback-days', type=int, default=None)
+    parser.add_argument('--apply', action='store_true', help='Persist changes; default is preview only.')
+    parser.add_argument('--backup-destination', help='Required with --apply: integrity-checked SQLite backup path')
+    args = parser.parse_args(argv)
+    if args.apply and not args.backup_destination:
+        parser.error('--backup-destination is required with --apply')
+    if args.lookback_days is not None and args.lookback_days < 1:
+        parser.error('--lookback-days must be positive')
 
-con.commit()
+    db_path = Path(args.db).resolve()
+    backup = None
+    if args.apply:
+        from scripts.backup_database import backup_database
 
-after = cur.execute("SELECT COUNT(*) FROM store_daily_facts WHERE shop_id=?", (SHOP_ID,)).fetchone()[0]
-print(f"聚合后 store_daily_facts {SHOP_ID} 行数: {after}")
+        backup = backup_database(db_path, args.backup_destination)
+        if not backup['ok']:
+            raise RuntimeError('database backup integrity check failed')
 
-# 验证最近 5 天
-print("\n最近 5 天:")
-for r in cur.execute("""SELECT date, payment_amount, successful_refund_amount,
-                               product_visitors, payment_buyers, ad_spend
-                        FROM store_daily_facts
-                        WHERE shop_id=? ORDER BY date DESC LIMIT 5""", (SHOP_ID,)):
-    print(r)
+    connection = sqlite3.connect(db_path, timeout=300)
+    connection.row_factory = sqlite3.Row
+    connection.execute('PRAGMA busy_timeout=300000')
+    try:
+        where = ['shop_id = ?']
+        params: list[object] = [args.shop_id]
+        if args.lookback_days is not None:
+            where.append("date >= date('now', ?)")
+            params.append(f'-{args.lookback_days} days')
+        rows = connection.execute(
+            f'''SELECT date,
+                       ROUND(SUM(COALESCE(payment_amount, 0)), 2) AS payment_amount,
+                       ROUND(SUM(COALESCE(refund_amount, 0)), 2) AS refund_amount,
+                       SUM(COALESCE(ipv, 0)) AS product_visitors,
+                       SUM(COALESCE(buyers, 0)) AS payment_buyers,
+                       SUM(COALESCE(returning_payment_buyers, 0)) AS returning_payment_buyers,
+                       ROUND(SUM(COALESCE(ad_spend, 0)), 2) AS ad_spend
+                FROM daily_data
+                WHERE {' AND '.join(where)}
+                GROUP BY date ORDER BY date''',
+            params,
+        ).fetchall()
 
-# 验证付费成交占比能不能算了
-print("\n最近 30 天汇总:")
-row = cur.execute("""SELECT SUM(payment_amount), SUM(ad_spend)
-                     FROM store_daily_facts
-                     WHERE shop_id=? AND date >= date('now', '-30 days')""", (SHOP_ID,)).fetchone()
-print(f"店铺总支付: {row[0]:.2f}, 店铺总推广花费: {row[1]:.2f}")
+        inserted = 0
+        updated = 0
+        for row in rows:
+            existing = connection.execute(
+                'SELECT 1 FROM store_daily_facts WHERE shop_id=? AND date=?',
+                (args.shop_id, row['date']),
+            ).fetchone()
+            values = (
+                row['payment_amount'], row['refund_amount'], row['product_visitors'],
+                row['payment_buyers'], row['returning_payment_buyers'], row['ad_spend'],
+                args.shop_id, row['date'],
+            )
+            if existing:
+                updated += 1
+                if args.apply:
+                    connection.execute(
+                        '''UPDATE store_daily_facts SET payment_amount=?,
+                               successful_refund_amount=?, product_visitors=?, payment_buyers=?,
+                               returning_payment_buyers=?, ad_spend=?, source_batch_id=?
+                           WHERE shop_id=? AND date=?''',
+                        (*values[:6], 'aggregated_from_daily_data', *values[6:]),
+                    )
+            else:
+                inserted += 1
+                if args.apply:
+                    connection.execute(
+                        '''INSERT INTO store_daily_facts
+                           (shop_id, date, payment_amount, successful_refund_amount,
+                            product_visitors, payment_buyers, returning_payment_buyers,
+                            ad_spend, source_batch_id)
+                           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+                        (args.shop_id, row['date'], row['payment_amount'], row['refund_amount'],
+                         row['product_visitors'], row['payment_buyers'],
+                         row['returning_payment_buyers'], row['ad_spend'],
+                         'aggregated_from_daily_data'),
+                    )
+        if args.apply:
+            connection.commit()
+        else:
+            connection.rollback()
+    except Exception:
+        connection.rollback()
+        raise
+    finally:
+        connection.close()
 
-con.close()
-print("\nC4 完成")
+    print(json.dumps({
+        'mode': 'apply' if args.apply else 'dry-run',
+        'database': str(db_path),
+        'shop_id': args.shop_id,
+        'lookback_days': args.lookback_days,
+        'source_group_count': len(rows),
+        'would_insert': inserted,
+        'would_update': updated,
+        'backup': backup,
+    }, ensure_ascii=False, indent=2))
+    return 0
+
+
+if __name__ == '__main__':
+    raise SystemExit(main())

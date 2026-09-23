@@ -131,8 +131,14 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--db', default=str(DEFAULT_DB), help='SQLite database path')
     parser.add_argument('--dry-run', action='store_true', help='report without writing')
+    parser.add_argument('--apply', action='store_true', help='persist labels; default is preview only')
+    parser.add_argument('--backup-destination', help='Required with --apply: integrity-checked SQLite backup path')
     parser.add_argument('--daily-sources', nargs='*', default=[], help='daily BI source dirs to merge labels from')
     args = parser.parse_args()
+    if args.dry_run and args.apply:
+        parser.error('--dry-run and --apply are mutually exclusive')
+    if args.apply and not args.backup_destination:
+        parser.error('--backup-destination is required with --apply')
 
     connection = sqlite3.connect(args.db)
     connection.row_factory = sqlite3.Row
@@ -152,10 +158,16 @@ def main() -> None:
         total_products = connection.execute('SELECT COUNT(*) AS c FROM products').fetchone()['c']
         print(f'products 表商品数: {total_products}')
 
-        if args.dry_run:
+        backup = None
+        if not args.apply:
             dist = Counter(label_map.values())
             print('DRY RUN - 不写入')
         else:
+            from scripts.backup_database import backup_database
+
+            backup = backup_database(args.db, args.backup_destination)
+            if not backup['ok']:
+                raise RuntimeError('database backup integrity check failed')
             updated, dist = apply_labels(connection, label_map)
             connection.commit()
             print(f'已更新商品数: {updated}')
