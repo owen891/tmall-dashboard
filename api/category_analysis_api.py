@@ -2,6 +2,7 @@ from datetime import date
 from flask import Blueprint, request
 from api.api_response import failure, success
 from services.category_analysis_service import analyze, analyze_matrix
+from services.leaf_weekly_service import summarize_week
 
 category_analysis_bp = Blueprint('category_analysis', __name__)
 
@@ -55,3 +56,13 @@ def category_analysis_matrix():
         )
     except (TypeError, ValueError) as exc:
         return failure('VALIDATION_ERROR', str(exc), status=422)
+
+
+@category_analysis_bp.get('/api/category-analysis/leaf-weekly-board')
+def leaf_weekly_board():
+    """叶子类目近 3 周 + 去年同期对比看板。"""
+    try:
+        data = summarize_week(category_mode='sock')
+        return success(data, availability='available', evidence_level='full')
+    except Exception as exc:  # noqa: BLE001
+        return failure('INTERNAL_ERROR', str(exc), status=500)

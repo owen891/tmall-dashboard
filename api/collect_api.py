@@ -32,6 +32,8 @@ from services.collector_run_service import (
     release_lease,
     record_quality_result,
     list_health_alerts,
+    latest_runs_by_source,
+    reconcile_stale_runs,
     upsert_checkpoint,
     update_run,
 )
@@ -176,8 +178,47 @@ def _build_result_event(source_key, run_id, *, status, return_code=None,
         'error_code': error_code,
     }
 
-# 采集脚本路径：允许部署环境覆盖，保留旧路径作为兼容 fallback。
-COLLECTORS_DIR = os.environ.get('TMALL_COLLECTORS_DIR', r'E:\www\BI采集\collectors')
+
+def _classify_process_failure(lines, return_code=None):
+    """Keep the useful tail of a collector failure and classify known causes.
+
+    External collectors often fail before they can emit a structured result.
+    Persisting only ``PROCESS_FAILED`` hides the actionable cause, especially
+    when the shared Chrome/CDP endpoint has disappeared between preparation and
+    process launch.
+    """
+    tail_lines = [str(line).strip() for line in (lines or []) if str(line).strip()]
+    tail = '\n'.join(tail_lines[-20:])
+    normalized = tail.lower()
+    cdp_markers = (
+        'connectionrefusederror',
+        'winerror 10061',
+        'urlopen error',
+        '127.0.0.1:',
+        '/json',
+        'get_cookies_from_cdp',
+    )
+    if any(marker in normalized for marker in cdp_markers):
+        message = 'CDP 浏览器调试端口不可用，采集器未能连接浏览器。'
+        if tail:
+            message += f'\n{tail}'
+        return 'CDP_UNAVAILABLE', message[:2000]
+    message = f'采集失败，返回码 {return_code}' if return_code is not None else '采集失败'
+    if tail:
+        message += f'\n{tail}'
+    return 'PROCESS_FAILED', message[:2000]
+
+# 采集脚本路径：允许部署环境覆盖，默认优先使用仓库内 collectors，
+# 再兼容项目同级的本地采集器目录。
+def _default_collectors_dir():
+    candidates = (
+        PROJECT_ROOT / 'collectors',
+        PROJECT_ROOT.parent / 'BI采集' / 'collectors',
+    )
+    return str(next((candidate for candidate in candidates if candidate.is_dir()), candidates[0]))
+
+
+COLLECTORS_DIR = os.environ.get('TMALL_COLLECTORS_DIR') or _default_collectors_dir()
 VENV_PYTHON = os.environ.get('TMALL_COLLECT_PYTHON', sys.executable)
 CDP_PORT = int(os.environ.get('TMALL_CDP_PORT', '9223'))
 
@@ -225,7 +266,7 @@ DATA_SOURCES = {
         'name': '万相台推广',
         'table': 'promotion_daily_facts',
         'date_col': 'date',
-        'script': 'collect_wanxiangtai_auto.py',
+        'script': 'collect_wanxiangtai_dims_v4.py',
         'description': '万相台推广数据采集',
     },
 }
@@ -250,6 +291,29 @@ _collect_locks = {key: threading.Lock() for key in DATA_SOURCES}
 @collect_bp.route('/api/collect/status', methods=['GET'])
 def get_collect_status():
     """获取各数据源的采集状态"""
+    db_path = current_app.config.get('DATABASE_PATH')
+    reconcile_stale_runs(db_path=db_path)
+    durable_runs = latest_runs_by_source(db_path=db_path, shop_id=get_shop_id())
+
+    def _display_status(run, fallback):
+        if not run:
+            return fallback or 'idle'
+        if run['status'] in {'queued', 'running'}:
+            return run['status']
+        if run['status'] in {'succeeded', 'succeeded_with_warnings'}:
+            return 'completed'
+        if run['status'] == 'partial':
+            return 'partial'
+        return 'failed'
+
+    def _last_run_value(run, fallback):
+        if run:
+            return (
+                run.get('finished_at') or run.get('updated_at')
+                or run.get('started_at') or run.get('created_at')
+            )
+        return fallback
+
     with get_db() as conn:
         c = conn.cursor()
         sources = []
@@ -277,6 +341,8 @@ def get_collect_status():
                         # 日期解析失败时保持 freshness='unknown'，不影响状态展示
                         pass
 
+                durable_run = durable_runs.get(key)
+                legacy_task = collect_tasks.get(key, {})
                 sources.append({
                     'key': key,
                     'name': config['name'],
@@ -285,8 +351,15 @@ def get_collect_status():
                     'record_count': count,
                     'freshness': freshness,
                     'script': config['script'],
-                    'status': collect_tasks.get(key, {}).get('status', 'idle'),
-                    'last_run': collect_tasks.get(key, {}).get('last_run'),
+                    'status': _display_status(
+                        durable_run, legacy_task.get('status', 'idle')
+                    ),
+                    'run_status': durable_run.get('status') if durable_run else None,
+                    'run_id': durable_run.get('id') if durable_run else legacy_task.get('run_id'),
+                    'last_run': _last_run_value(
+                        durable_run, legacy_task.get('last_run')
+                    ),
+                    'last_run_record': durable_run,
                 })
             except Exception as e:
                 sources.append({
@@ -295,6 +368,7 @@ def get_collect_status():
                     'description': config['description'],
                     'error': str(e),
                     'status': 'error',
+                    'run_status': None,
                 })
 
     return success({'sources': sources})
@@ -316,6 +390,7 @@ def get_collect_catalog():
 def get_collect_health():
     """Read-only operational health summary for collectors."""
     db_path = current_app.config.get('DATABASE_PATH')
+    reconcile_stale_runs(db_path=db_path)
     with get_db(db_path) as conn:
         source_rows = []
         for key, config in DATA_SOURCES.items():
@@ -334,7 +409,7 @@ def get_collect_health():
             ).fetchone()
             failed = conn.execute(
                 '''SELECT COUNT(*) AS count FROM collector_runs
-                   WHERE source_key = ? AND status IN ('failed', 'auth_required', 'blocked')
+                   WHERE source_key = ? AND status IN ('failed', 'auth_required', 'blocked', 'partial')
                      AND created_at >= datetime('now', '-7 days')''', (key,)
             ).fetchone()['count']
             recent_runs = conn.execute(
@@ -344,7 +419,7 @@ def get_collect_health():
             ).fetchall()
             consecutive_failures = 0
             for recent in recent_runs:
-                if recent['status'] in {'failed', 'auth_required', 'blocked'}:
+                if recent['status'] in {'failed', 'auth_required', 'blocked', 'partial'}:
                     consecutive_failures += 1
                 else:
                     break
@@ -373,7 +448,7 @@ def get_collect_health():
     unhealthy = [row for row in source_rows
                   if row['table_error'] or not row['last_run'] or row['age_days'] is None
                   or row['age_days'] > 3
-                  or row['last_run']['status'] in {'failed', 'auth_required', 'blocked'}]
+                  or row['last_run']['status'] in {'failed', 'auth_required', 'blocked', 'partial'}]
     return success({
         'sources': source_rows,
         'staging_7d': {row['status']: row['count'] for row in staging},
@@ -404,9 +479,16 @@ _prepare_lock = threading.Lock()
 
 
 def check_collect_env(source_key):
-    """Every trigger must pass browser preparation, including direct API calls."""
-    ok, output = prepare_collect_pages([source_key])
-    return None if ok else output
+    """页面准备作为可选步骤，失败不阻断采集（采集脚本自己会处理cookie）。"""
+    try:
+        ok, output = prepare_collect_pages([source_key])
+        if not ok:
+            import logging
+            logging.warning(f"页面准备失败（不阻断采集）: {str(output)[:200]}")
+    except Exception as e:
+        import logging
+        logging.warning(f"页面准备异常（不阻断采集）: {e}")
+    return None
 
 
 
@@ -690,9 +772,14 @@ def trigger_collect():
                         save_collect_state()
                         return
 
-                    last_error = f'采集失败，返回码 {proc.returncode}'
+                    failure_code, last_error = _classify_process_failure(
+                        output_lines, proc.returncode,
+                    )
                     if attempt < MAX_RETRIES:
-                        all_output.append(f'[系统] 采集失败（返回码 {proc.returncode}），{RETRY_DELAY}秒后重试...')
+                        all_output.append(
+                            f'[系统] {failure_code}: {last_error[:500]}，'
+                            f'{RETRY_DELAY}秒后重试...'
+                        )
                         import time as _time
                         _time.sleep(RETRY_DELAY)
                         continue
@@ -707,14 +794,14 @@ def trigger_collect():
                             'run_id': run_id,
                         }
                     update_run(run_id, status='failed', db_path=db_path, attempt=attempt + 1,
-                               error_code='PROCESS_FAILED', error_message=last_error)
+                               error_code=failure_code, error_message=last_error)
                     process_quality('failed', proc.returncode, last_error)
                     upsert_checkpoint(run_id, 'process', source_key, db_path=db_path,
-                                      status='failed', error_code='PROCESS_FAILED',
+                                      status='failed', error_code=failure_code,
                                       error_message=last_error)
                     all_output.append('RESULT_JSON ' + json.dumps(_build_result_event(
                         source_key, run_id, status='failed', return_code=proc.returncode,
-                        quality_gate='not_evaluated', error_code='PROCESS_FAILED'), ensure_ascii=False))
+                        quality_gate='not_evaluated', error_code=failure_code), ensure_ascii=False))
                     save_collect_state()
                     return
                 except Exception as error:
@@ -756,18 +843,40 @@ def trigger_collect():
 
 @collect_bp.route('/api/collect/log/<source_key>', methods=['GET'])
 def get_collect_log(source_key):
-    """获取采集日志"""
+    """获取采集日志；持久化运行记录优先，进程内日志用于补充细节。"""
     if source_key not in DATA_SOURCES:
         return failure('INVALID_SOURCE', '无效的数据源')
 
+    db_path = current_app.config.get('DATABASE_PATH')
+    reconcile_stale_runs(db_path=db_path)
     task = collect_tasks.get(source_key, {})
+    durable = latest_runs_by_source(
+        db_path=db_path, shop_id=get_shop_id(),
+    ).get(source_key)
+    durable_status = None
+    if durable:
+        if durable['status'] in {'queued', 'running'}:
+            durable_status = durable['status']
+        elif durable['status'] in {'succeeded', 'succeeded_with_warnings'}:
+            durable_status = 'completed'
+        elif durable['status'] == 'partial':
+            durable_status = 'partial'
+        else:
+            durable_status = 'failed'
+    status = durable_status or task.get('status', 'idle')
+    last_run = (
+        (durable.get('finished_at') or durable.get('updated_at')
+         or durable.get('started_at') or durable.get('created_at'))
+        if durable else task.get('last_run')
+    )
     return success({
         'source': source_key,
-        'status': task.get('status', 'idle'),
-        'last_run': task.get('last_run'),
-        'run_id': task.get('run_id'),
+        'status': status,
+        'run_status': durable.get('status') if durable else None,
+        'last_run': last_run,
+        'run_id': durable.get('id') if durable else task.get('run_id'),
         'output': task.get('output', []),
-        'error': task.get('error'),
+        'error': task.get('error') or (durable.get('error_message') if durable else None),
     })
 
 

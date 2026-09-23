@@ -21,6 +21,7 @@ from services.wanxiangtai_service import (
     WanxiangtaiValidationError,
     wanxiangtai_service,
 )
+from services.product_identity_service import refresh_promotion_identities
 
 
 wanxiangtai_bp = Blueprint('wanxiangtai', __name__)
@@ -368,6 +369,12 @@ def import_data():
                          batch_id)
                     )
                     inserted += 1
+
+            refresh_promotion_identities(
+                conn,
+                shop_id=shop_id,
+                product_ids=[row.get('product_id') for row in facts_to_store],
+            )
 
             # 创意日事实
             creative_facts = rows if report_type == 'creative' else []

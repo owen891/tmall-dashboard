@@ -2,6 +2,7 @@
 """生意参谋数据API
 流量来源、竞店竞品、市场排行等数据查询接口
 """
+from datetime import date as date_type, timedelta
 from flask import Blueprint, request, jsonify
 from db import get_connection
 from api.api_response import success, failure
@@ -19,13 +20,212 @@ def get_latest_date(table, date_col='stat_date'):
     return row[0] if row and row[0] else None
 
 
+def get_query_date_range(table):
+    """Resolve a single date or the selected inclusive date range."""
+    single = request.args.get('date')
+    end_date = request.args.get('end') or request.args.get('end_date') or single
+    start_date = request.args.get('start') or request.args.get('start_date') or single
+    end_date = end_date or get_latest_date(table)
+    start_date = start_date or end_date
+    return start_date, end_date
+
+
+def _competitor_item_table():
+    """Use the external market-item sample when it has the self/competitor flag."""
+    conn = get_connection()
+    try:
+        exists = conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='sycm_market_item_rank'").fetchone()
+        columns = {row[1] for row in conn.execute('PRAGMA table_info(sycm_market_item_rank)').fetchall()} if exists else set()
+        return 'sycm_market_item_rank' if exists and 'is_self' in columns else 'sycm_market_rival_item'
+    finally:
+        conn.close()
+
+
+def _expected_days(start_date, end_date):
+    try:
+        return max(1, (date_type.fromisoformat(end_date) - date_type.fromisoformat(start_date)).days + 1)
+    except (TypeError, ValueError):
+        return None
+
+
+def _rival_trend(table, key, start_date, end_date):
+    """Return daily market observations without filling missing dates as zero."""
+    is_rank_items = table == 'sycm_market_item_rank'
+    item_source = (
+        f'''(SELECT stat_date, item_id, MAX(uv) AS uv, MAX(pay_buyer_count) AS pay_buyer_count
+             FROM {table} WHERE is_self = 0
+               AND NOT EXISTS (SELECT 1 FROM products p WHERE p.product_id = {table}.item_id)
+             GROUP BY stat_date, item_id)'''
+        if is_rank_items else table
+    )
+    own_item_filter = (
+        'AND NOT EXISTS (SELECT 1 FROM products p WHERE p.product_id = sycm_market_rival_item.item_id)'
+        if table == 'sycm_market_rival_item' else ''
+    )
+    conn = get_connection()
+    try:
+        sql = (
+            f'''SELECT stat_date, COUNT(DISTINCT {key}) AS entity_count,
+                       SUM(uv) AS uv, SUM(pay_buyer_count) AS pay_buyer_count,
+                       CASE WHEN SUM(uv) IS NULL OR SUM(uv) = 0 THEN NULL
+                            ELSE SUM(pay_buyer_count) * 1.0 / SUM(uv) END AS pay_rate
+                FROM {item_source}
+                WHERE stat_date BETWEEN ? AND ? {own_item_filter}
+                GROUP BY stat_date ORDER BY stat_date'''
+        )
+        params = (start_date, end_date)
+        rows = conn.execute(sql, params).fetchall()
+    except Exception:
+        conn.close()
+        return None
+    conn.close()
+    expected_days = _expected_days(start_date, end_date)
+    observed_days = len(rows)
+    trend = [dict(row) for row in rows]
+    totals = {
+        'uv': sum(float(row['uv'] or 0) for row in rows),
+        'pay_buyer_count': sum(float(row['pay_buyer_count'] or 0) for row in rows),
+    }
+    totals['pay_rate'] = (totals['pay_buyer_count'] / totals['uv']) if totals['uv'] else None
+    totals['avg_uv_per_day'] = totals['uv'] / observed_days if observed_days else None
+    totals['avg_pay_buyers_per_day'] = totals['pay_buyer_count'] / observed_days if observed_days else None
+    coverage_rate = (observed_days / expected_days) if expected_days else None
+    return {
+        'start_date': start_date,
+        'end_date': end_date,
+        'expected_days': expected_days,
+        'observed_days': observed_days,
+        'coverage_rate': coverage_rate,
+        'coverage_status': 'complete' if coverage_rate == 1 else ('partial' if observed_days else 'no_data'),
+        'trend_comparable': bool(expected_days and coverage_rate >= 0.8),
+        'totals': totals,
+        'daily': trend,
+    }
+
+
+def _rival_entity_trend(table, key, entity_id, start_date, end_date):
+    """Return one shop/item's daily facts and explicit coverage."""
+    if table == 'sycm_market_item_rank':
+        conn = get_connection()
+        try:
+            rows = conn.execute(
+                '''SELECT stat_date, MAX(title) AS title, MAX(pic_url) AS pic_url,
+                          MAX(uv) AS uv, MAX(pay_buyer_count) AS pay_buyer_count
+                   FROM sycm_market_item_rank
+                   WHERE item_id = ? AND stat_date BETWEEN ? AND ? AND is_self = 0
+                     AND NOT EXISTS (SELECT 1 FROM products p WHERE p.product_id = sycm_market_item_rank.item_id)
+                   GROUP BY stat_date ORDER BY stat_date''',
+                (entity_id, start_date, end_date),
+            ).fetchall()
+        except Exception:
+            conn.close()
+            return None
+        conn.close()
+        expected_days = _expected_days(start_date, end_date)
+        daily = [dict(row) for row in rows]
+        for row in daily:
+            uv = row.get('uv')
+            row['pay_rate'] = (float(row.get('pay_buyer_count') or 0) / float(uv)) if uv else None
+        observed_days = len(daily)
+        coverage_rate = observed_days / expected_days if expected_days else None
+        identity = daily[-1] if daily else {}
+        return {
+            'entity_id': entity_id, 'entity_name': identity.get('title'),
+            'start_date': start_date, 'end_date': end_date,
+            'expected_days': expected_days, 'observed_days': observed_days,
+            'coverage_rate': coverage_rate,
+            'coverage_status': 'complete' if coverage_rate == 1 else ('partial' if observed_days else 'no_data'),
+            'trend_comparable': bool(expected_days and coverage_rate >= 0.8), 'daily': daily,
+        }
+
+    columns = (
+        'stat_date, shop_name, uv, pay_buyer_count, pay_rate, cart_buyer_count, collect_buyer_count'
+        if table == 'sycm_market_rival_shop' else
+        'stat_date, title, uv, pay_buyer_count, pic_url, detail_url'
+    )
+    own_item_filter = (
+        'AND NOT EXISTS (SELECT 1 FROM products p WHERE p.product_id = sycm_market_rival_item.item_id)'
+        if table == 'sycm_market_rival_item' else ''
+    )
+    conn = get_connection()
+    try:
+        rows = conn.execute(
+            f'SELECT {columns} FROM {table} WHERE {key} = ? AND stat_date BETWEEN ? AND ? {own_item_filter} ORDER BY stat_date',
+            (entity_id, start_date, end_date),
+        ).fetchall()
+    except Exception:
+        conn.close()
+        return None
+    conn.close()
+    expected_days = _expected_days(start_date, end_date)
+    daily = [dict(row) for row in rows]
+    for row in daily:
+        if table == 'sycm_market_rival_item':
+            uv = row.get('uv')
+            row['pay_rate'] = (float(row.get('pay_buyer_count') or 0) / float(uv)) if uv else None
+    observed_days = len(daily)
+    coverage_rate = observed_days / expected_days if expected_days else None
+    identity = daily[-1] if daily else {}
+    return {
+        'entity_id': entity_id,
+        'entity_name': identity.get('shop_name') or identity.get('title'),
+        'start_date': start_date,
+        'end_date': end_date,
+        'expected_days': expected_days,
+        'observed_days': observed_days,
+        'coverage_rate': coverage_rate,
+        'coverage_status': 'complete' if coverage_rate == 1 else ('partial' if observed_days else 'no_data'),
+        'trend_comparable': bool(expected_days and coverage_rate >= 0.8),
+        'daily': daily,
+    }
+
+
+def _rival_entities(table, key, label, start_date, end_date):
+    if table == 'sycm_market_item_rank':
+        conn = get_connection()
+        try:
+            rows = conn.execute(
+                '''SELECT item_id AS entity_id, MAX(title) AS entity_name,
+                          COUNT(DISTINCT stat_date) AS observed_days, MAX(stat_date) AS last_seen
+                   FROM sycm_market_item_rank
+                   WHERE stat_date BETWEEN ? AND ? AND is_self = 0
+                     AND NOT EXISTS (SELECT 1 FROM products p WHERE p.product_id = sycm_market_item_rank.item_id)
+                   GROUP BY item_id ORDER BY observed_days DESC, last_seen DESC, entity_name''',
+                (start_date, end_date),
+            ).fetchall()
+        except Exception:
+            conn.close()
+            return []
+        conn.close()
+        return [dict(row) for row in rows]
+    own_item_filter = (
+        'AND NOT EXISTS (SELECT 1 FROM products p WHERE p.product_id = sycm_market_rival_item.item_id)'
+        if table == 'sycm_market_rival_item' else ''
+    )
+    conn = get_connection()
+    try:
+        rows = conn.execute(
+            f'''SELECT {key} AS entity_id, MAX({label}) AS entity_name,
+                       COUNT(DISTINCT stat_date) AS observed_days,
+                       MAX(stat_date) AS last_seen
+                FROM {table} WHERE stat_date BETWEEN ? AND ? {own_item_filter}
+                GROUP BY {key} ORDER BY observed_days DESC, last_seen DESC, entity_name''',
+            (start_date, end_date),
+        ).fetchall()
+    except Exception:
+        conn.close()
+        return []
+    conn.close()
+    return [dict(row) for row in rows]
+
+
 # ==================== 流量来源 ====================
 
 @sycm_bp.route('/flow-source/summary', methods=['GET'])
 def flow_source_summary():
     """流量来源汇总：一级渠道数据"""
-    stat_date = request.args.get('date') or get_latest_date('sycm_flow_source_daily')
-    if not stat_date:
+    start_date, end_date = get_query_date_range('sycm_flow_source_daily')
+    if not end_date:
         return failure('NO_DATA', '暂无流量来源数据')
 
     conn = get_connection()
@@ -33,13 +233,15 @@ def flow_source_summary():
 
     # 一级渠道
     c.execute('''
-        SELECT channel_name, uv, pay_amount, pay_buyer_count, pay_rate,
-               cart_buyer_count, new_uv, uv_value, ad_click_count, ad_pay_amount,
-               direct_pay_buyer_count, collect_item_count, fans_pay_buyer_count
+        SELECT channel_name, SUM(uv), SUM(pay_amount), SUM(pay_buyer_count),
+               SUM(cart_buyer_count), SUM(new_uv), SUM(ad_click_count),
+               SUM(ad_pay_amount), SUM(direct_pay_buyer_count),
+               SUM(collect_item_count), SUM(fans_pay_buyer_count)
         FROM sycm_flow_source_daily
-        WHERE stat_date = ? AND level = 0
+        WHERE stat_date BETWEEN ? AND ? AND level = 0
+        GROUP BY channel_name
         ORDER BY uv DESC
-    ''', (stat_date,))
+    ''', (start_date, end_date))
     level1 = []
     total_uv = 0
     total_pay = 0
@@ -49,23 +251,25 @@ def flow_source_summary():
             'uv': row[1],
             'pay_amount': row[2],
             'pay_buyer_count': row[3],
-            'pay_rate': row[4],
-            'cart_buyer_count': row[5],
-            'new_uv': row[6],
-            'uv_value': row[7],
-            'ad_click_count': row[8],
-            'ad_pay_amount': row[9],
-            'direct_pay_buyer_count': row[10],
-            'collect_item_count': row[11],
-            'fans_pay_buyer_count': row[12],
+            'pay_rate': round((row[3] or 0) / (row[1] or 1), 6) if row[1] else 0,
+            'cart_buyer_count': row[4],
+            'new_uv': row[5],
+            'uv_value': round((row[2] or 0) / (row[1] or 1), 2) if row[1] else 0,
+            'ad_click_count': row[6],
+            'ad_pay_amount': row[7],
+            'direct_pay_buyer_count': row[8],
+            'collect_item_count': row[9],
+            'fans_pay_buyer_count': row[10],
         })
         total_uv += row[1] or 0
-        total_pay += row[3] or 0
+        total_pay += row[2] or 0
 
     conn.close()
 
     return success({
-        'stat_date': stat_date,
+        'stat_date': end_date,
+        'start_date': start_date,
+        'end_date': end_date,
         'belong': 'farthest',
         'belong_name': '第一次访问来源',
         'total_uv': total_uv,
@@ -77,22 +281,23 @@ def flow_source_summary():
 @sycm_bp.route('/flow-source/detail', methods=['GET'])
 def flow_source_detail():
     """流量来源详情：二级渠道数据"""
-    stat_date = request.args.get('date') or get_latest_date('sycm_flow_source_daily')
+    start_date, end_date = get_query_date_range('sycm_flow_source_daily')
     parent = request.args.get('parent', '')
-    if not stat_date:
+    if not end_date:
         return failure('NO_DATA', '暂无流量来源数据')
 
     conn = get_connection()
     c = conn.cursor()
 
     query = '''
-        SELECT channel_name, parent_channel, uv, pay_amount, pay_buyer_count,
-               pay_rate, cart_buyer_count, new_uv, uv_value, level,
-               ad_click_count, ad_pay_amount, direct_pay_buyer_count, collect_item_count
+        SELECT channel_name, parent_channel, MAX(channel_type), SUM(uv),
+               SUM(pay_amount), SUM(pay_buyer_count), SUM(cart_buyer_count),
+               SUM(new_uv), MAX(level), SUM(ad_click_count), SUM(ad_pay_amount),
+               SUM(direct_pay_buyer_count), SUM(collect_item_count)
         FROM sycm_flow_source_daily
-        WHERE stat_date = ?
+        WHERE stat_date BETWEEN ? AND ?
     '''
-    params = [stat_date]
+    params = [start_date, end_date]
 
     if parent:
         query += ' AND parent_channel = ?'
@@ -100,7 +305,7 @@ def flow_source_detail():
     else:
         query += ' AND level = 1'
 
-    query += ' ORDER BY uv DESC'
+    query += ' GROUP BY channel_name, parent_channel ORDER BY SUM(uv) DESC'
 
     c.execute(query, params)
     channels = []
@@ -108,22 +313,23 @@ def flow_source_detail():
         channels.append({
             'channel_name': row[0],
             'parent_channel': row[1],
-            'uv': row[2],
-            'pay_amount': row[3],
-            'pay_buyer_count': row[4],
-            'pay_rate': row[5],
+            'channel_type': row[2],
+            'uv': row[3],
+            'pay_amount': row[4],
+            'pay_buyer_count': row[5],
+            'pay_rate': round((row[5] or 0) / (row[3] or 1), 6) if row[3] else 0,
             'cart_buyer_count': row[6],
             'new_uv': row[7],
-            'uv_value': row[8],
-            'level': row[9],
-            'ad_click_count': row[10],
-            'ad_pay_amount': row[11],
-            'direct_pay_buyer_count': row[12],
-            'collect_item_count': row[13],
+            'uv_value': round((row[4] or 0) / (row[3] or 1), 2) if row[3] else 0,
+            'level': row[8],
+            'ad_click_count': row[9],
+            'ad_pay_amount': row[10],
+            'direct_pay_buyer_count': row[11],
+            'collect_item_count': row[12],
         })
 
     conn.close()
-    return success({'stat_date': stat_date, 'channels': channels})
+    return success({'stat_date': end_date, 'start_date': start_date, 'end_date': end_date, 'channels': channels})
 
 
 @sycm_bp.route('/flow-source/trend', methods=['GET'])
@@ -535,12 +741,44 @@ def rival_shops_summary():
     })
 
 
+@sycm_bp.route('/rival-shops/trend', methods=['GET'])
+def rival_shops_trend():
+    """竞店周期趋势：返回实际采集日与覆盖口径，不将缺失日当作零。"""
+    start_date, end_date = get_query_date_range('sycm_market_rival_shop')
+    if not end_date:
+        return failure('NO_DATA', '暂无竞店数据')
+    payload = _rival_trend('sycm_market_rival_shop', 'shop_id', start_date, end_date)
+    if not payload or not payload['observed_days']:
+        return failure('NO_DATA', '所选范围暂无竞店趋势数据')
+    return success(payload)
+
+
+@sycm_bp.route('/rival-shops/entity-trend', methods=['GET'])
+def rival_shop_entity_trend():
+    """One monitored shop's daily UV, buyers and conversion trend."""
+    entity_id = request.args.get('shop_id', '').strip()
+    if not entity_id:
+        return failure('VALIDATION_ERROR', '缺少 shop_id')
+    start_date, end_date = get_query_date_range('sycm_market_rival_shop')
+    payload = _rival_entity_trend('sycm_market_rival_shop', 'shop_id', entity_id, start_date, end_date)
+    if not payload or not payload['observed_days']:
+        return failure('NO_DATA', '所选范围暂无该竞店趋势数据')
+    return success(payload)
+
+
+@sycm_bp.route('/rival-shops/entities', methods=['GET'])
+def rival_shop_entities():
+    start_date, end_date = get_query_date_range('sycm_market_rival_shop')
+    return success({'entities': _rival_entities('sycm_market_rival_shop', 'shop_id', 'shop_name', start_date, end_date)})
+
+
 # ==================== 竞品分析 ====================
 
 @sycm_bp.route('/rival-items/list', methods=['GET'])
 def rival_items_list():
     """竞品列表"""
-    stat_date = request.args.get('date') or get_latest_date('sycm_market_rival_item')
+    source_table = _competitor_item_table()
+    stat_date = request.args.get('date') or get_latest_date(source_table)
     if not stat_date:
         return failure('NO_DATA', '暂无竞品数据')
 
@@ -548,10 +786,17 @@ def rival_items_list():
     c = conn.cursor()
 
     c.execute('''
-        SELECT item_id, title, uv, pay_buyer_count, pic_url, detail_url
-        FROM sycm_market_rival_item
+        SELECT item_id, title, uv, pay_buyer_count, pic_url, detail_url, NULL AS shop_name
+        FROM sycm_market_rival_item r
         WHERE stat_date = ?
+          AND NOT EXISTS (SELECT 1 FROM products p WHERE p.product_id = r.item_id)
         ORDER BY uv DESC
+    ''', (stat_date,)) if source_table == 'sycm_market_rival_item' else c.execute('''
+        SELECT item_id, MAX(title), MAX(uv), MAX(pay_buyer_count), MAX(pic_url), NULL, MAX(shop_name)
+        FROM sycm_market_item_rank
+        WHERE stat_date = ? AND is_self = 0
+          AND NOT EXISTS (SELECT 1 FROM products p WHERE p.product_id = sycm_market_item_rank.item_id)
+        GROUP BY item_id ORDER BY MAX(uv) DESC LIMIT 50
     ''', (stat_date,))
 
     items = []
@@ -562,11 +807,59 @@ def rival_items_list():
             'uv': row[2],
             'pay_buyer_count': row[3],
             'pic_url': row[4],
-            'detail_url': row[5],
+            'detail_url': row[5] or f"https://item.taobao.com/item.htm?id={row[0]}" if source_table == 'sycm_market_item_rank' else row[5],
+            'shop_name': row[6],
         })
 
+    if source_table == 'sycm_market_rival_item':
+        c.execute('''
+        SELECT COUNT(*)
+        FROM sycm_market_rival_item r
+        WHERE r.stat_date = ?
+          AND EXISTS (SELECT 1 FROM products p WHERE p.product_id = r.item_id)
+        ''', (stat_date,))
+        excluded_own_count = int(c.fetchone()[0] or 0)
+    else:
+        c.execute('''SELECT COUNT(DISTINCT item_id) FROM sycm_market_item_rank r WHERE stat_date = ?
+                     AND (is_self = 1 OR EXISTS (SELECT 1 FROM products p WHERE p.product_id = r.item_id))''', (stat_date,))
+        excluded_own_count = int(c.fetchone()[0] or 0)
+
     conn.close()
-    return success({'stat_date': stat_date, 'items': items})
+    return success({'stat_date': stat_date, 'items': items, 'excluded_own_count': excluded_own_count})
+
+
+@sycm_bp.route('/rival-items/trend', methods=['GET'])
+def rival_items_trend():
+    """竞品周期趋势：按实际采集日汇总推荐竞品样本。"""
+    source_table = _competitor_item_table()
+    start_date, end_date = get_query_date_range(source_table)
+    if not end_date:
+        return failure('NO_DATA', '暂无竞品数据')
+    payload = _rival_trend(source_table, 'item_id', start_date, end_date)
+    if not payload or not payload['observed_days']:
+        return failure('NO_DATA', '所选范围暂无竞品趋势数据')
+    return success(payload)
+
+
+@sycm_bp.route('/rival-items/entity-trend', methods=['GET'])
+def rival_item_entity_trend():
+    """One monitored competitor item daily trend."""
+    entity_id = request.args.get('item_id', '').strip()
+    if not entity_id:
+        return failure('VALIDATION_ERROR', '缺少 item_id')
+    source_table = _competitor_item_table()
+    start_date, end_date = get_query_date_range(source_table)
+    payload = _rival_entity_trend(source_table, 'item_id', entity_id, start_date, end_date)
+    if not payload or not payload['observed_days']:
+        return failure('NO_DATA', '所选范围暂无该竞品趋势数据')
+    return success(payload)
+
+
+@sycm_bp.route('/rival-items/entities', methods=['GET'])
+def rival_item_entities():
+    source_table = _competitor_item_table()
+    start_date, end_date = get_query_date_range(source_table)
+    return success({'entities': _rival_entities(source_table, 'item_id', 'title', start_date, end_date)})
 
 
 # ==================== 市场排行（生意参谋新数据） ====================
@@ -695,3 +988,363 @@ def market_categories():
 
     conn.close()
     return success({'stat_date': stat_date, 'categories': categories})
+
+
+@sycm_bp.route('/market/trend', methods=['GET'])
+def market_trend():
+    """Daily trend for search demand and ranked product samples."""
+    start_date, end_date = get_query_date_range('sycm_market_search_rank')
+    if not end_date:
+        return failure('NO_DATA', '暂无市场趋势数据')
+    conn = get_connection()
+    item_rows = conn.execute(f'''
+        SELECT stat_date, COUNT(*) AS item_count,
+               AVG(uv) AS avg_item_uv, AVG(pay_buyer_count) AS avg_item_buyers
+        FROM (
+          SELECT r.stat_date, r.item_id, MAX(r.uv) AS uv, MAX(r.pay_buyer_count) AS pay_buyer_count
+          FROM sycm_market_item_rank r
+          WHERE r.stat_date BETWEEN ? AND ? AND {_market_external_filter('r')}
+          GROUP BY r.stat_date, r.item_id
+        ) sampled
+        GROUP BY stat_date ORDER BY stat_date
+    ''', (start_date, end_date)).fetchall()
+    search_rows = conn.execute(
+        '''SELECT stat_date, COUNT(*) AS keyword_count, AVG(search_heat) AS avg_search_heat,
+                  AVG(pay_rate) AS avg_pay_rate, AVG(click_rate) AS avg_click_rate
+           FROM sycm_market_search_rank WHERE stat_date BETWEEN ? AND ?
+           GROUP BY stat_date ORDER BY stat_date''',
+        (start_date, end_date),
+    ).fetchall()
+    conn.close()
+    expected_days = _expected_days(start_date, end_date)
+    if not expected_days:
+        return failure('VALIDATION_ERROR', '日期范围无效')
+    item_by_date = {row['stat_date']: dict(row) for row in item_rows}
+    search_by_date = {row['stat_date']: dict(row) for row in search_rows}
+    first_day = date_type.fromisoformat(start_date)
+    daily = []
+    for offset in range(expected_days):
+        stat_date = (first_day + timedelta(days=offset)).isoformat()
+        item = item_by_date.get(stat_date, {})
+        search = search_by_date.get(stat_date, {})
+        daily.append({
+            'stat_date': stat_date,
+            'item_count': item.get('item_count'),
+            'avg_item_uv': item.get('avg_item_uv'),
+            'avg_item_buyers': item.get('avg_item_buyers'),
+            'keyword_count': search.get('keyword_count'),
+            'avg_search_heat': search.get('avg_search_heat'),
+            'avg_pay_rate': search.get('avg_pay_rate'),
+            'avg_click_rate': search.get('avg_click_rate'),
+        })
+    item_observed_days = len(item_by_date)
+    search_observed_days = len(search_by_date)
+    observed_days = sum(1 for row in daily if row['item_count'] is not None or row['keyword_count'] is not None)
+    coverage_rate = observed_days / expected_days
+    item_coverage_rate = item_observed_days / expected_days
+    search_coverage_rate = search_observed_days / expected_days
+    return success({
+        'start_date': start_date, 'end_date': end_date,
+        'expected_days': expected_days, 'observed_days': observed_days,
+        'coverage_rate': coverage_rate,
+        'item_observed_days': item_observed_days,
+        'item_coverage_rate': item_coverage_rate,
+        'search_observed_days': search_observed_days,
+        'search_coverage_rate': search_coverage_rate,
+        'coverage_status': 'complete' if coverage_rate == 1 else ('partial' if observed_days else 'no_data'),
+        'trend_comparable': item_coverage_rate >= 0.8 and search_coverage_rate >= 0.8,
+        'daily': daily,
+    })
+
+
+def _market_external_filter(alias='r'):
+    """市场实体趋势只使用外部商品榜样本，排除自家标记和商品主档。"""
+    return f"{alias}.is_self = 0 AND NOT EXISTS (SELECT 1 FROM products p WHERE p.product_id = {alias}.item_id)"
+
+
+@sycm_bp.route('/market/shops/entities', methods=['GET'])
+def market_shop_entities():
+    """市场商品榜覆盖到的店铺实体列表。"""
+    start_date, end_date = get_query_date_range('sycm_market_item_rank')
+    if not end_date:
+        return success({'entities': []})
+    conn = get_connection()
+    try:
+        rows = conn.execute(f'''
+            SELECT COALESCE(NULLIF(r.shop_id, ''), r.shop_name) AS entity_id,
+                   MAX(r.shop_name) AS entity_name,
+                   COUNT(DISTINCT r.stat_date) AS observed_days,
+                   MAX(r.stat_date) AS last_seen,
+                   COUNT(DISTINCT r.item_id) AS item_count
+            FROM sycm_market_item_rank r
+            WHERE r.stat_date BETWEEN ? AND ? AND {_market_external_filter('r')}
+              AND COALESCE(NULLIF(r.shop_id, ''), r.shop_name) IS NOT NULL
+            GROUP BY COALESCE(NULLIF(r.shop_id, ''), r.shop_name)
+            ORDER BY observed_days DESC, item_count DESC, last_seen DESC, entity_name
+        ''', (start_date, end_date)).fetchall()
+        daily_rows = conn.execute(f'''
+            SELECT entity_id, stat_date, SUM(uv) AS uv,
+                   SUM(pay_buyer_count) AS pay_buyer_count,
+                   COUNT(*) AS item_count
+            FROM (
+              SELECT COALESCE(NULLIF(r.shop_id, ''), r.shop_name) AS entity_id,
+                     r.stat_date, r.item_id,
+                     MAX(r.uv) AS uv, MAX(r.pay_buyer_count) AS pay_buyer_count
+              FROM sycm_market_item_rank r
+              WHERE r.stat_date BETWEEN ? AND ? AND {_market_external_filter('r')}
+                AND COALESCE(NULLIF(r.shop_id, ''), r.shop_name) IS NOT NULL
+              GROUP BY COALESCE(NULLIF(r.shop_id, ''), r.shop_name), r.stat_date, r.item_id
+            ) deduped
+            GROUP BY entity_id, stat_date
+            ORDER BY stat_date
+        ''', (start_date, end_date)).fetchall()
+    finally:
+        conn.close()
+    daily_by_entity = {}
+    for row in daily_rows:
+        item = dict(row)
+        uv = item.get('uv')
+        buyers = item.get('pay_buyer_count')
+        item['pay_rate'] = (buyers / uv) if uv else None
+        daily_by_entity.setdefault(str(item['entity_id']), []).append(item)
+    entities = []
+    for row in rows:
+        item = dict(row)
+        item['daily'] = daily_by_entity.get(str(item['entity_id']), [])
+        latest = item['daily'][-1] if item['daily'] else {}
+        item['latest_uv'] = latest.get('uv')
+        item['latest_pay_buyer_count'] = latest.get('pay_buyer_count')
+        entities.append(item)
+    return success({'entities': entities})
+
+
+@sycm_bp.route('/market/shops/entity-trend', methods=['GET'])
+def market_shop_entity_trend():
+    """单个市场店铺逐日趋势，按该店铺外部商品榜样本聚合。"""
+    entity_id = request.args.get('shop_id', '').strip()
+    if not entity_id:
+        return failure('VALIDATION_ERROR', '缺少 shop_id')
+    start_date, end_date = get_query_date_range('sycm_market_item_rank')
+    conn = get_connection()
+    try:
+        market_item_columns = {
+            column['name'] for column in conn.execute('PRAGMA table_info(sycm_market_item_rank)').fetchall()
+        }
+        detail_url_expr = 'r.detail_url' if 'detail_url' in market_item_columns else 'NULL'
+        rows = conn.execute(f'''
+            SELECT daily.stat_date, MAX(daily.shop_name) AS shop_name,
+                   COUNT(*) AS item_count, SUM(daily.uv) AS uv,
+                   SUM(daily.pay_buyer_count) AS pay_buyer_count,
+                   CASE WHEN SUM(daily.uv) IS NULL OR SUM(daily.uv) = 0 THEN NULL
+                        ELSE SUM(daily.pay_buyer_count) * 1.0 / SUM(daily.uv) END AS pay_rate
+            FROM (
+              SELECT r.stat_date, r.item_id, MAX(r.shop_name) AS shop_name,
+                     MAX(r.uv) AS uv, MAX(r.pay_buyer_count) AS pay_buyer_count
+              FROM sycm_market_item_rank r
+              WHERE r.stat_date BETWEEN ? AND ?
+                AND COALESCE(NULLIF(r.shop_id, ''), r.shop_name) = ?
+                AND {_market_external_filter('r')}
+              GROUP BY r.stat_date, r.item_id
+            ) daily
+            GROUP BY daily.stat_date ORDER BY daily.stat_date
+        ''', (start_date, end_date, entity_id)).fetchall()
+        product_rows = conn.execute(f'''
+            WITH ranked AS (
+              SELECT r.item_id, r.title, r.pic_url, {detail_url_expr} AS detail_url, r.shop_name,
+                     r.uv, r.pay_buyer_count, r.rank, r.stat_date,
+                     ROW_NUMBER() OVER (
+                       PARTITION BY r.item_id
+                       ORDER BY r.stat_date DESC, r.rank ASC
+                     ) AS row_num
+              FROM sycm_market_item_rank r
+              WHERE r.stat_date BETWEEN ? AND ?
+                AND COALESCE(NULLIF(r.shop_id, ''), r.shop_name) = ?
+                AND {_market_external_filter('r')}
+            )
+            SELECT item_id, title, pic_url, detail_url, shop_name,
+                   uv, pay_buyer_count, rank, stat_date
+            FROM ranked WHERE row_num = 1
+            ORDER BY uv DESC, pay_buyer_count DESC, title
+            LIMIT 50
+        ''', (start_date, end_date, entity_id)).fetchall()
+    finally:
+        conn.close()
+    expected_days = _expected_days(start_date, end_date)
+    daily = [dict(row) for row in rows]
+    observed_days = len(daily)
+    totals = {
+        'uv': sum(float(row['uv'] or 0) for row in daily),
+        'pay_buyer_count': sum(float(row['pay_buyer_count'] or 0) for row in daily),
+    }
+    totals['pay_rate'] = totals['pay_buyer_count'] / totals['uv'] if totals['uv'] else None
+    coverage_rate = observed_days / expected_days if expected_days else None
+    if not daily:
+        return failure('NO_DATA', '所选范围暂无该市场店铺趋势数据')
+    return success({
+        'entity_id': entity_id, 'entity_name': daily[-1].get('shop_name'),
+        'start_date': start_date, 'end_date': end_date,
+        'expected_days': expected_days, 'observed_days': observed_days,
+        'coverage_rate': coverage_rate,
+        'coverage_status': 'complete' if coverage_rate == 1 else ('partial' if observed_days else 'no_data'),
+        'trend_comparable': bool(expected_days and coverage_rate >= 0.8),
+        'totals': totals, 'daily': daily,
+        'items': [
+            {**dict(row), 'detail_url': row['detail_url'] or f"https://item.taobao.com/item.htm?id={row['item_id']}"}
+            for row in product_rows
+        ],
+    })
+
+
+@sycm_bp.route('/market/items/entities', methods=['GET'])
+def market_item_entities():
+    """市场外部单品实体列表。"""
+    start_date, end_date = get_query_date_range('sycm_market_item_rank')
+    if not end_date:
+        return success({'entities': []})
+    conn = get_connection()
+    try:
+        rows = conn.execute(f'''
+            SELECT r.item_id AS entity_id, MAX(r.title) AS entity_name,
+                   MAX(r.shop_name) AS shop_name, MAX(r.shop_id) AS shop_id,
+                   COUNT(DISTINCT r.stat_date) AS observed_days,
+                   MAX(r.stat_date) AS last_seen,
+                   MAX(r.uv) AS latest_uv, MAX(r.pay_buyer_count) AS latest_pay_buyer_count
+            FROM sycm_market_item_rank r
+            WHERE r.stat_date BETWEEN ? AND ? AND {_market_external_filter('r')}
+            GROUP BY r.item_id
+            ORDER BY observed_days DESC, latest_uv DESC, last_seen DESC, entity_name
+        ''', (start_date, end_date)).fetchall()
+        daily_rows = conn.execute(f'''
+            SELECT r.item_id AS entity_id, r.stat_date, MAX(r.uv) AS uv,
+                   MAX(r.pay_buyer_count) AS pay_buyer_count, MIN(r.rank) AS rank
+            FROM sycm_market_item_rank r
+            WHERE r.stat_date BETWEEN ? AND ? AND {_market_external_filter('r')}
+            GROUP BY r.item_id, r.stat_date ORDER BY r.stat_date
+        ''', (start_date, end_date)).fetchall()
+    finally:
+        conn.close()
+    daily_by_entity = {}
+    for row in daily_rows:
+        item = dict(row)
+        uv = item.get('uv')
+        buyers = item.get('pay_buyer_count')
+        item['pay_rate'] = (buyers / uv) if uv else None
+        daily_by_entity.setdefault(str(item['entity_id']), []).append(item)
+    entities = []
+    for row in rows:
+        item = dict(row)
+        item['daily'] = daily_by_entity.get(str(item['entity_id']), [])
+        latest = item['daily'][-1] if item['daily'] else {}
+        item['latest_uv'] = latest.get('uv')
+        item['latest_pay_buyer_count'] = latest.get('pay_buyer_count')
+        entities.append(item)
+    return success({'entities': entities})
+
+
+@sycm_bp.route('/market/items/entity-trend', methods=['GET'])
+def market_item_entity_trend():
+    """单个市场外部单品逐日趋势。"""
+    entity_id = request.args.get('item_id', '').strip()
+    if not entity_id:
+        return failure('VALIDATION_ERROR', '缺少 item_id')
+    start_date, end_date = get_query_date_range('sycm_market_item_rank')
+    conn = get_connection()
+    try:
+        rows = conn.execute(f'''
+            SELECT r.stat_date, MAX(r.title) AS title, MAX(r.shop_name) AS shop_name,
+                   MAX(r.shop_id) AS shop_id, MAX(r.cate_name) AS cate_name,
+                   MAX(r.uv) AS uv, MAX(r.pay_buyer_count) AS pay_buyer_count,
+                   MAX(r.rank) AS rank
+            FROM sycm_market_item_rank r
+            WHERE r.item_id = ? AND r.stat_date BETWEEN ? AND ?
+              AND {_market_external_filter('r')}
+            GROUP BY r.stat_date ORDER BY r.stat_date
+        ''', (entity_id, start_date, end_date)).fetchall()
+    finally:
+        conn.close()
+    expected_days = _expected_days(start_date, end_date)
+    daily = [dict(row) for row in rows]
+    for row in daily:
+        uv = row.get('uv')
+        row['pay_rate'] = (float(row.get('pay_buyer_count') or 0) / float(uv)) if uv else None
+    observed_days = len(daily)
+    coverage_rate = observed_days / expected_days if expected_days else None
+    if not daily:
+        return failure('NO_DATA', '所选范围暂无该市场单品趋势数据')
+    return success({
+        'entity_id': entity_id, 'entity_name': daily[-1].get('title'),
+        'shop_name': daily[-1].get('shop_name'), 'shop_id': daily[-1].get('shop_id'),
+        'start_date': start_date, 'end_date': end_date,
+        'expected_days': expected_days, 'observed_days': observed_days,
+        'coverage_rate': coverage_rate,
+        'coverage_status': 'complete' if coverage_rate == 1 else ('partial' if observed_days else 'no_data'),
+        'trend_comparable': bool(expected_days and coverage_rate >= 0.8),
+        'daily': daily,
+    })
+
+
+@sycm_bp.route('/market/snapshots', methods=['GET'])
+def market_period_snapshots():
+    """周期快照概览：读取浏览器插件导出的周/月榜单，不混入日趋势。"""
+    conn = get_connection()
+    try:
+        batches = [dict(row) for row in conn.execute(
+            '''SELECT id, snapshot_type, source_filename, period_start, period_end,
+                      row_count, created_at
+               FROM market_snapshot_batches
+               ORDER BY period_end DESC, period_start DESC, id DESC'''
+        ).fetchall()]
+        comparisons = {}
+        for snapshot_type, table, entity, label_column, value in (
+            ('item', 'market_snapshot_items', 'item_id', 'title', 'pay_buyer_value'),
+            ('search', 'market_snapshot_searches', 'keyword', 'keyword', 'search_heat_value'),
+            ('rival_item', 'market_snapshot_rival_items', 'item_id', 'title', 'pay_buyer_value'),
+            ('rival_shop', 'market_snapshot_rival_shops', 'shop_id', 'shop_name', 'pay_buyer_value'),
+        ):
+            typed = [item for item in batches if item['snapshot_type'] == snapshot_type]
+            if len(typed) < 2:
+                comparisons[snapshot_type] = {'status': 'insufficient_periods', 'rows': []}
+                continue
+            current, previous = typed[0], typed[1]
+            current_rows = conn.execute(
+                f'SELECT {entity} AS entity_id, MAX(COALESCE({label_column}, {entity})) AS entity_name, MAX({value}) AS metric FROM {table} WHERE batch_id=? GROUP BY {entity}',
+                (current['id'],),
+            ).fetchall()
+            previous_rows = conn.execute(
+                f'SELECT {entity} AS entity_id, MAX(COALESCE({label_column}, {entity})) AS entity_name, MAX({value}) AS metric FROM {table} WHERE batch_id=? GROUP BY {entity}',
+                (previous['id'],),
+            ).fetchall()
+            old = {str(row['entity_id']): dict(row) for row in previous_rows}
+            rows = []
+            for row in current_rows:
+                key = str(row['entity_id'])
+                if key not in old:
+                    continue
+                current_metric, previous_metric = row['metric'], old[key]['metric']
+                delta = None
+                if current_metric is not None and previous_metric not in (None, 0):
+                    delta = (float(current_metric) - float(previous_metric)) / abs(float(previous_metric))
+                rows.append({
+                    'entity_id': key,
+                    'entity_name': row['entity_name'] or old[key]['entity_name'] or key,
+                    'current_metric': current_metric,
+                    'previous_metric': previous_metric,
+                    'delta_rate': delta,
+                })
+            rows.sort(key=lambda item: abs(item['delta_rate'] or 0), reverse=True)
+            comparisons[snapshot_type] = {
+                'status': 'comparable',
+                'current_period': {'start': current['period_start'], 'end': current['period_end']},
+                'previous_period': {'start': previous['period_start'], 'end': previous['period_end']},
+                'shared_entity_count': len(rows),
+                'rows': rows,
+            }
+    finally:
+        conn.close()
+    availability = 'available' if batches else 'no-data'
+    return success({
+        'batches': batches,
+        'comparisons': comparisons,
+        'availability': availability,
+        'note': '周期榜单保留原始统计区间；区间数值为导出范围中点估算，不代表精确成交量。',
+    })
