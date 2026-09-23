@@ -1,5 +1,8 @@
 ﻿(async function () {
   'use strict';
+  const escapeHtml = window.DemoFormat?.escapeHtml
+    ? window.DemoFormat.escapeHtml
+    : (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 
   const API_BASE = '/api/market-ranking';
 
@@ -43,21 +46,8 @@
     if (v == null || isNaN(v)) return '--';
     return Number(v).toLocaleString('zh-CN');
   }
-  function fmtPct(v) {
-    if (v == null || isNaN(v)) return '--';
-    return (Number(v) * 100).toFixed(1) + '%';
-  }
-  function fmtWan(v) {
-    if (v == null || isNaN(v)) return '--';
-    const n = Number(v);
-    if (n >= 10000) return (n / 10000).toFixed(1) + '万';
-    return fmtInt(n);
-  }
-  function escapeHtml(value) {
-    return String(value ?? '').replace(/[&<>"']/g, (char) => ({
-      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
-    })[char]);
-  }
+  const fmtPct = window.DemoFormat?.fmtPct1 || ((v) => v == null || isNaN(v) ? '--' : ((Number(v) * 100).toFixed(1) + '%'));
+  const fmtWan = window.DemoFormat?.fmtWan || ((v) => v == null || isNaN(v) ? '--' : String(Number(v)));
 
   // ===== 加载数据 =====
   async function loadSummary() {
@@ -251,6 +241,10 @@
     if (current.length) segments.push(current.join(' '));
     return `<svg class="market-entity-spark" viewBox="0 0 150 38" preserveAspectRatio="none" aria-label="趋势小图">${segments.map(segment => `<polyline points="${segment}"></polyline>`).join('')}</svg>`;
   }
+  function safeHttpUrl(value) {
+    const url = String(value || '').trim();
+    return /^https?:\/\//i.test(url) ? url : '';
+  }
 
   function renderEntityList(kind) {
     const isShop = kind === 'shop';
@@ -361,8 +355,12 @@
           : mode === 'stable' ? `${entity.observed_days || 0}天有采集`
             : '';
       const sub = `${context}${reason ? ` · ${reason}` : ''}`;
-      return `<button type="button" class="market-entity-row" data-market-entity-kind="${kind}" data-market-entity-id="${escapeHtml(entity.entity_id)}">
-        <span class="market-entity-name"><strong title="${escapeHtml(name)}">${escapeHtml(name)}</strong><small>${escapeHtml(sub)}</small></span>
+      const imageUrl = isShop ? '' : safeHttpUrl(entity.pic_url);
+      const image = isShop
+        ? ''
+        : `<span class="market-entity-thumb">${imageUrl ? `<img src="${escapeHtml(imageUrl)}" alt="" loading="lazy" onerror="this.parentElement.classList.add('is-empty');this.remove()">` : '<span class="market-entity-thumb__placeholder">图</span>'}</span>`;
+      return `<button type="button" class="market-entity-row market-entity-row--${kind}" data-market-entity-kind="${kind}" data-market-entity-id="${escapeHtml(entity.entity_id)}">
+        ${image}<span class="market-entity-name"><strong title="${escapeHtml(name)}">${escapeHtml(name)}</strong><small>${escapeHtml(sub)}</small></span>
         <span class="market-entity-stats">
           <span class="market-entity-stat"><small>UV</small>${fmtWan(latest.uv ?? entity.latest_uv)}</span>
           <span class="market-entity-stat"><small>支付买家</small>${fmtWan(latest.pay_buyer_count ?? entity.latest_pay_buyer_count)}</span>

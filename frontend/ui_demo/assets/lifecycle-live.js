@@ -1,4 +1,7 @@
 (function () {
+  const escapeHtml = window.DemoFormat?.escapeHtml
+    ? window.DemoFormat.escapeHtml
+    : (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
   const $ = (selector, root = document) => root.querySelector(selector);
   const css = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
   const lifecycleDetailFieldGroups = [
@@ -156,7 +159,6 @@
   const ratio = (numerator, denominator) => Number(denominator || 0) ? percent(Number(numerator || 0) / Number(denominator)) : '--';
   const decimal = (value, digits = 2) => value == null || value === '' ? '--' : Number(value).toFixed(digits);
   const sum = (rows, field) => rows.reduce((total, row) => total + Number(row[field] || 0), 0);
-  const escapeHtml = (value) => String(value ?? '').replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
   const toast = (message) => {
     if (window.DemoShell?.showToast) window.DemoShell.showToast(message);
     else window.alert(message);

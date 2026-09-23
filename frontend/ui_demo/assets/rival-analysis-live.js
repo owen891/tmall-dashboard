@@ -1,5 +1,8 @@
 (async function () {
   'use strict';
+  const escapeHtml = window.DemoFormat?.escapeHtml
+    ? window.DemoFormat.escapeHtml
+    : (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 
   const API_BASE = '/api/sycm';
 
@@ -30,24 +33,8 @@
     if (v == null || isNaN(v)) return '--';
     return Number(v).toLocaleString('zh-CN');
   }
-  function fmtWan(v) {
-    if (v == null || isNaN(v)) return '--';
-    const n = Number(v);
-    if (n >= 10000) return (n / 10000).toFixed(1) + '万';
-    return fmtInt(n);
-  }
-  function fmtPct1(v) {
-    if (v == null || isNaN(v)) return '--';
-    return (Number(v) * 100).toFixed(1) + '%';
-  }
-  function escapeHtml(value) {
-    return String(value == null ? '' : value)
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&#39;');
-  }
+  const fmtWan = window.DemoFormat?.fmtWan || ((v) => v == null || isNaN(v) ? '--' : String(Number(v)));
+  const fmtPct1 = window.DemoFormat?.fmtPct1 || ((v) => v == null || isNaN(v) ? '--' : ((Number(v) * 100).toFixed(1) + '%'));
   // 竞店/竞品字段来自外部抓取，仅接受 http(s) 链接，防止属性逃逸与 javascript: URL。
   function safeHttpUrl(value) {
     let url = String(value || '').trim();

@@ -6,7 +6,7 @@
   <title>数据概览 | 天猫数据仪表盘</title>
   <link rel="stylesheet" href="../assets/tokens.css">
   <link rel="stylesheet" href="../assets/shell.css">
-  <link rel="stylesheet" href="../assets/components.css?v=20260919-field-selector3">
+  <link rel="stylesheet" href="../assets/components.css?v=20260923-overview-compact">
   <script src="../assets/lucide-custom.min.js"></script>
   <script src="../assets/echarts-custom.min.js"></script>
 </head>
@@ -27,19 +27,14 @@
           </div>
         </div>
 
-        <section class="overview-v2-context" aria-label="数据上下文">
-          <div class="overview-v2-context__copy"><strong>数据上下文</strong><span data-overview-context>加载中…</span></div>
-          <div class="overview-v2-context__meta"><span class="overview-v2-status" data-overview-quality data-availability="loading">加载中</span><span data-overview-summary-meta="freshness">最近导入</span></div>
-          <span class="sr-only" data-overview-summary="target">--</span><span class="sr-only" data-overview-summary="actions">--</span><span class="sr-only" data-overview-summary="freshness">--</span><span class="sr-only" data-overview-kpi="expense_ratio">--</span><span class="sr-only" data-overview-kpi="average_order_value">--</span><span class="sr-only" data-overview-kpi="returning_buyer_ratio">--</span>
-        </section>
-
         <section class="overview-decision" data-overview-decision aria-labelledby="overview-decision-title">
-          <div class="overview-decision__intro"><span class="section-kicker">先看经营判断</span><h3 id="overview-decision-title">当前周期先处理什么</h3><p>先看结果，再看目标差额和待处理动作；详细指标和证据放在下方。</p></div>
+          <div class="overview-decision__intro"><span class="section-kicker">先看经营判断</span><h3 id="overview-decision-title">当前周期先处理什么</h3><p>先看结果与目标差额，再处理待办动作；详细指标和证据放在下方。</p><div class="overview-v2-context__meta"><span class="overview-v2-status" data-overview-quality data-availability="loading">加载中</span><span class="overview-decision__context" data-overview-context>加载中…</span></div></div>
           <div class="overview-decision__items">
             <div class="overview-decision__item"><span>净销售额</span><strong data-overview-summary="net_sales">--</strong><small data-overview-kpi-meta="net_sales">等待加载…</small></div>
             <div class="overview-decision__item"><span>目标完成度</span><strong data-overview-summary="target">--</strong><small>按当前周期目标计算</small></div>
             <div class="overview-decision__item"><span>待处理动作</span><strong data-overview-summary="actions">--</strong><small>需要运营跟进的事项</small></div>
           </div>
+          <span class="sr-only" data-overview-summary="freshness">--</span><span class="sr-only" data-overview-kpi="expense_ratio">--</span><span class="sr-only" data-overview-kpi="average_order_value">--</span><span class="sr-only" data-overview-kpi="returning_buyer_ratio">--</span>
         </section>
 
         <section class="ui-metric-grid overview-v2-kpis" aria-label="经营指标">
@@ -141,7 +136,7 @@
   <script src="../assets/shell.js"></script>
   <script src="../assets/field-selector.js"></script>
   <script src="../assets/ui-components.js"></script>
-  <script src="../assets/operations-center.js"></script>
-  <script src="../assets/overview-live.js"></script>
+  <script src="../assets/operations-center.js?v=20260923"></script>
+  <script src="../assets/format.js"></script><script src="../assets/overview-live.js?v=20260923"></script>
 </body>
 </html>

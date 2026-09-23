@@ -1,5 +1,8 @@
 ﻿(async function () {
   'use strict';
+  const escapeHtml = window.DemoFormat?.escapeHtml
+    ? window.DemoFormat.escapeHtml
+    : (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 
   const API_BASE = '/api/sycm';
 
@@ -32,14 +35,6 @@
     return (Number(v) * 100).toFixed(2) + '%';
   }
 
-  function escapeHtml(value) {
-    return String(value ?? '')
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/\"/g, '&quot;')
-      .replace(/'/g, '&#39;');
-  }
 
   // 渠道类型判断
   function getChannelType(name) {

@@ -1,5 +1,8 @@
 (async function () {
   'use strict';
+  const escapeHtml = window.DemoFormat?.escapeHtml
+    ? window.DemoFormat.escapeHtml
+    : (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 
   const API_BASE = '/api/keyword-promotion';
   const STORAGE_KEY = 'tmall-kp-visible-columns';
@@ -145,11 +148,6 @@
   function fmtInt(v) {
     if (v == null || isNaN(v)) return '--';
     return Number(v).toLocaleString('zh-CN', { maximumFractionDigits: 0 });
-  }
-  function escapeHtml(value) {
-    return String(value ?? '').replace(/[&<>"']/g, (char) => ({
-      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
-    })[char]);
   }
   function safeProductUrl(productId) {
     return `https://detail.tmall.com/item.htm?id=${encodeURIComponent(String(productId ?? ''))}`;

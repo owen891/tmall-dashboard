@@ -1,5 +1,8 @@
 (function() {
   'use strict';
+  const escapeHtml = window.DemoFormat?.escapeHtml
+    ? window.DemoFormat.escapeHtml
+    : (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 
   const grid = document.querySelector('[data-collect-grid]');
   const logPanel = document.querySelector('[data-log-panel]');
@@ -52,11 +55,6 @@
     'timed_out': '#dc2626'
   };
 
-  function escapeHtml(value) {
-    return String(value ?? '').replace(/[&<>"']/g, (char) => ({
-      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
-    })[char]);
-  }
 
   // 计算数据新鲜度，支持YYYY-MM和YYYY-MM-DD格式
   function calcFreshness(latestDate) {
