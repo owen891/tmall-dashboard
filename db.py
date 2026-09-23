@@ -6,7 +6,7 @@ import yaml
 from flask import current_app, g, has_app_context
 
 PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 4
 
 _config_cache = None
 
@@ -150,6 +150,32 @@ def _run_init_migrations(conn):
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
+
+    CREATE TABLE IF NOT EXISTS product_identity_map (
+        shop_id TEXT NOT NULL DEFAULT 'default',
+        source_system TEXT NOT NULL,
+        external_product_id TEXT NOT NULL,
+        canonical_product_id TEXT,
+        identity_status TEXT NOT NULL DEFAULT 'unresolved',
+        display_title TEXT NOT NULL DEFAULT '',
+        image_url TEXT NOT NULL DEFAULT '',
+        first_seen_date DATE,
+        last_seen_date DATE,
+        fact_row_count INTEGER NOT NULL DEFAULT 0,
+        ad_spend REAL NOT NULL DEFAULT 0,
+        attributed_payment_amount REAL NOT NULL DEFAULT 0,
+        first_source_batch_id TEXT,
+        last_source_batch_id TEXT,
+        resolution_reason TEXT NOT NULL DEFAULT '',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (shop_id, source_system, external_product_id),
+        FOREIGN KEY (canonical_product_id) REFERENCES products(product_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_product_identity_canonical
+        ON product_identity_map(shop_id, canonical_product_id);
+    CREATE INDEX IF NOT EXISTS idx_product_identity_status
+        ON product_identity_map(shop_id, identity_status);
 
     CREATE TABLE IF NOT EXISTS daily_data (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -324,6 +350,26 @@ def _run_init_migrations(conn):
     CREATE INDEX IF NOT EXISTS idx_daily_observations_source
         ON daily_data_observations(source_system, source_type, observed_at DESC);
 
+    CREATE TABLE IF NOT EXISTS daily_data_observations_quarantine (
+        quarantine_id INTEGER PRIMARY KEY AUTOINCREMENT,
+        original_id INTEGER NOT NULL UNIQUE,
+        shop_id TEXT NOT NULL,
+        product_id TEXT NOT NULL,
+        date DATE NOT NULL,
+        source_system TEXT NOT NULL,
+        source_type TEXT NOT NULL,
+        source_batch_id TEXT,
+        source_filename TEXT,
+        payload_json TEXT NOT NULL,
+        field_presence_json TEXT NOT NULL DEFAULT '{}',
+        quality_status TEXT NOT NULL DEFAULT 'passed',
+        observed_at TIMESTAMP,
+        quarantine_reason TEXT NOT NULL,
+        quarantined_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE INDEX IF NOT EXISTS idx_observation_quarantine_key
+        ON daily_data_observations_quarantine(shop_id, product_id, date);
+
     CREATE TABLE IF NOT EXISTS fact_field_lineage (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         shop_id TEXT NOT NULL DEFAULT 'default',
@@ -383,6 +429,40 @@ def _run_init_migrations(conn):
     );
     CREATE INDEX IF NOT EXISTS idx_monthly_source_payload_month
         ON monthly_source_payload(month);
+
+    -- Retention and archive metadata live in the online database even when
+    -- large raw payloads are moved to external compressed files.
+    CREATE TABLE IF NOT EXISTS retention_policies (
+        policy_key TEXT PRIMARY KEY,
+        source_kind TEXT NOT NULL,
+        source_table TEXT NOT NULL,
+        retention_days INTEGER NOT NULL,
+        mode TEXT NOT NULL DEFAULT 'archive',
+        protected INTEGER NOT NULL DEFAULT 0,
+        updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE INDEX IF NOT EXISTS idx_retention_policies_table
+        ON retention_policies(source_table, protected);
+
+    CREATE TABLE IF NOT EXISTS archive_catalog (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        archive_key TEXT NOT NULL UNIQUE,
+        source_kind TEXT NOT NULL,
+        source_table TEXT NOT NULL,
+        source_batch_id TEXT,
+        archive_path TEXT NOT NULL,
+        source_sha256 TEXT NOT NULL,
+        row_count INTEGER NOT NULL DEFAULT 0,
+        min_value TEXT,
+        max_value TEXT,
+        archived_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        status TEXT NOT NULL DEFAULT 'verified',
+        metadata_json TEXT NOT NULL DEFAULT '{}'
+    );
+    CREATE INDEX IF NOT EXISTS idx_archive_catalog_source
+        ON archive_catalog(source_table, min_value, max_value);
+    CREATE INDEX IF NOT EXISTS idx_archive_catalog_archived_at
+        ON archive_catalog(archived_at DESC);
 
     -- 字段目录由导入器按源文件真实表头维护，供设置接口和商品字段选择器使用。
     CREATE TABLE IF NOT EXISTS source_field_catalog (
@@ -674,6 +754,11 @@ def _run_init_migrations(conn):
         conclusions TEXT NOT NULL,
         next_actions TEXT NOT NULL,
         reviewer TEXT NOT NULL,
+        sections TEXT NOT NULL DEFAULT '{}',
+        status TEXT NOT NULL DEFAULT 'draft',
+        template_version TEXT NOT NULL DEFAULT '',
+        target_amount REAL,
+        category_mode TEXT NOT NULL DEFAULT '',
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         UNIQUE(period_type, period_key)
@@ -732,6 +817,8 @@ def _run_init_migrations(conn):
         action_detail TEXT NOT NULL,
         target_metric TEXT NOT NULL,
         expected_change REAL,
+        target_value REAL,
+        acceptance_criteria TEXT,
         status TEXT NOT NULL,
         planned_at DATE NOT NULL,
         executed_at DATE,
@@ -749,6 +836,15 @@ def _run_init_migrations(conn):
         review_next_action TEXT,
         reviewed_by TEXT,
         reviewed_at TIMESTAMP,
+        source_period_type TEXT,
+        source_period_key TEXT,
+        source_compare_mode TEXT,
+        source_compare_period_key TEXT,
+        source_product_id TEXT,
+        source_problem_key TEXT,
+        source_diagnosis_snapshot TEXT,
+        verification_period_type TEXT,
+        verification_period_key TEXT,
         version INTEGER NOT NULL DEFAULT 1,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -946,6 +1042,48 @@ def _run_init_migrations(conn):
     CREATE INDEX IF NOT EXISTS idx_market_category ON market_analysis(category_path);
     CREATE INDEX IF NOT EXISTS idx_market_opp_date ON market_keyword_opportunities(analysis_date);
     CREATE INDEX IF NOT EXISTS idx_market_opp_category ON market_keyword_opportunities(opportunity_category);
+
+    CREATE TABLE IF NOT EXISTS market_snapshot_batches (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        snapshot_type TEXT NOT NULL,
+        source_filename TEXT NOT NULL,
+        source_hash TEXT NOT NULL UNIQUE,
+        period_start TEXT NOT NULL,
+        period_end TEXT NOT NULL,
+        row_count INTEGER NOT NULL,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE TABLE IF NOT EXISTS market_snapshot_items (
+        batch_id INTEGER NOT NULL, period_start TEXT NOT NULL, period_end TEXT NOT NULL,
+        cate_name TEXT, item_id TEXT NOT NULL, title TEXT, product_url TEXT,
+        core_keyword TEXT, shop_name TEXT, shop_type TEXT, uv_value REAL, uv_range TEXT,
+        pay_buyer_value REAL, pay_buyer_range TEXT, rank INTEGER, trend TEXT,
+        UNIQUE(batch_id, item_id)
+    );
+    CREATE TABLE IF NOT EXISTS market_snapshot_searches (
+        batch_id INTEGER NOT NULL, period_start TEXT NOT NULL, period_end TEXT NOT NULL,
+        cate_name TEXT, keyword TEXT NOT NULL, search_heat_value REAL, search_heat_range TEXT,
+        pay_rate_value REAL, pay_rate_range TEXT, click_rate_value REAL, click_rate_range TEXT,
+        rank INTEGER, UNIQUE(batch_id, cate_name, keyword)
+    );
+    CREATE TABLE IF NOT EXISTS market_snapshot_rival_items (
+        batch_id INTEGER NOT NULL, period_start TEXT NOT NULL, period_end TEXT NOT NULL,
+        item_id TEXT NOT NULL, title TEXT, shop_name TEXT, tag TEXT,
+        pay_buyer_value REAL, pay_buyer_range TEXT, transaction_growth TEXT,
+        uv_value REAL, uv_range TEXT, traffic_growth TEXT, estimated_payment_amount TEXT,
+        UNIQUE(batch_id, item_id)
+    );
+    CREATE TABLE IF NOT EXISTS market_snapshot_rival_shops (
+        batch_id INTEGER NOT NULL, period_start TEXT NOT NULL, period_end TEXT NOT NULL,
+        shop_id TEXT NOT NULL, shop_name TEXT, address TEXT, tag TEXT,
+        pay_buyer_value REAL, pay_buyer_range TEXT, transaction_growth TEXT,
+        uv_value REAL, uv_range TEXT, traffic_growth TEXT,
+        UNIQUE(batch_id, shop_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_market_snapshot_item_period ON market_snapshot_items(period_start, period_end, item_id);
+    CREATE INDEX IF NOT EXISTS idx_market_snapshot_search_period ON market_snapshot_searches(period_start, period_end, keyword);
+    CREATE INDEX IF NOT EXISTS idx_market_snapshot_rival_item_period ON market_snapshot_rival_items(period_start, period_end, item_id);
+    CREATE INDEX IF NOT EXISTS idx_market_snapshot_rival_shop_period ON market_snapshot_rival_shops(period_start, period_end, shop_id);
 
     CREATE TABLE IF NOT EXISTS product_tags (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1200,6 +1338,43 @@ def _run_init_migrations(conn):
     if 'reverted_at' not in batch_change_columns:
         cursor.execute("ALTER TABLE import_batch_changes ADD COLUMN reverted_at TIMESTAMP")
 
+    action_columns = {row[1] for row in cursor.execute('PRAGMA table_info(product_actions)').fetchall()}
+    for column in (
+        'source_rule_key', 'source_rule_name', 'source_period', 'source_category_mode',
+        'source_period_type', 'source_period_key', 'source_compare_mode',
+        'source_compare_period_key', 'source_product_id', 'source_problem_key',
+        'source_diagnosis_snapshot', 'verification_period_type', 'verification_period_key',
+    ):
+        if column not in action_columns:
+            cursor.execute(f'ALTER TABLE product_actions ADD COLUMN {column} TEXT')
+    if 'target_value' not in action_columns:
+        cursor.execute('ALTER TABLE product_actions ADD COLUMN target_value REAL')
+    if 'acceptance_criteria' not in action_columns:
+        cursor.execute('ALTER TABLE product_actions ADD COLUMN acceptance_criteria TEXT')
+
+    # Structured period reviews (weekly/monthly) extend the original thin
+    # summary/conclusions/next_actions columns. Existing rows keep working and
+    # the legacy columns stay populated for backward compatibility.
+    period_review_columns = {row[1] for row in cursor.execute('PRAGMA table_info(period_reviews)').fetchall()}
+    if 'sections' not in period_review_columns:
+        cursor.execute("ALTER TABLE period_reviews ADD COLUMN sections TEXT NOT NULL DEFAULT '{}'")
+    if 'status' not in period_review_columns:
+        cursor.execute("ALTER TABLE period_reviews ADD COLUMN status TEXT NOT NULL DEFAULT 'draft'")
+    if 'template_version' not in period_review_columns:
+        cursor.execute("ALTER TABLE period_reviews ADD COLUMN template_version TEXT NOT NULL DEFAULT ''")
+    if 'target_amount' not in period_review_columns:
+        cursor.execute('ALTER TABLE period_reviews ADD COLUMN target_amount REAL')
+    if 'category_mode' not in period_review_columns:
+        cursor.execute("ALTER TABLE period_reviews ADD COLUMN category_mode TEXT NOT NULL DEFAULT ''")
+    # 复盘目标不止销售额：利润、推广费、净费比也要能设目标（对齐经营目标表）。
+    # 注意净费比分母是净销售额，与「费比」（÷GSV）不是一个口径，列名显式带 net。
+    if 'target_profit' not in period_review_columns:
+        cursor.execute('ALTER TABLE period_reviews ADD COLUMN target_profit REAL')
+    if 'target_ad_spend' not in period_review_columns:
+        cursor.execute('ALTER TABLE period_reviews ADD COLUMN target_ad_spend REAL')
+    if 'target_net_expense_ratio' not in period_review_columns:
+        cursor.execute('ALTER TABLE period_reviews ADD COLUMN target_net_expense_ratio REAL')
+
     alert_rule_columns = {row[1] for row in cursor.execute('PRAGMA table_info(alert_rules)').fetchall()}
     if 'name' not in alert_rule_columns:
         cursor.execute("ALTER TABLE alert_rules ADD COLUMN name TEXT NOT NULL DEFAULT ''")
@@ -1433,6 +1608,19 @@ def _run_init_migrations(conn):
         'operating_profit': 'REAL',
         'profit_rate': 'REAL',
         'profit_target': 'REAL',
+        # 推广平台明细（BI「商品总览」原始列）。同样刻意可空：
+        # 平台当周期没投放时必须表现为 NULL，不能被当成 0 拉低费比。
+        # 来源列：货品全站推花费 / 全站推广成交金额 / 首单礼金 / 品牌新享营销托管软件服务费。
+        #
+        # 说明：wujie_spend / wujie_payment 保留为「万相台」列的落库位置，
+        # 但该列在近两年的 BI 导出中整列为 '--' 或 0，实际无界数据改由
+        # promotion_daily_facts（万相台后台采集）提供，见 period_review_service。
+        'wujie_spend': 'REAL',
+        'wujie_payment': 'REAL',
+        'product_sitewide_spend': 'REAL',
+        'product_sitewide_payment': 'REAL',
+        'gift_cost': 'REAL',
+        'brand_marketing_spend': 'REAL',
     }
     cursor.execute("PRAGMA table_info(daily_data)")
     existing_daily_cols = {row[1] for row in cursor.fetchall()}
@@ -1519,6 +1707,86 @@ def _run_init_migrations(conn):
     cursor.execute(
         "INSERT OR REPLACE INTO schema_migrations(version, name, state) VALUES (?, ?, 'applied')",
         (SCHEMA_VERSION, 'legacy_schema_reconciliation'),
+    )
+
+    # Storage-growth migration: keep the online fact paths and retention scans
+    # indexed without changing any rows.  This is deliberately idempotent so
+    # application startup and standalone maintenance tools share one schema
+    # upgrade path.
+    storage_indexes = {
+        'idx_daily_observations_latest':
+            'CREATE INDEX IF NOT EXISTS idx_daily_observations_latest '
+            'ON daily_data_observations(shop_id, product_id, date, observed_at DESC, id DESC)',
+        'idx_fact_lineage_scope_date':
+            'CREATE INDEX IF NOT EXISTS idx_fact_lineage_scope_date '
+            'ON fact_field_lineage(shop_id, date, product_id, field_key)',
+        'idx_collector_staging_retention':
+            'CREATE INDEX IF NOT EXISTS idx_collector_staging_retention '
+            'ON collector_data_staging(status, published_at, created_at)',
+        'idx_collector_artifacts_created':
+            'CREATE INDEX IF NOT EXISTS idx_collector_artifacts_created '
+            'ON collector_artifacts(created_at, id)',
+        'idx_collector_checkpoints_status_updated':
+            'CREATE INDEX IF NOT EXISTS idx_collector_checkpoints_status_updated '
+            'ON collector_checkpoints(status, updated_at, run_id)',
+        # ``overview_context`` 要找出「最近一个在本店铺真正落了事实的导入批次」，
+        # 写法是 import_batches 上挂三个相关子查询 EXISTS(source_batch_id = ? AND shop_id = ?)。
+        # 这三张事实表原先都没有 source_batch_id 上的索引，于是 260 个批次 × 十几万行
+        # 变成全表扫描，/api/overview 单次 45~116 秒，首页 KPI 一直卡在「等待加载…」。
+        # 列序刻意把 source_batch_id 放前面：既满足这里的两列等值查找，
+        # 也能服务那些只按 source_batch_id 过滤的既有查询
+        # （scripts/quarantine_orphan_observations.py、db_quality_check.py 等）。
+        'idx_store_daily_facts_source_batch':
+            'CREATE INDEX IF NOT EXISTS idx_store_daily_facts_source_batch '
+            'ON store_daily_facts(source_batch_id, shop_id)',
+        'idx_promotion_daily_facts_source_batch':
+            'CREATE INDEX IF NOT EXISTS idx_promotion_daily_facts_source_batch '
+            'ON promotion_daily_facts(source_batch_id, shop_id)',
+        'idx_daily_observations_source_batch':
+            'CREATE INDEX IF NOT EXISTS idx_daily_observations_source_batch '
+            'ON daily_data_observations(source_batch_id, shop_id)',
+        # ``MetricsRepo.get_daily_matrix`` 在有品类筛选时会先物化一张
+        # ``_source_meta`` 临时表：按 date 区间取观测行，再用窗口函数按
+        # (shop_id, product_id, date, source_filename) 取最新一条，把
+        # 日期+文件名映射回 source_batch_id / source_type。
+        # 原先没有任何以 date 打头的索引，一个月区间要全表扫 11.7 万行，
+        # 首页又会同时打 /api/overview 和 /api/overview/daily-matrix 两次，
+        # 合计 ~1.4s。这个覆盖索引把窗口函数所需的全部列都放进索引里，
+        # 让这一步变成纯索引扫描（0.71s → 0.31s）。
+        'idx_daily_observations_date_source':
+            'CREATE INDEX IF NOT EXISTS idx_daily_observations_date_source '
+            'ON daily_data_observations(date, shop_id, product_id, source_filename, '
+            'observed_at DESC, id DESC, source_batch_id, source_type)',
+    }
+    for statement in storage_indexes.values():
+        cursor.execute(statement)
+
+    # ``idx_daily_date`` and ``idx_daily_shop_date`` are byte-for-byte
+    # duplicates on upgraded databases. Keep the canonical name and remove
+    # only the redundant index; no data or constraint is affected.
+    cursor.execute('DROP INDEX IF EXISTS idx_daily_shop_date')
+    # The latest-observation index has the old lookup key as its left prefix,
+    # while also satisfying the common ORDER BY observed_at/id LIMIT 1 path.
+    cursor.execute('DROP INDEX IF EXISTS idx_daily_observations_key')
+    retention_defaults = [
+        ('collector_data_staging', 'runtime', 'collector_data_staging', 14, 'purge_after_archive', 0),
+        ('collector_artifacts', 'runtime', 'collector_artifacts', 30, 'archive', 0),
+        ('collector_checkpoints', 'runtime', 'collector_checkpoints', 30, 'compact', 0),
+        ('monthly_source_payload', 'raw_payload', 'monthly_source_payload', 180, 'archive', 0),
+        ('bi_product_daily_raw', 'raw_payload', 'bi_product_daily_raw', 180, 'archive', 0),
+        ('daily_data_observations', 'audit', 'daily_data_observations', 0, 'retain', 1),
+        ('fact_field_lineage', 'audit', 'fact_field_lineage', 0, 'retain', 1),
+    ]
+    cursor.executemany(
+        '''INSERT OR IGNORE INTO retention_policies
+           (policy_key, source_kind, source_table, retention_days, mode, protected)
+           VALUES (?, ?, ?, ?, ?, ?)''',
+        retention_defaults,
+    )
+    cursor.execute(
+        "INSERT OR REPLACE INTO schema_migrations(version, name, state) "
+        "VALUES (?, ?, 'applied')",
+        (SCHEMA_VERSION, 'storage_growth_indexes'),
     )
 
 if __name__ == '__main__':

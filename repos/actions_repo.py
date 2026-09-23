@@ -128,12 +128,23 @@ class ActionsRepo:
     @staticmethod
     def metric_window(product_id, start_date, end_date, metric):
         require_default_shop_scope()
-        if metric != 'payment_amount':
+        columns = {
+            'payment_amount': 'payment_amount',
+            'visitors': 'ipv',
+            'conversion': 'payment_conversion',
+            'aov': 'avg_order_value',
+            'ad_roi': 'ad_roi',
+        }
+        if metric == 'refund_rate':
+            expression = 'CASE WHEN COALESCE(payment_amount, 0) = 0 THEN NULL ELSE COALESCE(refund_amount, 0) / payment_amount END'
+        else:
+            expression = columns.get(metric)
+        if not expression:
             return None
         shop_id = get_shop_id()
         with get_db() as connection:
             rows = connection.execute(
-                '''SELECT date, payment_amount FROM daily_data
+                f'''SELECT date, payment_amount, {expression} AS metric_value FROM daily_data
                    WHERE shop_id = ? AND product_id = ? AND date BETWEEN ? AND ? ORDER BY date''',
                 (shop_id, product_id, start_date, end_date),
             ).fetchall()
