@@ -14,13 +14,6 @@
     "misc_legacy_api"
   ],
   [
-    "/api/batch_update",
-    [
-      "POST"
-    ],
-    "misc_legacy_api"
-  ],
-  [
     "/api/compare",
     [
       "GET"
@@ -56,104 +49,6 @@
     "data_legacy_api"
   ],
   [
-    "/api/backup",
-    [
-      "POST"
-    ],
-    "system_legacy_api"
-  ],
-  [
-    "/api/legacy/actions",
-    [
-      "GET"
-    ],
-    "system_legacy_api"
-  ],
-  [
-    "/api/tasks",
-    [
-      "GET"
-    ],
-    "system_legacy_api"
-  ],
-  [
-    "/api/tasks",
-    [
-      "POST"
-    ],
-    "system_legacy_api"
-  ],
-  [
-    "/api/tasks/<int:task_id>",
-    [
-      "PUT"
-    ],
-    "system_legacy_api"
-  ],
-  [
-    "/api/tasks/<int:task_id>",
-    [
-      "DELETE"
-    ],
-    "system_legacy_api"
-  ],
-  [
-    "/api/user_kpis",
-    [
-      "GET"
-    ],
-    "goals_legacy_api"
-  ],
-  [
-    "/api/user_kpis",
-    [
-      "POST"
-    ],
-    "goals_legacy_api"
-  ],
-  [
-    "/api/user_kpis/<int:kpi_id>",
-    [
-      "PUT"
-    ],
-    "goals_legacy_api"
-  ],
-  [
-    "/api/user_kpis/<int:kpi_id>",
-    [
-      "DELETE"
-    ],
-    "goals_legacy_api"
-  ],
-  [
-    "/api/legacy/actions",
-    [
-      "POST"
-    ],
-    "system_legacy_api"
-  ],
-  [
-    "/api/legacy/actions/<int:action_id>",
-    [
-      "PUT"
-    ],
-    "system_legacy_api"
-  ],
-  [
-    "/api/legacy/actions/<int:action_id>",
-    [
-      "DELETE"
-    ],
-    "system_legacy_api"
-  ],
-  [
-    "/api/action_stats",
-    [
-      "GET"
-    ],
-    "system_legacy_api"
-  ],
-  [
     "/api/anomalies",
     [
       "GET"
@@ -182,13 +77,6 @@
     "alerts_api"
   ],
   [
-    "/api/targets/shop",
-    [
-      "POST"
-    ],
-    "goals_legacy_api"
-  ],
-  [
     "/api/lifecycle",
     [
       "GET"
@@ -201,27 +89,6 @@
       "GET"
     ],
     "overview_legacy_api"
-  ],
-  [
-    "/api/upload/reviews",
-    [
-      "POST"
-    ],
-    "misc_legacy_api"
-  ],
-  [
-    "/api/upload/data",
-    [
-      "POST"
-    ],
-    "misc_legacy_api"
-  ],
-  [
-    "/api/import_progress/<task_id>",
-    [
-      "GET"
-    ],
-    "misc_legacy_api"
   ],
   [
     "/api/reviews/summary",
@@ -313,83 +180,6 @@
       "GET"
     ],
     "reviews_api"
-  ],
-  [
-    "/api/report",
-    [
-      "GET"
-    ],
-    "misc_legacy_api"
-  ],
-  [
-    "/api/chart_events",
-    [
-      "GET"
-    ],
-    "system_legacy_api"
-  ],
-  [
-    "/api/chart_events",
-    [
-      "POST"
-    ],
-    "system_legacy_api"
-  ],
-  [
-    "/api/chart_events/<int:event_id>",
-    [
-      "DELETE"
-    ],
-    "system_legacy_api"
-  ],
-  [
-    "/api/scheduled_tasks",
-    [
-      "GET"
-    ],
-    "system_legacy_api"
-  ],
-  [
-    "/api/scheduled_tasks",
-    [
-      "POST"
-    ],
-    "system_legacy_api"
-  ],
-  [
-    "/api/scheduled_tasks/<int:task_id>",
-    [
-      "PUT"
-    ],
-    "system_legacy_api"
-  ],
-  [
-    "/api/scheduled_tasks/<int:task_id>",
-    [
-      "DELETE"
-    ],
-    "system_legacy_api"
-  ],
-  [
-    "/api/scheduled_tasks/<int:task_id>/run",
-    [
-      "POST"
-    ],
-    "system_legacy_api"
-  ],
-  [
-    "/api/batch_tags",
-    [
-      "POST"
-    ],
-    "misc_legacy_api"
-  ],
-  [
-    "/api/batch_tags",
-    [
-      "DELETE"
-    ],
-    "misc_legacy_api"
   ],
   [
     "/api/product_tags",

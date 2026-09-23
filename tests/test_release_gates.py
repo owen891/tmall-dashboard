@@ -43,14 +43,6 @@ class ReleaseGateTests(unittest.TestCase):
         response.close()
         self.assertLess(elapsed, 5.0)
 
-    def test_shop_target_requires_a_valid_period(self):
-        response = self.client.post('/api/targets/shop', json={})
-        self.assertEqual(response.status_code, 422)
-        payload = response.get_json()
-        response.close()
-        self.assertFalse(payload['ok'])
-        self.assertEqual(payload['code'], 'VALIDATION_ERROR')
-
     def test_browser_gate_covers_capabilities_context_and_flow_impact(self):
         script = pathlib.Path(PROJECT_ROOT, 'scripts', 'browser_prd_gates.cjs').read_text(encoding='utf-8')
         for marker in (

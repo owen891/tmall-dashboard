@@ -44,6 +44,69 @@ class ActionWorkflowTests(unittest.TestCase):
         self.assertEqual(status, 201)
         return payload['data']['id']
 
+    def test_action_keeps_product_rule_context(self):
+        status, payload = self.request('POST', '/api/actions', json={
+            'product_id': 'action-a', 'purpose_type': 'increase_sales',
+            'purpose_note': '验证规则动作', 'action_type': '优化费比',
+            'action_detail': '检查高费比计划', 'target_metric': 'payment_amount',
+            'planned_at': '2026-04-03', 'observer_window_days': 2,
+            'source_rule_key': 'high_expense', 'source_rule_name': '高费比商品',
+            'source_period': '2026-04', 'source_category_mode': 'sock',
+        })
+        self.assertEqual(status, 201)
+        action = payload['data']
+        self.assertEqual(action['source_rule_key'], 'high_expense')
+        self.assertEqual(action['source_period'], '2026-04')
+        self.assertEqual(action['source_category_mode'], 'sock')
+
+    def test_action_keeps_period_source_and_derives_verification_period(self):
+        status, payload = self.request('POST', '/api/actions', json={
+            'product_id': 'action-a', 'purpose_type': 'increase_sales',
+            'purpose_note': '鍛ㄦ湡鏉ユ簮', 'action_type': 'image_change',
+            'action_detail': '鏇存崲涓诲浘', 'target_metric': 'payment_amount',
+            'planned_at': '2026-09-21', 'observer_window_days': 7,
+            'source_period_type': 'week', 'source_period_key': '2026-W38',
+            'source_compare_mode': 'previous', 'source_compare_period_key': '2026-W37',
+            'source_product_id': 'action-a', 'source_problem_key': 'product_decline',
+            'source_diagnosis_snapshot': '{"gsv":100,"delta":-20}',
+        })
+        self.assertEqual(status, 201)
+        action = payload['data']
+        self.assertEqual(action['source_period_type'], 'week')
+        self.assertEqual(action['source_period_key'], '2026-W38')
+        self.assertEqual(action['source_problem_key'], 'product_decline')
+        self.assertEqual(action['verification_period_type'], 'week')
+        self.assertEqual(action['verification_period_key'], '2026-W39')
+
+    def test_action_derives_verification_period_for_month_bounded_week_keys(self):
+        for source_key, expected in (
+            ('2026-09-W3', '2026-09-W4'),
+            ('2026-09-W5', '2026-10-W1'),
+        ):
+            with self.subTest(source_key=source_key):
+                status, payload = self.request('POST', '/api/actions', json={
+                    'product_id': 'action-a', 'purpose_type': 'increase_sales',
+                    'purpose_note': '月内周复盘动作', 'action_type': 'image_change',
+                    'action_detail': '更新主图', 'target_metric': 'payment_amount',
+                    'planned_at': '2026-09-22', 'observer_window_days': 7,
+                    'source_period_type': 'week', 'source_period_key': source_key,
+                })
+                self.assertEqual(status, 201)
+                self.assertEqual(payload['data']['verification_period_type'], 'week')
+                self.assertEqual(payload['data']['verification_period_key'], expected)
+
+    def test_action_derives_verification_period_for_month_source(self):
+        status, payload = self.request('POST', '/api/actions', json={
+            'product_id': 'action-a', 'purpose_type': 'increase_sales',
+            'purpose_note': '月复盘动作', 'action_type': 'image_change',
+            'action_detail': '更新主图', 'target_metric': 'payment_amount',
+            'planned_at': '2026-09-22', 'observer_window_days': 7,
+            'source_period_type': 'month', 'source_period_key': '2026-09',
+        })
+        self.assertEqual(status, 201)
+        self.assertEqual(payload['data']['verification_period_type'], 'month')
+        self.assertEqual(payload['data']['verification_period_key'], '2026-10')
+
     def transition(self, action_id, target, **extra):
         status, current = self.request('GET', f'/api/actions?product_id=action-a')
         self.assertEqual(status, 200)
@@ -159,19 +222,6 @@ class ActionWorkflowTests(unittest.TestCase):
         self.assertTrue(payload['ok'])
         self.assertEqual(payload['availability'], 'no-data')
         self.assertEqual(payload['data'], [])
-
-        for method, path in (
-            ('POST', '/api/legacy/actions'),
-            ('PUT', '/api/legacy/actions/1'),
-            ('DELETE', '/api/legacy/actions/1'),
-        ):
-            status, payload = self.request(method, path, json={})
-            self.assertEqual(status, 409)
-            self.assertEqual(payload['code'], 'LEGACY_READ_ONLY')
-
-        response = self.client.get('/api/legacy/actions')
-        self.assertEqual(response.status_code, 200)
-        response.close()
 
     def test_new_action_writes_only_product_actions(self):
         action_id = self.create_action()
@@ -309,6 +359,51 @@ class ActionWorkflowTests(unittest.TestCase):
         status, reopened = self.transition(action_id, 'pending_review')
         self.assertEqual(status, 200)
         self.assertEqual(reopened['data']['status'], 'pending_review')
+
+    def test_recalculation_supports_conversion_metric_and_target_fields(self):
+        status, payload = self.request('POST', '/api/actions', json={
+            'product_id': 'action-a', 'purpose_type': 'increase_conversion',
+            'purpose_note': '提升支付转化', 'action_type': 'detail_change',
+            'action_detail': '优化详情页首屏', 'target_metric': 'conversion',
+            'target_value': 0.12, 'acceptance_criteria': '执行后窗口平均转化率达到 12%',
+            'planned_at': '2026-04-03', 'observer_window_days': 2,
+        })
+        self.assertEqual(status, 201)
+        action_id = payload['data']['id']
+        self.assertEqual(payload['data']['target_value'], 0.12)
+        self.assertEqual(payload['data']['acceptance_criteria'], '执行后窗口平均转化率达到 12%')
+        for target in ('pending_execution', 'executing', 'observing'):
+            self.assertEqual(self.transition(action_id, target)[0], 200)
+        with self.get_db(self.database_path) as connection:
+            connection.executemany(
+                '''INSERT INTO daily_data (product_id, date, ipv, payment_conversion)
+                   VALUES (?, ?, ?, ?)''',
+                [
+                    ('action-a', '2026-04-01', 100, 0.05),
+                    ('action-a', '2026-04-02', 100, 0.07),
+                    ('action-a', '2026-04-04', 100, 0.11),
+                    ('action-a', '2026-04-05', 100, 0.13),
+                ],
+            )
+            connection.commit()
+        status, recalculated = self.request('POST', '/api/actions/recalculate')
+        self.assertEqual(status, 200)
+        result = recalculated['data']['actions'][0]
+        self.assertEqual(result['status'], 'pending_review')
+        self.assertAlmostEqual(result['before_metric_value'], 0.06)
+        self.assertAlmostEqual(result['after_metric_value'], 0.12)
+        self.assertAlmostEqual(result['result_change'], 0.06)
+
+    def test_target_value_rejects_non_finite_numbers(self):
+        base = {
+            'product_id': 'action-a', 'purpose_type': 'increase_sales', 'purpose_note': 'test',
+            'action_type': 'image_change', 'action_detail': 'test', 'target_metric': 'payment_amount',
+            'planned_at': '2026-04-03', 'observer_window_days': 2,
+        }
+        for value in ('NaN', 'Infinity', '-Infinity'):
+            status, payload = self.request('POST', '/api/actions', json={**base, 'target_value': value})
+            self.assertEqual(status, 422)
+            self.assertEqual(payload['code'], 'VALIDATION_ERROR')
 
 
 if __name__ == '__main__':

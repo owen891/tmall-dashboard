@@ -39,7 +39,7 @@ class DataApiMigrationContractTests(unittest.TestCase):
 
     def test_all_migrated_routes_are_owned_by_split_blueprints(self):
         ledger = json.loads(MIGRATION_LEDGER.read_text(encoding='utf-8'))
-        self.assertEqual(len(ledger), 59)
+        self.assertEqual(len(ledger), 29)
         routes = self._runtime_routes()
         for path, methods, target in ledger:
             for method in methods:
@@ -55,27 +55,14 @@ class DataApiMigrationContractTests(unittest.TestCase):
             ('/api/compare', 'GET'): 'data_legacy.',
             ('/api/products', 'GET'): 'products_legacy.',
             ('/api/alerts', 'GET'): 'alerts.',
-            ('/api/user_kpis', 'GET'): 'goals_legacy.',
+            ('/api/target_progress', 'GET'): 'goals_legacy.',
             ('/api/reviews/summary', 'GET'): 'reviews.',
-            ('/api/tasks', 'GET'): 'system_legacy.',
-            ('/api/report', 'GET'): 'misc_legacy.',
+            ('/api/logs', 'GET'): 'system_legacy.',
         }
         for (path, method), owner in expected.items():
             rules = [rule for rule in self.app.url_map.iter_rules() if str(rule) == path and method in rule.methods]
             self.assertEqual(len(rules), 1, f'{method} {path}')
             self.assertTrue(rules[0].endpoint.startswith(owner), rules[0].endpoint)
-
-    def test_removed_scheduler_routes_are_owned_by_system_legacy(self):
-        for path, method in (
-            ('/api/scheduled_tasks', 'GET'),
-            ('/api/scheduled_tasks', 'POST'),
-            ('/api/scheduled_tasks/<int:task_id>', 'PUT'),
-            ('/api/scheduled_tasks/<int:task_id>', 'DELETE'),
-            ('/api/scheduled_tasks/<int:task_id>/run', 'POST'),
-        ):
-            rules = [rule for rule in self.app.url_map.iter_rules() if str(rule) == path and method in rule.methods]
-            self.assertEqual(len(rules), 1, f'{method} {path}')
-            self.assertTrue(rules[0].endpoint.startswith('system_legacy.'))
 
 
 if __name__ == '__main__':

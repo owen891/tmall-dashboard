@@ -155,7 +155,6 @@ class ShopScopeApiTests(unittest.TestCase):
             '/api/health?period=2026-04&shop_id=shop-a',
             '/api/reviews/summary?shop_id=shop-a',
             '/api/ad_performance?dim=monthly&period=2026-04&shop_id=shop-a',
-            '/api/legacy/actions?shop_id=shop-a',
         )
         for url in urls:
             with self.subTest(url=url):
@@ -168,9 +167,6 @@ class ShopScopeApiTests(unittest.TestCase):
         requests = (
             ('POST', '/api/star?shop_id=shop-a', {'product_id': 'scope-product', 'starred': 1}),
             ('PUT', '/api/products/scope-product/field?shop_id=shop-a', {'field': 'tier', 'value': 'A'}),
-            ('POST', '/api/batch_update?shop_id=shop-a', {'field': 'tier', 'value': 'A', 'product_ids': ['scope-product']}),
-            ('POST', '/api/batch_tags?shop_id=shop-a', {'tag': '重点', 'product_ids': ['scope-product']}),
-            ('DELETE', '/api/batch_tags?shop_id=shop-a', {'tag': '重点', 'product_ids': ['scope-product']}),
         )
         for method, url, payload in requests:
             with self.subTest(method=method, url=url):

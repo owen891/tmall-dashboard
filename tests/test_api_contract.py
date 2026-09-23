@@ -137,29 +137,6 @@ class OverviewContractTests(unittest.TestCase):
         self.assertEqual(payload['availability'], 'no-data')
         self.assertFalse(payload['has_anomalies'])
 
-    def test_legacy_report_renders_missing_average_order_value(self):
-        from db import get_db
-
-        with get_db(self.database_path) as connection:
-            connection.execute(
-                '''INSERT INTO monthly_data
-                   (product_id, month, payment_amount, visitors, buyers)
-                   VALUES (?, ?, ?, ?, ?)''',
-                ('overview-a', '2026-08', 100, 0, 0),
-            )
-            connection.commit()
-
-        response = self.client.get('/api/report?dim=monthly&period=2026-08')
-
-        self.assertEqual(response.status_code, 200)
-        self.assertIn('客单价：--', response.get_json()['report'])
-
-    def test_legacy_report_returns_not_found_without_period_data(self):
-        response = self.client.get('/api/report?dim=monthly&period=2099-12')
-
-        self.assertEqual(response.status_code, 404)
-        self.assertEqual(response.get_json()['error'], 'no data for period')
-
     def test_legacy_review_rejects_malformed_period_instead_of_raising(self):
         response = self.client.get('/api/review?dim=monthly&period=not-a-date')
 
@@ -547,7 +524,6 @@ class OverviewContractTests(unittest.TestCase):
             '/api/alerts?period=not-a-date',
             '/api/health?period=not-a-date',
             '/api/alert_checks?dim=monthly&period=not-a-date',
-            '/api/report?dim=monthly&period=not-a-date',
         ):
             with self.subTest(path=path):
                 response = self.client.get(path)
@@ -560,7 +536,6 @@ class OverviewContractTests(unittest.TestCase):
             '/api/products?dim=quarter',
             '/api/periods?dim=quarter',
             '/api/anomalies?dim=quarter',
-            '/api/report?dim=quarter&period=2026-04',
         ):
             with self.subTest(path=path):
                 response = self.client.get(path)

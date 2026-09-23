@@ -54,26 +54,6 @@ class ImportWorkflowTests(unittest.TestCase):
         response.close()
         return response.status_code, payload
 
-    def test_legacy_upload_preserves_the_original_xls_suffix(self):
-        completed = Event()
-        captured = []
-
-        def fake_import(path):
-            captured.append(path)
-            completed.set()
-            return {'total_rows': 0}
-
-        with patch('scripts.import_data.import_excel_file', side_effect=fake_import):
-            response = self.client.post(
-                '/api/upload/data',
-                data={'file': (io.BytesIO(b'legacy-xls-content'), 'business-report.xls')},
-                content_type='multipart/form-data',
-            )
-
-        self.assertEqual(response.status_code, 200)
-        self.assertTrue(completed.wait(timeout=2))
-        self.assertEqual(Path(captured[0]).suffix, '.xls')
-
     def test_preview_cannot_be_confirmed_from_another_shop(self):
         status, payload = self.preview(['date', 'product_id', 'payment_amount', 'product_visitors'], [
             ['2026-04-01', 'cross-shop-product', 100, 10],
@@ -132,16 +112,6 @@ class ImportWorkflowTests(unittest.TestCase):
         self.assertEqual([name for name, _ in sheets], ['daily.csv:Sheet1', 'monthly.xlsx:Sheet'])
         self.assertEqual(sheets[0][1].iloc[1].tolist(), ['P-CSV', '100'])
         self.assertEqual(sheets[1][1].iloc[1].tolist(), ['P-XLSX', 200])
-
-    def test_upload_accepts_csv_and_zip_files(self):
-        for filename in ('business-report.csv', 'business-reports.zip'):
-            with self.subTest(filename=filename), patch('scripts.import_data.import_excel_file', return_value={'total_rows': 0}):
-                response = self.client.post(
-                    '/api/upload/data',
-                    data={'file': (io.BytesIO(b'content'), filename)},
-                    content_type='multipart/form-data',
-                )
-            self.assertEqual(response.status_code, 200)
 
     def test_data_center_preview_accepts_csv(self):
         content = (

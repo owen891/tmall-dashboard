@@ -150,9 +150,6 @@ class TestKpiEndpoints(SmokeTestBase):
     def test_target_progress(self):
         self.assertGetNoCrash('/api/target_progress', params={'period': ''})
 
-    def test_report(self):
-        self.assertGetNoCrash('/api/report', params={'dim': 'weekly'})
-
     def test_review_data(self):
         self.assertGetNoCrash('/api/review', params={'dim': 'weekly'})
 
@@ -178,10 +175,6 @@ class TestProductEndpoints(SmokeTestBase):
     def test_product_field_update(self):
         self.assertMutationNoCrash('PUT', '/api/products/nonexistent/field',
                                    json={'field': 'tier', 'value': 'test'})
-
-    def test_batch_update(self):
-        self.assertMutationNoCrash('POST', '/api/batch_update',
-                                   json={'product_ids': [], 'field': 'tier', 'value': ''})
 
     def test_notes_get(self):
         self.assertGetNoCrash('/api/notes/nonexistent')
@@ -221,19 +214,9 @@ class TestProductEndpoints(SmokeTestBase):
     def test_product_tags_delete(self):
         self.assertMutationNoCrash('DELETE', '/api/product_tags/99999')
 
-    def test_batch_tags_add(self):
-        self.assertMutationNoCrash('POST', '/api/batch_tags',
-                                   json={'product_ids': [], 'tags': []})
-
-    def test_batch_tags_delete(self):
-        self.assertMutationNoCrash('DELETE', '/api/batch_tags',
-                                   json={'product_ids': [], 'tags': []})
-
     def test_legacy_catalog_writes_reject_malformed_payloads(self):
         cases = (
             ('/api/products/missing/field', {'field': [], 'value': {}}),
-            ('/api/batch_update', {'field': 'tier', 'value': 'A', 'product_ids': 'not-a-list'}),
-            ('/api/batch_tags', {'product_ids': ['missing'], 'tag': []}),
         )
         for path, payload in cases:
             with self.subTest(path=path):
@@ -328,27 +311,6 @@ class TestActionEndpoints(SmokeTestBase):
     def test_action_delete(self):
         self.assertMutationNoCrash('DELETE', '/api/actions/99999')
 
-    def test_action_stats(self):
-        self.assertGetNoCrash('/api/action_stats', params={'dim': 'weekly'})
-
-    def test_actions_list_filters_product_id_with_period(self):
-        active_id, _ = _insert_contract_products()
-        response = self.client.get('/api/legacy/actions', query_string={
-            'period': '2026-04',
-            'product_id': active_id,
-            'limit': 20,
-        })
-        self.assertEqual(response.status_code, 200)
-        payload = response.get_json()
-        self.assertEqual([row['product_id'] for row in payload], [active_id])
-        self.assertEqual([row['action_type'] for row in payload], ['active-action'])
-
-    def test_actions_list_clamps_negative_limit(self):
-        response = self.client.get('/api/legacy/actions', query_string={'limit': -1})
-        self.assertEqual(response.status_code, 200)
-        self.assertLessEqual(len(response.get_json()), 1)
-
-
 class TestAlertEndpoints(SmokeTestBase):
     """预警系统相关端点"""
 
@@ -401,23 +363,6 @@ class TestReviewEndpoints(SmokeTestBase):
     def test_reviewed_products(self):
         self.assertGetNoCrash('/api/reviews/products')
 
-    def test_review_upload(self):
-        self.assertMutationNoCrash('POST', '/api/upload/reviews')
-
-    def test_review_upload_removes_staged_file_after_import(self):
-        with tempfile.TemporaryDirectory(prefix='tmall-review-upload-') as upload_dir:
-            with patch('api.data_api.UPLOAD_FOLDER', upload_dir), patch(
-                'scripts.import_data.import_reviews_from_file', return_value=1,
-            ):
-                response = self.client.post(
-                    '/api/upload/reviews',
-                    data={'file': (io.BytesIO(b'review'), 'reviews.csv')},
-                    content_type='multipart/form-data',
-                )
-            self.assertEqual(response.status_code, 200)
-            self.assertEqual(os.listdir(upload_dir), [])
-
-
 class TestCompareEndpoints(SmokeTestBase):
     """周期对比相关端点"""
 
@@ -443,60 +388,11 @@ class TestCompareEndpoints(SmokeTestBase):
 class TestImportEndpoints(SmokeTestBase):
     """数据导入相关端点"""
 
-    def test_upload_data(self):
-        self.assertMutationNoCrash('POST', '/api/upload/data')
-
-    def test_import_progress(self):
-        response = self.assertGetNoCrash('/api/import_progress/nonexistent')
-        self.assertEqual(response.status_code, 404)
-        payload = response.get_json()
-        self.assertFalse(payload['ok'])
-        self.assertEqual(payload['code'], 'NOT_FOUND')
-
-    def test_import_progress_prunes_expired_terminal_tasks(self):
-        from api import data_api
-
-        task_id = 'expired-smoke-task'
-        data_api._import_progress[task_id] = {
-            'status': 'completed',
-            'progress': 100,
-            'finished_at': time.time() - data_api._IMPORT_PROGRESS_TTL_SECONDS - 1,
-        }
-        try:
-            response = self.client.get('/api/import_progress/another-missing-task')
-            self.assertEqual(response.status_code, 404)
-            self.assertNotIn(task_id, data_api._import_progress)
-        finally:
-            data_api._import_progress.pop(task_id, None)
-
-    def test_legacy_upload_errors_use_context_envelope(self):
-        for path in ('/api/upload/data', '/api/upload/reviews'):
-            with self.subTest(path=path):
-                response = self.client.post(path)
-                self.assertEqual(response.status_code, 422)
-                payload = response.get_json()
-                self.assertFalse(payload['ok'])
-                self.assertEqual(payload['code'], 'VALIDATION_ERROR')
-                self.assertTrue(payload['requestId'])
-
-        response = self.client.post(
-            '/api/upload/data',
-            data={'file': (io.BytesIO(b'not-a-table'), 'report.txt')},
-            content_type='multipart/form-data',
-        )
-        self.assertEqual(response.status_code, 422)
-        self.assertEqual(response.get_json()['code'], 'UNSUPPORTED_FILE_TYPE')
-
-
 class TestSystemEndpoints(SmokeTestBase):
     """系统/日志/备份/导出相关端点"""
 
     def test_periods(self):
         self.assertGetNoCrash('/api/periods', params={'dim': 'weekly'})
-
-    def test_backup(self):
-        response = self.assertMutationNoCrash('POST', '/api/backup')
-        self.assertEqual(response.get_json(), {'success': True, 'skipped': 'testing'})
 
     def test_export(self):
         self.assertMutationNoCrash('POST', '/api/export', json={
@@ -528,121 +424,17 @@ class TestSystemEndpoints(SmokeTestBase):
         response = self.client.post('/api/logs', data='not-json', content_type='text/plain')
         self.assertEqual(response.status_code, 422)
 
-    def test_shop_target(self):
-        self.assertMutationNoCrash('POST', '/api/targets/shop', json={
-            'period': '2026-08', 'target_gsv': 100000
-        })
-
-
 class TestChartEventEndpoints(SmokeTestBase):
     """图表事件标注相关端点"""
-
-    def test_chart_events_get(self):
-        self.assertGetNoCrash('/api/chart_events')
-
-    def test_chart_events_create(self):
-        self.assertMutationNoCrash('POST', '/api/chart_events', json={
-            'event_date': '2026-01-01', 'title': 'smoke test'
-        })
-
-    def test_chart_events_reject_malformed_payloads(self):
-        for payload in ([], {'event_date': [], 'title': {}}, {'event_date': 'not-a-date', 'title': 'bad'}):
-            response = self.client.post('/api/chart_events', json=payload)
-            self.assertEqual(response.status_code, 422)
-            self.assertEqual(response.get_json()['code'], 'VALIDATION_ERROR')
-        response = self.client.post('/api/chart_events', data='not-json', content_type='text/plain')
-        self.assertEqual(response.status_code, 422)
-
-    def test_chart_events_delete(self):
-        self.assertMutationNoCrash('DELETE', '/api/chart_events/99999')
-
 
 class TestScheduledTaskEndpoints(SmokeTestBase):
     """定时任务相关端点"""
 
-    def test_scheduled_tasks_list(self):
-        self.assertGetNoCrash('/api/scheduled_tasks')
-
-    def test_scheduled_tasks_create(self):
-        self.assertMutationNoCrash('POST', '/api/scheduled_tasks', json={
-            'task_name': 'smoke test', 'cron_expr': '0 8 * * *'
-        })
-
-    def test_scheduled_tasks_reject_malformed_payloads(self):
-        for payload in ([], {'task_name': [], 'cron_expr': {}}, {}):
-            response = self.client.post('/api/scheduled_tasks', json=payload)
-            # Legacy schedule mutations are intentionally retired by the route guard.
-            self.assertEqual(response.status_code, 410)
-            self.assertEqual(response.get_json()['code'], 'LEGACY_SCHEDULE_REMOVED')
-        response = self.client.post('/api/scheduled_tasks', data='not-json', content_type='text/plain')
-        self.assertEqual(response.status_code, 410)
-
-    def test_scheduled_tasks_update(self):
-        self.assertMutationNoCrash('PUT', '/api/scheduled_tasks/99999', json={
-            'task_name': 'updated'
-        })
-
-    def test_scheduled_tasks_delete(self):
-        self.assertMutationNoCrash('DELETE', '/api/scheduled_tasks/99999')
-
-    def test_scheduled_tasks_run(self):
-        self.assertMutationNoCrash('POST', '/api/scheduled_tasks/99999/run')
-
-
 class TestTaskBoardEndpoints(SmokeTestBase):
     """任务看板相关端点"""
 
-    def test_tasks_list(self):
-        self.assertGetNoCrash('/api/tasks')
-
-    def test_tasks_create(self):
-        self.assertMutationNoCrash('POST', '/api/tasks', json={
-            'title': 'smoke test task'
-        })
-
-    def test_tasks_update(self):
-        response = self.assertMutationNoCrash('PUT', '/api/tasks/99999', json={
-            'title': 'updated'
-        })
-        self.assertEqual(response.status_code, 404)
-
-    def test_tasks_delete(self):
-        response = self.assertMutationNoCrash('DELETE', '/api/tasks/99999')
-        self.assertEqual(response.status_code, 404)
-
-
 class TestUserKpiEndpoints(SmokeTestBase):
     """用户 KPI 相关端点"""
-
-    def test_user_kpis_list(self):
-        self.assertGetNoCrash('/api/user_kpis')
-
-    def test_user_kpis_create(self):
-        self.assertMutationNoCrash('POST', '/api/user_kpis', json={
-            'user_name': 'test', 'period': '2026-08'
-        })
-
-    def test_user_kpis_update(self):
-        response = self.assertMutationNoCrash('PUT', '/api/user_kpis/99999', json={
-            'user_name': 'updated'
-        })
-        self.assertEqual(response.status_code, 404)
-
-    def test_user_kpis_delete(self):
-        response = self.assertMutationNoCrash('DELETE', '/api/user_kpis/99999')
-        self.assertEqual(response.status_code, 404)
-
-    def test_user_kpis_reject_malformed_payloads(self):
-        for method, path in (
-            ('post', '/api/user_kpis'),
-            ('put', '/api/user_kpis/99999'),
-        ):
-            response = getattr(self.client, method)(path, json=[])
-            self.assertEqual(response.status_code, 422)
-            self.assertEqual(response.get_json()['code'], 'VALIDATION_ERROR')
-        response = self.client.delete('/api/user_kpis/99999', json=[])
-        self.assertEqual(response.status_code, 422)
-
 
 class TestToolEndpoints(SmokeTestBase):
     """工具箱相关端点"""
@@ -703,20 +495,16 @@ class TestRouteRegistry(unittest.TestCase):
         ('/api/trend', 'GET'),
         ('/api/anomalies', 'GET'),
         ('/api/target_progress', 'GET'),
-        ('/api/report', 'GET'),
         ('/api/review', 'GET'),
         # 商品
         ('/api/products', 'GET'),
         ('/api/products/<product_id>/field', 'PUT'),
-        ('/api/batch_update', 'POST'),
         ('/api/notes/<product_id>', 'GET'),
         ('/api/notes', 'POST'),
         ('/api/notes/<int:note_id>', 'DELETE'),
         ('/api/product_tags', 'GET'),
         ('/api/product_tags', 'POST'),
         ('/api/product_tags/<int:tag_id>', 'DELETE'),
-        ('/api/batch_tags', 'POST'),
-        ('/api/batch_tags', 'DELETE'),
         # 推广与退款
         ('/api/refund_alert', 'GET'),
         # 运营动作
@@ -724,7 +512,6 @@ class TestRouteRegistry(unittest.TestCase):
         ('/api/actions', 'POST'),
         ('/api/actions/<int:action_id>', 'PUT'),
         ('/api/actions/<int:action_id>', 'DELETE'),
-        ('/api/action_stats', 'GET'),
         # 预警
         ('/api/alerts', 'GET'),
         ('/api/alerts/<int:alert_id>/dismiss', 'POST'),
@@ -735,7 +522,6 @@ class TestRouteRegistry(unittest.TestCase):
         # 健康度
         ('/api/health', 'GET'),
         # 评价
-        ('/api/upload/reviews', 'POST'),
         ('/api/reviews/summary', 'GET'),
         ('/api/reviews/list', 'GET'),
         ('/api/reviews/products', 'GET'),
@@ -743,35 +529,15 @@ class TestRouteRegistry(unittest.TestCase):
         ('/api/compare', 'GET'),
         ('/api/lifecycle', 'GET'),
         # 导入
-        ('/api/upload/data', 'POST'),
-        ('/api/import_progress/<task_id>', 'GET'),
         # 系统
         ('/api/periods', 'GET'),
-        ('/api/backup', 'POST'),
         ('/api/export', 'POST'),
         ('/api/logs', 'GET'),
         ('/api/logs', 'POST'),
-        ('/api/targets/shop', 'POST'),
         # 图表事件
-        ('/api/chart_events', 'GET'),
-        ('/api/chart_events', 'POST'),
-        ('/api/chart_events/<int:event_id>', 'DELETE'),
         # 定时任务
-        ('/api/scheduled_tasks', 'GET'),
-        ('/api/scheduled_tasks', 'POST'),
-        ('/api/scheduled_tasks/<int:task_id>', 'PUT'),
-        ('/api/scheduled_tasks/<int:task_id>', 'DELETE'),
-        ('/api/scheduled_tasks/<int:task_id>/run', 'POST'),
         # 任务看板
-        ('/api/tasks', 'GET'),
-        ('/api/tasks', 'POST'),
-        ('/api/tasks/<int:task_id>', 'PUT'),
-        ('/api/tasks/<int:task_id>', 'DELETE'),
         # 用户KPI
-        ('/api/user_kpis', 'GET'),
-        ('/api/user_kpis', 'POST'),
-        ('/api/user_kpis/<int:kpi_id>', 'PUT'),
-        ('/api/user_kpis/<int:kpi_id>', 'DELETE'),
         # 工具箱
         ('/api/tools/list', 'GET'),
         ('/api/tools/execute', 'POST'),
