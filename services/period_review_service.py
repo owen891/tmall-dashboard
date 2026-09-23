@@ -717,61 +717,6 @@ def _product_meta(conn, product_ids):
     return {row['product_id']: dict(row) for row in rows}
 
 
-def _products_block(conn, period, category_label=None, compare_range=None):
-    from_sql, where_sql, extra = _daily_scope(category_label)
-    # 下滑榜以「所选对比周期」为基线，保证与指标卡的口径一致。
-    baseline = compare_range or period['prev']
-
-    top_rows = conn.execute(
-        f'''SELECT d.product_id,
-                  SUM(d.payment_amount) AS gsv,
-                  SUM(d.net_sales) AS net_sales,
-                  SUM(d.buyers) AS buyers,
-                  SUM(d.ad_spend) AS ad_spend
-           {from_sql} WHERE {where_sql}
-           GROUP BY d.product_id HAVING gsv > 0
-           ORDER BY gsv DESC LIMIT 10''',
-        (period['start'], period['end'], *extra),
-    ).fetchall()
-
-    decline_rows = conn.execute(
-        f'''SELECT cur.product_id,
-                  cur.gsv AS gsv,
-                  prev.gsv AS prev_gsv,
-                  cur.gsv - prev.gsv AS delta
-           FROM (SELECT d.product_id, SUM(d.payment_amount) AS gsv {from_sql}
-                 WHERE {where_sql} GROUP BY d.product_id) cur
-           JOIN (SELECT d.product_id, SUM(d.payment_amount) AS gsv {from_sql}
-                 WHERE {where_sql} GROUP BY d.product_id) prev
-             ON prev.product_id = cur.product_id
-           WHERE prev.gsv > 0 AND cur.gsv < prev.gsv
-           ORDER BY delta ASC LIMIT 10''',
-        (period['start'], period['end'], *extra, baseline['start'], baseline['end'], *extra),
-    ).fetchall()
-
-    ids = [row['product_id'] for row in top_rows] + [row['product_id'] for row in decline_rows]
-    meta = _product_meta(conn, set(ids))
-
-    def decorate(rows, with_delta=False):
-        result = []
-        for row in rows:
-            info = meta.get(row['product_id'], {})
-            item = {
-                'product_id': row['product_id'],
-                'title': info.get('title') or row['product_id'],
-                'image_url': info.get('image_url') or '',
-                'tags': info.get('product_tags') or '',
-                'gsv': round(float(row['gsv'] or 0), 2),
-            }
-            if with_delta:
-                item['prev_gsv'] = round(float(row['prev_gsv'] or 0), 2)
-                item['delta'] = round(float(row['delta'] or 0), 2)
-            result.append(item)
-        return result
-
-    return {'top': decorate(top_rows), 'decline': decorate(decline_rows, with_delta=True)}
-
-
 def _ads_block(current, prev):
     def pick(source):
         return {
@@ -930,54 +875,6 @@ def _promotion_dimension(conn, period, compare, category_label=None):
                 'source': 'promotion_daily_facts'}
     except Exception:
         return {'available': False, 'grain': None, 'items': [], 'missing_inputs': ['promotion_daily_facts']}
-
-
-# ---------------------------------------------------------------------------
-# 市场
-# ---------------------------------------------------------------------------
-
-
-def _market_block_legacy(conn):
-    try:
-        run = conn.execute(
-            'SELECT id, analysis_date, period_start, period_end, source FROM market_analysis_runs '
-            'ORDER BY analysis_date DESC, id DESC LIMIT 1',
-        ).fetchone()
-    except Exception:
-        # 市场分析表由导入流程创建，尚未导入时视为无素材。
-        return {'available': False, 'run': None, 'categories': [], 'rivals': []}
-    if not run:
-        return {'available': False, 'run': None, 'categories': [], 'rivals': []}
-
-    try:
-        categories = conn.execute(
-            '''SELECT category, trend_up, trend_down, trend_new, concentration_top10,
-                      concentration_top50, total_buyers
-               FROM market_category_stats WHERE run_id = ?
-               ORDER BY total_buyers DESC LIMIT 8''',
-            (run['id'],),
-        ).fetchall()
-    except Exception:
-        categories = []
-
-    rivals = []
-    try:
-        rival_rows = conn.execute(
-            '''SELECT shop_name, pay_buyer_count, uv, pay_rate, stat_date
-               FROM sycm_market_rival_shop
-               WHERE stat_date = (SELECT MAX(stat_date) FROM sycm_market_rival_shop)
-               ORDER BY pay_buyer_count DESC LIMIT 10''',
-        ).fetchall()
-        rivals = [dict(row) for row in rival_rows]
-    except Exception:
-        rivals = []
-
-    return {
-        'available': True,
-        'run': dict(run),
-        'categories': [dict(row) for row in categories],
-        'rivals': rivals,
-    }
 
 
 # ---------------------------------------------------------------------------

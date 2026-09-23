@@ -1,7 +1,5 @@
 from pathlib import Path
 
-from PyInstaller.utils.hooks import collect_submodules
-
 
 project_root = Path(SPECPATH).resolve().parent
 
@@ -11,14 +9,12 @@ datas = [
     (str(project_root / 'VERSION'), '.'),
 ]
 
-hiddenimports = collect_submodules('flask_sqlalchemy') + collect_submodules('sqlalchemy')
-
 a = Analysis(
     [str(project_root / 'desktop_backend.py')],
     pathex=[str(project_root)],
     binaries=[],
     datas=datas,
-    hiddenimports=hiddenimports,
+    hiddenimports=[],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],

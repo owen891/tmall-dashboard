@@ -54,7 +54,6 @@ from services.shop_scope_service import (
     reject_legacy_single_shop_request,
     require_admin_write,
 )
-from models import db as orm_db
 # 获取项目根目录的绝对路径
 project_root = resource_root()
 demo_root = os.path.join(project_root, 'frontend', 'ui_demo')
@@ -114,7 +113,6 @@ def create_app(config=None):
         elif not os.path.isdir(normalized_root):
             app.logger.warning('Configured external import scan root is unavailable: %s', normalized_root)
 
-    orm_db.init_app(app)
     app.register_blueprint(status_bp)
     app.register_blueprint(imports_bp)
     app.register_blueprint(overview_bp)
