@@ -39,7 +39,7 @@ class DataApiMigrationContractTests(unittest.TestCase):
 
     def test_all_migrated_routes_are_owned_by_split_blueprints(self):
         ledger = json.loads(MIGRATION_LEDGER.read_text(encoding='utf-8'))
-        self.assertEqual(len(ledger), 69)
+        self.assertEqual(len(ledger), 59)
         routes = self._runtime_routes()
         for path, methods, target in ledger:
             for method in methods:
@@ -52,7 +52,6 @@ class DataApiMigrationContractTests(unittest.TestCase):
 
     def test_representative_routes_are_owned_by_split_blueprints(self):
         expected = {
-            ('/api/kpi', 'GET'): 'overview_legacy.',
             ('/api/compare', 'GET'): 'data_legacy.',
             ('/api/products', 'GET'): 'products_legacy.',
             ('/api/alerts', 'GET'): 'alerts.',

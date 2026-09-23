@@ -137,14 +137,6 @@ class OverviewContractTests(unittest.TestCase):
         self.assertEqual(payload['availability'], 'no-data')
         self.assertFalse(payload['has_anomalies'])
 
-    def test_legacy_kpi_does_not_return_zero_aggregate_without_period_data(self):
-        payload = self.client.get('/api/kpi?dim=monthly&period=2099-12').get_json()
-
-        self.assertEqual(payload['availability'], 'no-data')
-        self.assertIsNone(payload['current'])
-        self.assertIsNone(payload['previous'])
-        self.assertEqual(payload['changes'], {})
-
     def test_legacy_report_renders_missing_average_order_value(self):
         from db import get_db
 
@@ -222,32 +214,6 @@ class OverviewContractTests(unittest.TestCase):
 
         self.assertEqual(len(payload), 1)
         self.assertEqual(payload[0]['payment_count'], 7)
-
-    def test_product_target_progress_does_not_zero_fill_missing_actual(self):
-        from db import get_db
-
-        with get_db(self.database_path) as connection:
-            connection.execute(
-                "INSERT INTO products (product_id, title, status) VALUES (?, ?, ?)",
-                ('target-a', '目标商品', 'active'),
-            )
-            connection.execute(
-                '''INSERT INTO product_targets (
-                       product_id, period, target_gsv, target_ad_spend
-                   ) VALUES (?, ?, ?, ?)''',
-                ('target-a', '2099-12', 1000, 100),
-            )
-            connection.commit()
-
-        payload = self.client.get(
-            '/api/product_target_progress?period=2099-12'
-        ).get_json()
-
-        self.assertEqual(len(payload), 1)
-        self.assertIsNone(payload[0]['actual_gsv'])
-        self.assertIsNone(payload[0]['actual_ad_spend'])
-        self.assertIsNone(payload[0].get('gsv_progress'))
-        self.assertIsNone(payload[0].get('ad_progress'))
 
     def test_daily_matrix_uses_imported_facts_without_zero_fallback(self):
         response = self.client.get('/api/overview/daily-matrix?start=2026-04-01&end=2026-04-02')
@@ -379,26 +345,6 @@ class OverviewContractTests(unittest.TestCase):
         self.assertIsNone(payload['stats']['avg_rating'])
         self.assertEqual(payload['stats']['total'], 0)
 
-    def test_traffic_structure_does_not_show_historical_trend_for_missing_period(self):
-        from db import get_db
-
-        with get_db(self.database_path) as connection:
-            connection.execute(
-                '''INSERT INTO monthly_data
-                   (product_id, month, payment_amount, visitors)
-                   VALUES (?, ?, ?, ?)''',
-                ('overview-a', '2026-04', 100, 20),
-            )
-            connection.commit()
-
-        payload = self.client.get(
-            '/api/traffic_structure?dim=monthly&period=2099-12'
-        ).get_json()
-
-        self.assertEqual(payload['availability'], 'no-data')
-        self.assertEqual(payload['structure'], {})
-        self.assertEqual(payload['trend'], [])
-
     def test_refund_alert_applies_requested_rate_threshold(self):
         from db import get_db
 
@@ -435,7 +381,6 @@ class OverviewContractTests(unittest.TestCase):
 
     def test_legacy_compatibility_endpoints_reject_unknown_dimensions(self):
         for path in (
-            '/api/traffic_structure?dim=quarter',
             '/api/alert_checks?dim=quarter',
             '/api/product_tags?dim=quarter',
         ):
@@ -587,10 +532,7 @@ class OverviewContractTests(unittest.TestCase):
 
     def test_legacy_reads_reject_malformed_explicit_periods(self):
         for path in (
-            '/api/kpi?dim=monthly&period=not-a-date',
-            '/api/kpi?dim=monthly&prev_period=not-a-date',
             '/api/products?dim=monthly&period=not-a-date',
-            '/api/ad_performance?dim=monthly&period=not-a-date',
             '/api/anomalies?dim=monthly&period=not-a-date',
             '/api/product_tags?dim=monthly&period=not-a-date',
         ):
@@ -602,7 +544,6 @@ class OverviewContractTests(unittest.TestCase):
     def test_target_and_report_reads_reject_malformed_explicit_periods(self):
         for path in (
             '/api/target_progress?dim=monthly&period=not-a-date',
-            '/api/product_target_progress?period=not-a-date',
             '/api/alerts?period=not-a-date',
             '/api/health?period=not-a-date',
             '/api/alert_checks?dim=monthly&period=not-a-date',
@@ -615,15 +556,11 @@ class OverviewContractTests(unittest.TestCase):
 
     def test_core_legacy_reads_reject_unknown_dimensions_consistently(self):
         for path in (
-            '/api/kpi?dim=quarter',
             '/api/trend?dim=quarter',
             '/api/products?dim=quarter',
             '/api/periods?dim=quarter',
-            '/api/ad_performance?dim=quarter',
             '/api/anomalies?dim=quarter',
             '/api/report?dim=quarter&period=2026-04',
-            '/api/customer_analysis?dim=quarter',
-            '/api/funnel?dim=quarter',
         ):
             with self.subTest(path=path):
                 response = self.client.get(path)

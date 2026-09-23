@@ -10,109 +10,14 @@ from services.category_mode_service import category_filters_from_request, shop_l
 """
 
 from flask import Blueprint, jsonify, request
-from api.data_api import DIMENSION_MAP, _aov_expression, _reject_legacy_shop_scope, _validate_period_arg, cached_api
+from api.data_api import DIMENSION_MAP, _reject_legacy_shop_scope, _validate_period_arg, cached_api
 
-from db import get_db, get_shop_id, load_config
+from db import get_db, get_shop_id
 from api.api_response import failure, json_object, success
 
 
 overview_legacy_bp = Blueprint('overview_legacy', __name__)
 
-
-@overview_legacy_bp.route('/api/kpi', methods=['GET'])
-@cached_api('kpi', 60)
-def get_kpi():
-    """KPI卡片数据"""
-    dimension = request.args.get('dim', 'weekly')
-    period = request.args.get('period', '')
-    prev_period = request.args.get('prev_period', '')
-    unsupported = _reject_legacy_shop_scope(dimension)
-    if unsupported:
-        return unsupported
-    shop_id = get_shop_id()
-    with get_db() as conn:
-
-        dim_cfg = DIMENSION_MAP.get(dimension)
-        if not dim_cfg:
-            return failure('VALIDATION_ERROR', 'invalid dimension', {'dim': dimension}, status=422)
-        for field, value in (('period', period), ('prev_period', prev_period)):
-            invalid = _validate_period_arg(dimension, value, field)
-            if invalid:
-                return invalid
-        table = dim_cfg['table']
-        date_col = dim_cfg['date_col']
-        visitors_col = dim_cfg['visitors_col']
-        _label_clause, _label_params = shop_label_filter(category_filters_from_request())
-        _join_sql = f' JOIN products p ON p.product_id = {table}.product_id' if _label_clause else ''
-        _kpi_where = (' AND ' + _label_clause) if _label_clause else ''
-
-        def query_period(p):
-            if not p:
-                return None
-            scope_sql = 'shop_id = ? AND ' if table == 'daily_data' else ''
-            scope_params = (shop_id,) if table == 'daily_data' else ()
-            row = conn.execute(f'''
-                SELECT
-                    COUNT(*) as row_count,
-                    COALESCE(SUM(payment_amount),0) as gmv,
-                    COALESCE(SUM(refund_amount),0) as refund_amount,
-                    COALESCE(SUM(payment_amount),0) - COALESCE(SUM(refund_amount),0) as net_sales,
-                    COALESCE(SUM({visitors_col}),0) as visitors,
-                    {_aov_expression(dimension)} as aov,
-                    CASE WHEN SUM(payment_amount) > 0 THEN SUM(refund_amount) * 1.0 / SUM(payment_amount) ELSE 0 END as refund_rate,
-                    COALESCE(SUM(ad_spend),0) as ad_spend,
-                    CASE WHEN SUM(ad_spend) > 0 THEN SUM(payment_amount) * 1.0 / SUM(ad_spend) ELSE 0 END as roi,
-                    AVG(payment_conversion) as conversion
-                FROM {table}{_join_sql} WHERE {scope_sql}{date_col} = ?{_kpi_where}
-            ''', (*scope_params, p, *_label_params)).fetchone()
-            result = dict(row) if row else None
-            if result and not result.pop('row_count', 0):
-                return None
-            return result
-
-        current = query_period(period)
-        previous = query_period(prev_period)
-
-        # 计算环比
-        changes = {}
-        anomalies = []
-        config = load_config()
-        anomaly_decline = config.get('thresholds', {}).get('anomaly_decline', 0.20)
-
-        if current and previous:
-            for key in ['gmv', 'net_sales', 'visitors', 'aov', 'ad_spend', 'conversion', 'roi']:
-                prev_val = previous.get(key) or 0
-                if prev_val > 0:
-                    changes[key] = round(((current.get(key) or 0) - prev_val) / prev_val * 100, 1)
-                else:
-                    changes[key] = None
-            for key in ['refund_rate']:
-                prev_val = previous.get(key) or 0
-                changes[key] = round(((current.get(key) or 0) - prev_val) * 100, 1) if prev_val else None
-
-            # 异常检测：环比下降超过阈值
-            metric_labels = {'gmv': '总销售额', 'net_sales': '净销售额', 'visitors': '总访客', 'aov': '客单价'}
-            for key in ['gmv', 'net_sales', 'visitors', 'aov']:
-                change_val = changes.get(key)
-                if change_val is not None and change_val < 0 and abs(change_val) > anomaly_decline * 100:
-                    severity = 'high' if abs(change_val) > 40 else 'warning'
-                    anomalies.append({
-                        'metric': key,
-                        'label': metric_labels.get(key, key),
-                        'change': change_val,
-                        'current': current.get(key, 0),
-                        'previous': previous.get(key, 0),
-                        'direction': 'decline',
-                        'severity': severity
-                    })
-
-    return jsonify({
-        'current': current,
-        'previous': previous,
-        'changes': changes,
-        'anomalies': anomalies,
-        'availability': 'available' if current and previous else 'partial' if current or previous else 'no-data',
-    })
 
 @overview_legacy_bp.route('/api/trend', methods=['GET'])
 @cached_api('trend', 60)
@@ -191,34 +96,7 @@ def get_trend():
 
     return jsonify(rows)
 
-# ==================== 星标收藏 ====================
-
-@overview_legacy_bp.route('/api/star', methods=['POST'])
-def toggle_star():
-    """切换商品星标状态"""
-    data = json_object(request)
-    product_id = str(data.get('product_id') or '').strip()
-    if not product_id:
-        return failure('VALIDATION_ERROR', '缺少 product_id', status=422)
-    with get_db() as conn:
-        row = conn.execute('SELECT starred FROM products WHERE product_id = ?', (product_id,)).fetchone()
-        if not row:
-            return failure('NOT_FOUND', '商品不存在', status=404)
-        if 'starred' in data:
-            raw_starred = data.get('starred')
-            if isinstance(raw_starred, bool):
-                new_val = int(raw_starred)
-            elif isinstance(raw_starred, int) and raw_starred in {0, 1}:
-                new_val = raw_starred
-            elif isinstance(raw_starred, str) and raw_starred.strip() in {'0', '1'}:
-                new_val = int(raw_starred.strip())
-            else:
-                return failure('VALIDATION_ERROR', 'starred 必须是布尔值或 0/1', status=422)
-        else:
-            new_val = 0 if (row[0] or 0) else 1
-        conn.execute('UPDATE products SET starred = ?, updated_at = datetime("now") WHERE product_id = ?', (new_val, product_id))
-        conn.commit()
-    return jsonify({'starred': new_val})
+# ==================== 星标收藏（已迁移到 catalog_mutations_api） ====================
 
 # ==================== 行内快速编辑 ====================
 

@@ -176,15 +176,6 @@ class CategoryModeContractTests(unittest.TestCase):
         # 04-04 has no sock-labeled rows -> no anomalies reported for the period.
         self.assertEqual(resp_sock.get_json()['anomalies'], [])
 
-    def test_kpi_sock_filters(self):
-        resp_all = self.client.get('/api/kpi?dim=daily&period=2026-04-04&prev_period=2026-04-02')
-        self.assertEqual(resp_all.status_code, 200)
-        self.assertEqual(resp_all.get_json()['current']['gmv'], 400)
-        resp_sock = self.client.get('/api/kpi?dim=daily&period=2026-04-04&prev_period=2026-04-02&category_mode=sock')
-        self.assertEqual(resp_sock.status_code, 200)
-        # 04-04 has no sock-labeled rows -> current period has no facts.
-        self.assertIsNone(resp_sock.get_json()['current'])
-
     def test_export_sock_filters(self):
         payload = {'type': 'products', 'dim': 'daily', 'start': '2026-04-01', 'end': '2026-04-30'}
         resp_all = self.client.post('/api/export', json=payload)

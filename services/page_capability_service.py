@@ -16,8 +16,8 @@ PAGE_DEFINITIONS = (
         'data_domains': ('store_daily', 'goals', 'actions'),
         'capability_keys': (
             'overview.view_kpis', 'overview.view_trend', 'overview.view_matrix',
-            'overview.compare', 'overview.view_goal_progress', 'overview.view_customer_mix',
-            'overview.view_funnel', 'overview.export', 'overview.create_action', 'overview.delete_action',
+            'overview.compare', 'overview.view_goal_progress',
+            'overview.export', 'overview.create_action', 'overview.delete_action',
         ),
     },
     {
@@ -51,6 +51,12 @@ PAGE_DEFINITIONS = (
         'capability_keys': ('reviews.list_actions', 'reviews.review_action', 'reviews.period_compare'),
     },
     {
+        'key': 'period-review', 'label': '周月复盘', 'page_type': 'primary', 'route': '/period-review',
+        'core_question': '本周/本月业绩差在哪、怎么补，做了什么、接下来做什么',
+        'data_domains': ('product_daily', 'goals', 'actions', 'market'),
+        'capability_keys': ('period-review.view', 'period-review.briefing', 'period-review.save'),
+    },
+    {
         'key': 'data-center', 'label': '数据中心', 'page_type': 'primary', 'route': '/data-center',
         'core_question': '数据是否可信、是否可用',
         'data_domains': ('imports',),
@@ -65,8 +71,8 @@ PAGE_DEFINITIONS = (
     {
         'key': 'product-detail', 'label': '商品详情', 'page_type': 'context', 'route': '/products/:product_id',
         'core_question': '单个商品为什么变化',
-        'data_domains': ('product_master', 'product_daily', 'promotion_daily', 'reviews', 'lifecycle', 'actions'),
-        'capability_keys': ('product-detail.view', 'product-detail.create_action', 'product-detail.review_action', 'product-detail.export'),
+        'data_domains': ('product_master', 'product_daily', 'promotion_daily', 'product_sku_daily', 'product_region_daily', 'product_hourly', 'reviews', 'lifecycle', 'actions'),
+        'capability_keys': ('product-detail.view', 'product-detail.granular_analysis', 'product-detail.create_action', 'product-detail.review_action', 'product-detail.export'),
     },
     {
         'key': 'goals', 'label': '经营目标', 'page_type': 'context', 'route': '/goals',
@@ -90,13 +96,12 @@ PAGE_DEFINITIONS = (
 
 
 CAPABILITY_DEFINITIONS = (
+    {'key': 'product-detail.granular_analysis', 'page_key': 'product-detail', 'label': 'View SKU, region, and hourly grain capability', 'mode': 'analyze', 'support_level': 'conditional', 'data_domains': ('product_sku_daily', 'product_region_daily', 'product_hourly'), 'metric_keys': (), 'api_endpoints': ('GET /api/products/:product_id/granular-capabilities',)},
     {'key': 'overview.view_kpis', 'page_key': 'overview', 'label': '查看经营指标', 'mode': 'observe', 'support_level': 'supported', 'data_domains': ('store_daily',), 'metric_keys': ('net_sales', 'refund_rate'), 'api_endpoints': ('GET /api/overview',)},
     {'key': 'overview.view_trend', 'page_key': 'overview', 'label': '查看经营趋势', 'mode': 'analyze', 'support_level': 'supported', 'data_domains': ('store_daily',), 'metric_keys': ('net_sales',), 'api_endpoints': ('GET /api/overview/daily-matrix',)},
     {'key': 'overview.view_matrix', 'page_key': 'overview', 'label': '查看日度经营矩阵', 'mode': 'observe', 'support_level': 'conditional', 'data_domains': ('store_daily',), 'metric_keys': ('net_sales',), 'api_endpoints': ('GET /api/overview/daily-matrix',)},
     {'key': 'overview.compare', 'page_key': 'overview', 'label': '比较经营周期', 'mode': 'analyze', 'support_level': 'conditional', 'data_domains': ('store_daily',), 'metric_keys': ('net_sales',), 'api_endpoints': ('GET /api/compare',)},
     {'key': 'overview.view_goal_progress', 'page_key': 'overview', 'label': '查看目标进度', 'mode': 'observe', 'support_level': 'conditional', 'data_domains': ('goals',), 'metric_keys': (), 'api_endpoints': ('GET /api/target_progress',)},
-    {'key': 'overview.view_customer_mix', 'page_key': 'overview', 'label': '查看客户构成', 'mode': 'analyze', 'support_level': 'conditional', 'data_domains': ('store_daily',), 'metric_keys': ('returning_buyer_ratio',), 'api_endpoints': ('GET /api/customer_analysis',)},
-    {'key': 'overview.view_funnel', 'page_key': 'overview', 'label': '查看经营漏斗', 'mode': 'analyze', 'support_level': 'conditional', 'data_domains': ('store_daily',), 'metric_keys': ('payment_conversion_rate',), 'api_endpoints': ('GET /api/funnel',)},
     {'key': 'overview.export', 'page_key': 'overview', 'label': '导出经营矩阵', 'mode': 'export', 'support_level': 'conditional', 'data_domains': ('store_daily',), 'metric_keys': (), 'api_endpoints': ('GET /api/overview/daily-matrix',)},
     {'key': 'overview.create_action', 'page_key': 'overview', 'label': '创建运营动作', 'mode': 'mutate', 'support_level': 'conditional', 'data_domains': ('product_master',), 'metric_keys': (), 'api_endpoints': ('POST /api/actions',)},
     {'key': 'overview.delete_action', 'page_key': 'overview', 'label': '删除运营动作', 'mode': 'mutate', 'support_level': 'conditional', 'data_domains': ('actions',), 'metric_keys': (), 'api_endpoints': ('DELETE /api/actions/:id',)},
@@ -121,6 +126,11 @@ CAPABILITY_DEFINITIONS = (
     # Period reviews are human-entered records and can be viewed and saved
     # without weekly source facts.
     {'key': 'reviews.period_compare', 'page_key': 'reviews', 'label': '查看周期复盘', 'mode': 'analyze', 'support_level': 'supported', 'data_domains': (), 'metric_keys': (), 'api_endpoints': ('GET /api/period-reviews',)},
+    {'key': 'period-review.view', 'page_key': 'period-review', 'label': '查看周月复盘', 'mode': 'observe', 'support_level': 'supported', 'data_domains': (), 'metric_keys': (), 'api_endpoints': ('GET /api/period-reviews/templates', 'GET /api/period-reviews/:period_type/:period_key')},
+    # 复盘素材由系统聚合，缺失数据域时降级为「可手动填写」而不是阻断页面。
+    {'key': 'period-review.briefing', 'page_key': 'period-review', 'label': '查看复盘素材聚合', 'mode': 'analyze', 'support_level': 'conditional', 'data_domains': ('product_daily', 'goals', 'actions', 'market'), 'metric_keys': ('net_sales', 'ad_roi', 'payment_conversion_rate'), 'api_endpoints': ('GET /api/period-reviews/:period_type/:period_key/context',)},
+    # 复盘结论为人工录入记录，不依赖任何周期源事实即可保存。
+    {'key': 'period-review.save', 'page_key': 'period-review', 'label': '保存周月复盘', 'mode': 'mutate', 'support_level': 'supported', 'data_domains': (), 'metric_keys': (), 'api_endpoints': ('PUT /api/period-reviews/:period_type/:period_key',)},
     {'key': 'data-center.view_catalog', 'page_key': 'data-center', 'label': '查看数据能力目录', 'mode': 'observe', 'support_level': 'supported', 'data_domains': ('imports',), 'metric_keys': (), 'api_endpoints': ('GET /api/data-capabilities',)},
     {'key': 'data-center.import', 'page_key': 'data-center', 'label': '预览与确认导入', 'mode': 'workflow', 'support_level': 'supported', 'data_domains': ('imports',), 'metric_keys': (), 'api_endpoints': ('POST /api/imports/preview', 'POST /api/imports')},
     {'key': 'data-center.revert', 'page_key': 'data-center', 'label': '撤销导入批次', 'mode': 'workflow', 'support_level': 'conditional', 'data_domains': ('imports',), 'metric_keys': (), 'api_endpoints': ('POST /api/imports/:id/revert',)},
@@ -141,7 +151,6 @@ CAPABILITY_DEFINITIONS = (
     {'key': 'compare.export', 'page_key': 'compare', 'label': '导出周期比较', 'mode': 'export', 'support_level': 'conditional', 'data_domains': ('product_weekly',), 'metric_keys': (), 'api_endpoints': ('GET /api/period-reviews',)},
     {'key': 'manage.view', 'page_key': 'manage', 'label': '查看管理任务', 'mode': 'observe', 'support_level': 'conditional', 'data_domains': ('actions',), 'metric_keys': (), 'api_endpoints': ('GET /api/manage/tasks', 'GET /api/manage/kpis')},
     {'key': 'manage.schedule', 'page_key': 'manage', 'label': '执行调度流程', 'mode': 'workflow', 'support_level': 'conditional', 'data_domains': ('imports',), 'metric_keys': (), 'api_endpoints': ('GET /api/import-scans', 'POST /api/import-scans', 'PUT /api/import-scans/:job_id', 'DELETE /api/import-scans/:job_id', 'POST /api/import-scans/:job_id/run')},
-    {'key': 'overview.industry_benchmark', 'page_key': 'overview', 'label': '行业基准对比', 'mode': 'analyze', 'support_level': 'unsupported', 'data_domains': (), 'metric_keys': (), 'api_endpoints': ('GET /api/industry_benchmark',)},
     {'key': 'promotion.causal_attribution', 'page_key': 'promotion', 'label': '严格因果归因', 'mode': 'analyze', 'support_level': 'unsupported', 'data_domains': (), 'metric_keys': (), 'api_endpoints': ()},
 )
 
@@ -168,6 +177,7 @@ _PAGE_TARGET_FILES = {
     'promotion': ('frontend/ui_demo/pages/promotion.html', 'frontend/ui_demo/assets/promotion-live.js'),
     'lifecycle': ('frontend/ui_demo/pages/lifecycle.html', 'frontend/ui_demo/assets/lifecycle-live.js'),
     'reviews': ('frontend/ui_demo/pages/reviews.html', 'frontend/ui_demo/assets/reviews-live.js'),
+    'period-review': ('frontend/ui_demo/pages/period-review.html', 'frontend/ui_demo/assets/period-review-live.js'),
     'data-center': ('frontend/ui_demo/pages/data-center.html', 'frontend/ui_demo/assets/data-center-live.js'),
     'settings': ('frontend/ui_demo/pages/settings.html', 'frontend/ui_demo/assets/settings-live.js'),
     'product-detail': ('frontend/ui_demo/pages/product-detail.html', 'frontend/ui_demo/assets/product-detail-live.js'),
@@ -253,8 +263,8 @@ def validate_registry(app=None):
     page_keys = [item['key'] for item in PAGE_DEFINITIONS]
     capability_keys = [item['key'] for item in CAPABILITY_DEFINITIONS]
     surface_keys = [item['key'] for item in SURFACE_DEFINITIONS]
-    if len(PAGE_DEFINITIONS) != 12:
-        errors.append('expected twelve page definitions')
+    if len(PAGE_DEFINITIONS) != 13:
+        errors.append('expected thirteen page definitions')
     for label, keys in (('page', page_keys), ('capability', capability_keys), ('surface', surface_keys)):
         duplicates = sorted(key for key, count in Counter(keys).items() if count > 1)
         if duplicates:

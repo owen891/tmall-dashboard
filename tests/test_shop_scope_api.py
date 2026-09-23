@@ -68,11 +68,7 @@ class ShopScopeApiTests(unittest.TestCase):
         self.assertEqual(payload['kpi_compare']['gmv']['period_b'], 120.0)
         self.assertEqual(payload['product_changes'][0]['amount_a'], 100.0)
 
-    def test_kpi_trend_products_and_overview_are_scoped_to_requested_shop(self):
-        kpi = self.client.get('/api/kpi?dim=daily&period=2026-04-01&shop_id=shop-a').get_json()
-        self.assertEqual(kpi['current']['gmv'], 100.0)
-        self.assertEqual(kpi['current']['aov'], 50.0)
-
+    def test_trend_products_and_overview_are_scoped_to_requested_shop(self):
         trend = self.client.get('/api/trend?dim=daily&start=2026-04-01&end=2026-04-01&shop_id=shop-a').get_json()
         self.assertEqual(trend[0]['gmv'], 100.0)
 
@@ -154,7 +150,6 @@ class ShopScopeApiTests(unittest.TestCase):
             '/api/products/scope-product/detail?shop_id=shop-a',
             '/api/alerts?period=2026-04&shop_id=shop-a',
             '/api/goals/2026?shop_id=shop-a',
-            '/api/product_target_progress?period=2026-04&shop_id=shop-a',
             '/api/overview?start=2026-04-01&end=2026-04-02&lifecycle_stage=growth&shop_id=shop-a',
             '/api/overview/daily-matrix?start=2026-04-01&end=2026-04-02&lifecycle_stage=growth&shop_id=shop-a',
             '/api/health?period=2026-04&shop_id=shop-a',
@@ -227,12 +222,10 @@ class ShopScopeApiTests(unittest.TestCase):
 
     def test_legacy_week_month_and_target_endpoints_reject_explicit_shop_scope(self):
         for url in (
-            '/api/kpi?dim=monthly&period=2026-04&shop_id=shop-a',
             '/api/trend?dim=weekly&start=2026-04-01&end=2026-04-07&shop_id=shop-a',
             '/api/compare?dim=monthly&period_a=2026-04&period_b=2026-05&shop_id=shop-a',
             '/api/products?dim=monthly&period=2026-04&shop_id=shop-a',
             '/api/target_progress?dim=monthly&period=2026-04&shop_id=shop-a',
-            '/api/product_target_progress?period=2026-04&shop_id=shop-a',
         ):
             with self.subTest(url=url):
                 response = self.client.get(url)

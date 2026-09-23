@@ -111,12 +111,6 @@ class ManageMutationApiTests(unittest.TestCase):
                 self.assertEqual(response.status_code, 422)
                 self.assertEqual(response.get_json()['code'], 'VALIDATION_ERROR')
 
-    def test_ad_trend_rejects_invalid_count_without_server_error(self):
-        for count in ('abc', '0', '-5', '25'):
-            response = self.client.get(f'/api/ad_trend?count={count}')
-            self.assertEqual(response.status_code, 422)
-            self.assertEqual(response.get_json()['code'], 'VALIDATION_ERROR')
-
     def test_kpi_rejects_non_finite_and_out_of_range_values(self):
         for field, value in (('target_gmv', 'NaN'), ('actual_gmv', 'Infinity'), ('achievement_rate', 1.1)):
             response = self.client.post('/api/manage/kpis', json={
@@ -124,51 +118,6 @@ class ManageMutationApiTests(unittest.TestCase):
             })
             self.assertEqual(response.status_code, 422)
             self.assertEqual(response.get_json()['code'], 'VALIDATION_ERROR')
-
-    def test_multi_trend_rejects_malformed_periods_without_server_error(self):
-        for query in (
-            'dim=monthly&periods=not-a-date',
-            'dim=monthly&periods=2026-13',
-            'dim=weekly&periods=not-a-date',
-            'dim=daily&periods=2026-02-30',
-        ):
-            with self.subTest(query=query):
-                response = self.client.get(f'/api/multi_trend?{query}')
-                self.assertEqual(response.status_code, 422)
-                self.assertEqual(response.get_json()['code'], 'VALIDATION_ERROR')
-
-    def test_multi_trend_rejects_unknown_metric_and_dimension(self):
-        for query, detail_key in (
-            ('dim=monthly&periods=2026-08&metric=profit', 'metric'),
-            ('dim=quarter&periods=2026-08', 'dim'),
-        ):
-            with self.subTest(query=query):
-                response = self.client.get(f'/api/multi_trend?{query}')
-                self.assertEqual(response.status_code, 422)
-                payload = response.get_json()
-                self.assertEqual(payload['code'], 'VALIDATION_ERROR')
-                self.assertIn(detail_key, payload['details'])
-
-    def test_multi_trend_rejects_empty_period_selection(self):
-        for query in ('', 'periods=,'):
-            with self.subTest(query=query):
-                response = self.client.get(f'/api/multi_trend?{query}')
-                self.assertEqual(response.status_code, 422)
-                self.assertEqual(response.get_json()['code'], 'VALIDATION_ERROR')
-
-    def test_ad_analysis_rejects_unknown_dimension_and_malformed_period(self):
-        for query in (
-            '/api/ad_alerts?dim=quarter',
-            '/api/ad_alerts?dim=monthly&period=not-a-date',
-            '/api/ad_trend?dim=quarter',
-            '/api/ad_trend?dim=monthly&period=not-a-date',
-            '/api/traffic_structure?dim=weekly&period=not-a-date',
-        ):
-            with self.subTest(query=query):
-                response = self.client.get(query)
-                self.assertEqual(response.status_code, 422)
-                self.assertEqual(response.get_json()['code'], 'VALIDATION_ERROR')
-
 
 if __name__ == '__main__':
     unittest.main()

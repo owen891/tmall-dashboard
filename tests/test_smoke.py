@@ -142,29 +142,13 @@ class TestKpiEndpoints(SmokeTestBase):
     def test_status(self):
         self.assertGetNoCrash('/api/status')
 
-    def test_kpi(self):
-        self.assertGetNoCrash('/api/kpi', params={'dim': 'weekly', 'period': ''})
-
     def test_trend(self):
         self.assertGetNoCrash('/api/trend', params={'dim': 'weekly'})
-
-    def test_multi_trend(self):
-        self.assertGetNoCrash('/api/multi_trend', params={'dim': 'weekly', 'periods': ''})
-
     def test_anomalies(self):
         self.assertGetNoCrash('/api/anomalies', params={'dim': 'weekly'})
 
     def test_target_progress(self):
         self.assertGetNoCrash('/api/target_progress', params={'period': ''})
-
-    def test_product_target_progress(self):
-        self.assertGetNoCrash('/api/product_target_progress', params={'period': ''})
-
-    def test_customer_analysis(self):
-        self.assertGetNoCrash('/api/customer_analysis', params={'dim': 'weekly'})
-
-    def test_funnel(self):
-        self.assertGetNoCrash('/api/funnel', params={'dim': 'weekly'})
 
     def test_report(self):
         self.assertGetNoCrash('/api/report', params={'dim': 'weekly'})
@@ -190,9 +174,6 @@ class TestProductEndpoints(SmokeTestBase):
         payload = response.get_json()
         self.assertGreater(payload['data']['total'], 0)
         self.assertTrue(any(row['payment_amount'] > 0 for row in payload['data']['rows']))
-
-    def test_star_route(self):
-        self.assertMutationNoCrash('POST', '/api/star', json={'product_id': 'nonexistent'})
 
     def test_product_field_update(self):
         self.assertMutationNoCrash('PUT', '/api/products/nonexistent/field',
@@ -248,23 +229,8 @@ class TestProductEndpoints(SmokeTestBase):
         self.assertMutationNoCrash('DELETE', '/api/batch_tags',
                                    json={'product_ids': [], 'tags': []})
 
-    def test_star_explicit_set_is_idempotent(self):
-        active_id, _ = _insert_contract_products()
-        first = self.client.post('/api/star', json={'product_id': active_id, 'starred': 1})
-        self.assertEqual(first.status_code, 200)
-        self.assertEqual(first.get_json()['starred'], 1)
-
-        second = self.client.post('/api/star', json={'product_id': active_id, 'starred': 1})
-        self.assertEqual(second.status_code, 200)
-        self.assertEqual(second.get_json()['starred'], 1)
-
-        with get_db(_TEST_DB_PATH) as conn:
-            row = conn.execute('SELECT starred FROM products WHERE product_id = ?', (active_id,)).fetchone()
-        self.assertEqual(row[0], 1)
-
     def test_legacy_catalog_writes_reject_malformed_payloads(self):
         cases = (
-            ('/api/star', {'product_id': _get_first_product_id(), 'starred': 'maybe'}),
             ('/api/products/missing/field', {'field': [], 'value': {}}),
             ('/api/batch_update', {'field': 'tier', 'value': 'A', 'product_ids': 'not-a-list'}),
             ('/api/batch_tags', {'product_ids': ['missing'], 'tag': []}),
@@ -333,23 +299,6 @@ class TestProductEndpoints(SmokeTestBase):
         self.assertIn('Contract Style B', payload['data']['facets']['styles'])
         self.assertIn('active', payload['data']['facets']['statuses'])
         self.assertIn('inactive', payload['data']['facets']['statuses'])
-
-
-class TestAdEndpoints(SmokeTestBase):
-    """推广分析相关端点"""
-
-    def test_ad_performance(self):
-        self.assertGetNoCrash('/api/ad_performance', params={'dim': 'weekly'})
-
-    def test_ad_alerts(self):
-        self.assertGetNoCrash('/api/ad_alerts', params={'dim': 'weekly'})
-
-    def test_ad_trend(self):
-        self.assertGetNoCrash('/api/ad_trend', params={'dim': 'weekly'})
-
-    def test_ad_trend_monthly_with_active_product_join(self):
-        response = self.client.get('/api/ad_trend', query_string={'dim': 'monthly', 'period': '2026-03'})
-        self.assertEqual(response.status_code, 200)
 
 
 class TestRefundEndpoints(SmokeTestBase):
@@ -579,9 +528,6 @@ class TestSystemEndpoints(SmokeTestBase):
         response = self.client.post('/api/logs', data='not-json', content_type='text/plain')
         self.assertEqual(response.status_code, 422)
 
-    def test_traffic_structure(self):
-        self.assertGetNoCrash('/api/traffic_structure', params={'dim': 'weekly'})
-
     def test_shop_target(self):
         self.assertMutationNoCrash('POST', '/api/targets/shop', json={
             'period': '2026-08', 'target_gsv': 100000
@@ -754,19 +700,13 @@ class TestRouteRegistry(unittest.TestCase):
         ('/', 'GET'),
         # KPI 与概览
         ('/api/status', 'GET'),
-        ('/api/kpi', 'GET'),
         ('/api/trend', 'GET'),
-        ('/api/multi_trend', 'GET'),
         ('/api/anomalies', 'GET'),
         ('/api/target_progress', 'GET'),
-        ('/api/product_target_progress', 'GET'),
-        ('/api/customer_analysis', 'GET'),
-        ('/api/funnel', 'GET'),
         ('/api/report', 'GET'),
         ('/api/review', 'GET'),
         # 商品
         ('/api/products', 'GET'),
-        ('/api/star', 'POST'),
         ('/api/products/<product_id>/field', 'PUT'),
         ('/api/batch_update', 'POST'),
         ('/api/notes/<product_id>', 'GET'),
@@ -778,9 +718,6 @@ class TestRouteRegistry(unittest.TestCase):
         ('/api/batch_tags', 'POST'),
         ('/api/batch_tags', 'DELETE'),
         # 推广与退款
-        ('/api/ad_performance', 'GET'),
-        ('/api/ad_alerts', 'GET'),
-        ('/api/ad_trend', 'GET'),
         ('/api/refund_alert', 'GET'),
         # 运营动作
         ('/api/actions', 'GET'),
@@ -814,7 +751,6 @@ class TestRouteRegistry(unittest.TestCase):
         ('/api/export', 'POST'),
         ('/api/logs', 'GET'),
         ('/api/logs', 'POST'),
-        ('/api/traffic_structure', 'GET'),
         ('/api/targets/shop', 'POST'),
         # 图表事件
         ('/api/chart_events', 'GET'),

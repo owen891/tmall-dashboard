@@ -1,22 +1,8 @@
 [
   [
-    "/api/kpi",
-    [
-      "GET"
-    ],
-    "overview_legacy_api"
-  ],
-  [
     "/api/trend",
     [
       "GET"
-    ],
-    "overview_legacy_api"
-  ],
-  [
-    "/api/star",
-    [
-      "POST"
     ],
     "overview_legacy_api"
   ],
@@ -63,27 +49,6 @@
     "alerts_api"
   ],
   [
-    "/api/ad_performance",
-    [
-      "GET"
-    ],
-    "data_legacy_api"
-  ],
-  [
-    "/api/ad_alerts",
-    [
-      "GET"
-    ],
-    "products_legacy_api"
-  ],
-  [
-    "/api/ad_trend",
-    [
-      "GET"
-    ],
-    "products_legacy_api"
-  ],
-  [
     "/api/periods",
     [
       "GET"
@@ -103,13 +68,6 @@
       "GET"
     ],
     "system_legacy_api"
-  ],
-  [
-    "/api/traffic_structure",
-    [
-      "GET"
-    ],
-    "data_legacy_api"
   ],
   [
     "/api/tasks",
@@ -208,13 +166,6 @@
       "GET"
     ],
     "goals_legacy_api"
-  ],
-  [
-    "/api/product_target_progress",
-    [
-      "GET"
-    ],
-    "data_legacy_api"
   ],
   [
     "/api/alerts",
@@ -371,13 +322,6 @@
     "misc_legacy_api"
   ],
   [
-    "/api/multi_trend",
-    [
-      "GET"
-    ],
-    "data_legacy_api"
-  ],
-  [
     "/api/chart_events",
     [
       "GET"
@@ -446,20 +390,6 @@
       "DELETE"
     ],
     "misc_legacy_api"
-  ],
-  [
-    "/api/customer_analysis",
-    [
-      "GET"
-    ],
-    "data_legacy_api"
-  ],
-  [
-    "/api/funnel",
-    [
-      "GET"
-    ],
-    "data_legacy_api"
   ],
   [
     "/api/product_tags",
