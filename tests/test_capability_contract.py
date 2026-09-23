@@ -107,41 +107,6 @@ class CapabilityContractTests(unittest.TestCase):
         self.assertEqual(payload['evidence'][0]['source'], 'settings')
         self.assertIsInstance(payload['freshness'], dict)
 
-    def test_industry_benchmark_uses_context_envelope_without_zero_fallback(self):
-        payload = self.client.get(
-            '/api/industry_benchmark?dim=monthly&period=2099-12'
-        ).get_json()
-
-        self.assertTrue(payload['ok'])
-        self.assertEqual(payload['availability'], 'no-data')
-        self.assertEqual(payload['evidence_level'], 'insufficient')
-        self.assertIsNone(payload['data']['shop_ctr'])
-        self.assertIsNone(payload['data']['industry_ctr'])
-        self.assertEqual(payload['data']['trend'], [])
-        self.assertIn('industry_benchmark', payload['missing_inputs'])
-        self.assertTrue(payload['limitations'])
-        self.assertTrue(payload['requestId'])
-
-    def test_industry_benchmark_treats_imported_zero_as_missing_evidence(self):
-        from db import get_db
-
-        with get_db(self.app.config['DATABASE_PATH']) as connection:
-            connection.execute(
-                "INSERT INTO monthly_data (product_id, month, click_rate, industry_ctr) VALUES (?, ?, ?, ?)",
-                ('benchmark-product', '2026-08', 0, 0),
-            )
-            connection.commit()
-
-        payload = self.client.get(
-            '/api/industry_benchmark?dim=monthly&period=2026-08'
-        ).get_json()
-        self.assertTrue(payload['ok'])
-        self.assertEqual(payload['availability'], 'missing-fields')
-        self.assertIsNone(payload['data']['shop_ctr'])
-        self.assertIsNone(payload['data']['industry_ctr'])
-        self.assertIn('shop_ctr', payload['missing_inputs'])
-        self.assertIn('industry_ctr', payload['missing_inputs'])
-
 
 if __name__ == '__main__':
     unittest.main()

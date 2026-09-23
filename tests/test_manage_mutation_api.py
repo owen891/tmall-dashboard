@@ -125,12 +125,6 @@ class ManageMutationApiTests(unittest.TestCase):
             self.assertEqual(response.status_code, 422)
             self.assertEqual(response.get_json()['code'], 'VALIDATION_ERROR')
 
-    def test_keyword_pagination_rejects_invalid_values(self):
-        for query in ('page=0', 'page=abc', 'per_page=-1', 'per_page=201'):
-            response = self.client.get(f'/api/keywords?{query}')
-            self.assertEqual(response.status_code, 422)
-            self.assertEqual(response.get_json()['code'], 'VALIDATION_ERROR')
-
     def test_multi_trend_rejects_malformed_periods_without_server_error(self):
         for query in (
             'dim=monthly&periods=not-a-date',

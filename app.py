@@ -22,6 +22,8 @@ from api.wanxiangtai_api import wanxiangtai_bp
 from api.market_ranking_api import market_ranking_bp
 from api.period_reviews_api import period_reviews_bp
 from api.product_detail_api import product_detail_bp
+from api.product_overview_api import product_overview_bp
+from api.product_identity_api import product_identity_bp
 from api.status_api import status_bp
 from api.tool_api import tool_bp
 from api.alert_rules_api import alert_rules_bp
@@ -34,10 +36,10 @@ from api.import_scans_api import import_scans_bp
 from api.manage_api import manage_bp
 from api.sycm_api import sycm_bp
 from api.collect_api import collect_bp
+from api.data_integration_api import data_integration_bp
 from api.alerts_api import alerts_bp
 from api.goals_legacy_api import goals_legacy_bp
 from api.reviews_api import reviews_bp
-from api.market_legacy_api import market_legacy_bp
 from api.system_legacy_api import system_legacy_bp
 from api.products_legacy_api import products_legacy_bp
 from api.overview_legacy_api import overview_legacy_bp
@@ -127,6 +129,8 @@ def create_app(config=None):
     app.register_blueprint(market_ranking_bp)
     app.register_blueprint(period_reviews_bp)
     app.register_blueprint(product_detail_bp)
+    app.register_blueprint(product_overview_bp)
+    app.register_blueprint(product_identity_bp)
     app.register_blueprint(tool_bp)
     app.register_blueprint(alert_rules_bp)
     app.register_blueprint(data_capabilities_bp)
@@ -138,10 +142,10 @@ def create_app(config=None):
     app.register_blueprint(manage_bp)
     app.register_blueprint(sycm_bp)
     app.register_blueprint(collect_bp)
+    app.register_blueprint(data_integration_bp)
     app.register_blueprint(alerts_bp)
     app.register_blueprint(goals_legacy_bp)
     app.register_blueprint(reviews_bp)
-    app.register_blueprint(market_legacy_bp)
     app.register_blueprint(system_legacy_bp)
     app.register_blueprint(products_legacy_bp)
     app.register_blueprint(overview_legacy_bp)
@@ -216,7 +220,7 @@ def create_app(config=None):
     def prevent_dashboard_frontend_staleness(response):
         if request.path == '/' or request.path == '/api/version' or request.path in {
             '/products', '/promotion', '/lifecycle', '/reviews',
-            '/data-center', '/data-collection', '/settings', '/goals',
+            '/data-center', '/data-collection', '/settings', '/goals', '/period-review',
         } or request.path.startswith('/assets/'):
             response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
             response.headers['Pragma'] = 'no-cache'
@@ -302,7 +306,7 @@ def create_app(config=None):
             return redirect('/reviews')
         if page == 'manage':
             return redirect('/settings')
-        if page not in {'overview', 'analysis', 'category-dashboard', 'products', 'promotion', 'keyword-promotion', 'market-ranking', 'lifecycle', 'reviews', 'data-center', 'settings', 'goals', 'flow-source', 'rival-analysis', 'data-collection', 'component-catalog', 'creative-board'}:
+        if page not in {'overview', 'analysis', 'category-dashboard', 'products', 'promotion', 'keyword-promotion', 'market-ranking', 'lifecycle', 'reviews', 'data-center', 'settings', 'goals', 'flow-source', 'rival-analysis', 'data-collection', 'component-catalog', 'creative-board', 'period-review'}:
             return jsonify({'error': 'page not found'}), 404
         return send_from_directory(os.path.join(demo_root, 'pages'), f'{page}.html', max_age=0)
 
@@ -375,4 +379,3 @@ app = LocalProxy(get_app)
 
 if __name__ == '__main__':
     app.run(host='127.0.0.1', port=int(os.environ.get('TMALL_PORT', '5000')), debug=False)
-

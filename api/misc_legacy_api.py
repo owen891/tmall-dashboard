@@ -94,50 +94,6 @@ def batch_update():
         conn.commit()
     return jsonify({'success': True, 'updated': len(ids)})
 
-# ==================== 周期对比分析 API ====================
-
-#
-
-@misc_legacy_bp.route('/api/market/summary', methods=['GET'])  # 已迁移到 misc_legacy_api.py
-@cached_api('get_market_summary', ttl=30)
-def get_market_summary():
-    """获取市场分析摘要"""
-    category = request.args.get('category', '')
-    report_id = request.args.get('report_id', '')
-
-    with get_db() as conn:
-        query = 'SELECT * FROM market_analysis WHERE 1=1'
-        params = []
-        if category:
-            query += ' AND category_path = ?'
-            params.append(category)
-        if report_id:
-            query += ' AND id = ?'
-            params.append(report_id)
-        query += ' ORDER BY analysis_date DESC LIMIT 1'
-
-        row = conn.execute(query, params).fetchone()
-
-    if not row:
-        return jsonify({'meta': None, 'summary': {}, 'keywords_count': 0, 'empty': True})
-
-    data = dict(row)
-    return jsonify({
-        'meta': {
-            'category_path': data['category_path'],
-            'category_short': data['category_short'],
-            'period_30d': data['period_30d'],
-            'period_7d': data['period_7d'],
-            'period_trend': data['period_trend'],
-            'total_keywords': data['total_keywords'],
-            'avg_ctr_7d': data['avg_ctr_7d'],
-            'avg_cvr_30d': data['avg_cvr_30d'],
-            'top5_keywords': json.loads(data['top5_keywords']) if data['top5_keywords'] else [],
-        },
-        'summary': json.loads(data['summary_data']) if data['summary_data'] else {},
-        'keywords_count': data['total_keywords'],
-    })
-
 
 #
 

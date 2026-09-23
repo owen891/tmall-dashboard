@@ -41,6 +41,12 @@ from app import create_app
 from db import get_db
 app = create_app({'TESTING': True, 'DATABASE_PATH': _TEST_DB_PATH, 'SHOP_ID': '3828498662'})
 
+#: 事实行必须写对 shop_id，否则会被按店铺过滤掉。
+# daily_data.shop_id 的列默认值是 'default'，而这里 app 用的是真实店铺号，
+# 不显式写入就会造出「主档有商品、单日事实查不到」的假象，
+# 让 /api/products 的 daily+单日区间查询（走 JOIN 事实表）返回 0 条。
+_TEST_SHOP_ID = app.config['SHOP_ID']
+
 
 def _insert_contract_products():
     prefix = f"contract-{uuid.uuid4().hex[:10]}"
@@ -56,12 +62,12 @@ def _insert_contract_products():
             (inactive_id, 'Contract Inactive Product', 'Contract Tier B', 'Contract Style B', 'inactive', 1)
         )
         conn.execute(
-            "INSERT INTO daily_data (product_id, date, payment_amount, refund_amount, net_sales, ipv, pv, payment_conversion, ad_spend, ad_roi, buyers, avg_order_value) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            (active_id, '2026-04-01', 100, 0, 100, 10, 20, 0.1, 20, 5, 2, 50)
+            "INSERT INTO daily_data (shop_id, product_id, date, payment_amount, refund_amount, net_sales, ipv, pv, payment_conversion, ad_spend, ad_roi, buyers, avg_order_value) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (_TEST_SHOP_ID, active_id, '2026-04-01', 100, 0, 100, 10, 20, 0.1, 20, 5, 2, 50)
         )
         conn.execute(
-            "INSERT INTO daily_data (product_id, date, payment_amount, refund_amount, net_sales, ipv, pv, payment_conversion, ad_spend, ad_roi, buyers, avg_order_value) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            (inactive_id, '2026-04-01', 50, 0, 50, 5, 10, 0.2, 10, 5, 1, 50)
+            "INSERT INTO daily_data (shop_id, product_id, date, payment_amount, refund_amount, net_sales, ipv, pv, payment_conversion, ad_spend, ad_roi, buyers, avg_order_value) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (_TEST_SHOP_ID, inactive_id, '2026-04-01', 50, 0, 50, 5, 10, 0.2, 10, 5, 1, 50)
         )
         conn.execute(
             "INSERT INTO operation_actions (product_id, action_date, action_type, action_detail) VALUES (?, ?, ?, ?)",
@@ -159,9 +165,6 @@ class TestKpiEndpoints(SmokeTestBase):
 
     def test_funnel(self):
         self.assertGetNoCrash('/api/funnel', params={'dim': 'weekly'})
-
-    def test_industry_benchmark(self):
-        self.assertGetNoCrash('/api/industry_benchmark', params={'dim': 'weekly'})
 
     def test_report(self):
         self.assertGetNoCrash('/api/report', params={'dim': 'weekly'})
@@ -466,54 +469,6 @@ class TestReviewEndpoints(SmokeTestBase):
             self.assertEqual(os.listdir(upload_dir), [])
 
 
-class TestMarketEndpoints(SmokeTestBase):
-    """市场分析相关端点"""
-
-    def test_market_summary(self):
-        self.assertGetNoCrash('/api/market/summary')
-
-    def test_market_keywords(self):
-        self.assertGetNoCrash('/api/market/keywords')
-
-    def test_market_need_stats(self):
-        self.assertGetNoCrash('/api/market/need_stats')
-
-    def test_market_rankings(self):
-        self.assertGetNoCrash('/api/market/rankings')
-
-    def test_market_histograms(self):
-        self.assertGetNoCrash('/api/market/histograms')
-
-    def test_market_opportunities(self):
-        self.assertGetNoCrash('/api/market/opportunities')
-
-    def test_market_reports(self):
-        self.assertGetNoCrash('/api/market/reports')
-
-    def test_market_upload(self):
-        self.assertMutationNoCrash('POST', '/api/upload/market')
-
-    def test_market_upload_removes_staged_files_after_import_failure(self):
-        with tempfile.TemporaryDirectory(prefix='tmall-market-upload-') as upload_dir:
-            identified = {'f30': '30-search.xlsx', 'f7': '7-search.xlsx', 'ft': 'trend.xlsx'}
-            with patch('api.data_api.UPLOAD_FOLDER', upload_dir), patch(
-                'scripts.import_market.identify_market_files', return_value=identified,
-            ), patch(
-                'scripts.import_market.import_market_data', side_effect=RuntimeError('bad input'),
-            ):
-                response = self.client.post(
-                    '/api/upload/market',
-                    data={'files': [
-                        (io.BytesIO(b'30'), '30-search.xlsx'),
-                        (io.BytesIO(b'7'), '7-search.xlsx'),
-                        (io.BytesIO(b'trend'), 'trend.xlsx'),
-                    ]},
-                    content_type='multipart/form-data',
-                )
-            self.assertEqual(response.status_code, 500)
-            self.assertEqual(os.listdir(upload_dir), [])
-
-
 class TestCompareEndpoints(SmokeTestBase):
     """周期对比相关端点"""
 
@@ -565,11 +520,8 @@ class TestImportEndpoints(SmokeTestBase):
         finally:
             data_api._import_progress.pop(task_id, None)
 
-    def test_upload_keywords(self):
-        self.assertMutationNoCrash('POST', '/api/upload/keywords')
-
     def test_legacy_upload_errors_use_context_envelope(self):
-        for path in ('/api/upload/data', '/api/upload/reviews', '/api/upload/keywords', '/api/upload/market'):
+        for path in ('/api/upload/data', '/api/upload/reviews'):
             with self.subTest(path=path):
                 response = self.client.post(path)
                 self.assertEqual(response.status_code, 422)
@@ -746,13 +698,6 @@ class TestUserKpiEndpoints(SmokeTestBase):
         self.assertEqual(response.status_code, 422)
 
 
-class TestKeywordsEndpoints(SmokeTestBase):
-    """搜索关键词相关端点"""
-
-    def test_keywords_list(self):
-        self.assertGetNoCrash('/api/keywords')
-
-
 class TestToolEndpoints(SmokeTestBase):
     """工具箱相关端点"""
 
@@ -817,7 +762,6 @@ class TestRouteRegistry(unittest.TestCase):
         ('/api/product_target_progress', 'GET'),
         ('/api/customer_analysis', 'GET'),
         ('/api/funnel', 'GET'),
-        ('/api/industry_benchmark', 'GET'),
         ('/api/report', 'GET'),
         ('/api/review', 'GET'),
         # 商品
@@ -858,22 +802,12 @@ class TestRouteRegistry(unittest.TestCase):
         ('/api/reviews/summary', 'GET'),
         ('/api/reviews/list', 'GET'),
         ('/api/reviews/products', 'GET'),
-        # 市场
-        ('/api/upload/market', 'POST'),
-        ('/api/market/summary', 'GET'),
-        ('/api/market/keywords', 'GET'),
-        ('/api/market/need_stats', 'GET'),
-        ('/api/market/rankings', 'GET'),
-        ('/api/market/histograms', 'GET'),
-        ('/api/market/opportunities', 'GET'),
-        ('/api/market/reports', 'GET'),
         # 对比与生命周期
         ('/api/compare', 'GET'),
         ('/api/lifecycle', 'GET'),
         # 导入
         ('/api/upload/data', 'POST'),
         ('/api/import_progress/<task_id>', 'GET'),
-        ('/api/upload/keywords', 'POST'),
         # 系统
         ('/api/periods', 'GET'),
         ('/api/backup', 'POST'),
@@ -902,8 +836,6 @@ class TestRouteRegistry(unittest.TestCase):
         ('/api/user_kpis', 'POST'),
         ('/api/user_kpis/<int:kpi_id>', 'PUT'),
         ('/api/user_kpis/<int:kpi_id>', 'DELETE'),
-        # 关键词
-        ('/api/keywords', 'GET'),
         # 工具箱
         ('/api/tools/list', 'GET'),
         ('/api/tools/execute', 'POST'),

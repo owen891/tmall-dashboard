@@ -372,13 +372,6 @@ class OverviewContractTests(unittest.TestCase):
         self.assertEqual(len(matrix['data']['rows']), 1)
         self.assertEqual(matrix['data']['rows'][0]['date'], '2026-04-01')
 
-    def test_legacy_keywords_exposes_no_data_for_unknown_date(self):
-        payload = self.client.get('/api/keywords?date=2099-12-01').get_json()
-
-        self.assertEqual(payload['availability'], 'no-data')
-        self.assertEqual(payload['items'], [])
-        self.assertEqual(payload['total'], 0)
-
     def test_reviews_summary_exposes_no_data_without_reviews(self):
         payload = self.client.get('/api/reviews/summary').get_json()
 
@@ -599,7 +592,6 @@ class OverviewContractTests(unittest.TestCase):
             '/api/products?dim=monthly&period=not-a-date',
             '/api/ad_performance?dim=monthly&period=not-a-date',
             '/api/anomalies?dim=monthly&period=not-a-date',
-            '/api/industry_benchmark?dim=monthly&period=not-a-date',
             '/api/product_tags?dim=monthly&period=not-a-date',
         ):
             with self.subTest(path=path):
