@@ -75,6 +75,16 @@ foreach ($collector in $COLLECTORS) {
     $script = $collector.Script
     $scriptPath = Join-Path $COLLECTORS_DIR $script
 
+    # 双链互斥：RPA 链（/api/collect/trigger）持有该源的数据库租约时跳过，
+    # 避免计划任务与手动触发对同一数据源并发采集。
+    $leaseAlias = @{} ; foreach ($k in $sourceAliases.Keys()) { $leaseAlias[$sourceAliases[$k]] = $k }
+    $leaseKey = if ($leaseAlias.ContainsKey($collector.Script.Replace('.py', ''))) { $leaseAlias[$collector.Script.Replace('.py', '')] } else { $collector.Script.Replace('.py', '') }
+    $leaseCheck = & $VENV_PYTHON (Join-Path $ProjectRoot 'scripts\check_collect_lease.py') $leaseKey 2>$null
+    if ($LASTEXITCODE -eq 3) {
+        Write-Log "--- 跳过 $name ：另一条采集链（RPA 手动触发）持有租约，避免并发 ---"
+        continue
+    }
+
     $collectorKey = $collector.Script.Replace('.py', '')
     $selectedKeys = @($Sources | ForEach-Object { if ($sourceAliases.ContainsKey($_)) { $sourceAliases[$_] } else { $_.Replace('.py', '') } })
     if ($Sources.Count -gt 0 -and $selectedKeys -notcontains $collectorKey) {
