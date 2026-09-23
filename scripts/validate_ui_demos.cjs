@@ -109,11 +109,14 @@ assert(reviews.includes('../assets/reviews-live.js'), 'reviews: missing review A
 const dataCenter = read(path.join(pagesDir, 'data-center.html'));
 assert(dataCenter.includes('data-import-file'), 'data-center: missing import surface');
 assert(dataCenter.includes('data-import-fields'), 'data-center: missing field-mapping disclosure');
-assert(dataCenter.includes('../assets/data-center-live.js'), 'data-center: missing import API adapter');
+assert(dataCenter.includes('../assets/pages/data-center/import-workflow.js'), 'data-center: missing import workflow module');
+assert(dataCenter.includes('../assets/pages/data-center/identity-review.js'), 'data-center: missing identity review module');
+assert(dataCenter.includes('../assets/pages/data-center/capability-map.js'), 'data-center: missing capability map module');
+assert(dataCenter.includes('../assets/pages/data-center/page-capabilities.js'), 'data-center: missing page capabilities module');
 assert(dataCenter.includes('data-identity-review') && dataCenter.includes('data-identity-rows'), 'data-center: missing product identity review surface');
 assert(dataCenter.includes('data-governance-disclosure'), 'data-center: governance maps must be collapsible');
 assert(dataCenter.includes('aria-current="step"'), 'data-center: current import step must be announced');
-const dataCenterAdapter = read(path.join(root, 'assets', 'data-center-live.js'));
+const dataCenterAdapter = read(path.join(root, 'assets', 'pages', 'data-center', 'identity-review.js'));
 assert(dataCenterAdapter.includes("/api/product-identities?status=unresolved"), 'data-center: identity queue must use the review API');
 assert(dataCenterAdapter.includes("/api/product-identities/${encodeURIComponent(item.external_product_id)}/resolve"), 'data-center: identity resolution must use the audited API');
 assert(dataCenterAdapter.includes("/api/products?"), 'data-center: identity review must use existing product master candidates');

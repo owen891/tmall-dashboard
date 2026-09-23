@@ -1,3 +1,7 @@
+/* 兼容入口：实现已按 IIFE 边界拆分至 assets/pages/data-center/：
+ *   import-workflow.js / identity-review.js / capability-map.js / page-capabilities.js
+ * data-center 页面已改为直接引用四个模块；本文件保留给契约脚本的
+ * renderDataState 扫描与历史引用路径，不再被页面加载。 */
 (function () {
   const showToast = (message, options) => window.DemoShell?.showToast?.(message, options);
   const fileInput = document.querySelector('[data-import-file]');

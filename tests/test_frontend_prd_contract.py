@@ -170,14 +170,14 @@ class FrontendPrdContractTests(unittest.TestCase):
 
     def test_data_center_import_supports_multiple_table_files(self):
         page = self.read('frontend/ui_demo/pages/data-center.html')
-        adapter = self.read('frontend/ui_demo/assets/data-center-live.js')
+        adapter = self.read('frontend/ui_demo/assets/pages/data-center/import-workflow.js')
         self.assertIn('accept=".xlsx,.xls,.csv,.zip" data-import-file multiple', page)
         self.assertIn('Array.from(fileInput.files || [])', adapter)
         self.assertIn('for (const [index, file] of selectedFiles.entries())', adapter)
 
     def test_data_center_defaults_to_automatic_report_type_detection(self):
         page = self.read('frontend/ui_demo/pages/data-center.html')
-        adapter = self.read('frontend/ui_demo/assets/data-center-live.js')
+        adapter = self.read('frontend/ui_demo/assets/pages/data-center/import-workflow.js')
         self.assertIn('<option value="auto">自动识别</option>', page)
         self.assertLess(
             page.index('<option value="auto">自动识别</option>'),
@@ -187,7 +187,7 @@ class FrontendPrdContractTests(unittest.TestCase):
 
     def test_data_center_exposes_capability_map(self):
         page = self.read('frontend/ui_demo/pages/data-center.html')
-        adapter = self.read('frontend/ui_demo/assets/data-center-live.js')
+        adapter = self.read('frontend/ui_demo/assets/pages/data-center/capability-map.js')
         for hook in (
             'data-capability-summary', 'data-capability-filter',
             'data-capability-table', 'data-capability-detail',
@@ -200,11 +200,12 @@ class FrontendPrdContractTests(unittest.TestCase):
         self.assertIn('trigger?.focus()', adapter)
         self.assertIn('domain.evidence_level', adapter)
         self.assertIn('domain.freshness', adapter)
-        self.assertIn("DemoApi.domainRequest('/api/imports')", adapter)
+        self.assertIn("DemoApi.domainRequest('/api/imports')",
+                      self.read('frontend/ui_demo/assets/pages/data-center/import-workflow.js'))
 
     def test_data_center_exposes_page_capability_map(self):
         page = self.read('frontend/ui_demo/pages/data-center.html')
-        adapter = self.read('frontend/ui_demo/assets/data-center-live.js')
+        adapter = self.read('frontend/ui_demo/assets/pages/data-center/page-capabilities.js')
         for hook in (
             'data-page-capability-summary', 'data-page-capability-filter',
             'data-page-capability-table', 'data-page-capability-detail',
@@ -427,7 +428,7 @@ class FrontendPrdContractTests(unittest.TestCase):
         manage = self.read('frontend/ui_demo/assets/manage-live.js')
         manage_page = self.read('frontend/ui_demo/pages/manage.html')
         reviews = self.read('frontend/ui_demo/assets/reviews-live.js')
-        data_center = self.read('frontend/ui_demo/assets/data-center-live.js')
+        data_center = self.read('frontend/ui_demo/assets/pages/data-center/import-workflow.js')
 
         for value, label in (
             ('delisted', '下架'), ('P0', '紧急'), ('A', '优秀'),
@@ -496,7 +497,7 @@ class FrontendPrdContractTests(unittest.TestCase):
         self.assertIn('editDialog.addEventListener(\'cancel\'', adapter)
 
     def test_data_center_revert_explains_impact_before_request(self):
-        data_center = self.read('frontend/ui_demo/assets/data-center-live.js')
+        data_center = self.read('frontend/ui_demo/assets/pages/data-center/import-workflow.js')
         self.assertIn('确认撤销该批次', data_center)
         self.assertIn('影响', data_center)
 
@@ -676,7 +677,7 @@ class FrontendPrdContractTests(unittest.TestCase):
 
     def test_import_history_uses_its_own_status_region_and_shortens_hashes(self):
         page = self.read('frontend/ui_demo/pages/data-center.html')
-        adapter = self.read('frontend/ui_demo/assets/data-center-live.js')
+        adapter = self.read('frontend/ui_demo/assets/pages/data-center/import-workflow.js')
         self.assertIn('data-import-history-status', page)
         self.assertIn('historyStatus', adapter)
         self.assertIn('shortHash', adapter)
@@ -994,7 +995,7 @@ class FrontendPrdContractTests(unittest.TestCase):
         self.assertIn('comparison', overview)
 
     def test_multi_file_import_exposes_each_preview_mapping(self):
-        adapter = self.read('frontend/ui_demo/assets/data-center-live.js')
+        adapter = self.read('frontend/ui_demo/assets/pages/data-center/import-workflow.js')
         self.assertIn('data-import-preview-tabs', adapter)
         self.assertIn('activePreviewIndex', adapter)
         self.assertIn('render(previewQueue[activePreviewIndex])', adapter)
@@ -1017,7 +1018,7 @@ class FrontendPrdContractTests(unittest.TestCase):
         self.assertIn('retry: load', adapter)
 
     def test_data_center_does_not_silently_drop_template_settings_failure(self):
-        adapter = self.read('frontend/ui_demo/assets/data-center-live.js')
+        adapter = self.read('frontend/ui_demo/assets/pages/data-center/import-workflow.js')
         self.assertIn("renderDataState('source-unavailable'", adapter)
         self.assertIn('导入模板设置不可用', adapter)
 
@@ -1103,7 +1104,7 @@ class FrontendPrdContractTests(unittest.TestCase):
         self.assertIn('checkForUpdates()', adapter)
 
     def test_write_operations_lock_controls_and_restore_failed_state(self):
-        data_center = self.read('frontend/ui_demo/assets/data-center-live.js')
+        data_center = self.read('frontend/ui_demo/assets/pages/data-center/import-workflow.js')
         settings = self.read('frontend/ui_demo/assets/settings-live.js')
         promotion = self.read('frontend/ui_demo/assets/promotion-live.js')
 
