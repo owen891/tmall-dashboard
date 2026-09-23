@@ -5,7 +5,7 @@ API a durable run id without changing the collector scripts yet. Later stages
 can add leases, checkpoints and worker ownership on top of these records.
 """
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 import gzip
 import hashlib
@@ -79,6 +79,143 @@ def get_run(run_id, *, db_path=None):
     with get_db(db_path) as conn:
         row = conn.execute('SELECT * FROM collector_runs WHERE id = ?', (run_id,)).fetchone()
     return dict(row) if row else None
+
+
+ACTIVE_RUN_STATUSES = {'queued', 'running'}
+TERMINAL_RUN_STATUSES = {
+    'succeeded', 'succeeded_with_warnings', 'partial', 'blocked',
+    'auth_required', 'failed', 'cancelled',
+}
+
+
+def _parse_timestamp(value):
+    if not value:
+        return None
+    text = str(value).strip()
+    if text.endswith('Z'):
+        text = text[:-1] + '+00:00'
+    try:
+        parsed = datetime.fromisoformat(text)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+def reconcile_stale_runs(*, db_path=None, stale_after_seconds=7200, now=None):
+    """Fail abandoned queued/running runs and release their leases.
+
+    A collector process is considered abandoned only when its durable
+    ``updated_at`` is older than the threshold and its database lease is
+    missing or expired. The operation is idempotent and returns the runs
+    changed during this call.
+    """
+    threshold = max(1, int(stale_after_seconds))
+    current = now or datetime.now(timezone.utc)
+    if current.tzinfo is None:
+        current = current.replace(tzinfo=timezone.utc)
+    current = current.astimezone(timezone.utc)
+    cutoff = current - timedelta(seconds=threshold)
+    changed = []
+    with get_db(db_path) as conn:
+        rows = conn.execute(
+            '''SELECT id, source_key, shop_id, status, updated_at, created_at
+               FROM collector_runs
+               WHERE status IN ('queued', 'running')'''
+        ).fetchall()
+        for row in rows:
+            updated_at = _parse_timestamp(row['updated_at'] or row['created_at'])
+            if not updated_at or updated_at > cutoff:
+                continue
+            lease = conn.execute(
+                '''SELECT lease_until FROM collector_leases
+                   WHERE source_key = ? AND shop_id = ? AND run_id = ?''',
+                (row['source_key'], row['shop_id'], row['id']),
+            ).fetchone()
+            lease_until = _parse_timestamp(lease['lease_until']) if lease else None
+            if lease_until and lease_until > current:
+                continue
+            message = (
+                f"采集运行超过 {threshold} 秒未更新，已自动标记为失败"
+            )
+            conn.execute(
+                '''UPDATE collector_runs
+                   SET status='failed', error_code='STALE_RUN',
+                       error_message=?, finished_at=?, updated_at=?
+                   WHERE id=? AND status IN ('queued', 'running')''',
+                (message, current.isoformat(), current.isoformat(), row['id']),
+            )
+            conn.execute(
+                '''UPDATE collector_checkpoints
+                   SET status='failed', last_error_code='STALE_RUN',
+                       last_error_message=?, finished_at=?, updated_at=?
+                   WHERE run_id=? AND status IN ('queued', 'running')''',
+                (message, current.isoformat(), current.isoformat(), row['id']),
+            )
+            existing_quality = conn.execute(
+                '''SELECT 1 FROM collector_quality_results
+                   WHERE run_id=? AND rule_key='stale_run' LIMIT 1''',
+                (row['id'],),
+            ).fetchone()
+            if not existing_quality:
+                conn.execute(
+                    '''INSERT INTO collector_quality_results
+                       (run_id, rule_key, severity, expected_value,
+                        actual_value, status, message)
+                       VALUES (?, 'stale_run', 'error', 'active',
+                               'abandoned', 'failed', ?)''',
+                    (row['id'], message),
+                )
+            conn.execute(
+                '''DELETE FROM collector_leases
+                   WHERE source_key=? AND shop_id=? AND run_id=?''',
+                (row['source_key'], row['shop_id'], row['id']),
+            )
+            changed.append({
+                'id': row['id'],
+                'source_key': row['source_key'],
+                'shop_id': row['shop_id'],
+                'previous_status': row['status'],
+                'status': 'failed',
+                'error_code': 'STALE_RUN',
+            })
+        if changed:
+            conn.commit()
+    return changed
+
+
+def latest_runs_by_source(*, db_path=None, shop_id=None):
+    """Return the newest durable run for each source key."""
+    with get_db(db_path) as conn:
+        params = []
+        shop_clause = ''
+        if shop_id is not None:
+            shop_clause = ' AND candidate.shop_id = ?'
+            params.append(shop_id)
+        query = f'''
+            SELECT run.*
+            FROM collector_runs run
+            WHERE NOT EXISTS (
+                SELECT 1
+                FROM collector_runs candidate
+                WHERE candidate.source_key = run.source_key
+                  {shop_clause}
+                  AND (
+                      candidate.created_at > run.created_at
+                      OR (
+                          candidate.created_at = run.created_at
+                          AND candidate.id > run.id
+                      )
+                  )
+            )
+        '''
+        if shop_id is not None:
+            query += ' AND run.shop_id = ?'
+            params.append(shop_id)
+        query += ' ORDER BY run.source_key'
+        rows = conn.execute(query, params).fetchall()
+    return {row['source_key']: dict(row) for row in rows}
 
 
 def upsert_checkpoint(run_id, unit_type, unit_key, *, db_path=None, status,

@@ -159,19 +159,38 @@ def _run_retry(run_id, plan, *, collectors_dir, python_executable, script_name, 
                 for t, k, p in sorted(failed_keys, key=lambda item: str(item))
             ],
         }
-        if proc.returncode == 0:
-            update_run(run_id, status='succeeded', db_path=db_path,
-                       stats={'retry_units': len(plan['units']), 'output_lines': len(output.splitlines()),
-                              'retry_summary': retry_summary})
+        retry_stats = {
+            'retry_units': len(plan['units']),
+            'output_lines': len(output.splitlines()),
+            'retry_summary': retry_summary,
+        }
+        if proc.returncode == 0 and not failed_keys:
+            update_run(run_id, status='succeeded', db_path=db_path, stats=retry_stats)
             record_quality_result(run_id, 'retry_process_exit', db_path=db_path,
                                   expected_value=0, actual_value=proc.returncode, status='passed')
+            record_quality_result(run_id, 'retry_completion', db_path=db_path,
+                                  expected_value=0, actual_value=0, status='passed')
+        elif proc.returncode == 0:
+            completion_status = 'partial' if succeeded_keys else 'failed'
+            update_run(run_id, status=completion_status, db_path=db_path,
+                       error_code='PARTIAL_RETRY' if completion_status == 'partial' else 'RETRY_UNRESOLVED',
+                       error_message=f'重试仍有 {len(failed_keys)} 个 unit 未恢复',
+                       stats=retry_stats)
+            record_quality_result(run_id, 'retry_process_exit', db_path=db_path,
+                                  expected_value=0, actual_value=proc.returncode, status='passed')
+            record_quality_result(run_id, 'retry_completion', db_path=db_path,
+                                  expected_value=0, actual_value=len(failed_keys), status='failed',
+                                  message=f'重试仍有 {len(failed_keys)} 个 unit 未恢复')
         else:
             update_run(run_id, status='failed', db_path=db_path,
                        error_code='PROCESS_FAILED', error_message=output[-2000:],
-                       stats={'retry_units': len(plan['units']), 'retry_summary': retry_summary})
+                       stats=retry_stats)
             record_quality_result(run_id, 'retry_process_exit', db_path=db_path,
                                   expected_value=0, actual_value=proc.returncode,
                                   status='failed', message=output[-2000:])
+            record_quality_result(run_id, 'retry_completion', db_path=db_path,
+                                  expected_value=0, actual_value=len(failed_keys), status='failed',
+                                  message='重试进程未正常完成')
     except subprocess.TimeoutExpired:
         update_run(run_id, status='failed', db_path=db_path,
                    error_code='TIMEOUT', error_message='局部重试超过 900 秒')

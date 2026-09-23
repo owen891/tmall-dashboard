@@ -48,6 +48,8 @@ PROMOTION_FIELDS = (
 PRODUCT_LABELS = {
     'product_id': '商品 ID', 'title': '商品', 'payment_amount': '销售额',
     'net_sales': '净销售额', 'refund_amount': '退款金额', 'refund_rate': '退款率',
+    'gross_profit': '毛利', 'operating_profit': '利润（支付预估）',
+    'profit_rate': '利润率', 'product_cost': '货品成本',
     'conversion': '转化率', 'payment_conversion_rate': '支付转化率',
     'ad_spend': '推广花费', 'roi': 'ROI', 'overall_roi': '整体 ROI',
     'tier': '分层', 'style': '风格', 'lifecycle_stage': '生命周期阶段',
@@ -73,6 +75,7 @@ def _product_fields():
         'payment_amount', 'payment_count', 'net_sales', 'refund_amount',
         'refund_rate', 'conversion', 'payment_conversion_rate', 'ad_spend',
         'roi', 'overall_roi', 'paid_ratio', 'expense_ratio', 'score',
+        'gross_profit', 'operating_profit', 'profit_rate', 'product_cost',
         'presale_amount', 'presale_qty', 'search_click_rate', 'category_width',
     }
     return [

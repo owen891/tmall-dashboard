@@ -88,6 +88,16 @@ DAILY_FIELD_COLUMNS = {
     'operating_profit': 'operating_profit',
     'profit_rate': 'profit_rate',
     'profit_target': 'profit_target',
+    # 推广平台明细（BI「商品总览」）。
+    # 万相台 = 万相台无界版消耗；万相台成交金额用于推导无界 ROI；
+    # 货品全站推花费 / 全站推广成交金额为「全站推广」口径；
+    # 首单礼金为礼金类费用；品牌新享营销托管软件服务费为「商品营销托管」口径。
+    'wujie_spend': 'wujie_spend',
+    'wujie_payment': 'wujie_payment',
+    'product_sitewide_spend': 'product_sitewide_spend',
+    'product_sitewide_payment': 'product_sitewide_payment',
+    'gift_cost': 'gift_cost',
+    'brand_marketing_spend': 'brand_marketing_spend',
 }
 
 PRIMARY_SOURCES = {
@@ -184,7 +194,7 @@ def _row_value(row, key, default=None):
 def _load_candidates(connection, product_id, stat_date, field_key, legacy=None, shop_id='default'):
     rows = connection.execute(
         '''SELECT source_system, source_type, source_batch_id, payload_json
-           FROM daily_data_observations
+           FROM daily_data_observations INDEXED BY idx_daily_observations_latest
            WHERE shop_id = ? AND product_id = ? AND date = ?
            ORDER BY observed_at DESC, id DESC''',
         (shop_id, product_id, stat_date),
@@ -271,7 +281,7 @@ def _derive_formula_fields(row):
 
 
 def _materialize_daily_fact(connection, product_id, stat_date, source_system=None,
-                            source_filename='', shop_id='default', preserve_legacy=True):
+                            source_filename='', source_type=None, shop_id='default', preserve_legacy=True):
     existing = connection.execute(
         'SELECT * FROM daily_data WHERE shop_id = ? AND product_id = ? AND date = ?',
         (shop_id, product_id, stat_date),
@@ -383,6 +393,17 @@ def _materialize_daily_fact(connection, product_id, stat_date, source_system=Non
                WHERE shop_id = ? AND product_id = ? AND date = ? AND field_key = ?''',
             (json.dumps(value, ensure_ascii=False), shop_id, product_id, stat_date, field_key),
         )
+    # A dated BI overview is a complete snapshot. Fields that the BI payload
+    # does not provide must stay NULL, otherwise SQLite column defaults make
+    # them look like real zeroes in the dashboard (notably order_amount and
+    # paid/organic/recommendation traffic).
+    if source_system == 'business_advisor' and (
+        str(source_filename).startswith('bi_api_')
+        or source_type in AUTHORITATIVE_SNAPSHOT_SOURCE_TYPES
+    ):
+        for daily_column in DAILY_FIELD_COLUMNS.values():
+            if daily_column and daily_column not in effective:
+                effective[daily_column] = None
     if not effective:
         if existing is not None:
             connection.execute(
@@ -437,7 +458,7 @@ def record_daily_observation(connection, row, source_type, source_filename='', s
              AND source_type = ? AND source_batch_id IS ?''',
         (shop_id, product_id, stat_date, source_system, source_type, source_batch_id),
     ).fetchone()
-    if previous and previous['payload_json']:
+    if previous and previous['payload_json'] and source_type not in AUTHORITATIVE_SNAPSHOT_SOURCE_TYPES:
         old_fields = json.loads(previous['payload_json'])
         old_fields.update(fields)
         fields = old_fields
@@ -454,7 +475,7 @@ def record_daily_observation(connection, row, source_type, source_filename='', s
     )
     return _materialize_daily_fact(
         connection, product_id, stat_date, source_system=source_system,
-        source_filename=source_filename, shop_id=shop_id,
+        source_filename=source_filename, source_type=source_type, shop_id=shop_id,
     )
 
 
@@ -612,7 +633,7 @@ class SourceResolutionService:
             if stat_date:
                 clauses.append("date = ?"); params.append(stat_date)
             rows = connection.execute(
-                f"SELECT * FROM daily_data_observations WHERE {' AND '.join(clauses)} ORDER BY observed_at DESC, id DESC",
+                f"SELECT * FROM daily_data_observations INDEXED BY idx_daily_observations_latest WHERE {' AND '.join(clauses)} ORDER BY observed_at DESC, id DESC",
                 params,
             ).fetchall()
         return [dict(row) for row in rows]
