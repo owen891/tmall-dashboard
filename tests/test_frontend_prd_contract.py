@@ -11,6 +11,15 @@ class FrontendPrdContractTests(unittest.TestCase):
     def read(self, relative_path):
         return (ROOT / relative_path).read_text(encoding='utf-8')
 
+    def read_global_styles(self):
+        """全局样式库合并视图：components.css + themes/*-domain.css。
+
+        域样式已按功能前缀迁入 themes/，断言不应绑定物理文件归属。"""
+        parts = [self.read('frontend/ui_demo/assets/components.css')]
+        for domain in ('product', 'promotion', 'overview', 'lifecycle', 'settings'):
+            parts.append(self.read(f'frontend/ui_demo/assets/themes/{domain}-domain.css'))
+        return '\n'.join(parts)
+
     def test_global_header_keeps_only_date_and_compare_controls(self):
         shell = self.read('frontend/ui_demo/assets/shell.js')
         self.assertIn('data-date-preset', shell)
@@ -124,7 +133,7 @@ class FrontendPrdContractTests(unittest.TestCase):
         self.assertEqual(len(keys), len(export_columns))
         self.assertIn("tmall-overview-matrix-columns-v2", adapter)
         page = self.read('frontend/ui_demo/pages/overview.html')
-        styles = self.read('frontend/ui_demo/assets/components.css')
+        styles = self.read_global_styles()
         self.assertIn('overview-matrix-columns-dialog', page)
         self.assertIn('data-overview-matrix-columns-select-all', page)
         self.assertIn('data-overview-matrix-columns-clear-all', page)
@@ -487,7 +496,7 @@ class FrontendPrdContractTests(unittest.TestCase):
     def test_lifecycle_editor_is_a_real_modal_and_closes_out_of_layout(self):
         page = self.read('frontend/ui_demo/pages/lifecycle.html')
         adapter = self.read('frontend/ui_demo/assets/lifecycle-live.js')
-        styles = self.read('frontend/ui_demo/assets/components.css')
+        styles = self.read_global_styles()
         self.assertIn('aria-labelledby="lifecycle-edit-title"', page)
         self.assertIn('data-lifecycle-edit-product', page)
         self.assertIn('data-lifecycle-edit-cancel', page)
@@ -810,7 +819,7 @@ class FrontendPrdContractTests(unittest.TestCase):
 
     def test_product_detail_dialog_keeps_search_analysis_in_primary_detail_flow(self):
         component = self.read('frontend/ui_demo/assets/product-detail-dialog.js')
-        styles = self.read('frontend/ui_demo/assets/components.css')
+        styles = self.read_global_styles()
         self.assertIn("['search', '搜索分析']", component)
         self.assertIn('function renderSearch', component)
         self.assertIn("if (tab === 'search') panel.append(renderSearch(detail));", component)
@@ -821,7 +830,7 @@ class FrontendPrdContractTests(unittest.TestCase):
     def test_product_detail_overview_has_linked_operating_trend(self):
         page = self.read('frontend/ui_demo/pages/products.html')
         component = self.read('frontend/ui_demo/assets/product-detail-dialog.js')
-        styles = self.read('frontend/ui_demo/assets/components.css')
+        styles = self.read_global_styles()
         self.assertIn('../assets/echarts-custom.min.js', page)
         self.assertIn('../assets/charts.js', page)
         self.assertIn('function renderOverviewTrend', component)
@@ -879,7 +888,7 @@ class FrontendPrdContractTests(unittest.TestCase):
         self.assertIn('加购成本', component)
         self.assertIn('拉新成本', component)
         self.assertIn('引导潜客占比', component)
-        self.assertIn('.product-detail-promotion-metrics', self.read('frontend/ui_demo/assets/components.css'))
+        self.assertIn('.product-detail-promotion-metrics', self.read_global_styles())
         self.assertIn("setAttribute('role', 'tabpanel')", component)
 
     def test_dynamic_dialogs_declare_registered_modal_kinds(self):
@@ -901,7 +910,7 @@ class FrontendPrdContractTests(unittest.TestCase):
 
     def test_open_dialogs_lock_the_document_scroll_root(self):
         shell_styles = self.read('frontend/ui_demo/assets/shell.css')
-        component_styles = self.read('frontend/ui_demo/assets/components.css')
+        component_styles = self.read_global_styles()
         self.assertIn('html:has(dialog[open])', shell_styles)
         self.assertIn('overscroll-behavior: none', shell_styles)
         self.assertIn('.modal-form__body', component_styles)
@@ -916,7 +925,7 @@ class FrontendPrdContractTests(unittest.TestCase):
     def test_lifecycle_detail_uses_tabbed_centered_panels(self):
         lifecycle = self.read('frontend/ui_demo/assets/lifecycle-live.js')
         page = self.read('frontend/ui_demo/pages/lifecycle.html')
-        styles = self.read('frontend/ui_demo/assets/components.css')
+        styles = self.read_global_styles()
         self.assertIn("detailTab: 'overview'", lifecycle)
         self.assertIn('detailTabUI', lifecycle)
         self.assertIn('dataset.lifecycleDetailTab', lifecycle)
@@ -934,7 +943,7 @@ class FrontendPrdContractTests(unittest.TestCase):
     def test_lifecycle_field_settings_cover_monthly_operating_sections(self):
         lifecycle = self.read('frontend/ui_demo/assets/lifecycle-live.js')
         settings = self.read('services/settings_service.py')
-        styles = self.read('frontend/ui_demo/assets/components.css')
+        styles = self.read_global_styles()
         for field in ('net_sales', 'visitors', 'payment_conversion', 'refund_rate', 'repurchase_rate', 'cross_sell_rate'):
             self.assertIn(field, lifecycle)
             self.assertIn(field, settings)
@@ -945,7 +954,7 @@ class FrontendPrdContractTests(unittest.TestCase):
 
     def test_shared_typography_tokens_cover_detail_dialog_scales(self):
         tokens = self.read('frontend/ui_demo/assets/tokens.css')
-        styles = self.read('frontend/ui_demo/assets/components.css')
+        styles = self.read_global_styles()
         self.assertIn('--font-size-meta: 11px', tokens)
         self.assertIn('--font-size-secondary: 12px', tokens)
         self.assertIn('--font-size-body: 13px', tokens)
@@ -969,7 +978,7 @@ class FrontendPrdContractTests(unittest.TestCase):
 
     def test_promotion_tabs_do_not_fabricate_attribution_or_unnamed_products(self):
         adapter = self.read('frontend/ui_demo/assets/promotion-live.js')
-        styles = self.read('frontend/ui_demo/assets/components.css')
+        styles = self.read_global_styles()
         self.assertNotIn('推算归因成交', adapter)
         self.assertNotIn('未命名商品', adapter)
         self.assertIn("performance.data?.breakdowns", adapter)
@@ -1039,7 +1048,7 @@ class FrontendPrdContractTests(unittest.TestCase):
         lifecycle_page = self.read('frontend/ui_demo/pages/lifecycle.html')
         products = self.read('frontend/ui_demo/assets/products-live.js')
         products_page = self.read('frontend/ui_demo/pages/products.html')
-        components = self.read('frontend/ui_demo/assets/components.css')
+        components = self.read_global_styles()
         settings = self.read('frontend/ui_demo/assets/settings-live.js')
 
         self.assertIn('data-skip-link', shell)
@@ -1069,7 +1078,7 @@ class FrontendPrdContractTests(unittest.TestCase):
 
     def test_business_details_use_centered_dialog_widths(self):
         shell = self.read('frontend/ui_demo/assets/shell.css')
-        components = self.read('frontend/ui_demo/assets/components.css')
+        components = self.read_global_styles()
 
         self.assertIn('width: min(720px, calc(100vw - 32px))', shell)
         self.assertIn('width: min(680px, calc(100vw - 32px))', components)
@@ -1123,7 +1132,7 @@ class FrontendPrdContractTests(unittest.TestCase):
 
     def test_frontend_presentation_contract_keeps_shared_styles_and_resumable_views(self):
         promotion_page = self.read('frontend/ui_demo/pages/promotion.html')
-        components = self.read('frontend/ui_demo/assets/components.css')
+        components = self.read_global_styles()
         products = self.read('frontend/ui_demo/assets/products-live.js')
         promotion = self.read('frontend/ui_demo/assets/promotion-live.js')
         lifecycle = self.read('frontend/ui_demo/assets/lifecycle-live.js')

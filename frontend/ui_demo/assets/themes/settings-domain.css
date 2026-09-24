@@ -1,0 +1,82 @@
+/* 设置域样式（.settings-* 组件）
+ * 从 components.css 以 postcss AST 切分迁出（功能前缀归属，非页面归属）。
+ * 全局加载：混合 @media 已按域拆壳，规则级等价校验 1805/1805 零丢失。 */
+
+.settings-template-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; }
+.settings-template-grid h4 { margin: 0 0 8px; font-size: var(--font-size-secondary); }
+.settings-template-grid .filter-group { align-items: start; flex-wrap: wrap; }
+.settings-template-grid .status-list__item { margin-top: 6px; }
+.settings-template-field-selector { min-width: 0; margin: var(--space-2) 0; }
+@media (max-width: 780px) { .settings-template-grid { grid-template-columns: 1fr; } }
+.settings-category-panel { margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--border-default); }
+.settings-category-list { display: grid; gap: 8px; }
+.settings-category-row { display: grid; grid-template-columns: minmax(100px, .8fr) minmax(120px, 1fr) minmax(140px, 1.2fr) auto auto auto; align-items: center; gap: 8px; }
+.settings-scope-info { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 8px 0; }
+@media (max-width: 780px) { .settings-category-row { grid-template-columns: repeat(2, minmax(0, 1fr)); } .settings-category-row .ui-button { grid-column: 2; } }
+.review-summary-grid, .settings-summary-grid { margin-bottom: 16px; }
+.review-summary-grid .ui-metric-card, .settings-summary-grid .ui-metric-card { min-height: 104px; }
+.settings-summary__value--text { font-size: var(--font-size-kpi); text-transform: capitalize; }
+.settings-template-panel .panel__header { align-items: center; }
+.settings-template-panel .panel__header > .ui-button { flex: 0 0 auto; }
+.settings-workspace { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 16px; align-items: start; min-width: 0; }
+.settings-tree { position: sticky; top: calc(var(--topbar-height) + var(--space-4)); display: grid; align-content: start; gap: 3px; min-width: 0; max-width: 100%; max-height: calc(100dvh - var(--topbar-height) - var(--space-6)); padding: 8px; overflow-y: auto; overflow-x: hidden; border: 1px solid var(--border-default); border-radius: var(--radius-lg); background: var(--surface-base); }
+.settings-tree a { display: flex; min-height: 34px; align-items: center; padding: 7px 9px; border-radius: var(--radius-md); color: var(--text-secondary); font-size: var(--font-size-secondary); text-decoration: none; }
+.settings-tree a:hover, .settings-tree a[aria-current="true"] { background: var(--brand-tint); color: var(--brand); font-weight: 600; }
+.settings-main, .goals-page { gap: var(--space-5); }
+.settings-main > .ui-panel[data-settings-form-panel] { order: -2; }
+.settings-main > .settings-template-panel { order: -1; }
+.settings-main > .settings-template-panel .settings-template-grid[hidden] { display: none; }
+.settings-form-section { grid-column: 1 / -1; padding-top: var(--space-1); border-top: 1px solid var(--border-default); }
+.settings-form-section h3 { margin: 0; font-size: var(--font-size-body); }
+.settings-form-section p { margin: var(--space-1) 0 0; color: var(--text-secondary); font-size: var(--font-size-meta); }
+.settings-goal-link { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); grid-column: 1 / -1; padding: var(--space-2) var(--space-3); border: 1px solid var(--border-default); border-radius: var(--radius-md); background: var(--surface-muted); color: var(--text-secondary); font-size: var(--font-size-meta); }
+.settings-goal-link a { flex: 0 0 auto; text-decoration: none; }
+.settings-tab-panel { display: block; }
+.settings-tab-panel[hidden] { display: none; }
+.settings-section--collapsible > .panel__header { margin-bottom: 0; }
+.settings-savebar { position: sticky; top: calc(100dvh - var(--control-height-touch) - var(--space-3)); z-index: 4; display: flex; min-height: var(--control-height-touch); align-items: center; justify-content: flex-end; gap: var(--space-2); grid-column: 1 / -1; margin-top: var(--space-4); padding: var(--space-2); border: 1px solid var(--border-default); border-radius: var(--radius-md); background: color-mix(in srgb, var(--surface-base) 94%, transparent); box-shadow: var(--elevation-md); }
+.settings-savebar__dirty { margin-right: auto; color: var(--text-secondary); font-size: var(--font-size-meta); }
+.settings-savebar.is-dirty .settings-savebar__dirty { color: var(--warning); font-weight: 600; }
+.settings-savebar [data-settings-status] { margin: 0; }
+.settings-dictionary-section { margin-top: var(--space-5); padding-top: var(--space-4); border-top: 1px solid var(--border-default); }
+.settings-dictionary-section .panel__header { margin-bottom: var(--space-3); }
+.settings-category-panel { display: grid; gap: var(--space-4); margin-top: 0; padding-top: 0; border-top: 0; }
+.settings-template-panel { display: grid; gap: var(--space-4); }
+.settings-main > .ui-panel[data-settings-form-panel][hidden] { display: none; }
+@media (max-width: 560px) {
+  .settings-main [data-settings-form] { padding-bottom: calc(var(--control-height-touch) + var(--space-6)); }
+  .settings-template-panel, .settings-category-panel { padding-bottom: calc(var(--control-height-touch) + var(--space-6)); }
+  .settings-savebar { position: fixed; right: 0; bottom: 0; left: 0; top: auto; margin: 0; border-radius: 0; }
+}
+.settings-main [data-settings-form] { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.settings-main form[data-settings-form][hidden] { display: none; }
+.settings-main [data-settings-form] > .settings-template-panel,
+.settings-main [data-settings-form] > .settings-category-panel,
+.settings-main [data-settings-form] > .settings-tab-panel > .settings-credentials { grid-column: 1 / -1; }
+.settings-main [data-settings-form] { overflow: visible; }
+.settings-main [data-settings-form] .settings-form-section,
+.settings-main [data-settings-form] .settings-goal-link,
+.settings-main [data-settings-form] > button,
+.settings-main [data-settings-form] > .settings-savebar,
+.settings-main [data-settings-form] > [data-settings-status] { grid-column: 1 / -1; }
+.settings-main [data-settings-form] > [data-settings-status] { margin: 0; }
+.settings-main [data-settings-form] .settings-goal-link { align-items: center; }
+@media (max-width: 620px) {
+  .settings-main [data-settings-form] { grid-template-columns: 1fr; }
+  .settings-main [data-settings-form] .settings-form-section,
+  .settings-main [data-settings-form] .settings-goal-link,
+  .settings-main [data-settings-form] > button,
+  .settings-main [data-settings-form] > .settings-savebar,
+  .settings-main [data-settings-form] > [data-settings-status] { grid-column: auto; }
+}
+@media (max-width: 1000px) {
+  .reviews-workspace, .settings-workspace { grid-template-columns: minmax(0, 1fr); min-width: 0; }
+  .reviews-workspace > .ui-panel:last-child { position: static; }
+  .settings-tree { position: static; width: 100%; max-width: 100%; max-height: none; min-width: 0; grid-template-columns: repeat(3, minmax(0, 1fr)); overflow: visible; }
+  .settings-tree a { min-width: 0; max-width: 100%; justify-content: center; overflow: hidden; text-align: center; text-overflow: ellipsis; white-space: nowrap; }
+}
+@media (max-width: 560px) {
+  .data-center-stepper { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .settings-tree { grid-template-columns: repeat(2, minmax(0, 1fr)); min-width: 0; width: 100%; max-width: 100%; }
+  .settings-tree a { min-width: 0; max-width: 100%; min-height: var(--control-height-touch); padding-block: var(--space-2); }
+}
