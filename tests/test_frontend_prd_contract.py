@@ -283,7 +283,7 @@ class FrontendPrdContractTests(unittest.TestCase):
         for script in (
             'overview-live.js', 'products-live.js', 'product-detail-live.js',
             'promotion-live.js', 'lifecycle-live.js', 'goals-live.js',
-            'data-center-live.js', 'reviews-live.js', 'settings-live.js', 'manage-live.js',
+            'pages/data-center/import-workflow.js', 'reviews-live.js', 'settings-live.js', 'manage-live.js',
         ):
             content = self.read(f'frontend/ui_demo/assets/{script}')
             self.assertIn('DemoApi.can(', content, script)

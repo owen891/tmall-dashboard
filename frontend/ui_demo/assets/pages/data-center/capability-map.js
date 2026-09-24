@@ -15,11 +15,7 @@
   let catalog = null;
   let trigger = null;
 
-  const stateLabels = {
-    available: '可用', partial: '部分可用', 'no-data': '暂无数据',
-    'missing-fields': '字段缺失', 'source-unavailable': '来源不可用',
-    'insufficient-data': '数据不足', 'calculation-failed': '计算失败'
-  };
+  const availabilityLabel = (value) => window.DemoLabels?.label('availability', value, value);
   const make = (tag, text, className) => {
     const node = document.createElement(tag);
     if (text !== undefined) node.textContent = text;
@@ -42,7 +38,7 @@
   const openDetail = (domain, button) => {
     trigger = button;
     detailTitle.textContent = domain.label;
-    detailSubtitle.textContent = `${stateLabels[domain.availability] || domain.availability} · ${coverageText(domain.coverage)}`;
+    detailSubtitle.textContent = `${availabilityLabel(domain.availability)} · ${coverageText(domain.coverage)}`;
     detailBody.replaceChildren(
       detailSection('证据等级', [domain.evidence_level || 'insufficient']),
       detailSection('数据新鲜度', [
@@ -53,8 +49,8 @@
       detailSection('逐表覆盖', (domain.source_coverage || []).map((item) => `${item.table}: ${coverageText(item.coverage)}`)),
       detailSection('粒度', domain.grain),
       detailSection('来源批次', domain.source_batches),
-      detailSection('原始字段', domain.raw_fields.map((field) => `${field.label}: ${stateLabels[field.availability] || field.availability}`)),
-      detailSection('派生指标', domain.derived_metrics.map((metric) => `${metric.label} = ${metric.formula} (${stateLabels[metric.availability] || metric.availability})`)),
+      detailSection('原始字段', domain.raw_fields.map((field) => `${field.label}: ${availabilityLabel(field.availability)}`)),
+      detailSection('派生指标', domain.derived_metrics.map((metric) => `${metric.label} = ${metric.formula} (${availabilityLabel(metric.availability)})`)),
       detailSection('消费页面', domain.consumer_pages),
       detailSection('限制', domain.limitations)
     );

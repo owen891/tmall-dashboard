@@ -190,13 +190,15 @@ assert(/\.toolbox-dialog\s+\.ui-data-table\s*\{[^}]*min-width:\s*100%/i.test(she
 assert(/\.demo-tool\s*{[^}]*height:\s*var\(--icon-button-size\)/i.test(shellCss), 'shell.css: topbar icon buttons must use the shared size token');
 assert(/\.demo-tool\s+\.lucide\s*{[^}]*width:\s*var\(--icon-control\)/i.test(shellCss), 'shell.css: Lucide topbar icons must use the shared icon token');
 
-for (const adapter of ['overview-live.js', 'products-live.js', 'promotion-live.js', 'lifecycle-live.js', 'creative-board-live.js']) {
+const dataCenterModules = ['import-workflow.js', 'identity-review.js', 'capability-map.js', 'page-capabilities.js'];
+
+for (const adapter of ['overview-live.js', 'products-live.js', 'promotion-live.js', 'lifecycle-live.js', 'creative-board-live.js', ...dataCenterModules.map((name) => `pages/data-center/${name}`)]) {
   const source = read(path.join(root, 'assets', adapter));
   assert(source.includes('DemoApi.request(') || source.includes('DemoApi.domainRequest('), `assets/${adapter}: must use required API requests`);
   assert(!source.includes('DemoApi.optional('), `assets/${adapter}: fallback is forbidden`);
 }
 
-for (const adapter of ['overview-live.js', 'products-live.js', 'promotion-live.js', 'lifecycle-live.js', 'reviews-live.js', 'data-center-live.js', 'settings-live.js', 'goals-live.js']) {
+for (const adapter of ['overview-live.js', 'products-live.js', 'promotion-live.js', 'lifecycle-live.js', 'reviews-live.js', 'pages/data-center/import-workflow.js', 'pages/data-center/capability-map.js', 'pages/data-center/page-capabilities.js', 'settings-live.js', 'goals-live.js']) {
   const source = read(path.join(root, 'assets', adapter));
   assert(source.includes('DemoApi.renderDataState('), `assets/${adapter}: must render shared data states`);
 }

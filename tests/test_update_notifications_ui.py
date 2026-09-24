@@ -5,7 +5,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_import_and_scan_flows_announce_completion_results():
-    data_center = (PROJECT_ROOT / 'frontend' / 'ui_demo' / 'assets' / 'data-center-live.js').read_text(encoding='utf-8')
+    data_center = (PROJECT_ROOT / 'frontend' / 'ui_demo' / 'assets' / 'pages' / 'data-center' / 'import-workflow.js').read_text(encoding='utf-8')
     settings = (PROJECT_ROOT / 'frontend' / 'ui_demo' / 'assets' / 'settings-live.js').read_text(encoding='utf-8')
 
     assert 'showToast' in data_center

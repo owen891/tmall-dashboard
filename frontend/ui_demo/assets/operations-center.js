@@ -3,10 +3,7 @@
   if (!root || !window.DemoApi) return;
 
   const $ = (selector) => root.querySelector(selector);
-  const stateLabels = {
-    draft: '草稿', pending_execution: '待执行', executing: '执行中', observing: '观察中',
-    blocked: '阻塞', calculation_failed: '计算失败', pending_review: '待复盘', completed: '已完成', cancelled: '已取消',
-  };
+  const statusLabel = (value) => window.DemoLabels?.label('status', value, value) || value || '--';
   const toneFor = (value) => ['blocked', 'calculation_failed'].includes(value) ? 'danger'
     : ['pending_review', 'pending_execution'].includes(value) ? 'warning'
       : ['completed', 'observing'].includes(value) ? 'success' : 'info';
@@ -56,7 +53,7 @@
   function actionDetail(action) { return action.action_detail || action.purpose_note || '已创建运营动作，等待后续处理。'; }
   function actionPurpose(action) { return action.purpose_note || '未填写动作目的'; }
   function actionMeta(action) {
-    const parts = [`计划 ${formatDate(action.planned_at) || '--'}`, stateLabels[action.status] || action.status || '--'];
+    const parts = [`计划 ${formatDate(action.planned_at) || '--'}`, statusLabel(action.status)];
     if (action.assigned_to) parts.push(`负责人 ${action.assigned_to}`);
     if (action.observer_window_days) parts.push(`观察 ${action.observer_window_days} 天`);
     if (action.overdue) parts.push('已逾期');
@@ -94,7 +91,7 @@
     const detail = document.createElement('p'); detail.className = 'operations-center__item-detail'; detail.textContent = `执行：${actionDetail(action)}`;
     const hasRealPurpose = action.purpose_note && action.purpose_note !== action.action_detail;
     copy.append(head, meta, hasRealPurpose ? purpose : detail);
-    const status = document.createElement('span'); status.className = `ui-badge ui-badge--${tone}`; status.textContent = stateLabels[action.status] || action.status || '--';
+    const status = document.createElement('span'); status.className = `ui-badge ui-badge--${tone}`; status.textContent = statusLabel(action.status);
     if (compact) head.appendChild(status); else item.append(marker, copy, status);
     if (!compact) {
       const actions = document.createElement('div'); actions.className = 'operations-center__item-actions';

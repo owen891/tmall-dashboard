@@ -8,6 +8,7 @@
     priority: { P0: 'P0 · 紧急', P1: 'P1 · 高', P2: 'P2 · 中', P3: 'P3 · 低' },
     rating: { A: 'A · 优秀', B: 'B · 良好', C: 'C · 待提升', D: 'D · 未达标' },
     quality: { passed: '通过', failed: '未通过' },
+    availability: { available: '可用', partial: '部分可用', 'no-data': '暂无数据', 'missing-fields': '字段缺失', 'source-unavailable': '来源不可用', 'insufficient-data': '数据不足', 'calculation-failed': '计算失败' },
     field: { product_id: '商品编号', product_name: '商品名称', date: '日期', payment_amount: '支付金额', successful_refund_amount: '成功退款金额', product_visitors: '商品访客数', payment_buyers: '支付买家数', returning_payment_buyers: '复购买家数', ad_spend: '推广花费', channel: '推广渠道', campaign_id: '推广计划', unit_id: '推广单元', attributed_payment_amount: '推广成交' },
     match: { empty: '空列', manual: '手动匹配', unmatched: '未匹配', template: '模板匹配', exact: '精确匹配', alias: '别名匹配', text: '文本', number: '数值', date: '日期' },
   };
