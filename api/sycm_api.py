@@ -4,7 +4,6 @@
 """
 from datetime import date as date_type, timedelta
 from flask import Blueprint, request, jsonify
-from db import get_connection
 from api.api_response import success, failure
 
 sycm_bp = Blueprint('sycm', __name__, url_prefix='/api/sycm')
@@ -16,6 +15,29 @@ from repos.sycm_repo import (
     rival_trend as _repo_rival_trend,
     rival_entities as _repo_rival_entities,
     rival_entity_trend as _repo_rival_entity_trend,
+    flow_source_level1 as _repo_flow_level1,
+    flow_source_level2 as _repo_flow_level2,
+    flow_source_recent_trend as _repo_flow_recent_trend,
+    shop_tree_group_map as _repo_shop_tree_group_map,
+    item_flow_source_dates as _repo_item_flow_dates,
+    item_flow_channel_rollup as _repo_item_flow_channels,
+    item_flow_product_totals as _repo_item_flow_product_totals,
+    item_flow_top_items as _repo_item_flow_top_items,
+    competitor_item_table as _repo_competitor_item_table,
+    rival_shop_day_list as _repo_rival_shop_day_list,
+    rival_shop_day_summary as _repo_rival_shop_day_summary,
+    rival_items_day_list as _repo_rival_items_day_list,
+    market_item_rank_rows as _repo_market_item_rank_rows,
+    market_search_rank_rows as _repo_market_search_rank_rows,
+    market_category_list as _repo_market_category_list,
+    market_item_sample_daily as _repo_market_item_sample_daily,
+    market_search_daily as _repo_market_search_daily,
+    market_shop_entities as _repo_market_shop_entities,
+    market_shop_entity_trend as _repo_market_shop_entity_trend,
+    market_item_entities as _repo_market_item_entities,
+    market_item_entity_trend as _repo_market_item_entity_trend,
+    snapshot_batches as _repo_snapshot_batches,
+    snapshot_batch_rows as _repo_snapshot_batch_rows,
 )
 
 
@@ -35,14 +57,8 @@ def get_query_date_range(table):
 
 
 def _competitor_item_table():
-    """Use the external market-item sample when it has the self/competitor flag."""
-    conn = get_connection()
-    try:
-        exists = conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='sycm_market_item_rank'").fetchone()
-        columns = {row[1] for row in conn.execute('PRAGMA table_info(sycm_market_item_rank)').fetchall()} if exists else set()
-        return 'sycm_market_item_rank' if exists and 'is_self' in columns else 'sycm_market_rival_item'
-    finally:
-        conn.close()
+    """实现已下沉 repos/sycm_repo.py。"""
+    return _repo_competitor_item_table()
 
 
 
@@ -57,43 +73,9 @@ def flow_source_summary():
     if not end_date:
         return failure('NO_DATA', '暂无流量来源数据')
 
-    conn = get_connection()
-    c = conn.cursor()
-
-    # 一级渠道
-    c.execute('''
-        SELECT channel_name, SUM(uv), SUM(pay_amount), SUM(pay_buyer_count),
-               SUM(cart_buyer_count), SUM(new_uv), SUM(ad_click_count),
-               SUM(ad_pay_amount), SUM(direct_pay_buyer_count),
-               SUM(collect_item_count), SUM(fans_pay_buyer_count)
-        FROM sycm_flow_source_daily
-        WHERE stat_date BETWEEN ? AND ? AND level = 0
-        GROUP BY channel_name
-        ORDER BY uv DESC
-    ''', (start_date, end_date))
-    level1 = []
-    total_uv = 0
-    total_pay = 0
-    for row in c.fetchall():
-        level1.append({
-            'channel_name': row[0],
-            'uv': row[1],
-            'pay_amount': row[2],
-            'pay_buyer_count': row[3],
-            'pay_rate': round((row[3] or 0) / (row[1] or 1), 6) if row[1] else 0,
-            'cart_buyer_count': row[4],
-            'new_uv': row[5],
-            'uv_value': round((row[2] or 0) / (row[1] or 1), 2) if row[1] else 0,
-            'ad_click_count': row[6],
-            'ad_pay_amount': row[7],
-            'direct_pay_buyer_count': row[8],
-            'collect_item_count': row[9],
-            'fans_pay_buyer_count': row[10],
-        })
-        total_uv += row[1] or 0
-        total_pay += row[2] or 0
-
-    conn.close()
+    level1 = _repo_flow_level1(start_date, end_date)
+    total_uv = sum(ch['uv'] or 0 for ch in level1)
+    total_pay = sum(ch['pay_amount'] or 0 for ch in level1)
 
     return success({
         'stat_date': end_date,
@@ -115,49 +97,7 @@ def flow_source_detail():
     if not end_date:
         return failure('NO_DATA', '暂无流量来源数据')
 
-    conn = get_connection()
-    c = conn.cursor()
-
-    query = '''
-        SELECT channel_name, parent_channel, MAX(channel_type), SUM(uv),
-               SUM(pay_amount), SUM(pay_buyer_count), SUM(cart_buyer_count),
-               SUM(new_uv), MAX(level), SUM(ad_click_count), SUM(ad_pay_amount),
-               SUM(direct_pay_buyer_count), SUM(collect_item_count)
-        FROM sycm_flow_source_daily
-        WHERE stat_date BETWEEN ? AND ?
-    '''
-    params = [start_date, end_date]
-
-    if parent:
-        query += ' AND parent_channel = ?'
-        params.append(parent)
-    else:
-        query += ' AND level = 1'
-
-    query += ' GROUP BY channel_name, parent_channel ORDER BY SUM(uv) DESC'
-
-    c.execute(query, params)
-    channels = []
-    for row in c.fetchall():
-        channels.append({
-            'channel_name': row[0],
-            'parent_channel': row[1],
-            'channel_type': row[2],
-            'uv': row[3],
-            'pay_amount': row[4],
-            'pay_buyer_count': row[5],
-            'pay_rate': round((row[5] or 0) / (row[3] or 1), 6) if row[3] else 0,
-            'cart_buyer_count': row[6],
-            'new_uv': row[7],
-            'uv_value': round((row[4] or 0) / (row[3] or 1), 2) if row[3] else 0,
-            'level': row[8],
-            'ad_click_count': row[9],
-            'ad_pay_amount': row[10],
-            'direct_pay_buyer_count': row[11],
-            'collect_item_count': row[12],
-        })
-
-    conn.close()
+    channels = _repo_flow_level2(start_date, end_date, parent)
     return success({'stat_date': end_date, 'start_date': start_date, 'end_date': end_date, 'channels': channels})
 
 
@@ -165,31 +105,7 @@ def flow_source_detail():
 def flow_source_trend():
     """流量来源趋势：最近N天的一级渠道数据"""
     days = int(request.args.get('days', 14))
-    conn = get_connection()
-    c = conn.cursor()
-
-    c.execute('''
-        SELECT stat_date, channel_name, uv, pay_amount, pay_buyer_count
-        FROM sycm_flow_source_daily
-        WHERE level = 0
-        ORDER BY stat_date DESC
-        LIMIT ?
-    ''', (days * 5,))  # 假设最多5个一级渠道
-
-    trend = {}
-    for row in c.fetchall():
-        date = row[0]
-        channel = row[1]
-        if date not in trend:
-            trend[date] = {}
-        trend[date][channel] = {
-            'uv': row[2],
-            'pay_amount': row[3],
-            'pay_buyer_count': row[4],
-        }
-
-    conn.close()
-
+    trend = _repo_flow_recent_trend(days)
     dates = sorted(trend.keys())
     return success({
         'dates': dates,
@@ -204,41 +120,6 @@ _CHANNEL_METRIC_KEYS = (
     'uv', 'pv', 'pay_amount', 'pay_buyer_count', 'cart_buyer_count',
     'collect_item_count', 'new_uv', 'deal_buyer_count', 'pay_item_count',
 )
-
-
-def _load_shop_tree_group_map(cursor):
-    """构造「渠道名 -> 根层分组名」的映射，取自店铺流量来源树。
-
-    背景：生意参谋单品「第一次访问来源」接口只返回一层平铺渠道，不带父子关系
-    （实测 level 恒为 2、pageId 前缀不可靠），所以单品侧一直只有一层。
-    但同一个店铺的「店铺流量来源」采的是 tree 接口，含完整层级
-    （平台流量 → 手淘搜索 → 手淘搜索-商品及其他）。两张表的渠道命名一致，
-    因此可以用店铺树把单品渠道上溯到根层分组，给单品也补出稳定的两级结构。
-
-    返回 name -> 顶层分组名；顶层分组自身映射到自己。
-    """
-    parent_of = {}
-    for name, parent in cursor.execute(
-            'SELECT channel_name, IFNULL(parent_channel, "") FROM sycm_flow_source_daily'):
-        if name and name not in parent_of:
-            parent_of[name] = parent or ''
-
-    cache = {}
-
-    def root_of(name):
-        if name in cache:
-            return cache[name]
-        seen, cur = set(), name
-        while True:
-            parent = parent_of.get(cur, '')
-            if not parent or parent == cur or parent in seen:
-                break
-            seen.add(parent)
-            cur = parent
-        cache[name] = cur
-        return cur
-
-    return {name: root_of(name) for name in parent_of}
 
 
 def _empty_channel(name, parent, level):
@@ -289,74 +170,18 @@ def item_flow_summary():
             return failure('NO_DATA', '暂无单品流量来源数据')
         bound_start = bound_end = latest
 
-    conn = get_connection()
-    c = conn.cursor()
     # 日期口径必须跟着 belong 走：全程来源(all)目前只有个别日期有数据，
     # 若这里不过滤 belong，就会出现「渠道侧 1 天、商品侧 10 天」的时间窗错配。
-    c.execute(
-        '''SELECT DISTINCT stat_date FROM sycm_item_flow_source_daily
-           WHERE stat_date BETWEEN ? AND ? AND belong = ? ORDER BY stat_date''',
-        (bound_start, bound_end, belong))
-    dates = [row[0] for row in c.fetchall()]
+    dates = _repo_item_flow_dates(bound_start, bound_end, belong)
     if not dates:
-        conn.close()
         return failure('NO_DATA', '所选范围内暂无单品流量来源数据')
 
-    conditions = ['stat_date BETWEEN ? AND ?', 'belong = ?']
-    params = [bound_start, bound_end, belong]
-    if item_id:
-        conditions.append('CAST(item_id AS TEXT) = ?')
-        params.append(item_id)
-
-    c.execute(f'''
-        SELECT channel_name,
-               IFNULL(parent_channel, '') AS parent_channel,
-               IFNULL(level, -1) AS level,
-               MAX(channel_type) AS channel_type,
-               SUM(COALESCE(uv, 0)) AS uv,
-               SUM(COALESCE(pv, 0)) AS pv,
-               SUM(COALESCE(pay_amount, 0)) AS pay_amount,
-               SUM(COALESCE(pay_buyer_count, 0)) AS pay_buyer_count,
-               SUM(COALESCE(cart_buyer_count, 0)) AS cart_buyer_count,
-               SUM(COALESCE(collect_item_count, 0)) AS collect_item_count,
-               SUM(COALESCE(new_uv, 0)) AS new_uv,
-               SUM(COALESCE(deal_buyer_count, 0)) AS deal_buyer_count,
-               SUM(COALESCE(pay_item_count, 0)) AS pay_item_count
-        FROM sycm_item_flow_source_daily
-        WHERE {' AND '.join(conditions)}
-        GROUP BY channel_name, IFNULL(parent_channel, ''), IFNULL(level, -1)
-        ORDER BY level ASC, uv DESC
-    ''', params)
-
-    channels = []
-    for row in c.fetchall():
-        uv = row[4] or 0
-        pay = row[6] or 0
-        buyers = row[7] or 0
-        channels.append({
-            'channel_name': row[0],
-            'parent_channel': row[1],
-            'level': row[2],
-            'channel_type': row[3],
-            'uv': uv,
-            'pv': row[5],
-            'pay_amount': round(pay, 2),
-            'pay_buyer_count': buyers,
-            # 按聚合后的买家/访客重算，避免 AVG(每日转化率) 带来的偏差
-            'pay_rate': round(buyers / uv, 6) if uv else 0,
-            'cart_buyer_count': row[8],
-            'collect_item_count': row[9],
-            'new_uv': row[10],
-            'deal_buyer_count': row[11],
-            'pay_item_count': row[12],
-            'parent_derived': False,
-            'synthetic': False,
-        })
+    channels = _repo_item_flow_channels(bound_start, bound_end, belong, item_id)
 
     # ---- 补层级：只有「全程来源」自带父子关系，其余口径用店铺渠道树上溯 ----
     derived_count = 0
     if channels:
-        group_map = _load_shop_tree_group_map(c)
+        group_map = _repo_shop_tree_group_map()
         present = {ch['channel_name'] for ch in channels}
         for ch in channels:
             if ch['parent_channel']:
@@ -396,23 +221,7 @@ def item_flow_summary():
     levels = sorted({ch['level'] for ch in channels
                      if isinstance(ch['level'], int) and ch['level'] >= 0})
 
-    product_totals = None
-    if item_id:
-        placeholders = ','.join('?' for _ in dates)
-        row = c.execute(f'''
-            SELECT SUM(ipv), SUM(pv), SUM(payment_amount), SUM(buyers), COUNT(DISTINCT date)
-            FROM daily_data
-            WHERE CAST(product_id AS TEXT) = ? AND date IN ({placeholders})
-        ''', [item_id] + dates).fetchone()
-        if row and row[4]:
-            product_totals = {
-                'visitors': row[0] or 0,
-                'pv': row[1] or 0,
-                'payment_amount': round(row[2] or 0, 2),
-                'buyers': row[3] or 0,
-                'days': row[4],
-            }
-    conn.close()
+    product_totals = _repo_item_flow_product_totals(item_id, dates) if item_id else None
 
     return success({
         'item_id': item_id or None,
@@ -449,34 +258,7 @@ def item_flow_top_items():
     stat_date = request.args.get('date') or get_latest_date('sycm_item_flow_source_daily')
     channel = request.args.get('channel', '')
     limit = int(request.args.get('limit', 20))
-
-    conn = get_connection()
-    c = conn.cursor()
-
-    query = '''
-        SELECT item_id, SUM(uv) as uv, SUM(pay_amount) as pay_amount,
-               SUM(pay_buyer_count) as pay_buyer_count
-        FROM sycm_item_flow_source_daily
-        WHERE stat_date = ? AND belong = 'farthest'
-    '''
-    params = [stat_date]
-    if channel:
-        query += ' AND channel_name = ?'
-        params.append(channel)
-    query += ' GROUP BY item_id ORDER BY uv DESC LIMIT ?'
-    params.append(limit)
-
-    c.execute(query, params)
-    items = []
-    for row in c.fetchall():
-        items.append({
-            'item_id': row[0],
-            'uv': row[1],
-            'pay_amount': row[2],
-            'pay_buyer_count': row[3],
-        })
-
-    conn.close()
+    items = _repo_item_flow_top_items(stat_date, channel, limit)
     return success({'stat_date': stat_date, 'channel': channel, 'items': items})
 
 
@@ -488,35 +270,7 @@ def rival_shops_list():
     stat_date = request.args.get('date') or get_latest_date('sycm_market_rival_shop')
     if not stat_date:
         return failure('NO_DATA', '暂无竞店数据')
-
-    conn = get_connection()
-    c = conn.cursor()
-
-    c.execute('''
-        SELECT shop_id, user_id, shop_name, shop_url, is_tmall,
-               uv, pay_buyer_count, cart_buyer_count, pay_rate, collect_buyer_count
-        FROM sycm_market_rival_shop
-        WHERE stat_date = ?
-        ORDER BY uv DESC
-    ''', (stat_date,))
-
-    shops = []
-    for row in c.fetchall():
-        shops.append({
-            'shop_id': row[0],
-            'user_id': row[1],
-            'shop_name': row[2],
-            'shop_url': row[3],
-            'is_tmall': bool(row[4]),
-            'uv': row[5],
-            'pay_buyer_count': row[6],
-            'cart_buyer_count': row[7],
-            'pay_rate': row[8],
-            'collect_buyer_count': row[9],
-        })
-
-    conn.close()
-    return success({'stat_date': stat_date, 'shops': shops})
+    return success({'stat_date': stat_date, 'shops': _repo_rival_shop_day_list(stat_date)})
 
 
 @sycm_bp.route('/rival-shops/summary', methods=['GET'])
@@ -526,46 +280,15 @@ def rival_shops_summary():
     if not stat_date:
         return failure('NO_DATA', '暂无竞店数据')
 
-    conn = get_connection()
-    c = conn.cursor()
-
-    # 竞店统计
-    c.execute('''
-        SELECT COUNT(*), AVG(uv), AVG(pay_buyer_count), AVG(pay_rate),
-               SUM(CASE WHEN is_tmall = 1 THEN 1 ELSE 0 END),
-               SUM(CASE WHEN is_tmall = 0 THEN 1 ELSE 0 END)
-        FROM sycm_market_rival_shop
-        WHERE stat_date = ?
-    ''', (stat_date,))
-    row = c.fetchone()
-
-    # TOP竞店
-    c.execute('''
-        SELECT shop_name, uv, pay_buyer_count, pay_rate, is_tmall
-        FROM sycm_market_rival_shop
-        WHERE stat_date = ?
-        ORDER BY uv DESC LIMIT 10
-    ''', (stat_date,))
-    top_shops = []
-    for r in c.fetchall():
-        top_shops.append({
-            'shop_name': r[0],
-            'uv': r[1],
-            'pay_buyer_count': r[2],
-            'pay_rate': r[3],
-            'is_tmall': bool(r[4]),
-        })
-
-    conn.close()
-
+    summary, top_shops = _repo_rival_shop_day_summary(stat_date)
     return success({
         'stat_date': stat_date,
-        'total_shops': row[0],
-        'avg_uv': row[1],
-        'avg_pay_buyers': row[2],
-        'avg_pay_rate': row[3],
-        'tmall_count': row[4],
-        'taobao_count': row[5],
+        'total_shops': summary[0],
+        'avg_uv': summary[1],
+        'avg_pay_buyers': summary[2],
+        'avg_pay_rate': summary[3],
+        'tmall_count': summary[4],
+        'taobao_count': summary[5],
         'top_shops': top_shops,
     })
 
@@ -611,49 +334,7 @@ def rival_items_list():
     if not stat_date:
         return failure('NO_DATA', '暂无竞品数据')
 
-    conn = get_connection()
-    c = conn.cursor()
-
-    c.execute('''
-        SELECT item_id, title, uv, pay_buyer_count, pic_url, detail_url, NULL AS shop_name
-        FROM sycm_market_rival_item r
-        WHERE stat_date = ?
-          AND NOT EXISTS (SELECT 1 FROM products p WHERE p.product_id = r.item_id)
-        ORDER BY uv DESC
-    ''', (stat_date,)) if source_table == 'sycm_market_rival_item' else c.execute('''
-        SELECT item_id, MAX(title), MAX(uv), MAX(pay_buyer_count), MAX(pic_url), NULL, MAX(shop_name)
-        FROM sycm_market_item_rank
-        WHERE stat_date = ? AND is_self = 0
-          AND NOT EXISTS (SELECT 1 FROM products p WHERE p.product_id = sycm_market_item_rank.item_id)
-        GROUP BY item_id ORDER BY MAX(uv) DESC LIMIT 50
-    ''', (stat_date,))
-
-    items = []
-    for row in c.fetchall():
-        items.append({
-            'item_id': row[0],
-            'title': row[1],
-            'uv': row[2],
-            'pay_buyer_count': row[3],
-            'pic_url': row[4],
-            'detail_url': row[5] or f"https://item.taobao.com/item.htm?id={row[0]}" if source_table == 'sycm_market_item_rank' else row[5],
-            'shop_name': row[6],
-        })
-
-    if source_table == 'sycm_market_rival_item':
-        c.execute('''
-        SELECT COUNT(*)
-        FROM sycm_market_rival_item r
-        WHERE r.stat_date = ?
-          AND EXISTS (SELECT 1 FROM products p WHERE p.product_id = r.item_id)
-        ''', (stat_date,))
-        excluded_own_count = int(c.fetchone()[0] or 0)
-    else:
-        c.execute('''SELECT COUNT(DISTINCT item_id) FROM sycm_market_item_rank r WHERE stat_date = ?
-                     AND (is_self = 1 OR EXISTS (SELECT 1 FROM products p WHERE p.product_id = r.item_id))''', (stat_date,))
-        excluded_own_count = int(c.fetchone()[0] or 0)
-
-    conn.close()
+    items, excluded_own_count = _repo_rival_items_day_list(source_table, stat_date)
     return success({'stat_date': stat_date, 'items': items, 'excluded_own_count': excluded_own_count})
 
 
@@ -700,45 +381,7 @@ def market_item_rank():
     cate_id = request.args.get('cate_id', '')
     cate_name = request.args.get('cate_name', '')
     limit = int(request.args.get('limit', 50))
-
-    conn = get_connection()
-    c = conn.cursor()
-
-    query = '''
-        SELECT cate_id, cate_name, item_id, title, pic_url, shop_name, shop_id,
-               uv, pay_buyer_count, core_keyword, rank, is_self
-        FROM sycm_market_item_rank
-        WHERE stat_date = ?
-    '''
-    params = [stat_date]
-    if cate_id:
-        query += ' AND cate_id = ?'
-        params.append(cate_id)
-    if cate_name:
-        query += ' AND cate_name = ?'
-        params.append(cate_name)
-    query += ' ORDER BY uv DESC LIMIT ?'
-    params.append(limit)
-
-    c.execute(query, params)
-    items = []
-    for row in c.fetchall():
-        items.append({
-            'cate_id': row[0],
-            'cate_name': row[1],
-            'item_id': row[2],
-            'title': row[3],
-            'pic_url': row[4],
-            'shop_name': row[5],
-            'shop_id': row[6],
-            'uv': row[7],
-            'pay_buyer_count': row[8],
-            'core_keyword': row[9],
-            'rank': row[10],
-            'is_self': bool(row[11]),
-        })
-
-    conn.close()
+    items = _repo_market_item_rank_rows(stat_date, cate_id, cate_name, limit)
     return success({'stat_date': stat_date, 'items': items})
 
 
@@ -749,41 +392,7 @@ def market_search_rank():
     cate_id = request.args.get('cate_id', '')
     cate_name = request.args.get('cate_name', '')
     limit = int(request.args.get('limit', 50))
-
-    conn = get_connection()
-    c = conn.cursor()
-
-    query = '''
-        SELECT cate_id, cate_name, keyword, search_heat, pay_rate,
-               free_click_rate, click_rate, rank
-        FROM sycm_market_search_rank
-        WHERE stat_date = ?
-    '''
-    params = [stat_date]
-    if cate_id:
-        query += ' AND cate_id = ?'
-        params.append(cate_id)
-    if cate_name:
-        query += ' AND cate_name = ?'
-        params.append(cate_name)
-    query += ' ORDER BY search_heat DESC LIMIT ?'
-    params.append(limit)
-
-    c.execute(query, params)
-    keywords = []
-    for row in c.fetchall():
-        keywords.append({
-            'cate_id': row[0],
-            'cate_name': row[1],
-            'keyword': row[2],
-            'search_heat': row[3],
-            'pay_rate': row[4],
-            'free_click_rate': row[5],
-            'click_rate': row[6],
-            'rank': row[7],
-        })
-
-    conn.close()
+    keywords = _repo_market_search_rank_rows(stat_date, cate_id, cate_name, limit)
     return success({'stat_date': stat_date, 'keywords': keywords})
 
 
@@ -793,30 +402,7 @@ def market_categories():
     stat_date = request.args.get('date') or get_latest_date('sycm_market_item_rank')
     if not stat_date:
         return failure('NO_DATA', '暂无市场数据')
-
-    conn = get_connection()
-    c = conn.cursor()
-
-    c.execute('''
-        SELECT DISTINCT cate_id, cate_name,
-               COUNT(*) as item_count, AVG(uv) as avg_uv
-        FROM sycm_market_item_rank
-        WHERE stat_date = ?
-        GROUP BY cate_id, cate_name
-        ORDER BY avg_uv DESC
-    ''', (stat_date,))
-
-    categories = []
-    for row in c.fetchall():
-        categories.append({
-            'cate_id': row[0],
-            'cate_name': row[1],
-            'item_count': row[2],
-            'avg_uv': row[3],
-        })
-
-    conn.close()
-    return success({'stat_date': stat_date, 'categories': categories})
+    return success({'stat_date': stat_date, 'categories': _repo_market_category_list(stat_date)})
 
 
 @sycm_bp.route('/market/trend', methods=['GET'])
@@ -825,26 +411,8 @@ def market_trend():
     start_date, end_date = get_query_date_range('sycm_market_search_rank')
     if not end_date:
         return failure('NO_DATA', '暂无市场趋势数据')
-    conn = get_connection()
-    item_rows = conn.execute(f'''
-        SELECT stat_date, COUNT(*) AS item_count,
-               AVG(uv) AS avg_item_uv, AVG(pay_buyer_count) AS avg_item_buyers
-        FROM (
-          SELECT r.stat_date, r.item_id, MAX(r.uv) AS uv, MAX(r.pay_buyer_count) AS pay_buyer_count
-          FROM sycm_market_item_rank r
-          WHERE r.stat_date BETWEEN ? AND ? AND {_market_external_filter('r')}
-          GROUP BY r.stat_date, r.item_id
-        ) sampled
-        GROUP BY stat_date ORDER BY stat_date
-    ''', (start_date, end_date)).fetchall()
-    search_rows = conn.execute(
-        '''SELECT stat_date, COUNT(*) AS keyword_count, AVG(search_heat) AS avg_search_heat,
-                  AVG(pay_rate) AS avg_pay_rate, AVG(click_rate) AS avg_click_rate
-           FROM sycm_market_search_rank WHERE stat_date BETWEEN ? AND ?
-           GROUP BY stat_date ORDER BY stat_date''',
-        (start_date, end_date),
-    ).fetchall()
-    conn.close()
+    item_rows = _repo_market_item_sample_daily(start_date, end_date)
+    search_rows = _repo_market_search_daily(start_date, end_date)
     expected_days = _expected_days(start_date, end_date)
     if not expected_days:
         return failure('VALIDATION_ERROR', '日期范围无效')
@@ -886,65 +454,13 @@ def market_trend():
     })
 
 
-def _market_external_filter(alias='r'):
-    """市场实体趋势只使用外部商品榜样本，排除自家标记和商品主档。"""
-    return f"{alias}.is_self = 0 AND NOT EXISTS (SELECT 1 FROM products p WHERE p.product_id = {alias}.item_id)"
-
-
 @sycm_bp.route('/market/shops/entities', methods=['GET'])
 def market_shop_entities():
     """市场商品榜覆盖到的店铺实体列表。"""
     start_date, end_date = get_query_date_range('sycm_market_item_rank')
     if not end_date:
         return success({'entities': []})
-    conn = get_connection()
-    try:
-        rows = conn.execute(f'''
-            SELECT COALESCE(NULLIF(r.shop_id, ''), r.shop_name) AS entity_id,
-                   MAX(r.shop_name) AS entity_name,
-                   COUNT(DISTINCT r.stat_date) AS observed_days,
-                   MAX(r.stat_date) AS last_seen,
-                   COUNT(DISTINCT r.item_id) AS item_count
-            FROM sycm_market_item_rank r
-            WHERE r.stat_date BETWEEN ? AND ? AND {_market_external_filter('r')}
-              AND COALESCE(NULLIF(r.shop_id, ''), r.shop_name) IS NOT NULL
-            GROUP BY COALESCE(NULLIF(r.shop_id, ''), r.shop_name)
-            ORDER BY observed_days DESC, item_count DESC, last_seen DESC, entity_name
-        ''', (start_date, end_date)).fetchall()
-        daily_rows = conn.execute(f'''
-            SELECT entity_id, stat_date, SUM(uv) AS uv,
-                   SUM(pay_buyer_count) AS pay_buyer_count,
-                   COUNT(*) AS item_count
-            FROM (
-              SELECT COALESCE(NULLIF(r.shop_id, ''), r.shop_name) AS entity_id,
-                     r.stat_date, r.item_id,
-                     MAX(r.uv) AS uv, MAX(r.pay_buyer_count) AS pay_buyer_count
-              FROM sycm_market_item_rank r
-              WHERE r.stat_date BETWEEN ? AND ? AND {_market_external_filter('r')}
-                AND COALESCE(NULLIF(r.shop_id, ''), r.shop_name) IS NOT NULL
-              GROUP BY COALESCE(NULLIF(r.shop_id, ''), r.shop_name), r.stat_date, r.item_id
-            ) deduped
-            GROUP BY entity_id, stat_date
-            ORDER BY stat_date
-        ''', (start_date, end_date)).fetchall()
-    finally:
-        conn.close()
-    daily_by_entity = {}
-    for row in daily_rows:
-        item = dict(row)
-        uv = item.get('uv')
-        buyers = item.get('pay_buyer_count')
-        item['pay_rate'] = (buyers / uv) if uv else None
-        daily_by_entity.setdefault(str(item['entity_id']), []).append(item)
-    entities = []
-    for row in rows:
-        item = dict(row)
-        item['daily'] = daily_by_entity.get(str(item['entity_id']), [])
-        latest = item['daily'][-1] if item['daily'] else {}
-        item['latest_uv'] = latest.get('uv')
-        item['latest_pay_buyer_count'] = latest.get('pay_buyer_count')
-        entities.append(item)
-    return success({'entities': entities})
+    return success({'entities': _repo_market_shop_entities(start_date, end_date)})
 
 
 @sycm_bp.route('/market/shops/entity-trend', methods=['GET'])
@@ -954,50 +470,7 @@ def market_shop_entity_trend():
     if not entity_id:
         return failure('VALIDATION_ERROR', '缺少 shop_id')
     start_date, end_date = get_query_date_range('sycm_market_item_rank')
-    conn = get_connection()
-    try:
-        market_item_columns = {
-            column['name'] for column in conn.execute('PRAGMA table_info(sycm_market_item_rank)').fetchall()
-        }
-        detail_url_expr = 'r.detail_url' if 'detail_url' in market_item_columns else 'NULL'
-        rows = conn.execute(f'''
-            SELECT daily.stat_date, MAX(daily.shop_name) AS shop_name,
-                   COUNT(*) AS item_count, SUM(daily.uv) AS uv,
-                   SUM(daily.pay_buyer_count) AS pay_buyer_count,
-                   CASE WHEN SUM(daily.uv) IS NULL OR SUM(daily.uv) = 0 THEN NULL
-                        ELSE SUM(daily.pay_buyer_count) * 1.0 / SUM(daily.uv) END AS pay_rate
-            FROM (
-              SELECT r.stat_date, r.item_id, MAX(r.shop_name) AS shop_name,
-                     MAX(r.uv) AS uv, MAX(r.pay_buyer_count) AS pay_buyer_count
-              FROM sycm_market_item_rank r
-              WHERE r.stat_date BETWEEN ? AND ?
-                AND COALESCE(NULLIF(r.shop_id, ''), r.shop_name) = ?
-                AND {_market_external_filter('r')}
-              GROUP BY r.stat_date, r.item_id
-            ) daily
-            GROUP BY daily.stat_date ORDER BY daily.stat_date
-        ''', (start_date, end_date, entity_id)).fetchall()
-        product_rows = conn.execute(f'''
-            WITH ranked AS (
-              SELECT r.item_id, r.title, r.pic_url, {detail_url_expr} AS detail_url, r.shop_name,
-                     r.uv, r.pay_buyer_count, r.rank, r.stat_date,
-                     ROW_NUMBER() OVER (
-                       PARTITION BY r.item_id
-                       ORDER BY r.stat_date DESC, r.rank ASC
-                     ) AS row_num
-              FROM sycm_market_item_rank r
-              WHERE r.stat_date BETWEEN ? AND ?
-                AND COALESCE(NULLIF(r.shop_id, ''), r.shop_name) = ?
-                AND {_market_external_filter('r')}
-            )
-            SELECT item_id, title, pic_url, detail_url, shop_name,
-                   uv, pay_buyer_count, rank, stat_date
-            FROM ranked WHERE row_num = 1
-            ORDER BY uv DESC, pay_buyer_count DESC, title
-            LIMIT 50
-        ''', (start_date, end_date, entity_id)).fetchall()
-    finally:
-        conn.close()
+    rows, product_rows = _repo_market_shop_entity_trend(start_date, end_date, entity_id)
     expected_days = _expected_days(start_date, end_date)
     daily = [dict(row) for row in rows]
     observed_days = len(daily)
@@ -1030,48 +503,7 @@ def market_item_entities():
     start_date, end_date = get_query_date_range('sycm_market_item_rank')
     if not end_date:
         return success({'entities': []})
-    conn = get_connection()
-    try:
-        link_join = '''LEFT JOIN market_item_links l ON l.item_id = r.item_id'''
-        rows = conn.execute(f'''
-            SELECT r.item_id AS entity_id, MAX(r.title) AS entity_name,
-                   MAX(r.shop_name) AS shop_name, MAX(r.shop_id) AS shop_id,
-                   COALESCE(MAX(l.pic_url), MAX(r.pic_url)) AS pic_url,
-                   MAX(l.detail_url) AS detail_url,
-                   COUNT(DISTINCT r.stat_date) AS observed_days,
-                   MAX(r.stat_date) AS last_seen,
-                   MAX(r.uv) AS latest_uv, MAX(r.pay_buyer_count) AS latest_pay_buyer_count
-            FROM sycm_market_item_rank r {link_join}
-            WHERE r.stat_date BETWEEN ? AND ? AND {_market_external_filter('r')}
-            GROUP BY r.item_id
-            ORDER BY observed_days DESC, latest_uv DESC, last_seen DESC, entity_name
-        ''', (start_date, end_date)).fetchall()
-        daily_rows = conn.execute(f'''
-            SELECT r.item_id AS entity_id, r.stat_date, MAX(r.uv) AS uv,
-                   MAX(r.pay_buyer_count) AS pay_buyer_count, MIN(r.rank) AS rank
-            FROM sycm_market_item_rank r
-            WHERE r.stat_date BETWEEN ? AND ? AND {_market_external_filter('r')}
-            GROUP BY r.item_id, r.stat_date ORDER BY r.stat_date
-        ''', (start_date, end_date)).fetchall()
-    finally:
-        conn.close()
-    daily_by_entity = {}
-    for row in daily_rows:
-        item = dict(row)
-        uv = item.get('uv')
-        buyers = item.get('pay_buyer_count')
-        item['pay_rate'] = (buyers / uv) if uv else None
-        daily_by_entity.setdefault(str(item['entity_id']), []).append(item)
-    entities = []
-    for row in rows:
-        item = dict(row)
-        item['daily'] = daily_by_entity.get(str(item['entity_id']), [])
-        latest = item['daily'][-1] if item['daily'] else {}
-        item['latest_uv'] = latest.get('uv')
-        item['latest_pay_buyer_count'] = latest.get('pay_buyer_count')
-        item['detail_url'] = item.get('detail_url') or f"https://item.taobao.com/item.htm?id={item['entity_id']}"
-        entities.append(item)
-    return success({'entities': entities})
+    return success({'entities': _repo_market_item_entities(start_date, end_date)})
 
 
 @sycm_bp.route('/market/items/entity-trend', methods=['GET'])
@@ -1081,20 +513,7 @@ def market_item_entity_trend():
     if not entity_id:
         return failure('VALIDATION_ERROR', '缺少 item_id')
     start_date, end_date = get_query_date_range('sycm_market_item_rank')
-    conn = get_connection()
-    try:
-        rows = conn.execute(f'''
-            SELECT r.stat_date, MAX(r.title) AS title, MAX(r.shop_name) AS shop_name,
-                   MAX(r.shop_id) AS shop_id, MAX(r.cate_name) AS cate_name,
-                   MAX(r.uv) AS uv, MAX(r.pay_buyer_count) AS pay_buyer_count,
-                   MAX(r.rank) AS rank
-            FROM sycm_market_item_rank r
-            WHERE r.item_id = ? AND r.stat_date BETWEEN ? AND ?
-              AND {_market_external_filter('r')}
-            GROUP BY r.stat_date ORDER BY r.stat_date
-        ''', (entity_id, start_date, end_date)).fetchall()
-    finally:
-        conn.close()
+    rows = _repo_market_item_entity_trend(start_date, end_date, entity_id)
     expected_days = _expected_days(start_date, end_date)
     daily = [dict(row) for row in rows]
     for row in daily:
@@ -1119,61 +538,46 @@ def market_item_entity_trend():
 @sycm_bp.route('/market/snapshots', methods=['GET'])
 def market_period_snapshots():
     """周期快照概览：读取浏览器插件导出的周/月榜单，不混入日趋势。"""
-    conn = get_connection()
-    try:
-        batches = [dict(row) for row in conn.execute(
-            '''SELECT id, snapshot_type, source_filename, period_start, period_end,
-                      row_count, created_at
-               FROM market_snapshot_batches
-               ORDER BY period_end DESC, period_start DESC, id DESC'''
-        ).fetchall()]
-        comparisons = {}
-        for snapshot_type, table, entity, label_column, value in (
-            ('item', 'market_snapshot_items', 'item_id', 'title', 'pay_buyer_value'),
-            ('search', 'market_snapshot_searches', 'keyword', 'keyword', 'search_heat_value'),
-            ('rival_item', 'market_snapshot_rival_items', 'item_id', 'title', 'pay_buyer_value'),
-            ('rival_shop', 'market_snapshot_rival_shops', 'shop_id', 'shop_name', 'pay_buyer_value'),
-        ):
-            typed = [item for item in batches if item['snapshot_type'] == snapshot_type]
-            if len(typed) < 2:
-                comparisons[snapshot_type] = {'status': 'insufficient_periods', 'rows': []}
+    batches = _repo_snapshot_batches()
+    comparisons = {}
+    for snapshot_type, table, entity, label_column, value in (
+        ('item', 'market_snapshot_items', 'item_id', 'title', 'pay_buyer_value'),
+        ('search', 'market_snapshot_searches', 'keyword', 'keyword', 'search_heat_value'),
+        ('rival_item', 'market_snapshot_rival_items', 'item_id', 'title', 'pay_buyer_value'),
+        ('rival_shop', 'market_snapshot_rival_shops', 'shop_id', 'shop_name', 'pay_buyer_value'),
+    ):
+        typed = [item for item in batches if item['snapshot_type'] == snapshot_type]
+        if len(typed) < 2:
+            comparisons[snapshot_type] = {'status': 'insufficient_periods', 'rows': []}
+            continue
+        current, previous = typed[0], typed[1]
+        current_rows = _repo_snapshot_batch_rows(table, entity, label_column, value, current['id'])
+        previous_rows = _repo_snapshot_batch_rows(table, entity, label_column, value, previous['id'])
+        old = {str(row['entity_id']): dict(row) for row in previous_rows}
+        rows = []
+        for row in current_rows:
+            key = str(row['entity_id'])
+            if key not in old:
                 continue
-            current, previous = typed[0], typed[1]
-            current_rows = conn.execute(
-                f'SELECT {entity} AS entity_id, MAX(COALESCE({label_column}, {entity})) AS entity_name, MAX({value}) AS metric FROM {table} WHERE batch_id=? GROUP BY {entity}',
-                (current['id'],),
-            ).fetchall()
-            previous_rows = conn.execute(
-                f'SELECT {entity} AS entity_id, MAX(COALESCE({label_column}, {entity})) AS entity_name, MAX({value}) AS metric FROM {table} WHERE batch_id=? GROUP BY {entity}',
-                (previous['id'],),
-            ).fetchall()
-            old = {str(row['entity_id']): dict(row) for row in previous_rows}
-            rows = []
-            for row in current_rows:
-                key = str(row['entity_id'])
-                if key not in old:
-                    continue
-                current_metric, previous_metric = row['metric'], old[key]['metric']
-                delta = None
-                if current_metric is not None and previous_metric not in (None, 0):
-                    delta = (float(current_metric) - float(previous_metric)) / abs(float(previous_metric))
-                rows.append({
-                    'entity_id': key,
-                    'entity_name': row['entity_name'] or old[key]['entity_name'] or key,
-                    'current_metric': current_metric,
-                    'previous_metric': previous_metric,
-                    'delta_rate': delta,
-                })
-            rows.sort(key=lambda item: abs(item['delta_rate'] or 0), reverse=True)
-            comparisons[snapshot_type] = {
-                'status': 'comparable',
-                'current_period': {'start': current['period_start'], 'end': current['period_end']},
-                'previous_period': {'start': previous['period_start'], 'end': previous['period_end']},
-                'shared_entity_count': len(rows),
-                'rows': rows,
-            }
-    finally:
-        conn.close()
+            current_metric, previous_metric = row['metric'], old[key]['metric']
+            delta = None
+            if current_metric is not None and previous_metric not in (None, 0):
+                delta = (float(current_metric) - float(previous_metric)) / abs(float(previous_metric))
+            rows.append({
+                'entity_id': key,
+                'entity_name': row['entity_name'] or old[key]['entity_name'] or key,
+                'current_metric': current_metric,
+                'previous_metric': previous_metric,
+                'delta_rate': delta,
+            })
+        rows.sort(key=lambda item: abs(item['delta_rate'] or 0), reverse=True)
+        comparisons[snapshot_type] = {
+            'status': 'comparable',
+            'current_period': {'start': current['period_start'], 'end': current['period_end']},
+            'previous_period': {'start': previous['period_start'], 'end': previous['period_end']},
+            'shared_entity_count': len(rows),
+            'rows': rows,
+        }
     availability = 'available' if batches else 'no-data'
     return success({
         'batches': batches,
