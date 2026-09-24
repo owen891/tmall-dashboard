@@ -221,3 +221,28 @@ Vite 不设阶段，设触发条件：出现"需要 npm 依赖复用 / TypeScrip
 | desktop 打包依赖 ORM 栈 | 低 | 方向一 1.3 前核对 packaging spec 与 requirements-desktop |
 | test_smoke 基底漂移 | 中 | 5.3 fixture 化 |
 | 采集双链同时运行 | 中 | 7.1 决策；短期加互斥标记 |
+
+---
+
+## 6. 执行日志（2026-09-24 更新）
+
+已按执行顺序完成第 0-5 步与第 6 步大部分：
+
+| 步骤 | 状态 | 提交 |
+|---|---|---|
+| 第 0 步 WIP 落地 | ✅ | 77d79eb/26463f9/0f07df1/04c8d15（enforce_retention 执行器、market_item_links 导入器、两份文档） |
+| 第 1 步 方向一 | ✅（此前完成） | dc3918b、fbeb68a 等 |
+| 第 2 步 5.1 断言瘦身 | ✅（此前完成） | af2aa95 |
+| 第 3 步 2.1 拆 period_review_service | ✅（此前完成） | fa9bb62；遗留 date 导入缺失已修复 c8fc8d0（含 API 回归测试） |
+| 第 4 步 方向三 3.1/3.2/3.3/3.4 | ✅ | 3.2 状态文案收敛 DemoLabels + 删 data-center-live 兼容壳 5da1161；3.3 ui-components 全页标配 + api.js 降级副本删除 bda528e |
+| 第 5 步 2.2 sycm repo 化 | ✅ 收口 | d19109a：19 个路由/辅助的全部裸 SQL 下沉，sycm_api 1183 → 约 490 行 |
+| 第 6 步 方向四 CSS 拆分 | ✅（此前完成） | 3d24992 |
+| 第 7 步 方向六 | 🔄 进行中 | data-center ✅ 29a3e0c；products 第一步 ✅ 07095ab；period-review 第一步 ✅ a9ef57c（货品表格列设置 280 行模块，主文件 2443 → 2207 行） |
+
+已知预存问题（待另立任务）：
+- products 页 `GET /api/sycm/item-flow/summary?category_mode=sock` 对无数据范围返回 400，
+  `audit_core_interactions` 把 4xx 记为 browserError（基线 3 项失败，与本轮改动无关）。
+- data-center 390x844 视口 toolbox 按钮在视口外（demo-sidebar 移动端布局），audit 点击超时。
+
+方向六下一步：period-review 继续拆（候选：目标卡 TARGET_* 簇、动作/工作台簇），
+然后 products → promotion → 其余页面；shell.js 只拆 date-range-store（需真实浏览器门）。
