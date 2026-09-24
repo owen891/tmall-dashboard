@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+from datetime import date
+
 from db import get_db
 from services.category_mode_service import mode_to_label
 from services import category_analysis_service as category_service

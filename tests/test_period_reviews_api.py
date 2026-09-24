@@ -571,6 +571,31 @@ class PeriodReviewsTests(unittest.TestCase):
         self.assertIn('gsv', metric_keys)
         self.assertIn('ad_ratio', metric_keys)
 
+    def test_category_breakdown_and_matrix_endpoints_return_rows(self):
+        """回归：period_matrix 拆分后曾漏 import date，两个端点在真实库上集体 500。"""
+        from db import get_db
+
+        with get_db(self.app.config['DATABASE_PATH']) as connection:
+            connection.execute(
+                "INSERT INTO products (product_id, title, category) VALUES ('breakdown-product', '类目商品', '袜子')")
+            connection.executemany(
+                '''INSERT INTO daily_data
+                   (product_id, date, payment_amount, ipv, buyers)
+                   VALUES (?, ?, ?, ?, ?)''',
+                [
+                    ('breakdown-product', '2026-09-14', 1000, 500, 50),
+                    ('breakdown-product', '2026-09-15', 2000, 800, 80),
+                ],
+            )
+            connection.commit()
+
+        for query in ('', '?category_mode=sock'):
+            for endpoint in ('category-breakdown', 'matrix'):
+                response = self.client.get(f'/api/period-reviews/week/2026-09-W3/{endpoint}{query}')
+                self.assertEqual(response.status_code, 200, f'{endpoint}{query}')
+                payload = response.get_json(); response.close()
+                self.assertIn('rows', payload['data'], f'{endpoint}{query}')
+
     def test_review_context_exposes_traffic_and_promotion_dimensions(self):
         from db import get_db
 
