@@ -27,7 +27,7 @@ $OutputEncoding = [System.Text.UTF8Encoding]::new($false)
 $ChromePath = "C:\Program Files\Google\Chrome\Application\chrome.exe"
 $ChromeDebugPort = if ($env:TMALL_CDP_PORT) { [int]$env:TMALL_CDP_PORT } else { 9223 }
 $ChromeUserDataDir = "$env:LOCALAPPDATA\TmallDashboard\CollectorChrome"
-$ChromeHeadless = if ($env:TMALL_CHROME_HEADLESS) { $env:TMALL_CHROME_HEADLESS -eq '1' } else { $true }
+$ChromeHeadless = if ($env:TMALL_CHROME_HEADLESS) { $env:TMALL_CHROME_HEADLESS -eq '1' } else { $false }  # 默认有界面模式，方便手动处理验证码
 $DashboardUrl = "http://127.0.0.1:5000"
 $ProjectRoot = if ($env:TMALL_PROJECT_ROOT) { $env:TMALL_PROJECT_ROOT } else { Split-Path -Parent $PSScriptRoot }
 $PythonPath = if ($env:TMALL_COLLECT_PYTHON) { $env:TMALL_COLLECT_PYTHON } else { Join-Path $ProjectRoot '.venv\Scripts\python.exe' }
@@ -156,15 +156,60 @@ if ($needBIPage -or $needOtherPages) {
     if (-not $needBIPage) { $loginArgs += '--skip-bi-login' }
     if ($BIUsername) { $env:BI_USERNAME = $BIUsername }
     if ($BIPassword) { $env:BI_PASSWORD = $BIPassword }
+    
+    # 第一次尝试：headless模式自动登录
     $loginOutput = & $PythonPath @loginArgs 2>&1
     foreach ($line in $loginOutput) { Write-Log "  $line" }
     $biLoginFailed = ($LASTEXITCODE -ne 0)
-    if ($biLoginFailed) {
+    
+    # 如果BI登录失败，尝试弹出有界面浏览器让用户手动登录
+    if ($biLoginFailed -and $needBIPage) {
+        Write-Log "  ⚠ 自动登录失败（可能需要验证码/滑块），切换到有界面模式，请手动完成登录..." "WARN"
+        
+        # 关闭当前headless Chrome
+        Get-Process chrome -ErrorAction SilentlyContinue | Where-Object { $_.CommandLine -like "*$ChromeUserDataDir*" } | Stop-Process -Force -ErrorAction SilentlyContinue
+        Start-Sleep -Seconds 2
+        
+        # 用有界面模式重新启动Chrome
+        Write-Log "  启动有界面Chrome，请在弹出的窗口中手动完成登录..."
+        $chromeArgs = @(
+            "--remote-debugging-port=$ChromeDebugPort",
+            "--remote-allow-origins=*",
+            "--user-data-dir=`"$ChromeUserDataDir`"",
+            "--no-first-run",
+            "--no-default-browser-check",
+            "https://primeet.ecbis.cn/login"
+        )
+        Start-Process -FilePath $ChromePath -ArgumentList $chromeArgs -WindowStyle Normal
+        
+        # 等待用户手动登录（最多等待5分钟）
+        Write-Log "  等待手动登录（最多5分钟）..."
+        $manualLoginOK = $false
+        for ($i = 0; $i -lt 300; $i++) {
+            Start-Sleep -Seconds 1
+            try {
+                $resp = Invoke-WebRequest -Uri "http://127.0.0.1:$ChromeDebugPort/json" -UseBasicParsing -TimeoutSec 2
+                $tabs = $resp.Content | ConvertFrom-Json
+                $biTab = $tabs | Where-Object { $_.url -like "*primeet.ecbis.cn*" -and $_.url -notlike "*login*" } | Select-Object -First 1
+                if ($biTab) {
+                    $manualLoginOK = $true
+                    Write-Log "  ✓ 检测到BI登录成功！"
+                    break
+                }
+            } catch { }
+        }
+        
+        if (-not $manualLoginOK) {
+            Write-Log "  ⚠ 等待5分钟仍未检测到登录成功，跳过BI相关任务" "WARN"
+            $Sources = @($Sources | Where-Object { $_ -notlike 'bi_*' })
+            $needBIPage = $false
+        }
+    } elseif ($biLoginFailed) {
         Write-Log "  ⚠ BI页面登录失败，将跳过BI相关采集任务，继续执行其他采集" "WARN"
-        # 从Sources中移除bi_*任务
         $Sources = @($Sources | Where-Object { $_ -notlike 'bi_*' })
         $needBIPage = $false
     }
+    
     Write-Log "  等待页面加载..."
     Start-Sleep -Seconds 5
 } else {
