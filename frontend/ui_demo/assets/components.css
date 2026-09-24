@@ -2062,6 +2062,9 @@ body[data-page="goals"] .ui-table-wrap { max-height: none; }
 .overview-matrix-columns-dialog__body > [data-overview-matrix-field-selector] .ui-field-selector__group label:hover { border-color: var(--border-default); background: var(--surface-muted); }
 .overview-matrix-columns-dialog__body > [data-overview-matrix-field-selector] .ui-field-selector__group label:has(input:checked) { border-color: color-mix(in srgb, var(--brand) 28%, var(--border-default)); background: var(--brand-tint); color: var(--text-primary); }
 
+/* 上游编辑事故修复：该媒体块的头部曾丢失，导致两条 promotion 移动端
+   规则裸露在顶层被浏览器容错吞掉。按规则内容补回 760px 断点头部。 */
+@media (max-width: 760px) {
   .promotion-board-grid, .promotion-command { grid-template-columns: 1fr; }
   .promotion-command__signals { padding: var(--space-4) 0 0; border-top: 1px solid var(--border-default); border-left: 0; }
 }
