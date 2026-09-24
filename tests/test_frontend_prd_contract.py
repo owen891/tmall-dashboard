@@ -535,7 +535,7 @@ class FrontendPrdContractTests(unittest.TestCase):
     def test_settings_import_rules_are_the_only_settings_mapping_editor(self):
         page = self.read('frontend/ui_demo/pages/settings.html')
         settings = self.read('frontend/ui_demo/assets/settings-live.js')
-        products = self.read('frontend/ui_demo/assets/products-live.js')
+        products = self.read('frontend/ui_demo/assets/pages/products/column-settings.js')
         self.assertIn('<span>导入规则</span>', page)
         self.assertIn('data-template-mappings', settings)
         self.assertIn('body: JSON.stringify({ mapping_templates: clone(templateDraft.mapping_templates) })', settings)
@@ -563,7 +563,9 @@ class FrontendPrdContractTests(unittest.TestCase):
 
     def test_products_column_dialog_supports_full_selection_and_custom_templates(self):
         page = self.read('frontend/ui_demo/pages/products.html')
-        adapter = self.read('frontend/ui_demo/assets/products-live.js')
+        adapter = self.read('frontend/ui_demo/assets/pages/products/column-settings.js')
+        # 列定义（columnGroups）仍在页面主脚本，弹层行为在 column-settings 模块
+        main = self.read('frontend/ui_demo/assets/products-live.js')
         for hook in (
             'data-products-columns-select-all',
             'data-products-columns-clear-all',
@@ -573,11 +575,11 @@ class FrontendPrdContractTests(unittest.TestCase):
         ):
             self.assertIn(hook, page)
         for field in ('search_conversion', 'paid_ipv', 'direct_gmv', 'cart_cost', 'click_rate'):
-            self.assertIn(f"key: '{field}'", adapter)
+            self.assertIn(f"key: '{field}'", main)
         self.assertIn('saveCustomTemplate', adapter)
         self.assertIn("'/api/settings'", adapter)
 
-        column_definition = adapter[adapter.index('const columnGroups = ['):adapter.index('const columns =')]
+        column_definition = main[main.index('const columnGroups = ['):main.index('const columns =')]
         column_keys = re.findall(r"key: '([^']+)'", column_definition)
         self.assertEqual(len(column_keys), len(set(column_keys)), 'column settings must not render duplicate fields')
         self.assertEqual(adapter.count('function renderTemplateSelect('), 1)
@@ -589,13 +591,14 @@ class FrontendPrdContractTests(unittest.TestCase):
         self.assertIn('input.disabled = field.required || field.locked', selector)
         self.assertIn('function removeField(position)', selector)
         self.assertIn("dataset.lucide = 'trash-2'", selector)
-        self.assertIn('Number(field.nonempty_count || 0) > 0', adapter)
-        self.assertIn('function classifyBiField(field)', adapter)
-        self.assertIn("return '交易与收益'", adapter)
-        self.assertIn("return '推广与投放'", adapter)
-        self.assertIn("return '流量与转化'", adapter)
-        self.assertIn("return '商品与库存'", adapter)
-        self.assertIn("return '其他 BI 字段'", adapter)
+        # BI 字段目录分类逻辑在页面主脚本（products-live）
+        self.assertIn('Number(field.nonempty_count || 0) > 0', main)
+        self.assertIn('function classifyBiField(field)', main)
+        self.assertIn("return '交易与收益'", main)
+        self.assertIn("return '推广与投放'", main)
+        self.assertIn("return '流量与转化'", main)
+        self.assertIn("return '商品与库存'", main)
+        self.assertIn("return '其他 BI 字段'", main)
         self.assertNotIn("columnGroups.push({ label: 'BI 数据源字段'", adapter)
 
         settings_tree = ast.parse(self.read('services/settings_service.py'))
@@ -612,13 +615,13 @@ class FrontendPrdContractTests(unittest.TestCase):
         self.assertIn('window.DemoFieldTemplateManager', manager)
         self.assertIn('data-field-template-edit', manager)
         self.assertIn('data-field-template-delete', manager)
-        for page_name, script_name in (
-            ('products', 'products-live.js'),
+        for page_name, script_path in (
+            ('products', 'pages/products/column-settings.js'),
             ('promotion', 'promotion-live.js'),
             ('lifecycle', 'lifecycle-live.js'),
         ):
             page = self.read(f'frontend/ui_demo/pages/{page_name}.html')
-            script = self.read(f'frontend/ui_demo/assets/{script_name}')
+            script = self.read(f'frontend/ui_demo/assets/{script_path}')
             self.assertIn('../assets/field-template-manager.js', page)
             self.assertIn('DemoFieldTemplateManager', script)
         self.assertIn("'/api/settings'", self.read('frontend/ui_demo/assets/products-live.js'))
@@ -629,7 +632,7 @@ class FrontendPrdContractTests(unittest.TestCase):
 
     def test_products_field_selection_uses_a_separate_order_preview(self):
         page = self.read('frontend/ui_demo/pages/products.html')
-        script = self.read('frontend/ui_demo/assets/products-live.js')
+        script = self.read('frontend/ui_demo/assets/pages/products/column-settings.js')
         selector = self.read('frontend/ui_demo/assets/field-selector.js')
         self.assertIn('data-products-field-selector', page)
         self.assertIn('TmallUI.fieldSelector', script)
@@ -644,9 +647,12 @@ class FrontendPrdContractTests(unittest.TestCase):
         component = component_path.read_text(encoding='utf-8')
         self.assertIn('window.DemoFieldSelector', component)
         self.assertIn('function create', component)
-        for page_name, script_name in (('products', 'products-live.js'), ('promotion', 'promotion-live.js')):
+        for page_name, script_path in (
+            ('products', 'pages/products/column-settings.js'),
+            ('promotion', 'promotion-live.js'),
+        ):
             page = self.read(f'frontend/ui_demo/pages/{page_name}.html')
-            script = self.read(f'frontend/ui_demo/assets/{script_name}')
+            script = self.read(f'frontend/ui_demo/assets/{script_path}')
             self.assertIn('../assets/field-selector.js', page)
             self.assertIn('TmallUI.fieldSelector', script)
 
@@ -730,7 +736,7 @@ class FrontendPrdContractTests(unittest.TestCase):
 
     def test_template_configuration_keeps_product_templates_on_products_page(self):
         settings = self.read('frontend/ui_demo/assets/settings-live.js')
-        products = self.read('frontend/ui_demo/assets/products-live.js')
+        products = self.read('frontend/ui_demo/assets/pages/products/column-settings.js')
         promotion = self.read('frontend/ui_demo/assets/promotion-live.js')
         self.assertIn('templateDraft.mapping_templates', settings)
         self.assertNotIn('templateDraft.view_templates', settings)

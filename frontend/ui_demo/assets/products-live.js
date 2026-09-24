@@ -120,30 +120,6 @@
     rebuildColumns();
   }
   rebuildColumns();
-  const templates = {
-    operate: ['tier', 'style', 'product_type', 'product_time_node', 'status', 'payment_amount', 'net_sales', 'conversion', 'refund_rate', 'ad_spend', 'roi', 'paid_ipv', 'organic_ipv', 'search_ipv', 'recommend_ipv', 'repurchase_rate'],
-    select: ['tier', 'style', 'product_type', 'product_time_node', 'category', 'status', 'visitors', 'conversion', 'cart_rate', 'fav_rate', 'payment_amount', 'buyers', 'avg_order_value', 'score'],
-    paid: ['status', 'ad_spend', 'expense_ratio', 'roi', 'paid_ratio', 'keyword_spend', 'keyword_roi', 'crowd_spend', 'crowd_roi', 'impressions', 'clicks', 'ctr'],
-    refund: ['status', 'payment_amount', 'net_sales', 'refund_amount', 'refund_rate', 'buyers', 'avg_order_value', 'new_buyers', 'new_buyer_ratio', 'repurchase_users', 'repurchase_rate', 'score'],
-    lifecycle: ['lifecycle_stage', 'seasonality', 'has_pending_action', 'list_date', 'tier', 'style', 'product_type', 'product_time_node', 'product_growth_stage', 'status', 'payment_amount', 'trend_change'],
-    traffic: ['tier', 'style', 'visitors', 'page_views', 'uv_value', 'paid_ipv', 'organic_ipv', 'conversion', 'cart_rate', 'fav_rate', 'bounce_rate', 'avg_stay_duration', 'click_rate'],
-    transaction: ['tier', 'style', 'payment_amount', 'payment_count', 'buyers', 'avg_order_value', 'net_sales', 'refund_amount', 'refund_rate', 'trend_change', 'cart_qty', 'score'],
-    promotion: ['status', 'ad_spend', 'expense_ratio', 'roi', 'paid_ratio', 'keyword_spend', 'keyword_roi', 'crowd_spend', 'crowd_roi', 'site_spend', 'site_sales', 'site_roi']
-  };
-  const templateLabels = {
-    operate: '经营', select: '选款', paid: '投放', refund: '退款', lifecycle: '生命周期'
-  };
-  Object.assign(templateLabels, {
-    operate: '\u7ecf\u8425\u603b\u89c8',
-    select: '\u9009\u6b3e\u5206\u6790',
-    paid: '\u6295\u653e\u6548\u7387',
-    refund: '\u9000\u6b3e\u590d\u8d2d',
-    lifecycle: '\u751f\u547d\u5468\u671f',
-    traffic: '\u6d41\u91cf\u8f6c\u5316',
-    transaction: '\u4ea4\u6613\u4e0e\u9000\u6b3e',
-    promotion: '\u63a8\u5e7f\u4e0e\u8d39\u7528',
-  });
-  const builtinTemplateKeys = new Set(Object.keys(templates));
   const focusableSelector = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
   const $ = (selector, root = document) => root.querySelector(selector);
   const state = {
@@ -156,7 +132,8 @@
     dateRange: null,
     starredOnly: false,
     view: 'operate',
-    visibleColumns: [...templates.operate],
+    // 默认列 = operate 模板首版字面量；列设置模块创建后由 init 流程校正
+    visibleColumns: ['tier', 'style', 'product_type', 'product_time_node', 'status', 'payment_amount', 'net_sales', 'conversion', 'refund_rate', 'ad_spend', 'roi', 'paid_ipv', 'organic_ipv', 'search_ipv', 'recommend_ipv', 'repurchase_rate'],
     serverDefaultView: null,
     searchTimer: null,
     facets: { tiers: [], styles: [], statuses: [], product_types: [], product_time_nodes: [], product_growth_stages: [] },
@@ -1151,225 +1128,14 @@
   }
 
   const columnsDialog = $('[data-products-columns-dialog]');
-  let columnsReturnFocus = null;
-  let columnSelector = null;
-  let templateManager = null;
-
-  const productTemplateRecords = () => Object.fromEntries(Object.entries(templates).map(([key, columnsList]) => [key, {
-    label: templateLabels[key] || key,
-    columns: [...columnsList],
-  }]));
-
-  function selectedDialogColumns() {
-    return columnSelector?.getSelected() || [];
-  }
-
-  function updateColumnsDialogStatus() {
-    const selected = selectedDialogColumns();
-    $('[data-products-visible-count]').textContent = number(selected.length);
-    $('[data-products-columns-status]').textContent = selected.length ? '' : '至少保留一个可见字段';
-    $('[data-products-columns-apply]').disabled = selected.length === 0;
-    $('[data-products-template-save]').disabled = selected.length === 0;
-  }
-
-  function renderTemplateSelect(selectedKey = state.view) {
-    const select = $('[data-products-template-select]');
-    select.replaceChildren(...Object.keys(templates).map((key) => {
-      const option = document.createElement('option');
-      option.value = key;
-      option.textContent = templateLabels[key] || key;
-      return option;
-    }));
-    if ([...select.options].some((option) => option.value === selectedKey)) select.value = selectedKey;
-  }
-
-  function renderColumnOptions(selected = state.visibleColumns) {
-    const config = {
-      groups: columnGroups.map((group) => ({ label: group.label, fields: group.columns })),
-      selected,
-    };
-    if (!columnSelector) {
-      columnSelector = TmallUI.fieldSelector({
-        root: $('[data-products-field-selector]'),
-        ...config,
-        availableTitleId: 'productsAvailableFieldsTitle',
-        previewTitleId: 'productsFieldPreviewTitle',
-        optionDataAttribute: 'data-products-column-key',
-        previewDataAttribute: 'data-products-preview-key',
-        onChange: updateColumnsDialogStatus,
-      });
-    } else {
-      columnSelector.setConfig(config);
-    }
-    if (!templateManager && window.DemoFieldTemplateManager) {
-      templateManager = DemoFieldTemplateManager.create({
-        root: $('[data-products-template-manager]'),
-        builtinKeys: [...builtinTemplateKeys],
-        templates: productTemplateRecords(),
-        onChange: (event) => {
-          if (event.type === 'use') {
-            const selectedTemplate = templates[event.key];
-            if (selectedTemplate) renderColumnOptions(selectedTemplate);
-            renderTemplateSelect(event.key);
-          }
-        },
-        onSave: (key, label) => updateProductTemplate(key, label),
-        onDelete: (key) => deleteProductTemplate(key),
-      });
-    }
-    templateManager?.setTemplates(productTemplateRecords());
-    renderTemplateSelect();
-    updateColumnsDialogStatus();
-    window.lucide?.createIcons();
-  }
-
-  function openColumnsDialog(event) {
-    columnsReturnFocus = event.currentTarget;
-    renderColumnOptions();
-    columnsDialog.hidden = false;
-    columnsDialog.showModal();
-    window.setTimeout(() => columnsDialog.querySelector('input')?.focus(), 0);
-  }
-
-  function closeColumnsDialog() {
-    if (columnsDialog.open) columnsDialog.close();
-    columnsDialog.hidden = true;
-    columnsReturnFocus?.focus?.();
-    columnsReturnFocus = null;
-  }
-
-  function saveColumns() {
-    try {
-      localStorage.setItem(storageKey, state.view);
-      localStorage.setItem(columnsStorageKey, JSON.stringify(state.visibleColumns));
-      localStorage.setItem(columnsPreferenceStorageKey, JSON.stringify({
-        view: state.view,
-        columns: state.visibleColumns,
-        serverDefaultView: state.serverDefaultView,
-      }));
-    } catch {}
-  }
-
-  function applyColumns(selected, view = 'custom') {
-    const valid = selected.filter((key) => columnsByKey.has(key));
-    if (!valid.length) return;
-    state.visibleColumns = valid;
-    state.view = view;
-    saveColumns();
-    renderTable();
-  }
-
-  function ingestViewTemplates(settings) {
-    state.settings = settings;
-    Object.keys(templates).forEach((key) => {
-      if (!builtinTemplateKeys.has(key)) delete templates[key];
-    });
-    Object.keys(templateLabels).forEach((key) => {
-      if (!builtinTemplateKeys.has(key)) delete templateLabels[key];
-    });
-    Object.entries(settings?.view_templates || {}).forEach(([key, value]) => {
-      const columnsList = Array.isArray(value) ? value : value?.columns;
-      if (!Array.isArray(columnsList)) return;
-      const valid = columnsList.filter((column) => columnsByKey.has(column));
-      if (!valid.length) return;
-      templates[key] = valid;
-      templateLabels[key] = Array.isArray(value) ? key : (value.label || key);
-    });
-    templateManager?.setTemplates(productTemplateRecords());
-  }
-
-  async function updateProductTemplate(key, label) {
-    const selected = selectedDialogColumns();
-    if (!selected.length || !templates[key]) return;
-    const viewTemplates = { ...(state.settings?.view_templates || {}), ...productTemplateRecords() };
-    viewTemplates[key] = { label, columns: selected };
-    try {
-      const response = await DemoApi.domainRequest('/api/settings', jsonOptions({ view_templates: viewTemplates }, 'PUT'));
-      ingestViewTemplates(response.data);
-      applyColumns(selected, key);
-      renderColumnOptions(selected);
-      $('[data-products-columns-status]').textContent = `模板“${label}”已更新`;
-    } catch (error) {
-      $('[data-products-columns-status]').textContent = error.message || '模板更新失败';
-    }
-  }
-
-  async function deleteProductTemplate(key) {
-    if (builtinTemplateKeys.has(key)) return;
-    const viewTemplates = { ...(state.settings?.view_templates || {}) };
-    delete viewTemplates[key];
-    const payload = { view_templates: viewTemplates };
-    if (state.settings?.product_view_template === key) payload.product_view_template = 'operate';
-    try {
-      const response = await DemoApi.domainRequest('/api/settings', jsonOptions(payload, 'PUT'));
-      ingestViewTemplates(response.data);
-      const fallback = templates.operate;
-      if (state.view === key) applyColumns(fallback, 'operate');
-      renderColumnOptions(state.view === 'operate' ? fallback : state.visibleColumns);
-      $('[data-products-columns-status]').textContent = '模板已删除';
-    } catch (error) {
-      $('[data-products-columns-status]').textContent = error.message || '模板删除失败';
-    }
-  }
-
-  async function saveCustomTemplate() {
-    const input = $('[data-products-template-name]');
-    const name = input.value.trim();
-    const selected = selectedDialogColumns();
-    if (!name) {
-      $('[data-products-columns-status]').textContent = '请输入模板名称';
-      input.focus();
-      return;
-    }
-    if (!selected.length) return;
-    const key = `custom_${Date.now()}`;
-    const viewTemplates = { ...(state.settings?.view_templates || {}) };
-    viewTemplates[key] = { label: name, columns: selected };
-    const button = $('[data-products-template-save]');
-    button.disabled = true;
-    $('[data-products-columns-status]').textContent = '正在保存模板';
-    try {
-      const response = await DemoApi.domainRequest('/api/settings', jsonOptions({ view_templates: viewTemplates }, 'PUT'));
-      ingestViewTemplates(response.data);
-      input.value = '';
-      applyColumns(selected, key);
-      renderTemplateSelect(key);
-      $('[data-products-columns-status]').textContent = `模板“${name}”已保存`;
-      toast(`已保存模板“${name}”`);
-    } catch (error) {
-      $('[data-products-columns-status]').textContent = error.message || '模板保存失败';
-    } finally {
-      button.disabled = false;
-    }
-  }
-
-  function bindColumnSettings() {
-    $('[data-products-columns-open]').addEventListener('click', openColumnsDialog);
-    document.querySelectorAll('[data-products-columns-close]').forEach((button) => button.addEventListener('click', closeColumnsDialog));
-    $('[data-products-columns-reset]').addEventListener('click', () => renderColumnOptions(templates.operate));
-    $('[data-products-columns-select-all]').addEventListener('click', () => renderColumnOptions(columns.map((column) => column.key)));
-    $('[data-products-columns-clear-all]').addEventListener('click', () => renderColumnOptions([]));
-    $('[data-products-template-apply]').addEventListener('click', () => {
-      const key = $('[data-products-template-select]').value;
-      renderColumnOptions(templates[key] || templates.operate);
-      renderTemplateSelect(key);
-    });
-    $('[data-products-template-save]').addEventListener('click', () => saveCustomTemplate());
-    $('[data-products-columns-apply]').addEventListener('click', () => {
-      const selected = selectedDialogColumns();
-      if (!selected.length) return;
-      applyColumns(selected);
-      closeColumnsDialog();
-      toast(`已应用 ${selected.length} 个字段`);
-    });
-    columnsDialog.addEventListener('cancel', (event) => { event.preventDefault(); closeColumnsDialog(); });
-    columnsDialog.addEventListener('close', () => {
-      columnsDialog.hidden = true;
-      columnsReturnFocus?.focus?.();
-      columnsReturnFocus = null;
-    });
-  }
-
+  // 列设置/模板模块（从本闭包切出，依赖显式注入）
+  const columnSettings = window.TmallProducts?.createColumnSettings
+    ? window.TmallProducts.createColumnSettings({
+        state, columns, columnsByKey, columnGroups,
+        storageKeys: { view: storageKey, columns: columnsStorageKey, preference: columnsPreferenceStorageKey },
+        $, number, toast, jsonOptions, renderTable, columnsDialog,
+      })
+    : null;
   async function load(detail) {
     const token = ++state.token;
     const request = requestScope?.begin('products');
@@ -1683,7 +1449,7 @@
     document.querySelectorAll('[data-products-view]').forEach((button) => button.addEventListener('click', () => {
       state.view = button.dataset.productsView || 'operate';
       try { localStorage.setItem(storageKey, state.view); } catch {}
-      applyColumns(templates[state.view] || templates.operate, state.view);
+      columnSettings.applyColumns(columnSettings.templates[state.view] || columnSettings.templates.operate, state.view);
     }));
   }
 
@@ -1748,15 +1514,16 @@
         : [];
       if (storedColumns.length) {
         state.visibleColumns = [...new Set(storedColumns)];
-        state.view = templates[preference.view] ? preference.view : 'custom';
+        state.view = columnSettings.templates[preference.view] ? preference.view : 'custom';
       } else {
         if (preference && !preferenceMatchesDefault) {
           localStorage.removeItem(columnsPreferenceStorageKey);
           localStorage.removeItem(columnsStorageKey);
           localStorage.removeItem(storageKey);
         }
-        state.view = configuredDefault && templates[configuredDefault] ? configuredDefault : 'operate';
-        state.visibleColumns = [...(templates[state.view] || templates.operate)];
+        state.view = configuredDefault && columnSettings.templates[configuredDefault] ? configuredDefault : 'operate';
+        state.view = columnSettings.templates[state.view] ? state.view : 'operate';
+        state.visibleColumns = [...(columnSettings.templates[state.view] || columnSettings.templates.operate)];
       }
     } catch {}
     applyFieldView();
@@ -1768,9 +1535,9 @@
       DemoLabels.setDictionaries(payload.data?.classification_dictionaries);
       ingestBiFieldCatalog(payload.data?.field_catalog?.products);
       const configuredDefault = payload.data?.product_view_template;
-      ingestViewTemplates(payload.data);
-      renderTemplateSelect(configuredDefault);
-      return templates[configuredDefault] ? configuredDefault : null;
+      columnSettings.ingestViewTemplates(payload.data);
+      columnSettings.renderTemplateSelect(configuredDefault);
+      return columnSettings.templates[configuredDefault] ? configuredDefault : null;
     } catch (_) { return null; }
   }
 
@@ -1796,7 +1563,7 @@
   bindFilters();
   $('[data-products-batch-field]').addEventListener('change', fillBatchOptions);
   fillBatchOptions();
-  bindColumnSettings();
+  columnSettings.bindColumnSettings();
   document.querySelector('[data-demo-export]')?.addEventListener('click', (event) => {
     event.stopImmediatePropagation();
     exportAllProducts().catch((error) => toast(error.message));

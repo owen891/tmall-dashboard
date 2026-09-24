@@ -80,10 +80,14 @@ def test_field_selector_supports_search_and_visible_drag_feedback():
         assert marker in styles
 
 
-    for name in ("keyword-promotion-live.js", "lifecycle-live.js", "overview-live.js", "products-live.js", "promotion-live.js"):
+    # products 页的 fieldSelector 消费已迁至 pages/products/column-settings.js
+    for name in ("keyword-promotion-live.js", "lifecycle-live.js", "overview-live.js", "promotion-live.js"):
         source = (ASSETS / name).read_text(encoding="utf-8")
         assert "TmallUI.fieldSelector" in source, name
         assert "DemoFieldSelector" not in source, name
+    products_columns = (ASSETS / "pages" / "products" / "column-settings.js").read_text(encoding="utf-8")
+    assert "TmallUI.fieldSelector" in products_columns, "products column-settings"
+    assert "DemoFieldSelector" not in products_columns, "products column-settings"
 
 
 def test_field_selector_only_uses_icons_available_in_the_custom_bundle():
