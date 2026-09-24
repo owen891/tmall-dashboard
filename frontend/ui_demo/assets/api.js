@@ -189,25 +189,8 @@
     return capability?.interaction_state === 'enabled';
   }
 
-  const stateLabels = {
-    loading: '加载中…', 'no-data': '暂无数据', 'insufficient-data': '数据积累中…',
-    'missing-fields': '缺少必要字段', 'calculation-failed': '指标计算失败',
-    'source-unavailable': '数据来源不可用', partial: '部分数据可用',
-  };
-  function renderDataState(container, state, details = {}) {
-    // TmallUI owns the canonical renderer; keep a local copy for pages that load api.js without ui-components.js.
-    if (window.TmallUI?.renderDataState) return window.TmallUI.renderDataState(container, state, details);
-    if (!container) return;
-    const key = stateLabels[state] ? state : 'calculation-failed';
-    container.replaceChildren();
-    container.classList.add('data-state');
-    container.setAttribute('role', 'status');
-    container.setAttribute('aria-live', 'polite');
-    const title = document.createElement('strong'); title.textContent = stateLabels[key];
-    const body = document.createElement('span'); body.textContent = details.message || details.reason || '';
-    container.append(title, body);
-    if (details.retry) { const button = document.createElement('button'); button.type = 'button'; button.className = 'ui-button ui-button--ghost'; button.textContent = '重试'; button.addEventListener('click', details.retry); container.appendChild(button); }
-  }
+  // TmallUI owns the canonical renderer; every page loads ui-components.js.
+  const renderDataState = (container, state, details = {}) => window.TmallUI.renderDataState(container, state, details);
   window.DemoApi = { request, domainRequest, optional, context, can, loadPageCapabilities, canPage, renderDataState };
   loadPageCapabilities().catch(() => {});
 })();

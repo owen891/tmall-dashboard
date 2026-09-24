@@ -246,7 +246,8 @@ def test_component_layer_owns_data_state_without_demoapi_dependency():
     source = (ASSETS / "ui-components.js").read_text(encoding="utf-8")
     assert "window.DemoApi" not in source
     api_source = (ASSETS / "api.js").read_text(encoding="utf-8")
-    assert "window.TmallUI?.renderDataState" in api_source
+    assert "window.TmallUI.renderDataState" in api_source
+    assert "const stateLabels" not in api_source
 
 
 def test_percent_formatter_requires_explicit_scale_mode():
