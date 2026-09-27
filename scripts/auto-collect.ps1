@@ -231,7 +231,7 @@ foreach ($source in $Sources) {
     $name = $sourceNames[$source]
     try {
         $body = @{source = $source} | ConvertTo-Json
-        $resp = Invoke-WebRequest -Uri "$DashboardUrl/api/collect/trigger" -Method POST -Body $body -ContentType "application/json" -UseBasicParsing -TimeoutSec 10
+        $resp = Invoke-WebRequest -Uri "$DashboardUrl/api/collect/trigger" -Method POST -Body $body -ContentType "application/json" -UseBasicParsing -TimeoutSec 60
         $data = $resp.Content | ConvertFrom-Json
         if ($data.ok) { Write-Log "  ✓ 已触发: $name"; $triggered += $source }
         else { Write-Log "  ✗ 触发失败: $name - $($data.message)" "WARN" }

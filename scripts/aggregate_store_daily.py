@@ -11,10 +11,14 @@ import argparse
 import json
 import os
 import sqlite3
+import sys
 from pathlib import Path
 
-
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
+# 确保项目根目录在 sys.path 中，以便导入 scripts 包
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
 DEFAULT_DB = Path(os.environ.get('TMALL_DB_PATH', PROJECT_ROOT / 'data' / 'dashboard.db'))
 DEFAULT_LOOKBACK_DAYS = 14
 

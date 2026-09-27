@@ -479,15 +479,7 @@ _prepare_lock = threading.Lock()
 
 
 def check_collect_env(source_key):
-    """页面准备作为可选步骤，失败不阻断采集（采集脚本自己会处理cookie）。"""
-    try:
-        ok, output = prepare_collect_pages([source_key])
-        if not ok:
-            import logging
-            logging.warning(f"页面准备失败（不阻断采集）: {str(output)[:200]}")
-    except Exception as e:
-        import logging
-        logging.warning(f"页面准备异常（不阻断采集）: {e}")
+    """完全跳过页面准备：采集脚本自己会处理cookie和登录态。"""
     return None
 
 
@@ -653,7 +645,7 @@ def trigger_collect():
                     process_env['TMALL_COLLECTOR_VERSION'] = APP_VERSION
                     # 单品流量采集的商品数上限。采集器默认已是 200，这里再固化一次，
                     # 避免部署环境未设置时回落到旧的 50 造成覆盖度断崖。
-                    process_env.setdefault('TMALL_ITEM_MAX_ITEMS', '200')
+                    process_env.setdefault('TMALL_ITEM_MAX_ITEMS', '50')  # 用户要求TOP50
                     proc = subprocess.Popen(
                         [VENV_PYTHON, '-u', script_path],
                         cwd=COLLECTORS_DIR,
