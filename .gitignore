@@ -61,6 +61,8 @@ Thumbs.db
 .superpowers/
 .planning/
 .impeccable/
+.workbuddy/
+.workbuddy-ai/
 Program
 audit-*.png
 lifecycle-dialog-*.png
@@ -94,3 +96,6 @@ ui-manage-toolbox-check.png
 
 # 前端运行时下载产物
 /frontend/ui_demo/assets/downloads/
+
+# Stray tool-generated HTML artifacts (not part of the application)
+pelican-*.html
