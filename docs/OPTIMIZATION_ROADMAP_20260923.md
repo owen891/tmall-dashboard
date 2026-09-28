@@ -224,7 +224,7 @@ Vite 不设阶段，设触发条件：出现"需要 npm 依赖复用 / TypeScrip
 
 ---
 
-## 6. 执行日志（2026-09-24 更新）
+## 6. 执行日志（2026-09-28 更新）
 
 已按执行顺序完成第 0-5 步与第 6 步大部分：
 
@@ -237,13 +237,14 @@ Vite 不设阶段，设触发条件：出现"需要 npm 依赖复用 / TypeScrip
 | 第 4 步 方向三 3.1/3.2/3.3/3.4 | ✅ | 3.2 状态文案收敛 DemoLabels + 删 data-center-live 兼容壳 5da1161；3.3 ui-components 全页标配 + api.js 降级副本删除 bda528e |
 | 第 5 步 2.2 sycm repo 化 | ✅ 收口 | d19109a：19 个路由/辅助的全部裸 SQL 下沉，sycm_api 1183 → 约 490 行 |
 | 第 6 步 方向四 CSS 拆分 | ✅（此前完成） | 3d24992 |
-| 第 7 步 方向六 | 🔄 进行中 | data-center ✅ 29a3e0c；products 第一步 ✅ 07095ab；period-review 已拆三步 ✅ a9ef57c（货品表格列设置 280 行）→ f4fe874（目标卡/目标表 258 行）→ 31020f5（叶子类目周看板约 190 行），主闭包 2443 → 1807 行 |
+| 第 7 步 方向六 | 🔄 进行中 | data-center ✅ 29a3e0c；products 第二步 ✅ f44daea（rule-board.js 分群看板/规则详情 240 行，主闭包 1588 → 1406，顺带删 productHealth 死代码、修 openProductDetail 的 showToast→toast）；period-review 已拆三步 ✅ a9ef57c → f4fe874 → 31020f5 |
 
 已知预存问题（待另立任务）：
 - products 页 `GET /api/sycm/item-flow/summary?category_mode=sock` 对无数据范围返回 400，
   `audit_core_interactions` 把 4xx 记为 browserError（基线 3 项失败，与本轮改动无关）。
 - data-center 390x844 视口 toolbox 按钮在视口外（demo-sidebar 移动端布局），audit 点击超时。
 
-方向六下一步：period-review 剩余簇的耦合变深（动作/工作台簇与 load() 及诊断弹窗
-共享状态纠缠，矩阵簇与 reloadMatrixPanels 交织），建议先转 products → promotion
-的下一步拆分再回头；shell.js 只拆 date-range-store（需真实浏览器门）。
+方向六下一步：products 主闭包剩余可拆簇——表格渲染（renderTable/renderHeader/renderMobileSummary 簇）
+与时间线视图（loadTimelineRows/renderTimelineTable 簇）相对独立，优先级高；period-review 剩余簇
+耦合变深（动作/工作台簇与 load() 及诊断弹窗共享状态纠缠，矩阵簇与 reloadMatrixPanels 交织），
+建议延后回头；shell.js 只拆 date-range-store（需真实浏览器门）。
