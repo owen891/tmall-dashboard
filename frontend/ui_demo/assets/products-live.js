@@ -212,7 +212,7 @@
     } finally {
       state.copyingIds = false;
       button.removeAttribute('aria-busy');
-      updateSelection();
+      tableRender?.updateSelection();
     }
   }
 
@@ -327,17 +327,6 @@
     return range.startDate === range.endDate;
   }
 
-  function setRowStatus(message) {
-    const body = $('[data-products-body]');
-    body.replaceChildren();
-    const row = document.createElement('tr');
-    const cell = row.insertCell();
-    cell.colSpan = state.visibleColumns.length + 3;
-    cell.textContent = message;
-    row.appendChild(cell);
-    body.appendChild(row);
-  }
-
   function optionValues(key) {
     const facetKey = ({ tier: 'tiers', style: 'styles', status: 'statuses', product_type: 'product_types', product_time_node: 'product_time_nodes', product_growth_stage: 'product_growth_stages' })[key] || `${key}s`;
     return [...new Set((state.facets[facetKey] || []).map((item) => DemoLabels.clean(item, '')).filter(Boolean))].sort();
@@ -422,71 +411,6 @@
     return `/api/products?${params.toString()}`;
   }
 
-  function visibleRows() {
-    return state.starredOnly ? state.rows.filter((item) => Number(item.starred || 0) === 1) : state.rows;
-  }
-
-  function updateKpis(rows) {
-    const sales = rows.reduce((sum, item) => sum + salesOf(item), 0);
-    const spend = rows.reduce((sum, item) => sum + spendOf(item), 0);
-    $('[data-products-kpi="total"]').textContent = number(state.total);
-    $('[data-products-kpi="sales"]').textContent = money(sales);
-    $('[data-products-kpi="spend"]').textContent = money(spend);
-    $('[data-products-kpi="roi"]').textContent = spend ? (sales / spend).toFixed(2) : '--';
-  }
-
-  function metricBarValue(item, key) {
-    const value = key === 'payment_amount' ? salesOf(item) : key === 'ad_spend' ? spendOf(item) : field(item, key);
-    return Number.isFinite(value) && value > 0 ? value : 0;
-  }
-
-  function metric(label, value) {
-    const item = document.createElement('div');
-    item.className = 'detail-metric';
-    const labelEl = document.createElement('span');
-    labelEl.textContent = label;
-    const valueEl = document.createElement('strong');
-    valueEl.textContent = value;
-    item.append(labelEl, valueEl);
-    return item;
-  }
-
-  function badge(value, fallback) {
-    const item = document.createElement('span');
-    item.className = 'ui-badge ui-badge--muted';
-    item.textContent = value || fallback || '--';
-    return item;
-  }
-
-  function editableSelect(item, key) {
-    const wrap = document.createElement('div'); wrap.className = 'editable-classification';
-    const input = document.createElement('input');
-    const listId = `product-${key}-options-${productId(item).replace(/[^a-zA-Z0-9_-]/g, '_')}`;
-    input.className = 'input'; input.setAttribute('list', listId);
-    input.disabled = Object.keys(state.capabilities).length > 0 && !DemoApi.can({ capabilities: state.capabilities }, 'can_edit');
-    input.setAttribute('aria-label', key === 'tier' ? '修改分层' : '修改风格');
-    const current = DemoLabels.clean(item[key], '');
-    input.value = current; input.placeholder = key === 'tier' ? '未分层' : '未分类';
-    const list = document.createElement('datalist'); list.id = listId;
-    const dictionaryGroup = key === 'tier' ? 'tiers' : 'styles';
-    const values = [...new Set([current, ...classificationValues(key)])].filter(Boolean);
-    values.forEach((value) => {
-      const option = document.createElement('option');
-      option.value = value;
-      list.appendChild(option);
-    });
-    input.addEventListener('change', async () => {
-      const updated = await updateField(productId(item), key, input.value.trim());
-      if (updated) await rememberClassification(dictionaryGroup, input.value.trim());
-    });
-    input.addEventListener('input', () => {
-      const cell = wrap.closest('td');
-      if (cell) cell.dataset.sortValue = input.value.trim();
-    });
-    wrap.dataset.sortValue = current;
-    wrap.append(input, list); return wrap;
-  }
-
   async function rememberClassification(group, value) {
     if (!value || DemoLabels.dictionaries[group]?.some((item) => item.value === value)) return;
     const response = await DemoApi.domainRequest('/api/settings');
@@ -503,472 +427,22 @@
     list.replaceChildren(...classificationValues(fieldName).map((value) => new Option('', value)));
   }
 
-  function addCell(row, content, className, fieldKey) {
-    const cell = row.insertCell();
-    if (className) cell.className = className;
-    if (fieldKey) cell.dataset.fieldKey = fieldKey;
-    if (content instanceof Node) cell.appendChild(content);
-    else cell.textContent = content;
-    return cell;
-  }
-
-  function formatColumnValue(item, column) {
-    const value = column.key === 'payment_amount' ? salesOf(item) : column.key === 'ad_spend' ? spendOf(item) : field(item, column.key);
-    if (column.format === 'money') return money(value);
-    if (column.format === 'number') return number(value);
-    if (column.format === 'percent') return percent(value);
-    if (column.format === 'decimal') return decimal(value);
-    return String(item[column.key] || '--');
-  }
-
-  function renderHeader() {
-    const head = $('[data-products-head]');
-    head.replaceChildren();
-    const fixed = [
-      ['select', ''], ['title', '商品']
-    ];
-    fixed.forEach(([key, label]) => {
-      const th = document.createElement('th');
-      th.dataset.fieldKey = key;
-      if (key === 'select') {
-        const check = document.createElement('input');
-        check.type = 'checkbox';
-        check.setAttribute('data-products-select-all', '');
-        check.setAttribute('aria-label', '选择当前页商品');
-        check.addEventListener('change', toggleSelectAll);
-        th.appendChild(check);
-      } else th.textContent = label;
-      head.appendChild(th);
-    });
-    if (state.displayMode === 'timeline') {
-      const period = document.createElement('th');
-      period.dataset.fieldKey = 'period';
-      period.textContent = state.periodDimension === 'daily' ? '日期' : state.periodDimension === 'weekly' ? '周起始' : '月份';
-      head.appendChild(period);
-      const trend = document.createElement('th');
-      trend.dataset.fieldKey = 'timeline-trend';
-      trend.textContent = '环比';
-      trend.className = 'num';
-      head.appendChild(trend);
-    }
-    const displayColumns = state.displayMode === 'timeline' ? timelineColumns() : state.visibleColumns;
-    displayColumns.forEach((key) => {
-      if (state.displayMode === 'timeline' && key === 'trend_change') return;
-      const column = columnsByKey.get(key);
-      if (!column) return;
-      const th = document.createElement('th');
-      th.dataset.fieldKey = key;
-      th.textContent = column.label;
-      if (column.format) th.className = 'num';
-      head.appendChild(th);
-    });
-  }
-
-  function toggleSelectAll(event) {
-    visibleRows().forEach((item) => {
-      const id = productId(item);
-      if (event.currentTarget.checked) state.selected.add(id);
-      else state.selected.delete(id);
-    });
-    renderTable();
-  }
-
-  function updateTimelineControls() {
-    document.body.dataset.productsDisplayMode = state.displayMode;
-    const tools = $('[data-products-timeline-tools]');
-    const fieldControls = document.querySelector('.product-control-group--fields');
-    const columnsButton = $('[data-products-columns-open]');
-    if (!tools) return;
-    tools.hidden = state.displayMode !== 'timeline';
-    if (fieldControls) fieldControls.hidden = state.displayMode === 'timeline';
-    // Column settings apply to both list and timeline metrics.
-    if (columnsButton) columnsButton.hidden = false;
-    document.querySelectorAll('[data-products-timeline-limit]').forEach((button) => {
-      button.setAttribute('aria-pressed', String(Number(button.dataset.productsTimelineLimit) === state.timelineLimit));
-    });
-  }
-
-  function renderTable() {
-    updateTimelineControls();
-    if (state.displayMode === 'timeline') return renderTimelineTable();
-    renderHeader();
-    const body = $('[data-products-body]');
-    body.replaceChildren();
-    const rows = visibleRows();
-    const metricMax = {};
-    state.visibleColumns.forEach((key) => {
-      const column = columnsByKey.get(key);
-      if (column?.format) metricMax[key] = Math.max(...rows.map((item) => metricBarValue(item, key)), 0);
-    });
-    updateKpis(rows);
-    if (!rows.length) {
-      setRowStatus(state.starredOnly ? '当前页没有收藏商品' : '当前条件暂无商品');
-      renderMobileSummary(rows);
-      applyFieldView();
-      updatePagination();
-      updateSelection();
-      return;
-    }
-    rows.forEach((item) => {
-      const id = productId(item);
-      const row = document.createElement('tr');
-      row.dataset.productId = id;
-
-      const check = document.createElement('input');
-      check.type = 'checkbox';
-      check.value = id;
-      check.checked = state.selected.has(id);
-      check.setAttribute('aria-label', `选择商品 ${id}`);
-      check.addEventListener('change', () => {
-        if (check.checked) state.selected.add(id);
-        else state.selected.delete(id);
-        updateSelection();
-      });
-      addCell(row, check, '', 'select');
-
-      const identity = document.createElement('div');
-      identity.className = 'product-identity';
-      let thumbnail;
-      const thumbnailUrl = String(item.image_url || '').trim();
-      if (item.image_url) {
-        thumbnail = document.createElement('img');
-        thumbnail.className = 'product-thumb';
-        thumbnail.alt = '';
-        thumbnail.loading = 'lazy';
-        thumbnail.referrerPolicy = 'no-referrer';
-        thumbnail.src = item.image_url;
-        thumbnail.addEventListener('error', () => {
-          thumbnail.replaceWith(makeProductPlaceholder(item, id));
-        }, { once: true });
-      }
-      else if (thumbnailUrl) {
-        thumbnail = document.createElement('img');
-        thumbnail.className = 'product-thumb';
-        thumbnail.alt = '';
-        thumbnail.loading = 'lazy';
-        thumbnail.referrerPolicy = 'no-referrer';
-        thumbnail.src = thumbnailUrl;
-        thumbnail.addEventListener('error', () => {
-          const placeholder = document.createElement('span');
-          placeholder.className = 'product-thumb product-thumb--placeholder';
-          placeholder.setAttribute('aria-hidden', 'true');
-          placeholder.textContent = String(item.title || id || '商品').trim().slice(0, 1);
-          thumbnail.replaceWith(placeholder);
-        }, { once: true });
-      } else {
-        thumbnail = document.createElement('span');
-        thumbnail.className = 'product-thumb product-thumb--placeholder';
-        thumbnail.setAttribute('aria-hidden', 'true');
-        thumbnail.textContent = String(item.title || id || '商品').trim().slice(0, 1);
-      }
-      const title = document.createElement('div');
-      title.className = 'product-title';
-      const titleButton = document.createElement('button');
-      titleButton.type = 'button';
-      titleButton.className = 'product-title__link';
-      titleButton.textContent = item.title || '未命名商品';
-      titleButton.title = item.title || '未命名商品';
-      titleButton.setAttribute('aria-label', `查看商品详情：${item.title || id || '未命名商品'}`);
-      titleButton.addEventListener('click', () => openProductDetail(item, titleButton));
-      const sub = document.createElement('div');
-      sub.className = 'product-title__meta';
-      const star = document.createElement('button');
-      star.type = 'button';
-      star.className = 'star-button';
-      star.dataset.capabilityKey = 'products.catalog_edit';
-      star.disabled = Object.keys(state.capabilities).length > 0 && !DemoApi.can({ capabilities: state.capabilities }, 'can_edit');
-      star.classList.toggle('is-active', Number(item.starred || 0) === 1);
-      star.innerHTML = '<i data-lucide="star"></i>';
-      star.setAttribute('aria-label', Number(item.starred || 0) === 1 ? '取消收藏' : '收藏');
-      star.setAttribute('aria-pressed', String(Number(item.starred || 0) === 1));
-      star.addEventListener('click', async () => toggleStar(item, star));
-      const idLabel = document.createElement('span');
-      idLabel.textContent = id || '--';
-      title.append(titleButton, sub);
-      sub.append(star, idLabel);
-      identity.append(thumbnail, title);
-      addCell(row, identity, '', 'title');
-
-       state.visibleColumns.forEach((key) => {
-        const column = columnsByKey.get(key);
-        if (!column) return;
-         if (key === 'tier' || key === 'style') {
-           const classificationCell = addCell(row, editableSelect(item, key), '', key);
-           classificationCell.dataset.sortValue = DemoLabels.clean(item[key], '');
-         }
-        else if (key === 'product_type') addCell(row, badge(item.product_type || '待复核', item.product_type || '待复核'), '', key);
-         else if (key === 'product_growth_stage') addCell(row, item.product_growth_stage || '--', '', key);
-         else if (key === 'product_time_node') addCell(row, item.product_time_node || '--', '', key);
-         else if (key === 'status') addCell(row, badge(DemoLabels.label('status', item.status, item.status), '未知'), '', key);
-        else if (key === 'lifecycle_stage') addCell(row, DemoLabels.classification('lifecycle_stages', item.lifecycle_stage, item.lifecycle_stage || '--'), '', key);
-        else if (key === 'seasonality') addCell(row, DemoLabels.classification('seasonal_attributes', item.seasonality, item.seasonality || '--'), '', key);
-        else if (key === 'has_pending_action') addCell(row, badge(item.has_pending_action ? '有待办' : '无待办', '无待办'), '', key);
-        else {
-          const cell = addCell(row, formatColumnValue(item, column), column.format ? 'num metric-bar-cell' : '', key);
-          if (column.format && metricMax[key] > 0) {
-            cell.style.setProperty('--metric-fill', `${Math.round((metricBarValue(item, key) / metricMax[key]) * 100)}%`);
-          }
-        }
-      });
-
-      body.appendChild(row);
-    });
-    renderMobileSummary(rows);
-    applyFieldView();
-    updatePagination();
-    updateSelection();
-    window.lucide?.createIcons();
-  }
-
-  function timelineColumns() {
-    const monthlyUnsupported = new Set(['paid_ipv', 'organic_ipv', 'search_ipv', 'recommend_ipv']);
-    const selectedMetrics = state.visibleColumns.filter((key) => {
-      const column = columnsByKey.get(key);
-      return key !== 'trend_change'
-        && Boolean(column?.format)
-        && !(state.periodDimension === 'monthly' && monthlyUnsupported.has(key));
-    });
-    const fallback = ['payment_amount', 'net_sales', 'visitors', 'conversion', 'refund_rate', 'expense_ratio', 'ad_spend', 'roi', 'buyers', 'avg_order_value', 'repurchase_rate'];
-    return [...new Set(selectedMetrics.length ? selectedMetrics : fallback)].filter((key) => columnsByKey.has(key));
-  }
-
-  function renderTimelineProductCells(row, item, rowSpan) {
-    const id = productId(item);
-    const check = document.createElement('input');
-    check.type = 'checkbox';
-    check.value = id;
-    check.checked = state.selected.has(id);
-    check.setAttribute('aria-label', `选择商品 ${id}`);
-    check.addEventListener('change', () => {
-      if (check.checked) state.selected.add(id);
-      else state.selected.delete(id);
-      updateSelection();
-    });
-    const selectCell = addCell(row, check, '', 'select');
-    if (rowSpan > 1) selectCell.rowSpan = rowSpan;
-
-    const identity = document.createElement('div');
-    identity.className = 'product-identity';
-    const thumbnailUrl = String(item.image_url || '').trim();
-    const thumbnail = thumbnailUrl ? document.createElement('img') : makeProductPlaceholder(item, id);
-    if (thumbnailUrl) {
-      thumbnail.className = 'product-thumb';
-      thumbnail.alt = '';
-      thumbnail.loading = 'lazy';
-      thumbnail.referrerPolicy = 'no-referrer';
-      thumbnail.src = thumbnailUrl;
-      thumbnail.addEventListener('error', () => thumbnail.replaceWith(makeProductPlaceholder(item, id)), { once: true });
-    }
-    const title = document.createElement('div');
-    title.className = 'product-title';
-    const titleButton = document.createElement('button');
-    titleButton.type = 'button';
-    titleButton.className = 'product-title__link';
-    titleButton.textContent = item.title || '未命名商品';
-    titleButton.title = item.title || '未命名商品';
-    titleButton.setAttribute('aria-label', `查看商品详情：${item.title || id || '未命名商品'}`);
-    titleButton.addEventListener('click', () => openProductDetail(item, titleButton));
-    const sub = document.createElement('div');
-    sub.className = 'product-title__meta';
-    const star = document.createElement('button');
-    star.type = 'button';
-    star.className = 'star-button';
-    star.dataset.capabilityKey = 'products.catalog_edit';
-    star.disabled = Object.keys(state.capabilities).length > 0 && !DemoApi.can({ capabilities: state.capabilities }, 'can_edit');
-    star.classList.toggle('is-active', Number(item.starred || 0) === 1);
-    star.innerHTML = '<i data-lucide="star"></i>';
-    star.setAttribute('aria-label', Number(item.starred || 0) === 1 ? '取消收藏' : '收藏');
-    star.setAttribute('aria-pressed', String(Number(item.starred || 0) === 1));
-    star.addEventListener('click', async () => toggleStar(item, star));
-    const idLabel = document.createElement('span');
-    idLabel.textContent = id || '--';
-    title.append(titleButton, sub);
-    sub.append(star, idLabel);
-    identity.append(thumbnail, title);
-    const titleCell = addCell(row, identity, '', 'title');
-    if (rowSpan > 1) titleCell.rowSpan = rowSpan;
-
-  }
-
-  function appendTimelineMetrics(row, item, detail, metricMax) {
-    addCell(row, detail.period || '--', 'product-timeline-period', 'period');
-    const trendCell = addCell(row, '', 'num product-timeline-trend', 'timeline-trend');
-    const trend = detail.trend_change;
-    if (trend == null || !Number.isFinite(Number(trend))) {
-      trendCell.textContent = '--';
-    } else {
-      const value = Number(trend);
-      const tone = value > 0 ? 'up' : value < 0 ? 'down' : 'flat';
-      trendCell.classList.add(`product-timeline-trend--${tone}`);
-      trendCell.innerHTML = `<i data-lucide="${tone === 'up' ? 'trending-up' : tone === 'down' ? 'trending-down' : 'minus'}"></i><span>${percent(value)}</span>`;
-    }
-    timelineColumns().forEach((key) => {
-      const column = columnsByKey.get(key);
-      if (!column || key === 'trend_change') return;
-      const valueItem = { ...item, ...detail };
-      const cell = addCell(row, formatColumnValue(valueItem, column), column.format ? 'num metric-bar-cell' : '', key);
-      if (column.format && metricMax[key] > 0) {
-        cell.style.setProperty('--metric-fill', `${Math.round((metricBarValue(valueItem, key) / metricMax[key]) * 100)}%`);
-      }
-    });
-  }
-
-  function renderTimelineTable() {
-    renderHeader();
-    const body = $('[data-products-body]');
-    body.replaceChildren();
-    const rows = visibleRows();
-    const columns = timelineColumns();
-    updateTimelineControls();
-    updateKpis(rows);
-    if (!rows.length) {
-      setRowStatus(state.starredOnly ? '当前页没有收藏商品' : '当前条件暂无商品');
-      renderMobileSummary(rows);
-      applyFieldView();
-      updatePagination();
-      updateSelection();
-      return;
-    }
-    const metricMax = {};
-    columns.forEach((key) => {
-      const column = columnsByKey.get(key);
-      if (column?.format) {
-        metricMax[key] = Math.max(...rows.flatMap((item) => state.timelineRows.get(productId(item)) || []).map((item) => metricBarValue(item, key)), 0);
-      }
-    });
-    rows.forEach((item) => {
-      const id = productId(item);
-      const details = state.timelineRows.get(id) || [];
-      const periods = details.length ? details : [{ product_id: id, period: '--' }];
-      periods.forEach((detail, index) => {
-        const row = document.createElement('tr');
-        row.className = `product-timeline-row ${index === 0 ? 'product-timeline-row--first' : 'product-timeline-row--continuation'}`;
-        row.dataset.productId = id;
-        if (index === 0) renderTimelineProductCells(row, item, periods.length);
-        appendTimelineMetrics(row, item, detail, metricMax);
-        body.appendChild(row);
-      });
-    });
-    renderMobileSummary(rows);
-    applyFieldView();
-    updatePagination();
-    updateSelection();
-    window.lucide?.createIcons();
-  }
-
-  async function loadTimelineRows(renderAfter = true) {
-    const token = ++state.timelineToken;
-    const ids = visibleRows().map(productId).filter(Boolean);
-    state.timelineRows = new Map();
-    if (!ids.length) return;
-    const range = currentRange();
-    const params = new URLSearchParams({
-      dim: state.periodDimension,
-      product_ids: ids.join(','),
-      limit_periods: String(state.timelineLimit),
-    });
-    if (state.periodDimension !== 'monthly' && range.startDate) params.set('start', range.startDate);
-    if (range.endDate) params.set('end', range.endDate);
-    try {
-      const response = await DemoApi.domainRequest(`/api/products/timeline?${params.toString()}`);
-      if (token !== state.timelineToken) return;
-      const grouped = new Map();
-      asArray(response.data, 'rows').forEach((row) => {
-        if (!grouped.has(String(row.product_id))) grouped.set(String(row.product_id), []);
-        grouped.get(String(row.product_id)).push(row);
-      });
-      const maxPeriods = state.timelineLimit;
-      grouped.forEach((items, id) => grouped.set(id, items.slice(0, maxPeriods)));
-      state.timelineRows = grouped;
-      if (renderAfter) renderTable();
-    } catch (error) {
-      if (token !== state.timelineToken) return;
-      setStatus(error.message || '周期明细加载失败');
-      if (renderAfter) renderTable();
-    }
-  }
-
-  function updatePagination() {
-    const totalPages = Math.max(1, Math.ceil(state.total / state.pageSize));
-    $('[data-products-page-size]').value = String(state.pageSize);
-    $('[data-products-page-summary]').textContent = `第 ${state.page} / ${totalPages} 页，共 ${number(state.total)} 件；每页 ${state.pageSize} 件${state.starredOnly ? '；当前页收藏过滤' : ''}`;
-    $('[data-products-prev]').disabled = state.page <= 1;
-    $('[data-products-next]').disabled = state.page >= totalPages;
-  }
-
-  function updateSelection() {
-    const visibleIds = visibleRows().map(productId);
-    const selectedVisible = visibleIds.filter((id) => state.selected.has(id));
-    const all = $('[data-products-select-all]');
-    all.checked = visibleIds.length > 0 && selectedVisible.length === visibleIds.length;
-    all.indeterminate = selectedVisible.length > 0 && selectedVisible.length < visibleIds.length;
-    $('[data-products-selected]').textContent = `已选 ${state.selected.size} 件`;
-    $('[data-products-batch]').classList.toggle('is-active', state.selected.size > 0);
-    const copyButton = $('[data-products-batch-copy]');
-    if (copyButton) copyButton.disabled = state.selected.size === 0 || state.copyingIds;
-  }
-
-  function renderMobileSummary(rows) {
-    const root = $('[data-products-mobile-summary]');
-    if (!root) return;
-    root.hidden = false;
-    root.replaceChildren();
-    if (!rows.length) {
-      const empty = document.createElement('p');
-      empty.className = 'panel__hint';
-      empty.textContent = state.starredOnly ? '当前页没有收藏商品' : '当前条件暂无商品';
-      root.appendChild(empty);
-      return;
-    }
-    rows.forEach((item) => {
-      const id = productId(item);
-      const card = document.createElement('article');
-      card.className = 'products-mobile-summary__item';
-      const header = document.createElement('div');
-      header.className = 'products-mobile-summary__header';
-      const identity = document.createElement('div');
-      identity.className = 'products-mobile-summary__identity';
-      const title = document.createElement('strong');
-      title.textContent = item.title || '未命名商品';
-      const code = document.createElement('span');
-      code.textContent = id || '--';
-      identity.append(title, code);
-      const detail = document.createElement('button');
-      detail.type = 'button';
-      detail.className = 'ui-button ui-button--ghost';
-      detail.textContent = '详情';
-      detail.addEventListener('click', () => openProductDetail(item, detail));
-      header.append(identity, detail);
-      const metrics = document.createElement('dl');
-      metrics.className = 'products-mobile-summary__metrics';
-      [['payment_amount', '支付金额', money(item.payment_amount)], ['net_sales', '净销售额', money(item.net_sales)], ['roi', '推广 ROI', decimal(item.roi)], ['has_pending_action', '待办', item.has_pending_action ? '有待办' : '无待办']].forEach(([key, label, value]) => {
-        const term = document.createElement('dt');
-        term.textContent = label;
-        term.dataset.fieldKey = key;
-        const valueNode = document.createElement('dd');
-        valueNode.textContent = value;
-        metrics.append(term, valueNode);
-      });
-      card.append(header, metrics);
-      root.appendChild(card);
-    });
-  }
-
-  function applyFieldView() {
-    const view = state.view;
-    document.querySelectorAll('[data-products-view]').forEach((button) => {
-      button.setAttribute('aria-pressed', String(button.dataset.productsView === view));
-    });
-    renderHeader();
-  }
-
   const columnsDialog = $('[data-products-columns-dialog]');
+  // 表格渲染/时间线/移动端摘要/分页选择模块（从本闭包切出，依赖显式注入）
+  const tableRender = window.TmallProducts?.createTableRender
+    ? window.TmallProducts.createTableRender({
+        state, $, number, money, percent, decimal, field,
+        productId, salesOf, spendOf, columnsByKey, makeProductPlaceholder,
+        openProductDetail, toggleStar, updateField, rememberClassification,
+        classificationValues, setStatus, asArray, currentRange,
+      })
+    : null;
   // 列设置/模板模块（从本闭包切出，依赖显式注入）
   const columnSettings = window.TmallProducts?.createColumnSettings
     ? window.TmallProducts.createColumnSettings({
         state, columns, columnsByKey, columnGroups,
         storageKeys: { view: storageKey, columns: columnsStorageKey, preference: columnsPreferenceStorageKey },
-        $, number, toast, jsonOptions, renderTable, columnsDialog,
+        $, number, toast, jsonOptions, renderTable: tableRender?.renderTable, columnsDialog,
       })
     : null;
   // 经营分群看板/规则详情模块（从本闭包切出，依赖显式注入）
@@ -982,7 +456,7 @@
     const request = requestScope?.begin('products');
     currentRange(detail);
     renderDataState('loading');
-    setRowStatus('加载中…');
+    tableRender?.setRowStatus('加载中…');
     try {
       const response = await DemoApi.domainRequest(buildProductsUrl(), request ? { signal: request.signal, timeoutMs: 20000 } : undefined);
       const payload = response.data;
@@ -992,7 +466,7 @@
       if (token !== state.token || (request && !request.isCurrent())) return;
       state.rows = asArray(payload, 'rows');
       state.total = Number(payload?.total || state.rows.length);
-      if (state.displayMode === 'timeline') await loadTimelineRows(false);
+      if (state.displayMode === 'timeline') await tableRender?.loadTimelineRows(false);
       state.facets = payload?.facets || { tiers: [], styles: [], statuses: [] };
       state.selected.clear();
        fillSelect('[data-products-tier]', classificationValues('tier'), '全部分层');
@@ -1020,7 +494,7 @@
       const pageSizeSelect = $('[data-products-page-size]');
       if (pageSizeSelect) pageSizeSelect.value = String(state.pageSize);
       $('[data-products-starred]')?.setAttribute('aria-pressed', String(state.starredOnly));
-      renderTable();
+      tableRender?.renderTable();
       if (!state.rows.length) renderDataState('no-data', { message: '当前筛选条件没有商品。' });
       else {
         const dimLabel = ({ daily: '日', weekly: '周', monthly: '月' })[state.periodDimension] || '日';
@@ -1036,8 +510,8 @@
       state.total = 0;
       state.availability = 'calculation-failed';
       state.evidence = [];
-      updateKpis([]);
-      setRowStatus('商品数据加载失败');
+      tableRender?.updateKpis([]);
+      tableRender?.setRowStatus('商品数据加载失败');
       renderDataState('calculation-failed', { message: error.message || '商品数据加载失败', retry: () => load() });
       toast('商品数据加载失败');
     }
@@ -1051,7 +525,7 @@
       await DemoApi.domainRequest(`/api/products/${encodeURIComponent(id)}/metadata`, jsonOptions({ field: key, value, operator: '商品运营', reason: `编辑商品${key}` }, 'PUT'));
       const item = state.rows.find((row) => productId(row) === id);
       if (item) item[key] = value;
-      renderTable();
+      tableRender?.renderTable();
       toast('字段已更新');
       return true;
     } catch (error) {
@@ -1067,7 +541,7 @@
     try {
       const payload = await DemoApi.domainRequest(`/api/products/${encodeURIComponent(id)}/star`, jsonOptions({ product_id: id, operator: '商品运营', reason: '切换商品收藏' }));
       item.starred = Number(payload.data?.starred || 0);
-      renderTable();
+      tableRender?.renderTable();
       toast(item.starred ? '已收藏' : '已取消收藏');
     } finally {
       button.disabled = false;
@@ -1110,7 +584,7 @@
       toast(`已为 ${ids.length} 件商品新增标签`);
       $('[data-products-batch-tag]').value = '';
       state.selected.clear();
-      updateSelection();
+      tableRender?.updateSelection();
     } finally { state.batchMutation = false; }
   }
 
@@ -1129,7 +603,7 @@
     });
     if (!targets.length) {
       state.selected.clear();
-      renderTable();
+      tableRender?.renderTable();
       toast('选中商品已全部收藏，已跳过');
       state.batchMutation = false;
       return;
@@ -1144,7 +618,7 @@
         if (row) row.starred = Number(result.value?.data?.starred || 0);
       });
       state.selected.clear();
-      renderTable();
+      tableRender?.renderTable();
       toast(`批量收藏完成：成功 ${ok}，失败 ${fail}，跳过 ${ids.length - targets.length}`);
     } finally { state.batchMutation = false; }
   }
@@ -1205,7 +679,7 @@
       state.urlFilters = null;
       syncUrlState();
       event.currentTarget.setAttribute('aria-pressed', String(state.starredOnly));
-      renderTable();
+      tableRender?.renderTable();
       setStatus(state.starredOnly ? '当前页收藏过滤已开启' : '当前页收藏过滤已关闭');
     });
     $('[data-products-reset]').addEventListener('click', resetFilters);
@@ -1234,7 +708,7 @@
       if (![3, 6, 12].includes(next) || state.timelineLimit === next) return;
       state.timelineLimit = next;
       syncUrlState();
-      loadTimelineRows().catch((error) => toast(error.message || '周期明细加载失败'));
+      tableRender?.loadTimelineRows().catch((error) => toast(error.message || '周期明细加载失败'));
     }));
     $('[data-products-prev]').addEventListener('click', () => {
       if (state.page > 1) {
@@ -1343,7 +817,7 @@
         state.visibleColumns = [...(columnSettings.templates[state.view] || columnSettings.templates.operate)];
       }
     } catch {}
-    applyFieldView();
+    tableRender?.applyFieldView();
   }
 
   async function loadServerTemplates() {
@@ -1375,7 +849,7 @@
   document.querySelectorAll('[data-products-mode]').forEach((button) => button.setAttribute('aria-pressed', String(button.dataset.productsMode === state.displayMode)));
   document.querySelectorAll('[data-products-period]').forEach((button) => button.setAttribute('aria-pressed', String(button.dataset.productsPeriod === state.periodDimension)));
   document.querySelectorAll('[data-products-timeline-limit]').forEach((button) => button.setAttribute('aria-pressed', String(Number(button.dataset.productsTimelineLimit) === state.timelineLimit)));
-  updateTimelineControls();
+  tableRender?.updateTimelineControls();
   state.ruleKey = state.urlFilters?.rule_key || new URL(window.location.href).searchParams.get('rule_key') || '';
   bindFilters();
   $('[data-products-batch-field]').addEventListener('change', fillBatchOptions);

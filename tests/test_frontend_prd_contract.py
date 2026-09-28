@@ -280,13 +280,16 @@ class FrontendPrdContractTests(unittest.TestCase):
         self.assertIn('finally { addScanButton.disabled = false; }', shell)
 
     def test_page_operations_reference_explicit_capability_contract(self):
+        # products 的能力检查（DemoApi.can）随 star-button 渲染迁移到 table-render.js
         for script in (
-            'overview-live.js', 'products-live.js', 'product-detail-live.js',
+            'overview-live.js', 'product-detail-live.js',
             'promotion-live.js', 'lifecycle-live.js', 'goals-live.js',
             'pages/data-center/import-workflow.js', 'reviews-live.js', 'settings-live.js', 'manage-live.js',
         ):
             content = self.read(f'frontend/ui_demo/assets/{script}')
             self.assertIn('DemoApi.can(', content, script)
+        products_table = self.read('frontend/ui_demo/assets/pages/products/table-render.js')
+        self.assertIn('DemoApi.can(', products_table, 'pages/products/table-render.js')
 
     def test_formal_mutation_controls_use_registered_capabilities(self):
         overview = self.read('frontend/ui_demo/pages/overview.html')
@@ -556,7 +559,8 @@ class FrontendPrdContractTests(unittest.TestCase):
         self.assertIn('ResizeObserver', charts)
 
     def test_products_do_not_render_empty_image_elements(self):
-        products = self.read('frontend/ui_demo/assets/products-live.js')
+        # 图像渲染逻辑迁移到 table-render.js（products-live.js 拆分第三步）
+        products = self.read('frontend/ui_demo/assets/pages/products/table-render.js')
         image_block = products[products.index("const identity = document.createElement('div');"):products.index("const title = document.createElement('div');")]
         self.assertIn('if (item.image_url)', image_block)
         self.assertIn('product-thumb--placeholder', image_block)
