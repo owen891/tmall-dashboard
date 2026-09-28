@@ -304,31 +304,34 @@ class FrontendPrdContractTests(unittest.TestCase):
         self.assertIn("['[data-products-batch-copy]', 'products.list']", api)
 
     def test_products_batch_copy_uses_selected_ids_without_write_api(self):
+        # 复制商品 ID 随批量操作迁移到 batch-ops.js（products-live.js 拆分第四步）
         products = self.read('frontend/ui_demo/assets/products-live.js')
-        self.assertIn('async function copySelectedProductIds(button)', products)
-        self.assertIn('[...state.selected]', products)
-        self.assertIn("join('\\n')", products)
-        self.assertIn('navigator.clipboard?.writeText', products)
-        self.assertIn('copyWithFallback(text)', products)
-        self.assertIn("toast('请选择商品')", products)
-        self.assertIn("toast(`已复制 ${ids.length} 个商品 ID`)", products)
+        batch = self.read('frontend/ui_demo/assets/pages/products/batch-ops.js')
+        self.assertIn('async function copySelectedProductIds(button)', batch)
+        self.assertIn('[...state.selected]', batch)
+        self.assertIn("join('\\n')", batch)
+        self.assertIn('navigator.clipboard?.writeText', batch)
+        self.assertIn('copyWithFallback(text)', batch)
+        self.assertIn("toast('请选择商品')", batch)
+        self.assertIn("toast(`已复制 ${ids.length} 个商品 ID`)", batch)
         self.assertNotIn("'/api/products/batch-copy'", products)
+        self.assertNotIn("'/api/products/batch-copy'", batch)
 
     def test_formal_pages_use_domain_mutation_endpoints(self):
         products = self.read('frontend/ui_demo/assets/products-live.js')
+        products_batch = self.read('frontend/ui_demo/assets/pages/products/batch-ops.js')
         overview = self.read('frontend/ui_demo/assets/overview-live.js')
-        for endpoint in (
-            '/api/products/${encodeURIComponent(id)}/metadata',
-            '/api/products/${encodeURIComponent(id)}/star',
-            "'/api/products/batch-update'",
-            "'/api/products/batch-tags'",
-        ):
-            self.assertIn(endpoint, products)
+        # 行级编辑/收藏端点在主闭包，批量端点在 batch-ops.js
+        self.assertIn('/api/products/${encodeURIComponent(id)}/metadata', products)
+        self.assertIn('/api/products/${encodeURIComponent(id)}/star', products)
+        self.assertIn("'/api/products/batch-update'", products_batch)
+        self.assertIn("'/api/products/batch-tags'", products_batch)
         self.assertIn("'/api/actions'", overview)
         self.assertIn('capability_key: \'overview.create_action\'', overview)
-        self.assertNotIn("'/api/star'", products)
-        self.assertNotIn("'/api/batch_update'", products)
-        self.assertNotIn("'/api/batch_tags'", products)
+        for content in (products, products_batch):
+            self.assertNotIn("'/api/star'", content)
+            self.assertNotIn("'/api/batch_update'", content)
+            self.assertNotIn("'/api/batch_tags'", content)
         self.assertNotIn("'/api/chart_events'", overview)
 
     def test_toolbox_uses_folder_scan_jobs(self):
