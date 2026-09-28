@@ -58,16 +58,19 @@ class ProductPrdContractTests(unittest.TestCase):
         from pathlib import Path
         page = (Path(ROOT) / 'frontend/ui_demo/pages/products.html').read_text(encoding='utf-8')
         script = (Path(ROOT) / 'frontend/ui_demo/assets/products-live.js').read_text(encoding='utf-8')
+        rule_board = (Path(ROOT) / 'frontend/ui_demo/assets/pages/products/rule-board.js').read_text(encoding='utf-8')
         for hook in ('data-products-status', 'data-products-pending-action', 'data-products-mobile-summary'):
             self.assertIn(hook, page)
         self.assertIn('data-product-rule-groups', page)
         self.assertIn('data-product-rule-clear', page)
-        self.assertIn('has_data', script)
+        # 分群看板模块化后（rule-board.js），规则加载与空态/失败文案归属模块
+        self.assertIn('createRuleBoard', rule_board)
+        self.assertIn('/api/product-overview/rule-results', rule_board)
+        self.assertIn('当前周期暂无可用经营分群', rule_board)
+        self.assertIn('经营分群加载失败', rule_board)
         self.assertIn('has_pending_action', script)
-        self.assertIn('/api/product-overview/rule-results', script)
         self.assertIn('rule_key', script)
         self.assertIn('sourceRule', script)
-        self.assertIn('missing facts are not zero', script)
 
     def test_unknown_sort_is_safe_and_count_uses_filters(self):
         response = self.client.get('/api/products?dim=monthly&period=2026-04&lifecycle_stage=decline&sort=not_a_column')
