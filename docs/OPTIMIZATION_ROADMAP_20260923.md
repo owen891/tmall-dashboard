@@ -237,14 +237,15 @@ Vite 不设阶段，设触发条件：出现"需要 npm 依赖复用 / TypeScrip
 | 第 4 步 方向三 3.1/3.2/3.3/3.4 | ✅ | 3.2 状态文案收敛 DemoLabels + 删 data-center-live 兼容壳 5da1161；3.3 ui-components 全页标配 + api.js 降级副本删除 bda528e |
 | 第 5 步 2.2 sycm repo 化 | ✅ 收口 | d19109a：19 个路由/辅助的全部裸 SQL 下沉，sycm_api 1183 → 约 490 行 |
 | 第 6 步 方向四 CSS 拆分 | ✅（此前完成） | 3d24992 |
-| 第 7 步 方向六 | 🔄 进行中 | data-center ✅ 29a3e0c；products 第三步 ✅ 75a6825（table-render.js 表格/时间线/移动端摘要/分页选择 577 行，主闭包 1406 → 880）；products 第二步 ✅ f44daea（rule-board.js 240 行，1588 → 1406）；period-review 已拆三步 ✅ a9ef57c → f4fe874 → 31020f5 |
+| 第 7 步 方向六 | 🔄 进行中 | data-center ✅ 29a3e0c；products 第四步 ✅ 8cea0d4（batch-ops.js 批量操作/复制 169 行，主闭包 880 → 761）；products 第三步 ✅ 75a6825（table-render.js 577 行，880）；products 第二步 ✅ f44daea（rule-board.js 219 行，1588 → 1406）；period-review 已拆三步 ✅ a9ef57c → f4fe874 → 31020f5 |
 
 已知预存问题（待另立任务）：
 - products 页 `GET /api/sycm/item-flow/summary?category_mode=sock` 对无数据范围返回 400，
   `audit_core_interactions` 把 4xx 记为 browserError（基线 3 项失败，与本轮改动无关）。
 - data-center 390x844 视口 toolbox 按钮在视口外（demo-sidebar 移动端布局），audit 点击超时。
+- products 批量字段 datalist 在 init 时为空（字典异步加载早于 fillBatchOptions，与 HEAD 行为一致，非回归）。
 
-方向六下一步：products 主闭包已从 2443 行降至 880 行（含三步拆分 + 工具函数保留），
-剩余簇为筛选绑定（bindFilters/resetFilters/firstPageLoad）与数据加载（load/loadServerTemplates/
-initView/exportAllProducts），耦合较深需谨慎；period-review 剩余簇（动作/工作台/矩阵）建议延后；
-shell.js 只拆 date-range-store（需真实浏览器门）。
+方向六下一步：products 主闭包已从 2443 行降至 761 行（四步拆出 column-settings 288 + rule-board 219
++ table-render 577 + batch-ops 169），剩余为筛选绑定（bindFilters/resetFilters）与数据加载
+（load/loadServerTemplates/initView/exportAllProducts）核心环，耦合最深建议到此收口；
+period-review 剩余簇建议延后；shell.js 只拆 date-range-store（需真实浏览器门）。
