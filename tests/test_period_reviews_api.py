@@ -1110,5 +1110,72 @@ class PeriodReviewsTests(unittest.TestCase):
         bad = self.client.get('/api/period-reviews/product-trend/%20')
         self.assertEqual(bad.status_code, 422); bad.close()
 
+    def test_problem_items_aggregate_across_boards_with_sources(self):
+        """P2 问题单品聚合：下滑榜/亏损榜/高费比跨榜去重并标注来源。"""
+        from db import get_db
+
+        with get_db(self.app.config['DATABASE_PATH']) as connection:
+            connection.executemany(
+                '''INSERT INTO daily_data (product_id, date, payment_amount, ad_spend, operating_profit)
+                   VALUES (?, ?, ?, ?, ?)''',
+                [
+                    # problem-decline：GSV 大幅下滑（上期 10000 → 本期 2000），命中下滑榜
+                    ('problem-decline', '2026-09-21', 2000, 100, -50),
+                    ('problem-decline', '2026-09-14', 10000, 100, 100),
+                    # problem-loss：本期利润为负，命中亏损榜
+                    ('problem-loss', '2026-09-21', 3000, 100, -200),
+                    # problem-ratio：费比 50%（阈值 30%）且 GSV 占比 >1%
+                    ('problem-ratio', '2026-09-21', 1500, 750, 50),
+                ],
+            )
+            connection.commit()
+
+        context = self.client.get('/api/period-reviews/week/2026-09-W4/context').get_json()['data']['context']
+        problems = context['products']['problem_items']
+        by_id = {row['product_id']: row for row in problems}
+        self.assertIn('problem-decline', by_id)
+        self.assertIn('下滑榜', by_id['problem-decline']['problem_sources'])
+        self.assertIn('problem-loss', by_id)
+        self.assertIn('亏损榜', by_id['problem-loss']['problem_sources'])
+        self.assertIn('problem-ratio', by_id)
+        self.assertIn('高费比', by_id['problem-ratio']['problem_sources'])
+        # 正常商品不在问题清单
+        self.assertNotIn('period-options-a', by_id)
+
+    def test_linked_summaries_month_reads_weeks_and_week_reads_prev_month(self):
+        """P2 周月互汇：月复盘汇入本月各周结论，周复盘读上月月复盘。"""
+        # 先存本月两个周复盘 + 上月一个月复盘（subsections 结构）
+        self.client.put('/api/period-reviews/week/2026-09-W1', json={
+            'reviewer': 'operator',
+            'sections': {'category_summary': {'subsections': {
+                'analysis': 'W1 净销售达成 90%', 'root_cause': '流量下滑'}}},
+        })
+        self.client.put('/api/period-reviews/week/2026-09-W2', json={
+            'reviewer': 'operator',
+            'sections': {'category_summary': {'text': 'W2 纯文本老结构结论'}},
+        })
+        self.client.put('/api/period-reviews/month/2026-08', json={
+            'reviewer': 'operator',
+            'sections': {'category_summary': {'subsections': {
+                'analysis': '8月净销售 71.9 万', 'root_cause': '访客下滑 30%+，调价影响人群池'}}},
+        })
+
+        month = self.client.get('/api/period-reviews/month/2026-09/context').get_json()['data']['context']
+        linked = month['linked_summaries']
+        self.assertEqual(linked['kind'], 'weekly')
+        keys = [item['period_key'] for item in linked['items']]
+        self.assertEqual(keys, ['2026-09-W1', '2026-09-W2'])
+        w1 = linked['items'][0]
+        self.assertIn('W1 净销售达成 90%', w1['analysis'])
+        self.assertIn('root_cause: 流量下滑', w1['analysis'])
+        # 纯 text 老结构也能读到
+        self.assertIn('W2 纯文本老结构结论', linked['items'][1]['analysis'])
+
+        week = self.client.get('/api/period-reviews/week/2026-09-W3/context').get_json()['data']['context']
+        linked_w = week['linked_summaries']
+        self.assertEqual(linked_w['kind'], 'monthly')
+        self.assertEqual(linked_w['items'][0]['period_key'], '2026-08')
+        self.assertIn('访客下滑 30%+', linked_w['items'][0]['analysis'])
+
 
 if __name__ == '__main__': unittest.main(verbosity=2)

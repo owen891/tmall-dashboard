@@ -727,6 +727,54 @@
     if (loading) loading.replaceWith(body);
   }
 
+  /** 问题单品聚合清单（对齐 XMind「问题单品分析」）：
+   *  跨榜去重（下滑/亏损/高费比），每行标注来源榜单，可直接生成运营动作。
+   */
+  function problemItemsPanel(problemItems) {
+    const items = problemItems || [];
+    if (!items.length) {
+      return analysisPanel('问题单品清单', '跨榜合并去重（下滑 / 亏损 / 高费比且 GSV 占比>1%），从看数到生成动作的最短路径。',
+        null, '本期没有命中问题条件的商品。');
+    }
+    const rows = items.map((row) => {
+      const sources = (row.problem_sources || []).map((source) => h('span', { class: 'pr-chip is-warning', text: source }));
+      const share = productShare(row);
+      const actionBtn = h('button', {
+        type: 'button',
+        class: 'ui-button ui-button--ghost ui-button--compact',
+        text: '生成运营动作',
+        onclick: () => openProductDiagnosis(row, (row.problem_sources || []).includes('下滑榜')),
+      });
+      return h('tr', null,
+        h('td', { class: 'pr-table__title', title: row.title || row.product_id },
+          row.image_url ? h('img', { src: row.image_url, alt: '', loading: 'lazy' }) : null,
+          h('span', { class: 'pr-table__title-text', text: row.title || row.product_id })),
+        h('td', null, h('div', { class: 'pr-chip-row' }, ...sources)),
+        h('td', { class: 'num', text: safeMetric(row.gsv, 'money') }),
+        h('td', { class: 'num', text: share === null ? '--' : `${(share * 100).toFixed(1)}%` }),
+        h('td', { class: 'num', text: safeMetric(row.operating_profit, 'money') }),
+        h('td', { class: 'num', text: safeMetric(row.ad_spend, 'money') }),
+        h('td', { class: 'num', text: row.gsv && row.ad_spend ? safeMetric(row.ad_spend / row.gsv, 'percent') : '--' }),
+        h('td', null, actionBtn),
+      );
+    });
+    const table = h('div', { class: 'pr-breakdown-table-wrap' }, h('table', { class: 'pr-table pr-breakdown-table' },
+      h('thead', null, h('tr', null,
+        h('th', { text: '商品' }),
+        h('th', { text: '问题来源' }),
+        h('th', { class: 'num', text: 'GSV' }),
+        h('th', { class: 'num', text: 'GSV 占比' }),
+        h('th', { class: 'num', text: '经营利润' }),
+        h('th', { class: 'num', text: '推广花费' }),
+        h('th', { class: 'num', text: '费比' }),
+        h('th', { text: '操作' }),
+      )),
+      h('tbody', null, ...rows)));
+    return analysisPanel('问题单品清单',
+      `跨榜合并去重（下滑 / 亏损 / 费比>30% 且 GSV 占比>1%），共 ${items.length} 个商品待处理。`,
+      table, null);
+  }
+
   function renderProductAnalysis(context) {
     if (!els.productAnalysis) return;
     productColumns.rememberContext(context);
@@ -734,6 +782,7 @@
     // 每张榜单一份字段设置工具栏：列开关按榜独立（默认列随榜单定位差异化）。
     const board = productColumns.productBoardPanel;
     els.productAnalysis.replaceChildren(
+      problemItemsPanel(products.problem_items),
       board('销售贡献 TOP10', '按本期 GSV 排序，先识别需要保住的核心商品。', products.top, 'top', '本期没有正向销售商品。'),
       board('下滑商品 TOP10', '按相对上期的 GSV 变化排序，作为异常诊断入口。', products.decline, 'decline', '缺少可比周期数据。'),
       board('付费单品 TOP10', '按本期推广花费排序，看钱主要花在哪些商品上（广告-单品维度入口）。', products.paid, 'paid', '本期没有推广花费记录。'),
@@ -1612,6 +1661,27 @@
     return h('div', { class: 'pr-materials' }, materialBlock('广告本期', h('div', { class: 'pr-target' }, ...items)));
   }
 
+  /** 周月互汇素材块：月复盘显示本月各周结论，周复盘显示上月月复盘根因参考。 */
+  function renderLinkedSummaries(linked) {
+    if (!linked || !linked.kind || linked.kind === 'none') return null;
+    const wrap = h('div', { class: 'pr-materials' });
+    const title = linked.kind === 'weekly' ? '本月各周复盘结论（自动汇入）' : '上月月复盘根因（对照参考）';
+    const items = linked.items || [];
+    if (!items.length) {
+      wrap.append(materialBlock(title, null, linked.missing_hint || '暂无关联周期复盘。'));
+      return wrap;
+    }
+    const body = h('ul', { class: 'pr-actions-list' }, ...items.map((item) => h('li', null,
+      h('b', { text: `${item.period_key} · ${item.status === 'final' ? '已定稿' : '草稿'}` }),
+      item.analysis
+        ? h('div', null, h('small', { text: item.analysis }))
+        : h('small', { text: '该期已保存但品类汇总段还没有结论内容。' }),
+      h('small', { text: `${item.reviewer || '--'} · ${item.updated_at || '--'}` }),
+    )));
+    wrap.append(materialBlock(title, body, null));
+    return wrap;
+  }
+
   function materialFor(key, context) {
     switch (key) {
       case 'products': {
@@ -1653,6 +1723,8 @@
             text: `${row.label}：${row.detail}`,
           })))
           : null, '本期未检测到明显异常。');
+      case 'linked_summaries':
+        return renderLinkedSummaries(context.linked_summaries);
       default:
         return null;
     }

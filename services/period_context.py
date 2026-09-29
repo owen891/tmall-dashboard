@@ -1255,6 +1255,10 @@ def build_context(period_type, period_key, saved_target=None, category_mode=None
         actions = _actions_block(conn, period, category_label)
         alerts = _alerts_block(conn)
         anomalies = _anomalies_block(conn, period, current, prev, category_label)
+        # 周月互汇（XMind：月复盘的周维度结论由本月各周复盘汇入）。
+        # 月复盘读本月各周；周复盘读上月月复盘根因作参考——写月报从
+        # 「从零分析」变成「检查各周结论找规律」。
+        linked_summaries = _linked_period_summaries(conn, period)
 
     has_data = bool(totals_cur['day_count'])
     missing_inputs = [] if has_data else ['daily_data']
@@ -1308,6 +1312,7 @@ def build_context(period_type, period_key, saved_target=None, category_mode=None
         'actions_review': actions.get('review', []),
         'actions_to_verify': actions.get('verify', []),
         'actions_blocked': actions['blocked'],
+        'linked_summaries': linked_summaries,
         'alerts': alerts,
         'anomalies': anomalies,
         'missing_inputs': missing_inputs,
@@ -1349,6 +1354,89 @@ def legacy_fields_from_sections(period_type, sections):
 # Keep the product diagnosis payload close to the period-review service contract.
 # This definition intentionally lives after the legacy implementation so old
 # callers keep their public shape while build_context() gets the richer data.
+def _linked_period_summaries(conn, period):
+    """周月互汇：跨周期读取已保存复盘的结论摘要。
+
+    - 月复盘：读本月各周（period_key LIKE 'YYYY-MM-W%'）的周复盘，
+      每期取 category_summary 的分析/根因子段 + 三大指标摘要；
+    - 周复盘：读上月月复盘的根因，作为「对照月度根因」参考素材；
+    - 只读，不写；未保存/缺子段时该期为空，不臆造内容。
+
+    返回 {'kind': 'weekly'|'monthly', 'items': [...], 'missing_hint': str}。
+    """
+    def _section_text(sections, key):
+        # SQL 直读的 sections 是 JSON 字符串（repo 层解析只在 get 单期时发生）。
+        if isinstance(sections, str):
+            try:
+                import json as _json
+                sections = _json.loads(sections) if sections.strip() else {}
+            except Exception:
+                sections = {}
+        try:
+            entry = (sections or {}).get(key) or {}
+        except Exception:
+            return None
+        if isinstance(entry, dict):
+            subs = entry.get('subsections')
+            if isinstance(subs, dict) and any(str(v or '').strip() for v in subs.values()):
+                return '\n'.join(
+                    f"{k}: {str(v).strip()}" for k, v in subs.items() if str(v).strip()
+                )
+            text = str(entry.get('text') or '').strip()
+            return text or None
+        text = str(entry or '').strip()
+        return text or None
+
+    if period['type'] == 'month':
+        prefix = f"{period['key']}-W"
+        rows = conn.execute(
+            '''SELECT period_key, status, reviewer, updated_at, sections
+               FROM period_reviews
+               WHERE period_type = 'week' AND period_key LIKE ?
+               ORDER BY period_key ASC''',
+            (f"{prefix}%",),
+        ).fetchall()
+        items = [{
+            'period_key': row['period_key'],
+            'status': row['status'],
+            'reviewer': row['reviewer'],
+            'updated_at': (row['updated_at'] or '')[:16],
+            'analysis': _section_text(row['sections'], 'category_summary'),
+        } for row in rows]
+        return {
+            'kind': 'weekly',
+            'items': items,
+            'missing_hint': '本月还没有已保存的周复盘；各周写完后这里会自动汇入结论。' if not items else '',
+        }
+    if period['type'] == 'week':
+        # 周复盘所属月：月内分周键为 YYYY-MM-WN，前 7 位即月份。
+        month_key = period['key'][:7]
+        prev_month_date = date.fromisoformat(f"{month_key}-01") - timedelta(days=1)
+        prev_month_key = prev_month_date.isoformat()[:7]
+        row = conn.execute(
+            '''SELECT period_key, status, reviewer, updated_at, sections
+               FROM period_reviews
+               WHERE period_type = 'month' AND period_key = ?
+               ORDER BY updated_at DESC LIMIT 1''',
+            (prev_month_key,),
+        ).fetchone()
+        items = []
+        if row:
+            items.append({
+                'period_key': row['period_key'],
+                'status': row['status'],
+                'reviewer': row['reviewer'],
+                'updated_at': (row['updated_at'] or '')[:16],
+                'analysis': _section_text(row['sections'], 'category_summary'),
+            })
+        return {
+            'kind': 'monthly',
+            'items': items,
+            'missing_hint': f'{prev_month_key} 还没有已保存的月复盘；定稿后周复盘会显示上月根因参考。' if not items else '',
+        }
+    return {'kind': 'none', 'items': [], 'missing_hint': ''}
+
+
 def _products_block(conn, period, category_label=None, compare_range=None):
     from_sql, where_sql, extra = _daily_scope(category_label)
     baseline = compare_range or period.get('prev')
@@ -1590,6 +1678,29 @@ def _products_block(conn, period, category_label=None, compare_range=None):
         item['tags'] = info.get('product_tags') or ''
         return item
 
+    # 问题单品聚合（对齐 XMind「问题单品分析」）：跨榜合并去重，
+    # 出现在下滑榜或亏损榜，或费比超阈值且 GSV 占比 >1% 的商品。
+    # 每项标注来源榜单，作为「从看数到生成运营动作」的最短路径入口。
+    AD_RATIO_PROBLEM_THRESHOLD = 0.30
+    problem_sources = {}
+    for product_id in decline_ids:
+        problem_sources.setdefault(product_id, []).append('下滑榜')
+    for product_id in loss_ids:
+        problem_sources.setdefault(product_id, []).append('亏损榜')
+    for product_id, row in current.items():
+        ad_spend_value = float(row.get('ad_spend') or 0)
+        gsv_value = float(row.get('gsv') or 0)
+        if (gsv_value > 0 and ad_spend_value > 0
+                and ad_spend_value / gsv_value > AD_RATIO_PROBLEM_THRESHOLD
+                and total_gsv > 0 and gsv_value / total_gsv > 0.01):
+            problem_sources.setdefault(product_id, []).append('高费比')
+    problem_items = []
+    for product_id in sorted(problem_sources, key=lambda pid: -abs(float((current.get(pid) or {}).get('gsv') or 0))):
+        item = with_meta(product_id)
+        item['problem_sources'] = problem_sources[product_id]
+        problem_items.append(item)
+    problem_items = problem_items[:20]
+
     return {
         'top': [with_meta(product_id) for product_id in top_ids],
         'decline': [with_meta(product_id) for product_id in decline_ids],
@@ -1598,5 +1709,6 @@ def _products_block(conn, period, category_label=None, compare_range=None):
         'loss': [with_meta(product_id) for product_id in loss_ids],
         'new': [with_meta(product_id) for product_id in new_top_ids],
         'new_paid': [with_meta(product_id) for product_id in new_paid_ids],
+        'problem_items': problem_items,
     }
 
