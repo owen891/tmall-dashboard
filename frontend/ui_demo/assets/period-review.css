@@ -50,6 +50,74 @@
   gap: 10px;
 }
 
+/* 复盘设置折叠面板：录入类控件收起，减少首屏信息密度。 */
+.pr-toolbar--collapsible {
+  padding: 0;
+}
+
+.pr-toolbar__summary {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px;
+  cursor: pointer;
+  list-style: none;
+  color: var(--text-primary);
+  font-size: 13px;
+  user-select: none;
+}
+
+.pr-toolbar__summary::-webkit-details-marker { display: none; }
+
+.pr-toolbar__summary-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+}
+
+.pr-toolbar__summary-title svg { width: 15px; height: 15px; }
+
+.pr-toolbar__summary-hint {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.pr-toolbar--collapsible[open] .pr-toolbar__summary {
+  border-bottom: 1px solid var(--border-default);
+}
+
+.pr-toolbar--collapsible[open] > .pr-toolbar__fields,
+.pr-toolbar--collapsible[open] > .pr-toolbar__status {
+  margin: 0 16px 12px;
+}
+
+/* 驾驶舱紧凑状态条：风险/动作信号一行带过。 */
+.pr-command-center__strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.pr-strip-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  background: var(--surface-muted);
+  border: 1px solid var(--border-default);
+  border-radius: 999px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.pr-strip-item:hover {
+  border-color: var(--brand);
+  color: var(--text-primary);
+}
+
 .pr-toolbar__fields {
   display: flex;
   flex-wrap: wrap;
@@ -1145,6 +1213,92 @@ body[data-page="period-review"] .demo-topbar__filters {
 
 .pr-command-card small {
   line-height: 1.5;
+}
+
+/* ------------------------------------------------ 三大指标完成率卡（XMind 口径） */
+.pr-metric-cards {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.pr-metric-card {
+  min-width: 0;
+  padding: 12px 14px;
+  background: var(--surface-muted);
+  border: 1px solid var(--border-default);
+  border-left: 3px solid var(--border-default);
+  border-radius: var(--radius-sm);
+}
+
+.pr-metric-card--primary {
+  border-left-color: var(--brand);
+}
+
+/* 完成率状态色沿目标卡同口径：绿=达标 / 黄=接近 / 红=未达标 */
+.pr-metric-card.is-success { border-left-color: var(--success, #16a34a); }
+.pr-metric-card.is-warning { border-left-color: var(--warning, #d97706); }
+.pr-metric-card.is-danger { border-left-color: var(--danger, #dc2626); }
+
+.pr-metric-card__label {
+  display: block;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.pr-metric-card__value {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  margin-top: 5px;
+}
+
+.pr-metric-card__value strong {
+  color: var(--text-primary);
+  font-size: 22px;
+  font-variant-numeric: tabular-nums;
+}
+
+.pr-metric-card__value small {
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.pr-metric-card__rate {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.pr-metric-card__rate-label {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.pr-metric-card__rate strong {
+  font-size: 15px;
+  font-variant-numeric: tabular-nums;
+}
+
+.pr-metric-card.is-success .pr-metric-card__rate strong { color: var(--success, #16a34a); }
+.pr-metric-card.is-warning .pr-metric-card__rate strong { color: var(--warning, #d97706); }
+.pr-metric-card.is-danger .pr-metric-card__rate strong { color: var(--danger, #dc2626); }
+
+.pr-metric-card__changes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  margin-top: 6px;
+  font-size: 12px;
+}
+
+.pr-metric-card__hint {
+  margin: 6px 0 0;
+  color: var(--text-muted);
+  font-size: 12px;
 }
 
 .pr-command-center__links {

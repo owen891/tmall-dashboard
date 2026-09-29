@@ -46,10 +46,14 @@
           <label class="pr-compact-field" data-pr-compare-period-field hidden><span>对比周期</span><select data-pr-compare-period aria-label="对比周期"></select></label>
         </section>
 
-        <section class="ui-panel pr-toolbar" aria-label="复盘设置">
+        <details class="ui-panel pr-toolbar pr-toolbar--collapsible" aria-label="复盘设置" data-pr-settings>
+          <summary class="pr-toolbar__summary">
+            <span class="pr-toolbar__summary-title"><i data-lucide="settings-2"></i>复盘设置</span>
+            <span class="pr-toolbar__summary-hint">目标 / 复盘人 / 定稿状态</span>
+          </summary>
           <div class="pr-toolbar__fields">
             <label class="pr-field"><span>销售额目标（可空）</span><input type="number" min="0" step="100" data-pr-target placeholder="未设置"></label>
-            <label class="pr-field"><span>净利润额目标（可空）</span><input type="number" step="100" data-pr-target-profit placeholder="未设置"></label>
+            <label class="pr-field"><span>净利润额目标（可空）</span><input type="number" min="0" step="100" data-pr-target-profit placeholder="未设置"></label>
             <label class="pr-field"><span>推广费目标（可空）</span><input type="number" min="0" step="100" data-pr-target-ad-spend placeholder="未设置"></label>
             <label class="pr-field"><span>净费比目标 %（可空）</span><input type="number" min="0" step="0.01" data-pr-target-net-expense-ratio placeholder="如 23.70"></label>
             <label class="pr-field"><span>复盘人</span><input type="text" data-pr-reviewer value="运营人员"></label>
@@ -57,7 +61,7 @@
           </div>
           <p class="pr-toolbar__status" data-pr-status-text role="status"></p>
           <p class="pr-toolbar__status" data-pr-category-note role="status"></p>
-        </section>
+        </details>
 
         <div class="pr-state" data-pr-state role="status" aria-live="polite"></div>
 
@@ -66,9 +70,9 @@
         <nav class="pr-workbench-tabs" aria-label="复盘工作区">
           <button type="button" class="is-active" data-pr-workbench-tab="conclusion">结论与诊断</button>
           <button type="button" data-pr-workbench-tab="products">货品与异常</button>
-          <button type="button" data-pr-workbench-tab="execution">动作与计划</button>
-          <button type="button" data-pr-workbench-tab="market">市场</button>
           <button type="button" data-pr-workbench-tab="promotion">推广</button>
+          <button type="button" data-pr-workbench-tab="market">市场监控</button>
+          <button type="button" data-pr-workbench-tab="execution">计划与动作</button>
           <button type="button" data-pr-workbench-tab="matrix">指标矩阵</button>
           <button type="button" data-pr-workbench-tab="category">类目拆解</button>
           <button type="button" data-pr-workbench-tab="history">历史与口径</button>
@@ -83,17 +87,17 @@
           <section class="pr-analysis-grid" data-pr-product-analysis aria-label="货品与异常"></section>
         </section>
 
-        <section class="pr-workbench-panel" data-pr-workbench-panel="execution">
-          <section class="pr-analysis-grid" data-pr-execution-analysis aria-label="动作与计划"></section>
-        </section>
-
-        <section class="pr-workbench-panel" data-pr-workbench-panel="market">
-          <section class="pr-analysis-grid" data-pr-market-analysis aria-label="市场分析"></section>
-        </section>
-
         <section class="pr-workbench-panel" data-pr-workbench-panel="promotion">
           <section class="pr-analysis-grid" data-pr-channel-analysis aria-label="推广分析"></section>
           <section class="pr-analysis-grid" data-pr-promotion-analysis aria-label="推广效率"></section>
+        </section>
+
+        <section class="pr-workbench-panel" data-pr-workbench-panel="market">
+          <section class="pr-analysis-grid" data-pr-market-analysis aria-label="市场监控"></section>
+        </section>
+
+        <section class="pr-workbench-panel" data-pr-workbench-panel="execution">
+          <section class="pr-analysis-grid" data-pr-execution-analysis aria-label="计划与动作"></section>
         </section>
 
         <section class="pr-workbench-panel" data-pr-workbench-panel="matrix" aria-label="指标矩阵">
@@ -117,6 +121,6 @@
   <script src="../assets/navigation.js"></script>
   <script src="../assets/labels.js"></script>
   <script src="../assets/shell.js?v=20260923q"></script>
-  <script src="../assets/format.js"></script><script src="../assets/ui-components.js"></script><script src="../assets/pages/period-review/product-columns.js"></script><script src="../assets/pages/period-review/target-cards.js"></script><script src="../assets/pages/period-review/leaf-board.js"></script><script src="../assets/period-review-live.js?v=20260929a"></script>
+  <script src="../assets/format.js"></script><script src="../assets/ui-components.js"></script><script src="../assets/pages/period-review/product-columns.js"></script><script src="../assets/pages/period-review/target-cards.js"></script><script src="../assets/pages/period-review/metric-cards.js"></script><script src="../assets/pages/period-review/leaf-board.js"></script><script src="../assets/period-review-live.js?v=20260929b"></script>
 </body>
 </html>

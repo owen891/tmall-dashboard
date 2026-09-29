@@ -608,43 +608,33 @@
 
   function renderCommandCenter(context) {
     if (!els.commandCenter) return;
-    const current = context.metrics && context.metrics.current || {};
-    const items = context.metrics && context.metrics.items || [];
     const dangerCount = (context.anomalies || []).filter((item) => item.level === 'danger' || item.level === 'warning').length;
     const blockedCount = (context.actions_blocked || []).length;
     const plannedCount = (context.actions_planned || []).length;
-    const target = context.target_path || {};
-    const gapText = target.target ? formatValue(target.gap, 'money') : '未设置';
-    const summaryKind = context.metrics && context.metrics.has_data ? (dangerCount || blockedCount ? 'warning' : 'good') : 'muted';
-    const summary = context.metrics && context.metrics.has_data
-      ? `本期 GSV ${formatValue(current.gsv, 'money')}，${context.compare && context.compare.short_label || '环比'} ${signedPercent(items.find((item) => item.key === 'gsv')?.mom_change)}；当前优先关注 ${dangerCount + blockedCount} 个风险信号。`
-      : '当前周期缺少可用经营事实，先补齐数据后再形成结论。';
     els.commandCenter.hidden = false;
     els.commandCenter.replaceChildren(
-      h('div', { class: 'pr-command-center__head' },
-        h('div', null, h('span', { class: 'section-kicker', text: '先看结论' }), h('h3', { text: '复盘驾驶舱' }), h('p', { text: summary })),
-        stateTag(context.metrics && context.metrics.has_data ? (dangerCount || blockedCount ? '需要处理' : '运行稳定') : '数据不足', summaryKind),
-      ),
-      h('div', { class: 'pr-command-center__grid' },
-        h('div', { class: 'pr-command-card pr-command-card--primary' },
-          h('span', { text: '核心结果' }), h('strong', { text: formatValue(current.gsv, 'money') }),
-          h('small', { text: `净销售 ${formatValue(current.net_sales, 'money')} · 支付买家 ${formatCompact(current.buyers)}` })),
-        h('div', { class: 'pr-command-card' },
-          h('span', { text: '目标差距' }), h('strong', { text: gapText }),
-          h('small', { text: target.target ? `达成率 ${(Number(target.achieved_rate || 0) * 100).toFixed(1)}%` : '请在复盘设置中补充目标' })),
-        h('div', { class: 'pr-command-card' },
-          h('span', { text: '风险信号' }), h('strong', { text: String(dangerCount + blockedCount) }),
-          h('small', { text: `异常 ${dangerCount} · 阻塞动作 ${blockedCount}` })),
-        h('div', { class: 'pr-command-card' },
-          h('span', { text: '待落地动作' }), h('strong', { text: String(plannedCount) }),
-          h('small', { text: plannedCount ? '已有动作记录，可继续补充验收标准' : '当前没有待执行动作记录' })),
-      ),
-      h('div', { class: 'pr-command-center__links' },
-        h('button', { type: 'button', class: 'pr-anchor-link', onclick: () => activateWorkbench('products'), text: '查看异常商品' }),
-        h('button', { type: 'button', class: 'pr-anchor-link', onclick: () => activateWorkbench('execution'), text: '查看动作计划' }),
-        h('button', { type: 'button', class: 'pr-anchor-link', onclick: () => activateWorkbench('market'), text: '查看市场竞争' }),
+      // 三大指标完成率卡（对齐月复盘 XMind「完成情况分析」）：
+      // 净销售 / 净利润 / 净费比，口径与复盘设置目标同源。
+      metricCards.renderMetricCards(),
+      // 紧凑状态条：风险与执行信号一行带过，点击直达对应工作区。
+      h('div', { class: 'pr-command-center__strip' },
+        h('button', { type: 'button', class: 'pr-strip-item', onclick: () => activateWorkbench('products') },
+          stateTag(dangerCount + blockedCount ? '需关注' : '正常', dangerCount + blockedCount ? 'warning' : 'good'),
+          h('span', { text: `风险 ${dangerCount + blockedCount}（异常 ${dangerCount} · 阻塞 ${blockedCount}）` })),
+        h('button', { type: 'button', class: 'pr-strip-item', onclick: () => activateWorkbench('execution') },
+          stateTag(plannedCount ? '进行中' : '空闲', plannedCount ? 'info' : 'good'),
+          h('span', { text: `待落地动作 ${plannedCount}` })),
+        h('button', { type: 'button', class: 'pr-strip-item', onclick: () => activateWorkbench('market') },
+          h('span', { text: '市场监控 →' })),
       ),
     );
+    // 周期摘要写到页头说明位，替代驾驶舱内部标题区，减少一层重复信息。
+    const headSummary = document.querySelector('.pr-page-header p');
+    if (headSummary && context.period && context.period.start) {
+      headSummary.textContent = context.metrics && context.metrics.has_data
+        ? `${context.period.label}（${context.period.start} ~ ${context.period.end}）· 先看三大指标完成情况，再定位商品、推广与执行问题。`
+        : '当前周期缺少可用经营事实，先补齐数据后再形成结论。';
+    }
   }
 
   // ------------------------------------------------- 单品周趋势预览（弹窗）
@@ -1465,6 +1455,10 @@
   // 输入口径换算、达成率配色、即时重算的状态与行为都归该模块。
   const targetCards = window.createTargetCards({ h, formatValue, state, els });
 
+  // 三大指标完成率卡（净销售/净利润/净费比）已拆至 pages/period-review/metric-cards.js：
+  // 口径与复盘设置目标同源，完成率与配色方向沿用后端 _target_rows。
+  const metricCards = window.createMetricCards({ h, state });
+
   // 叶子类目近 3 周对比看板已拆至 pages/period-review/leaf-board.js：
   // 看板自建 #leaf-weekly-board 节点，格式化助手与加载器都归该模块。
   const leafBoard = window.createLeafBoard({ h, state, els, describeRequestError });
@@ -1952,6 +1946,13 @@
       targetCards.fillTargetInputs(state.review);
       if (els.reviewer && state.review && state.review.reviewer) els.reviewer.value = state.review.reviewer;
       if (els.statusSelect && state.review && state.review.status) els.statusSelect.value = state.review.status;
+      // 复盘设置折叠面板：任何目标未录时保持展开（引导补录），全录则收起减噪。
+      const settingsPanel = document.querySelector('[data-pr-settings]');
+      if (settingsPanel) {
+        const anyTargetEmpty = [els.target, els.targetProfit, els.targetAdSpend, els.targetNetExpenseRatio]
+          .some((input) => !input || !String(input.value).trim());
+        settingsPanel.open = anyTargetEmpty;
+      }
 
       const missing = state.context.metrics.has_data ? [] : state.context.missing_inputs;
       const compareLabel = (state.context.compare && state.context.compare.label) || '不对比';
@@ -2094,9 +2095,19 @@
     load();
   });
   els.refresh?.addEventListener('click', () => load());
-  els.target?.addEventListener('input', targetCards.refreshTargetCard);
+  // 目标输入即时联动：先更新 target-cards 的目标卡/表（会回写 context.target_path.targets），
+  // 再重渲染驾驶舱三大指标卡，让完成率「填了立刻有反应」。
+  const refreshTargetPanels = () => {
+    targetCards.refreshTargetCard();
+    if (state.context) renderCommandCenter(state.context);
+  };
+  const refreshTargetTablePanels = () => {
+    targetCards.refreshTargetTable();
+    if (state.context) renderCommandCenter(state.context);
+  };
+  els.target?.addEventListener('input', refreshTargetPanels);
   [els.targetProfit, els.targetAdSpend, els.targetNetExpenseRatio]
-    .forEach((input) => input?.addEventListener('input', targetCards.refreshTargetTable));
+    .forEach((input) => input?.addEventListener('input', refreshTargetTablePanels));
   // 品类切换即写全局模式：api.js 会给所有 GET 自动带上 category_mode，因此无需整页刷新。
   els.category?.addEventListener('change', () => {
     storeCategoryMode(els.category.value);
