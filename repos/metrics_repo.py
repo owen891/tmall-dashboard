@@ -47,19 +47,46 @@ class MetricsRepo:
                 return {**dict(store_row), 'data_grain': 'daily'}
             clauses, filter_params = MetricsRepo._product_filter_sql(filters)
             where = ' AND '.join(['d.shop_id = ?', 'd.date BETWEEN ? AND ?', *clauses])
+            # 访客/买家按来源 observation 门控：仅当来源真实上报过该字段才计入，
+            # 避免商品总览 xlsx 缺列时的列默认 0 混入聚合（契约见 ca175a8）。
+            # 老客字段在 payload 缺失时由来源解析写成真实 NULL，直接 SUM 即可。
             daily_row = connection.execute(
-                '''SELECT SUM(d.payment_amount) AS payment_amount,
-                          SUM(d.refund_amount) AS successful_refund_amount,
-                          SUM(d.ad_spend) AS ad_spend,
-                          NULL AS product_visitors,
-                          NULL AS payment_buyers,
-                          NULL AS returning_payment_buyers,
-                          MIN(d.date) AS data_start_date, MAX(d.date) AS data_end_date,
+                '''WITH selected AS (
+                       SELECT d.*,
+                              o.source_system AS observation_source_system,
+                              o.field_presence_json AS observation_fields
+                       FROM daily_data d
+                       LEFT JOIN daily_data_observations o
+                         ON o.shop_id = d.shop_id
+                        AND o.product_id = d.product_id
+                        AND o.date = d.date
+                        AND o.source_filename = d.data_source
+                        AND o.id = (
+                            SELECT o2.id
+                            FROM daily_data_observations o2
+                            WHERE o2.shop_id = d.shop_id
+                              AND o2.product_id = d.product_id
+                              AND o2.date = d.date
+                              AND o2.source_filename = d.data_source
+                            ORDER BY o2.observed_at DESC, o2.id DESC LIMIT 1
+                        )
+                       LEFT JOIN products p ON p.product_id = d.product_id
+                       LEFT JOIN lifecycle_profiles lp ON lp.product_id = d.product_id
+                       WHERE ''' + where + '''
+                   )
+                   SELECT SUM(payment_amount) AS payment_amount,
+                          SUM(refund_amount) AS successful_refund_amount,
+                          SUM(ad_spend) AS ad_spend,
+                          SUM(CASE WHEN observation_source_system = 'promotion_tool'
+                                        OR observation_fields LIKE '%\"product_visitors\": true%'
+                                   THEN ipv END) AS product_visitors,
+                          SUM(CASE WHEN observation_source_system = 'promotion_tool'
+                                        OR observation_fields LIKE '%\"payment_buyers\": true%'
+                                   THEN buyers END) AS payment_buyers,
+                          SUM(returning_payment_buyers) AS returning_payment_buyers,
+                          MIN(date) AS data_start_date, MAX(date) AS data_end_date,
                           COUNT(*) AS fact_count
-                   FROM daily_data d
-                   JOIN products p ON p.product_id = d.product_id
-                   LEFT JOIN lifecycle_profiles lp ON lp.product_id = d.product_id
-                   WHERE ''' + where,
+                   FROM selected''',
                 [shop_id, start_date, end_date, *filter_params],
             ).fetchone()
             if daily_row['fact_count']:
