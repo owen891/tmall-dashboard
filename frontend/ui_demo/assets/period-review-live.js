@@ -1732,34 +1732,74 @@
       body.append(h('p', { class: 'pr-material__empty', text: '业绩与目标差距已在上方驾驶舱展示，这里只填写结论与达成路径。' }));
     }
 
-    const textarea = h('textarea', {
-      'data-pr-input': section.key,
-      placeholder: section.placeholder || '',
-      rows: 4,
-    });
-    // 恢复顺序：已保存内容 > 本地草稿（未保存的编辑在切周期/刷新后不丢）。
-    const draft = readSectionDraft(section.key);
-    const savedText = saved.text || '';
-    textarea.value = draft || savedText;
-    if (draft && draft !== savedText) {
-      body.append(h('p', { class: 'pr-toolbar__status pr-draft-note', role: 'status', text: '已恢复未保存的本地草稿；保存复盘后将清除。' }));
+    // v3 三段式：模板带 subsections 定义时渲染「分析/根因/下一步」三个子输入框，
+    // 保存为 subsections 结构；无定义时保持单框（day 模板与未知段落兼容）。
+    const subDefs = section.subsections || [];
+    if (subDefs.length) {
+      const savedSubs = (saved.subsections && typeof saved.subsections === 'object') ? saved.subsections : {};
+      const wrap = h('div', { class: 'pr-subsections' });
+      let anyDraftRestored = false;
+      subDefs.forEach((sub) => {
+        const draftKey = `${section.key}:${sub.key}`;
+        const draft = readSectionDraft(draftKey);
+        // 老复盘无 subsections 时，analysis 子段回填原 text（只读迁移，不覆盖库）。
+        const savedText = savedSubs[sub.key]
+          || (sub.key === 'analysis' ? (saved.text || '') : '');
+        const value = draft || savedText;
+        if (draft && draft !== savedText) anyDraftRestored = true;
+        const textarea = h('textarea', {
+          'data-pr-input': section.key,
+          'data-pr-subsection': sub.key,
+          placeholder: section.placeholder || '',
+          rows: 3,
+        });
+        textarea.value = value;
+        textarea.addEventListener('input', () => {
+          textarea.classList.toggle('is-missing', Boolean(sub.required) && !textarea.value.trim());
+          updateStatusText();
+          storeSectionDraft(draftKey, textarea.value);
+        });
+        if (sub.required && !value.trim()) textarea.classList.add('is-missing');
+        wrap.append(h('div', { class: 'pr-subsection' },
+          h('label', { class: 'pr-subsection__label' },
+            h('span', { text: sub.title }),
+            sub.required ? h('em', { text: '必填' }) : null),
+          textarea));
+      });
+      if (anyDraftRestored) {
+        body.append(h('p', { class: 'pr-toolbar__status pr-draft-note', role: 'status', text: '已恢复未保存的本地草稿；保存复盘后将清除。' }));
+      }
+      body.append(wrap);
+    } else {
+      const textarea = h('textarea', {
+        'data-pr-input': section.key,
+        placeholder: section.placeholder || '',
+        rows: 4,
+      });
+      // 恢复顺序：已保存内容 > 本地草稿（未保存的编辑在切周期/刷新后不丢）。
+      const draft = readSectionDraft(section.key);
+      const savedText = saved.text || '';
+      textarea.value = draft || savedText;
+      if (draft && draft !== savedText) {
+        body.append(h('p', { class: 'pr-toolbar__status pr-draft-note', role: 'status', text: '已恢复未保存的本地草稿；保存复盘后将清除。' }));
+      }
+      textarea.addEventListener('input', () => {
+        textarea.classList.toggle('is-missing', Boolean(section.required) && !textarea.value.trim());
+        updateStatusText();
+        storeSectionDraft(section.key, textarea.value);
+      });
+      if (section.required && !textarea.value.trim()) textarea.classList.add('is-missing');
+
+      body.append(h('div', { class: 'pr-input' },
+        textarea,
+        h('div', { class: 'pr-input__meta' },
+          h('span', { text: section.required ? '必填段落' : '选填段落' }),
+          h('span', { text: `${textarea.value.length} 字` }),
+        )));
+
+      const counter = body.querySelector('.pr-input__meta span:last-child');
+      textarea.addEventListener('input', () => { if (counter) counter.textContent = `${textarea.value.length} 字`; });
     }
-    textarea.addEventListener('input', () => {
-      textarea.classList.toggle('is-missing', Boolean(section.required) && !textarea.value.trim());
-      updateStatusText();
-      storeSectionDraft(section.key, textarea.value);
-    });
-    if (section.required && !textarea.value.trim()) textarea.classList.add('is-missing');
-
-    body.append(h('div', { class: 'pr-input' },
-      textarea,
-      h('div', { class: 'pr-input__meta' },
-        h('span', { text: section.required ? '必填段落' : '选填段落' }),
-        h('span', { text: `${textarea.value.length} 字` }),
-      )));
-
-    const counter = body.querySelector('.pr-input__meta span:last-child');
-    textarea.addEventListener('input', () => { if (counter) counter.textContent = `${textarea.value.length} 字`; });
 
     panel.append(header, body);
     return panel;
@@ -1769,19 +1809,46 @@
   function collectSections() {
     const sections = {};
     els.sections.querySelectorAll('[data-pr-input]').forEach((node) => {
-      sections[node.dataset.prInput] = { text: node.value.trim() };
+      const key = node.dataset.prInput;
+      const subKey = node.dataset.prSubsection;
+      if (subKey) {
+        // 三段式：聚合成 {text 拼接, subsections}，text 由后端拼接回写兜底。
+        const entry = sections[key] || { subsections: {} };
+        entry.subsections[subKey] = node.value.trim();
+        sections[key] = entry;
+      } else {
+        sections[key] = { text: node.value.trim() };
+      }
+    });
+    // 补三段拼接 text：老版本读 text 不丢内容（后端也会拼，这里前端先行，
+    // 保证「保存后立即整页刷新前的本地渲染」同样可读）。
+    Object.entries(sections).forEach(([key, entry]) => {
+      if (entry.subsections) {
+        const joined = Object.values(entry.subsections).filter(Boolean).join('\n\n');
+        if (joined) entry.text = joined;
+      }
     });
     return sections;
   }
 
   function missingRequired() {
-    return state.template
-      .filter((section) => section.required)
-      .filter((section) => {
-        const node = els.sections.querySelector(`[data-pr-input="${section.key}"]`);
-        return !node || !node.value.trim();
-      })
-      .map((section) => section.title);
+    const missing = [];
+    state.template.forEach((section) => {
+      if (!section.required) return;
+      const subDefs = section.subsections || [];
+      if (subDefs.length) {
+        const emptySubs = subDefs.filter((sub) => {
+          if (!sub.required) return false;
+          const node = els.sections.querySelector(`[data-pr-input="${section.key}"][data-pr-subsection="${sub.key}"]`);
+          return !node || !node.value.trim();
+        });
+        if (emptySubs.length) missing.push(`${section.title}（${emptySubs.map((s) => s.title).join('/')}）`);
+      } else {
+        const node = els.sections.querySelector(`[data-pr-input="${section.key}"]:not([data-pr-subsection])`);
+        if (!node || !node.value.trim()) missing.push(section.title);
+      }
+    });
+    return missing;
   }
 
   function updateStatusText() {

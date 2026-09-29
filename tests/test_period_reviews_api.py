@@ -240,7 +240,7 @@ class PeriodReviewsTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         payload = response.get_json(); response.close()
 
-        self.assertEqual(payload['data']['template_version'], 'v2')
+        self.assertEqual(payload['data']['template_version'], 'v3')
         week = [section['key'] for section in payload['data']['templates']['week']]
         month = [section['key'] for section in payload['data']['templates']['month']]
         # v2：周/月统一为同一套板块（对齐用户的月复盘 XMind 框架），
@@ -250,6 +250,46 @@ class PeriodReviewsTests(unittest.TestCase):
             ['category_summary', 'goods', 'ads', 'market', 'summary', 'next_plan'],
         )
         self.assertEqual(week, month)
+        # v3：每段带「分析/根因/下一步」三段式子段定义，周月同构同能。
+        for section in payload['data']['templates']['week']:
+            subs = [sub['key'] for sub in section.get('subsections') or []]
+            self.assertEqual(subs, ['analysis', 'root_cause', 'next_step'])
+
+    def test_structured_review_saves_subsections_and_backfills_text(self):
+        """v3 三段式保存：subsections 白名单校验通过后，text 由后端拼接回写。"""
+        response = self.client.put('/api/period-reviews/week/2026-09-W3', json={
+            'reviewer': 'operator',
+            'sections': {
+                'category_summary': {
+                    'subsections': {
+                        'analysis': '净销售完成 80%',
+                        'root_cause': '访客下滑 30%',
+                        'next_step': '下周补投引流款',
+                    },
+                },
+            },
+        })
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json(); response.close()
+        saved = payload['data']['review']['sections']['category_summary']
+        self.assertEqual(saved['subsections']['analysis'], '净销售完成 80%')
+        self.assertEqual(saved['subsections']['root_cause'], '访客下滑 30%')
+        # text 是三段拼接（顺序 = 模板定义顺序），老版本前端/导出可读。
+        self.assertEqual(saved['text'], '净销售完成 80%\n\n访客下滑 30%\n\n下周补投引流款')
+
+    def test_structured_review_rejects_unknown_subsection_keys(self):
+        """未知子段 key 返回 422，白名单生效。"""
+        response = self.client.put('/api/period-reviews/week/2026-09-W3', json={
+            'reviewer': 'operator',
+            'sections': {
+                'category_summary': {
+                    'subsections': {'analysis': 'ok', 'hack': 'x'},
+                },
+            },
+        })
+        self.assertEqual(response.status_code, 422)
+        payload = response.get_json(); response.close()
+        self.assertEqual(payload['code'], 'VALIDATION_ERROR')
 
     def test_structured_review_round_trips_sections_and_legacy_columns(self):
         response = self.client.put('/api/period-reviews/week/2026-09-W3', json={

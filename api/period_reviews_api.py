@@ -321,6 +321,36 @@ def save_period_review(period_type, period_key):
             return failure(
                 'VALIDATION_ERROR', '存在未知的复盘段落', {'sections': unknown_sections}, status=422,
             )
+        # v3 subsections 白名单校验 + text 回写：
+        # 子段 key 必须在该段 subsections 定义内；text 存三段拼接，
+        # 保证老版本前端/导出/legacy 摘要仍能从 text 读到完整内容。
+        for section in template:
+            entry = sections.get(section['key'])
+            if not isinstance(entry, dict):
+                continue
+            subs = entry.get('subsections')
+            allowed = {sub['key'] for sub in section.get('subsections') or []}
+            if not allowed:
+                if subs:
+                    return failure(
+                        'VALIDATION_ERROR', '该段落不支持子段',
+                        {'sections': [section['key']], 'subsections': sorted(subs) if isinstance(subs, dict) else []},
+                        status=422,
+                    )
+                continue
+            if isinstance(subs, dict):
+                unknown_subs = sorted(k for k in subs if k not in allowed)
+                if unknown_subs:
+                    return failure(
+                        'VALIDATION_ERROR', '存在未知的段落子项',
+                        {'sections': [section['key']], 'subsections': unknown_subs}, status=422,
+                    )
+                joined = '\n\n'.join(
+                    str(subs.get(sub['key']) or '').strip()
+                    for sub in section['subsections'] if str(subs.get(sub['key']) or '').strip()
+                )
+                if joined:
+                    entry['text'] = joined
         missing_required = [
             section['key'] for section in template
             if section.get('required') and not str((sections.get(section['key']) or {}).get('text') or '').strip()
