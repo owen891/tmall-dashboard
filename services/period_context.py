@@ -1534,6 +1534,7 @@ def _products_block(conn, period, category_label=None, compare_range=None):
                        SUM(d.refund_amount) AS refund_amount,
                        SUM(d.buyers) AS buyers,
                        SUM(d.ipv) AS visitors,
+                       SUM(d.payment_qty) AS payment_qty,
                        SUM(d.ad_spend) AS ad_spend,
                        SUM(d.product_cost) AS product_cost,
                        SUM(d.operating_profit) AS operating_profit
@@ -1658,6 +1659,8 @@ def _products_block(conn, period, category_label=None, compare_range=None):
             'prev_buyers': rounded(prev_buyers),
             'visitors': rounded(visitors),
             'prev_visitors': rounded(prev_visitors),
+            'payment_qty': rounded(number(cur_row, 'payment_qty')),
+            'refund_amount': rounded(refund_amount),
             'conversion': rounded(conversion, 6),
             'prev_conversion': rounded(prev_conversion, 6),
             'aov': rounded(aov),
@@ -1761,6 +1764,7 @@ def _products_block(conn, period, category_label=None, compare_range=None):
         item['title'] = info.get('title') or product_id
         item['image_url'] = info.get('image_url') or ''
         item['tags'] = info.get('product_tags') or ''
+        item['category'] = info.get('category') or ''
         return item
 
     # 问题单品聚合（对齐 XMind「问题单品分析」）：跨榜合并去重，

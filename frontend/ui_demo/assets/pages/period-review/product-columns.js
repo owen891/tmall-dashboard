@@ -1,11 +1,11 @@
 (function (global) {
   'use strict';
 
-  /** 周月复盘页「货品表格（列可配置）+ 字段设置浮层」模块。
-   *
-   *  从 period-review-live.js 的单闭包中切出（闭包状态显式化第一步，
-   *  沿用 products/column-settings.js 的 deps 显式注入模式）：
-   *  本模块拥有列定义 / 列开关 localStorage / 字段设置浮层的全部状态与行为。
+  /** 周月复盘页「货品表格（列可配置）+ 字段设置对话框」模块。
+
+   *  字段设置复用全站公共组件 DemoFieldSelector（field-selector.js：
+   *  分组 / 搜索 / 拖拽排序 / 必锁字段，overview / keyword-promotion 同款），
+   *  不再自建 popover——字段多了之后平铺浮层没有搜索和分组，不可用。
    *
    *  deps 契约（由 period-review-live.js 提供）：
    *  - h                     DOM 工厂
@@ -13,6 +13,7 @@
    *  - declineRate           行变化比例计算
    *  - safeMetric            缺失安全的指标格式化
    *  - openProductDiagnosis  打开单品诊断弹窗
+   *  - openProductTrend      打开周趋势弹窗
    *  - renderProductAnalysis 列变更后重渲染货品区块
    */
 
@@ -25,36 +26,52 @@
     // 开关结果写进 localStorage，跨会话保留。
     const PRODUCT_COLUMN_KEY = 'dashboard.periodReviewProductColumns';
 
-    // 列定义。boards: 列出现在哪些榜（all=全部），defaults: 各榜默认是否勾选。
-    // 每榜默认列按榜单定位差异化：
-    // - top：卖了多少（GSV/净销/利润/占比）
-    // - decline：跌在哪里（上期/变化/变化比例）
-    // - paid：花了多少钱（推广费/费比/ROI）
-    // - profit / loss：赚赔多少（利润/利润率；亏损榜再带退款率定位亏损原因）
-    // - new / new_paid：新品表现（买家/转化优先，付费榜看花费效率）
+    // 列定义。group: 字段设置里的分组；boards scope 同 BOARDS；
+    // fixed: 不可关（商品标题列，整行只剩数字就无法定位商品）。
+    // 字段清单对齐后端 decorate 返回的全量字段（XMind 净销售 TOP 榜字段集）。
     const PRODUCT_COLUMNS = [
-      { key: 'product_id', label: '商品ID', kind: 'id', scope: 'both', default: true },
-      { key: 'title', label: '商品', kind: 'title', scope: 'both', default: true, fixed: true },
-      { key: 'prev_gsv', label: '上期 GSV', kind: 'money', scope: 'delta', default: true, reason: '不可判断' },
-      { key: 'gsv', label: '本期 GSV', labelTop: 'GSV', kind: 'money', scope: 'both', default: true },
-      { key: 'delta', label: '变化', kind: 'money', scope: 'delta', default: true, signed: true, reason: '不可判断' },
-      { key: 'change_rate', label: '变化比例', kind: 'percent', scope: 'delta', default: true },
-      { key: 'share_of_gsv', label: 'GSV 占比', kind: 'percent', scope: 'top', default: true },
-      { key: 'net_sales', label: '净销售额', kind: 'money', scope: 'both', default: true },
-      { key: 'operating_profit', label: '利润（支付预估）', kind: 'money', scope: 'both', default: true },
-      { key: 'profit_rate', label: '利润率', kind: 'percent', scope: 'both', default: true },
-      { key: 'gross_profit', label: '毛利', kind: 'money', scope: 'both', default: false },
-      { key: 'product_cost', label: '货品成本', kind: 'money', scope: 'both', default: false },
-      { key: 'buyers', label: '支付买家数', kind: 'number', scope: 'both', default: false },
-      { key: 'visitors', label: '访客数', kind: 'number', scope: 'both', default: false },
-      { key: 'conversion', label: '支付转化率', kind: 'percent', scope: 'both', default: false },
-      { key: 'aov', label: '客单价', kind: 'money', scope: 'both', default: false },
-      { key: 'ad_spend', label: '推广花费', kind: 'money', scope: 'both', default: false },
-      { key: 'refund_rate', label: '退款率', kind: 'percent', scope: 'both', default: false },
-      { key: 'tags', label: '商品标签', kind: 'text', scope: 'both', default: false },
+      // —— 商品标识
+      { key: 'product_id', label: '商品ID', kind: 'id', scope: 'both', group: 'identity', default: true },
+      { key: 'title', label: '商品', kind: 'title', scope: 'both', group: 'identity', default: true, fixed: true },
+      { key: 'category', label: '类目', kind: 'text', scope: 'both', group: 'identity', default: false },
+      // —— 销售结果（XMind：GSV / 净销售 / 销售件数 / 客单价）
+      { key: 'gsv', label: '本期 GSV', labelTop: 'GSV', kind: 'money', scope: 'both', group: 'sales', default: true },
+      { key: 'prev_gsv', label: '上期 GSV', kind: 'money', scope: 'delta', group: 'sales', default: true, reason: '不可判断' },
+      { key: 'net_sales', label: '净销售额', kind: 'money', scope: 'both', group: 'sales', default: true },
+      { key: 'payment_qty', label: '销售件数', kind: 'number', scope: 'both', group: 'sales', default: false },
+      { key: 'share_of_gsv', label: 'GSV 占比', kind: 'percent', scope: 'top', group: 'sales', default: true },
+      { key: 'aov', label: '客单价', kind: 'money', scope: 'both', group: 'sales', default: false },
+      { key: 'refund_amount', label: '退款金额', kind: 'money', scope: 'both', group: 'sales', default: false },
+      // —— 流量与转化（XMind：访客数 / 转化率）
+      { key: 'visitors', label: '访客数', kind: 'number', scope: 'both', group: 'traffic', default: false },
+      { key: 'buyers', label: '支付买家数', kind: 'number', scope: 'both', group: 'traffic', default: false },
+      { key: 'conversion', label: '支付转化率', kind: 'percent', scope: 'both', group: 'traffic', default: false },
+      // —— 利润（XMind：净利润 / 推广费 / 退款率）
+      { key: 'operating_profit', label: '利润（支付预估）', kind: 'money', scope: 'both', group: 'profit', default: true },
+      { key: 'profit_rate', label: '利润率', kind: 'percent', scope: 'both', group: 'profit', default: true },
+      { key: 'gross_profit', label: '毛利', kind: 'money', scope: 'both', group: 'profit', default: false },
+      { key: 'product_cost', label: '货品成本', kind: 'money', scope: 'both', group: 'profit', default: false },
+      // —— 推广
+      { key: 'ad_spend', label: '推广花费', kind: 'money', scope: 'both', group: 'ads', default: false },
+      // —— 环比变化（下滑榜定位跌在哪里）
+      { key: 'delta', label: '变化', kind: 'money', scope: 'delta', group: 'delta', default: true, signed: true, reason: '不可判断' },
+      { key: 'change_rate', label: '变化比例', kind: 'percent', scope: 'delta', group: 'delta', default: true },
+      // —— 其他
+      { key: 'refund_rate', label: '退款率', kind: 'percent', scope: 'both', group: 'other', default: false },
+      { key: 'tags', label: '商品标签', kind: 'text', scope: 'both', group: 'other', default: false },
       // 异常线索：下滑榜专属固定列，直接展示后端 anomaly_tags（最多 3 个），
-      // 不用逐条打开诊断弹窗才知道是流量/转化/退款问题。
-      { key: 'anomaly_tags', label: '异常线索', kind: 'anomaly', scope: 'delta', fixed: true },
+      // 不用逐条打开诊断弹窗就知道是流量/转化/退款问题。
+      { key: 'anomaly_tags', label: '异常线索', kind: 'anomaly', scope: 'delta', group: 'other', fixed: true },
+    ];
+
+    const COLUMN_GROUPS = [
+      { label: '商品标识', keys: 'identity' },
+      { label: '销售结果', keys: 'sales' },
+      { label: '流量与转化', keys: 'traffic' },
+      { label: '利润', keys: 'profit' },
+      { label: '推广', keys: 'ads' },
+      { label: '环比变化', keys: 'delta' },
+      { label: '其他', keys: 'other' },
     ];
 
     // 榜单维度配置：board（存 localStorage 的键名）+ 该榜支持的列 scope + 默认列覆盖。
@@ -93,11 +110,21 @@
 
     const PRODUCT_IDENTITY_KINDS = ['id', 'title'];
 
+    function boardOf(boardKey) {
+      return BOARDS.find((item) => item.key === boardKey) || BOARDS[0];
+    }
+
+    /** 某榜可用的列（scope 匹配），供字段设置对话框分组展示。 */
+    function boardColumns(boardKey) {
+      const board = boardOf(boardKey);
+      return PRODUCT_COLUMNS.filter((col) => col.scope === 'both' || col.scope === board.scope);
+    }
+
     function defaultProductColumns(boardKey) {
-      const board = BOARDS.find((item) => item.key === boardKey) || BOARDS[0];
+      const board = boardOf(boardKey);
       // 白名单：defaults 里显式为 true 的列 + 固定列（商品）才默认展示。
       return new Set(
-        PRODUCT_COLUMNS.filter((col) => col.fixed || board.defaults[col.key] === true).map((col) => col.key),
+        boardColumns(board.key).filter((col) => col.fixed || board.defaults[col.key] === true).map((col) => col.key),
       );
     }
 
@@ -120,11 +147,9 @@
     }
 
     function productTableColumns(boardKey) {
-      const board = BOARDS.find((item) => item.key === boardKey) || BOARDS[0];
+      const board = boardOf(boardKey);
       const enabled = readProductColumns(board.key);
-      const columns = PRODUCT_COLUMNS.filter(
-        (col) => (col.fixed || enabled.has(col.key)) && (col.scope === 'both' || col.scope === board.scope),
-      );
+      const columns = boardColumns(board.key).filter((col) => col.fixed || enabled.has(col.key));
       // 商品ID / 商品不能全关，否则整行只剩数字，无法定位到具体商品。
       if (!columns.some((col) => PRODUCT_IDENTITY_KINDS.includes(col.kind))) {
         columns.unshift(PRODUCT_COLUMNS.find((col) => col.kind === 'title'));
@@ -173,11 +198,11 @@
 
     // 商品ID / 商品两列宽度写死，富余宽度让给数值列：
     // 否则 table-layout: auto 会把多出来的空间按内容长度比例分给标题，标题列永远最宽。
-    const PRODUCT_HEAD_WIDTH = { id: '132px', title: '320px' };
+    const PRODUCT_HEAD_WIDTH = { id: '132px', title: '260px' };
 
     function renderProductTable(rows, boardKey) {
       if (!rows || !rows.length) return null;
-      const board = BOARDS.find((item) => item.key === boardKey) || BOARDS[0];
+      const board = boardOf(boardKey);
       const columns = productTableColumns(board.key);
       const head = h('tr', null, ...columns.map((col) => h('th', {
         class: PRODUCT_IDENTITY_KINDS.includes(col.kind) || col.kind === 'text' ? '' : 'num',
@@ -201,25 +226,18 @@
             onclick: () => openProductDiagnosis(row, board.withDelta),
           })),
       ));
-      return h('table', { class: 'pr-table pr-table--products' }, h('thead', null, head), h('tbody', null, ...body));
+      return h('div', { class: 'pr-table-scroll' },
+        h('table', { class: 'pr-table pr-table--products' }, h('thead', null, head), h('tbody', null, ...body)));
     }
 
-    // ------------------------------------------------------- 货品表格字段设置
-    let productFieldPopover = null;
-    let productFieldAnchor = null;
-    let productFieldBoard = null;   // 浮层当前编辑的榜单
+    // ------------------------------------------------ 货品表格字段设置（公共组件）
+    // 复用全站 DemoFieldSelector（field-selector.js）：分组 / 搜索 / 拖拽排序 / 必锁列，
+    // 与 overview / keyword-promotion 的字段设置同款体验。
+    // 对话框挂在 body 上按需创建；一次只编辑一张榜单，切换榜单时重设配置。
+    let fieldDialog = null;
+    let fieldSelector = null;
+    let fieldBoard = null;
     let lastProductContext = null;
-
-    function closeProductFieldPopover() {
-      if (!productFieldPopover) return;
-      productFieldPopover.remove();
-      productFieldPopover = null;
-      if (productFieldAnchor) {
-        productFieldAnchor.setAttribute('aria-expanded', 'false');
-        productFieldAnchor = null;
-      }
-      productFieldBoard = null;
-    }
 
     function refreshProductTables() {
       if (lastProductContext) renderProductAnalysis(lastProductContext);
@@ -230,109 +248,131 @@
       lastProductContext = context;
     }
 
-    function fillProductFieldPopover() {
-      if (!productFieldPopover || !productFieldBoard) return;
-      const board = BOARDS.find((item) => item.key === productFieldBoard) || BOARDS[0];
-      const enabled = readProductColumns(board.key);
-      const list = h('div', { class: 'pr-field-popover__list' });
-      PRODUCT_COLUMNS.forEach((col) => {
-        const supported = col.scope === 'both' || col.scope === board.scope;
-        const input = h('input', { type: 'checkbox' });
-        input.checked = supported && enabled.has(col.key);
-        input.disabled = !!col.fixed || !supported;
-        input.addEventListener('change', () => {
-          if (input.checked) enabled.add(col.key);
-          else enabled.delete(col.key);
-          storeProductColumns(board.key, enabled);
-          refreshProductTables();
-        });
-        list.append(h('label', { class: `pr-field-popover__item${col.fixed ? ' is-fixed' : ''}${supported ? '' : ' is-unsupported'}` },
-          input,
-          h('span', { text: col.label }),
-          col.fixed ? h('em', { text: '固定' }) : (!supported ? h('em', { text: '该榜不支持' }) : null)));
-      });
-      productFieldPopover.replaceChildren(
-        h('div', { class: 'pr-field-popover__head' },
-          h('strong', { text: `字段设置 · ${board.label}` }),
+    function ensureFieldDialog() {
+      if (fieldDialog) return fieldDialog;
+      fieldDialog = h('dialog', { class: 'modal-form ui-field-selector-dialog pr-columns-dialog' });
+      document.body.append(fieldDialog);
+      fieldDialog.addEventListener('close', () => { fieldDialog.close(); });
+      return fieldDialog;
+    }
+
+    function fieldGroupsFor(boardKey) {
+      const columns = boardColumns(boardKey);
+      return COLUMN_GROUPS
+        .map((group) => ({
+          label: group.label,
+          fields: columns
+            .filter((col) => col.group === group.keys)
+            .map((col) => ({ key: col.key, label: col.label, required: false, locked: Boolean(col.fixed) })),
+        }))
+        .filter((group) => group.fields.length);
+    }
+
+    function closeProductFieldDialog() {
+      if (fieldDialog?.open) fieldDialog.close();
+      fieldBoard = null;
+    }
+
+    // 字段选择器单例 + 挂载点也单例：DemoFieldSelector 闭包绑定创建时的 root 元素，
+    // 每次打开换新 div 会导致它渲染进旧的 detached 节点（第二次打开空白）。
+    let fieldSelectorRoot = null;
+
+    function openProductFieldDialog(boardKey) {
+      const board = boardOf(boardKey);
+      const dialog = ensureFieldDialog();
+      fieldBoard = board.key;
+      const selected = [...readProductColumns(board.key)];
+      if (!fieldSelectorRoot) {
+        fieldSelectorRoot = h('div');
+        document.body.append(fieldSelectorRoot);
+        fieldSelectorRoot.hidden = true;
+      }
+      const root = fieldSelectorRoot;
+      dialog.replaceChildren(
+        // 结构对齐公共约定：modal-form__header / __body / __footer
+        // （components.css 的 ui-field-selector-dialog 布局按这三个类划分 grid 行）。
+        h('div', { class: 'modal-form__header' },
+          h('div', null,
+            h('span', { class: 'section-kicker', text: '字段设置' }),
+            h('h3', { id: 'prColumnsTitle', text: `${board.label} · 展示字段` }),
+            h('p', { text: '勾选要展示的字段，拖动调整列顺序；每张榜单单独保存。' })),
           h('button', {
-            type: 'button',
-            class: 'pr-field-popover__reset',
-            text: '恢复默认',
-            onclick: () => { storeProductColumns(board.key, defaultProductColumns(board.key)); fillProductFieldPopover(); refreshProductTables(); },
+            type: 'button', class: 'pr-dialog-close', 'aria-label': '关闭', text: '×',
+            onclick: () => closeProductFieldDialog(),
           })),
-        list,
-        h('p', { class: 'pr-field-popover__hint', text: '每张榜单单独一套开关；仅保存本榜的勾选。' }),
+        h('div', { class: 'modal-form__body' },
+          h('div', { 'data-pr-product-field-selector': '' }),
+          h('p', { class: 'modal-form__status', 'data-pr-columns-status': '' })),
+        h('div', { class: 'modal-form__footer' },
+          h('button', {
+            type: 'button', class: 'ui-button ui-button--ghost ui-button--compact', text: '恢复默认',
+            onclick: () => {
+              storeProductColumns(board.key, defaultProductColumns(board.key));
+              syncFromDialog();
+              refreshProductTables();
+            },
+          }),
+          h('button', {
+            type: 'button', class: 'ui-button ui-button--primary', text: '应用',
+            onclick: () => { syncFromDialog(); closeProductFieldDialog(); },
+          })),
       );
+      if (!fieldSelector) {
+        fieldSelector = window.DemoFieldSelector.create({
+          root,
+          emptyText: '尚未选择字段',
+          searchPlaceholder: '搜索字段名称',
+          onChange: () => {
+            // 勾选即保存即重渲染（与 keyword-promotion 的即时反馈一致），
+            // 「应用」按钮只负责关对话框。
+            syncFromDialog();
+            const status = dialog.querySelector('[data-pr-columns-status]');
+            if (status) status.textContent = `已更新 ${fieldSelector.getSelected().length} 列。`;
+          },
+        });
+      }
+      fieldSelector.setConfig({ groups: fieldGroupsFor(board.key), selected });
+      const mount = dialog.querySelector('[data-pr-product-field-selector]');
+      mount.replaceChildren(root);
+      root.hidden = false;
+      dialog.setAttribute('aria-labelledby', 'prColumnsTitle');
+      if (!dialog.open) dialog.showModal();
+      window.lucide?.createIcons();
     }
 
-    function positionProductFieldPopover() {
-      if (!productFieldPopover || !productFieldAnchor) return;
-      const rect = productFieldAnchor.getBoundingClientRect();
-      // 锚点被滚出视口后浮层留在屏幕上没有意义，直接收起。
-      if (rect.bottom < 0 || rect.top > window.innerHeight) {
-        closeProductFieldPopover();
-        return;
-      }
-      const width = productFieldPopover.offsetWidth;
-      const height = productFieldPopover.offsetHeight;
-      // 贴着按钮右下角，靠近视口左右边缘时自动收进来。
-      const left = Math.min(Math.max(8, rect.right - width), Math.max(8, window.innerWidth - width - 8));
-      // 下方放不下就翻到按钮上方，避免浮层被视口裁掉。
-      const below = rect.bottom + 6;
-      const top = below + height > window.innerHeight - 8 ? Math.max(8, rect.top - height - 6) : below;
-      productFieldPopover.style.top = `${top}px`;
-      productFieldPopover.style.left = `${left}px`;
+    /** 把字段选择器当前勾选写回 localStorage 并重渲染表格。 */
+    function syncFromDialog() {
+      if (!fieldSelector || !fieldBoard) return;
+      const keys = fieldSelector.getSelected()
+        // 过滤掉该榜不支持的列（field-selector 的 selected 可能混入其他榜的 key）。
+        .filter((key) => boardColumns(fieldBoard).some((col) => col.key === key));
+      storeProductColumns(fieldBoard, new Set(keys));
+      refreshProductTables();
     }
 
-    function toggleProductFieldPopover(anchor, boardKey) {
-      if (productFieldPopover) {
-        closeProductFieldPopover();
-        return;
-      }
-      const popover = h('div', { class: 'pr-field-popover', role: 'group', 'aria-label': '货品表格字段设置' });
-      // 浮层挂在 body 上：表格重渲染时它不会被一起清掉，可以连续勾选多个字段。
-      document.body.append(popover);
-      productFieldPopover = popover;
-      productFieldAnchor = anchor;
-      productFieldBoard = boardKey;
-      anchor.setAttribute('aria-expanded', 'true');
-      fillProductFieldPopover();
-      positionProductFieldPopover();
+    // 兼容旧入口：主闭包切走货品页签时调用（原浮层收起）。
+    function closeProductFieldPopover() {
+      closeProductFieldDialog();
     }
 
     function productTableToolbar(boardKey) {
-      const board = BOARDS.find((item) => item.key === boardKey) || BOARDS[0];
+      const board = boardOf(boardKey);
       const button = h('button', {
         type: 'button',
         class: 'ui-button ui-button--ghost ui-button--compact',
-        'aria-haspopup': 'true',
-        'aria-expanded': 'false',
+        'aria-haspopup': 'dialog',
         text: '字段设置',
         onclick: (event) => {
           event.stopPropagation();
-          toggleProductFieldPopover(button, board.key);
+          openProductFieldDialog(board.key);
         },
       });
       return h('div', { class: 'pr-table-toolbar' },
         h('div', { class: 'pr-table-toolbar__meta' },
           h('span', { text: board.label }),
-          h('small', { text: '商品ID 用于与后台/BI 对齐；标题过长会截断，悬停可看全文。' })),
+          h('small', { text: '列可勾选与排序；标题过长会截断，悬停可看全文。' })),
         button);
     }
-
-    // 字段设置浮层：点击别处 / Esc / 视口变化都收起，避免浮层悬在错误位置。
-    document.addEventListener('click', (event) => {
-      if (productFieldPopover && !productFieldPopover.contains(event.target)) closeProductFieldPopover();
-    });
-    document.addEventListener('keydown', (event) => {
-      if (event.key === 'Escape') closeProductFieldPopover();
-    });
-    window.addEventListener('resize', positionProductFieldPopover);
-    // 固定定位的浮层需要跟着锚点走；浮层内部自己滚动列表时不算。
-    window.addEventListener('scroll', (event) => {
-      if (productFieldPopover && productFieldPopover.contains(event.target)) return;
-      positionProductFieldPopover();
-    }, true);
 
     // 每张榜一个面板（含该榜专属的字段设置工具栏），供主闭包统一渲染。
     function productBoardPanel(title, hint, rows, boardKey, emptyText) {
@@ -352,7 +392,6 @@
       productTableToolbar,
       productBoardPanel,
       closeProductFieldPopover,
-      positionProductFieldPopover,
     };
   }
 

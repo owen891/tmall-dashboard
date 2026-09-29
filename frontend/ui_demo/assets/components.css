@@ -1163,7 +1163,8 @@ body[data-page="goals"] .ui-table-wrap { max-height: none; }
 .ui-field-selector-dialog > [class*="__body"] > [data-kp-field-selector],
 .ui-field-selector-dialog > [class*="__body"] > [data-lifecycle-field-selector],
 .ui-field-selector-dialog > [class*="__body"] > [data-overview-matrix-field-selector],
-.ui-field-selector-dialog > [class*="__body"] > [data-promotion-field-selector] {
+.ui-field-selector-dialog > [class*="__body"] > [data-promotion-field-selector],
+.ui-field-selector-dialog > [class*="__body"] > [data-pr-product-field-selector] {
   display: grid !important;
   min-width: 0;
   min-height: 0;

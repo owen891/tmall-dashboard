@@ -821,81 +821,28 @@
 }
 
 /* 货品表格字段设置浮层（固定定位，挂在 body 上） */
-.pr-field-popover {
-  position: fixed;
-  z-index: 60;
-  width: 260px;
-  padding: 10px 12px 12px;
-  color: var(--text-primary);
-  background: var(--surface);
-  border: 1px solid var(--border-default);
-  border-radius: var(--radius-md);
-  box-shadow: var(--shadow-lg, 0 12px 32px rgb(0 0 0 / 16%));
+/* ------------------------------------------------ 货品表格排版 */
+/* 列可配置之后一张表可能开到 15+ 列：包一层横向滚动容器，
+   数值列不再被挤压成竖排；标识列宽度由 PRODUCT_HEAD_WIDTH 控制。 */
+.pr-table-scroll {
+  width: 100%;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
 }
 
-.pr-field-popover__head {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-  justify-content: space-between;
-  padding-bottom: 8px;
-  border-bottom: 1px solid var(--border-default);
+.pr-table-scroll .pr-table--products {
+  min-width: max-content;
 }
 
-.pr-field-popover__head strong { font-size: 13px; }
-
-.pr-field-popover__reset {
-  padding: 0;
-  border: 0;
-  background: transparent;
-  color: var(--brand);
-  font: inherit;
-  font-size: 12px;
-  cursor: pointer;
+.pr-table-scroll .pr-table--products th,
+.pr-table-scroll .pr-table--products td {
+  white-space: nowrap;
 }
 
-.pr-field-popover__list {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 2px 8px;
-  /* 15 个字段正好 8 行，留够高度避免最后一行被切一半。 */
-  max-height: 280px;
-  overflow: auto;
-  padding: 8px 0;
-}
-
-.pr-field-popover__item {
-  display: flex;
-  gap: 6px;
-  align-items: center;
-  padding: 3px 4px;
-  font-size: 12px;
-  color: var(--text-secondary);
-  border-radius: var(--radius-sm);
-  cursor: pointer;
-}
-
-.pr-field-popover__item:hover { background: var(--surface-muted); }
-
-.pr-field-popover__item input { margin: 0; }
-
-.pr-field-popover__item em {
-  font-style: normal;
-  font-size: 11px;
-  color: var(--text-muted);
-}
-
-.pr-field-popover__item.is-fixed {
-  color: var(--text-muted);
-  cursor: default;
-}
-
-.pr-field-popover__hint {
+/* 字段设置对话框（公共 DemoFieldSelector）：本页仅补充头部 kicker 与状态行。 */
+.pr-columns-dialog .modal-form__status {
   margin: 0;
-  padding-top: 8px;
-  border-top: 1px solid var(--border-default);
-  font-size: 11px;
-  line-height: 1.5;
+  font-size: 12px;
   color: var(--text-muted);
 }
 
