@@ -54,6 +54,15 @@ def _empty_totals():
 
 
 def _totals_for_range(conn, start, end, category_label=None):
+    """周期指标聚合：daily_data 为主口径。
+
+    对比期月份数据可能只有 monthly_data（BI 日度补采窗口外），此时按同品类
+    过滤回退月表（方案原定不做，实测 2025-08/2026-07 同比环比全空后决定加）：
+    - 仅当 daily 在该区间 day_count=0 时回退，daily 有值绝不覆盖；
+    - 月表 operating_profit 在部分月份为 0（未回填），profit=0 视为缺失不采信；
+    - 回退后 day_count 记 1，让上游有数据判断成立，比率类字段（转化率等）
+      月表已有列直接取，不重算。
+    """
     from_sql, where_sql, extra = _daily_scope(category_label)
     row = conn.execute(
         f'''
@@ -87,6 +96,67 @@ def _totals_for_range(conn, start, end, category_label=None):
         if value is None:
             totals[key] = None if key.endswith('_rate') or key.endswith('_date') else 0.0
     totals['gsv'] = float(totals.get('gsv') or 0.0)
+    # 日粒度完全缺失时回退 monthly_data（仅对比期场景；见函数 docstring）。
+    if not totals.get('day_count'):
+        monthly = _monthly_fallback_totals(conn, start, end, category_label)
+        if monthly:
+            return monthly
+    return totals
+
+
+def _monthly_fallback_totals(conn, start, end, category_label=None):
+    """对比期日数据缺失时的 monthly_data 回退；无可回退数据返回 None。
+
+    品类过滤沿用 _daily_scope 的 shop_label 口径；比率列（转化率/加购率）取月表
+    现成列。profit=0 是月表未回填的哨兵值，按缺失处理（None），不当作真 0。
+    """
+    month = start[:7]
+    if not end.startswith(month):
+        return None
+    where_month = 'm.month = ?'
+    params = [month]
+    if category_label:
+        where_month = ("m.month = ? AND (p.shop_label = ? OR instr(',' || p.shop_label || ',', ',' || ? || ',') > 0)")
+        params = [month, category_label, category_label]
+        from_month = 'FROM monthly_data m JOIN products p ON p.product_id = m.product_id'
+    else:
+        from_month = 'FROM monthly_data m'
+    row = conn.execute(
+        f'''SELECT COUNT(*) AS row_count,
+                   COALESCE(SUM(m.payment_amount), 0) AS gsv,
+                   COALESCE(SUM(m.refund_amount), 0) AS refund_amount,
+                   COALESCE(SUM(m.net_sales), 0) AS net_sales,
+                   COALESCE(SUM(m.ad_spend), 0) AS ad_spend,
+                   SUM(m.operating_profit) AS profit,
+                   COALESCE(SUM(m.visitors), 0) AS visitors,
+                   0 AS paid_ipv,
+                   COALESCE(SUM(m.buyers), 0) AS buyers,
+                   COALESCE(SUM(m.payment_qty), 0) AS payment_qty,
+                   0 AS pv,
+                   COUNT(DISTINCT m.product_id) AS product_count,
+                   COUNT(DISTINCT m.month) AS day_count,
+                   MIN(m.month) || '-01' AS first_date,
+                   MAX(m.month) || '-28' AS last_date,
+                   AVG(NULLIF(m.payment_conversion, 0)) AS conversion,
+                   AVG(NULLIF(m.cart_rate, 0)) AS cart_rate,
+                   AVG(NULLIF(m.fav_rate, 0)) AS fav_rate,
+                   AVG(NULLIF(m.bounce_rate, 0)) AS bounce_rate
+            {from_month}
+            WHERE {where_month}''',
+        params,
+    ).fetchone()
+    if not row or not row['row_count'] or not row['day_count']:
+        return None
+    totals = {key: row[key] for key in row.keys()}
+    totals.pop('row_count', None)
+    for key, value in totals.items():
+        if value is None:
+            totals[key] = None if key.endswith('_rate') or key.endswith('_date') else 0.0
+    # 月表 profit 未回填的月份整列 0，与「真 0 利润」无法区分，按缺失处理。
+    if totals.get('profit') == 0:
+        totals['profit'] = None
+    totals['gsv'] = float(totals.get('gsv') or 0.0)
+    totals['data_grain'] = 'monthly'
     return totals
 
 
@@ -929,6 +999,20 @@ def _market_block(conn, period):
             uv_change = rate(item.get('avg_uv_per_day'), old.get('avg_uv_per_day')) if enough_coverage else None
             buyer_change = rate(item.get('avg_pay_buyers_per_day'), old.get('avg_pay_buyers_per_day')) if enough_coverage else None
             item.update(previous_uv=old.get('uv'), previous_pay_buyer_count=old.get('pay_buyer_count'), previous_avg_uv_per_day=old.get('avg_uv_per_day'), previous_avg_pay_buyers_per_day=old.get('avg_pay_buyers_per_day'), uv_change_rate=uv_change, pay_buyer_change_rate=buyer_change, pay_rate_delta=None if not enough_coverage or item.get('pay_rate') is None or old.get('pay_rate') is None else round(item['pay_rate'] - old['pay_rate'], 6), status=('rising' if buyer_change >= 0.2 else ('falling' if buyer_change <= -0.2 else 'stable')) if buyer_change is not None else 'insufficient_coverage', sample_days=item.get('sample_days', 0), trend_comparable=enough_coverage)
+            # 按店日级趋势（XMind 竞店三件事中当前数据源可支撑的一项）：
+            # 该店本期逐日 UV/支付买家，前端行展开渲染迷你趋势。
+            try:
+                daily_rows = conn.execute(
+                    '''SELECT stat_date, uv, pay_buyer_count FROM sycm_market_rival_shop
+                       WHERE shop_id = ? AND stat_date BETWEEN ? AND ? ORDER BY stat_date ASC''',
+                    (key, start, end),
+                ).fetchall()
+                item['daily_trend'] = [
+                    {'date': row['stat_date'], 'uv': row['uv'], 'buyers': row['pay_buyer_count']}
+                    for row in daily_rows
+                ]
+            except Exception:
+                item['daily_trend'] = []
             rivals.append(item)
     except Exception:
         missing.append('sycm_market_rival_shop')

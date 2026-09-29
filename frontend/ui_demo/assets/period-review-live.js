@@ -797,9 +797,15 @@
   function renderMarketAnalysis(context) {
     if (!els.marketAnalysis) return;
     const traffic = context.dimensions?.traffic || {};
+    const period = context.period || {};
+    // 行业深链入口（XMind：趋势市场 / 蓝海市场 / 8 大归类 / 词根需求在专页）：
+    // 复盘页只做摘要，深度分析跳市场分析页（带复盘区间日期）。
+    const marketLink = h('p', { class: 'pr-market-links' },
+      h('a', { class: 'pr-anchor-link', href: `/market-ranking?start=${period.start || ''}&end=${period.end || ''}`, text: '行业趋势 / 蓝海市场 →' }),
+      h('a', { class: 'pr-anchor-link', href: `/keyword-promotion?start=${period.start || ''}&end=${period.end || ''}`, text: '关键词归类 / 词根需求 →' }));
     els.marketAnalysis.replaceChildren(
       analysisPanel('流量来源拆解', `流量覆盖 ${traffic.sample_days || 0}/${traffic.period_days || '--'} 天`, trafficTable(traffic), '暂无搜索、推荐、付费或自然流量拆解数据。'),
-      analysisPanel('市场、竞店与竞品', '先看可复现事实，再看系统观察；价格、利润和评价结论仍需补证。', renderMarket(context.market), '暂无市场批次。'),
+      analysisPanel('市场监控（摘要 + 深链）', '先看可复现事实，再看系统观察；价格、利润和评价结论仍需补证。', h('div', null, marketLink, renderMarket(context.market)), '暂无市场批次。'),
     );
   }
 
@@ -1605,6 +1611,45 @@
     )));
   }
 
+  /** 竞店行展开的日趋势块：逐日 UV / 支付买家两根迷你 SVG 折线（无图表库依赖）。 */
+  function rivalTrendBlock(row) {
+    const trend = row.daily_trend || [];
+    const sparkline = (values, color) => {
+      const nums = values.map((v) => (v === null || v === undefined ? null : Number(v)));
+      const valid = nums.filter((v) => v !== null);
+      if (valid.length < 2) return null;
+      const width = 460;
+      const height = 60;
+      const pad = 6;
+      const min = Math.min(...valid);
+      const max = Math.max(...valid);
+      const span = (max - min) || 1;
+      const stepX = (width - pad * 2) / (nums.length - 1);
+      const scaleY = (v) => height - pad - ((v - min) / span) * (height - pad * 2);
+      const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+      svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
+      svg.setAttribute('class', 'pr-trend-svg');
+      const polyline = document.createElementNS('http://www.w3.org/2000/svg', 'polyline');
+      polyline.setAttribute('points', nums
+        .map((v, i) => (v === null ? null : `${pad + i * stepX},${scaleY(v)}`))
+        .filter(Boolean).join(' '));
+      polyline.setAttribute('fill', 'none');
+      polyline.setAttribute('stroke', color);
+      polyline.setAttribute('stroke-width', '2');
+      svg.append(polyline);
+      return svg;
+    };
+    const block = h('div', { class: 'pr-rival-trend' });
+    const uvLine = sparkline(trend.map((d) => d.uv), 'var(--brand, #3b82f6)');
+    const buyerLine = sparkline(trend.map((d) => d.buyers), 'var(--success, #16a34a)');
+    if (uvLine) block.append(h('div', { class: 'pr-rival-trend__item' },
+      h('span', { text: `UV（${formatCompact(Math.min(...trend.map((d) => Number(d.uv) || 0)))} ~ ${formatCompact(Math.max(...trend.map((d) => Number(d.uv) || 0)))}）` }), uvLine));
+    if (buyerLine) block.append(h('div', { class: 'pr-rival-trend__item' },
+      h('span', { text: `支付买家（${formatCompact(Math.min(...trend.map((d) => Number(d.buyers) || 0)))} ~ ${formatCompact(Math.max(...trend.map((d) => Number(d.buyers) || 0)))}）` }), buyerLine));
+    if (!block.childElementCount) block.append(h('p', { class: 'pr-material__empty', text: '该店本期日数据不足，无法画趋势。' }));
+    return block;
+  }
+
   function renderMarket(market) {
     const wrap = h('div', { class: 'pr-materials' });
     if (!market || !market.available) {
@@ -1691,23 +1736,46 @@
       if (categoryChanges) wrap.append(materialBlock('\u5e02\u573a\u73af\u6bd4', h('p', { class: 'pr-material__empty', text: categoryChanges })));
     }
     if (market.rivals && market.rivals.length) {
-      const tr = h('tr', null, h('th', { text: '竞店' }), h('th', { class: 'num', text: '支付买家' }), h('th', { class: 'num', text: 'UV' }), h('th', { class: 'num', text: '支付率' }), h('th', { class: 'num', text: '支付买家变化' }), h('th', { text: '状态' }), h('th', { text: '深度分析' }));
+      const tr = h('tr', null, h('th', { text: '竞店' }), h('th', { class: 'num', text: '支付买家' }), h('th', { class: 'num', text: 'UV' }), h('th', { class: 'num', text: '支付率' }), h('th', { class: 'num', text: '支付买家变化' }), h('th', { text: '状态' }), h('th', { text: '日趋势' }), h('th', { text: '深度分析' }));
       const period = (state.context && state.context.period) || {};
-      const body = market.rivals.map((row) => h('tr', null,
-        h('td', { text: row.shop_name || '--' }),
-        h('td', { class: 'num', text: formatCompact(row.pay_buyer_count) }),
-        h('td', { class: 'num', text: formatCompact(row.uv) }),
-        h('td', { class: 'num', text: row.pay_rate === null || row.pay_rate === undefined ? '--' : `${(row.pay_rate * 100).toFixed(2)}%` }),
-        h('td', { class: 'num', text: row.pay_buyer_change_rate === null || row.pay_buyer_change_rate === undefined ? '--' : `${row.pay_buyer_change_rate > 0 ? '+' : ''}${(row.pay_buyer_change_rate * 100).toFixed(1)}%` }),
-        h('td', null, stateTag(row.status === 'rising' ? '增长' : row.status === 'falling' ? '下滑' : row.status === 'insufficient_coverage' ? '覆盖不足' : '稳定', row.status === 'rising' ? 'warning' : row.status === 'falling' ? 'good' : 'info')),
-        // 深链到竞店竞品专页（带复盘区间日期），复盘页只做摘要，深度分析不重建。
-        h('td', null, h('a', {
-          class: 'pr-anchor-link',
-          href: `/rival-analysis?start=${period.start || ''}&end=${period.end || ''}`,
-          text: '查看 →',
-        })),
-      ));
-      wrap.append(materialBlock('竞店动态', h('table', { class: 'pr-table' }, h('thead', null, tr), h('tbody', null, ...body))));
+      const body = market.rivals.map((row) => {
+        const main = h('tr', { class: 'pr-rival-row' },
+          h('td', { text: row.shop_name || '--' }),
+          h('td', { class: 'num', text: formatCompact(row.pay_buyer_count) }),
+          h('td', { class: 'num', text: formatCompact(row.uv) }),
+          h('td', { class: 'num', text: row.pay_rate === null || row.pay_rate === undefined ? '--' : `${(row.pay_rate * 100).toFixed(2)}%` }),
+          h('td', { class: 'num', text: row.pay_buyer_change_rate === null || row.pay_buyer_change_rate === undefined ? '--' : `${row.pay_buyer_change_rate > 0 ? '+' : ''}${(row.pay_buyer_change_rate * 100).toFixed(1)}%` }),
+          h('td', null, stateTag(row.status === 'rising' ? '增长' : row.status === 'falling' ? '下滑' : row.status === 'insufficient_coverage' ? '覆盖不足' : '稳定', row.status === 'rising' ? 'warning' : row.status === 'falling' ? 'good' : 'info')),
+          // 日趋势展开：该店本期逐日 UV/买家迷你折线（数据源无爆品/趋势品映射时的
+          // 可用替代），点击行展开/收起。
+          h('td', null, (row.daily_trend || []).length >= 2
+            ? h('button', {
+              type: 'button',
+              class: 'pr-anchor-link',
+              text: `${row.daily_trend.length} 天 ↕`,
+              onclick: (event) => {
+                // tr[hidden] 在部分表格布局下取消后高度仍为 0，改用 class 切换显示。
+                const detailRow = event.target.closest('tr').nextElementSibling;
+                if (detailRow && detailRow.classList.contains('pr-rival-detail')) {
+                  detailRow.classList.toggle('is-collapsed');
+                }
+              },
+            })
+            : h('span', { text: '--' })),
+          // 深链到竞店竞品专页（带复盘区间日期），复盘页只做摘要，深度分析不重建。
+          h('td', null, h('a', {
+            class: 'pr-anchor-link',
+            href: `/rival-analysis?start=${period.start || ''}&end=${period.end || ''}`,
+            text: '查看 →',
+          })),
+        );
+        const detail = (row.daily_trend || []).length >= 2
+          ? h('tr', { class: 'pr-rival-detail is-collapsed' },
+            h('td', { colspan: '8' }, rivalTrendBlock(row)))
+          : null;
+        return detail ? [main, detail] : [main];
+      });
+      wrap.append(materialBlock('竞店动态', h('table', { class: 'pr-table' }, h('thead', null, tr), h('tbody', null, ...body.flat()))));
     }
     if (market.competitor_items && market.competitor_items.length) {
       const tr = h('tr', null, h('th', { text: '竞品商品' }), h('th', { class: 'num', text: '市场排名' }), h('th', { class: 'num', text: '排名变化' }), h('th', { class: 'num', text: '支付买家' }), h('th', { class: 'num', text: 'UV' }), h('th', { class: 'num', text: '支付买家变化' }), h('th', { text: '状态' }));
@@ -1761,7 +1829,22 @@
       return wrap;
     }
     const body = h('ul', { class: 'pr-actions-list' }, ...items.map((item) => h('li', null,
-      h('b', { text: `${item.period_key} · ${item.status === 'final' ? '已定稿' : '草稿'}` }),
+      h('b', null,
+        h('button', {
+          type: 'button',
+          class: 'pr-anchor-link',
+          // 跳到对应周期复盘（周键切周模式，月键切月模式并提示切时间范围）。
+          onclick: () => {
+            const isWeek = /W\d+$/.test(item.period_key);
+            setMode(isWeek ? 'week' : 'month');
+            if (!isWeek) {
+              stateBanner(`该复盘属于 ${item.period_key}，请在顶栏「统计时间」切到对应月份查看。`, 'insufficient-data');
+            }
+            window.location.search = `?period_type=${isWeek ? 'week' : 'month'}&period_key=${encodeURIComponent(item.period_key)}`;
+          },
+          text: `${item.period_key} →`,
+        }),
+        ` · ${item.status === 'final' ? '已定稿' : '草稿'}`),
       item.analysis
         ? h('div', null, h('small', { text: item.analysis }))
         : h('small', { text: '该期已保存但品类汇总段还没有结论内容。' }),
