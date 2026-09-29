@@ -33,6 +33,8 @@ from services.period_templates import (  # noqa: F401
     WEEK_TEMPLATE,
     MONTH_TEMPLATE,
     DAY_TEMPLATE,
+    LEGACY_SECTION_ALIASES,
+    migrate_sections,
 )
 from services.period_context import (  # noqa: F401
     _daily_scope,

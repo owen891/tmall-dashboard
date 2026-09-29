@@ -162,6 +162,70 @@
   color: var(--text-muted);
 }
 
+/* 周期内分解表（月内分周 / 期内按日） */
+.pr-overview__breakdown {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.pr-overview__breakdown h4 {
+  margin: 4px 0 0;
+  font-size: 13px;
+  color: var(--text-primary);
+}
+
+/* ------------------------------------------------------- 单品周趋势弹窗 */
+.pr-trend-metric {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 0;
+}
+
+.pr-trend-metric h4 {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.pr-trend-chart {
+  color: var(--brand, #3b82f6);
+}
+
+.pr-trend-svg {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+.pr-trend-axis {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  color: var(--text-muted);
+  padding: 2px 28px 0;
+}
+
+.pr-trend-labels {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  color: var(--text-muted);
+  padding: 2px 28px 0;
+}
+
+/* 下滑榜异常线索列：有标签时用警示色弱底 */
+.pr-table__anomaly {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.pr-table__anomaly.has-tags {
+  color: var(--warning, #b45309);
+  font-weight: 500;
+}
+
 .pr-kpi-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(168px, 1fr));

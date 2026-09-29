@@ -131,6 +131,34 @@ def period_review_categories():
     )
 
 
+@period_reviews_bp.route('/api/period-reviews/product-trend/<product_id>')
+def period_review_product_trend(product_id):
+    """单商品近 N 个周的趋势序列，用于货品榜「字段折线预览」。只读。"""
+    from services.period_context import _product_trend
+    from db import get_db
+
+    product_id = str(product_id or '').strip()
+    if not product_id or len(product_id) > 64:
+        return failure('VALIDATION_ERROR', '商品ID不合法', status=422)
+    weeks = request.args.get('weeks', 8, type=int)
+    weeks = max(1, min(int(weeks or 8), 26))
+    category_mode = requested_category_mode()
+    category_label = mode_to_label(category_mode) if category_mode else None
+    with get_db() as conn:
+        data = _product_trend(conn, product_id, weeks=weeks, category_label=category_label)
+    availability = 'available' if data['available'] else 'no-data'
+    missing_inputs = [] if data['available'] else ['daily_data']
+    return success(
+        data,
+        availability=availability,
+        evidence_level=evidence_level_for(availability, missing_inputs=missing_inputs),
+        missing_inputs=missing_inputs,
+        limitations=limitations_for(availability, missing_inputs=missing_inputs),
+        filters={'category_mode': category_mode or 'all', 'category_label': category_label},
+        evidence=[{'source': 'daily_data', 'product_id': product_id, 'row_count': len(data['weeks'])}],
+    )
+
+
 @period_reviews_bp.route('/api/period-reviews/<period_type>/<period_key>')
 def get_period_review(period_type, period_key):
     try:
@@ -139,6 +167,9 @@ def get_period_review(period_type, period_key):
         return failure('VALIDATION_ERROR', str(error), status=422)
 
     row = PeriodReviewsRepo.get(period_type, period_key)
+    if row is not None and isinstance(row.get('sections'), dict):
+        # 旧模板 key（v1 周/月）只读迁移到 v2 统一 key，前端按新模板渲染。
+        row['sections'] = reviews_service.migrate_sections(period_type, row['sections'])
     template = reviews_service.template_for(period_type)
     payload = {'template': template, 'template_version': reviews_service.TEMPLATE_VERSION, 'review': row}
     if row is None:
@@ -275,6 +306,16 @@ def save_period_review(period_type, period_key):
     )
 
     if structured:
+        # 旧客户端可能仍提交 v1 段落 key（周 performance/done/…），先迁移再校验，
+        # 避免升级窗口期保存被 422 拒掉。迁移后剥离旧别名 key，
+        # 库里只存 v2 key，不出现同一内容双份。
+        sections = reviews_service.migrate_sections(period_type, sections)
+        legacy_alias_keys = {
+            alias
+            for aliases in reviews_service.LEGACY_SECTION_ALIASES.values()
+            for alias in aliases
+        } if period_type != 'day' else set()
+        sections = {key: value for key, value in sections.items() if key not in legacy_alias_keys}
         unknown_sections = sorted(key for key in sections if key not in valid_keys)
         if unknown_sections:
             return failure(

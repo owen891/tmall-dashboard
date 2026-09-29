@@ -17,7 +17,7 @@ from services.category_mode_service import mode_to_label
 from services import category_analysis_service as category_service
 from services.period_parsing import (
     PERIOD_TYPES, resolve_period, resolve_compare, recent_periods,
-    available_periods, _key_for, _period_label,
+    available_periods, _key_for, _period_label, _month_bounded_weeks,
 )
 from services.period_templates import TEMPLATES, WEEK_TEMPLATE, MONTH_TEMPLATE, DAY_TEMPLATE
 
@@ -46,6 +46,7 @@ def _empty_totals():
     return {
         'gsv': 0.0, 'refund_amount': 0.0, 'net_sales': 0.0, 'ad_spend': 0.0,
         'profit': 0.0, 'visitors': 0.0, 'buyers': 0.0, 'payment_qty': 0.0, 'pv': 0.0,
+        'paid_ipv': 0.0,
         'product_count': 0, 'day_count': 0,
         'first_date': None, 'last_date': None,
         'cart_rate': None, 'fav_rate': None, 'bounce_rate': None,
@@ -63,6 +64,7 @@ def _totals_for_range(conn, start, end, category_label=None):
             COALESCE(SUM(d.ad_spend), 0) AS ad_spend,
             COALESCE(SUM(d.operating_profit), 0) AS profit,
             COALESCE(SUM(d.ipv), 0) AS visitors,
+            COALESCE(SUM(d.paid_ipv), 0) AS paid_ipv,
             COALESCE(SUM(d.buyers), 0) AS buyers,
             COALESCE(SUM(d.payment_qty), 0) AS payment_qty,
             COALESCE(SUM(d.pv), 0) AS pv,
@@ -100,6 +102,7 @@ def _derive(totals):
     visitors = totals['visitors']
     buyers = totals['buyers']
     ad_spend = totals['ad_spend']
+    paid_ipv = totals.get('paid_ipv') or 0.0
     return {
         'gsv': gsv,
         'net_sales': net_sales,
@@ -107,6 +110,7 @@ def _derive(totals):
         'ad_spend': ad_spend,
         'profit': totals['profit'],
         'visitors': visitors,
+        'paid_ipv': paid_ipv,
         'buyers': buyers,
         'payment_qty': totals['payment_qty'],
         'product_count': totals['product_count'],
@@ -120,6 +124,8 @@ def _derive(totals):
         'cart_rate': totals.get('cart_rate'),
         'fav_rate': totals.get('fav_rate'),
         'bounce_rate': totals.get('bounce_rate'),
+        # 单次付费访客成本 = 推广花费 ÷ 付费访客数（paid_ipv）。
+        'paid_cpc': (ad_spend / paid_ipv) if paid_ipv else None,
     }
 
 
@@ -136,6 +142,7 @@ METRIC_DEFS = [
     ('refund_amount', '退款金额', 'money', True),
     ('refund_ratio', '退款率', 'percent', True),
     ('cart_rate', '加购率', 'percent', False),
+    ('paid_cpc', '单次付费访客成本', 'money', True),
 ]
 
 
@@ -157,6 +164,100 @@ def _metric_items(current, prev, yoy):
             item['yoy_abs'] = round(value - yoy_value, 4)
         items.append(item)
     return items
+
+
+# ---------------------------------------------------------------------------
+# 单次付费访客成本（口径兜底）
+# daily_data.paid_ipv 当前采集为空（实测整列 0），无法算「花费 ÷ 付费访客」；
+# 退回万相台事实表口径：花费 ÷ 推广点击（付费访客 = 点击进店的付费流量）。
+# 指标来源会标注在 metrics.paid_cpc_source，两套口径不静默混用。
+# ---------------------------------------------------------------------------
+
+
+def _promotion_paid_cpc(conn, start, end, category_label=None):
+    try:
+        table_exists = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='promotion_daily_facts'"
+        ).fetchone()
+        if not table_exists:
+            return None
+        category_sql = ''
+        category_params = []
+        if category_label:
+            category_sql = " AND (p.shop_label = ? OR instr(',' || p.shop_label || ',', ',' || ? || ',') > 0)"
+            category_params = [category_label, category_label]
+        row = conn.execute(
+            f'''SELECT SUM(f.ad_spend) AS spend, SUM(f.clicks) AS clicks
+                FROM promotion_daily_facts f
+                LEFT JOIN products p ON p.product_id = f.product_id
+                WHERE f.date BETWEEN ? AND ? AND f.grain = 'product' AND f.channel = '全部'
+                  {category_sql}''',
+            [start, end, *category_params],
+        ).fetchone()
+        if row and row['spend'] and row['clicks']:
+            return float(row['spend']) / float(row['clicks'])
+    except Exception:
+        return None
+    return None
+
+
+# ---------------------------------------------------------------------------
+# 周期内分解（月复盘 = 月内分周；周复盘 = 期内按日）
+# 来自用户的月复盘框架：品类汇总的销售/利润指标要有「周维度」表格方便对比。
+# ---------------------------------------------------------------------------
+
+BREAKDOWN_METRIC_KEYS = (
+    'gsv', 'net_sales', 'profit', 'visitors', 'conversion', 'aov',
+    'cart_rate', 'ad_spend', 'ad_ratio', 'roi', 'paid_cpc',
+)
+
+
+def _breakdown_block(conn, period, category_label=None):
+    """返回周期内更细粒度的指标行。
+
+    月复盘拆成月内周（与 _month_bounded_weeks 同口径：W1 从 1 号到第一个周日），
+    周复盘拆成逐日，日复盘只有一行。每行独立聚合并推导比率，
+    缺天不补 0 行，只返回有数据的天/周。
+    """
+    if period['type'] == 'month':
+        year, month = int(period['key'][:4]), int(period['key'][5:7])
+        spans = [
+            {'label': f'第{num}周（{start.isoformat()} ~ {end.isoformat()}）',
+             'start': start.isoformat(), 'end': end.isoformat()}
+            for num, start, end in _month_bounded_weeks(year, month)
+        ]
+        grain = 'week'
+    elif period['type'] == 'week':
+        start = date.fromisoformat(period['start'])
+        end = date.fromisoformat(period['end'])
+        spans = [
+            {'label': f'{(start + timedelta(days=offset)).isoformat()}', 
+             'start': (start + timedelta(days=offset)).isoformat(),
+             'end': (start + timedelta(days=offset)).isoformat()}
+            for offset in range((end - start).days + 1)
+        ]
+        grain = 'day'
+    else:
+        spans = [{'label': period['key'], 'start': period['start'], 'end': period['end']}]
+        grain = 'day'
+
+    rows = []
+    for span in spans:
+        totals = _totals_for_range(conn, span['start'], span['end'], category_label)
+        if not totals['day_count']:
+            continue
+        derived = _derive(totals)
+        if derived.get('paid_cpc') is None:
+            derived['paid_cpc'] = _promotion_paid_cpc(conn, span['start'], span['end'], category_label)
+        rows.append({
+            'label': span['label'],
+            'start': span['start'],
+            'end': span['end'],
+            'day_count': totals['day_count'],
+            'metrics': {key: (round(derived[key], 4) if isinstance(derived.get(key), float) else derived.get(key))
+                        for key in BREAKDOWN_METRIC_KEYS},
+        })
+    return {'grain': grain, 'rows': rows}
 
 
 # ---------------------------------------------------------------------------
@@ -463,6 +564,183 @@ def _promotion_dimension(conn, period, compare, category_label=None):
                 'source': 'promotion_daily_facts'}
     except Exception:
         return {'available': False, 'grain': None, 'items': [], 'missing_inputs': ['promotion_daily_facts']}
+
+
+# ---------------------------------------------------------------------------
+# 广告单品 TOP 消耗（对齐用户的月复盘框架「广告-单品-TOP20消耗商品」）
+#
+# 数据边界（已实测，勿改）：
+# - 商品级指标来自 channel='全部' AND grain='product' 的行：这是唯一带
+#   product_id 的完整商品级汇总（花费/归因成交/直接成交/加购/拉新/点击齐全）。
+# - 具名渠道（关键词/人群/货品全站…）的行 product_id 全为空；campaign→商品
+#   是一对多映射，join 会把花费重复计量，不能用来拆「商品×渠道」。
+#   因此渠道分组列只在采集端写出带商品映射的渠道行（历史上全站推广/product
+#   粒度存在过）时才有值，否则保持 None 并在 missing_inputs 里说明。
+# ---------------------------------------------------------------------------
+
+PROMOTION_CHANNEL_GROUPS = (
+    ('全站', ('全站推广', '货品全站推广')),
+    ('关键词', ('关键词推广',)),
+    ('人群', ('人群推广',)),
+    ('其他', ('店铺直达', '超级短视频')),
+)
+
+
+def _product_trend(conn, product_id, weeks=8, category_label=None):
+    """单商品近 N 个完整月内周的趋势序列（GSV/访客/买家/净销售/转化）。
+
+    用于货品榜「点击字段 → 周维度折线预览」。周期口径与复盘一致
+    （_month_bounded_weeks：W1 从 1 号到第一个周日）；当前不完整周不纳入。
+    """
+    try:
+        today = date.today()
+        # 从当月往前找 weeks 个周跨度：先算当月已有完整周数，不足再往前月补。
+        spans = []
+        year, month = today.year, today.month
+        while len(spans) < weeks:
+            month_weeks = _month_bounded_weeks(year, month)
+            # 当月只取已结束（end < 今天）的周
+            usable = [
+                (num, start, end) for num, start, end in month_weeks
+                if end < today
+            ]
+            for num, start, end in reversed(usable):
+                spans.append((f'{start.isoformat()[:7]} 第{num}周', start, end))
+                if len(spans) >= weeks:
+                    break
+            month -= 1
+            if month == 0:
+                year, month = year - 1, 12
+        spans = list(reversed(spans[:weeks]))
+
+        rows = []
+        for label, start, end in spans:
+            row = conn.execute(
+                '''SELECT COALESCE(SUM(d.payment_amount), 0) AS gsv,
+                          COALESCE(SUM(d.ipv), 0) AS visitors,
+                          COALESCE(SUM(d.buyers), 0) AS buyers,
+                          COALESCE(SUM(d.net_sales), 0) AS net_sales
+                   FROM daily_data d WHERE d.product_id = ? AND d.date BETWEEN ? AND ?''',
+                (product_id, start.isoformat(), end.isoformat()),
+            ).fetchone()
+            if row is None:
+                continue
+            gsv = float(row['gsv'] or 0)
+            visitors = float(row['visitors'] or 0)
+            buyers = float(row['buyers'] or 0)
+            rows.append({
+                'label': label,
+                'start': start.isoformat(),
+                'end': end.isoformat(),
+                'gsv': round(gsv, 2),
+                'net_sales': round(float(row['net_sales'] or 0), 2),
+                'visitors': round(visitors, 0),
+                'buyers': round(buyers, 0),
+                'conversion': round(buyers / visitors, 6) if visitors else None,
+            })
+        return {'available': bool(rows), 'weeks': rows}
+    except Exception:
+        return {'available': False, 'weeks': []}
+
+
+def _promotion_items_block(conn, period, category_label=None, limit=20):
+    try:
+        table_exists = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='promotion_daily_facts'"
+        ).fetchone()
+        if not table_exists:
+            return {'available': False, 'items': [], 'missing_inputs': ['promotion_daily_facts']}
+
+        category_sql = ''
+        category_params = []
+        if category_label:
+            category_sql = " AND (p.shop_label = ? OR instr(',' || p.shop_label || ',', ',' || ? || ',') > 0)"
+            category_params = [category_label, category_label]
+
+        def aggregate(start, end, channels):
+            placeholders = ','.join('?' for _ in channels)
+            rows = conn.execute(
+                f'''SELECT f.product_id,
+                           SUM(f.ad_spend) AS ad_spend,
+                           SUM(f.attributed_payment_amount) AS attributed_payment,
+                           SUM(f.direct_payment_amount) AS direct_payment,
+                           SUM(f.cart_adds) AS cart_adds,
+                           SUM(f.new_buyers) AS new_buyers,
+                           SUM(f.clicks) AS clicks
+                    FROM promotion_daily_facts f
+                    LEFT JOIN products p ON p.product_id = f.product_id
+                    WHERE f.date BETWEEN ? AND ? AND f.grain = 'product'
+                      AND f.product_id IS NOT NULL AND f.product_id != ''
+                      AND f.channel IN ({placeholders}){category_sql}
+                    GROUP BY f.product_id''',
+                [start, end, *channels, *category_params],
+            ).fetchall()
+            return {row['product_id']: dict(row) for row in rows}
+
+        # 总计口径：channel='全部' 的商品级行。
+        totals_map = aggregate(period['start'], period['end'], channels=['全部'])
+        # 渠道口径：具名渠道且带商品映射的商品级行（当前采集大多没有）。
+        channel_maps = {}
+        for group_name, channels in PROMOTION_CHANNEL_GROUPS:
+            channel_maps[group_name] = aggregate(period['start'], period['end'], channels=list(channels))
+
+        def derived(row):
+            spend = row.get('ad_spend')
+            pay = row.get('attributed_payment')
+            direct = row.get('direct_payment')
+            carts = row.get('cart_adds')
+            new_buyers = row.get('new_buyers')
+            clicks = row.get('clicks')
+            def div(numerator, denominator):
+                if numerator is None or denominator is None or denominator == 0:
+                    return None
+                return float(numerator) / float(denominator)
+            return {
+                'ad_spend': float(spend) if spend is not None else None,
+                'attributed_payment': float(pay) if pay is not None else None,
+                'direct_payment': float(direct) if direct is not None else None,
+                'cart_adds': carts, 'new_buyers': new_buyers, 'clicks': clicks,
+                'roi': div(pay, spend),
+                'direct_roi': div(direct, spend),
+                'ad_ratio': div(spend, pay),       # 费比 = 花费 ÷ 归因成交
+                'cart_cost': div(spend, carts),    # 加购成本
+                'new_cost': div(spend, new_buyers),  # 拉新成本 = 花费 ÷ 成交新客
+                'cart_rate': div(carts, clicks),   # 加购率 = 加购 ÷ 点击
+            }
+
+        top_ids = sorted(
+            totals_map, key=lambda pid: float(totals_map[pid].get('ad_spend') or 0), reverse=True
+        )[:limit]
+        meta = _product_meta(conn, set(top_ids))
+        items = []
+        has_channel_data = False
+        for pid in top_ids:
+            info = meta.get(pid, {})
+            channels_data = {}
+            has_channel_data = False
+            for group_name, _ in PROMOTION_CHANNEL_GROUPS:
+                row = channel_maps[group_name].get(pid)
+                if row is not None and (row.get('ad_spend') or 0) > 0:
+                    channels_data[group_name] = derived(row)
+                    has_channel_data = True
+            items.append({
+                'product_id': pid,
+                'title': info.get('title') or pid,
+                'image_url': info.get('image_url') or '',
+                'totals': derived(totals_map[pid]),
+                'channels': channels_data,
+            })
+
+        missing_inputs = []
+        if not items:
+            missing_inputs.append('promotion_daily_facts.product')
+        elif not has_channel_data:
+            missing_inputs.append('promotion_product_channel_scope')
+        return {'available': bool(items), 'items': items,
+                'channel_groups': [name for name, _ in PROMOTION_CHANNEL_GROUPS],
+                'missing_inputs': missing_inputs}
+    except Exception:
+        return {'available': False, 'items': [], 'missing_inputs': ['promotion_daily_facts']}
 
 
 # ---------------------------------------------------------------------------
@@ -946,6 +1224,18 @@ def build_context(period_type, period_key, saved_target=None, category_mode=None
         prev = _derive(totals_prev) if totals_prev['day_count'] else {}
         yoy = _derive(totals_yoy) if totals_yoy['day_count'] else {}
 
+        # 单次付费访客成本：daily_data.paid_ipv 为空时退回万相台点击口径。
+        paid_cpc_source = 'daily_paid_ipv'
+        if current.get('paid_cpc') is None:
+            promo_cpc = _promotion_paid_cpc(conn, period['start'], period['end'], category_label)
+            if promo_cpc is not None:
+                current['paid_cpc'] = promo_cpc
+                paid_cpc_source = 'promotion_clicks'
+        if prev and prev.get('paid_cpc') is None and compare['available']:
+            promo_cpc_prev = _promotion_paid_cpc(conn, compare['start'], compare['end'], category_label)
+            if promo_cpc_prev is not None:
+                prev['paid_cpc'] = promo_cpc_prev
+
         target, target_source = _goal_target(conn, period_type, period_key, period)
         if saved_target not in (None, ''):
             try:
@@ -960,6 +1250,8 @@ def build_context(period_type, period_key, saved_target=None, category_mode=None
         market = _market_block(conn, {**period, 'prev': compare})
         traffic = _traffic_dimension(conn, period, compare, category_label)
         promotion = _promotion_dimension(conn, period, compare, category_label)
+        promotion_items = _promotion_items_block(conn, period, category_label)
+        breakdown = _breakdown_block(conn, period, category_label)
         actions = _actions_block(conn, period, category_label)
         alerts = _alerts_block(conn)
         anomalies = _anomalies_block(conn, period, current, prev, category_label)
@@ -996,6 +1288,7 @@ def build_context(period_type, period_key, saved_target=None, category_mode=None
             'items': _metric_items(current, prev, yoy),
             'has_data': has_data,
             'coverage': coverage,
+            'paid_cpc_source': paid_cpc_source,
         },
         # 达成率口径 = 净销售额 ÷ 目标（与经营目标表一致）。
         # 早期误用 GSV 作分子，会把含退款的支付金额算进达成率，系统性偏高约 20%。
@@ -1003,6 +1296,8 @@ def build_context(period_type, period_key, saved_target=None, category_mode=None
                                     targets=_target_rows(current, saved_review)),
         'products': products,
         'ads': _ads_block(current, prev),
+        'breakdown': breakdown,
+        'promotion_items': promotion_items,
         'dimensions': {
             'traffic': traffic,
             'promotion': promotion,
@@ -1035,9 +1330,13 @@ def legacy_fields_from_sections(period_type, sections):
         if value:
             joined.append(value)
 
-    summary = text_of('performance') or text_of('category_summary') or (joined[0] if joined else '')
-    conclusions = text_of('highlights') or text_of('summary') or (joined[1] if len(joined) > 1 else '')
-    next_actions = text_of('plan') or text_of('next_plan') or (joined[-1] if joined else '')
+    # v2 模板周/月同构；别名链兼容 v1（周 performance/done/plan/highlights，
+    # 月 campaign 等），保证旧复盘行映射出的三个 legacy 字段不丢内容。
+    summary = (text_of('category_summary') or text_of('performance')
+               or (joined[0] if joined else ''))
+    conclusions = (text_of('summary') or text_of('highlights') or text_of('done')
+                   or text_of('campaign') or (joined[1] if len(joined) > 1 else ''))
+    next_actions = (text_of('next_plan') or text_of('plan') or (joined[-1] if joined else ''))
 
     fallback = '（未填写）'
     return {
@@ -1230,7 +1529,57 @@ def _products_block(conn, period, category_label=None, compare_range=None):
         )
     ][:10]
 
-    ids = set(top_ids + decline_ids)
+    # ---- 新增榜单（对齐用户的月复盘框架）----
+    # 付费 TOP：按本期推广花费排序，广告复盘里看钱花在哪些商品上。
+    paid_ids = [
+        product_id for product_id, row in sorted(
+            current.items(), key=lambda item: float(item[1].get('ad_spend') or 0), reverse=True
+        )
+        if (row.get('ad_spend') or 0) > 0
+    ][:10]
+    # 盈利 TOP / 亏损 TOP：按经营利润（支付预估）排。
+    profit_ids = [
+        product_id for product_id, row in sorted(
+            current.items(), key=lambda item: float(item[1].get('operating_profit') or 0), reverse=True
+        )
+        if (row.get('operating_profit') or 0) > 0
+    ][:10]
+    loss_ids = [
+        product_id for product_id, row in sorted(
+            current.items(), key=lambda item: float(item[1].get('operating_profit') or 0)
+        )
+        if (row.get('operating_profit') or 0) < 0
+    ][:10]
+
+    # 新品：最近 60 天上架（以周期结束日为参照，上架不能晚于周期末）。
+    new_ids = []
+    try:
+        period_end = date.fromisoformat(str(period['end']))
+        new_cutoff = (period_end - timedelta(days=60)).isoformat()
+        new_rows = conn.execute(
+            '''SELECT product_id FROM products
+               WHERE list_date IS NOT NULL AND list_date != ''
+                 AND list_date <= ? AND list_date >= ?''',
+            (period['end'], new_cutoff),
+        ).fetchall()
+        new_ids = [row['product_id'] for row in new_rows]
+    except Exception:
+        new_ids = []
+    new_ids = [pid for pid in new_ids if pid in current]
+    new_top_ids = [
+        pid for pid in sorted(
+            new_ids, key=lambda pid: float(current[pid].get('net_sales') or 0), reverse=True
+        )
+        if (current[pid].get('net_sales') or 0) > 0
+    ][:10]
+    new_paid_ids = [
+        pid for pid in sorted(
+            new_ids, key=lambda pid: float(current[pid].get('ad_spend') or 0), reverse=True
+        )
+        if (current[pid].get('ad_spend') or 0) > 0
+    ][:10]
+
+    ids = set(top_ids + decline_ids + paid_ids + profit_ids + loss_ids + new_top_ids + new_paid_ids)
     meta = _product_meta(conn, ids)
 
     def with_meta(product_id):
@@ -1244,5 +1593,10 @@ def _products_block(conn, period, category_label=None, compare_range=None):
     return {
         'top': [with_meta(product_id) for product_id in top_ids],
         'decline': [with_meta(product_id) for product_id in decline_ids],
+        'paid': [with_meta(product_id) for product_id in paid_ids],
+        'profit': [with_meta(product_id) for product_id in profit_ids],
+        'loss': [with_meta(product_id) for product_id in loss_ids],
+        'new': [with_meta(product_id) for product_id in new_top_ids],
+        'new_paid': [with_meta(product_id) for product_id in new_paid_ids],
     }
 

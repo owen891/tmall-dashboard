@@ -240,16 +240,16 @@ class PeriodReviewsTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         payload = response.get_json(); response.close()
 
-        self.assertEqual(payload['data']['template_version'], 'v1')
+        self.assertEqual(payload['data']['template_version'], 'v2')
         week = [section['key'] for section in payload['data']['templates']['week']]
-        self.assertEqual(week, ['performance', 'market', 'done', 'plan', 'highlights'])
         month = [section['key'] for section in payload['data']['templates']['month']]
+        # v2：周/月统一为同一套板块（对齐用户的月复盘 XMind 框架），
+        # 段落 key 同构，保存与展示共用结构；旧 v1 key 由迁移层承接。
         self.assertEqual(
-            month,
-            ['category_summary', 'goods', 'ads', 'campaign', 'market', 'summary', 'next_plan'],
+            week,
+            ['category_summary', 'goods', 'ads', 'market', 'summary', 'next_plan'],
         )
-        # 周复盘与月复盘是两套结构，不能复用同一段落集合。
-        self.assertNotEqual(week, month)
+        self.assertEqual(week, month)
 
     def test_structured_review_round_trips_sections_and_legacy_columns(self):
         response = self.client.put('/api/period-reviews/week/2026-09-W3', json={
@@ -260,6 +260,8 @@ class PeriodReviewsTests(unittest.TestCase):
                 'done': {'text': '完成 3 款主图替换'},
                 'plan': {'text': '加投关键词渠道，目标 ROI≥4'},
                 'highlights': {'text': '亮点：转化提升；卡点：缺货'},
+                'goods': {'text': 'TOP10 占比 53%，新品贡献不足'},
+                'ads': {'text': '费比 20%，全站占比过高'},
             },
         })
         self.assertEqual(response.status_code, 200)
@@ -269,9 +271,10 @@ class PeriodReviewsTests(unittest.TestCase):
         stored = payload['data']['review']
         self.assertEqual(stored['status'], 'final')
         self.assertEqual(stored['target_amount'], 1000000)
+        # 旧 v1 key 保存时被迁移到 v2 key，库里不存双份。
         self.assertEqual(
             set(stored['sections']),
-            {'performance', 'done', 'plan', 'highlights'},
+            {'category_summary', 'goods', 'ads', 'summary', 'next_plan'},
         )
         # 结构化段落必须同时回填历史字段，旧查询/旧页面才不会读到空值。
         self.assertIn('加投不足', stored['summary'])
@@ -281,8 +284,11 @@ class PeriodReviewsTests(unittest.TestCase):
         detail = self.client.get('/api/period-reviews/week/2026-09-W3')
         self.assertEqual(detail.status_code, 200)
         detail_payload = detail.get_json(); detail.close()
-        self.assertEqual(detail_payload['data']['review']['sections']['done']['text'], '完成 3 款主图替换')
-        self.assertEqual(detail_payload['data']['template'][0]['key'], 'performance')
+        # 合并段 summary 同时保留 v1 done 与 highlights 的内容
+        merged_summary = detail_payload['data']['review']['sections']['summary']['text']
+        self.assertIn('完成 3 款主图替换', merged_summary)
+        self.assertIn('亮点：转化提升', merged_summary)
+        self.assertEqual(detail_payload['data']['template'][0]['key'], 'category_summary')
 
     def test_four_indicator_targets_round_trip_and_drive_achievement_rates(self):
         """复盘目标不止销售额：利润 / 推广费 / 净费比也要能设，且达成率口径正确。
@@ -414,6 +420,8 @@ class PeriodReviewsTests(unittest.TestCase):
                 'done': {'text': '已完成事项'},
                 'plan': {'text': '下一步'},
                 'highlights': {'text': '风险'},
+                'goods': {'text': '货品结论'},
+                'ads': {'text': '广告结论'},
             },
         })
         self.assertEqual(written.status_code, 200); written.close()
@@ -425,7 +433,8 @@ class PeriodReviewsTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         stored = response.get_json()['data']['review']; response.close()
         self.assertEqual(stored['target_amount'], 500)
-        self.assertEqual(stored['sections']['performance']['text'], '业绩结论')
+        # v1 performance 保存时迁移到 v2 category_summary，读取按新 key。
+        self.assertEqual(stored['sections']['category_summary']['text'], '业绩结论')
         # 段落齐全时不应因为「只存目标」而把状态退回 draft
         self.assertEqual(stored['status'], 'final')
 
@@ -453,7 +462,7 @@ class PeriodReviewsTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         payload = response.get_json(); response.close()
         self.assertEqual(payload['data']['review']['status'], 'draft')
-        self.assertIn('done', payload['data']['missing_required_sections'])
+        self.assertIn('goods', payload['data']['missing_required_sections'])
         self.assertTrue(payload['unknowns'])
 
     def test_unknown_sections_are_rejected_and_legacy_put_preserves_sections(self):
@@ -879,6 +888,187 @@ class PeriodReviewsTests(unittest.TestCase):
             '/api/period-reviews/week/2026-09-W3/context?category_mode=sock&compare=custom&compare_period=2026-08-W5'
         ).get_json()['data']['context']
         self.assertEqual([row['product_id'] for row in custom['products']['decline']], ['P-A'])
+
+    # ------------------------------------------------ v2 框架新增能力
+    def _seed_v2_framework_data(self):
+        """覆盖 v2 框架：分解表 / 货品多榜单 / 广告单品 / 付费访客成本。"""
+        from db import get_db
+
+        with get_db(self.app.config['DATABASE_PATH']) as connection:
+            connection.executemany(
+                'INSERT INTO products (product_id, title, shop_label, list_date) VALUES (?, ?, ?, ?)',
+                [
+                    # 老品：三个榜单主力
+                    ('V-TOP', '销售冠军', '标品袜子', '2025-01-01'),
+                    ('V-PAID', '付费大户', '标品袜子', '2025-01-01'),
+                    ('V-LOSS', '亏损款', '标品袜子', '2025-01-01'),
+                    # 新品：上架在周期结束日前 60 天内
+                    ('V-NEW', '新品A', '标品袜子', '2026-08-20'),
+                    # 新品但上架超 60 天，不算新品
+                    ('V-OLDNEW', '旧上架', '标品袜子', '2026-06-01'),
+                ],
+            )
+            # 2026-09-W3 = 09-14 ~ 09-20；两天数据保证周内分解表有行
+            connection.executemany(
+                '''INSERT INTO daily_data
+                       (product_id, date, payment_amount, net_sales, ad_spend,
+                        operating_profit, ipv, buyers, paid_ipv, cart_rate)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+                [
+                    ('V-TOP', '2026-09-14', 5000, 4500, 100, 800, 1000, 100, 0, 0.2),
+                    ('V-TOP', '2026-09-15', 3000, 2700, 50, 400, 600, 60, 0, 0.2),
+                    ('V-PAID', '2026-09-14', 800, 700, 900, -50, 300, 20, 0, 0.1),
+                    ('V-LOSS', '2026-09-14', 600, 500, 80, -300, 200, 15, 0, 0.1),
+                    ('V-NEW', '2026-09-14', 1200, 1000, 200, 150, 400, 30, 0, 0.15),
+                    ('V-OLDNEW', '2026-09-14', 900, 800, 10, 50, 200, 10, 0, 0.1),
+                ],
+            )
+            # 万相台商品级事实：channel='全部'/grain='product'（付费访客成本兜底口径）
+            connection.executemany(
+                '''INSERT INTO promotion_daily_facts
+                       (shop_id, date, channel, grain, product_id, ad_spend,
+                        attributed_payment_amount, direct_payment_amount,
+                        cart_adds, new_buyers, clicks)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+                [
+                    ('default', '2026-09-14', '全部', 'product', 'V-TOP',
+                     150, 4500, 2000, 90, 15, 300),
+                    ('default', '2026-09-14', '全部', 'product', 'V-PAID',
+                     900, 800, 300, 45, 9, 180),
+                ],
+            )
+            connection.commit()
+
+    def test_v2_breakdown_and_paid_cpc_fallback(self):
+        self._seed_v2_framework_data()
+
+        week = self.client.get(
+            '/api/period-reviews/week/2026-09-W3/context?category_mode=sock'
+        ).get_json()['data']['context']
+        # 周复盘分解 = 期内按日
+        self.assertEqual(week['breakdown']['grain'], 'day')
+        self.assertEqual([row['label'] for row in week['breakdown']['rows']],
+                         ['2026-09-14', '2026-09-15'])
+        day1 = week['breakdown']['rows'][0]['metrics']
+        self.assertAlmostEqual(day1['gsv'], 8500, places=2)
+        # daily_data.paid_ipv 为 0 时，付费访客成本退回万相台点击口径：
+        # (150+900) / (300+180) = 2.1875
+        self.assertIsNone(week['metrics']['current'].get('paid_ipv') or None)
+        self.assertAlmostEqual(day1['paid_cpc'], 1050 / 480, places=6)
+        self.assertEqual(week['metrics']['paid_cpc_source'], 'promotion_clicks')
+
+        # 月复盘分解 = 月内分周（与 _month_bounded_weeks 同口径）
+        month = self.client.get(
+            '/api/period-reviews/month/2026-09/context?category_mode=sock'
+        ).get_json()['data']['context']
+        self.assertEqual(month['breakdown']['grain'], 'week')
+        week_labels = [row['label'] for row in month['breakdown']['rows']]
+        self.assertEqual(len(week_labels), 1)  # 只有 W3 有数据
+        self.assertIn('第3周', week_labels[0])
+
+    def test_v2_product_boards_cover_paid_profit_loss_and_new(self):
+        self._seed_v2_framework_data()
+
+        context = self.client.get(
+            '/api/period-reviews/week/2026-09-W3/context?category_mode=sock'
+        ).get_json()['data']['context']
+        products = context['products']
+        # 付费 TOP：V-PAID(900) > V-NEW(200) > V-TOP(150) > V-LOSS(80) > V-OLDNEW(10)
+        self.assertEqual([row['product_id'] for row in products['paid']],
+                         ['V-PAID', 'V-NEW', 'V-TOP', 'V-LOSS', 'V-OLDNEW'])
+        # 盈利 TOP：V-TOP(1200) > V-NEW(150) > V-OLDNEW(50)
+        self.assertEqual([row['product_id'] for row in products['profit']],
+                         ['V-TOP', 'V-NEW', 'V-OLDNEW'])
+        # 亏损 TOP：V-LOSS(-300) > V-PAID(-50)
+        self.assertEqual([row['product_id'] for row in products['loss']],
+                         ['V-LOSS', 'V-PAID'])
+        # 新品 = 周期结束日(09-20)前 60 天内上架：只有 V-NEW（V-OLDNEW 超期）
+        self.assertEqual([row['product_id'] for row in products['new']], ['V-NEW'])
+        self.assertEqual([row['product_id'] for row in products['new_paid']], ['V-NEW'])
+
+    def test_v2_promotion_items_block_from_product_grain(self):
+        self._seed_v2_framework_data()
+
+        context = self.client.get(
+            '/api/period-reviews/week/2026-09-W3/context?category_mode=sock'
+        ).get_json()['data']['context']
+        items = context['promotion_items']
+        self.assertTrue(items['available'])
+        self.assertEqual(len(items['items']), 2)
+        top = items['items'][0]
+        self.assertEqual(top['product_id'], 'V-PAID')
+        self.assertAlmostEqual(top['totals']['ad_spend'], 900, places=4)
+        # 总投产 = 800/900；直接投产 = 300/900；费比 = 900/800
+        self.assertAlmostEqual(top['totals']['roi'], 800 / 900, places=4)
+        self.assertAlmostEqual(top['totals']['direct_roi'], 300 / 900, places=4)
+        self.assertAlmostEqual(top['totals']['ad_ratio'], 900 / 800, places=6)
+        # 加购成本 = 900/45 = 20；拉新成本 = 900/9 = 100；加购率 = 45/180 = 0.25
+        self.assertAlmostEqual(top['totals']['cart_cost'], 20, places=4)
+        self.assertAlmostEqual(top['totals']['new_cost'], 100, places=4)
+        self.assertAlmostEqual(top['totals']['cart_rate'], 0.25, places=6)
+        # 渠道×商品粒度当前没有数据源，必须显式标注而不是伪造 0
+        self.assertIn('promotion_product_channel_scope', items['missing_inputs'])
+        self.assertEqual(top['channels'], {})
+
+    def test_v2_legacy_sections_are_migrated_on_read(self):
+        # 直接按 v1 周 key 写库（绕过 PUT 迁移），验证读取侧迁移。
+        from db import get_db
+
+        with get_db(self.app.config['DATABASE_PATH']) as connection:
+            connection.execute(
+                """INSERT INTO period_reviews
+                       (period_type, period_key, reviewer, summary, conclusions, next_actions,
+                        status, template_version, sections)
+                   VALUES ('week', '2026-08-W1', 'operator', 's', 'c', 'n', 'final', 'v1', ?)""",
+                ('{"performance": {"text": "v1业绩"}, "done": {"text": "v1做了什么"},'
+                 ' "highlights": {"text": "v1亮点"}, "plan": {"text": "v1计划"}}',),
+            )
+            connection.commit()
+
+        detail = self.client.get('/api/period-reviews/week/2026-08-W1').get_json()['data']
+        sections = detail['review']['sections']
+        self.assertEqual(sections['category_summary']['text'], 'v1业绩')
+        # 合并段拼接 done + highlights
+        self.assertEqual(sections['summary']['text'], 'v1做了什么\n\nv1亮点')
+        self.assertEqual(sections['next_plan']['text'], 'v1计划')
+
+    def test_v2_product_trend_endpoint(self):
+        """货品榜「趋势」按钮的后端：近 N 个完整月内周的指标序列。"""
+        from db import get_db
+
+        with get_db(self.app.config['DATABASE_PATH']) as connection:
+            connection.executemany(
+                'INSERT INTO daily_data (product_id, date, payment_amount, ipv, buyers, net_sales) VALUES (?, ?, ?, ?, ?, ?)',
+                [
+                    # 本周（测试跑在任意日期）只保证历史周稳定：
+                    # 2026-01 与 2026-02 各铺两周完整数据
+                    ('V-TREND', '2026-01-05', 100, 1000, 50, 90),
+                    ('V-TREND', '2026-01-12', 200, 1500, 90, 180),
+                    ('V-TREND', '2026-02-02', 300, 2000, 100, 270),
+                ],
+            )
+            connection.commit()
+
+        response = self.client.get('/api/period-reviews/product-trend/V-TREND?weeks=4')
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json(); response.close()
+        self.assertTrue(payload['ok'])
+        weeks = payload['data']['weeks']
+        # 只要有日数据就返回序列；至少覆盖铺过的周
+        self.assertTrue(len(weeks) >= 2)
+        # 每行字段齐全，转化率 = buyers / visitors
+        first = weeks[0]
+        for key in ('label', 'start', 'end', 'gsv', 'net_sales', 'visitors', 'buyers', 'conversion'):
+            self.assertIn(key, first)
+        jan_row = next((row for row in weeks if row['start'].startswith('2026-01')), None)
+        if jan_row:
+            self.assertAlmostEqual(jan_row['conversion'], 50 / 1000, places=6)
+
+        # 非法参数：weeks 夹紧而不是报错；空 ID 422
+        clamped = self.client.get('/api/period-reviews/product-trend/V-TREND?weeks=999')
+        self.assertEqual(clamped.status_code, 200); clamped.close()
+        bad = self.client.get('/api/period-reviews/product-trend/%20')
+        self.assertEqual(bad.status_code, 422); bad.close()
 
 
 if __name__ == '__main__': unittest.main(verbosity=2)

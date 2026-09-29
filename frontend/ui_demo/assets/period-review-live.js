@@ -525,11 +525,44 @@
   }
 
   // ------------------------------------------------------- 业绩全景 / 目标
+  // 周期内分解表（月复盘=月内分周，周复盘=期内按日），来自用户月复盘框架：
+  // 品类汇总的销售/利润指标要有周维度表格方便对比。
+  const BREAKDOWN_COLUMNS = [
+    ['gsv', 'GSV', 'money'],
+    ['net_sales', '净销售', 'money'],
+    ['profit', '利润', 'money'],
+    ['visitors', '访客', 'number'],
+    ['conversion', '转化率', 'percent'],
+    ['aov', '客单价', 'money'],
+    ['cart_rate', '加购率', 'percent'],
+    ['ad_spend', '推广花费', 'money'],
+    ['ad_ratio', '费比', 'percent'],
+    ['roi', 'ROI', 'decimal'],
+    ['paid_cpc', '付费访客成本', 'money'],
+  ];
+
+  function breakdownTable(breakdown) {
+    if (!breakdown || !breakdown.rows || !breakdown.rows.length) return null;
+    const thead = h('thead', null, h('tr', null,
+      h('th', { text: breakdown.grain === 'week' ? '周' : '日期' }),
+      ...BREAKDOWN_COLUMNS.map(([key, label]) => h('th', { class: 'num', text: label }))));
+    const tbody = h('tbody', null, ...breakdown.rows.map((row) => h('tr', null,
+      h('td', { text: row.label }),
+      ...BREAKDOWN_COLUMNS.map(([key, , format]) => h('td', {
+        class: 'num',
+        text: safeMetric((row.metrics || {})[key], format),
+      })))));
+    return h('div', { class: 'pr-breakdown-table-wrap' },
+      h('table', { class: 'pr-table pr-breakdown-table' }, thead, tbody));
+  }
+
   function renderOverview(context) {
     if (!els.overview) return;
     const period = context.period;
     const label = (context.category && context.category.label) || '全部品类';
     els.overview.hidden = false;
+    const breakdown = context.breakdown;
+    const breakdownTitle = breakdown && breakdown.grain === 'week' ? '月内分周指标' : '期内按日指标';
     els.overview.replaceChildren(
       h('div', { class: 'pr-overview__head' },
         h('h3', { text: '业绩全景' }),
@@ -538,6 +571,14 @@
       renderKpiGrid(context.metrics),
       targetCards.renderTarget(context.target_path),
       targetCards.renderTargetTable(context.target_path.targets, targetCards.targetTimeProgress(period)),
+      breakdown && breakdown.rows && breakdown.rows.length
+        ? h('div', { class: 'pr-overview__breakdown' },
+          h('h4', { text: breakdownTitle }),
+          h('p', { class: 'pr-material__empty', text: breakdown.grain === 'week'
+            ? '按月内分周汇总（W1 从 1 号到第一个周日）；缺失的天不补 0。'
+            : '按天汇总；缺数据的天不显示。' }),
+          breakdownTable(breakdown))
+        : null,
     );
   }
 
@@ -606,14 +647,110 @@
     );
   }
 
+  // ------------------------------------------------- 单品周趋势预览（弹窗）
+  // 点击货品榜「趋势」按钮：近 8 周 GSV/访客/转化 SVG 折线，无图表库依赖。
+  let trendDialog = null;
+  const TREND_METRICS = [
+    ['gsv', 'GSV（元）', 'money'],
+    ['visitors', '访客数', 'number'],
+    ['conversion', '转化率', 'percent'],
+  ];
+
+  function trendSvg(rows, key, format) {
+    const values = rows.map((row) => (row[key] === null || row[key] === undefined ? null : Number(row[key])));
+    const valid = values.filter((value) => value !== null);
+    if (valid.length < 2) return h('p', { class: 'pr-material__empty', text: '该指标可用数据点不足，无法画趋势。' });
+    const width = 560;
+    const height = 150;
+    const pad = 28;
+    const min = Math.min(...valid);
+    const max = Math.max(...valid);
+    const span = (max - min) || 1;
+    const stepX = (width - pad * 2) / (values.length - 1);
+    // y 轴留 12% 上下边距，避免线贴边。
+    const scaleY = (value) => height - pad - ((value - min) / span) * (height - pad * 2) - (height - pad * 2) * 0.06;
+    const points = values
+      .map((value, index) => (value === null ? null : `${pad + index * stepX},${scaleY(value)}`))
+      .filter(Boolean);
+    const baseline = min === 0 && max === 0 ? 1 : 0; // 全 0 数据画平线
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
+    svg.setAttribute('class', 'pr-trend-svg');
+    const polyline = document.createElementNS('http://www.w3.org/2000/svg', 'polyline');
+    polyline.setAttribute('points', points.join(' '));
+    polyline.setAttribute('fill', 'none');
+    polyline.setAttribute('stroke', 'currentColor');
+    polyline.setAttribute('stroke-width', '2');
+    svg.append(polyline);
+    values.forEach((value, index) => {
+      if (value === null) return;
+      const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+      circle.setAttribute('cx', String(pad + index * stepX));
+      circle.setAttribute('cy', String(scaleY(value) + baseline));
+      circle.setAttribute('r', '3');
+      svg.append(circle);
+    });
+    const wrap = h('div', { class: 'pr-trend-chart' }, svg,
+      h('div', { class: 'pr-trend-axis' },
+        h('span', { text: formatValue(min, format) }),
+        h('span', { text: formatValue(max, format) })));
+    return wrap;
+  }
+
+  async function openProductTrend(row) {
+    if (!trendDialog) {
+      trendDialog = h('dialog', { class: 'pr-action-dialog pr-trend-dialog' });
+      document.body.append(trendDialog);
+    }
+    trendDialog.replaceChildren(
+      h('div', { class: 'pr-action-dialog__head' },
+        h('div', null,
+          h('span', { class: 'section-kicker', text: '周维度趋势' }),
+          h('h3', { text: row.title || row.product_id }),
+          h('p', { text: `商品 ID：${row.product_id} · 近 8 周（月内分周口径）` })),
+        h('button', { type: 'button', class: 'pr-dialog-close', 'aria-label': '关闭', onclick: () => trendDialog.close(), text: '×' })),
+      h('div', { class: 'pr-diagnostic-block', 'data-pr-trend-loading': '' },
+        h('p', { class: 'pr-material__empty', text: '正在读取周趋势…' })),
+    );
+    if (!trendDialog.open) trendDialog.showModal();
+
+    let data = null;
+    let error = null;
+    try {
+      const response = await DemoApi.domainRequest(
+        `/api/period-reviews/product-trend/${encodeURIComponent(row.product_id)}?weeks=8`);
+      data = response.data;
+    } catch (err) { error = err; }
+
+    const loading = trendDialog.querySelector('[data-pr-trend-loading]');
+    const body = error || !data || !data.available || !data.weeks.length
+      ? h('div', { class: 'pr-diagnostic-block' },
+        h('p', { class: 'pr-material__empty', text: error ? `趋势读取失败：${describeRequestError(error)}` : '该商品近 8 周没有日数据，无法生成趋势。' }))
+      : h('div', { class: 'pr-diagnostic-block' },
+        ...TREND_METRICS.map(([key, label, format]) => h('div', { class: 'pr-trend-metric' },
+          h('h4', { text: label }),
+          trendSvg(data.weeks, key, format),
+          h('div', { class: 'pr-trend-labels' },
+            ...data.weeks.map((week, index) => h('span', { text: `W${index + 1}`, title: `${week.label}（${week.start} ~ ${week.end}）` }))),
+        )),
+        h('p', { class: 'pr-material__empty', text: '横轴 W1→W8 为最近 8 个完整月内周，悬停可见具体周区间；本周为进行中数据不纳入。' }));
+    if (loading) loading.replaceWith(body);
+  }
+
   function renderProductAnalysis(context) {
     if (!els.productAnalysis) return;
     productColumns.rememberContext(context);
     const products = context.products || {};
+    // 每张榜单一份字段设置工具栏：列开关按榜独立（默认列随榜单定位差异化）。
+    const board = productColumns.productBoardPanel;
     els.productAnalysis.replaceChildren(
-      productColumns.productTableToolbar(),
-      analysisPanel('销售贡献 TOP10', '按本期 GSV 排序，先识别需要保住的核心商品。', productColumns.renderProductTable(products.top, false), '本期没有正向销售商品。'),
-      analysisPanel('下滑商品 TOP10', '按相对上期的 GSV 变化排序，作为异常诊断入口。', productColumns.renderProductTable(products.decline, true), '缺少可比周期数据。'),
+      board('销售贡献 TOP10', '按本期 GSV 排序，先识别需要保住的核心商品。', products.top, 'top', '本期没有正向销售商品。'),
+      board('下滑商品 TOP10', '按相对上期的 GSV 变化排序，作为异常诊断入口。', products.decline, 'decline', '缺少可比周期数据。'),
+      board('付费单品 TOP10', '按本期推广花费排序，看钱主要花在哪些商品上（广告-单品维度入口）。', products.paid, 'paid', '本期没有推广花费记录。'),
+      board('盈利 TOP10', '按本期经营利润（支付预估）排序的赚钱商品。', products.profit, 'profit', '本期没有正利润商品。'),
+      board('亏损 TOP10', '按本期经营利润倒序，优先排查亏损原因。', products.loss, 'loss', '本期没有亏损商品。'),
+      board('新品 · 净销售 TOP10', '最近 60 天上架的商品按净销售额排序（新品定义=周期结束日前 60 天内上架）。', products.new, 'new', '最近 60 天上架的商品暂无销售。'),
+      board('新品 · 付费 TOP10', '最近 60 天上架的商品按推广花费排序。', products.new_paid, 'new_paid', '最近 60 天上架的商品暂无推广花费。'),
     );
   }
 
@@ -669,6 +806,62 @@
     ));
   }
 
+  // ------------------------------------------------- 广告单品 TOP 消耗表
+  // 每个渠道分组 6 列：花费 / 总投产 / 直接投产 / 加购成本 / 拉新成本 / 加购率。
+  // 商品×渠道粒度数据源未提供商品映射时整组列不渲染，并给出说明。
+  const PROMO_ITEM_CHANNEL_COLS = [
+    ['ad_spend', '花费', 'money'],
+    ['roi', '总投产', 'decimal'],
+    ['direct_roi', '直接投产', 'decimal'],
+    ['cart_cost', '加购成本', 'money'],
+    ['new_cost', '拉新成本', 'money'],
+    ['cart_rate', '加购率', 'percent'],
+  ];
+
+  function renderPromotionItems(promotionItems) {
+    if (!els.promotionAnalysis) return null;
+    const data = promotionItems || {};
+    const items = data.items || [];
+    if (!items.length) {
+      return analysisPanel('广告单品 TOP20 消耗', '按推广花费排序的商品级投放指标。', null, '本期没有商品级推广数据。');
+    }
+    const groups = (data.channel_groups || []).filter(
+      (name) => items.some((item) => (item.channels || {})[name]),
+    );
+    const noChannelScope = (data.missing_inputs || []).includes('promotion_product_channel_scope');
+    const head1 = [h('th', { rowspan: '2', text: '商品' }), h('th', { rowspan: '2', class: 'num', text: '花费' }), h('th', { rowspan: '2', class: 'num', text: '费比' })];
+    const head2 = [];
+    groups.forEach((name) => head1.push(h('th', { colspan: '6', text: name })));
+    groups.forEach(() => {
+      PROMO_ITEM_CHANNEL_COLS.forEach(([, label]) => head2.push(h('th', { class: 'num', text: label })));
+    });
+    const cell = (value, format) => h('td', { class: 'num', text: safeMetric(value, format) });
+    const body = items.map((item) => {
+      const tr = h('tr', null,
+        h('td', { class: 'pr-table__title' },
+          item.image_url ? h('img', { src: item.image_url, alt: '', loading: 'lazy' }) : null,
+          h('span', { class: 'pr-table__title-text', title: item.title || item.product_id, text: item.title || item.product_id })),
+        cell(item.totals && item.totals.ad_spend, 'money'),
+        cell(item.totals && item.totals.ad_ratio, 'percent'),
+      );
+      groups.forEach((name) => {
+        const group = (item.channels || {})[name];
+        PROMO_ITEM_CHANNEL_COLS.forEach(([key, , format]) => {
+          tr.append(cell(group ? group[key] : null, format));
+        });
+      });
+      return tr;
+    });
+    const table = h('div', { class: 'pr-breakdown-table-wrap' },
+      h('table', { class: 'pr-table pr-breakdown-table' },
+        h('thead', null, h('tr', null, ...head1), h('tr', null, ...head2)),
+        h('tbody', null, ...body)));
+    const hint = noChannelScope && !groups.length
+      ? '当前推广数据源没有「商品×渠道」粒度（渠道行不带商品映射），因此只展示商品级合计；渠道拆分见上方「推广渠道拆解」。'
+      : '按推广花费排序的商品级投放指标；费比 = 花费 ÷ 归因成交，拉新成本 = 花费 ÷ 成交新客。';
+    return analysisPanel('广告单品 TOP20 消耗', hint, table, null);
+  }
+
   function renderChannelAnalysis(context) {
     if (!els.channelAnalysis) return;
     const dimensions = context.dimensions || {};
@@ -691,6 +884,7 @@
     if (els.promotionAnalysis) {
       els.promotionAnalysis.replaceChildren(
         analysisPanel('推广效率', '本期推广投入与效率变化，数据事实不代替原因判断。', renderAds(context.ads), '暂无推广数据。'),
+        renderPromotionItems(context.promotion_items),
       );
     }
   }
@@ -1189,7 +1383,7 @@
   // 实现已拆至 pages/period-review/product-columns.js（deps 显式注入）：
   // 列定义 / 列开关 / 字段设置浮层的状态与行为都归该模块。
   const productColumns = window.createProductColumns({
-    h, productShare, declineRate, safeMetric, openProductDiagnosis, renderProductAnalysis,
+    h, productShare, declineRate, safeMetric, openProductDiagnosis, openProductTrend, renderProductAnalysis,
   });
 
   // 目标卡与「目标 vs 实际」表已拆至 pages/period-review/target-cards.js：
@@ -1363,6 +1557,14 @@
         return renderMarket(context.market);
       case 'ads':
         return renderAds(context.ads);
+      case 'promotion_items': {
+        const items = (context.promotion_items && context.promotion_items.items) || [];
+        return materialBlock('广告单品 TOP20 消耗（摘要）', items.length
+          ? h('ul', { class: 'pr-list' }, ...items.slice(0, 10).map((item) => h('li', null,
+            h('strong', { text: `${item.title || item.product_id} · 花费 ${safeMetric(item.totals && item.totals.ad_spend, 'money')}` }),
+            ` · ROI ${safeMetric(item.totals && item.totals.roi, 'decimal')} · 直接投产 ${safeMetric(item.totals && item.totals.direct_roi, 'decimal')} · 拉新成本 ${safeMetric(item.totals && item.totals.new_cost, 'money')}`)))
+          : null, '本期没有商品级推广数据。');
+      }
       case 'actions_done':
         return materialBlock('本期已完成动作（来自动作状态机）', renderActionListLegacy(context.actions_done), '本期没有已完成的运营动作。');
       case 'actions_planned':
