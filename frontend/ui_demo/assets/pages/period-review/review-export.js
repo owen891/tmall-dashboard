@@ -138,7 +138,7 @@
     }
 
     function exportMarkdown() {
-      if (!state.context || !state.context.period) return;
+      if (!state.context || !state.context.period) return false;
       const md = buildMarkdown();
       const blob = new Blob([md], { type: 'text/markdown;charset=utf-8' });
       const url = URL.createObjectURL(blob);
@@ -149,6 +149,7 @@
       link.click();
       link.remove();
       URL.revokeObjectURL(url);
+      return true;
     }
 
     function exportButton() {

@@ -1467,18 +1467,19 @@
           cur = wEnd + 1;
         }
       }
-    } else {
-      const start = period.start || '';
-      const end = period.end || '';
-      if (start && end) {
-        const s = new Date(`${start}T00:00:00`);
-        const e = new Date(`${end}T00:00:00`);
-        for (let d = new Date(s); d <= e; d.setDate(d.getDate() + 1)) {
-          const iso = d.toISOString().slice(0, 10);
-          buckets.push({ label: String(Number(iso.slice(8, 10))), start: iso, end: iso });
+      } else {
+        const start = period.start || '';
+        const end = period.end || '';
+        if (start && end) {
+          const s = new Date(`${start}T00:00:00`);
+          const e = new Date(`${end}T00:00:00`);
+          for (let d = new Date(s); d <= e; d.setDate(d.getDate() + 1)) {
+            // 本地日期格式化：toISOString 是 UTC，东八区 0-8 点会算成前一天，动作会落错桶。
+            const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+            buckets.push({ label: String(Number(iso.slice(8, 10))), start: iso, end: iso });
+          }
         }
       }
-    }
     if (!buckets.length) return null;
     const byBucket = new Map(buckets.map((b) => [b.label, []]));
     actions.forEach((row) => {
@@ -1642,10 +1643,17 @@
     const block = h('div', { class: 'pr-rival-trend' });
     const uvLine = sparkline(trend.map((d) => d.uv), 'var(--brand, #3b82f6)');
     const buyerLine = sparkline(trend.map((d) => d.buyers), 'var(--success, #16a34a)');
+    // 区间标签：min≠max 显示区间；全等（采集快照常见）显示单值，避免「37.5万 ~ 37.5万」误导。
+    const rangeLabel = (values, name) => {
+      const nums = values.map((v) => Number(v) || 0);
+      const min = Math.min(...nums);
+      const max = Math.max(...nums);
+      return min === max ? `${name}（${formatCompact(min)}，逐日持平）` : `${name}（${formatCompact(min)} ~ ${formatCompact(max)}）`;
+    };
     if (uvLine) block.append(h('div', { class: 'pr-rival-trend__item' },
-      h('span', { text: `UV（${formatCompact(Math.min(...trend.map((d) => Number(d.uv) || 0)))} ~ ${formatCompact(Math.max(...trend.map((d) => Number(d.uv) || 0)))}）` }), uvLine));
+      h('span', { text: rangeLabel(trend.map((d) => d.uv), 'UV') }), uvLine));
     if (buyerLine) block.append(h('div', { class: 'pr-rival-trend__item' },
-      h('span', { text: `支付买家（${formatCompact(Math.min(...trend.map((d) => Number(d.buyers) || 0)))} ~ ${formatCompact(Math.max(...trend.map((d) => Number(d.buyers) || 0)))}）` }), buyerLine));
+      h('span', { text: rangeLabel(trend.map((d) => d.buyers), '支付买家') }), buyerLine));
     if (!block.childElementCount) block.append(h('p', { class: 'pr-material__empty', text: '该店本期日数据不足，无法画趋势。' }));
     return block;
   }
@@ -2444,7 +2452,14 @@
     load();
   });
   els.save?.addEventListener('click', save);
-  els.export?.addEventListener('click', () => reviewExport.exportMarkdown());
+  // 导出反馈：成功/素材未加载都写状态条，与其他操作一致（IAB 里 download 可能被拦，
+  // 用户需要知道点击是否生效）。
+  els.export?.addEventListener('click', () => {
+    const ok = reviewExport.exportMarkdown();
+    stateBanner(ok
+      ? `已导出 ${currentPeriod()} 复盘 Markdown；若浏览器拦截了下载，请检查下载设置。`
+      : '素材尚未加载完成，稍后再试。', ok ? '' : 'insufficient-data');
+  });
   window.addEventListener('tmall:refresh', () => load());
   // 顶栏统一时间范围一变化，复盘周期随之重算
   window.addEventListener('tmall:date-range-change', () => {
