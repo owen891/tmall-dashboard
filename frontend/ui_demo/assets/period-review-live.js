@@ -37,6 +37,7 @@
     history: document.querySelector('[data-pr-history]'),
     save: document.querySelector('[data-pr-save]'),
     refresh: document.querySelector('[data-pr-refresh]'),
+    export: document.querySelector('[data-pr-export]'),
   };
 
   const urlParams = new URLSearchParams(window.location.search);
@@ -1430,6 +1431,82 @@
     }));
   }
 
+  /** 排期时间轴（对齐 XMind「任务时间节点排期」）：
+   *  月复盘按月内周 W1–W5 落位、周复盘按日落位，动作按 planned_at 归位。
+   *  数据全部来自动作状态机（actions_planned），不新建任务体系；
+   *  点击动作打开既有链路弹窗。
+   */
+  function renderScheduleTimeline(context) {
+    const period = context.period || {};
+    const actions = [
+      ...(context.actions_planned || []),
+      ...(context.actions_blocked || []),
+      ...(context.actions_review || []),
+    ];
+    // 周期内的桶：月=月内周，周=按日（口径与后端 _breakdown_block 一致）。
+    let buckets = [];
+    if (state.mode === 'month') {
+      const key = period.key || '';
+      const year = Number(key.slice(0, 4));
+      const month = Number(key.slice(5, 7));
+      if (year && month) {
+        const lastDay = new Date(year, month, 0).getDate();
+        const firstDow = new Date(year, month - 1, 1).getDay();
+        const w1End = Math.min(1 + ((7 - firstDow) % 7), lastDay);
+        buckets = [{ label: 'W1', start: `${key}-01`, end: `${key}-${String(w1End).padStart(2, '0')}` }];
+        let cur = w1End + 1;
+        while (cur <= lastDay) {
+          const wEnd = Math.min(cur + 6, lastDay);
+          buckets.push({ label: `W${buckets.length + 1}`, start: `${key}-${String(cur).padStart(2, '0')}`, end: `${key}-${String(wEnd).padStart(2, '0')}` });
+          cur = wEnd + 1;
+        }
+      }
+    } else {
+      const start = period.start || '';
+      const end = period.end || '';
+      if (start && end) {
+        const s = new Date(`${start}T00:00:00`);
+        const e = new Date(`${end}T00:00:00`);
+        for (let d = new Date(s); d <= e; d.setDate(d.getDate() + 1)) {
+          const iso = d.toISOString().slice(0, 10);
+          buckets.push({ label: String(Number(iso.slice(8, 10))), start: iso, end: iso });
+        }
+      }
+    }
+    if (!buckets.length) return null;
+    const byBucket = new Map(buckets.map((b) => [b.label, []]));
+    actions.forEach((row) => {
+      const planned = row.planned_at || row.executed_at || '';
+      const bucket = buckets.find((b) => planned >= b.start && planned <= b.end);
+      if (bucket) byBucket.get(bucket.label).push(row);
+    });
+    const timeline = h('div', { class: 'pr-schedule' }, ...buckets.map((b) => {
+      const items = byBucket.get(b.label) || [];
+      const itemNodes = items.slice(0, 6).map((row) => h('li', null,
+        h('button', {
+          type: 'button',
+          class: 'pr-schedule__item',
+          title: `${row.action_type || '动作'} · ${actionStatusLabel(row.status)}`,
+          onclick: () => openActionDetails(row),
+          text: `${row.product_title || row.product_id}`,
+        }),
+        h('small', { text: actionStatusLabel(row.status) })));
+      return h('div', { class: `pr-schedule__bucket ${items.length ? 'has-items' : ''}`.trim() },
+        h('div', { class: 'pr-schedule__bucket-head' },
+          h('span', { class: 'pr-schedule__bucket-label', text: state.mode === 'month' ? b.label : `${b.label}号` }),
+          h('small', { text: `${b.start.slice(5)} ~ ${b.end.slice(5)}` })),
+        items.length
+          ? h('ul', { class: 'pr-schedule__items' }, ...itemNodes)
+          : h('p', { class: 'pr-schedule__empty', text: '无排期动作' }));
+    }));
+    return analysisPanel(
+      state.mode === 'month' ? '本月任务排期（按周）' : '本周任务排期（按日）',
+      '动作按计划日期落位；点击动作打开执行链路。数据来自动作状态机，不另建任务体系。',
+      timeline,
+      null,
+    );
+  }
+
   function renderExecutionAnalysis(context) {
     if (!els.executionAnalysis) return;
     const blocked = context.actions_blocked || [];
@@ -1438,6 +1515,7 @@
     const verify = context.actions_to_verify || [];
     const done = context.actions_done || [];
     els.executionAnalysis.replaceChildren(
+      renderScheduleTimeline(context) || null,
       analysisPanel('\u5df2\u5b8c\u6210\u52a8\u4f5c', '\u53ea\u5c55\u793a\u5df2\u901a\u8fc7\u590d\u76d8\u9a8c\u6536\u7684\u52a8\u4f5c\u3002', renderActionListWithControls(done), '\u672c\u671f\u6682\u65e0\u5df2\u5b8c\u6210\u52a8\u4f5c\u3002'),
       analysisPanel('\u6267\u884c\u4e2d\u4e0e\u89c2\u5bdf\u4e2d', '\u6309\u73b0\u6709\u72b6\u6001\u673a\u5236\u63a8\u8fdb\u6267\u884c\u3001\u89c2\u5bdf\u548c\u91cd\u7b97\u3002', renderActionListWithControls(planned), '\u5f53\u524d\u6ca1\u6709\u6267\u884c\u4e2d\u52a8\u4f5c\u3002'),
       analysisPanel('\u672c\u671f\u5f85\u9a8c\u8bc1', '\u6765\u81ea\u4e0a\u4e00\u5468\u6216\u4e0a\u4e00\u6708\u7684\u52a8\u4f5c\uff0c\u5728\u672c\u671f\u56de\u6d41\u7ed3\u679c\u3002', renderActionListWithControls(verify), '\u5f53\u524d\u6682\u65e0\u4e0a\u671f\u5f85\u9a8c\u8bc1\u52a8\u4f5c\u3002'),
@@ -1507,6 +1585,10 @@
   // 三大指标完成率卡（净销售/净利润/净费比）已拆至 pages/period-review/metric-cards.js：
   // 口径与复盘设置目标同源，完成率与配色方向沿用后端 _target_rows。
   const metricCards = window.createMetricCards({ h, state });
+
+  // 复盘导出 Markdown 已拆至 pages/period-review/review-export.js：
+  // 组装三大指标 + 六段三段式 + 问题单品 + 动作清单，纯前端 Blob 下载。
+  const reviewExport = window.createReviewExport({ h, state });
 
   // 叶子类目近 3 周对比看板已拆至 pages/period-review/leaf-board.js：
   // 看板自建 #leaf-weekly-board 节点，格式化助手与加载器都归该模块。
@@ -1609,7 +1691,8 @@
       if (categoryChanges) wrap.append(materialBlock('\u5e02\u573a\u73af\u6bd4', h('p', { class: 'pr-material__empty', text: categoryChanges })));
     }
     if (market.rivals && market.rivals.length) {
-      const tr = h('tr', null, h('th', { text: '竞店' }), h('th', { class: 'num', text: '支付买家' }), h('th', { class: 'num', text: 'UV' }), h('th', { class: 'num', text: '支付率' }), h('th', { class: 'num', text: '支付买家变化' }), h('th', { text: '状态' }));
+      const tr = h('tr', null, h('th', { text: '竞店' }), h('th', { class: 'num', text: '支付买家' }), h('th', { class: 'num', text: 'UV' }), h('th', { class: 'num', text: '支付率' }), h('th', { class: 'num', text: '支付买家变化' }), h('th', { text: '状态' }), h('th', { text: '深度分析' }));
+      const period = (state.context && state.context.period) || {};
       const body = market.rivals.map((row) => h('tr', null,
         h('td', { text: row.shop_name || '--' }),
         h('td', { class: 'num', text: formatCompact(row.pay_buyer_count) }),
@@ -1617,6 +1700,12 @@
         h('td', { class: 'num', text: row.pay_rate === null || row.pay_rate === undefined ? '--' : `${(row.pay_rate * 100).toFixed(2)}%` }),
         h('td', { class: 'num', text: row.pay_buyer_change_rate === null || row.pay_buyer_change_rate === undefined ? '--' : `${row.pay_buyer_change_rate > 0 ? '+' : ''}${(row.pay_buyer_change_rate * 100).toFixed(1)}%` }),
         h('td', null, stateTag(row.status === 'rising' ? '增长' : row.status === 'falling' ? '下滑' : row.status === 'insufficient_coverage' ? '覆盖不足' : '稳定', row.status === 'rising' ? 'warning' : row.status === 'falling' ? 'good' : 'info')),
+        // 深链到竞店竞品专页（带复盘区间日期），复盘页只做摘要，深度分析不重建。
+        h('td', null, h('a', {
+          class: 'pr-anchor-link',
+          href: `/rival-analysis?start=${period.start || ''}&end=${period.end || ''}`,
+          text: '查看 →',
+        })),
       ));
       wrap.append(materialBlock('竞店动态', h('table', { class: 'pr-table' }, h('thead', null, tr), h('tbody', null, ...body))));
     }
@@ -2272,6 +2361,7 @@
     load();
   });
   els.save?.addEventListener('click', save);
+  els.export?.addEventListener('click', () => reviewExport.exportMarkdown());
   window.addEventListener('tmall:refresh', () => load());
   // 顶栏统一时间范围一变化，复盘周期随之重算
   window.addEventListener('tmall:date-range-change', () => {

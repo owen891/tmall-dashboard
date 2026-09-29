@@ -92,6 +92,77 @@
   margin: 0 16px 12px;
 }
 
+/* ------------------------------------------------ 任务排期时间轴 */
+.pr-schedule {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 10px;
+}
+
+.pr-schedule__bucket {
+  min-width: 0;
+  padding: 10px 12px;
+  background: var(--surface-muted);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+}
+
+.pr-schedule__bucket.has-items {
+  border-left: 3px solid var(--brand);
+}
+
+.pr-schedule__bucket-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+.pr-schedule__bucket-label {
+  font-weight: 600;
+  color: var(--text-primary);
+  font-size: 13px;
+}
+
+.pr-schedule__bucket-head small {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.pr-schedule__items {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.pr-schedule__item {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 2px 6px;
+  border: 0;
+  background: var(--surface-default, #fff);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-size: 12px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.pr-schedule__item:hover { border-color: var(--brand); }
+
+.pr-schedule__empty {
+  margin: 4px 0 0;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
 /* 驾驶舱紧凑状态条：风险/动作信号一行带过。 */
 .pr-command-center__strip {
   display: flex;

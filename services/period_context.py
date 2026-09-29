@@ -1409,9 +1409,10 @@ def _linked_period_summaries(conn, period):
             'missing_hint': '本月还没有已保存的周复盘；各周写完后这里会自动汇入结论。' if not items else '',
         }
     if period['type'] == 'week':
-        # 周复盘所属月：月内分周键为 YYYY-MM-WN，前 7 位即月份。
-        month_key = period['key'][:7]
-        prev_month_date = date.fromisoformat(f"{month_key}-01") - timedelta(days=1)
+        # 周的所属月从 period.start 推（周键有 YYYY-MM-WN 与老式 YYYY-WNN 两种格式，
+        # 不能靠切 key 推月份）。周可能跨月，取 start 所在月的上一个自然月。
+        start_date = date.fromisoformat(period['start'])
+        prev_month_date = date(start_date.year, start_date.month, 1) - timedelta(days=1)
         prev_month_key = prev_month_date.isoformat()[:7]
         row = conn.execute(
             '''SELECT period_key, status, reviewer, updated_at, sections
