@@ -215,6 +215,12 @@
   padding: 2px 28px 0;
 }
 
+/* 段落恢复草稿提示 */
+.pr-draft-note {
+  margin: 0 0 6px;
+  color: var(--warning, #b45309);
+}
+
 /* 下滑榜异常线索列：有标签时用警示色弱底 */
 .pr-table__anomaly {
   font-size: 12px;

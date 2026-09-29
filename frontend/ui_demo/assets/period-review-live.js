@@ -1131,6 +1131,73 @@
     }
   }
 
+  // ------------------------------------------------- 标记阻塞 / 取消动作
+  let blockDialog = null;
+
+  function openActionBlock(row) {
+    if (!blockDialog) {
+      blockDialog = h('dialog', { class: 'pr-action-dialog' });
+      document.body.append(blockDialog);
+    }
+    const form = h('form', { class: 'pr-action-form' });
+    form.append(
+      actionField('阻塞原因', 'blocked_reason', 'textarea', '', true),
+      actionField('需要谁/什么资源', 'resource_note', 'textarea', ''),
+      actionField('预计恢复日期', 'expected_recovery_at', 'date', '', true),
+      h('p', { class: 'pr-action-form__status', 'data-pr-block-status': '' }),
+      h('div', { class: 'pr-action-dialog__actions' },
+        h('button', { type: 'button', class: 'ui-button', onclick: () => blockDialog.close(), text: '取消' }),
+        h('button', { type: 'submit', class: 'ui-button ui-button--primary', text: '标记阻塞' }),
+      ),
+    );
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      if (actionSaving) return;
+      const data = new FormData(form);
+      const reason = String(data.get('blocked_reason') || '').trim();
+      const resource = String(data.get('resource_note') || '').trim();
+      const recovery = String(data.get('expected_recovery_at') || '').trim();
+      const status = form.querySelector('[data-pr-block-status]');
+      if (!reason || !recovery) {
+        if (status) status.textContent = '阻塞原因与预计恢复日期为必填。';
+        return;
+      }
+      // 资源需求并进阻塞原因，后端只有一个 blocked_reason 字段。
+      const mergedReason = resource ? `${reason}（需支持：${resource}）` : reason;
+      actionSaving = true;
+      if (status) status.textContent = '提交中…';
+      try {
+        await transitionReviewAction(row, 'blocked', {
+          blocked_reason: mergedReason,
+          expected_recovery_at: recovery,
+        });
+        blockDialog.close();
+      } catch (error) {
+        if (status) status.textContent = error.message || '标记阻塞失败，请重试。';
+        actionSaving = false;
+      }
+    });
+    blockDialog.replaceChildren(
+      h('div', { class: 'pr-action-dialog__head' },
+        h('div', null,
+          h('span', { class: 'section-kicker', text: '标记阻塞' }),
+          h('h3', { text: row.product_title || row.product_id }),
+          h('p', { text: `${row.action_type || '运营动作'} · 阻塞后需说明资源与恢复条件，复盘时可追溯。` }),
+        ),
+        h('button', { type: 'button', class: 'pr-dialog-close', 'aria-label': '关闭', onclick: () => blockDialog.close(), text: '×' }),
+      ),
+      form,
+    );
+    if (!blockDialog.open) blockDialog.showModal();
+  }
+
+  async function cancelReviewAction(row) {
+    if (actionSaving) return;
+    const label = `${row.product_title || row.product_id} · ${row.action_type || '动作'}`;
+    if (!window.confirm(`确定取消该动作吗？\n\n${label}\n取消后动作进入「已取消」，不可再推进（可删除）。`)) return;
+    await transitionReviewAction(row, 'cancelled', { reason: '复盘页手动取消' });
+  }
+
   function openActionReview(row) {
     if (!actionReviewDialog) {
       actionReviewDialog = h('dialog', { class: 'pr-action-dialog' });
@@ -1298,6 +1365,14 @@
       if (row.status === 'observing') controls.push(workflowButton('\u91cd\u7b97\u89c2\u5bdf', recalculateReviewActions));
       if (row.status === 'pending_review') controls.push(workflowButton('\u63d0\u4ea4\u590d\u76d8', () => openActionReview(row)));
       if (row.status === 'blocked') controls.push(workflowButton('\u89e3\u9664\u963b\u585e', () => transitionReviewAction(row, 'pending_execution')));
+      // 标记阻塞：除 blocked 自身与终态外都可阻塞（与后端 TRANSITIONS 一致）。
+      if (['draft', 'pending_execution', 'executing', 'observing', 'pending_review', 'calculation_failed'].includes(row.status)) {
+        controls.push(workflowButton('标记阻塞', () => openActionBlock(row)));
+      }
+      // 取消：终态（completed/cancelled）外都允许。
+      if (!['completed', 'cancelled'].includes(row.status)) {
+        controls.push(workflowButton('取消动作', () => cancelReviewAction(row)));
+      }
       const resultText = row.status === 'pending_review' || row.status === 'completed'
         ? `\u00b7 \u6267\u884c\u524d ${safeMetric(row.before_metric_value, 'money', '\u5f85\u8ba1\u7b97')} \u00b7 \u6267\u884c\u540e ${safeMetric(row.after_metric_value, 'money', '\u5f85\u8ba1\u7b97')}`
         : '';
@@ -1590,6 +1665,48 @@
   }
 
   // --------------------------------------------------------------- 段落渲染
+  // 段落草稿防丢：输入即暂存 localStorage（按周期类型+周期键+段落 key），
+  // 切周期/误刷新后恢复；保存成功后清除，避免已保存内容盖住新编辑。
+  const SECTION_DRAFT_KEY = 'dashboard.periodReviewSectionDrafts';
+
+  function sectionDraftId() {
+    return `${state.mode}:${currentPeriod()}`;
+  }
+
+  function readSectionDrafts() {
+    try {
+      const stored = JSON.parse(localStorage.getItem(SECTION_DRAFT_KEY) || '{}');
+      return stored && typeof stored === 'object' ? stored : {};
+    } catch (_) { return {}; }
+  }
+
+  function readSectionDraft(sectionKey) {
+    return (readSectionDrafts()[sectionDraftId()] || {})[sectionKey] || '';
+  }
+
+  function storeSectionDraft(sectionKey, text) {
+    try {
+      const all = readSectionDrafts();
+      const periodDrafts = all[sectionDraftId()] || {};
+      if (text) periodDrafts[sectionKey] = text;
+      else delete periodDrafts[sectionKey];
+      if (Object.keys(periodDrafts).length) all[sectionDraftId()] = periodDrafts;
+      else delete all[sectionDraftId()];
+      // 容量保护：最多留 40 个周期的草稿，超出丢最旧的。
+      const ids = Object.keys(all);
+      if (ids.length > 40) ids.sort().slice(0, ids.length - 40).forEach((id) => delete all[id]);
+      localStorage.setItem(SECTION_DRAFT_KEY, JSON.stringify(all));
+    } catch (_) { /* 存储满/不可用时静默放弃，不影响输入 */ }
+  }
+
+  function clearSectionDrafts() {
+    try {
+      const all = readSectionDrafts();
+      delete all[sectionDraftId()];
+      localStorage.setItem(SECTION_DRAFT_KEY, JSON.stringify(all));
+    } catch (_) { /* 忽略 */ }
+  }
+
   function renderSections(template, context, review) {
     if (!els.sections) return;
     els.sections.replaceChildren(...template.map((section, index) => sectionNode(section, index, context, review)));
@@ -1626,10 +1743,17 @@
       placeholder: section.placeholder || '',
       rows: 4,
     });
-    textarea.value = saved.text || '';
+    // 恢复顺序：已保存内容 > 本地草稿（未保存的编辑在切周期/刷新后不丢）。
+    const draft = readSectionDraft(section.key);
+    const savedText = saved.text || '';
+    textarea.value = draft || savedText;
+    if (draft && draft !== savedText) {
+      body.append(h('p', { class: 'pr-toolbar__status pr-draft-note', role: 'status', text: '已恢复未保存的本地草稿；保存复盘后将清除。' }));
+    }
     textarea.addEventListener('input', () => {
       textarea.classList.toggle('is-missing', Boolean(section.required) && !textarea.value.trim());
       updateStatusText();
+      storeSectionDraft(section.key, textarea.value);
     });
     if (section.required && !textarea.value.trim()) textarea.classList.add('is-missing');
 
@@ -1888,6 +2012,8 @@
         },
       );
       stateBanner(`已保存 ${periodKey} 复盘。`, '');
+      // 保存成功即清本周期草稿：load() 重渲染段落时优先取已保存内容。
+      clearSectionDrafts();
       await load();
       await loadHistory();
       // load() 会用素材状态覆盖提示，因此成功提示必须最后写。

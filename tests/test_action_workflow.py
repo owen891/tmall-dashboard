@@ -133,6 +133,22 @@ class ActionWorkflowTests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertEqual(blocked['data']['status'], 'blocked')
 
+    def test_draft_can_be_blocked_directly(self):
+        """draft 直达 blocked：复盘里「计划本身卡住」不应先假装进入执行。"""
+        action_id = self.create_action()
+        status, blocked = self.transition(
+            action_id, 'blocked', blocked_reason='缺美工资源', expected_recovery_at='2026-04-10',
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(blocked['data']['status'], 'blocked')
+        self.assertEqual(blocked['data']['blocked_reason'], '缺美工资源')
+
+        # 缺原因/恢复日期仍必须 422
+        other_id = self.create_action()
+        status, rejected = self.transition(other_id, 'blocked')
+        self.assertEqual(status, 422)
+        self.assertEqual(rejected['code'], 'VALIDATION_ERROR')
+
     def test_invalid_action_dates_and_windows_return_validation_error(self):
         base = {
             'product_id': 'action-a', 'purpose_type': 'increase_sales', 'purpose_note': '测试',

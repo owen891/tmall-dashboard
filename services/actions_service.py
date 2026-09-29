@@ -20,7 +20,9 @@ class ActionNotFoundError(ValueError):
 
 
 TRANSITIONS = {
-    'draft': {'pending_execution', 'cancelled'},
+    # draft 也允许直接阻塞：复盘场景下「计划本身就卡住」（缺资源/等确认）
+    # 是常见路径，不该要求先假装进入执行再标阻塞。
+    'draft': {'pending_execution', 'blocked', 'cancelled'},
     'pending_execution': {'executing', 'blocked', 'cancelled'},
     'executing': {'observing', 'blocked', 'cancelled'},
     'observing': {'pending_review', 'blocked', 'calculation_failed'},
