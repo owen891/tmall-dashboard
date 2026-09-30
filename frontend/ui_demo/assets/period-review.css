@@ -992,6 +992,12 @@
   grid-template-columns: 1fr;
 }
 
+/* 流量来源分节只有一张 4 列窄表，通栏呈现避免半边空置。
+   （加类名提升特异性，否则被后方 .pr-analysis-grid 的两列规则覆盖。） */
+.pr-analysis-grid[data-pr-traffic-analysis] {
+  grid-template-columns: 1fr;
+}
+
 /* 字段设置对话框（公共 DemoFieldSelector）：本页仅补充头部 kicker 与状态行。 */
 .pr-columns-dialog .modal-form__status {
   margin: 0;

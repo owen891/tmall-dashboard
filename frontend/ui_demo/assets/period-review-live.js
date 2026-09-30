@@ -31,6 +31,7 @@
     executionAnalysis: document.querySelector('[data-pr-execution-analysis]'),
     channelAnalysis: document.querySelector('[data-pr-channel-analysis]'),
     marketAnalysis: document.querySelector('[data-pr-market-analysis]'),
+    trafficAnalysis: document.querySelector('[data-pr-traffic-analysis]'),
     promotionAnalysis: document.querySelector('[data-pr-promotion-analysis]'),
     matrix: document.querySelector('[data-pr-matrix]'),
     categoryBreakdown: document.querySelector('[data-pr-category-breakdown]'),
@@ -796,9 +797,17 @@
     );
   }
 
+  /** 流量来源拆解（自家店铺流量诊断）——与市场监控（外部行业/竞对）分节渲染。 */
+  function renderTrafficAnalysis(context) {
+    if (!els.trafficAnalysis) return;
+    const traffic = context.dimensions?.traffic || {};
+    els.trafficAnalysis.replaceChildren(
+      analysisPanel('流量来源拆解', `流量覆盖 ${traffic.sample_days || 0}/${traffic.period_days || '--'} 天`, trafficTable(traffic), '暂无搜索、推荐、付费或自然流量拆解数据。'),
+    );
+  }
+
   function renderMarketAnalysis(context) {
     if (!els.marketAnalysis) return;
-    const traffic = context.dimensions?.traffic || {};
     const period = context.period || {};
     // 行业深链入口（XMind：趋势市场 / 蓝海市场 / 8 大归类 / 词根需求在专页）：
     // 复盘页只做摘要，深度分析跳市场分析页（带复盘区间日期）。
@@ -806,7 +815,6 @@
       h('a', { class: 'pr-anchor-link', href: `/market-ranking?start=${period.start || ''}&end=${period.end || ''}`, text: '行业趋势 / 蓝海市场 →' }),
       h('a', { class: 'pr-anchor-link', href: `/keyword-promotion?start=${period.start || ''}&end=${period.end || ''}`, text: '关键词归类 / 词根需求 →' }));
     els.marketAnalysis.replaceChildren(
-      analysisPanel('流量来源拆解', `流量覆盖 ${traffic.sample_days || 0}/${traffic.period_days || '--'} 天`, trafficTable(traffic), '暂无搜索、推荐、付费或自然流量拆解数据。'),
       analysisPanel('市场监控（摘要 + 深链）', '先看可复现事实，再看系统观察；价格、利润和评价结论仍需补证。', h('div', null, marketLink, renderMarket(context.market)), '暂无市场批次。'),
     );
   }
@@ -1563,6 +1571,7 @@
     renderProductAnalysis(context);
     renderExecutionAnalysis(context);
     renderChannelAnalysis(context);
+    renderTrafficAnalysis(context);
     renderMarketAnalysis(context);
     renderMatrix(state.matrix, state.matrixError);
     renderCategoryBreakdown(state.categoryBreakdown, state.categoryError);
