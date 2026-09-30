@@ -13,7 +13,7 @@
     ['商品支付转化率', 'conversion', percent, true],
     ['退款率', 'refund_rate', percent, false]
   ];
-  const trendLabels = { gmv: 'GMV', visitors: '访客', net_sales: '净销售' };
+  const trendLabels = { gmv: 'GMV', visitors: '访客', net_sales: '净销售额' };
   const currentKey = 'period_b';
   const baselineKey = 'period_a';
   let periods = [];

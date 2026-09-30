@@ -4,7 +4,7 @@
   /** 周月复盘页「三大指标完成率卡」模块。
 
    *  对齐月复盘 XMind 的「完成情况分析 - 三大指标」：
-   *  净销售完成率 / 净利润完成率 / 净费比，每张卡 = 数值 + 目标 + 完成率 + 环比 + 同比。
+   *  净销售额完成率 / 净利润完成率 / 净费比，每张卡 = 数值 + 目标 + 完成率 + 环比 + 同比。
    *  口径与复盘设置的四项目标输入同源（target_path.targets，后端 _target_rows），
    *  完成率方向（reverse_rate）与配色方向（rate_better）沿用后端口径，不在前端重算。
    *
@@ -22,7 +22,7 @@
     // profit / net_expense_ratio 不在后端 METRIC_DEFS 里（无现成 items 环比同比），
     // 变化率在本模块从 metrics.current/prev/yoy 现算，与 _metric_items 同公式。
     const CARD_SPECS = [
-      { targetKey: 'net_sales', label: '净销售完成率', primary: true },
+      { targetKey: 'net_sales', label: '净销售额完成率', primary: true },
       { targetKey: 'profit', label: '净利润完成率' },
       { targetKey: 'net_expense_ratio', label: '净费比' },
     ];

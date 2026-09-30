@@ -376,7 +376,7 @@
     return `${date.getFullYear()}-W${String(week).padStart(2, '0')}`;
   }
 
-  // goals 年度目标缺失时，首页「目标完成度」回退展示 shop_targets 的月度净销售进度
+  // goals 年度目标缺失时，首页「目标完成度」回退展示 shop_targets 的月度净销售额进度
   const fallbackTargetSummary = (targets) => {
     const progress = targets?.net_sales_progress;
     textAll('[data-overview-summary="target"]', progress == null ? '--' : `${Number(progress).toFixed(1)}%`);
@@ -403,7 +403,7 @@
         row.append(item('span', `${label} · ${key}`, 'status-list__label'), item('span', `${money(done)} / ${money(target)} · ${rate}`, 'status-list__value'));
         return row;
       });
-      // goals 系统无任何目标数据时，保留 shop_targets（店铺目标）的渲染结果，完成度回退到月度净销售进度
+      // goals 系统无任何目标数据时，保留 shop_targets（店铺目标）的渲染结果，完成度回退到月度净销售额进度
       const hasAnyGoal = levels.year != null || Object.values(levels).some((v) => v && typeof v === "object" && Object.keys(v).length > 0);
       if (!hasAnyGoal) { fallbackTargetSummary(targets); return; }
       targetRoots.forEach((root) => root.replaceChildren(...rows.map((row) => row.cloneNode(true))));
@@ -412,7 +412,7 @@
       const annualActual = actual.year;
       textAll('[data-overview-summary="target"]', annual == null ? '--' : `${Number(annual) ? (Number(annualActual || 0) / Number(annual) * 100).toFixed(1) : 0}%`);
     } catch (error) {
-      // goals 接口不可用时，保留 shop_targets 店铺目标的渲染结果，完成度回退到月度净销售进度
+      // goals 接口不可用时，保留 shop_targets 店铺目标的渲染结果，完成度回退到月度净销售额进度
       fallbackTargetSummary(targets);
     }
   }
@@ -423,7 +423,7 @@
       const cards = [...root.querySelectorAll('.status-list__item')].slice(0, 4).map((source, index) => {
         const row = document.createElement('div'); row.className = 'overview-v2-target';
         const label = source.querySelector('.status-list__label')?.textContent || source.textContent || '--';
-        const homeLabel = { '周': '本周净销售目标', '月': '本月净销售目标', '季': '季度净销售目标', '年': '年度净销售目标' }[label.charAt(0)] || label;
+        const homeLabel = { '周': '本周净销售额目标', '月': '本月净销售额目标', '季': '季度净销售额目标', '年': '年度净销售额目标' }[label.charAt(0)] || label;
         const value = source.querySelector('.status-list__value')?.textContent || '';
         const rate = value.match(/([\d.]+)%/)?.[1] || '--';
         const head = document.createElement('div'); head.className = 'overview-v2-target__head'; head.append(item('span', homeLabel), item('strong', rate === '--' ? '--' : `${rate}%`));

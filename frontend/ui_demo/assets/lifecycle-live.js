@@ -7,7 +7,7 @@
   const lifecycleDetailFieldGroups = [
     { label: '\u57fa\u7840\u4fe1\u606f', fields: [{ key: 'month', label: '\u6708\u4efd' }] },
     { label: '\u7ecf\u8425\u89c4\u6a21', fields: [
-      { key: 'gsv', label: 'GSV' }, { key: 'net_sales', label: '\u51c0\u9500\u552e\u989d' },
+      { key: 'gsv', label: '销售额' }, { key: 'net_sales', label: '\u51c0\u9500\u552e\u989d' },
       { key: 'payment_qty', label: '\u652f\u4ed8\u4ef6\u6570' }, { key: 'buyers', label: '\u652f\u4ed8\u4e70\u5bb6\u6570' },
       { key: 'avg_order_value', label: '\u5ba2\u5355\u4ef7' },
     ] },
@@ -28,7 +28,7 @@
   ];
   const lifecycleDetailColumns = [
     { key: 'month', label: '\u6708\u4efd', value: (item) => item.month, numeric: false },
-    { key: 'gsv', label: 'GSV', value: (item) => money(item.gsv), numeric: true },
+    { key: 'gsv', label: '销售额', value: (item) => money(item.gsv), numeric: true },
     { key: 'net_sales', label: '\u51c0\u9500\u552e\u989d', value: (item) => money(item.net_sales), numeric: true },
     { key: 'payment_qty', label: '\u652f\u4ed8\u4ef6\u6570', value: (item) => count(item.payment_qty), numeric: true },
     { key: 'buyers', label: '\u652f\u4ed8\u4e70\u5bb6\u6570', value: (item) => count(item.buyers), numeric: true },
@@ -350,7 +350,7 @@
       const thumbnailUrl = String(record.image_url || '').trim();
       const image = '<span class="product-thumb product-thumb--placeholder" aria-hidden="true"><i data-lucide="image"></i></span>';
       const trend = growth === null ? '无环比' : `${growth >= 0 ? '上升' : '下降'} ${percent(Math.abs(growth))}`;
-      card.innerHTML = `<span class="lifecycle-card__header">${image}<span><span class="lifecycle-card__title" title="${escapeHtml(record.title || '未命名商品')}">${escapeHtml(record.title || '未命名商品')}</span><span class="lifecycle-card__meta"><span class="ui-badge ${tierClass(record.tier)}">${escapeHtml(DemoLabels.classification('tiers', record.tier, '未分层'))}</span><span class="ui-badge ui-badge--muted">${escapeHtml(DemoLabels.classification('styles', record.style, '未分类'))}</span></span></span></span><span class="lifecycle-card__stats"><span class="lifecycle-card__stat"><strong>${money(sum(rows, 'gsv'))}</strong><span>累计 GSV</span></span><span class="lifecycle-card__stat"><strong>${count(rows.length)}</strong><span>活跃月数</span></span><span class="lifecycle-card__stat"><strong class="lifecycle-card__trend ${growth > 0.05 ? 'is-up' : growth < -0.05 ? 'is-down' : ''}">${trend}</strong><span>最近月环比</span></span></span>`;
+      card.innerHTML = `<span class="lifecycle-card__header">${image}<span><span class="lifecycle-card__title" title="${escapeHtml(record.title || '未命名商品')}">${escapeHtml(record.title || '未命名商品')}</span><span class="lifecycle-card__meta"><span class="ui-badge ${tierClass(record.tier)}">${escapeHtml(DemoLabels.classification('tiers', record.tier, '未分层'))}</span><span class="ui-badge ui-badge--muted">${escapeHtml(DemoLabels.classification('styles', record.style, '未分类'))}</span></span></span></span><span class="lifecycle-card__stats"><span class="lifecycle-card__stat"><strong>${money(sum(rows, 'gsv'))}</strong><span>累计销售额</span></span><span class="lifecycle-card__stat"><strong>${count(rows.length)}</strong><span>活跃月数</span></span><span class="lifecycle-card__stat"><strong class="lifecycle-card__trend ${growth > 0.05 ? 'is-up' : growth < -0.05 ? 'is-down' : ''}">${trend}</strong><span>最近月环比</span></span></span>`;
       if (thumbnailUrl) {
         const image = document.createElement('img');
         image.className = 'product-thumb';
@@ -491,7 +491,7 @@
 
   function renderScaleChart(rows) {
     state.scaleChart?.destroy();
-    state.scaleChart = new EChartCompat($('#lifecycleScaleChart'), { type: 'bar', data: { labels: rows.map((row) => row.month), datasets: [{ type: 'line', label: 'GSV（万元）', data: rows.map((row) => Number(row.gsv || 0) / 10000), borderColor: css('--info'), backgroundColor: css('--chart-info-fill'), fill: true, tension: .3, yAxisID: 'y' }, { label: '支付件数', data: rows.map((row) => Number(row.payment_qty || 0)), backgroundColor: css('--chart-success-fill'), yAxisID: 'y1' }] }, options: { ...chartOptions(), scales: { ...chartOptions().scales, y1: { beginAtZero: true, position: 'right', grid: { drawOnChartArea: false } } } } });
+    state.scaleChart = new EChartCompat($('#lifecycleScaleChart'), { type: 'bar', data: { labels: rows.map((row) => row.month), datasets: [{ type: 'line', label: '销售额（万元）', data: rows.map((row) => Number(row.gsv || 0) / 10000), borderColor: css('--info'), backgroundColor: css('--chart-info-fill'), fill: true, tension: .3, yAxisID: 'y' }, { label: '支付件数', data: rows.map((row) => Number(row.payment_qty || 0)), backgroundColor: css('--chart-success-fill'), yAxisID: 'y1' }] }, options: { ...chartOptions(), scales: { ...chartOptions().scales, y1: { beginAtZero: true, position: 'right', grid: { drawOnChartArea: false } } } } });
   }
 
   function updateLifecycleColumnsDialogStatus(selected = lifecycleColumnSelector?.getSelected() || state.detailFields) {
@@ -754,9 +754,9 @@
       imageRoot.innerHTML = '<i data-lucide="image"></i>';
     }
     const assessment = assessments.find((item) => String(item.product_id) === String(record.product_id));
-    $('[data-lifecycle-metrics]').innerHTML = [metric('累计 GSV', money(sum(rows, 'gsv'))), metric('累计支付件数', count(sum(rows, 'payment_qty'))), metric('最近月 GSV', money(latest.gsv)), metric('最近月环比', previous ? `${change >= 0 ? '+' : ''}${percent(change)}` : '--'), metric('最近月退款率', percent(refundRate)), metric('最近月推广 ROI', Number(latest.ad_roi || 0) ? Number(latest.ad_roi).toFixed(2) : '--'), metric('上架时长', assessment?.listed_days == null ? '--' : `${assessment.listed_days} 天`), metric('下一关键节点', assessment?.next_key_date || '--')].join('');
+    $('[data-lifecycle-metrics]').innerHTML = [metric('累计销售额', money(sum(rows, 'gsv'))), metric('累计支付件数', count(sum(rows, 'payment_qty'))), metric('最近月销售额', money(latest.gsv)), metric('最近月环比', previous ? `${change >= 0 ? '+' : ''}${percent(change)}` : '--'), metric('最近月退款率', percent(refundRate)), metric('最近月推广 ROI', Number(latest.ad_roi || 0) ? Number(latest.ad_roi).toFixed(2) : '--'), metric('上架时长', assessment?.listed_days == null ? '--' : `${assessment.listed_days} 天`), metric('下一关键节点', assessment?.next_key_date || '--')].join('');
     const history = assessment?.history || [];
-    $('[data-lifecycle-insights]').innerHTML = [['success', '经营规模', `${latest.month} GSV ${money(latest.gsv)}`], [refundRate <= .1 ? 'success' : 'danger', '退款率', `${percent(refundRate)}，退款金额 ${money(latest.refund_amount)}`], [Number(latest.ad_roi || 0) >= 3 ? 'success' : 'warning', '投放效率', Number(latest.ad_roi || 0) ? `推广 ROI ${Number(latest.ad_roi).toFixed(2)}` : '当前月无推广数据'], [change >= 0 ? 'success' : 'danger', '月度趋势', previous ? `${change >= 0 ? '较上月增长' : '较上月下降'} ${percent(Math.abs(change))}` : '暂无上月对比'], ['info', '判断依据', `转化趋势 ${assessment?.conversion_trend?.recent == null ? '数据不足' : `${(assessment.conversion_trend.recent * 100).toFixed(2)}%`}；推广依赖 ${assessment?.promotion_dependency == null ? '数据不足' : `${(assessment?.promotion_dependency * 100).toFixed(2)}%`}；阶段迁移 ${history.length} 次`]].map(([tone, title, text]) => `<div class="lifecycle-insight lifecycle-insight--${tone}"><strong>${title}</strong><span>${text}</span></div>`).join('');
+    $('[data-lifecycle-insights]').innerHTML = [['success', '经营规模', `${latest.month} 销售额 ${money(latest.gsv)}`], [refundRate <= .1 ? 'success' : 'danger', '退款率', `${percent(refundRate)}，退款金额 ${money(latest.refund_amount)}`], [Number(latest.ad_roi || 0) >= 3 ? 'success' : 'warning', '投放效率', Number(latest.ad_roi || 0) ? `推广 ROI ${Number(latest.ad_roi).toFixed(2)}` : '当前月无推广数据'], [change >= 0 ? 'success' : 'danger', '月度趋势', previous ? `${change >= 0 ? '较上月增长' : '较上月下降'} ${percent(Math.abs(change))}` : '暂无上月对比'], ['info', '判断依据', `转化趋势 ${assessment?.conversion_trend?.recent == null ? '数据不足' : `${(assessment.conversion_trend.recent * 100).toFixed(2)}%`}；推广依赖 ${assessment?.promotion_dependency == null ? '数据不足' : `${(assessment?.promotion_dependency * 100).toFixed(2)}%`}；阶段迁移 ${history.length} 次`]].map(([tone, title, text]) => `<div class="lifecycle-insight lifecycle-insight--${tone}"><strong>${title}</strong><span>${text}</span></div>`).join('');
     renderScaleChart(rows); renderDetailTable(rows); setDetailTab(state.detailTab);
     if (window.lucide) window.lucide.createIcons();
   }

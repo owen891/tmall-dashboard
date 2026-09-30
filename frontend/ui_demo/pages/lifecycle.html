@@ -30,7 +30,7 @@
 
         <section class="ui-metric-grid" aria-label="生命周期概览">
           <article class="ui-metric-card"><div class="metric-card__label">跟踪商品</div><div class="metric-card__value" data-lifecycle-kpi="products">--</div><div class="metric-card__meta"><i data-lucide="package-search"></i>当前筛选范围内</div></article>
-          <article class="ui-metric-card"><div class="metric-card__label">累计 GSV</div><div class="metric-card__value" data-lifecycle-kpi="gsv">--</div><div class="metric-card__meta"><i data-lucide="calendar-range"></i><span data-lifecycle-months>--</span></div></article>
+          <article class="ui-metric-card"><div class="metric-card__label">累计销售额</div><div class="metric-card__value" data-lifecycle-kpi="gsv">--</div><div class="metric-card__meta"><i data-lucide="calendar-range"></i><span data-lifecycle-months>--</span></div></article>
           <article class="ui-metric-card"><div class="metric-card__label">平均活跃月数</div><div class="metric-card__value" data-lifecycle-kpi="average">--</div><div class="metric-card__meta"><i data-lucide="activity"></i>按真实月度记录统计</div></article>
           <article class="ui-metric-card"><div class="metric-card__label">最近月增长商品</div><div class="metric-card__value" data-lifecycle-kpi="growing">--</div><div class="metric-card__meta is-up"><i data-lucide="trending-up"></i><span data-lifecycle-growth-period>等待数据计算</span></div></article>
         </section>
@@ -39,7 +39,7 @@
           <div class="ui-filter-toolbar lifecycle-list__toolbar">
             <div>
               <h3 id="lifecycle-list-title" class="panel__title">商品列表</h3>
-              <span class="panel__hint" data-lifecycle-count>按累计 GSV 排序</span>
+              <span class="panel__hint" data-lifecycle-count>按累计销售额 排序</span>
             </div>
             <div class="filter-group">
               <input class="input" type="search" data-lifecycle-search aria-label="搜索生命周期商品" placeholder="搜索商品名称 / 商品 ID…" autocomplete="off">
@@ -79,7 +79,7 @@
           </div>
           <div class="lifecycle-metrics" data-lifecycle-metrics></div>
           <div class="lifecycle-chart-grid">
-            <article class="chart-panel ui-panel lifecycle-chart-panel"><div class="panel__header"><div><h3 class="panel__title">经营规模</h3><p class="panel__hint">月度 GSV 与支付件数</p></div></div><div class="chart-box lifecycle-chart-box"><div id="lifecycleScaleChart" class="chart-canvas" role="img" aria-label="月度 GSV 与支付件数趋势"></div></div></article>
+            <article class="chart-panel ui-panel lifecycle-chart-panel"><div class="panel__header"><div><h3 class="panel__title">经营规模</h3><p class="panel__hint">月度销售额 与支付件数</p></div></div><div class="chart-box lifecycle-chart-box"><div id="lifecycleScaleChart" class="chart-canvas" role="img" aria-label="月度销售额 与支付件数趋势"></div></div></article>
             <article class="chart-panel ui-panel lifecycle-chart-panel"><div class="panel__header"><div><h3 class="panel__title">售后与投放</h3><p class="panel__hint">退款金额、推广花费与效率</p></div><div class="segmented" role="group" aria-label="效率指标"><button type="button" data-efficiency-mode="refundRate" aria-pressed="true">退款率</button><button type="button" data-efficiency-mode="roi" aria-pressed="false">推广 ROI</button></div></div><div class="chart-box lifecycle-chart-box"><div id="lifecycleEfficiencyChart" class="chart-canvas" role="img" aria-label="月度退款、推广花费与效率趋势"></div></div></article>
           </div>
           <div class="lifecycle-insights" data-lifecycle-insights aria-label="最近月经营结论"></div>

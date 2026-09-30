@@ -89,7 +89,7 @@
 
       // KPI 行
       const kpis = [
-        { label: '本周净销售', value: `¥${fmtWan(w0.net_sales)}`, delta: deltaBadge(pctChange(w0.net_sales, baseline.net_sales)) },
+        { label: '本周净销售额', value: `¥${fmtWan(w0.net_sales)}`, delta: deltaBadge(pctChange(w0.net_sales, baseline.net_sales)) },
         { label: '本周推广花费', value: `¥${fmtWan(w0.ad_spend)}`, delta: deltaBadge(pctChange(w0.ad_spend, baseline.ad_spend)) },
         { label: '本周利润', value: `¥${fmtWan(w0.profit)}`, delta: deltaBadge(pctChange(w0.profit, baseline.profit)) },
         { label: '本周利润率', value: fmtPct(w0.profit_rate), delta: ppBadge(ppChange(w0.profit_rate, baseline.profit_rate)) },
@@ -103,7 +103,7 @@
             compareLabel ? h('span', { class: 'lb-cell__comparison-label', text: compareLabel }) : null,
             k.delta || h('span', { class: 'lb-delta--na', text: '--' })))));
 
-      // 4 周净销售对比条
+      // 4 周净销售额对比条
       const chartData = [
         { key: 'w2', label: (weeks.w2 || {}).label, value: (totals.w2 || {}).net_sales || 0 },
         { key: 'w1', label: (weeks.w1 || {}).label, value: (totals.w1 || {}).net_sales || 0 },
@@ -123,7 +123,7 @@
       const headRow = h('tr', null,
         h('th', { class: 'leaf-board__th leaf-board__th--leaf' }, '叶子类目'),
         h('th', { class: 'leaf-board__th' }, '标品在售链接数'),
-        h('th', { class: 'leaf-board__th' }, '净销售'),
+        h('th', { class: 'leaf-board__th' }, '净销售额'),
         h('th', { class: 'leaf-board__th' }, '退款率'),
         h('th', { class: 'leaf-board__th' }, '访客数'),
         h('th', { class: 'leaf-board__th' }, '转化率'),
@@ -171,7 +171,7 @@
       const table = h('table', { class: 'leaf-board__table' }, h('thead', null, headRow), h('tbody', null, ...bodyRows));
 
       const hint = h('p', { class: 'panel__hint leaf-board__hint' },
-        `口径：周=周一至周日；本周=${(weeks.w0 || {}).start}~${(weeks.w0 || {}).end}（实际覆盖 ${(data.data_quality || {}).w0_covered_days || '?'} 天）；${baselineKey ? `${compareLabel}基线=${(weeks[baselineKey] || {}).label || '--'}；` : '当前未应用类目周对比；'}比例指标由聚合后分子/分母计算；净销售/推广/利润绝对值<¥100 的类目行已隐藏。`);
+        `口径：周=周一至周日；本周=${(weeks.w0 || {}).start}~${(weeks.w0 || {}).end}（实际覆盖 ${(data.data_quality || {}).w0_covered_days || '?'} 天）；${baselineKey ? `${compareLabel}基线=${(weeks[baselineKey] || {}).label || '--'}；` : '当前未应用类目周对比；'}比例指标由聚合后分子/分母计算；净销售额/推广/利润绝对值<¥100 的类目行已隐藏。`);
 
       board.replaceChildren(
         h('article', { class: 'ui-panel pr-analysis-panel' },

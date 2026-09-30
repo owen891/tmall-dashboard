@@ -48,16 +48,16 @@ def _template(noun):
         {
             'key': 'category_summary',
             'title': f'{noun}品类汇总（销售与利润指标 / 完成情况分析 / 根因）',
-            'hint': '先看三大指标（净销售 / 净利润 / 净费比）完成情况，再拆基础数据（访客、转化、客单、加购率、付费访客成本）定位根因。',
+            'hint': '先看三大指标（净销售额 / 净利润 / 净费比）完成情况，再拆基础数据（访客、转化、客单、加购率、付费访客成本）定位根因。',
             'materials': ['metrics', 'target_path', 'breakdown', 'linked_summaries'],
             'subsections': SUBSECTION_DEFS['triple'],
-            'placeholder': '例：净销售完成 XX 万（达成率 XX%，环比 X%，同比 X%）；净利润 X 万；净费比 X%。',
+            'placeholder': '例：净销售额完成 XX 万（达成率 XX%，环比 X%，同比 X%）；净利润 X 万；净费比 X%。',
             'required': True,
         },
         {
             'key': 'goods',
             'title': f'{noun}货品复盘（top单品 / 新品 / 问题单品 / 结构变化）',
-            'hint': '结合净销售 TOP、付费 TOP、盈利/亏损 TOP 与新品榜，写货品结构与问题单品结论。',
+            'hint': '结合净销售额 TOP、付费 TOP、盈利/亏损 TOP 与新品榜，写货品结构与问题单品结论。',
             'materials': ['products'],
             'subsections': SUBSECTION_DEFS['triple'],
             'placeholder': '例：TOP10 占比 X%；持续下滑单品占比高；男款费比高款式少；新品上架 X 个贡献 X；需补充…',
@@ -96,7 +96,7 @@ def _template(noun):
             'hint': '目标要可验收；写清基于目标要怎么达成；行动项必须有负责人、时间节点和验收方式。',
             'materials': ['actions_planned'],
             'subsections': SUBSECTION_DEFS['plan'],
-            'placeholder': '目标：净销售 XX 万 / 利润率 X%；达成路径：加投 XX 渠道 / 提升 XX 转化…\n任务排期：W1…W4…\n行动计划：P0 …（负责人 / 截止 / 验收）',
+            'placeholder': '目标：净销售额 XX 万 / 利润率 X%；达成路径：加投 XX 渠道 / 提升 XX 转化…\n任务排期：W1…W4…\n行动计划：P0 …（负责人 / 截止 / 验收）',
             'required': True,
         },
     ]
@@ -111,7 +111,7 @@ DAY_TEMPLATE = [
         'title': '当日业绩与目标差距',
         'hint': '当日业绩结论、差距原因与补救动作。',
         'materials': ['metrics', 'target_path'],
-        'placeholder': '例：当日 GSV XX，达成率 XX%，偏差来自…',
+        'placeholder': '例：当日销售额 XX，达成率 XX%，偏差来自…',
         'required': True,
     },
     {

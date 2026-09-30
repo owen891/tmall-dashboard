@@ -276,7 +276,7 @@
     const wrapper = node('article', 'chart-panel ui-panel lifecycle-chart-panel product-detail-overview-trend');
     const header = node('div', 'panel__header product-detail-overview-trend__header');
     const copy = node('div');
-    copy.append(node('h4', 'panel__title', '经营走势'), node('p', 'panel__hint', '与上方经营与推广指标同源，按月聚合查看销售、净销售与推广花费。'));
+    copy.append(node('h4', 'panel__title', '经营走势'), node('p', 'panel__hint', '与上方经营与推广指标同源，按月聚合查看销售、净销售额与推广花费。'));
     header.appendChild(copy);
     wrapper.appendChild(header);
     if (!rows?.length) {

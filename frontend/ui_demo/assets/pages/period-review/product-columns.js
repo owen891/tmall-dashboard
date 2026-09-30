@@ -9,7 +9,7 @@
    *
    *  deps 契约（由 period-review-live.js 提供）：
    *  - h                     DOM 工厂
-   *  - productShare          行 GSV 占比计算
+   *  - productShare          行 销售额占比计算
    *  - declineRate           行变化比例计算
    *  - safeMetric            缺失安全的指标格式化
    *  - openProductDiagnosis  打开单品诊断弹窗
@@ -34,12 +34,12 @@
       { key: 'product_id', label: '商品ID', kind: 'id', scope: 'both', group: 'identity', default: true },
       { key: 'title', label: '商品', kind: 'title', scope: 'both', group: 'identity', default: true, fixed: true },
       { key: 'category', label: '类目', kind: 'text', scope: 'both', group: 'identity', default: false },
-      // —— 销售结果（XMind：GSV / 净销售 / 销售件数 / 客单价）
-      { key: 'gsv', label: '本期 GSV', labelTop: 'GSV', kind: 'money', scope: 'both', group: 'sales', default: true },
-      { key: 'prev_gsv', label: '上期 GSV', kind: 'money', scope: 'delta', group: 'sales', default: true, reason: '不可判断' },
+      // —— 销售结果（XMind：销售额 / 净销售 / 销售件数 / 客单价）
+      { key: 'gsv', label: '本期销售额', labelTop: '销售额', kind: 'money', scope: 'both', group: 'sales', default: true },
+      { key: 'prev_gsv', label: '上期销售额', kind: 'money', scope: 'delta', group: 'sales', default: true, reason: '不可判断' },
       { key: 'net_sales', label: '净销售额', kind: 'money', scope: 'both', group: 'sales', default: true },
       { key: 'payment_qty', label: '销售件数', kind: 'number', scope: 'both', group: 'sales', default: false },
-      { key: 'share_of_gsv', label: 'GSV 占比', kind: 'percent', scope: 'top', group: 'sales', default: true },
+      { key: 'share_of_gsv', label: '销售额占比', kind: 'percent', scope: 'top', group: 'sales', default: true },
       { key: 'aov', label: '客单价', kind: 'money', scope: 'both', group: 'sales', default: false },
       { key: 'refund_amount', label: '退款金额', kind: 'money', scope: 'both', group: 'sales', default: false },
       // —— 流量与转化（XMind：访客数 / 转化率）
@@ -218,7 +218,7 @@
         h('td', { class: 'pr-table__action' },
           h('button', {
             type: 'button', class: 'ui-button ui-button--ghost ui-button--compact', text: '趋势',
-            title: '查看近 8 周 GSV / 访客 / 转化趋势',
+            title: '查看近 8 周销售额 / 访客 / 转化趋势',
             onclick: () => openProductTrend(row),
           }),
           h('button', {

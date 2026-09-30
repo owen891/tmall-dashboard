@@ -12,8 +12,8 @@
         { key: 'product', label: '商品主图 / 商品', group: '基础信息' },
         { key: 'ad_spend', label: '推广花费', group: '投入与成交', format: 'money' },
         { key: 'attributed_payment_amount', label: '推广成交', group: '投入与成交', format: 'money' },
-        { key: 'link_gsv', label: '链接 GSV', group: '投入与成交', format: 'money' },
-        { key: 'link_net_sales', label: '链接净销售', group: '投入与成交', format: 'money' },
+        { key: 'link_gsv', label: '链接销售额', group: '投入与成交', format: 'money' },
+        { key: 'link_net_sales', label: '链接净销售额', group: '投入与成交', format: 'money' },
         { key: 'expense_ratio', label: '费比', group: '投入与成交', format: 'percent' },
         { key: 'roi', label: '推广 ROI', group: '投入与成交', format: 'ratio' },
         { key: 'impressions', label: '展现量', group: '流量与转化', format: 'number' },
@@ -320,7 +320,7 @@
     const table = document.createElement('table');
     table.className = 'promotion-board-table';
     table.dataset.tableControls = 'true';
-    table.innerHTML = '<thead><tr><th>商品</th><th class="num">推广花费</th><th class="num">推广成交</th><th class="num">链接净销售</th><th class="num">费比</th><th class="num">推广 ROI</th><th class="num">付费成交占比</th></tr></thead>';
+    table.innerHTML = '<thead><tr><th>商品</th><th class="num">推广花费</th><th class="num">推广成交</th><th class="num">链接净销售额</th><th class="num">费比</th><th class="num">推广 ROI</th><th class="num">付费成交占比</th></tr></thead>';
     const body = document.createElement('tbody');
     visible.forEach((row) => {
       const tr = document.createElement('tr');
@@ -1090,7 +1090,7 @@
     metrics.append(
       metric('推广花费', money(product.ad_spend)),
       metric('推广成交', money(product.attributed_payment_amount)),
-      metric('链接净销售', product.link_net_sales == null ? '--' : money(product.link_net_sales)),
+      metric('链接净销售额', product.link_net_sales == null ? '--' : money(product.link_net_sales)),
       metric('费比', product.expense_ratio == null ? '--' : `${(Number(product.expense_ratio) * 100).toFixed(2)}%`),
       metric('推广 ROI', ratio(product.roi)),
       metric('点击率 / 商品支付转化率', `${product.ctr == null ? '--' : `${(product.ctr * 100).toFixed(2)}%`} / ${product.cvr == null ? '--' : `${(product.cvr * 100).toFixed(2)}%`}`),

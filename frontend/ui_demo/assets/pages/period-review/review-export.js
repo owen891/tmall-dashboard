@@ -72,7 +72,7 @@
     function problemItemsMd(products) {
       const items = (products && products.problem_items) || [];
       if (!items.length) return '_本期没有命中问题条件的商品。_\n';
-      const lines = ['| 商品 | 问题来源 | GSV | GSV 占比 | 经营利润 | 费比 |', '| --- | --- | --- | --- | --- | --- |'];
+      const lines = ['| 商品 | 问题来源 | 销售额 | 销售额占比 | 经营利润 | 费比 |', '| --- | --- | --- | --- | --- | --- |'];
       items.slice(0, 20).forEach((row) => {
         const share = row.gsv && products.total_gsv ? (row.gsv / products.total_gsv) : null;
         const ratio = row.gsv && row.ad_spend ? fmtPercent(row.ad_spend / row.gsv, 1) : '--';
@@ -121,7 +121,7 @@
       const breakdown = context.breakdown;
       if (breakdown && breakdown.rows && breakdown.rows.length) {
         out.push(`**周期分解（${breakdown.grain === 'week' ? '月内分周' : '按日'}）**：`
-          + breakdown.rows.map((row) => `${row.label}（净销售 ${fmtMoney((row.metrics || {}).net_sales)}）`).join('；'), '');
+          + breakdown.rows.map((row) => `${row.label}（净销售额 ${fmtMoney((row.metrics || {}).net_sales)}）`).join('；'), '');
       }
       (state.template || []).forEach((section) => {
         const order = { category_summary: '二、', goods: '三、', ads: '四、', market: '五、', summary: '六、', next_plan: '七、' };
