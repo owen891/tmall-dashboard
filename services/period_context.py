@@ -200,7 +200,7 @@ def _derive(totals):
 
 
 METRIC_DEFS = [
-    ('gsv', 'GSV（支付金额）', 'money', False),
+    ('gsv', '销售额（支付金额）', 'money', False),
     ('net_sales', '净销售额', 'money', False),
     ('visitors', '访客数', 'number', False),
     ('conversion', '支付转化率', 'percent', False),
@@ -1244,8 +1244,8 @@ def _anomalies_block(conn, period, current, prev, category_label=None):
     if len(active) >= 2:
         best = max(active, key=lambda row: row['gsv'])
         worst = min(active, key=lambda row: row['gsv'])
-        items.append({'level': 'info', 'label': '最高单日 GSV', 'detail': f"{best['date']} · {best['gsv']:.0f}"})
-        items.append({'level': 'warning', 'label': '最低单日 GSV', 'detail': f"{worst['date']} · {worst['gsv']:.0f}"})
+        items.append({'level': 'info', 'label': '最高单日销售额', 'detail': f"{best['date']} · {best['gsv']:.0f}"})
+        items.append({'level': 'warning', 'label': '最低单日销售额', 'detail': f"{worst['date']} · {worst['gsv']:.0f}"})
 
         avg_gsv = sum(row['gsv'] for row in active) / len(active)
         outliers = [row for row in active if row['gsv'] < avg_gsv * 0.5]
@@ -1441,14 +1441,17 @@ def legacy_fields_from_sections(period_type, sections):
 def _linked_period_summaries(conn, period):
     """周月互汇：跨周期读取已保存复盘的结论摘要。
 
-    - 月复盘：读本月各周（period_key LIKE 'YYYY-MM-W%'）的周复盘，
-      每期取 category_summary 的分析/根因子段 + 三大指标摘要；
-    - 周复盘：读上月月复盘的根因，作为「对照月度根因」参考素材；
-    - 只读，不写；未保存/缺子段时该期为空，不臆造内容。
+    - 月复盘：读本月各周（period_key LIKE 'YYYY-MM-W%'）的周复盘；
+    - 周复盘：读上月月复盘，作为「对照月度根因」参考素材；
+    - 每期收**全部**有内容的段落（不只品类汇总——实际使用中各周先写的
+      往往是货品/广告段，只看品类汇总会漏掉大部分已有结论）；
+    - 只读，不写；未保存/无内容时该期为空，不臆造内容。
 
     返回 {'kind': 'weekly'|'monthly', 'items': [...], 'missing_hint': str}。
+    item.analysis 保留品类汇总文本（兼容既有消费方/测试），
+    item.sections 为全段落 [{key, text}] 列表。
     """
-    def _section_text(sections, key):
+    def _parse(sections):
         # SQL 直读的 sections 是 JSON 字符串（repo 层解析只在 get 单期时发生）。
         if isinstance(sections, str):
             try:
@@ -1456,20 +1459,46 @@ def _linked_period_summaries(conn, period):
                 sections = _json.loads(sections) if sections.strip() else {}
             except Exception:
                 sections = {}
-        try:
-            entry = (sections or {}).get(key) or {}
-        except Exception:
-            return None
-        if isinstance(entry, dict):
-            subs = entry.get('subsections')
-            if isinstance(subs, dict) and any(str(v or '').strip() for v in subs.values()):
-                return '\n'.join(
-                    f"{k}: {str(v).strip()}" for k, v in subs.items() if str(v).strip()
-                )
-            text = str(entry.get('text') or '').strip()
-            return text or None
-        text = str(entry or '').strip()
+        return sections or {}
+
+    def _entry_text(entry):
+        if not isinstance(entry, dict):
+            return str(entry or '').strip() or None
+        subs = entry.get('subsections')
+        if isinstance(subs, dict):
+            joined = '\n'.join(
+                f"{k}: {str(v).strip()}" for k, v in subs.items() if str(v or '').strip()
+            )
+            if joined:
+                return joined
+        text = str(entry.get('text') or '').strip()
         return text or None
+
+    def _sections_with_content(sections):
+        sections = _parse(sections)
+        # 老 key（v1 performance/done/…）先迁移成统一 key，前端才能对上模板标题。
+        try:
+            from services.period_templates import migrate_sections
+            sections = migrate_sections('week', sections)
+        except Exception:
+            pass
+        out = []
+        for key, entry in (sections or {}).items():
+            text = _entry_text(entry)
+            if text:
+                out.append({'key': key, 'text': text})
+        return out
+
+    def _item(row):
+        sections = _sections_with_content(row['sections'])
+        return {
+            'period_key': row['period_key'],
+            'status': row['status'],
+            'reviewer': row['reviewer'],
+            'updated_at': (row['updated_at'] or '')[:16],
+            'analysis': next((s['text'] for s in sections if s['key'] == 'category_summary'), None),
+            'sections': sections,
+        }
 
     if period['type'] == 'month':
         prefix = f"{period['key']}-W"
@@ -1480,13 +1509,7 @@ def _linked_period_summaries(conn, period):
                ORDER BY period_key ASC''',
             (f"{prefix}%",),
         ).fetchall()
-        items = [{
-            'period_key': row['period_key'],
-            'status': row['status'],
-            'reviewer': row['reviewer'],
-            'updated_at': (row['updated_at'] or '')[:16],
-            'analysis': _section_text(row['sections'], 'category_summary'),
-        } for row in rows]
+        items = [_item(row) for row in rows]
         return {
             'kind': 'weekly',
             'items': items,
@@ -1505,15 +1528,7 @@ def _linked_period_summaries(conn, period):
                ORDER BY updated_at DESC LIMIT 1''',
             (prev_month_key,),
         ).fetchone()
-        items = []
-        if row:
-            items.append({
-                'period_key': row['period_key'],
-                'status': row['status'],
-                'reviewer': row['reviewer'],
-                'updated_at': (row['updated_at'] or '')[:16],
-                'analysis': _section_text(row['sections'], 'category_summary'),
-            })
+        items = [_item(row)] if row else []
         return {
             'kind': 'monthly',
             'items': items,

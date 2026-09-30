@@ -82,12 +82,17 @@
 
         <!-- 拆因分析：货品 → 推广 → 市场 递进阅读，一次滚动看完，不再三个 tab 来回跳。 -->
         <section class="pr-workbench-panel" data-pr-workbench-panel="diagnosis">
-          <h3 class="pr-diagnosis__heading">① 货品与异常</h3>
+          <nav class="pr-anchor-chips" aria-label="拆因分节导航">
+            <button type="button" data-pr-diagnosis-anchor="products">① 货品与异常</button>
+            <button type="button" data-pr-diagnosis-anchor="promotion">② 推广投放</button>
+            <button type="button" data-pr-diagnosis-anchor="market">③ 市场监控</button>
+          </nav>
+          <h3 class="pr-diagnosis__heading" data-pr-diagnosis-section="products">① 货品与异常</h3>
           <section class="pr-analysis-grid" data-pr-product-analysis aria-label="货品与异常"></section>
-          <h3 class="pr-diagnosis__heading">② 推广投放</h3>
+          <h3 class="pr-diagnosis__heading" data-pr-diagnosis-section="promotion">② 推广投放</h3>
           <section class="pr-analysis-grid" data-pr-channel-analysis aria-label="推广分析"></section>
           <section class="pr-analysis-grid" data-pr-promotion-analysis aria-label="推广效率"></section>
-          <h3 class="pr-diagnosis__heading">③ 市场监控</h3>
+          <h3 class="pr-diagnosis__heading" data-pr-diagnosis-section="market">③ 市场监控</h3>
           <section class="pr-analysis-grid" data-pr-market-analysis aria-label="市场监控"></section>
         </section>
 

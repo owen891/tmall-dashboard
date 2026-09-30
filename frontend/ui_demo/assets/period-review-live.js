@@ -951,6 +951,18 @@
     }));
   }
 
+  // 与列过滤对称：整行所有指标都为空（如 daily_data 只覆盖 3 个月时矩阵前排的
+  // 「2026年2月 · 无数据」行）直接隐藏，首屏第一行应该是有数据的周期。
+  function visibleMatrixRows(rows, columns) {
+    if (!rows || !rows.length || !columns.length) return rows || [];
+    const dataRows = rows.filter((row) => columns.some((col) => {
+      const metric = (row.metrics || {})[col.key];
+      return !!metric && metric.value !== null && metric.value !== undefined;
+    }));
+    // 极端情况：所有行都无数据时保留原行，让空态说明可见，而不是渲染一张空表。
+    return dataRows.length ? dataRows : rows;
+  }
+
   function matrixValue(metric) {
     if (!metric || metric.value === null || metric.value === undefined) {
       return { text: '--', kind: 'missing', ratio: 0 };
@@ -1024,14 +1036,15 @@
       return h('p', { class: 'pr-material__empty', text: '暂无指标矩阵数据。' });
     }
     const columns = visibleMatrixColumns(matrixMetricColumns(data.columns), data.rows);
+    const rows = visibleMatrixRows(data.rows, columns);
     // 预计算每列最大绝对值，用于数据条缩放
     const maxByColumn = {};
     columns.forEach((col) => {
-      maxByColumn[col.key] = Math.max(...data.rows.map((row) => Math.abs((row.metrics[col.key] || {}).value || 0)), 0.0001);
+      maxByColumn[col.key] = Math.max(...rows.map((row) => Math.abs((row.metrics[col.key] || {}).value || 0)), 0.0001);
     });
 
     const thead = h('thead', null, renderMatrixHeader(columns));
-    const tbody = h('tbody', null, ...data.rows.map((row) => {
+    const tbody = h('tbody', null, ...rows.map((row) => {
       const tr = h('tr', { class: `pr-matrix-row ${matrixStatusClass(row.status)}` });
       tr.append(h('td', { class: 'pr-matrix-cell--period' }, renderPeriodCellLabel(row.label)));
       tr.append(h('td', { class: 'pr-matrix-cell--status' }, h('span', { class: `pr-status-tag ${matrixStatusClass(row.status).replace('is-', '')}` }, matrixStatusLabel(row.status))));
@@ -1092,9 +1105,10 @@
       return;
     }
     const columns = visibleMatrixColumns(matrixMetricColumns(breakdown.columns), breakdown.rows);
+    const catRows = visibleMatrixRows(breakdown.rows, columns);
     const maxByColumn = {};
     columns.forEach((col) => {
-      maxByColumn[col.key] = Math.max(...breakdown.rows.map((row) => Math.abs((row.metrics[col.key] || {}).value || 0)), 0.0001);
+      maxByColumn[col.key] = Math.max(...catRows.map((row) => Math.abs((row.metrics[col.key] || {}).value || 0)), 0.0001);
     });
 
     const thead = h('thead', null,
@@ -1104,7 +1118,7 @@
         ...columns.map((col) => h('th', { class: 'pr-matrix-cell--metric', title: col.label }, col.label)),
       ),
     );
-    const tbody = h('tbody', null, ...breakdown.rows.map((row) => {
+    const tbody = h('tbody', null, ...catRows.map((row) => {
       const tr = h('tr', { class: `pr-matrix-row ${matrixStatusClass(row.status)}` });
       tr.append(h('td', { class: 'pr-matrix-cell--category' }, row.category));
       tr.append(h('td', { class: 'pr-matrix-cell--status' }, h('span', { class: `pr-status-tag ${matrixStatusClass(row.status).replace('is-', '')}` }, matrixStatusLabel(row.status))));
@@ -1840,7 +1854,9 @@
     return h('div', { class: 'pr-materials' }, materialBlock('广告本期', h('div', { class: 'pr-target' }, ...items)));
   }
 
-  /** 周月互汇素材块：月复盘显示本月各周结论，周复盘显示上月月复盘根因参考。 */
+  /** 周月互汇素材块：月复盘显示本月各周结论，周复盘显示上月月复盘根因参考。
+   *  每期收全部有内容的段落（不只品类汇总），条目头 = 周期跳转 + 状态徽章 + 元信息分行。
+   */
   function renderLinkedSummaries(linked) {
     if (!linked || !linked.kind || linked.kind === 'none') return null;
     const wrap = h('div', { class: 'pr-materials' });
@@ -1850,28 +1866,39 @@
       wrap.append(materialBlock(title, null, linked.missing_hint || '暂无关联周期复盘。'));
       return wrap;
     }
-    const body = h('ul', { class: 'pr-actions-list' }, ...items.map((item) => h('li', null,
-      h('b', null,
-        h('button', {
-          type: 'button',
-          class: 'pr-anchor-link',
-          // 跳到对应周期复盘（周键切周模式，月键切月模式并提示切时间范围）。
-          onclick: () => {
-            const isWeek = /W\d+$/.test(item.period_key);
-            setMode(isWeek ? 'week' : 'month');
-            if (!isWeek) {
-              stateBanner(`该复盘属于 ${item.period_key}，请在顶栏「统计时间」切到对应月份查看。`, 'insufficient-data');
-            }
-            window.location.search = `?period_type=${isWeek ? 'week' : 'month'}&period_key=${encodeURIComponent(item.period_key)}`;
-          },
-          text: `${item.period_key} →`,
-        }),
-        ` · ${item.status === 'final' ? '已定稿' : '草稿'}`),
-      item.analysis
-        ? h('div', null, h('small', { text: item.analysis }))
-        : h('small', { text: '该期已保存但品类汇总段还没有结论内容。' }),
-      h('small', { text: `${item.reviewer || '--'} · ${item.updated_at || '--'}` }),
-    )));
+    // 段落短标题：去「本月/本周」前缀和括号说明，列表里够认即可。
+    const shortTitle = (key) => {
+      const t = (state.template.find((s) => s.key === key) || {}).title || key;
+      return t.replace(/^(本月|本周)/, '').split('（')[0];
+    };
+    const body = h('ul', { class: 'pr-actions-list pr-linked-list' }, ...items.map((item) => {
+      const sections = Array.isArray(item.sections) && item.sections.length
+        ? item.sections
+        : (item.analysis ? [{ key: 'category_summary', text: item.analysis }] : []);
+      return h('li', { class: 'pr-linked-item' },
+        h('div', { class: 'pr-linked-item__head' },
+          h('button', {
+            type: 'button',
+            class: 'pr-anchor-link',
+            onclick: () => {
+              const isWeek = /W\d+$/.test(item.period_key);
+              setMode(isWeek ? 'week' : 'month');
+              if (!isWeek) {
+                stateBanner(`该复盘属于 ${item.period_key}，请在顶栏「统计时间」切到对应月份查看。`, 'insufficient-data');
+              }
+              window.location.search = `?period_type=${isWeek ? 'week' : 'month'}&period_key=${encodeURIComponent(item.period_key)}`;
+            },
+            text: `${item.period_key} →`,
+          }),
+          stateTag(item.status === 'final' ? '已定稿' : '草稿', item.status === 'final' ? 'good' : 'info'),
+          h('small', { class: 'pr-linked-item__meta', text: `${item.reviewer || '--'} · ${item.updated_at || '--'}` })),
+        sections.length
+          ? h('div', { class: 'pr-linked-item__body' }, ...sections.map((s) => h('div', { class: 'pr-linked-item__section' },
+            h('b', { text: shortTitle(s.key) }),
+            h('p', { text: s.text }))))
+          : h('small', { class: 'pr-linked-item__empty', text: '该期已保存但还没有填写任何段落内容。' }),
+      );
+    }));
     wrap.append(materialBlock(title, body, null));
     return wrap;
   }
@@ -1988,14 +2015,16 @@
 
     const body = h('div', { class: 'ui-panel__body' });
     const materialKeys = (section.materials || []).filter((key) => key !== 'metrics' && key !== 'target_path');
+    // 系统证据节点：三段式段落挂进「根因」子段（写根因时证据就在手边），
+    // 单框段落（day 模板）保持挂在段落顶部。
+    let evidenceNode = null;
     if (materialKeys.length) {
-      const evidence = h('details', { class: 'pr-evidence' },
+      evidenceNode = h('details', { class: 'pr-evidence' },
         h('summary', { text: `展开系统证据（${materialKeys.length} 个数据块）` }),
         h('div', { class: 'pr-evidence__body' }, ...materialKeys.map((key) => materialFor(key, context)).filter(Boolean)),
       );
-      body.append(evidence);
     } else if ((section.materials || []).some((key) => key === 'metrics' || key === 'target_path')) {
-      body.append(h('p', { class: 'pr-material__empty', text: '业绩与目标差距已在上方驾驶舱展示，这里只填写结论与达成路径。' }));
+      evidenceNode = h('p', { class: 'pr-material__empty', text: '业绩与目标差距已在上方驾驶舱展示，这里只填写结论与达成路径。' });
     }
 
     // v3 三段式：模板带 subsections 定义时渲染「分析/根因/下一步」三个子输入框，
@@ -2026,17 +2055,22 @@
           storeSectionDraft(draftKey, textarea.value);
         });
         if (sub.required && !value.trim()) textarea.classList.add('is-missing');
-        wrap.append(h('div', { class: 'pr-subsection' },
+        const subWrap = h('div', { class: 'pr-subsection' },
           h('label', { class: 'pr-subsection__label' },
             h('span', { text: sub.title }),
             sub.required ? h('em', { text: '必填' }) : null),
-          textarea));
+          textarea);
+        // 根因子段内嵌系统证据：写根因时证据就在手边，不用折叠区来回对照。
+        if (sub.key === 'root_cause' && evidenceNode) subWrap.append(evidenceNode);
+        wrap.append(subWrap);
       });
       if (anyDraftRestored) {
         body.append(h('p', { class: 'pr-toolbar__status pr-draft-note', role: 'status', text: '已恢复未保存的本地草稿；保存复盘后将清除。' }));
       }
       body.append(wrap);
     } else {
+      // 单框段落（day 模板等）：证据保持挂在段落顶部。
+      if (evidenceNode) body.append(evidenceNode);
       const textarea = h('textarea', {
         'data-pr-input': section.key,
         placeholder: section.placeholder || '',
@@ -2417,6 +2451,14 @@
 
   document.querySelectorAll('[data-pr-workbench-tab]').forEach((tab) => {
     tab.addEventListener('click', () => activateWorkbench(tab.dataset.prWorkbenchTab));
+  });
+
+  // 拆因分析长页（约 13 屏）的分节锚点：点击滚到对应分节，免得手滚找市场监控。
+  document.querySelectorAll('[data-pr-diagnosis-anchor]').forEach((chip) => {
+    chip.addEventListener('click', () => {
+      const heading = document.querySelector(`[data-pr-diagnosis-section="${chip.dataset.prDiagnosisAnchor}"]`);
+      if (heading) heading.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
   });
 
   els.modeButtons.forEach((button) => button.addEventListener('click', () => setMode(button.dataset.prMode)));

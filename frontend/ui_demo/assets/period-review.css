@@ -92,6 +92,34 @@
   margin: 0 16px 12px;
 }
 
+/* 拆因长页的分节锚点 chips（吸顶常驻，滚动到哪都有一键跳转）。 */
+.pr-anchor-chips {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: flex;
+  gap: 8px;
+  padding: 8px 0;
+  margin: 0 0 4px;
+  background: var(--surface-default, var(--surface));
+  border-bottom: 1px solid var(--border-default);
+}
+
+.pr-anchor-chips button {
+  padding: 4px 12px;
+  border: 1px solid var(--border-default);
+  border-radius: 999px;
+  background: var(--surface-muted);
+  color: var(--text-secondary);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.pr-anchor-chips button:hover {
+  border-color: var(--brand);
+  color: var(--text-primary);
+}
+
 /* ------------------------------------------------ 拆因/参考区块的分节标题 */
 /* 拆因分析把货品→推广→市场串成一个递进长页，分节标题承担"读到哪一步"的路标。 */
 .pr-diagnosis__heading {
@@ -113,6 +141,65 @@
 
 [data-pr-workbench-panel] > .pr-diagnosis__heading:first-child {
   margin-top: 0;
+}
+
+/* ------------------------------------------------ 周月互汇条目 */
+.pr-linked-item__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.pr-linked-item__meta {
+  margin-left: auto;
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.pr-linked-item__body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 6px;
+  padding: 8px 10px;
+  background: var(--surface-muted);
+  border-radius: var(--radius-sm);
+}
+
+.pr-linked-item__section b {
+  display: block;
+  margin-bottom: 2px;
+  color: var(--text-primary);
+  font-size: 12px;
+}
+
+.pr-linked-item__section p {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
+
+.pr-linked-item__empty {
+  display: block;
+  margin-top: 4px;
+  color: var(--text-muted);
+}
+
+/* 根因子段内嵌的系统证据：尺寸收小，视觉上从属于输入框。 */
+.pr-subsection .pr-evidence {
+  margin: 8px 0 0;
+}
+
+.pr-subsection .pr-evidence summary {
+  padding: 6px 9px;
+  font-size: 11px;
+}
+
+.pr-subsection .pr-evidence__body {
+  padding: 0 8px 8px;
 }
 
 /* ------------------------------------------------ 市场监控深链 */
