@@ -756,7 +756,7 @@
         h('td', { class: 'num', text: safeMetric(row.operating_profit, 'money') }),
         h('td', { class: 'num', text: safeMetric(row.ad_spend, 'money') }),
         h('td', { class: 'num', text: row.gsv && row.ad_spend ? safeMetric(row.ad_spend / row.gsv, 'percent') : '--' }),
-        h('td', null, actionBtn),
+        h('td', { class: 'pr-table__action' }, actionBtn),
       );
     });
     const table = h('div', { class: 'pr-breakdown-table-wrap' }, h('table', { class: 'pr-table pr-breakdown-table' },
@@ -771,9 +771,11 @@
         h('th', { text: '操作' }),
       )),
       h('tbody', null, ...rows)));
+    // 宽表（8 列 + 长标题）包横向滚动，避免在两列网格的窄栏里被挤成竖排。
+    const scroll = h('div', { class: 'pr-table-scroll' }, table);
     return analysisPanel('问题单品清单',
       `跨榜合并去重（下滑 / 亏损 / 费比>30% 且 销售额占比>1%），共 ${items.length} 个商品待处理。`,
-      table, null);
+      scroll, null);
   }
 
   function renderProductAnalysis(context) {
@@ -1053,7 +1055,8 @@
       });
       return tr;
     }));
-    return h('table', { class: 'pr-matrix-table' }, thead, tbody);
+    // 17 列宽表包横向滚动：窄栏里不挤压列，溢出交由滚动条。
+    return h('div', { class: 'pr-table-scroll' }, h('table', { class: 'pr-matrix-table' }, thead, tbody));
   }
 
   // 加载失败时的面板：给出具体原因 + 就地重试按钮，
@@ -1127,7 +1130,7 @@
       });
       return tr;
     }));
-    const table = h('table', { class: 'pr-matrix-table' }, thead, tbody);
+    const table = h('div', { class: 'pr-table-scroll' }, h('table', { class: 'pr-matrix-table' }, thead, tbody));
     els.categoryBreakdown.replaceChildren(
       analysisPanel('类目拆解', `${breakdown.period.label} · 按 products.category 聚合；无数据的指标列会自动隐藏。`, table, '暂无类目数据。'),
     );

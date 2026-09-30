@@ -972,6 +972,26 @@
   white-space: nowrap;
 }
 
+/* 矩阵/类目 17 列宽表同样不挤压：列宽随内容，溢出走横向滚动。 */
+.pr-table-scroll .pr-matrix-table {
+  min-width: max-content;
+}
+
+.pr-table-scroll .pr-matrix-table th,
+.pr-table-scroll .pr-matrix-table td {
+  white-space: nowrap;
+}
+
+/* 问题单品清单（8 列宽表）在两列网格里占通栏，不再挤在 431px 窄栏。 */
+[data-pr-product-analysis] > .pr-analysis-panel:first-child {
+  grid-column: 1 / -1;
+}
+
+/* 数据参考区的矩阵/类目/历史都是宽表，单列通栏。 */
+[data-pr-workbench-panel="reference"] .pr-analysis-grid {
+  grid-template-columns: 1fr;
+}
+
 /* 字段设置对话框（公共 DemoFieldSelector）：本页仅补充头部 kicker 与状态行。 */
 .pr-columns-dialog .modal-form__status {
   margin: 0;
