@@ -69,14 +69,10 @@
         <section class="pr-command-center" data-pr-command-center hidden aria-label="复盘结论总览"></section>
 
         <nav class="pr-workbench-tabs" aria-label="复盘工作区">
-          <button type="button" class="is-active" data-pr-workbench-tab="conclusion">结论与诊断</button>
-          <button type="button" data-pr-workbench-tab="products">货品与异常</button>
-          <button type="button" data-pr-workbench-tab="promotion">推广</button>
-          <button type="button" data-pr-workbench-tab="market">市场监控</button>
+          <button type="button" class="is-active" data-pr-workbench-tab="conclusion">复盘结论</button>
+          <button type="button" data-pr-workbench-tab="diagnosis">拆因分析</button>
           <button type="button" data-pr-workbench-tab="execution">计划与动作</button>
-          <button type="button" data-pr-workbench-tab="matrix">指标矩阵</button>
-          <button type="button" data-pr-workbench-tab="category">类目拆解</button>
-          <button type="button" data-pr-workbench-tab="history">历史与口径</button>
+          <button type="button" data-pr-workbench-tab="reference">数据参考</button>
         </nav>
 
         <section class="pr-workbench-panel is-active" data-pr-workbench-panel="conclusion">
@@ -84,16 +80,14 @@
           <section class="pr-sections" data-pr-sections aria-label="复盘结论"></section>
         </section>
 
-        <section class="pr-workbench-panel" data-pr-workbench-panel="products">
+        <!-- 拆因分析：货品 → 推广 → 市场 递进阅读，一次滚动看完，不再三个 tab 来回跳。 -->
+        <section class="pr-workbench-panel" data-pr-workbench-panel="diagnosis">
+          <h3 class="pr-diagnosis__heading">① 货品与异常</h3>
           <section class="pr-analysis-grid" data-pr-product-analysis aria-label="货品与异常"></section>
-        </section>
-
-        <section class="pr-workbench-panel" data-pr-workbench-panel="promotion">
+          <h3 class="pr-diagnosis__heading">② 推广投放</h3>
           <section class="pr-analysis-grid" data-pr-channel-analysis aria-label="推广分析"></section>
           <section class="pr-analysis-grid" data-pr-promotion-analysis aria-label="推广效率"></section>
-        </section>
-
-        <section class="pr-workbench-panel" data-pr-workbench-panel="market">
+          <h3 class="pr-diagnosis__heading">③ 市场监控</h3>
           <section class="pr-analysis-grid" data-pr-market-analysis aria-label="市场监控"></section>
         </section>
 
@@ -101,19 +95,18 @@
           <section class="pr-analysis-grid" data-pr-execution-analysis aria-label="计划与动作"></section>
         </section>
 
-        <section class="pr-workbench-panel" data-pr-workbench-panel="matrix" aria-label="指标矩阵">
+        <!-- 数据参考：矩阵 / 类目 / 历史 属查询性质，归并到一个区块。 -->
+        <section class="pr-workbench-panel" data-pr-workbench-panel="reference">
+          <h3 class="pr-diagnosis__heading">指标矩阵（近周期对比）</h3>
           <section class="pr-analysis-grid" data-pr-matrix aria-label="周期指标矩阵"></section>
-        </section>
-
-        <section class="pr-workbench-panel" data-pr-workbench-panel="category" aria-label="类目拆解">
+          <h3 class="pr-diagnosis__heading">类目拆解</h3>
           <section class="pr-analysis-grid" data-pr-category-breakdown aria-label="类目指标拆解"></section>
-        </section>
-
-        <section class="ui-panel pr-history-panel pr-workbench-panel" data-pr-workbench-panel="history" aria-label="历史复盘">
-          <div class="panel__header">
-            <div><h3 class="panel__title">历史复盘</h3><p class="panel__hint">点击任意一期可载入查看或继续编辑。</p></div>
-          </div>
-          <div class="pr-history__list" data-pr-history></div>
+          <section class="ui-panel pr-history-panel" aria-label="历史复盘">
+            <div class="panel__header">
+              <div><h3 class="panel__title">历史复盘</h3><p class="panel__hint">点击任意一期可载入查看或继续编辑。</p></div>
+            </div>
+            <div class="pr-history__list" data-pr-history></div>
+          </section>
         </section>
       </main>
     </div>

@@ -92,6 +92,29 @@
   margin: 0 16px 12px;
 }
 
+/* ------------------------------------------------ 拆因/参考区块的分节标题 */
+/* 拆因分析把货品→推广→市场串成一个递进长页，分节标题承担"读到哪一步"的路标。 */
+.pr-diagnosis__heading {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 18px 0 10px;
+  color: var(--text-primary);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.pr-diagnosis__heading::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border-default);
+}
+
+[data-pr-workbench-panel] > .pr-diagnosis__heading:first-child {
+  margin-top: 0;
+}
+
 /* ------------------------------------------------ 市场监控深链 */
 .pr-market-links {
   display: flex;
@@ -470,6 +493,29 @@
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(168px, 1fr));
   gap: 12px;
+}
+
+/* 「更多指标」折叠条占满整行，展开后的次级网格更紧凑。 */
+.pr-kpi-more {
+  grid-column: 1 / -1;
+}
+
+.pr-kpi-more summary {
+  padding: 6px 10px;
+  border: 1px dashed var(--border-default);
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  font-size: 12px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.pr-kpi-more summary:hover { color: var(--text-primary); border-color: var(--brand); }
+
+.pr-kpi-grid--rest {
+  margin-top: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 8px;
 }
 
 .pr-kpi {

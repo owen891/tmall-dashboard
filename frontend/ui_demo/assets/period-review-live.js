@@ -358,10 +358,10 @@
       if (!tags.includes(tag)) tags.push(tag);
     });
     const facts = h('div', { class: 'pr-diagnostic-facts' },
-      h('div', null, h('span', { text: '本期 GSV' }), h('strong', { text: safeMetric(row.gsv, 'money') })),
-      h('div', null, h('span', { text: 'GSV 占比' }), h('strong', { text: share === null ? '不可判断' : `${(share * 100).toFixed(2)}%` })),
+      h('div', null, h('span', { text: '本期销售额' }), h('strong', { text: safeMetric(row.gsv, 'money') })),
+      h('div', null, h('span', { text: '销售额占比' }), h('strong', { text: share === null ? '不可判断' : `${(share * 100).toFixed(2)}%` })),
       h('div', null, h('span', { text: '净销售额' }), h('strong', { text: safeMetric(row.net_sales, 'money') })),
-      withDelta ? h('div', null, h('span', { text: '上期 GSV' }), h('strong', { text: safeMetric(row.prev_gsv, 'money') })) : null,
+      withDelta ? h('div', null, h('span', { text: '上期销售额' }), h('strong', { text: safeMetric(row.prev_gsv, 'money') })) : null,
       withDelta ? h('div', null, h('span', { text: '变化金额' }), h('strong', { text: safeMetric(row.delta, 'money', '不可判断') })) : null,
       withDelta ? h('div', null, h('span', { text: '变化比例' }), h('strong', { text: rate === null ? '不可判断' : `${(rate * 100).toFixed(2)}%` })) : null,
     );
@@ -374,8 +374,8 @@
     );
     const evidence = h('ul', { class: 'pr-diagnostic-evidence' },
       h('li', { text: withDelta
-        ? `系统依据：本期 GSV ${safeMetric(row.gsv, 'money')}，上期 GSV ${safeMetric(row.prev_gsv, 'money', '不可判断')}，变化比例 ${rate === null ? '不可判断' : `${(rate * 100).toFixed(2)}%`}`
-        : `系统依据：本期 GSV ${safeMetric(row.gsv, 'money')}，在当前返回的销售 TOP 列表中排名靠前` }),
+        ? `系统依据：本期销售额 ${safeMetric(row.gsv, 'money')}，上期销售额 ${safeMetric(row.prev_gsv, 'money', '不可判断')}，变化比例 ${rate === null ? '不可判断' : `${(rate * 100).toFixed(2)}%`}`
+        : `系统依据：本期销售额 ${safeMetric(row.gsv, 'money')}，在当前返回的销售 TOP 列表中排名靠前` }),
       h('li', { text: '当前上下文未提供完整的访客、转化、客单价拆解，系统不直接推断具体原因。' }),
     );
     const evidenceItems = evidence.querySelectorAll('li');
@@ -394,7 +394,7 @@
     const unknownFacts = diagnosticList('待补充数据', row.unknowns || [], '当前没有待补充数据。');
     const form = h('form', { class: 'pr-action-form' });
     form.append(
-      actionField('动作目的', 'purpose_note', 'textarea', withDelta ? `${row.title || row.product_id} GSV 下滑，需制定恢复动作` : `${row.title || row.product_id} 销售贡献跟进`, true),
+      actionField('动作目的', 'purpose_note', 'textarea', withDelta ? `${row.title || row.product_id} 销售额下滑，需制定恢复动作` : `${row.title || row.product_id} 销售贡献跟进`, true),
       actionField('动作类型', 'action_type', 'text', withDelta ? '排查并改善商品表现' : '维护销售表现', true),
       actionField('动作详情', 'action_detail', 'textarea', '', true),
       h('div', { class: 'pr-action-form__grid' },
@@ -529,8 +529,8 @@
   // 周期内分解表（月复盘=月内分周，周复盘=期内按日），来自用户月复盘框架：
   // 品类汇总的销售/利润指标要有周维度表格方便对比。
   const BREAKDOWN_COLUMNS = [
-    ['gsv', 'GSV', 'money'],
-    ['net_sales', '净销售', 'money'],
+    ['gsv', '销售额', 'money'],
+    ['net_sales', '净销售额', 'money'],
     ['profit', '利润', 'money'],
     ['visitors', '访客', 'number'],
     ['conversion', '转化率', 'percent'],
@@ -615,18 +615,18 @@
     els.commandCenter.hidden = false;
     els.commandCenter.replaceChildren(
       // 三大指标完成率卡（对齐月复盘 XMind「完成情况分析」）：
-      // 净销售 / 净利润 / 净费比，口径与复盘设置目标同源。
+      // 净销售额 / 净利润 / 净费比，口径与复盘设置目标同源。
       metricCards.renderMetricCards(),
       // 紧凑状态条：风险与执行信号一行带过，点击直达对应工作区。
       h('div', { class: 'pr-command-center__strip' },
-        h('button', { type: 'button', class: 'pr-strip-item', onclick: () => activateWorkbench('products') },
+        h('button', { type: 'button', class: 'pr-strip-item', onclick: () => activateWorkbench('diagnosis') },
           stateTag(dangerCount + blockedCount ? '需关注' : '正常', dangerCount + blockedCount ? 'warning' : 'good'),
           h('span', { text: `风险 ${dangerCount + blockedCount}（异常 ${dangerCount} · 阻塞 ${blockedCount}）` })),
         h('button', { type: 'button', class: 'pr-strip-item', onclick: () => activateWorkbench('execution') },
           stateTag(plannedCount ? '进行中' : '空闲', plannedCount ? 'info' : 'good'),
           h('span', { text: `待落地动作 ${plannedCount}` })),
-        h('button', { type: 'button', class: 'pr-strip-item', onclick: () => activateWorkbench('market') },
-          h('span', { text: '市场监控 →' })),
+        h('button', { type: 'button', class: 'pr-strip-item', onclick: () => activateWorkbench('diagnosis') },
+          h('span', { text: '拆因分析 →' })),
       ),
     );
     // 周期摘要写到页头说明位，替代驾驶舱内部标题区，减少一层重复信息。
@@ -639,10 +639,10 @@
   }
 
   // ------------------------------------------------- 单品周趋势预览（弹窗）
-  // 点击货品榜「趋势」按钮：近 8 周 GSV/访客/转化 SVG 折线，无图表库依赖。
+  // 点击货品榜「趋势」按钮：近 8 周销售额/访客/转化 SVG 折线，无图表库依赖。
   let trendDialog = null;
   const TREND_METRICS = [
-    ['gsv', 'GSV（元）', 'money'],
+    ['gsv', '销售额（元）', 'money'],
     ['visitors', '访客数', 'number'],
     ['conversion', '转化率', 'percent'],
   ];
@@ -734,7 +734,7 @@
   function problemItemsPanel(problemItems) {
     const items = problemItems || [];
     if (!items.length) {
-      return analysisPanel('问题单品清单', '跨榜合并去重（下滑 / 亏损 / 高费比且 GSV 占比>1%），从看数到生成动作的最短路径。',
+      return analysisPanel('问题单品清单', '跨榜合并去重（下滑 / 亏损 / 高费比且 销售额占比>1%），从看数到生成动作的最短路径。',
         null, '本期没有命中问题条件的商品。');
     }
     const rows = items.map((row) => {
@@ -763,8 +763,8 @@
       h('thead', null, h('tr', null,
         h('th', { text: '商品' }),
         h('th', { text: '问题来源' }),
-        h('th', { class: 'num', text: 'GSV' }),
-        h('th', { class: 'num', text: 'GSV 占比' }),
+        h('th', { class: 'num', text: '销售额' }),
+        h('th', { class: 'num', text: '销售额占比' }),
         h('th', { class: 'num', text: '经营利润' }),
         h('th', { class: 'num', text: '推广花费' }),
         h('th', { class: 'num', text: '费比' }),
@@ -772,7 +772,7 @@
       )),
       h('tbody', null, ...rows)));
     return analysisPanel('问题单品清单',
-      `跨榜合并去重（下滑 / 亏损 / 费比>30% 且 GSV 占比>1%），共 ${items.length} 个商品待处理。`,
+      `跨榜合并去重（下滑 / 亏损 / 费比>30% 且 销售额占比>1%），共 ${items.length} 个商品待处理。`,
       table, null);
   }
 
@@ -784,12 +784,12 @@
     const board = productColumns.productBoardPanel;
     els.productAnalysis.replaceChildren(
       problemItemsPanel(products.problem_items),
-      board('销售贡献 TOP10', '按本期 GSV 排序，先识别需要保住的核心商品。', products.top, 'top', '本期没有正向销售商品。'),
-      board('下滑商品 TOP10', '按相对上期的 GSV 变化排序，作为异常诊断入口。', products.decline, 'decline', '缺少可比周期数据。'),
+      board('销售贡献 TOP10', '按本期销售额 排序，先识别需要保住的核心商品。', products.top, 'top', '本期没有正向销售商品。'),
+      board('下滑商品 TOP10', '按相对上期的销售额变化排序，作为异常诊断入口。', products.decline, 'decline', '缺少可比周期数据。'),
       board('付费单品 TOP10', '按本期推广花费排序，看钱主要花在哪些商品上（广告-单品维度入口）。', products.paid, 'paid', '本期没有推广花费记录。'),
       board('盈利 TOP10', '按本期经营利润（支付预估）排序的赚钱商品。', products.profit, 'profit', '本期没有正利润商品。'),
       board('亏损 TOP10', '按本期经营利润倒序，优先排查亏损原因。', products.loss, 'loss', '本期没有亏损商品。'),
-      board('新品 · 净销售 TOP10', '最近 60 天上架的商品按净销售额排序（新品定义=周期结束日前 60 天内上架）。', products.new, 'new', '最近 60 天上架的商品暂无销售。'),
+      board('新品 · 净销售额 TOP10', '最近 60 天上架的商品按净销售额排序（新品定义=周期结束日前 60 天内上架）。', products.new, 'new', '最近 60 天上架的商品暂无销售。'),
       board('新品 · 付费 TOP10', '最近 60 天上架的商品按推广花费排序。', products.new_paid, 'new_paid', '最近 60 天上架的商品暂无推广花费。'),
     );
   }
@@ -1386,7 +1386,7 @@
           h('div', null, h('span', { text: '验证复盘' }), h('strong', { text: verificationPeriod })),
           h('div', null, h('span', { text: '执行日期' }), h('strong', { text: row.executed_at || '--' })),
         ),
-        snapshot ? h('p', { class: 'pr-material__empty', text: `创建时诊断快照：GSV ${safeMetric(snapshot.gsv, 'money')} · 上期 ${safeMetric(snapshot.prev_gsv, 'money')} · 变化 ${safeMetric(snapshot.change_rate, 'percent')}` }) : null,
+        snapshot ? h('p', { class: 'pr-material__empty', text: `创建时诊断快照：销售额 ${safeMetric(snapshot.gsv, 'money')} · 上期 ${safeMetric(snapshot.prev_gsv, 'money')} · 变化 ${safeMetric(snapshot.change_rate, 'percent')}` }) : null,
       ),
       h('div', { class: 'pr-diagnostic-block' },
         h('h4', { text: '观察结果' }),
@@ -1532,14 +1532,13 @@
   }
 
   function activateWorkbench(key) {
-    // 切走货品页时字段设置浮层失去锚点，先收起。
+    // 切走货品区时字段设置对话框失去锚点，先收起。
     productColumns.closeProductFieldPopover();
     document.querySelectorAll('[data-pr-workbench-tab]').forEach((tab) => tab.classList.toggle('is-active', tab.dataset.prWorkbenchTab === key));
     document.querySelectorAll('[data-pr-workbench-panel]').forEach((panel) => panel.classList.toggle('is-active', panel.dataset.prWorkbenchPanel === key));
-    // 矩阵 / 类目拆解若还没拿到数据（首次加载失败、或后端刚重启），
+    // 数据参考区（矩阵 / 类目拆解）若还没拿到数据（首次加载失败、或后端刚重启），
     // 切到这个页签时就地补拉一次，用户不必整页刷新。
-    if (key === 'matrix' && !state.matrix) reloadMatrixPanels();
-    if (key === 'category' && !state.categoryBreakdown) reloadMatrixPanels();
+    if (key === 'reference' && (!state.matrix || !state.categoryBreakdown)) reloadMatrixPanels();
   }
 
   function renderWorkbench(context, review) {
@@ -1560,13 +1559,28 @@
       grid.append(h('p', { class: 'pr-material__empty', text: '本期暂无指标数据。' }));
       return grid;
     }
-    metrics.items.forEach((item) => {
+    // 核心指标前置（结果 + 流量转化），其余收进「更多指标」：
+    // 14 项 KPI 墙会把六段复盘挤到三屏外，复盘页的首要动作是写结论不是看遍指标。
+    const CORE_KEYS = ['gsv', 'net_sales', 'visitors', 'conversion', 'buyers', 'aov', 'ad_spend', 'ad_ratio'];
+    const core = metrics.items.filter((item) => CORE_KEYS.includes(item.key));
+    const rest = metrics.items.filter((item) => !CORE_KEYS.includes(item.key));
+    core.forEach((item) => {
       grid.append(h('div', { class: 'pr-kpi' },
         h('div', { class: 'pr-kpi__label', text: item.label }),
         h('div', { class: 'pr-kpi__value', text: formatValue(item.value, item.format) }),
         deltaNode(item),
       ));
     });
+    if (rest.length) {
+      grid.append(h('details', { class: 'pr-kpi-more' },
+        h('summary', { text: `更多指标（${rest.length}）` }),
+        h('div', { class: 'pr-kpi-grid pr-kpi-grid--rest' },
+          ...rest.map((item) => h('div', { class: 'pr-kpi' },
+            h('div', { class: 'pr-kpi__label', text: item.label }),
+            h('div', { class: 'pr-kpi__value', text: formatValue(item.value, item.format) }),
+            deltaNode(item),
+          )))));
+    }
     return grid;
   }
 
@@ -1589,7 +1603,7 @@
   // 输入口径换算、达成率配色、即时重算的状态与行为都归该模块。
   const targetCards = window.createTargetCards({ h, formatValue, state, els });
 
-  // 三大指标完成率卡（净销售/净利润/净费比）已拆至 pages/period-review/metric-cards.js：
+  // 三大指标完成率卡（净销售额/净利润/净费比）已拆至 pages/period-review/metric-cards.js：
   // 口径与复盘设置目标同源，完成率与配色方向沿用后端 _target_rows。
   const metricCards = window.createMetricCards({ h, state });
 
@@ -1868,7 +1882,7 @@
         const wrap = h('div', { class: 'pr-materials' });
         const top = productColumns.renderProductTable(context.products && context.products.top, false);
         const decline = productColumns.renderProductTable(context.products && context.products.decline, true);
-        wrap.append(materialBlock('GSV TOP10', top, '本期没有正向销售商品。'));
+        wrap.append(materialBlock('销售额 TOP10', top, '本期没有正向销售商品。'));
         wrap.append(materialBlock('环比下滑 TOP10', decline, '缺少上期可比数据。'));
         return wrap;
       }
