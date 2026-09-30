@@ -312,6 +312,55 @@
   font-size: 12px;
 }
 
+/* ------------------------------------------------ 目标差距归因面板 */
+.pr-gap-panel .panel__hint {
+  color: var(--text-muted);
+}
+
+.pr-gap__headline {
+  margin: 0;
+  font-size: 14px;
+  color: var(--text-primary);
+}
+
+.pr-gap__decompose {
+  margin-top: 10px;
+}
+
+.pr-gap__hint {
+  margin: 8px 0 6px;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.pr-gap__decompose .pr-table {
+  width: auto;
+  min-width: 420px;
+}
+
+.pr-gap__clue-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.pr-gap__clue-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 6px 10px;
+  background: var(--surface-muted);
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.pr-gap__clue-list .pr-anchor-link {
+  flex: 0 0 auto;
+  font-size: 12px;
+}
+
 /* 驾驶舱紧凑状态条：风险/动作信号一行带过。 */
 .pr-command-center__strip {
   display: flex;

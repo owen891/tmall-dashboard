@@ -27,6 +27,7 @@
     overview: document.querySelector('[data-pr-overview]'),
     sections: document.querySelector('[data-pr-sections]'),
     commandCenter: document.querySelector('[data-pr-command-center]'),
+    gapAttribution: document.querySelector('[data-pr-gap-attribution]'),
     productAnalysis: document.querySelector('[data-pr-product-analysis]'),
     executionAnalysis: document.querySelector('[data-pr-execution-analysis]'),
     channelAnalysis: document.querySelector('[data-pr-channel-analysis]'),
@@ -1568,6 +1569,7 @@
 
   function renderWorkbench(context, review) {
     renderCommandCenter(context);
+    gapAttribution.renderPanel(context, els.gapAttribution);
     renderProductAnalysis(context);
     renderExecutionAnalysis(context);
     renderChannelAnalysis(context);
@@ -1636,6 +1638,10 @@
   // 复盘导出 Markdown 已拆至 pages/period-review/review-export.js：
   // 组装三大指标 + 六段三段式 + 问题单品 + 动作清单，纯前端 Blob 下载。
   const reviewExport = window.createReviewExport({ h, state });
+
+  // 目标差距归因已拆至 pages/period-review/gap-attribution.js：
+  // 三因子连环替代分解（流量×转化×客单）+ 归因线索，回答「目标为啥没完成」。
+  const gapAttribution = window.createGapAttribution({ h, state, formatValue, activateWorkbench });
 
   // 叶子类目近 3 周对比看板已拆至 pages/period-review/leaf-board.js：
   // 看板自建 #leaf-weekly-board 节点，格式化助手与加载器都归该模块。
