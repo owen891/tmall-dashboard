@@ -35,7 +35,6 @@ from api.catalog_mutations_api import catalog_mutations_bp
 from api.overview_events_api import overview_events_bp
 from api.schedules_api import schedules_bp
 from api.import_scans_api import import_scans_bp
-from api.manage_api import manage_bp
 from api.sycm_api import sycm_bp
 from api.collect_api import collect_bp
 from api.data_integration_api import data_integration_bp
@@ -171,7 +170,6 @@ def create_app(config=None):
     app.register_blueprint(overview_events_bp)
     app.register_blueprint(schedules_bp)
     app.register_blueprint(import_scans_bp)
-    app.register_blueprint(manage_bp)
     app.register_blueprint(sycm_bp)
     app.register_blueprint(collect_bp)
     app.register_blueprint(data_integration_bp)

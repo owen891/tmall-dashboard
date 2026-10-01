@@ -6,7 +6,7 @@ import yaml
 from flask import current_app, g, has_app_context
 
 PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 
 _config_cache = None
 
@@ -1180,46 +1180,10 @@ def _run_init_migrations(conn):
         UNIQUE(date, keyword)
     )''')
 
-    # 任务看板
-    conn.execute('''CREATE TABLE IF NOT EXISTS task_items (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        title TEXT NOT NULL,
-        description TEXT DEFAULT '',
-        status TEXT DEFAULT 'todo',
-        priority TEXT DEFAULT 'P2',
-        assignee TEXT DEFAULT '',
-        due_date TEXT,
-        created_at TEXT DEFAULT (datetime('now')),
-        updated_at TEXT DEFAULT (datetime('now'))
-    )''')
-
-    # 用户KPI
-    conn.execute('''CREATE TABLE IF NOT EXISTS user_kpis (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        user_name TEXT NOT NULL,
-        period TEXT,
-        target_gmv REAL DEFAULT 0,
-        actual_gmv REAL DEFAULT 0,
-        achievement_rate REAL DEFAULT 0,
-        rating TEXT DEFAULT 'C',
-        created_at TEXT DEFAULT (datetime('now')),
-        updated_at TEXT DEFAULT (datetime('now'))
-    )''')
-
+    # manage 退役（F2）：任务看板/用户KPI/定时任务三表已随 api/manage_api.py 下线，
+    # 不再建表；存量库由 user_version 盖章前的清理步骤移除（归档件在
+    # archive/manage-api-20261002/，三表实测 0 行）。
     cursor.executescript('''
-    CREATE TABLE IF NOT EXISTS scheduled_tasks (
-        id INTEGER PRIMARY KEY,
-        task_name TEXT,
-        task_type TEXT DEFAULT 'data_import',
-        cron_expr TEXT,
-        file_pattern TEXT,
-        enabled INTEGER DEFAULT 1,
-        last_run TEXT,
-        next_run TEXT,
-        status TEXT DEFAULT 'active',
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    );
-
     CREATE TABLE IF NOT EXISTS collector_runs (
         id TEXT PRIMARY KEY,
         source_key TEXT NOT NULL,
@@ -1356,8 +1320,6 @@ def _run_init_migrations(conn):
 
     CREATE INDEX IF NOT EXISTS idx_keyword_metrics_date ON keyword_metrics(date);
     CREATE INDEX IF NOT EXISTS idx_keyword_metrics_category ON keyword_metrics(category);
-    CREATE INDEX IF NOT EXISTS idx_task_items_status ON task_items(status);
-    CREATE INDEX IF NOT EXISTS idx_user_kpis_period ON user_kpis(period);
     ''')
 
 
@@ -1726,6 +1688,16 @@ def _run_init_migrations(conn):
     for col, col_def in new_weekly_cols.items():
         if col not in existing_weekly_cols:
             cursor.execute(f'ALTER TABLE weekly_data ADD COLUMN {col} {col_def}')
+
+    # manage 退役（F2）存量库清理：三表归档件在 archive/manage-api-20261002/
+    # （DDL + 0 行实测记录），此处幂等移除已无代码引用的悬空表。
+    cursor.executescript('''
+    DROP INDEX IF EXISTS idx_task_items_status;
+    DROP INDEX IF EXISTS idx_user_kpis_period;
+    DROP TABLE IF EXISTS scheduled_tasks;
+    DROP TABLE IF EXISTS user_kpis;
+    DROP TABLE IF EXISTS task_items;
+    ''')
 
     cursor.execute(f'PRAGMA user_version = {SCHEMA_VERSION}')
     cursor.execute('''CREATE TABLE IF NOT EXISTS schema_migrations (
