@@ -28,6 +28,46 @@
     marketItemMode: 'hot',
     marketModalRequest: 0,
   };
+  let marketTrendDrawer = null;
+
+  function initMarketTrendDrawer() {
+    if (marketTrendDrawer) return;
+    const modal = $('[data-market-trend-modal]');
+    const dialog = modal?.querySelector('.market-trend-modal__dialog');
+    const header = dialog?.querySelector('.market-trend-modal__header');
+    if (!window.TmallUI?.detailDrawer || !dialog || !header) return;
+    const body = document.createElement('div');
+    body.className = 'market-trend-modal__drawer-body';
+    [...dialog.children].filter((node) => node !== header).forEach((node) => body.append(node));
+    marketTrendDrawer = window.TmallUI.detailDrawer({
+      title: '趋势详情',
+      description: '正在读取…',
+      body,
+      size: 'lg',
+      onClose: () => document.body.classList.remove('market-modal-open'),
+    });
+    const legacyTitle = header.querySelector('[data-market-modal-title]');
+    const legacyMeta = header.querySelector('[data-market-modal-meta]');
+    legacyTitle?.removeAttribute('data-market-modal-title');
+    legacyMeta?.removeAttribute('data-market-modal-meta');
+    if (legacyTitle) legacyTitle.id = 'market-trend-modal-legacy-title';
+    dialog.setAttribute('aria-labelledby', 'market-trend-modal-legacy-title');
+    const drawerTitle = marketTrendDrawer.node.querySelector('h2');
+    const drawerMeta = marketTrendDrawer.node.querySelector('.ui-drawer__copy p');
+    if (drawerTitle) {
+      drawerTitle.dataset.marketModalTitle = '';
+      drawerTitle.id = 'market-trend-modal-title';
+    }
+    if (drawerMeta) drawerMeta.dataset.marketModalMeta = '';
+  }
+
+  function closeMarketTrendModal() {
+    marketTrendDrawer?.close();
+    const modal = $('[data-market-trend-modal]');
+    if (modal) modal.hidden = true;
+    document.body.classList.remove('market-modal-open');
+  }
+
   let initialized = false;
   const selectedDate = () => window.TmallDateRange?.getState?.().endDate || '';
   const withDate = (url) => {
@@ -401,7 +441,8 @@
     const requestId = ++state.marketModalRequest;
     const endpoint = kind === 'shop' ? '/api/sycm/market/shops/entity-trend?shop_id=' : '/api/sycm/market/items/entity-trend?item_id=';
     if (!modal) return;
-    modal.hidden = false;
+    if (marketTrendDrawer) marketTrendDrawer.open();
+    else modal.hidden = false;
     document.body.classList.add('market-modal-open');
     if (title) title.textContent = '趋势详情';
     if (meta) meta.textContent = '正在读取…';
@@ -461,16 +502,12 @@
         else state.marketItemPage = Number(pageButton.dataset.marketPage);
         renderMarketEntityLists();
       }
-      if (event.target.closest('[data-market-trend-close]')) {
-        $('[data-market-trend-modal]').hidden = true;
-        document.body.classList.remove('market-modal-open');
-      }
+      if (event.target.closest('[data-market-trend-close]')) closeMarketTrendModal();
     });
     document.addEventListener('keydown', event => {
-      if (event.key === 'Escape' && !$('[data-market-trend-modal]')?.hidden) {
-        $('[data-market-trend-modal]').hidden = true;
-        document.body.classList.remove('market-modal-open');
-      }
+      const legacyModal = $('[data-market-trend-modal]');
+      const drawerOpen = Boolean(marketTrendDrawer?.node && !marketTrendDrawer.node.hidden);
+      if (event.key === 'Escape' && (drawerOpen || (legacyModal && !legacyModal.hidden))) closeMarketTrendModal();
     });
     $$('[data-market-mode-kind]').forEach(button => button.addEventListener('click', () => {
       const kind = button.dataset.marketModeKind;
@@ -947,6 +984,7 @@ async function init() {
       await loadMarketEntities();
       await loadMarketSnapshots();
 
+      initMarketTrendDrawer();
       window.lucide?.createIcons();
     } catch (e) {
       console.error('市场分析加载失败:', e);
@@ -958,9 +996,7 @@ async function init() {
 
   window.addEventListener('tmall:date-range-change', () => {
     state.marketModalRequest += 1;
-    const modal = $('[data-market-trend-modal]');
-    if (modal) modal.hidden = true;
-    document.body.classList.remove('market-modal-open');
+    closeMarketTrendModal();
     init();
   });
 

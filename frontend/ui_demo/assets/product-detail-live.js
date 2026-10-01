@@ -807,6 +807,39 @@
   const drillMetricLabels = { net_sales: '净销售额', payment_amount: '支付金额', payment_conversion_rate: '支付转化率', expense_ratio: '费比', average_order_value: '客单价' };
   const drillMetricFormat = { net_sales: money, payment_amount: money, payment_conversion_rate: percent, expense_ratio: percent, average_order_value: money };
   let drillCurrentMetric = null, drillCurrentPeriod = 'daily', drillChart = null;
+  let drillDrawer = null;
+
+  // Prefer the shared NUI drawer while keeping the legacy modal as a fallback.
+  function initDrillDrawer() {
+    const modal = document.querySelector('[data-drill-modal]');
+    const body = modal?.querySelector('.drill-modal__body');
+    const legacyTitle = modal?.querySelector('.drill-modal__header [data-drill-title]');
+    const legacyDialog = modal?.querySelector('.drill-modal__dialog');
+    if (!window.TmallUI?.detailDrawer || !body) return;
+    drillDrawer = window.TmallUI.detailDrawer({
+      title: '指标下钻',
+      body,
+      size: 'lg',
+      onClose: disposeDrillChart,
+    });
+    if (legacyTitle) {
+      legacyTitle.removeAttribute('data-drill-title');
+      legacyTitle.id = 'drill-modal-legacy-title';
+    }
+    if (legacyDialog) legacyDialog.setAttribute('aria-labelledby', 'drill-modal-legacy-title');
+    const heading = drillDrawer.node.querySelector('h2');
+    if (heading) {
+      heading.dataset.drillTitle = '';
+      heading.id = 'drill-modal-title';
+    }
+  }
+
+  function disposeDrillChart() {
+    if (drillChart) {
+      drillChart.dispose();
+      drillChart = null;
+    }
+  }
 
   function getDrillValue(item, metric) {
     if (metric === 'net_sales') return item.net_sales;
@@ -847,7 +880,7 @@
       stats.innerHTML = '<div class="drill-modal__stat" style="grid-column:1/-1;text-align:center;color:var(--text-tertiary);">暂无数据</div>';
     }
     const chartEl = document.querySelector('[data-drill-chart]');
-    if (drillChart) { drillChart.dispose(); drillChart = null; }
+    disposeDrillChart();
     if (window.echarts && data.length) {
       drillChart = echarts.init(chartEl);
       drillChart.setOption({
@@ -883,16 +916,35 @@
 
   function renderDrillModal(metric) {
     drillCurrentMetric = metric;
-    document.querySelector('[data-drill-title]').textContent = (drillMetricLabels[metric] || metric) + ' · 趋势下钻';
-    document.querySelector('[data-drill-modal]').hidden = false;
+    const title = (drillMetricLabels[metric] || metric) + ' · 趋势下钻';
+    const titleNode = document.querySelector('[data-drill-title]');
+    if (titleNode) titleNode.textContent = title;
+    if (drillDrawer) {
+      const drawerTitle = drillDrawer.node.querySelector('h2');
+      if (drawerTitle) drawerTitle.textContent = title;
+      drillDrawer.open();
+    } else {
+      const modal = document.querySelector('[data-drill-modal]');
+      if (modal) modal.hidden = false;
+    }
     renderDrillContent();
   }
-  function closeDrillModal() { document.querySelector('[data-drill-modal]').hidden = true; if (drillChart) { drillChart.dispose(); drillChart = null; } }
+  function closeDrillModal() {
+    if (drillDrawer) drillDrawer.close();
+    const modal = document.querySelector('[data-drill-modal]');
+    if (modal) modal.hidden = true;
+    disposeDrillChart();
+  }
 
+  initDrillDrawer();
   document.querySelectorAll('[data-drill-metric]').forEach(function(card) { card.addEventListener('click', function() { renderDrillModal(card.dataset.drillMetric); }); });
   var closeBtn = document.querySelector('[data-drill-close]'); if (closeBtn) closeBtn.addEventListener('click', closeDrillModal);
-  var modal = document.querySelector('[data-drill-modal]'); if (modal) modal.addEventListener('click', function(e) { if (e.target.dataset.drillModal !== undefined) closeDrillModal(); });
-  document.addEventListener('keydown', function(e) { if (e.key === 'Escape' && !document.querySelector('[data-drill-modal]').hidden) closeDrillModal(); });
+  var modal = document.querySelector('[data-drill-modal]'); if (modal) modal.addEventListener('click', function(e) { if (e.target.dataset.drillModal !== undefined || e.target.dataset.drillOverlay !== undefined) closeDrillModal(); });
+  document.addEventListener('keydown', function(e) {
+    const legacyModal = document.querySelector('[data-drill-modal]');
+    const drawerOpen = Boolean(drillDrawer?.node && !drillDrawer.node.hidden);
+    if (e.key === 'Escape' && (drawerOpen || (legacyModal && !legacyModal.hidden))) closeDrillModal();
+  });
   document.querySelectorAll('[data-drill-period]').forEach(function(tab) { tab.addEventListener('click', function() {
     document.querySelectorAll('[data-drill-period]').forEach(function(t) { t.classList.remove('drill-modal__tab--active'); });
     tab.classList.add('drill-modal__tab--active');
