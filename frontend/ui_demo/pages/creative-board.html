@@ -22,10 +22,9 @@
       <div class="cb-toolbar ui-filter-toolbar ui-table-toolbar" data-cb-categories><input class="input cb-search" data-cb-search placeholder="搜索商品 / ID" aria-label="搜索单品"></div>
 
       <section class="ui-panel cb-products-panel"><div class="panel__header cb-products-header"><div><h3 class="panel__title">单品列表</h3><p class="panel__hint">点击行查看该单品的素材表现</p></div><button class="ui-button" type="button" data-cb-columns-open><i data-lucide="settings-2"></i><span>列设置</span></button></div><div class="ui-table-wrap"><table class="ui-data-table cb-product-table"><thead><tr data-cb-table-head></tr></thead><tbody data-cb-products><tr><td colspan="8">加载中…</td></tr></tbody></table></div></section>
-      <dialog class="modal-form cb-detail-dialog" data-cb-detail-dialog data-modal-kind="detail" aria-labelledby="cb-detail-title">
-        <div class="modal-form__header"><div><h3 id="cb-detail-title" data-cb-detail-title>素材明细</h3><p data-cb-detail-subtitle></p></div><button class="ui-button ui-button--ghost" type="button" data-cb-detail-close aria-label="关闭素材明细"><i data-lucide="x"></i></button></div>
+      <template data-cb-detail-template>
         <div class="modal-form__body cb-detail-dialog__body"><div class="cb-detail-summary" data-cb-detail-summary></div><div class="cb-detail-list" data-cb-detail-rows></div></div>
-      </dialog>
+      </template>
       <dialog class="modal-form cb-image-dialog" data-cb-image-dialog data-modal-kind="detail" aria-labelledby="cb-image-title"><div class="modal-form__header"><h3 id="cb-image-title">素材预览</h3><button class="ui-button ui-button--ghost" type="button" data-cb-image-close aria-label="关闭图片预览"><i data-lucide="x"></i></button></div><div class="cb-image-dialog__body"><img data-cb-image-preview alt="素材预览"></div></dialog>
       <dialog class="modal-form ui-field-selector-dialog cb-columns-dialog" data-cb-columns-dialog data-modal-kind="config" aria-labelledby="cb-columns-title" hidden>
         <div class="modal-form__header"><div><h3 id="cb-columns-title">列设置</h3><p class="panel__hint">选择单品列表中需要展示的字段</p></div><button class="ui-button ui-button--ghost" type="button" data-cb-columns-close aria-label="关闭列设置"><i data-lucide="x"></i></button></div>

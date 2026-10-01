@@ -89,9 +89,25 @@
     return creatives.map((creative) => { const badges = []; if (bestCtr?.creative_id === creative.creative_id) badges.push('<span class="cb-creative-row__badge">CTR最高</span>'); if (bestCvr?.creative_id === creative.creative_id) badges.push('<span class="cb-creative-row__badge cb-creative-row__badge--cvr">CVR最高</span>'); if (bestCart?.creative_id === creative.creative_id) badges.push('<span class="cb-creative-row__badge cb-creative-row__badge--cart">加购成本最低</span>'); return `<div class="cb-creative-row">${creative.image_url ? `<button class="cb-creative-image" type="button" data-cb-image="${esc(creative.image_url)}" aria-label="放大素材图片"><img class="cb-creative-row__thumb" src="${esc(creative.image_url)}" alt="" loading="lazy"></button>` : '<span class="cb-creative-row__thumb"></span>'}<div class="cb-creative-row__identity"><strong title="${esc(creative.creative_name || creative.creative_id)}">${esc(creative.creative_name || creative.creative_id)}</strong><small>${creative.first_date ? `${creative.first_date} ~ ${creative.last_date} 有投放` : '暂无投放记录'}</small><span>${badges.join('')}</span></div><div class="cb-creative-row__stats"><div class="num">点击率<b>${percent(creative.ctr)}</b></div><div class="num">转化率<b>${percent(creative.cvr)}</b></div><div class="num">加购率<b>${percent(creative.cart_rate)}</b></div><div class="num">点击量<b>${Number(creative.clicks || 0).toLocaleString('zh-CN')}</b></div><div class="num">花费<b>${moneyCompact(creative.ad_spend)}</b></div><div class="num">ROI<b data-tone="${roiTone(creative.roi)}">${ratio(creative.roi)}</b></div></div></div>`; }).join('');
   }
 
+  let detailDrawer = null;
+
+  function bindDetailDrawer() {
+    const template = $('[data-cb-detail-template]');
+    if (!template || !window.TmallUI?.detailDrawer || detailDrawer) return;
+    detailDrawer = window.TmallUI.detailDrawer({ title: '素材明细', size: 'lg' });
+    detailDrawer.body.append(template.content.cloneNode(true));
+  }
+
   function openDetail(productId) {
-    const product = state.products.find((item) => String(item.product_id) === String(productId)); const dialog = $('[data-cb-detail-dialog]'); if (!product || !dialog) return;
-    $('[data-cb-detail-title]').textContent = product.title || product.product_id; $('[data-cb-detail-subtitle]').textContent = `${product.product_id} · ${product.shop_label || '未分类'} · ${product.creatives?.length || 0} 个素材`; $('[data-cb-detail-summary]').innerHTML = `<span>点击率 <b>${percent(product.ctr)}</b></span><span>加购率 <b>${percent(product.cart_rate)}</b></span><span>累计花费 <b>${money(product.ad_spend)}</b></span><span>整体 ROI <b data-tone="${roiTone(product.roi)}">${ratio(product.roi)}</b></span>`; $('[data-cb-detail-rows]').innerHTML = creativeRows(product); dialog.showModal(); window.lucide?.createIcons();
+    const product = state.products.find((item) => String(item.product_id) === String(productId));
+    if (!product || !detailDrawer) return;
+    detailDrawer.node.querySelector('.ui-drawer__copy h2').textContent = product.title || product.product_id;
+    const description = detailDrawer.node.querySelector('.ui-drawer__copy p');
+    if (description) description.textContent = `${product.product_id} · ${product.shop_label || '未分类'} · ${product.creatives?.length || 0} 个素材`;
+    $('[data-cb-detail-summary]', detailDrawer.node).innerHTML = `<span>点击率 <b>${percent(product.ctr)}</b></span><span>加购率 <b>${percent(product.cart_rate)}</b></span><span>累计花费 <b>${money(product.ad_spend)}</b></span><span>整体 ROI <b data-tone="${roiTone(product.roi)}">${ratio(product.roi)}</b></span>`;
+    $('[data-cb-detail-rows]', detailDrawer.node).innerHTML = creativeRows(product);
+    detailDrawer.open();
+    window.lucide?.createIcons();
   }
 
   async function load() {
@@ -111,7 +127,7 @@
       search.addEventListener('input', (event) => { state.search = event.target.value; renderProducts(); syncUrl(); });
     }
     $('[data-cb-products]')?.addEventListener('click', (event) => { const row = event.target.closest('[data-cb-open]'); if (row) openDetail(row.dataset.cbOpen); }); $('[data-cb-products]')?.addEventListener('keydown', (event) => { const row = event.target.closest('[data-cb-open]'); if (row && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); openDetail(row.dataset.cbOpen); } });
-    const dialog = $('[data-cb-detail-dialog]'); dialog?.querySelectorAll('[data-cb-detail-close]').forEach((button) => button.addEventListener('click', () => dialog.close())); dialog?.addEventListener('click', (event) => { if (event.target === dialog) dialog.close(); });
+    bindDetailDrawer();
     const imageDialog = $('[data-cb-image-dialog]'); imageDialog?.querySelector('[data-cb-image-close]')?.addEventListener('click', () => imageDialog.close()); imageDialog?.addEventListener('click', (event) => { if (event.target === imageDialog) imageDialog.close(); });
     document.addEventListener('click', (event) => { const button = event.target.closest('[data-cb-image]'); if (!button || !imageDialog) return; $('[data-cb-image-preview]').src = button.dataset.cbImage; imageDialog.showModal(); });
     setupColumns(); load(); window.addEventListener('tmall:refresh', () => load());
