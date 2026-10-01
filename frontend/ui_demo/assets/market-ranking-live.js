@@ -39,19 +39,15 @@
     const body = document.createElement('div');
     body.className = 'market-trend-modal__drawer-body';
     [...dialog.children].filter((node) => node !== header).forEach((node) => body.append(node));
-    marketTrendDrawer = window.TmallUI.detailDrawer({
-      title: '趋势详情',
-      description: '正在读取…',
-      body,
-      size: 'lg',
-      onClose: () => document.body.classList.remove('market-modal-open'),
-    });
+    // 详情面统一 NUI 抽屉：dialog 壳仅作内容来源；壳上的 data-market-modal-*
+    // 摘下挂到抽屉页眉，openMarketTrendModal 的标题/说明更新才能落到抽屉。
+    marketTrendDrawer = window.TmallUI.detailDrawer({ title: '趋势详情', description: '正在读取…', body, size: 'lg' });
+    marketTrendDrawer.node.setAttribute('data-modal-kind', 'detail');
     const legacyTitle = header.querySelector('[data-market-modal-title]');
     const legacyMeta = header.querySelector('[data-market-modal-meta]');
     legacyTitle?.removeAttribute('data-market-modal-title');
     legacyMeta?.removeAttribute('data-market-modal-meta');
     if (legacyTitle) legacyTitle.id = 'market-trend-modal-legacy-title';
-    dialog.setAttribute('aria-labelledby', 'market-trend-modal-legacy-title');
     const drawerTitle = marketTrendDrawer.node.querySelector('h2');
     const drawerMeta = marketTrendDrawer.node.querySelector('.ui-drawer__copy p');
     if (drawerTitle) {
@@ -63,9 +59,6 @@
 
   function closeMarketTrendModal() {
     marketTrendDrawer?.close();
-    const modal = $('[data-market-trend-modal]');
-    if (modal) modal.hidden = true;
-    document.body.classList.remove('market-modal-open');
   }
 
   let initialized = false;
@@ -441,9 +434,7 @@
     const requestId = ++state.marketModalRequest;
     const endpoint = kind === 'shop' ? '/api/sycm/market/shops/entity-trend?shop_id=' : '/api/sycm/market/items/entity-trend?item_id=';
     if (!modal) return;
-    if (marketTrendDrawer) marketTrendDrawer.open();
-    else modal.hidden = false;
-    document.body.classList.add('market-modal-open');
+    marketTrendDrawer?.open();
     if (title) title.textContent = '趋势详情';
     if (meta) meta.textContent = '正在读取…';
     try {
@@ -502,12 +493,10 @@
         else state.marketItemPage = Number(pageButton.dataset.marketPage);
         renderMarketEntityLists();
       }
-      if (event.target.closest('[data-market-trend-close]')) closeMarketTrendModal();
     });
     document.addEventListener('keydown', event => {
-      const legacyModal = $('[data-market-trend-modal]');
-      const drawerOpen = Boolean(marketTrendDrawer?.node && !marketTrendDrawer.node.hidden);
-      if (event.key === 'Escape' && (drawerOpen || (legacyModal && !legacyModal.hidden))) closeMarketTrendModal();
+      // 焦点在抽屉内时抽屉自会处理 Escape；这里兜住焦点落在抽屉外的情况。
+      if (event.key === 'Escape' && marketTrendDrawer?.node && !marketTrendDrawer.node.hidden) closeMarketTrendModal();
     });
     $$('[data-market-mode-kind]').forEach(button => button.addEventListener('click', () => {
       const kind = button.dataset.marketModeKind;

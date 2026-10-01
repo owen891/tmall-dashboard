@@ -197,9 +197,10 @@ body[data-page="products"] .product-list__header .product-field-controls { grid-
 .product-title__link:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
 .product-title span { color: var(--text-secondary); font-family: var(--font-mono); font-size: var(--font-size-meta); }
 @media (max-width: 520px) { .ui-metric-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; } body[data-page="promotion"] .ui-metric-grid .ui-metric-card:last-child { grid-column: 1 / -1; } .ui-metric-card { min-height: 104px; padding: 12px; } .metric-card__value { font-size: var(--font-size-kpi); } .ui-panel { padding: 14px; } .ui-filter-toolbar { align-items: stretch; } .filter-group { width: 100%; } .input, .select, .ui-button { min-height: 44px; } .input, .select { min-width: 0; flex: 1; } .segmented button { min-height: var(--control-height-touch); } .field-order-preview__item { min-height: 48px; } .field-order-preview__button { width: 44px; min-width: 44px; height: 44px; } .product-filters { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); } .product-filters [data-product-search], .product-filters [data-star-filter] { grid-column: 1 / -1; width: 100%; } .product-filters .select { width: 100%; } .products-alert { align-items: flex-start; flex-direction: column; } .products-alert .ui-button { width: 100%; } .products-issue { align-items: flex-start; flex-direction: column; } .products-issue .ui-button { width: 100%; } }
-.product-detail-dialog.lifecycle-detail { color: var(--text-primary); }
-.product-detail-dialog::backdrop { background: var(--overlay-backdrop); }
-.product-detail-dialog__shell, .product-detail-dialog__body { display: contents; }
+/* 商品详情统一 NUI 抽屉后：原 <dialog> 的 ::backdrop / shell 布局规则随壳删除，
+   intro 是抽屉 body 顶部的「图片 + 商品 ID + 工作台」条。 */
+.product-detail-dialog__intro { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+.product-detail-dialog__workbench { margin-left: auto; }
 .product-detail-dialog__panels { display: grid; min-width: 0; gap: 12px; }
 .product-detail-dialog__image { display: grid; place-items: center; color: var(--text-tertiary); }
 .product-detail-dialog__image .lucide { width: var(--icon-control); height: var(--icon-control); stroke-width: 1.75; }

@@ -30,14 +30,9 @@
 .market-list-pager button.is-active { border-color:var(--brand); background:var(--brand-solid); color:var(--text-on-brand); }
 .market-list-pager button:disabled { opacity:.45; cursor:not-allowed; }
 .market-list-pager__ellipsis { padding:0 2px; color: var(--text-secondary); }
-.market-trend-modal[hidden] { display:none; }
-.market-trend-modal { position:fixed; inset:0; z-index:50; }
-.market-trend-modal__backdrop { position:absolute; inset:0; background:rgba(15,23,42,.38); }
-.market-trend-modal__dialog { position:relative; width:min(920px, calc(100vw - 32px)); max-height:calc(100vh - 48px); overflow:auto; margin:24px auto; padding:18px; border:1px solid var(--border-default); border-radius:8px; background:var(--surface-base); box-shadow:0 20px 60px rgba(15,23,42,.2); }
-.market-modal-open { overflow:hidden; }
-.market-trend-modal__header { display:flex; justify-content:space-between; align-items:flex-start; gap:16px; }
-.market-trend-modal__header h3 { margin:0; color:var(--text-primary); }
-.market-trend-modal__header p { margin:5px 0 0; color: var(--text-secondary); font-size:var(--font-size-meta); }
+/* 趋势详情已统一 NUI 抽屉：原 .market-trend-modal 定位壳/背板/页眉与
+   .market-modal-open 滚动锁全部随壳删除（抽屉自带头部与滚动锁），
+   这里只保留搬进抽屉 body 的内容样式。 */
 .market-trend-modal__chart { height:280px; margin-top:12px; }
 .market-modal-items { margin-top:18px; border-top:1px solid var(--border-default); padding-top:14px; }
 .market-modal-items__header { display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:8px; }

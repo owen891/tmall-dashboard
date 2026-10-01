@@ -71,6 +71,39 @@ async function gatePageCapabilities(page) {
   if (!await trigger.evaluate((button) => document.activeElement === button)) throw new Error('page capability detail did not restore trigger focus');
   return { counts, allRows, filteredRows };
 }
+async function gateDetailSurfaces(page) {
+  console.log('[gate] unified detail drawers (products / market-ranking)');
+  // 共享商品详情：抽屉化 + detail 分类标记 + 焦点归还（products fixtures 是门禁硬前提）。
+  await page.goto(`${base}/products`, { waitUntil: 'domcontentloaded', timeout: 10000 });
+  await page.waitForSelector('[data-products-body] tr', { timeout: 5000 });
+  const productTrigger = page.locator('[data-products-body] tr').first().locator('button[aria-label^="查看商品详情"]');
+  await productTrigger.click();
+  await page.locator('.ui-drawer.is-open').waitFor({ state: 'visible', timeout: 5000 });
+  if (await page.locator('.ui-drawer.is-open[data-modal-kind="detail"]').count() !== 1) {
+    throw new Error('shared product detail drawer is not classified as detail');
+  }
+  await page.locator('[data-shared-product-workbench]').waitFor({ state: 'visible', timeout: 5000 });
+  await page.locator('.ui-drawer.is-open .ui-drawer__close').click();
+  if (!await productTrigger.evaluate((button) => document.activeElement === button)) throw new Error('product detail drawer did not restore trigger focus');
+
+  // 市场趋势详情：分类标记是静态契约；开合/焦点仅在存在可下钻实体时验证
+  //（实体行来自 sycm 市场数据，fixture 缺数据属于数据可用性而非 UI 回归）。
+  await page.goto(`${base}/market-ranking`, { waitUntil: 'domcontentloaded', timeout: 10000 });
+  if (await page.locator('[data-market-trend-modal]').getAttribute('data-modal-kind') !== 'detail') {
+    throw new Error('market trend detail is not classified as detail');
+  }
+  const trendTrigger = page.locator('[data-market-entity-kind]').first();
+  if (await trendTrigger.count()) {
+    await trendTrigger.click();
+    await page.locator('.ui-drawer.is-open').waitFor({ state: 'visible', timeout: 5000 });
+    if (await page.locator('.ui-drawer.is-open[data-modal-kind="detail"]').count() !== 1) {
+      throw new Error('market trend drawer is not the shared detail drawer');
+    }
+    await page.locator('.ui-drawer.is-open .ui-drawer__close').click();
+    if (!await trendTrigger.evaluate((button) => document.activeElement === button)) throw new Error('market trend drawer did not restore trigger focus');
+  }
+}
+
 const flowImpactLabel = '影响';
 
 (async () => {
@@ -409,6 +442,7 @@ const flowImpactLabel = '影响';
   await page.locator('.ui-drawer.is-open .ui-drawer__close').click();
   if (!await marketTrigger.evaluate((button) => document.activeElement === button)) throw new Error('data capability detail did not restore trigger focus');
   await gatePageCapabilities(page);
+  await gateDetailSurfaces(page);
   console.log('[gate] navigation, availability and template refresh');
   await page.goto(`${base}/`, { waitUntil: 'domcontentloaded', timeout: 10000 });
   await page.waitForSelector('[data-overview-action-open]', { timeout: 5000 });

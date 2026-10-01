@@ -99,7 +99,7 @@ async function inspectDialogs(page, id, browser, viewport) {
     await page.locator('.product-detail-dialog [data-product-detail-tab="promotion"]').click();
     await page.locator('.product-detail-dialog [data-product-detail-panel="promotion"]').waitFor({ state: 'visible' });
     await inspectOpenDialog('.product-detail-dialog', 'products-detail-promotion');
-    await page.locator('[data-shared-product-close]').click();
+    await page.locator('.ui-drawer.is-open .ui-drawer__close').click();
     await page.locator('[data-products-columns-open]').click();
     await page.locator('[data-products-template-manager] [data-field-template-edit]').first().waitFor({ state: 'visible' });
     const productTemplateDeletes = page.locator('[data-products-template-manager] [data-field-template-delete]');

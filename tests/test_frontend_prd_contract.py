@@ -924,10 +924,12 @@ class FrontendPrdContractTests(unittest.TestCase):
         self.assertIn('<template data-promotion-dialog-template', promotion)
         self.assertNotIn('demo-drawer__backdrop', promotion)
         self.assertNotIn('data-promotion-drawer', promotion)
-        self.assertIn('role="tablist"', component)
+        self.assertIn("setAttribute('role', 'tablist')", component)
         self.assertIn('data-product-detail-tab="${id}"', component)
-        self.assertIn("dialog.className = 'lifecycle-detail product-detail-dialog'", component)
-        self.assertIn('lifecycle-detail__header', component)
+        # 详情面统一 NUI 抽屉：共享商品详情不再自建 <dialog>，锚定抽屉接入点。
+        self.assertIn('window.TmallUI?.detailDrawer', component)
+        self.assertIn("drawer.node.classList.add('product-detail-dialog')", component)
+        self.assertIn('lifecycle-detail__image', component)
         self.assertIn('lifecycle-detail-tabs', component)
         for tab in ('overview', 'promotion', 'trend', 'flow-source', 'lifecycle', 'collaboration'):
             self.assertIn(f"['{tab}'", component)

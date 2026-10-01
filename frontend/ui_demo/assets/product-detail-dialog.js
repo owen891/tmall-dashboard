@@ -2,12 +2,16 @@
   const css = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
   const chartPointRadius = () => window.DemoCharts?.chartPointRadius?.() || 3;
   const chartLineWidth = () => window.DemoCharts?.chartLineWidth?.() || 2;
-  let dialog = null;
+  let drawer = null;
   let body = null;
-  let returnFocus = null;
   let current = null;
   let token = 0;
   let overviewTrendChart = null;
+  let drawerTitle = null;
+  let drawerMeta = null;
+  let drawerId = null;
+  let drawerImage = null;
+  let drawerWorkbench = null;
   const detailTabs = [
     ['overview', '经营概览'],
     ['trend', '日趋势'],
@@ -135,49 +139,47 @@
   }
 
   function ensureDialog() {
-    if (dialog) return;
-    dialog = document.createElement('dialog');
-    dialog.className = 'lifecycle-detail product-detail-dialog';
-    dialog.setAttribute('data-modal-kind', 'detail');
-    dialog.setAttribute('aria-labelledby', 'sharedProductDetailTitle');
-    dialog.innerHTML = `
-      <div class="product-detail-dialog__shell">
-        <div class="lifecycle-detail__header product-detail-dialog__header"><div class="lifecycle-detail__product"><span class="lifecycle-detail__image product-detail-dialog__image" data-shared-product-image aria-hidden="true"><i data-lucide="image"></i></span><div><h2 id="sharedProductDetailTitle" class="panel__title" data-shared-product-title>商品详情</h2><p class="panel__hint" data-shared-product-meta data-shared-product-subtitle>--</p><div class="lifecycle-detail__id" data-shared-product-id>--</div></div></div><button class="ui-button ui-button--ghost" type="button" data-shared-product-close aria-label="关闭商品详情"><i data-lucide="x"></i><span>关闭</span></button></div>
-        <div class="product-detail-dialog__body" data-shared-product-body>
-          <div class="lifecycle-detail-tabs product-detail-dialog__tabs" role="tablist" aria-label="商品详情分组">
-            ${detailTabs.map(([id, label], index) => `<button class="lifecycle-detail-tab product-detail-dialog__tab" id="product-detail-tab-${id}" role="tab" type="button" data-product-detail-tab="${id}" aria-selected="${index === 0}" aria-controls="product-detail-panel-${id}" tabindex="${index === 0 ? 0 : -1}">${label}</button>`).join('')}
-          </div>
-          <div class="product-detail-dialog__panels" data-shared-product-panels></div>
-        </div>
-      </div>`;
-    document.body.appendChild(dialog);
-    body = dialog.querySelector('[data-shared-product-panels]');
-    const workbench = node('a', 'ui-button ui-button--ghost', '打开完整工作台');
-    workbench.setAttribute('data-shared-product-workbench', '');
-    workbench.setAttribute('aria-label', '打开完整商品详情工作台');
-    workbench.setAttribute('aria-disabled', 'true');
-    workbench.tabIndex = -1;
-    dialog.querySelector('.product-detail-dialog__header').insertBefore(workbench, dialog.querySelector('[data-shared-product-close]'));
-    dialog.querySelector('[data-shared-product-close]').addEventListener('click', close);
-    dialog.addEventListener('cancel', (event) => { event.preventDefault(); close(); });
-    dialog.addEventListener('click', (event) => { if (event.target === dialog) close(); });
-    dialog.querySelector('[role="tablist"]').addEventListener('click', (event) => {
+    if (drawer || !window.TmallUI?.detailDrawer) return;
+    // 详情面统一 NUI 抽屉：不再自建 <dialog>。焦点圈闭/焦点归还/Escape/背板/
+    // 滚动锁全部由 detailDrawer 提供，这里只负责内容、页签与页眉同步。
+    drawer = window.TmallUI.detailDrawer({ title: '商品详情', description: '--', size: 'lg' });
+    drawer.node.classList.add('product-detail-dialog');
+    drawer.node.setAttribute('data-modal-kind', 'detail');
+    drawerTitle = drawer.node.querySelector('.ui-drawer__copy h2');
+    drawerMeta = drawer.node.querySelector('.ui-drawer__copy p');
+    drawerMeta.setAttribute('data-shared-product-meta', '');
+    drawerMeta.setAttribute('data-shared-product-subtitle', '');
+    const intro = document.createElement('div');
+    intro.className = 'product-detail-dialog__intro';
+    intro.innerHTML = `<span class="lifecycle-detail__image product-detail-dialog__image" data-shared-product-image aria-hidden="true"><i data-lucide="image"></i></span><div class="lifecycle-detail__id" data-shared-product-id>--</div>`;
+    drawerImage = intro.querySelector('[data-shared-product-image]');
+    drawerId = intro.querySelector('[data-shared-product-id]');
+    drawerWorkbench = node('a', 'ui-button ui-button--ghost product-detail-dialog__workbench', '打开完整工作台');
+    drawerWorkbench.setAttribute('data-shared-product-workbench', '');
+    drawerWorkbench.setAttribute('aria-label', '打开完整商品详情工作台');
+    drawerWorkbench.setAttribute('aria-disabled', 'true');
+    drawerWorkbench.tabIndex = -1;
+    intro.append(drawerWorkbench);
+    const tablist = document.createElement('div');
+    tablist.className = 'lifecycle-detail-tabs product-detail-dialog__tabs';
+    tablist.setAttribute('role', 'tablist');
+    tablist.setAttribute('aria-label', '商品详情分组');
+    tablist.innerHTML = detailTabs.map(([id, label], index) => `<button class="lifecycle-detail-tab product-detail-dialog__tab" id="product-detail-tab-${id}" role="tab" type="button" data-product-detail-tab="${id}" aria-selected="${index === 0}" aria-controls="product-detail-panel-${id}" tabindex="${index === 0 ? 0 : -1}">${label}</button>`).join('');
+    body = node('div', 'product-detail-dialog__panels');
+    body.setAttribute('data-shared-product-panels', '');
+    tablist.addEventListener('click', (event) => {
       const tab = event.target.closest('[data-product-detail-tab]');
       if (tab) selectTab(tab.dataset.productDetailTab, false);
     });
-    dialog.querySelector('[role="tablist"]').addEventListener('keydown', (event) => {
-      const tabs = [...dialog.querySelectorAll('[data-product-detail-tab]')];
+    tablist.addEventListener('keydown', (event) => {
+      const tabs = [...tablist.querySelectorAll('[data-product-detail-tab]')];
       const index = tabs.indexOf(event.target.closest('[data-product-detail-tab]'));
       if (index < 0 || !['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
       event.preventDefault();
       const nextIndex = event.key === 'Home' ? 0 : event.key === 'End' ? tabs.length - 1 : (index + (event.key === 'ArrowRight' ? 1 : -1) + tabs.length) % tabs.length;
       selectTab(tabs[nextIndex].dataset.productDetailTab, true);
     });
-    dialog.addEventListener('close', () => {
-      document.body.classList.remove('demo-scroll-lock');
-      returnFocus?.focus?.();
-      returnFocus = null;
-    });
+    drawer.body.append(intro, tablist, body);
   }
 
   function metric(label, value, hint = '') {
@@ -217,7 +219,7 @@
 
   function renderIdentity(detail) {
     const product = detail.product || {};
-    const workbench = dialog.querySelector('[data-shared-product-workbench]');
+    const workbench = drawerWorkbench;
     const productId = product.product_id || current.productId;
     if (productId) {
       workbench.href = `/products/${encodeURIComponent(productId)}`;
@@ -313,7 +315,7 @@
   }
 
   function mountOverviewTrendChart(rows) {
-    const chart = dialog?.querySelector('[data-product-overview-trend]');
+    const chart = drawer?.node.querySelector('[data-product-overview-trend]');
     const points = groupOverviewTrendByMonth(rows);
     if (!chart || !points.length || !window.EChartCompat) return;
     const moneyAxis = (value) => money(Number(value || 0));
@@ -1277,8 +1279,8 @@
   }
 
   function updateTabState(focus = false) {
-    if (!dialog || !current) return;
-    dialog.querySelectorAll('[data-product-detail-tab]').forEach((button) => {
+    if (!drawer || !current) return;
+    drawer.node.querySelectorAll('[data-product-detail-tab]').forEach((button) => {
       const active = button.dataset.productDetailTab === current.activeTab;
       button.setAttribute('aria-selected', String(active));
       button.tabIndex = active ? 0 : -1;
@@ -1385,14 +1387,14 @@
     }
     const detail = detailResult.value.data || {};
     const product = detail.product || {};
-    dialog.querySelector('[data-shared-product-title]').textContent = product.title || current.title || '商品详情';
+    drawerTitle.textContent = product.title || current.title || '商品详情';
     const sourceMeta = current.sourceRule?.name
       ? `来源分群：${current.sourceRule.name}${current.sourceRule.period ? ` · ${current.sourceRule.period}` : ''}`
       : '';
-    dialog.querySelector('[data-shared-product-meta]').textContent = [product.category, product.style, statusLabel(product.status), sourceMeta].filter(Boolean).join(' · ') || '--';
+    drawerMeta.textContent = [product.category, product.style, statusLabel(product.status), sourceMeta].filter(Boolean).join(' · ') || '--';
     const selectedRange = range.startDate && range.endDate ? `${range.startDate} ~ ${range.endDate}` : '全量数据';
-    dialog.querySelector('[data-shared-product-id]').textContent = `商品 ID ${product.product_id || current.productId} · 当前范围 ${selectedRange} · 数据截止 ${text(detail.summary?.data_cutoff_date)}`;
-    const imageRoot = dialog.querySelector('[data-shared-product-image]');
+    drawerId.textContent = `商品 ID ${product.product_id || current.productId} · 当前范围 ${selectedRange} · 数据截止 ${text(detail.summary?.data_cutoff_date)}`;
+    const imageRoot = drawerImage;
     imageRoot.replaceChildren();
     const thumbnailUrl = String(product.image_url || '').trim();
     if (thumbnailUrl) {
@@ -1465,22 +1467,21 @@
   function open(options) {
     if (!options?.productId) return;
     ensureDialog();
+    if (!drawer) return;
     current = { ...options, productId: String(options.productId), activeTab: 'overview', view: null };
     promotionCampaignDetailState = { campaignId: '', loading: false, payload: null, error: '' };
-    const workbench = dialog.querySelector('[data-shared-product-workbench]');
-    workbench.href = current.workbenchUrl || `/products/${encodeURIComponent(current.productId)}`;
-    if (!current.workbenchUrl && current.sourceRule?.key) workbench.href += `?rule_key=${encodeURIComponent(current.sourceRule.key)}`;
-    workbench.removeAttribute('aria-disabled');
-    workbench.tabIndex = 0;
-    returnFocus = options.trigger || document.activeElement;
-    dialog.showModal();
-    document.body.classList.add('demo-scroll-lock');
+    drawerWorkbench.href = current.workbenchUrl || `/products/${encodeURIComponent(current.productId)}`;
+    if (!current.workbenchUrl && current.sourceRule?.key) drawerWorkbench.href += `?rule_key=${encodeURIComponent(current.sourceRule.key)}`;
+    drawerWorkbench.removeAttribute('aria-disabled');
+    drawerWorkbench.tabIndex = 0;
+    // 触发器焦点归还由抽屉记录（open(trigger)），不再手工保存 returnFocus。
+    drawer.open(options.trigger || null);
     load().catch((error) => body.replaceChildren(node('div', 'ui-empty-state', error.message || '商品详情加载失败')));
     window.lucide?.createIcons();
   }
 
   window.addEventListener('tmall:date-range-change', () => {
-    if (!current || !dialog?.open) return;
+    if (!current || !drawer || drawer.node.hidden) return;
     load().catch((error) => body.replaceChildren(node('div', 'ui-empty-state', error.message || '商品详情加载失败')));
   });
 
@@ -1488,7 +1489,7 @@
     token += 1;
     current = null;
     destroyOverviewTrendChart();
-    if (dialog?.open) dialog.close();
+    drawer?.close();
   }
 
   window.ProductDetailDialog = { open, close };
