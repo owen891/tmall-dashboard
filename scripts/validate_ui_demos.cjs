@@ -95,7 +95,7 @@ assert(promotionAdapter.includes("DemoApi.domainRequest('/api/promotion?"), 'pro
 
 const newProducts = read(path.join(pagesDir, 'new-products.html'));
 const newProductsAdapter = read(path.join(root, 'assets', 'new-products-live.js'));
-for (const hook of ['data-promotion-new-funnel', 'data-promotion-new-kpi', 'data-promotion-new-launch-body', 'data-promotion-new-body', 'data-promotion-structure-dialog', 'data-new-products-image-dialog', 'data-new-products-image-preview']) {
+for (const hook of ['data-promotion-new-funnel', 'data-promotion-new-kpi', 'data-promotion-new-launch-body', 'data-promotion-new-body', 'data-promotion-structure-template', 'data-new-products-image-dialog', 'data-new-products-image-preview']) {
   assert(newProducts.includes(hook), `new-products: missing workflow hook ${hook}`);
 }
 assert(newProducts.includes('../assets/creative-board.css?'), 'new-products: missing creative detail styles');

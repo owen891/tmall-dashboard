@@ -386,7 +386,6 @@
   // ── 商品推广结构抽屉 ───────────────────────────────────────────────────
 
   let structureDrawer = null;
-  let structureReturnFocus = null;
 
   function bindStructureDialog() {
     const template = $('[data-promotion-structure-template]');
@@ -395,10 +394,6 @@
       title: '商品推广结构',
       description: '查看渠道结构、计划与素材表现',
       size: 'lg',
-      onClose: () => {
-        structureReturnFocus?.focus?.();
-        structureReturnFocus = null;
-      },
     });
     structureDrawer.body.append(template.content.cloneNode(true));
     const tabs = $$('[data-promotion-structure-tab]', structureDrawer.node);
@@ -435,14 +430,13 @@
   function openStructureDialog(productId, trigger = null) {
     if (!structureDrawer || !productId) return;
     state.structureProduct = productId;
-    structureReturnFocus = trigger || document.activeElement;
     const title = structureDrawer.node.querySelector('.ui-drawer__copy h2');
     const description = structureDrawer.node.querySelector('.ui-drawer__copy p');
     if (title) title.textContent = '商品推广结构';
     if (description) description.textContent = `商品 ID ${productId} · 渠道结构、计划与素材表现`;
     const tabs = $$('[data-promotion-structure-tab]', structureDrawer.node);
     tabs.forEach((item, index) => item.setAttribute('aria-selected', String(index === 0)));
-    structureDrawer.open();
+    structureDrawer.open(trigger);
     renderStructurePanel('mix');
   }
 

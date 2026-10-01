@@ -102,7 +102,7 @@
     if (!rows.length) { body.innerHTML = '<tr><td colspan="11">当前范围没有新品投放数据</td></tr>'; return; }
     const { end } = range();
     body.innerHTML = rows.map((row) => { const days = row.list_date && end ? Math.max(0, Math.round((new Date(end) - new Date(row.list_date)) / 86400000)) : null; return `<tr><td class="t-clamp" title="${esc(row.title || row.product_id)}"><div class="promotion-new-product">${row.image_url ? `<img src="${esc(row.image_url)}" alt="" loading="lazy" onerror="this.remove()">` : ''}<div><div class="promotion-new-product__title">${esc(row.title || row.product_id)}</div><div class="promotion-new-product__sub">${esc(row.product_id)} · ${esc(row.list_date || '--')} 上架</div></div></div></td><td>${days ?? '--'} 天</td><td>${money(row.ad_spend)}</td><td>${money(row.attributed_payment_amount)}</td><td data-tone="${roiTone(row.roi)}">${ratio(row.roi)}</td><td>${money(row.link_gsv)}</td><td>${row.expense_ratio != null ? percent(row.expense_ratio) : '--'}</td><td>${percent(row.ctr)}</td><td>${percent(row.cvr)}</td><td>${row.cart_cost != null ? money(row.cart_cost) : '--'}</td><td><button type="button" class="ui-button ui-button--ghost" data-promotion-new-structure="${esc(row.product_id)}">结构</button></td></tr>`; }).join('');
-    $$('button[data-promotion-new-structure]', body).forEach((button) => button.addEventListener('click', () => openStructureDialog(button.dataset.promotionNewStructure)));
+    $$('button[data-promotion-new-structure]', body).forEach((button) => button.addEventListener('click', () => openStructureDialog(button.dataset.promotionNewStructure, button)));
   }
 
   function creativeRows(product) {
@@ -191,13 +191,35 @@
 
   function chart(selector) { const canvas = $(selector); if (!canvas || !window.echarts) return null; return window.echarts.getInstanceByDom(canvas) || window.echarts.init(canvas); }
 
-  function openStructureDialog(productId) {
-    const dialog = $('[data-promotion-structure-dialog]');
-    if (!dialog || !productId) return;
+  let structureDrawer = null;
+
+  function bindStructureDrawer() {
+    const template = $('[data-promotion-structure-template]');
+    if (!template || !window.TmallUI?.detailDrawer || structureDrawer) return;
+    structureDrawer = window.TmallUI.detailDrawer({
+      title: '商品推广结构',
+      description: '查看渠道结构、计划与素材表现',
+      size: 'lg',
+    });
+    structureDrawer.body.append(template.content.cloneNode(true));
+    const tabs = $$('[data-promotion-structure-tab]', structureDrawer.node);
+    tabs.forEach((button) => {
+      button.addEventListener('click', () => {
+        tabs.forEach((item) => item.setAttribute('aria-selected', String(item === button)));
+        renderStructurePanel(button.dataset.promotionStructureTab);
+      });
+    });
+  }
+
+  function openStructureDialog(productId, trigger = null) {
+    if (!structureDrawer || !productId) return;
     state.structureProduct = productId;
     state.creativeRequest += 1;
-    dialog.showModal();
-    $$('[data-promotion-structure-tab]').forEach((button, index) => button.setAttribute('aria-selected', String(index === 0)));
+    const description = structureDrawer.node.querySelector('.ui-drawer__copy p');
+    if (description) description.textContent = `商品 ID ${productId} · 渠道结构、计划与素材表现`;
+    const tabs = $$('[data-promotion-structure-tab]', structureDrawer.node);
+    tabs.forEach((button, index) => button.setAttribute('aria-selected', String(index === 0)));
+    structureDrawer.open(trigger);
     renderStructurePanel('mix');
   }
 
@@ -216,7 +238,7 @@
   function bind() {
     $$('[data-promotion-new-refresh]').forEach((button) => button.addEventListener('click', loadNewProducts)); $('[data-promotion-new-search]')?.addEventListener('input', renderProducts); $('[data-promotion-new-sort]')?.addEventListener('change', renderProducts); $('[data-promotion-new-launch-toggle]')?.addEventListener('click', () => { state.launchesExpanded = !state.launchesExpanded; renderLaunches(); });
     bindCreativeImageDialog();
-    $('[data-promotion-structure-close]')?.addEventListener('click', () => $('[data-promotion-structure-dialog]')?.close()); $$('[data-promotion-structure-tab]').forEach((button) => button.addEventListener('click', () => { $$('[data-promotion-structure-tab]').forEach((item) => item.setAttribute('aria-selected', String(item === button))); renderStructurePanel(button.dataset.promotionStructureTab); }));
+    bindStructureDrawer();
     window.addEventListener('tmall:export', (event) => { if (!exportNewProducts()) return; event.preventDefault(); });
     $('[data-promotion-new-export]')?.addEventListener('click', () => { if (!exportNewProducts()) setActionStatus('当前范围没有可导出的新品投放明细。'); });
     window.addEventListener('tmall:date-range-change', loadNewProducts); window.addEventListener('tmall:refresh', loadNewProducts); loadNewProducts();

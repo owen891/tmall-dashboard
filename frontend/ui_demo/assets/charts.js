@@ -7,7 +7,6 @@
   const chartPointRadius = () => px('--chart-point-radius', 3);
   const chartLegendBox = () => px('--chart-legend-box', 12);
   const chartLegendHeight = () => px('--chart-legend-height', 8);
-  const reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
   const instances = new WeakMap();
 
   function formatChartValue(value) {

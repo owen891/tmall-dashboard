@@ -104,10 +104,11 @@
     });
     return node;
   };
-  const button = ({ label, icon: iconName, variant = 'secondary', size, type = 'button', disabled = false, className = '' } = {}) => {
+  const button = ({ label, icon: iconName, variant = 'secondary', size, type = 'button', disabled = false, className = '', ariaLabel = '' } = {}) => {
     const node = create('button', ['ui-button', `ui-button--${variant}`, size ? `ui-button--${size}` : '', className].filter(Boolean).join(' '), label);
     node.type = type;
     node.disabled = disabled;
+    if (ariaLabel) node.setAttribute('aria-label', ariaLabel);
     if (iconName) { node.replaceChildren(icon(iconName), ...(label ? [document.createTextNode(label)] : [])); renderIcon(node); }
     return node;
   };
@@ -189,7 +190,7 @@
   };
   const setState = (root, state, details = {}) => {
     if (!root) return;
-    root.dataset.state = state;
+    root.dataset.state = stateKey(state);
     root.replaceChildren(dataState(state, details));
   };
   const fieldSelector = (options = {}) => {
@@ -246,6 +247,7 @@
     node.setAttribute('aria-labelledby', titleId);
     const backdrop = create('button', 'ui-drawer__backdrop');
     backdrop.type = 'button';
+    backdrop.tabIndex = -1;
     backdrop.setAttribute('aria-label', '关闭详情');
     const sheet = create('section', 'ui-drawer__sheet');
     const header = create('header', 'ui-drawer__header');
@@ -254,8 +256,7 @@
     heading.id = titleId;
     copy.append(heading);
     if (description) copy.append(create('p', '', description));
-    const closeButton = button({ icon: 'x', variant: 'ghost', className: 'ui-drawer__close' });
-    closeButton.setAttribute('aria-label', '关闭详情');
+    const closeButton = button({ icon: 'x', variant: 'ghost', className: 'ui-drawer__close', ariaLabel: '关闭详情' });
     header.append(copy, closeButton);
     const bodyNode = create('div', 'ui-drawer__body');
     appendContent(bodyNode, body);
@@ -269,19 +270,36 @@
     }
     node.append(backdrop, sheet);
     document.body.append(node);
+    let counted = false;
+    let returnFocusNode = null;
+    const focusables = () => [...node.querySelectorAll('a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])')].filter((item) => item.getClientRects().length);
     const close = () => {
       if (node.hidden) return handle;
       node.hidden = true;
       node.classList.remove('is-open');
-      document.body.classList.remove('has-ui-drawer');
+      if (counted) {
+        counted = false;
+        drawerOpenCount = Math.max(0, drawerOpenCount - 1);
+        if (!drawerOpenCount) document.body.classList.remove('has-ui-drawer');
+      }
+      const restore = returnFocusNode;
+      returnFocusNode = null;
+      if (restore?.isConnected) restore.focus({ preventScroll: true });
       if (onClose) onClose();
       return handle;
     };
-    handle.open = () => {
+    handle.open = (trigger = null) => {
+      if (!node.hidden) return handle;
       node.hidden = false;
       node.classList.remove('is-hidden');
       node.classList.add('is-open');
-      document.body.classList.add('has-ui-drawer');
+      if (!counted) {
+        counted = true;
+        if (!drawerOpenCount) document.body.classList.add('has-ui-drawer');
+        drawerOpenCount += 1;
+      }
+      const active = document.activeElement;
+      returnFocusNode = trigger || (active && active !== document.body && !node.contains(active) ? active : null);
       closeButton.focus({ preventScroll: true });
       return handle;
     };
@@ -289,7 +307,17 @@
     handle.destroy = () => { close(); node.remove(); return handle; };
     closeButton.addEventListener('click', close);
     backdrop.addEventListener('click', close);
-    node.addEventListener('keydown', (event) => { if (event.key === 'Escape') { event.preventDefault(); close(); } });
+    node.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape') { event.preventDefault(); close(); return; }
+      if (event.key !== 'Tab') return;
+      const items = focusables();
+      if (!items.length) { event.preventDefault(); closeButton.focus(); return; }
+      const first = items[0];
+      const last = items[items.length - 1];
+      const active = document.activeElement;
+      if (event.shiftKey && (active === first || !node.contains(active))) { event.preventDefault(); last.focus(); }
+      else if (!event.shiftKey && (active === last || !node.contains(active))) { event.preventDefault(); first.focus(); }
+    });
     return handle;
   };
   const stickyActionBar = ({ content = null, actions = null, className = '' } = {}) => {
@@ -299,6 +327,7 @@
     return node;
   };
   let modalSequence = 0;
+  let drawerOpenCount = 0;
   let openModalCount = 0;
   let bodyOverflowBeforeModal = '';
   // Native <dialog> per DESIGN_SYSTEM.md §4.5: showModal() puts the dialog in the top layer,

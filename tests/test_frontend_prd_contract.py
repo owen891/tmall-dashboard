@@ -705,7 +705,7 @@ class FrontendPrdContractTests(unittest.TestCase):
         shell = self.read('frontend/ui_demo/assets/shell.js')
         self.assertIn('data-page="new-products"', page)
         self.assertIn('../assets/new-products-live.js', page)
-        for hook in ('data-promotion-new-funnel', 'data-promotion-new-kpi', 'data-promotion-new-launch-body', 'data-promotion-new-body', 'data-promotion-structure-dialog', 'data-new-products-image-dialog', 'data-new-products-image-preview'):
+        for hook in ('data-promotion-new-funnel', 'data-promotion-new-kpi', 'data-promotion-new-launch-body', 'data-promotion-new-body', 'data-promotion-structure-template', 'data-new-products-image-dialog', 'data-new-products-image-preview'):
             self.assertIn(hook, page)
         self.assertIn('../assets/creative-board.css?', page)
         self.assertIn('/api/promotion/new-products?', adapter)

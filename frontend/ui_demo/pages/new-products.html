@@ -109,15 +109,9 @@
     </div>
   </div>
 
-  <dialog class="promotion-dialog" data-promotion-structure-dialog data-modal-kind="detail" aria-labelledby="promotionStructureTitle">
-    <div class="promotion-detail-dialog__shell">
-      <div class="lifecycle-detail__header promotion-detail-dialog__header">
-        <div class="lifecycle-detail__product"><span class="lifecycle-detail__image promotion-detail-dialog__image" data-promotion-structure-image aria-hidden="true"><i data-lucide="package"></i></span><div><h2 id="promotionStructureTitle" class="panel__title" data-promotion-structure-title>商品推广结构</h2><p class="panel__hint" data-promotion-structure-subtitle>--</p><div class="lifecycle-detail__id" data-promotion-structure-id>--</div></div></div>
-        <button class="ui-button ui-button--ghost" type="button" data-promotion-structure-close aria-label="关闭商品推广结构"><i data-lucide="x"></i><span>关闭</span></button>
-      </div>
-      <div class="promotion-detail-dialog__body"><div class="lifecycle-detail-tabs promotion-detail-dialog__tabs" data-promotion-structure-tabs role="tablist" aria-label="商品推广结构分组"><button class="lifecycle-detail-tab" type="button" data-promotion-structure-tab="mix" aria-selected="true">流量结构</button><button class="lifecycle-detail-tab" type="button" data-promotion-structure-tab="campaigns" aria-selected="false">所有计划</button><button class="lifecycle-detail-tab" type="button" data-promotion-structure-tab="creatives" aria-selected="false">素材表现</button></div><div class="promotion-detail-dialog__panels" data-promotion-structure-body></div></div>
-    </div>
-  </dialog>
+  <template data-promotion-structure-template>
+    <div class="promotion-detail-dialog__body"><div class="lifecycle-detail-tabs promotion-detail-dialog__tabs" data-promotion-structure-tabs role="tablist" aria-label="商品推广结构分组"><button class="lifecycle-detail-tab" type="button" data-promotion-structure-tab="mix" aria-selected="true">流量结构</button><button class="lifecycle-detail-tab" type="button" data-promotion-structure-tab="campaigns" aria-selected="false">所有计划</button><button class="lifecycle-detail-tab" type="button" data-promotion-structure-tab="creatives" aria-selected="false">素材表现</button></div><div class="promotion-detail-dialog__panels" data-promotion-structure-body></div></div>
+  </template>
 
   <dialog class="modal-form cb-image-dialog" data-new-products-image-dialog data-modal-kind="detail" aria-labelledby="new-products-image-title"><div class="modal-form__header"><h3 id="new-products-image-title">素材预览</h3><button class="ui-button ui-button--ghost" type="button" data-new-products-image-close aria-label="关闭图片预览"><i data-lucide="x"></i></button></div><div class="cb-image-dialog__body"><img data-new-products-image-preview alt="素材预览"></div></dialog>
 
