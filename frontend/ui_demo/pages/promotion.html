@@ -7,7 +7,7 @@
   <link rel="stylesheet" href="../assets/tokens.css">
   <link rel="stylesheet" href="../assets/shell.css">
   <link rel="stylesheet" href="../assets/components.css?v=20260919-field-selector3"><link rel="stylesheet" href="../assets/themes/product-domain.css"><link rel="stylesheet" href="../assets/themes/promotion-domain.css"><link rel="stylesheet" href="../assets/themes/overview-domain.css"><link rel="stylesheet" href="../assets/themes/lifecycle-domain.css"><link rel="stylesheet" href="../assets/themes/settings-domain.css">
-  <link rel="stylesheet" href="../assets/promotion-views.css?v=20260919k">
+  <link rel="stylesheet" href="../assets/promotion-views.css?v=20260930a">
   <script src="../assets/lucide-custom.min.js"></script>
     <script src="../assets/echarts-custom.min.js"></script>
 </head>
@@ -28,20 +28,29 @@
           </div>
         </div>
 
+        <section class="ui-context-bar promotion-context-bar" aria-label="推广数据范围">
+          <div class="ui-context-bar__copy">
+            <span class="ui-context-bar__label">推广数据范围</span>
+            <strong class="ui-context-bar__value" data-promotion-range>正在读取数据范围…</strong>
+            <span class="ui-context-bar__meta" data-promotion-range-meta>店铺维度 · 含渠道 / 计划 / 商品三粒度</span>
+          </div>
+        </section>
+
         <div class="segmented promotion-view-tabs" role="group" aria-label="推广分析视图" data-promotion-view-tabs>
           <button type="button" aria-pressed="true" data-promotion-view="overview"><i data-lucide="layout-dashboard"></i>总览</button>
           <button type="button" aria-pressed="false" data-promotion-view="plans"><i data-lucide="list-filter"></i>计划</button>
-          <button type="button" aria-pressed="false" data-promotion-view="products"><i data-lucide="package"></i>商品</button>
+      <button type="button" aria-pressed="false" data-promotion-view="products"><i data-lucide="package"></i>商品</button>
+
                   </div>
 
-        <div data-promotion-view-panel="overview">
+        <div data-promotion-view-panel="overview" role="region" aria-label="推广总览">
         <div class="promotion-source-strip" role="status" aria-label="推广数据来源说明">
           <span class="promotion-source-strip__item promotion-source-strip__item--real" data-promotion-source-base>已接入：渠道 + 计划 + 商品</span>
           <span class="promotion-source-strip__item promotion-source-strip__item--real">素材历史看板已独立</span>
           <span class="promotion-source-strip__note" data-promotion-source-note>渠道指标来自计划报表按场景归因；商品行不带渠道归属，不参与渠道对比。</span>
         </div>
 
-        <section class="promotion-command" aria-labelledby="promotionCommandTitle">
+        <article class="ui-decision-card promotion-decision-card" aria-labelledby="promotionCommandTitle"><section class="promotion-command" aria-label="推广经营结论">
           <div>
             <div class="promotion-command__heading">
               <div><h1 id="promotionCommandTitle">推广经营看板</h1><p>围绕商品经营看投入、流量和推广成交，计划与商品分别核算。</p></div>
@@ -62,7 +71,7 @@
             <div class="promotion-signal"><span>触发预警</span><strong data-promotion-signal="alerts" data-tone="success">--</strong></div>
           </aside>
         </section>
-
+        </article>
         <section class="ui-metric-grid" aria-label="推广核心指标">
           <article class="ui-metric-card promotion-kpi-card--process"><div class="metric-card__label">推广花费</div><div class="metric-card__value" data-promotion-kpi="spend">--</div><div class="metric-card__meta"><i data-lucide="wallet-cards"></i><span data-promotion-kpi-note>按商品记录汇总</span></div></article>
           <article class="ui-metric-card promotion-kpi-card--result"><div class="metric-card__label">推广成交</div><div class="metric-card__value" data-promotion-kpi="gmv">--</div><div class="metric-card__meta"><i data-lucide="shopping-bag"></i>商品当期推广成交</div></article>
@@ -116,17 +125,21 @@
         <div data-promotion-view-panel="plans" hidden>
         <section class="ui-panel" aria-label="计划看板" data-promotion-campaigns-section>
           <div class="panel__header"><div><h3 class="panel__title">计划看板</h3><p class="panel__hint">按计划汇总推广花费、ROI 与行为成本；点击行展开该计划投放的商品。</p></div><span class="ui-badge ui-badge--info" data-promotion-campaigns-count>--</span></div>
-          <div class="filter-group promotion-campaigns__filters">
-            <input class="input" data-promotion-campaign-search placeholder="搜索计划 ID / 名称" aria-label="搜索计划">
-            <select class="select" data-promotion-campaign-channel aria-label="渠道筛选"><option value="">全部渠道</option></select>
-            <select class="select" data-promotion-campaign-plan-type aria-label="投放方式筛选"><option value="">全部投放方式</option></select>
-            <select class="select" data-promotion-campaign-sort aria-label="排序">
-              <option value="ad_spend">按花费排序</option>
-              <option value="roi">按 ROI 排序</option>
-              <option value="clicks">按点击量排序</option>
-              <option value="cart_cost">按加购成本排序</option>
-            </select>
-            <button class="ui-button" type="button" data-promotion-campaigns-refresh><i data-lucide="refresh-cw"></i>刷新</button>
+          <div class="ui-table-toolbar promotion-campaigns__filters">
+            <div class="ui-table-toolbar__main">
+              <input class="input" data-promotion-campaign-search placeholder="搜索计划 ID / 名称" aria-label="搜索计划">
+              <select class="select" data-promotion-campaign-channel aria-label="渠道筛选"><option value="">全部渠道</option></select>
+              <select class="select" data-promotion-campaign-plan-type aria-label="投放方式筛选"><option value="">全部投放方式</option></select>
+              <select class="select" data-promotion-campaign-sort aria-label="排序">
+                <option value="ad_spend">按花费排序</option>
+                <option value="roi">按 ROI 排序</option>
+                <option value="clicks">按点击量排序</option>
+                <option value="cart_cost">按加购成本排序</option>
+              </select>
+            </div>
+            <div class="ui-table-toolbar__side">
+              <button class="ui-button" type="button" data-promotion-campaigns-refresh><i data-lucide="refresh-cw"></i>刷新</button>
+            </div>
           </div>
           <div class="ui-table-wrap">
             <table class="ui-data-table" data-promotion-campaigns-table>
@@ -141,14 +154,25 @@
         <section class="product-section promotion-subviews">
           <div class="product-section__heading">
             <div><h3>商品推广明细</h3><p data-promotion-grain>各维度独立核算，明细不与总盘重复相加。</p></div>
-            <div class="filter-group"><select class="select" data-promotion-drill-level aria-label="推广下钻层级"><option value="channel">渠道</option><option value="campaign">计划</option><option value="unit">单元</option><option value="product">商品</option></select><input class="input" data-promotion-channel placeholder="渠道（可选）" aria-label="推广渠道"><input class="input" data-promotion-campaign placeholder="计划 ID（可选）" aria-label="推广计划 ID"><input class="input" data-promotion-unit placeholder="单元 ID（可选）" aria-label="推广单元 ID"><input class="input" data-promotion-product placeholder="商品 ID（可选）" aria-label="推广商品 ID"><button class="ui-button" type="button" data-promotion-drill-load>查询下钻</button></div>
-            <div class="segmented" role="group" aria-label="推广分析视图" data-promotion-tabs>
+            <div class="segmented" role="group" aria-label="推广明细视图" data-promotion-tabs>
               <button type="button" aria-pressed="true" data-promotion-tab="products">商品表现</button>
               <button type="button" aria-pressed="false" data-promotion-tab="keywords">关键词汇总</button>
               <button type="button" aria-pressed="false" data-promotion-tab="crowd">人群汇总</button>
               <button type="button" aria-pressed="false" data-promotion-tab="creative">创意汇总</button>
               <button type="button" aria-pressed="false" data-promotion-tab="site">站内渠道汇总</button>
               <button type="button" aria-pressed="false" data-promotion-tab="unavailable">未提供归因</button>
+            </div>
+          </div>
+          <div class="ui-table-toolbar promotion-drill-toolbar">
+            <div class="ui-table-toolbar__main">
+              <select class="select" data-promotion-drill-level aria-label="推广下钻层级"><option value="channel">渠道</option><option value="campaign">计划</option><option value="unit">单元</option><option value="product">商品</option></select>
+              <input class="input" data-promotion-channel placeholder="渠道（可选）" aria-label="推广渠道">
+              <input class="input" data-promotion-campaign placeholder="计划 ID（可选）" aria-label="推广计划 ID">
+              <input class="input" data-promotion-unit placeholder="单元 ID（可选）" aria-label="推广单元 ID">
+              <input class="input" data-promotion-product placeholder="商品 ID（可选）" aria-label="推广商品 ID">
+            </div>
+            <div class="ui-table-toolbar__side">
+              <button class="ui-button" type="button" data-promotion-drill-load><i data-lucide="search"></i>查询下钻</button>
             </div>
           </div>
           <article class="table-panel ui-panel">
@@ -276,7 +300,7 @@
   <script src="../assets/promotion-field-definitions.js"></script>
   <script src="../assets/alert-rules.js"></script>
   <script src="../assets/product-detail-dialog.js"></script>
-  <script src="../assets/format.js"></script><script src="../assets/promotion-live.js?v=20260919c"></script>
-  <script src="../assets/promotion-views-live.js?v=20260919f"></script>
+  <script src="../assets/format.js"></script><script src="../assets/promotion-live.js?v=20260930a"></script>
+  <script src="../assets/promotion-views-live.js?v=20260930a"></script>
 </body>
 </html>

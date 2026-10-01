@@ -3,6 +3,11 @@
   const status = document.querySelector('[data-reviews-status]');
   let actionPayload = { capabilities: {} };
   const filter = document.querySelector('[data-actions-status-filter]');
+  const contextRange = document.querySelector('[data-reviews-context-range]');
+  const toolbarSummary = document.querySelector('[data-reviews-toolbar-summary]');
+  const syncContextRange = (range = window.TmallDateRange?.getState?.() || {}) => {
+    if (contextRange) contextRange.textContent = range.startDate && range.endDate ? `${range.startDate} ~ ${range.endDate}` : '当前数据范围';
+  };
   const labels = { draft: '草稿', pending_execution: '待执行', executing: '执行中', observing: '观察中', blocked: '阻塞', calculation_failed: '计算失败', pending_review: '待复盘', completed: '已完成', cancelled: '已取消' };
   const nextStatus = { draft: 'pending_execution', pending_execution: 'executing', executing: 'observing', observing: 'pending_review', blocked: 'pending_execution', calculation_failed: 'observing' };
   const cancellableStatuses = new Set(['draft', 'pending_execution', 'executing', 'blocked']);
@@ -102,6 +107,7 @@
         return container;
       }));
       status.textContent = `共 ${actions.length} 条动作`;
+      if (toolbarSummary) toolbarSummary.textContent = selected ? `当前状态：${labels[selected] || selected} · ${actions.length} 条` : `全部动作 · ${actions.length} 条`;
       if (requestedActionId) {
         const target = list.querySelector(`[data-action-id="${CSS.escape(String(requestedActionId))}"]`);
         target?.scrollIntoView({ block: 'center', behavior: 'smooth' });
@@ -111,7 +117,10 @@
   document.querySelector('[data-reviews-refresh]')?.addEventListener('click', load);
   filter?.addEventListener('change', load);
   document.querySelector('[data-actions-recalculate]')?.addEventListener('click', async (event) => { if (Object.keys(actionPayload.capabilities || {}).length > 0 && !DemoApi.can(actionPayload, 'can_recalculate')) return; const button = event.currentTarget; const key = 'actions:recalculate'; if (pendingMutations.has(key)) return; pendingMutations.add(key); button.disabled = true; try { await DemoApi.domainRequest('/api/actions/recalculate', { method: 'POST' }); await load(); } catch (error) { status.textContent = error.message || '重新计算失败，请重试'; } finally { pendingMutations.delete(key); if (button.isConnected) button.disabled = false; } });
-  window.addEventListener('tmall:refresh', load); load();
+  window.addEventListener('tmall:refresh', load);
+  syncContextRange();
+  window.addEventListener('tmall:date-range-change', (event) => syncContextRange(event.detail));
+  load();
   const periodForm = document.querySelector('[data-period-review-form]'); const periodStatus = document.querySelector('[data-period-review-status]'); const periodList = document.querySelector('[data-period-review-list]');
   const periodKey = document.querySelector('[data-period-review-key]');
   const syncPeriodKey = (range = window.TmallDateRange?.getState?.()) => {

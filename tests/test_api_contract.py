@@ -62,7 +62,7 @@ class OverviewContractTests(unittest.TestCase):
         self.assertEqual(payload['data']['net_sales'], 150.0)
         self.assertEqual(payload['data']['ad_spend'], 40.0)
         self.assertEqual(payload['data']['refund_rate'], 0.25)
-        self.assertEqual(payload['data']['expense_ratio'], 0.2)
+        self.assertEqual(payload['data']['expense_ratio'], 0.266667)
         self.assertIsNone(payload['data']['payment_conversion_rate'])
         self.assertIsNone(payload['data']['average_order_value'])
         self.assertIsNone(payload['data']['returning_buyer_ratio'])
@@ -200,6 +200,37 @@ class OverviewContractTests(unittest.TestCase):
         self.assertTrue(payload['ok'])
         self.assertEqual(len(payload['data']['rows']), 2)
         self.assertEqual(payload['data']['rows'][0]['payment_amount'], 100.0)
+
+    def test_daily_matrix_expense_ratio_uses_net_sales(self):
+        matrix = self.client.get(
+            '/api/overview/daily-matrix?start=2026-04-01&end=2026-04-02'
+        ).get_json()['data']
+
+        self.assertAlmostEqual(matrix['rows'][0]['expense_ratio'], 20 / 90, places=6)
+
+    def test_compare_expense_ratio_uses_net_sales_for_each_period(self):
+        from db import get_db
+        with get_db(self.database_path) as connection:
+            connection.executemany(
+                '''INSERT INTO monthly_data (
+                       product_id, month, payment_amount, refund_amount, ad_spend
+                   ) VALUES (?, ?, ?, ?, ?)''',
+                [
+                    ('overview-a', '2026-04', 200, 50, 30),
+                    ('overview-b', '2026-04', 300, 50, 30),
+                    ('overview-a', '2026-05', 400, 100, 60),
+                    ('overview-b', '2026-05', 100, 0, 30),
+                ],
+            )
+            connection.commit()
+
+        payload = self.client.get(
+            '/api/compare?dim=monthly&period_a=2026-04&period_b=2026-05'
+        ).get_json()
+
+        self.assertAlmostEqual(payload['kpi_compare']['expense_ratio']['period_a'], 60 / 400)
+        self.assertAlmostEqual(payload['kpi_compare']['expense_ratio']['period_b'], 90 / 400)
+        self.assertAlmostEqual(payload['kpi_compare']['expense_ratio']['change_pct'], 50.0)
 
     def test_daily_matrix_fallback_exposes_returning_ratio_and_source_metadata(self):
         from db import get_db

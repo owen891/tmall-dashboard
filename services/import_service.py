@@ -981,10 +981,17 @@ class ImportService:
                         row[field] = cast(self._number(value(mapped), label))
                 rows.append(row)
             elif table_name == 'promotion_daily_facts':
+                promotion_grain = {
+                    'promotion_channel_day': 'channel',
+                    'promotion_campaign_day': 'campaign',
+                    'promotion_unit_day': 'unit',
+                    'promotion_product_day': 'product',
+                }[source_type]
                 rows.append({
                     'shop_id':shop_id,'date':stat_date,'channel':str(value('channel')).strip(),
                     'campaign_id':str(value('campaign_id','')).strip(), 'unit_id':str(value('unit_id','')).strip(),
-                    'product_id':str(value('product_id','')).strip(), 'ad_spend':self._number(value('ad_spend'), '推广花费'),
+                    'product_id':str(value('product_id','')).strip(), 'grain': promotion_grain,
+                    'ad_spend':self._number(value('ad_spend'), '推广花费'),
                     'attributed_payment_amount':self._number(value('attributed_payment_amount'), '推广成交金额'),
                     'impressions':int(self._number(value('impressions',0), '展现量')) if 'impressions' in mapping else None,
                     'clicks':int(self._number(value('clicks',0), '点击量')) if 'clicks' in mapping else None,

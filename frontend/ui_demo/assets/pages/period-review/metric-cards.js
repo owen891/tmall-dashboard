@@ -1,10 +1,10 @@
 (function (global) {
   'use strict';
 
-  /** 周月复盘页「三大指标完成率卡」模块。
+  /** 周月复盘页「四大经营指标卡」模块。
 
-   *  对齐月复盘 XMind 的「完成情况分析 - 三大指标」：
-   *  净销售额完成率 / 净利润完成率 / 净费比，每张卡 = 数值 + 目标 + 完成率 + 环比 + 同比。
+   *  对齐月复盘 XMind 的「完成情况分析」：
+   *  净销售额 / 净利润 / 账单花费 / 净费比，每张卡 = 数值 + 目标 + 完成率 + 环比 + 同比。
    *  口径与复盘设置的四项目标输入同源（target_path.targets，后端 _target_rows），
    *  完成率方向（reverse_rate）与配色方向（rate_better）沿用后端口径，不在前端重算。
    *
@@ -16,15 +16,13 @@
   function createMetricCards(deps) {
     const { h, state } = deps;
 
-    // 三大指标卡定义：targetKey 对应 target_path.targets 的行 key。
-    // XMind 作者口径习惯：「GSV」指净销售、「费比」指净费比（推广÷净销售），
-    // 卡片标签按系统口径命名，不借用 XMind 的名字（避免同名不同义）。
-    // profit / net_expense_ratio 不在后端 METRIC_DEFS 里（无现成 items 环比同比），
-    // 变化率在本模块从 metrics.current/prev/yoy 现算，与 _metric_items 同公式。
+    // 四大指标卡定义：targetKey 对应 target_path.targets 的行 key。
+    // 账单花费沿用推广花费目标口径；净费比是推广花费 ÷ 净销售额。
     const CARD_SPECS = [
-      { targetKey: 'net_sales', label: '净销售额完成率', primary: true },
-      { targetKey: 'profit', label: '净利润完成率' },
-      { targetKey: 'net_expense_ratio', label: '净费比' },
+      { targetKey: 'net_sales', label: '净销售额', primary: true },
+      { targetKey: 'profit', label: '净利润' },
+      { targetKey: 'ad_spend', label: '账单花费', format: 'money' },
+      { targetKey: 'net_expense_ratio', label: '净费比', format: 'percent' },
     ];
 
     function findTargetRow(key) {
@@ -87,8 +85,38 @@
       return h('span', { class: cls, text: `${label} ${change > 0 ? '+' : ''}${change}%` });
     }
 
+    function insightFor(key) {
+      const metrics = (state.context && state.context.metrics) || {};
+      const yoy = metricChange(key, 'yoy');
+      const visitorYoy = metricChange('visitors', 'yoy');
+      if (key === 'net_sales') {
+        const visitorText = visitorYoy === null ? '流量端变化明显' : `访客同比${visitorYoy > 0 ? '增长' : '下降'} ${Math.abs(visitorYoy).toFixed(1)}%`;
+        return { label: '主要问题', text: `${visitorText}，流量端是首要缺口。` };
+      }
+      if (key === 'profit') {
+        return { label: '经营判断', text: '收入下滑叠加费比上升，本期利润承压，需要优先修复流量与投放效率。' };
+      }
+      if (key === 'ad_spend') {
+        const metrics = (state.context && state.context.metrics) || {};
+        const current = metrics.current || {};
+        const items = [
+          ['付费工具占比', current.paid_ipv && current.visitors ? `${((Number(current.paid_ipv) / Number(current.visitors)) * 100).toFixed(1)}%` : '暂无数据'],
+          ['投产 ROI', current.roi === null || current.roi === undefined ? '暂无数据' : formatValue(current.roi, 'decimal')],
+          ['加购成本', current.cart_cost === null || current.cart_cost === undefined ? '暂无数据' : formatValue(current.cart_cost, 'money')],
+          ['拉新成本', current.new_cost === null || current.new_cost === undefined ? '暂无数据' : formatValue(current.new_cost, 'money')],
+          ['点击成本', current.paid_cpc === null || current.paid_cpc === undefined ? '暂无数据' : formatValue(current.paid_cpc, 'money')],
+        ];
+        return { label: '投放效率', text: items.map(([label, value]) => `${label} ${value}`).join(' · ') };
+      }
+      const targetRow = findTargetRow(key);
+      const target = targetRow && targetRow.target !== null && targetRow.target !== undefined ? Number(targetRow.target) : null;
+      const current = metricValue(key);
+      const targetText = target === null || current === null ? '当前费比需要持续关注' : `当前费比 ${formatValue(current, targetRow.format)} 高于目标 ${formatValue(target, targetRow.format)}`;
+      return { label: '拖累来源', text: `${targetText}，建议优化投放结构与商品分层。` };
+    }
+
     /**
-     * 渲染三张完成率卡。targetRow 缺失时（目标未设置）完成率列显示「—」并提示补录。
+     * 渲染三张完成率卡。目标、完成率、环比同比与经营洞察分层展示，保证结论有稳定阅读宽度。
      * 指标值为 null（周期无数据）时整卡显示空态，不臆造 0。
      */
     function renderMetricCards() {
@@ -118,13 +146,16 @@
           if (yoy) changes.push(yoy);
         }
 
+        const insight = insightFor(spec.targetKey);
         const card = h('div', {
           class: `pr-metric-card ${spec.primary ? 'pr-metric-card--primary' : ''} ${rateState}`.trim(),
         },
-        h('span', { class: 'pr-metric-card__label', text: spec.label }),
-        h('div', { class: 'pr-metric-card__value' },
-          h('strong', { text: formatValue(value, targetRow.format) }),
-          h('small', { text: `目标 ${formatTarget(targetRow.target, targetRow.format)} · 差距 ${gapText}` })),
+        h('div', { class: 'pr-metric-card__head' },
+          h('span', { class: `pr-metric-card__status-dot ${rateState}`.trim(), 'aria-hidden': 'true' }),
+          h('span', { class: 'pr-metric-card__label', text: spec.label }),
+          spec.primary ? h('span', { class: 'pr-metric-card__priority', text: '核心结果' }) : null),
+        h('strong', { class: 'pr-metric-card__value', text: formatValue(value, targetRow.format) }),
+        h('small', { class: 'pr-metric-card__target', text: `目标 ${formatTarget(targetRow.target, targetRow.format)} · 差距 ${gapText}` }),
         h('div', { class: 'pr-metric-card__rate' },
           h('span', { class: 'pr-metric-card__rate-label', text: '完成率' }),
           h('strong', { text: formatRate(rate) })),
@@ -132,6 +163,9 @@
           ? h('div', { class: 'pr-metric-card__changes' }, ...changes)
           : h('div', { class: 'pr-metric-card__changes' },
             h('span', { class: 'pr-delta', text: compareMode === 'none' ? '未开启对比' : '对比周期无数据' })),
+        h('div', { class: `pr-metric-card__insight ${spec.targetKey === 'ad_spend' ? 'pr-metric-card__insight--efficiency' : ''}`.trim() },
+          h('strong', { text: insight.label }),
+          h('span', { text: insight.text })),
         );
         if (rate === null || rate === undefined) {
           card.append(h('p', { class: 'pr-metric-card__hint', text: '目标未录入，完成率待补录后计算。' }));

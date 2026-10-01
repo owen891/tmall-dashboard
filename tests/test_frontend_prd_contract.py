@@ -55,10 +55,10 @@ class FrontendPrdContractTests(unittest.TestCase):
         self.assertRegex(page, r'shell\.js\?v=\d{8}')
 
     def test_quick_date_ranges_use_system_today_not_latest_imported_date(self):
-        shell = self.read('frontend/ui_demo/assets/shell.js')
+        store = self.read('frontend/ui_demo/assets/runtime/date-range-store.js')
         # 行为断言：日期锚点取系统当天（写法允许变），且不从导入数据反推锚点。
-        self.assertRegex(shell, r'anchorDate\s*=\s*new Date\(')
-        self.assertNotIn('anchorDate = parseDate(latest)', shell)
+        self.assertRegex(store, r'anchorDate\s*=\s*new Date\(')
+        self.assertNotIn('anchorDate = parseDate(latest)', store)
 
     def test_overview_uses_server_side_matrix_export(self):
         overview = self.read('frontend/ui_demo/assets/overview-live.js')
@@ -671,7 +671,7 @@ class FrontendPrdContractTests(unittest.TestCase):
         self.assertIn('<body data-page="creative-board">', page)
         self.assertIn('../assets/creative-board.css?', page)
         self.assertIn('../assets/creative-board-live.js?', page)
-        self.assertIn('DemoApi.domainRequest(\'/api/creative-board\')', adapter)
+        self.assertIn("DemoApi.domainRequest('/api/creative-board'", adapter)
         self.assertIn("params.get('category')", adapter)
         self.assertIn("params.get('product_id')", adapter)
         self.assertIn("params.get('q')", adapter)
@@ -693,11 +693,44 @@ class FrontendPrdContractTests(unittest.TestCase):
         product_adapter = self.read('frontend/ui_demo/assets/promotion-live.js')
         self.assertIn('data-promotion-view="products"', page)
         self.assertIn('data-promotion-view-panel="products"', page)
+        self.assertNotIn('new-products', page)
         self.assertIn("new Set(['overview', 'plans', 'products']).has(storedView)", views)
+        self.assertNotIn('newProduct', views)
         self.assertIn("initialPromotionParams.get('tab')", product_adapter)
         self.assertIn("data-promotion-tab=\"products\"", page)
 
-    def test_import_history_uses_its_own_status_region_and_shortens_hashes(self):
+    def test_new_products_is_a_standalone_promotion_page(self):
+        page = self.read('frontend/ui_demo/pages/new-products.html')
+        adapter = self.read('frontend/ui_demo/assets/new-products-live.js')
+        shell = self.read('frontend/ui_demo/assets/shell.js')
+        self.assertIn('data-page="new-products"', page)
+        self.assertIn('../assets/new-products-live.js', page)
+        for hook in ('data-promotion-new-funnel', 'data-promotion-new-kpi', 'data-promotion-new-launch-body', 'data-promotion-new-body', 'data-promotion-structure-dialog', 'data-new-products-image-dialog', 'data-new-products-image-preview'):
+            self.assertIn(hook, page)
+        self.assertIn('../assets/creative-board.css?', page)
+        self.assertIn('/api/promotion/new-products?', adapter)
+        self.assertIn('/api/creative-board?', adapter)
+        self.assertIn('data-new-products-image', adapter)
+        self.assertIn('renderCreativePanel', adapter)
+        self.assertNotIn('window.location.href = `/creative-board?', adapter)
+        self.assertIn("addEventListener('tmall:date-range-change'", adapter)
+        self.assertIn("addEventListener('tmall:refresh'", adapter)
+        self.assertIn('data-promotion-new-launch-toggle', page)
+        self.assertIn('total_product_count', adapter)
+        self.assertIn('promoted_product_count', adapter)
+        self.assertIn('unpromoted_product_count', adapter)
+        self.assertIn('promotion_coverage', adapter)
+        self.assertIn('launchesExpanded', adapter)
+        self.assertIn('cb-creative-table', adapter)
+        self.assertIn('data-new-products-creative-sort', adapter)
+        self.assertIn("creativeSort: { key: 'clicks', direction: 'desc' }", adapter)
+        self.assertIn("direction === 'asc' ? 'arrow-up' : 'arrow-down'", adapter)
+        self.assertIn("state.creativeSort.direction === 'desc' ? 'asc' : 'desc'", adapter)
+        self.assertIn(".cb-creative-table", self.read('frontend/ui_demo/assets/creative-board.css'))
+        self.assertIn(".cb-sort-button", self.read('frontend/ui_demo/assets/creative-board.css'))
+        self.assertIn("['new-products', '新品推广', 'sparkles', 'new-products']", shell)
+
+
         page = self.read('frontend/ui_demo/pages/data-center.html')
         adapter = self.read('frontend/ui_demo/assets/pages/data-center/import-workflow.js')
         self.assertIn('data-import-history-status', page)

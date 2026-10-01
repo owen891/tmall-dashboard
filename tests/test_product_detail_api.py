@@ -34,7 +34,7 @@ class ProductDetailApiTests(unittest.TestCase):
         self.assertEqual(data['summary']['payment_amount'], 100.0)
         self.assertEqual(data['summary']['net_sales'], 90.0)
         self.assertEqual(data['summary']['payment_conversion_rate'], .1)
-        self.assertEqual(data['summary']['expense_ratio'], .05)
+        self.assertEqual(data['summary']['expense_ratio'], 0.055556)
         self.assertEqual(data['summary']['average_order_value'], 50.0)
         self.assertEqual(data['summary']['refund_rate'], .1)
         self.assertEqual(data['summary']['metric_availability']['refund_rate'], 'available')

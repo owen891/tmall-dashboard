@@ -28,6 +28,16 @@
           </div>
         </div>
 
+        <section class="ui-metric-grid"        </div>
+
+        <section class="ui-context-bar" aria-label="生命周期数据范围">
+          <div class="ui-context-bar__copy">
+            <span class="ui-context-bar__label">当前范围</span>
+            <strong class="ui-context-bar__value" data-lifecycle-context>当前店铺 · 月度生命周期记录</strong>
+            <span class="ui-context-bar__meta">先看商品阶段和增长变化，再进入月度明细与人工调整。</span>
+          </div>
+        </section>
+
         <section class="ui-metric-grid" aria-label="生命周期概览">
           <article class="ui-metric-card"><div class="metric-card__label">跟踪商品</div><div class="metric-card__value" data-lifecycle-kpi="products">--</div><div class="metric-card__meta"><i data-lucide="package-search"></i>当前筛选范围内</div></article>
           <article class="ui-metric-card"><div class="metric-card__label">累计销售额</div><div class="metric-card__value" data-lifecycle-kpi="gsv">--</div><div class="metric-card__meta"><i data-lucide="calendar-range"></i><span data-lifecycle-months>--</span></div></article>
@@ -36,7 +46,7 @@
         </section>
 
         <section class="lifecycle-list" data-lifecycle-list aria-labelledby="lifecycle-list-title">
-          <div class="ui-filter-toolbar lifecycle-list__toolbar">
+          <div class="ui-filter-toolbar ui-table-toolbar lifecycle-list__toolbar">
             <div>
               <h3 id="lifecycle-list-title" class="panel__title">商品列表</h3>
               <span class="panel__hint" data-lifecycle-count>按累计销售额 排序</span>

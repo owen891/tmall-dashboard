@@ -27,15 +27,30 @@
           </div>
         </div>
 
-        <section class="overview-decision" data-overview-decision aria-labelledby="overview-decision-title">
-          <div class="overview-decision__intro"><div><span class="section-kicker">先看经营判断</span><h3 id="overview-decision-title">当前周期先处理什么</h3></div><div class="overview-v2-context__meta"><span class="overview-v2-status" data-overview-quality data-availability="loading">加载中</span><span class="overview-decision__context" data-overview-context>加载中…</span></div></div>
-          <div class="overview-decision__items">
-            <div class="overview-decision__item"><span>净销售额</span><strong data-overview-summary="net_sales">--</strong><small data-overview-kpi-meta="net_sales">等待加载…</small></div>
-            <div class="overview-decision__item"><span>目标完成度</span><strong data-overview-summary="target">--</strong><small>按当前周期目标计算</small></div>
-            <div class="overview-decision__item"><span>待处理动作</span><strong data-overview-summary="actions">--</strong><small>需要运营跟进的事项</small></div>
-          </div>
-          <span class="sr-only" data-overview-summary="freshness">--</span><span class="sr-only" data-overview-kpi="expense_ratio">--</span><span class="sr-only" data-overview-kpi="average_order_value">--</span><span class="sr-only" data-overview-kpi="returning_buyer_ratio">--</span>
+        <section class="ui-context-bar overview-context-bar" aria-label="经营数据范围">
+          <div class="ui-context-bar__copy"><span class="ui-context-bar__label">当前范围</span><strong class="ui-context-bar__value">当前店铺 · 当前经营周期</strong><span class="ui-context-bar__meta">先看经营判断，再处理目标差额与异常动作。</span></div>
         </section>
+
+          <section class="overview-decision" data-overview-decision aria-labelledby="overview-decision-title">
+    <div class="overview-decision__intro">
+      <div><span class="section-kicker">先看经营判断</span><h3 id="overview-decision-title">当前周期先处理什么</h3></div>
+      <div class="overview-v2-context__meta">
+        <span class="overview-v2-status" data-overview-quality data-availability="loading">加载中</span>
+        <span class="overview-decision__context" data-overview-context>加载中…</span>
+      </div>
+    </div>
+    <div class="overview-decision__items">
+      <div class="overview-decision__item"><span>净销售额</span><strong data-overview-summary="net_sales">--</strong><small data-overview-kpi-meta="net_sales">等待加载…</small></div>
+      <div class="overview-decision__item"><span>目标完成度</span><strong data-overview-summary="target">--</strong><small>按当前周期目标计算</small></div>
+      <div class="overview-decision__item"><span>待处理动作</span><strong data-overview-summary="actions">--</strong><small>需要运营跟进的事项</small></div>
+      <div class="overview-decision__item"><span>重点异常</span><strong data-overview-summary="anomalies">--</strong><small data-overview-summary-meta="anomalies">等待异常数据…</small></div>
+    </div>
+    <div class="overview-decision__focus" data-overview-focus aria-live="polite">
+      <span class="overview-decision__focus-label">优先动作</span>
+      <span class="overview-decision__focus-copy" data-overview-focus-copy>等待数据后给出下一步建议</span>
+      <span class="overview-decision__focus-meta" data-overview-focus-meta>异常优先级高于普通待办</span>
+    </div>
+  </section>
 
         <section class="ui-metric-grid overview-v2-kpis" aria-label="经营指标">
           <button class="ui-metric-card overview-v2-kpi overview-v2-kpi--brand" type="button" data-overview-kpi-select="net_sales" aria-label="查看净销售额趋势"><span class="overview-v2-kpi__top"><span class="metric-card__label ui-metric-card__label">净销售额</span><span class="overview-v2-kpi__icon ui-metric-card__icon" aria-hidden="true"><i data-lucide="dollar-sign"></i></span></span><span class="metric-card__value ui-metric-card__value" data-overview-summary="net_sales" data-overview-kpi="net_sales">--</span><span class="overview-v2-kpi__delta ui-metric-card__meta" data-overview-kpi-meta="net_sales">等待加载…</span><span class="overview-v2-kpi__bar" aria-hidden="true"><span></span></span></button>
@@ -53,6 +68,13 @@
             <button class="ui-metric-card overview-v2-kpi" type="button" data-overview-kpi-select="expense_ratio" aria-label="查看费比趋势"><span class="metric-card__label">费比</span><span class="metric-card__value" data-overview-kpi="expense_ratio">--</span><span class="overview-v2-kpi__delta" data-overview-kpi-meta="expense_ratio">等待加载…</span></button>
           </div>
         </details>
+        <section class="sr-only" aria-labelledby="overview-aux-kpis-title">
+          <h2 id="overview-aux-kpis-title">补充核心指标</h2>
+          <dl>
+            <div><dt>客单价</dt><dd><span data-overview-kpi="average_order_value">--</span><span data-overview-kpi-meta="average_order_value">等待加载…</span></dd></div>
+            <div><dt>老客成交占比</dt><dd><span data-overview-kpi="returning_buyer_ratio">--</span><span data-overview-kpi-meta="returning_buyer_ratio">等待加载…</span></dd></div>
+          </dl>
+        </section>
 
         <section class="section-grid overview-v2-main-grid">
           <article class="chart-panel ui-panel">
@@ -67,7 +89,7 @@
 
         <section class="operations-center" data-overview-operations-center aria-labelledby="overview-operations-title">
           <article class="ui-panel operations-center__panel">
-            <div class="panel__header operations-center__header"><div><span class="section-kicker">运营协同</span><h3 class="panel__title" id="overview-operations-title">运营提醒</h3><p class="panel__hint">把待处理动作、计划安排和系统通知集中在一个入口</p></div><div class="panel__tools"><span class="ui-badge ui-badge--warning" data-operations-pending-count>待处理 --</span><a class="ui-button" href="/reviews">进入经营复盘</a></div></div>
+            <div class="panel__header operations-center__header"><div><span class="section-kicker">运营协同</span><h3 class="panel__title" id="overview-operations-title">异常与行动</h3><p class="panel__hint">按优先级处理异常、待办动作和系统通知</p></div><div class="panel__tools"><span class="ui-badge ui-badge--warning" data-operations-pending-count>待处理 --</span><a class="ui-button" href="/reviews">进入经营复盘</a></div></div>
             <div class="operations-center__toolbar" role="tablist" aria-label="运营提醒筛选"><div class="segmented"><button type="button" role="tab" aria-selected="true" data-operations-filter="all">全部</button><button type="button" role="tab" aria-selected="false" data-operations-filter="todo">待处理</button><button type="button" role="tab" aria-selected="false" data-operations-filter="anomaly">异常提醒</button><button type="button" role="tab" aria-selected="false" data-operations-filter="system">系统通知</button></div><button class="ui-button ui-button--ghost" type="button" data-operations-refresh><i data-lucide="refresh-cw"></i><span>刷新提醒</span></button></div>
             <div class="operations-center__layout">
               <section class="operations-center__feed" aria-labelledby="operations-feed-title"><div class="operations-center__section-head"><div><h4 id="operations-feed-title">提醒列表</h4><p data-operations-feed-status>加载中…</p></div><span class="ui-badge ui-badge--info" data-operations-feed-count>--</span></div><div class="operations-center__feed-list" data-operations-feed role="list" aria-live="polite"><div class="ui-empty-state"><span>加载中…</span></div></div></section>
@@ -137,6 +159,6 @@
   <script src="../assets/field-selector.js"></script>
   <script src="../assets/ui-components.js"></script>
   <script src="../assets/operations-center.js?v=20260923-3"></script>
-  <script src="../assets/format.js"></script><script src="../assets/overview-live.js?v=20260923"></script>
+  <script src="../assets/format.js"></script><script src="../assets/overview-live.js?v=20261001-overview-nui"></script>
 </body>
 </html>

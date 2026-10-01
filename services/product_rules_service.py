@@ -35,7 +35,7 @@ PRODUCT_RULES = (
         "name": "高付费高退款",
         "group": "成本与风险",
         "description": "推广费比达到 30% 且退款率达到 20% 以上",
-        "condition": "d.product_id IS NOT NULL AND COALESCE(d.payment_amount, 0) > 0 AND COALESCE(d.ad_spend, 0) / d.payment_amount >= 0.30 AND COALESCE(d.refund_amount, 0) / d.payment_amount >= 0.20",
+        "condition": "d.product_id IS NOT NULL AND COALESCE(NULLIF(d.net_sales, 0), d.payment_amount - d.refund_amount, 0) > 0 AND COALESCE(d.ad_spend, 0) / COALESCE(NULLIF(d.net_sales, 0), d.payment_amount - d.refund_amount, 0) >= 0.30 AND COALESCE(d.refund_amount, 0) / d.payment_amount >= 0.20",
         "metric": "expense_ratio_and_refund_rate",
         "severity": "danger",
         "version": "2026.09",
@@ -51,7 +51,7 @@ PRODUCT_RULES = (
         "name": "高费比商品",
         "group": "成本与风险",
         "description": "推广费比达到 30% 以上",
-        "condition": "d.product_id IS NOT NULL AND COALESCE(d.payment_amount, 0) > 0 AND COALESCE(d.ad_spend, 0) / d.payment_amount >= 0.30",
+        "condition": "d.product_id IS NOT NULL AND COALESCE(NULLIF(d.net_sales, 0), d.payment_amount - d.refund_amount, 0) > 0 AND COALESCE(d.ad_spend, 0) / COALESCE(NULLIF(d.net_sales, 0), d.payment_amount - d.refund_amount, 0) >= 0.30",
         "metric": "expense_ratio",
         "severity": "warning",
         "version": "2026.09",
@@ -135,14 +135,14 @@ RULE_EVALUATIONS = {
         "checks": (("refund_rate", ">=", 0.20, "退款率"),),
     },
     "high_paid_high_refund": {
-        "requirements": ("payment_amount", "ad_spend", "refund_amount"),
+        "requirements": ("payment_amount", "refund_amount", "ad_spend"),
         "checks": (
             ("expense_ratio", ">=", 0.30, "费比"),
             ("refund_rate", ">=", 0.20, "退款率"),
         ),
     },
     "high_expense": {
-        "requirements": ("payment_amount", "ad_spend"),
+        "requirements": ("payment_amount", "refund_amount", "ad_spend"),
         "checks": (("expense_ratio", ">=", 0.30, "费比"),),
     },
     "low_conversion": {

@@ -7,7 +7,7 @@
   <link rel="stylesheet" href="../assets/tokens.css">
   <link rel="stylesheet" href="../assets/shell.css">
   <link rel="stylesheet" href="../assets/components.css"><link rel="stylesheet" href="../assets/themes/product-domain.css"><link rel="stylesheet" href="../assets/themes/promotion-domain.css"><link rel="stylesheet" href="../assets/themes/overview-domain.css"><link rel="stylesheet" href="../assets/themes/lifecycle-domain.css"><link rel="stylesheet" href="../assets/themes/settings-domain.css">
-  <link rel="stylesheet" href="../assets/period-review.css?v=20260923c">
+  <link rel="stylesheet" href="../assets/period-review.css?v=20261001c">
   <script src="../assets/lucide-custom.min.js"></script>
 </head>
 <body data-page="period-review">
@@ -23,12 +23,15 @@
             <h2>周月复盘</h2>
             <p>先确认结果和变化，再定位商品、推广与执行问题，最后沉淀可验收的下一步动作。</p>
           </div>
-          <div class="ui-filter-toolbar">
-            <button type="button" class="ui-button" data-pr-refresh><i data-lucide="refresh-cw"></i><span>刷新素材</span></button>
-            <button type="button" class="ui-button" data-pr-export><i data-lucide="download"></i><span>导出复盘</span></button>
-            <button type="button" class="ui-button ui-button--primary" data-pr-save><i data-lucide="save"></i><span>保存复盘</span></button>
-          </div>
         </div>
+
+        <section class="ui-context-bar pr-context-bar" aria-label="复盘范围">
+          <div class="ui-context-bar__copy">
+            <span class="ui-context-bar__label">复盘范围</span>
+            <strong class="ui-context-bar__value" data-pr-context-range>正在读取时间范围…</strong>
+            <span class="ui-context-bar__meta" data-pr-context-meta>正在读取周期、品类与对比口径…</span>
+          </div>
+        </section>
 
         <section class="pr-control-strip" aria-label="legacy controls" hidden>
           <nav class="pr-mode-tabs" aria-label="复盘周期">
@@ -119,6 +122,14 @@
             <div class="pr-history__list" data-pr-history></div>
           </section>
         </section>
+        <div class="ui-sticky-action-bar pr-action-bar">
+          <div class="ui-sticky-action-bar__content" data-pr-action-summary role="status" aria-live="polite">正在读取复盘状态…</div>
+          <div class="ui-sticky-action-bar__actions">
+            <button type="button" class="ui-button" data-pr-refresh><i data-lucide="refresh-cw"></i><span>刷新素材</span></button>
+            <button type="button" class="ui-button" data-pr-export><i data-lucide="download"></i><span>导出复盘</span></button>
+            <button type="button" class="ui-button ui-button--primary" data-pr-save><i data-lucide="save"></i><span>保存复盘</span></button>
+          </div>
+        </div>
       </main>
     </div>
   </div>
@@ -126,6 +137,6 @@
   <script src="../assets/navigation.js"></script>
   <script src="../assets/labels.js"></script>
   <script src="../assets/shell.js?v=20260923q"></script>
-  <script src="../assets/format.js"></script><script src="../assets/ui-components.js"></script><script src="../assets/field-selector.js"></script><script src="../assets/pages/period-review/product-columns.js"></script><script src="../assets/pages/period-review/target-cards.js"></script><script src="../assets/pages/period-review/metric-cards.js"></script><script src="../assets/pages/period-review/gap-attribution.js"></script><script src="../assets/pages/period-review/review-export.js"></script><script src="../assets/pages/period-review/leaf-board.js"></script><script src="../assets/period-review-live.js?v=20260930b"></script>
+  <script src="../assets/format.js"></script><script src="../assets/ui-components.js"></script><script src="../assets/field-selector.js"></script><script src="../assets/pages/period-review/product-columns.js"></script><script src="../assets/pages/period-review/target-cards.js"></script><script src="../assets/pages/period-review/metric-cards.js"></script><script src="../assets/pages/period-review/gap-attribution.js"></script><script src="../assets/pages/period-review/review-export.js"></script><script src="../assets/pages/period-review/leaf-board.js"></script><script src="../assets/period-review-live.js?v=20261001c"></script>
 </body>
 </html>

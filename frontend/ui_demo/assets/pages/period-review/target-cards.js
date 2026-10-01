@@ -153,10 +153,9 @@
         return { ...row, target, gap, achieved_rate: rate };
       });
       state.context.target_path.targets = rows;
-      const existing = els.overview && els.overview.querySelector('.pr-target-table');
-      if (existing) {
-        existing.replaceWith(renderTargetTable(rows, targetTimeProgress(state.context.period)));
-      }
+      // 目标表已从业绩全景移除（完成率改由驾驶舱三卡 + 归因摘要展示），
+      // 这里只更新内存数据；可见反馈由 refreshMetricCardsAndGap 汇总触发。
+      refreshMetricCardsAndGap();
     }
 
     function fillTargetInputs(review) {
@@ -200,10 +199,16 @@
       const raw = els.target ? els.target.value.trim() : '';
       const parsed = raw === '' ? null : Number(raw);
       const value = Number.isFinite(parsed) && parsed > 0 ? parsed : null;
-      const path = value !== null ? localTargetPath(value) : state.context.target_path;
-      const existing = els.overview.querySelector('.pr-target');
-      if (existing) existing.replaceWith(renderTarget(path));
+      if (value !== null) {
+        const path = localTargetPath(value);
+        state.context.target_path = { ...state.context.target_path, ...path };
+      }
       refreshTargetTable();
+    }
+
+    /** 目标输入变化后刷新可见的完成率出口：驾驶舱三卡 + 归因摘要。 */
+    function refreshMetricCardsAndGap() {
+      if (typeof deps.onTargetsChanged === 'function') deps.onTargetsChanged();
     }
 
     function renderTarget(path) {

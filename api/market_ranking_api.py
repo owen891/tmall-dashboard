@@ -124,7 +124,7 @@ def products():
     conn = get_connection()
     c = conn.cursor()
 
-    sql = '''SELECT category, list_type, rank, title, shop, buyers, visitors
+    sql = '''SELECT category, list_type, rank, rank_change, title, shop, buyers, visitors
              FROM market_products WHERE run_id=?'''
     params = [run_id]
 
@@ -141,8 +141,8 @@ def products():
     conn.close()
 
     return success([{
-        'category': r[0], 'list_type': r[1], 'rank': r[2],
-        'title': r[3], 'shop': r[4], 'buyers': r[5], 'visitors': r[6],
+        'category': r[0], 'list_type': r[1], 'rank': r[2], 'rank_change': r[3],
+        'title': r[4], 'shop': r[5], 'buyers': r[6], 'visitors': r[7],
     } for r in rows])
 
 

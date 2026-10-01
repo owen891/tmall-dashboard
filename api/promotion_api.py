@@ -95,6 +95,35 @@ def promotion_plan_types():
     )
 
 
+@promotion_bp.route('/api/promotion/new-products')
+def promotion_new_products():
+    """新品数据看板：60 天内上架商品的推广投放效率与销售贡献。"""
+    start_date = request.args.get('start')
+    end_date = request.args.get('end')
+    if not start_date or not end_date:
+        return failure('VALIDATION_ERROR', '必须提供 start 和 end', status=422)
+    filters = {
+        **{key: request.args.get(key) for key in ('channel', 'campaign_id', 'unit_id', 'product_id')},
+    }
+    filters.update(category_filters_from_request())
+    try:
+        result = promotion_service.new_products(start_date, end_date, filters)
+    except PromotionValidationError as error:
+        return failure('VALIDATION_ERROR', str(error), status=422)
+    availability = result['availability']
+    missing_inputs = ['promotion_daily'] if availability == 'no-data' else []
+    return success(
+        result,
+        availability=availability,
+        filters={'start': start_date, 'end': end_date,
+                 **{k: v for k, v in filters.items() if v}},
+        missing_inputs=missing_inputs,
+        limitations=limitations_for(availability, missing_inputs=missing_inputs) + result.get('limitations', []),
+        evidence_level=evidence_level_for(availability, missing_inputs=missing_inputs),
+        evidence=[{'source': 'promotion_daily_facts', 'row_count': len(result['rows'])}],
+    )
+
+
 @promotion_bp.route('/api/promotion/campaign-detail')
 def promotion_campaign_detail():
     """计划看板行展开：计划汇总 + 投放商品列表。"""
@@ -124,10 +153,15 @@ def promotion_campaign_detail():
 def creative_board():
     """素材点击率看板:全历史累计,按单品分组,按品类筛选(无时间维度)。"""
     category = request.args.get('category')
+    product_id = request.args.get('product_id')
     category_filters = category_filters_from_request()
-    selected_label = category or category_filters.get('shop_label')
+    selected_label = None if product_id else (category or category_filters.get('shop_label'))
     try:
-        result = promotion_service.creative_board(selected_label)
+        result = promotion_service.creative_board(
+            selected_label,
+            product_id=product_id,
+            include_system=bool(product_id),
+        )
     except PromotionValidationError as error:
         return failure('VALIDATION_ERROR', str(error), status=422)
     availability = 'available' if result['products'] else 'no-data'
@@ -135,7 +169,7 @@ def creative_board():
     return success(
         result,
         availability=availability,
-        filters={**category_filters, 'category': category or '', 'category_mode': request.args.get('category_mode', '')},
+        filters={**category_filters, 'category': category or '', 'category_mode': request.args.get('category_mode', ''), 'product_id': product_id or ''},
         missing_inputs=missing_inputs,
         limitations=limitations_for(availability, missing_inputs=missing_inputs) + [
             '素材指标为全部历史累计,不含时间维度;系统自动创意(智能创意/黑盒等)不在展示范围',

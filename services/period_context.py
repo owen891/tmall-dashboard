@@ -53,11 +53,11 @@ def _empty_totals():
     }
 
 
-def _totals_for_range(conn, start, end, category_label=None):
+def _totals_for_range(conn, start, end, category_label=None, allow_monthly_fallback=True):
     """周期指标聚合：daily_data 为主口径。
 
     对比期月份数据可能只有 monthly_data（BI 日度补采窗口外），此时按同品类
-    过滤回退月表（方案原定不做，实测 2025-08/2026-07 同比环比全空后决定加）：
+    过滤回退月表；分周/分日拆解必须保持原粒度，不允许用整月值填充。
     - 仅当 daily 在该区间 day_count=0 时回退，daily 有值绝不覆盖；
     - 月表 operating_profit 在部分月份为 0（未回填），profit=0 视为缺失不采信；
     - 回退后 day_count 记 1，让上游有数据判断成立，比率类字段（转化率等）
@@ -97,7 +97,7 @@ def _totals_for_range(conn, start, end, category_label=None):
             totals[key] = None if key.endswith('_rate') or key.endswith('_date') else 0.0
     totals['gsv'] = float(totals.get('gsv') or 0.0)
     # 日粒度完全缺失时回退 monthly_data（仅对比期场景；见函数 docstring）。
-    if not totals.get('day_count'):
+    if allow_monthly_fallback and not totals.get('day_count'):
         monthly = _monthly_fallback_totals(conn, start, end, category_label)
         if monthly:
             return monthly
@@ -313,7 +313,10 @@ def _breakdown_block(conn, period, category_label=None):
 
     rows = []
     for span in spans:
-        totals = _totals_for_range(conn, span['start'], span['end'], category_label)
+        totals = _totals_for_range(
+            conn, span['start'], span['end'], category_label,
+            allow_monthly_fallback=False,
+        )
         if not totals['day_count']:
             continue
         derived = _derive(totals)
@@ -1505,7 +1508,7 @@ def _linked_period_summaries(conn, period):
         rows = conn.execute(
             '''SELECT period_key, status, reviewer, updated_at, sections
                FROM period_reviews
-               WHERE period_type = 'week' AND period_key LIKE ?
+               WHERE period_type = 'week' AND period_key LIKE ? AND status = 'final'
                ORDER BY period_key ASC''',
             (f"{prefix}%",),
         ).fetchall()

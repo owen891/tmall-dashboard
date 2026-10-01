@@ -195,6 +195,108 @@
     if (!window.DemoFieldSelector?.create) throw new Error('字段选择器组件尚未加载');
     return window.DemoFieldSelector.create(options);
   };
+  const appendContent = (parent, content, className = '') => {
+    if (!content) return parent;
+    if (isElement(content)) parent.append(content);
+    else if (Array.isArray(content)) content.forEach((item) => appendContent(parent, item));
+    else parent.append(create('div', className, String(content)));
+    return parent;
+  };
+  // Compact page context: keep the current range/source visible without competing with the page title.
+  const contextBar = ({ label = '当前范围', value = '', meta = '', actions = null, className = '' } = {}) => {
+    const node = create('section', ['ui-context-bar', className].filter(Boolean).join(' '));
+    const copy = create('div', 'ui-context-bar__copy');
+    copy.append(create('span', 'ui-context-bar__label', label));
+    if (value) copy.append(create('strong', 'ui-context-bar__value', value));
+    if (meta) copy.append(create('span', 'ui-context-bar__meta', meta));
+    node.append(copy);
+    if (actions) { const actionWrap = create('div', 'ui-context-bar__actions'); appendContent(actionWrap, actions); node.append(actionWrap); }
+    return node;
+  };
+  // Shared table/list toolbar: filters remain on the left, result context and actions on the right.
+  const tableToolbar = ({ filters = null, summary = '', actions = null, className = '' } = {}) => {
+    const node = create('div', ['ui-table-toolbar', className].filter(Boolean).join(' '));
+    const main = create('div', 'ui-table-toolbar__main');
+    appendContent(main, filters);
+    node.append(main);
+    const side = create('div', 'ui-table-toolbar__side');
+    if (summary) side.append(create('span', 'ui-table-toolbar__summary', summary));
+    appendContent(side, actions);
+    if (side.childNodes.length) node.append(side);
+    return node;
+  };
+  const decisionCard = ({ eyebrow = '', title = '', detail = '', tone = 'default', action = null, className = '' } = {}) => {
+    const node = create('article', ['ui-decision-card', `ui-decision-card--${tone}`, className].filter(Boolean).join(' '));
+    const copy = create('div', 'ui-decision-card__copy');
+    if (eyebrow) copy.append(create('span', 'ui-decision-card__eyebrow', eyebrow));
+    if (title) copy.append(create('strong', 'ui-decision-card__title', title));
+    if (detail) copy.append(create('span', 'ui-decision-card__detail', detail));
+    node.append(copy);
+    if (action) { const actionWrap = create('div', 'ui-decision-card__action'); appendContent(actionWrap, action); node.append(actionWrap); }
+    return node;
+  };
+  // A reusable side panel for evidence/details. It does not alter routing or page state.
+  const detailDrawer = ({ title, description = '', body = null, footer = null, size = 'md', onClose = null } = {}) => {
+    const node = create('aside', ['ui-drawer', `ui-drawer--${size}`, 'is-hidden'].join(' '));
+    node.hidden = true;
+    node.setAttribute('role', 'dialog');
+    node.setAttribute('aria-modal', 'true');
+    const titleId = `ui-drawer-title-${++modalSequence}`;
+    node.setAttribute('aria-labelledby', titleId);
+    const backdrop = create('button', 'ui-drawer__backdrop');
+    backdrop.type = 'button';
+    backdrop.setAttribute('aria-label', '关闭详情');
+    const sheet = create('section', 'ui-drawer__sheet');
+    const header = create('header', 'ui-drawer__header');
+    const copy = create('div', 'ui-drawer__copy');
+    const heading = create('h2', '', title || '详情');
+    heading.id = titleId;
+    copy.append(heading);
+    if (description) copy.append(create('p', '', description));
+    const closeButton = button({ icon: 'x', variant: 'ghost', className: 'ui-drawer__close' });
+    closeButton.setAttribute('aria-label', '关闭详情');
+    header.append(copy, closeButton);
+    const bodyNode = create('div', 'ui-drawer__body');
+    appendContent(bodyNode, body);
+    sheet.append(header, bodyNode);
+    const handle = { node, body: bodyNode, footer: null, open: () => handle, close: () => handle, destroy: () => handle };
+    if (footer) {
+      const footerNode = create('footer', 'ui-drawer__footer');
+      appendContent(footerNode, footer);
+      sheet.append(footerNode);
+      handle.footer = footerNode;
+    }
+    node.append(backdrop, sheet);
+    document.body.append(node);
+    const close = () => {
+      if (node.hidden) return handle;
+      node.hidden = true;
+      node.classList.remove('is-open');
+      document.body.classList.remove('has-ui-drawer');
+      if (onClose) onClose();
+      return handle;
+    };
+    handle.open = () => {
+      node.hidden = false;
+      node.classList.remove('is-hidden');
+      node.classList.add('is-open');
+      document.body.classList.add('has-ui-drawer');
+      closeButton.focus({ preventScroll: true });
+      return handle;
+    };
+    handle.close = close;
+    handle.destroy = () => { close(); node.remove(); return handle; };
+    closeButton.addEventListener('click', close);
+    backdrop.addEventListener('click', close);
+    node.addEventListener('keydown', (event) => { if (event.key === 'Escape') { event.preventDefault(); close(); } });
+    return handle;
+  };
+  const stickyActionBar = ({ content = null, actions = null, className = '' } = {}) => {
+    const node = create('div', ['ui-sticky-action-bar', className].filter(Boolean).join(' '));
+    if (content) { const contentWrap = create('div', 'ui-sticky-action-bar__content'); appendContent(contentWrap, content); node.append(contentWrap); }
+    if (actions) { const actionWrap = create('div', 'ui-sticky-action-bar__actions'); appendContent(actionWrap, actions); node.append(actionWrap); }
+    return node;
+  };
   let modalSequence = 0;
   let openModalCount = 0;
   let bodyOverflowBeforeModal = '';
@@ -320,6 +422,6 @@
     });
     return issues;
   };
-  const api = { text, create, clear, escape, formatDateTime, format, status, renderDataState, icon, button, badge, emptyState, dataState, metricCard, metricGrid, panel, pageHeader, filterToolbar, table, setState, modal, confirm, fieldSelector, audit };
+  const api = { text, create, clear, escape, formatDateTime, format, status, renderDataState, icon, button, badge, emptyState, dataState, metricCard, metricGrid, panel, pageHeader, filterToolbar, table, setState, contextBar, tableToolbar, decisionCard, detailDrawer, stickyActionBar, modal, confirm, fieldSelector, audit };
   window.TmallUI = Object.freeze(api);
 })();

@@ -20,6 +20,16 @@
           <div class="demo-page__actions"><button class="ui-button" type="button" data-manage-refresh><i data-lucide="refresh-cw"></i>刷新</button></div>
         </div>
 
+        <section class="ui-metric-grid"        </div>
+
+        <section class="ui-context-bar" aria-label="管理工作台范围">
+          <div class="ui-context-bar__copy">
+            <span class="ui-context-bar__label">工作范围</span>
+            <strong class="ui-context-bar__value">全局管理 · 任务、目标与扫描</strong>
+            <span class="ui-context-bar__meta">先处理待办任务，再维护人员目标和自动扫描，操作日志统一放在末尾。</span>
+          </div>
+        </section>
+
         <section class="ui-metric-grid" aria-label="工作台概览">
           <article class="ui-metric-card"><div class="metric-card__label">任务总数</div><div class="metric-card__value" data-manage-kpi="tasks">--</div></article>
           <article class="ui-metric-card"><div class="metric-card__label">待处理</div><div class="metric-card__value" data-manage-kpi="pending">--</div></article>
@@ -29,6 +39,7 @@
 
         <section class="ui-panel">
           <div class="panel__header"><div><h3 class="panel__title">任务列表</h3><p class="panel__hint" data-manage-task-period>任务不按经营周期筛选</p></div><button class="ui-button ui-button--primary" type="button" data-manage-create-task><i data-lucide="plus"></i>新建任务</button></div>
+          <div class="ui-table-toolbar"><div class="ui-table-toolbar__main"><span class="ui-table-toolbar__summary">优先处理未完成任务</span></div></div>
           <div class="ui-table-wrap"><table class="ui-data-table"><thead><tr><th>任务</th><th>状态</th><th>优先级</th><th>负责人</th><th>截止日期</th><th>操作</th></tr></thead><tbody data-manage-tasks><tr><td colspan="6">加载中…</td></tr></tbody></table></div>
         </section>
 

@@ -12,7 +12,7 @@ METRIC_DEFINITIONS = OrderedDict([
     ('refund_rate', ('successful_refund_amount', 'payment_amount')),
     ('payment_conversion_rate', ('payment_buyers', 'product_visitors')),
     ('average_order_value', ('payment_amount', 'payment_buyers')),
-    ('expense_ratio', ('ad_spend', 'payment_amount')),
+    ('expense_ratio', ('ad_spend', 'net_sales')),
     ('ad_roi', ('attributed_payment_amount', 'ad_spend')),
     ('returning_buyer_ratio', ('returning_payment_buyers', 'payment_buyers')),
 ])
@@ -45,7 +45,7 @@ METRIC_METADATA = OrderedDict([
     }),
     ('expense_ratio', {
         'label': '\u8d39\u7528\u7387',
-        'formula': 'ad_spend / payment_amount',
+        'formula': 'ad_spend / net_sales',
         'unit': 'ratio',
         'aggregation': 'sum_then_calculate',
     }),
@@ -85,7 +85,7 @@ def _calculate(name, values):
     if name == 'average_order_value':
         return _ratio(values['payment_amount'], values['payment_buyers'])
     if name == 'expense_ratio':
-        return _ratio(values['ad_spend'], values['payment_amount'])
+        return _ratio(values['ad_spend'], values['net_sales'])
     if name == 'ad_roi':
         return _ratio(values['attributed_payment_amount'], values['ad_spend'])
     if name == 'returning_buyer_ratio':
@@ -101,7 +101,8 @@ def derive_metrics(facts, names=None):
 
     for name in selected:
         dependencies = METRIC_DEFINITIONS[name]
-        missing = [field for field in dependencies if facts.get(field) is None]
+        available_values = {**facts, **values}
+        missing = [field for field in dependencies if available_values.get(field) is None]
         for field in missing:
             if field not in missing_fields:
                 missing_fields.append(field)
@@ -109,7 +110,7 @@ def derive_metrics(facts, names=None):
             metric_availability[name] = 'missing-fields'
             continue
         try:
-            values[name] = _calculate(name, facts)
+            values[name] = _calculate(name, available_values)
         except (TypeError, ValueError, ZeroDivisionError):
             metric_availability[name] = 'calculation-failed'
             continue

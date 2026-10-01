@@ -47,6 +47,7 @@ def create_tables(conn, commit=True):
         category TEXT NOT NULL,
         list_type TEXT NOT NULL,
         rank INTEGER,
+        rank_change INTEGER,
         title TEXT,
         shop TEXT,
         buyers REAL,
@@ -81,16 +82,18 @@ def create_tables(conn, commit=True):
         conn.commit()
     print("建表完成")
 
-def import_data(conn, commit=True):
-    with open(JSON_PATH, 'r', encoding='utf-8') as f:
+def import_data(conn, json_path=None, commit=True):
+    json_path = json_path or JSON_PATH
+    with open(json_path, 'r', encoding='utf-8') as f:
         data = json.load(f)
 
-    c = conn.cursor()
+    analysis_date = data.get('analysis_date')
+    period_start = data.get('period_start')
+    period_end = data.get('period_end')
+    if not analysis_date or not period_start or not period_end:
+        raise ValueError('analysis_result.json 缺少 analysis_date、period_start 或 period_end')
 
-    # 1. 创建分析批次
-    analysis_date = '2026-09-13'
-    period_start = '2026-08-17'
-    period_end = '2026-09-13'
+    c = conn.cursor()
     c.execute('''INSERT OR IGNORE INTO market_analysis_runs
         (analysis_date, period_start, period_end, source) VALUES (?, ?, ?, ?)''',
         (analysis_date, period_start, period_end, '店透视市场排行'))
@@ -103,7 +106,11 @@ def import_data(conn, commit=True):
     for table in ['market_category_stats', 'market_products', 'market_keywords', 'market_overlap_shops']:
         c.execute(f'DELETE FROM {table} WHERE run_id=?', (run_id,))
 
-    cat_map = {'mid': '中筒袜', 'long': '长筒袜'}
+    cat_map = {
+        key: data.get('categories', {}).get(key, name)
+        for key, name in (('mid', '中筒袜'), ('long', '长筒袜'), ('panty', '连裤袜'))
+        if data.get(key) is not None
+    }
     list_type_map = {
         'top_buyers': '支付买家数TOP',
         'top_visitors': '访客数TOP',
@@ -160,15 +167,16 @@ def import_data(conn, commit=True):
                         VALUES (?, ?, ?, ?, ?)''',
                         (run_id, cat_name, list_type, i + 1, shop))
                 elif list_key in ('rising', 'falling', 'new_entries'):
-                    # [rank, title, shop, buyers, ?, buyers] or similar
-                    rank = item[0] if len(item) > 0 else (i + 1)
+                    # [排名变化幅度, 商品名称, 店铺名称, 当前排名, 第1周排名, 第4周排名]
+                    # rank 存当前排名，rank_change 存变化幅度；买家数 xlsx 里没有，置空。
+                    change = item[0] if len(item) > 0 else None
                     title = item[1] if len(item) > 1 else ''
                     shop = item[2] if len(item) > 2 else ''
-                    buyers = item[3] if len(item) > 3 else None
+                    rank = item[3] if len(item) > 3 else (i + 1)
                     c.execute('''INSERT INTO market_products
-                        (run_id, category, list_type, rank, title, shop, buyers)
+                        (run_id, category, list_type, rank, rank_change, title, shop)
                         VALUES (?, ?, ?, ?, ?, ?, ?)''',
-                        (run_id, cat_name, list_type, rank, title, shop, buyers))
+                        (run_id, cat_name, list_type, rank, change, title, shop))
 
         # 4. 关键词
         for kw_type, kw_key in [('搜索词', 'keywords'), ('标题词', 'title_keywords')]:
@@ -204,7 +212,7 @@ def preview_data(path):
     with open(path, 'r', encoding='utf-8') as handle:
         data = json.load(handle)
     summary = {}
-    for category in ('mid', 'long'):
+    for category in ('mid', 'long', 'panty'):
         section = data.get(category) or {}
         summary[category] = {
             'products': sum(len(section.get(key) or []) for key in (
@@ -244,7 +252,7 @@ def main(argv=None):
     try:
         JSON_PATH = args.json_path
         create_tables(conn, commit=False)
-        import_data(conn, commit=False)
+        import_data(conn, json_path=args.json_path, commit=False)
         integrity = conn.execute('PRAGMA integrity_check').fetchone()[0]
         if integrity != 'ok':
             raise RuntimeError('database integrity check failed before commit')

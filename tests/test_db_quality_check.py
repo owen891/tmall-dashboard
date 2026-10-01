@@ -159,7 +159,61 @@ class DbQualityCheckTests(unittest.TestCase):
             {issue["code"] for issue in provenance["issues"]},
         )
 
-    def test_future_operational_facts_are_errors(self):
+    def test_product_identity_statuses_do_not_retrigger_unresolved_warning(self):
+        connection = sqlite3.connect(self.database)
+        connection.executescript(
+            """
+            CREATE TABLE product_identity_map (
+                shop_id TEXT, source_system TEXT, external_product_id TEXT,
+                identity_status TEXT
+            );
+            INSERT INTO product_identity_map VALUES
+                ('shop-a', 'promotion', 'p2', 'external_only'),
+                ('shop-a', 'promotion', '-9', 'non_product_identifier');
+            INSERT INTO promotion_daily_facts VALUES
+                ('shop-a', 'product', '-9', 'c3', '2026-09-19', NULL);
+            """
+        )
+        connection.commit()
+        connection.close()
+        report = build_report(self.database, schema_source=self.schema)
+        provenance = next(check for check in report['checks'] if check['key'] == 'provenance_and_orphans')
+        self.assertNotIn(
+            'promotion_product_identity_unresolved',
+            {issue['code'] for issue in provenance['issues']},
+        )
+
+    def test_action_history_orphans_are_reported_without_mutation(self):
+        connection = sqlite3.connect(self.database)
+        connection.executescript(
+            """
+            CREATE TABLE product_actions (id TEXT PRIMARY KEY);
+            CREATE TABLE product_action_history (
+                id INTEGER PRIMARY KEY, action_id TEXT, from_status TEXT,
+                to_status TEXT, detail TEXT, operator TEXT, version INTEGER,
+                created_at TEXT
+            );
+            INSERT INTO product_actions VALUES ('valid-action');
+            INSERT INTO product_action_history VALUES
+                (1, 'valid-action', NULL, 'draft', 'created', 'test', 1, '2026-09-28');
+            INSERT INTO product_action_history VALUES
+                (2, 'missing-action', 'draft', 'blocked', 'legacy', 'test', 2, '2026-09-29');
+            """
+        )
+        connection.commit()
+        connection.close()
+        before = self.database.read_bytes()
+        report = build_report(self.database, schema_source=self.schema)
+        check = next(item for item in report['checks'] if item['key'] == 'action_history_orphans')
+        self.assertEqual(check['status'], 'error')
+        self.assertEqual(check['metrics']['history_count'], 2)
+        self.assertEqual(check['metrics']['parent_count'], 1)
+        self.assertEqual(check['metrics']['orphan_count'], 1)
+        self.assertEqual(check['issues'][0]['code'], 'orphan_action_history')
+        self.assertEqual(check['issues'][0]['history_id'], 2)
+        self.assertFalse(check['issues'][0]['parent_exists'])
+        self.assertEqual(self.database.read_bytes(), before)
+
         connection = sqlite3.connect(self.database)
         connection.execute(
             "INSERT INTO daily_data VALUES ('shop-a', 'p3', '2026-09-22')"

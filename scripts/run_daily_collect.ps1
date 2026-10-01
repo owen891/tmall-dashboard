@@ -79,7 +79,7 @@ foreach ($collector in $COLLECTORS) {
     # 避免计划任务与手动触发对同一数据源并发采集。
     $leaseAlias = @{} ; foreach ($k in $sourceAliases.Keys()) { $leaseAlias[$sourceAliases[$k]] = $k }
     $leaseKey = if ($leaseAlias.ContainsKey($collector.Script.Replace('.py', ''))) { $leaseAlias[$collector.Script.Replace('.py', '')] } else { $collector.Script.Replace('.py', '') }
-    $leaseCheck = & $VENV_PYTHON (Join-Path $ProjectRoot 'scripts\check_collect_lease.py') $leaseKey 2>$null
+    $leaseCheck = & $VENV_PYTHON (Join-Path $ProjectRoot 'scripts\check_collect_lease.py') $leaseKey --shop-id $ShopId --db-path $DbPath 2>$null
     if ($LASTEXITCODE -eq 3) {
         Write-Log "--- 跳过 $name ：另一条采集链（RPA 手动触发）持有租约，避免并发 ---"
         continue

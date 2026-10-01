@@ -56,6 +56,14 @@
         </div>
       </div>
 
+      <section class="ui-context-bar" aria-label="竞店竞品分析范围">
+        <div class="ui-context-bar__copy">
+          <span class="ui-context-bar__label">当前范围</span>
+          <strong class="ui-context-bar__value" data-rival-context>正在读取统计范围…</strong>
+          <span class="ui-context-bar__meta">接口按统计日提供竞店与竞品样本；先看竞争态势，再进入店铺或商品证据。</span>
+        </div>
+      </section>
+
       <!-- 指标卡片 -->
       <section class="ui-metric-grid">
         <article class="ui-metric-card">
@@ -147,8 +155,8 @@
             </div>
             <span class="ui-badge ui-badge--info"><span data-rival-filtered-count>--</span> 家</span>
           </div>
-          <div class="ui-filter-toolbar rival-filter-toolbar">
-            <div class="ui-filter-toolbar__main">
+          <div class="ui-filter-toolbar ui-table-toolbar rival-filter-toolbar">
+            <div class="ui-filter-toolbar__main ui-table-toolbar__main">
               <select class="select" data-rival-shop-type><option value="">全部类型</option><option value="tmall">天猫</option><option value="taobao">淘宝</option></select>
               <input class="input" data-rival-shop-search placeholder="搜索店铺名称" type="search">
             </div>

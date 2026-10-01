@@ -5,7 +5,7 @@
 
    *  回答用户复盘的核心问题：目标为什么没完成？差在流量、转化、客单还是付费/货品？
    *
-   *  方法：连环替代法把净销售额的环比变化拆成 流量×转化率×客单价 三因子贡献——
+   *  方法：连环替代法把净销售额的环比变化拆成 访客×转化率×净销售客单 三因子贡献——
    *  这是算术事实（分解恒等式成立），不是系统臆断；根因结论仍由人工在段落里填写。
    *  目标缺口进一步拆成「上期遗留」（target − 上期实际）与「本期变化」（上期 − 本期）。
    *
@@ -51,19 +51,25 @@
       }, 80);
     }
 
-    /** 三因子连环替代分解：返回 {visitors, conversion, aov, total}（金额贡献）。 */
+    /** 三因子连环替代分解：返回 null 表示任一周期缺少所需事实。 */
     function decompose(cur, prev) {
-      const cv = num(cur.visitors) || 0;
-      const cc = num(cur.conversion) || 0;
-      const ca = num(cur.aov) || 0;
-      const pv = num(prev.visitors) || 0;
-      const pc = num(prev.conversion) || 0;
-      const pa = num(prev.aov) || 0;
+      const cv = num(cur.visitors);
+      const cc = num(cur.conversion);
+      const cn = num(cur.net_sales);
+      const cb = num(cur.buyers);
+      const pv = num(prev.visitors);
+      const pc = num(prev.conversion);
+      const pn = num(prev.net_sales);
+      const pb = num(prev.buyers);
+      if ([cv, cc, cn, cb, pv, pc, pn, pb].some((value) => value === null)
+        || cv === 0 || pv === 0 || cb === 0 || pb === 0) return null;
+      const ca = cn / cb;
+      const pa = pn / pb;
       return {
         visitors: (cv - pv) * pc * pa,
         conversion: cv * (cc - pc) * pa,
         aov: cv * cc * (ca - pa),
-        total: (num(cur.net_sales) || 0) - (num(prev.net_sales) || 0),
+        total: cn - pn,
         facts: {
           visitors: [pv, cv], conversion: [pc, cc], aov: [pa, ca],
         },
@@ -95,7 +101,8 @@
       const hasPrev = num(prev.net_sales) !== null && num(prev.net_sales) !== 0;
       const targetPath = context.target_path || {};
       const target = num(targetPath.target);
-      const actual = num(cur.net_sales) || 0;
+      const actual = num(cur.net_sales);
+      const hasActual = actual !== null;
 
       if (!hasPrev && target === null) {
         return h('p', { class: 'pr-material__empty', text: '缺少对比期与目标，无法做差距归因；设置目标或切换到有环比数据的周期。' });
@@ -104,34 +111,42 @@
       const parts = [];
       // —— 头部结论句
       if (target !== null) {
-        const gap = target - actual;
-        parts.push(h('p', { class: 'pr-gap__headline' },
-          gap > 0
-            ? h('span', { text: `目标未完成：差 ${formatValue(gap, 'money')}（达成率 ${((actual / target) * 100).toFixed(1)}%）。` })
-            : h('span', { text: `目标已达成：超额 ${formatValue(-gap, 'money')}（达成率 ${((actual / target) * 100).toFixed(1)}%）。` })));
+        if (!hasActual) {
+          parts.push(h('p', { class: 'pr-gap__hint', text: '本期净销售额缺失，暂不能判断目标完成情况。' }));
+        } else {
+          const gap = target - actual;
+          parts.push(h('p', { class: 'pr-gap__headline' },
+            gap > 0
+              ? h('span', { text: `目标未完成：差 ${formatValue(gap, 'money')}（达成率 ${((actual / target) * 100).toFixed(1)}%）。` })
+              : h('span', { text: `目标已达成：超额 ${formatValue(-gap, 'money')}（达成率 ${((actual / target) * 100).toFixed(1)}%）。` })));
+        }
       }
 
       // —— 三因子分解表（vs 上期）
       if (hasPrev) {
         const d = decompose(cur, prev);
-        const f = d.facts;
-        const fmtPct = (v) => `${(v * 100).toFixed(2)}%`;
-        parts.push(h('div', { class: 'pr-gap__decompose' },
-          h('p', { class: 'pr-gap__hint', text: `环比变化 ${signedMoney(d.total)} 的三因子拆解（连环替代法，加总恒等于变化额）：` }),
-          h('table', { class: 'pr-table' },
-            h('thead', null, h('tr', null,
-              h('th', { text: '因子' }), h('th', { class: 'num', text: '对销售额的贡献' }), h('th', { class: 'num', text: '上期 → 本期' }))),
-            h('tbody', null,
-              factorRow('流量（访客数）', d.visitors, `${formatValue(f.visitors[0], 'number')} → ${formatValue(f.visitors[1], 'number')}`),
-              factorRow('转化率', d.conversion, `${fmtPct(f.conversion[0])} → ${fmtPct(f.conversion[1])}`),
-              factorRow('客单价', d.aov, `${formatValue(f.aov[0], 'money')} → ${formatValue(f.aov[1], 'money')}`))),
-        ));
-        if (target !== null && num(prev.net_sales) !== null) {
-          const legacy = target - num(prev.net_sales);
-          parts.push(h('p', { class: 'pr-gap__hint' },
-            `目标缺口拆两段：上期遗留 ${signedMoney(legacy)}（上期离目标就有这么远）＋ 本期变化 ${signedMoney(d.total)}。`));
+        if (!d) {
+          parts.push(h('p', { class: 'pr-gap__hint', text: '访客、买家或净销售额数据不完整，暂不展示三因子归因。' }));
+        } else {
+          const f = d.facts;
+          const fmtPct = (v) => `${(v * 100).toFixed(2)}%`;
+          parts.push(h('div', { class: 'pr-gap__decompose' },
+            h('p', { class: 'pr-gap__hint', text: `净销售额环比变化 ${signedMoney(d.total)} 的三因子拆解（连环替代法，加总恒等于变化额）：` }),
+            h('table', { class: 'pr-table' },
+              h('thead', null, h('tr', null,
+                h('th', { text: '因子' }), h('th', { class: 'num', text: '对净销售额的贡献' }), h('th', { class: 'num', text: '上期 → 本期' }))),
+              h('tbody', null,
+                factorRow('流量（访客数）', d.visitors, `${formatValue(f.visitors[0], 'number')} → ${formatValue(f.visitors[1], 'number')}`),
+                factorRow('转化率', d.conversion, `${fmtPct(f.conversion[0])} → ${fmtPct(f.conversion[1])}`),
+                factorRow('净销售客单价', d.aov, `${formatValue(f.aov[0], 'money')} → ${formatValue(f.aov[1], 'money')}`))),
+          ));
+          if (target !== null && num(prev.net_sales) !== null) {
+            const legacy = target - num(prev.net_sales);
+            parts.push(h('p', { class: 'pr-gap__hint' },
+              `目标缺口拆两段：上期遗留 ${signedMoney(legacy)}（上期离目标就有这么远）＋ 本期变化 ${signedMoney(d.total)}。`));
+          }
         }
-      } else if (target !== null) {
+      } else if (target !== null && hasActual) {
         parts.push(h('p', { class: 'pr-gap__hint', text: `目标缺口 ${signedMoney(target - actual)}；无上期数据，做不了三因子分解。` }));
       }
 
@@ -179,14 +194,26 @@
       if (!container) return;
       const body = buildBody(context);
       container.hidden = false;
+      // 折叠形态：summary 直接给出三大目标完成率（复盘页最高频的问题「目标完成得怎样」
+      // 不展开就能读），点开才是三因子分解与归因线索。
       container.replaceChildren(
-        h('article', { class: 'ui-panel pr-gap-panel' },
-          h('div', { class: 'panel__header' },
-            h('div', null,
-              h('h3', { class: 'panel__title', text: '目标差距归因（流量 × 转化 × 客单）' }),
-              h('p', { class: 'panel__hint', text: '先回答「差在哪类因子、哪个来源」，再进拆因分析定位到具体商品/渠道。' }))),
-          h('div', { class: 'ui-panel__body' }, body)),
+        h('details', { class: 'ui-panel pr-gap-panel pr-gap-panel--collapsible' },
+          h('summary', { class: 'pr-gap-panel__summary' },
+            h('span', { class: 'pr-gap-panel__summary-title', text: '目标差距归因（流量 × 转化 × 净销售客单）' }),
+            h('span', { class: 'pr-gap-panel__summary-hint', text: summaryText(context) })),
+          h('div', { class: 'pr-gap-panel__body' }, body)),
       );
+    }
+
+    /** summary 摘要：三大目标完成率一行带过（口径与 target_path.targets 同源）。 */
+    function summaryText(context) {
+      const rows = (context.target_path && context.target_path.targets) || [];
+      const parts = rows.map((row) => {
+        const rate = row.achieved_rate;
+        if (rate === null || rate === undefined) return `${row.label || row.key} 未设目标`;
+        return `${row.label || row.key} ${(Number(rate) * 100).toFixed(0)}%`;
+      });
+      return parts.length ? parts.join(' · ') : '未设置目标，点开看环比三因子拆解';
     }
 
     return { buildBody, renderPanel };

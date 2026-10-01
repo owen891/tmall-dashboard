@@ -96,7 +96,12 @@
 
   async function load() {
     const host = $('[data-cb-products]'); if (!host) return; host.innerHTML = '<div class="ui-empty-state"><span>加载中…</span></div>';
-    try { const response = await DemoApi.domainRequest('/api/creative-board'); state.products = Array.isArray(response.data?.products) ? response.data.products : []; state.categories = Array.isArray(response.data?.categories) ? response.data.categories : []; state.totals = response.data?.totals || {}; renderSummary(); renderProducts(); } catch (error) { host.innerHTML = `<div class="ui-empty-state"><span>${esc(error.message || '素材数据加载失败')}</span></div>`; }
+    try {
+      const query = new URLSearchParams();
+      if (state.productId) query.set('product_id', state.productId);
+      const response = await DemoApi.domainRequest('/api/creative-board' + (query.toString() ? `?${query}` : ''));
+      state.products = Array.isArray(response.data?.products) ? response.data.products : []; state.categories = Array.isArray(response.data?.categories) ? response.data.categories : []; state.totals = response.data?.totals || {}; renderSummary(); renderProducts();
+    } catch (error) { host.innerHTML = `<div class="ui-empty-state"><span>${esc(error.message || '素材数据加载失败')}</span></div>`; }
   }
 
   function boot() {

@@ -52,7 +52,7 @@ class ProductPrdContractTests(unittest.TestCase):
         self.assertEqual(row['lifecycle_stage'], 'growth')
         self.assertEqual(row['seasonality'], 'spring_summer')
         self.assertTrue(row['has_pending_action'])
-        self.assertAlmostEqual(row['expense_ratio'], 0.1)
+        self.assertAlmostEqual(row['expense_ratio'], 0.105263, places=6)
 
     def test_products_page_has_explainable_operations_contract(self):
         from pathlib import Path

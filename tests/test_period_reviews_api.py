@@ -1006,7 +1006,29 @@ class PeriodReviewsTests(unittest.TestCase):
         self.assertEqual(len(week_labels), 1)  # 只有 W3 有数据
         self.assertIn('第3周', week_labels[0])
 
-    def test_v2_product_boards_cover_paid_profit_loss_and_new(self):
+    def test_month_breakdown_does_not_repeat_monthly_fallback_for_each_week(self):
+        """月表回退只用于整月指标，不能把整月值伪装成每个缺日周的数据。"""
+        from db import get_db
+
+        with get_db(self.app.config['DATABASE_PATH']) as connection:
+            connection.execute(
+                "INSERT INTO products (product_id, title, shop_label) VALUES ('monthly-only-review', '月表商品', '标品袜子')"
+            )
+            connection.execute(
+                '''INSERT INTO monthly_data
+                   (product_id, month, payment_amount, net_sales, visitors, buyers)
+                   VALUES (?, ?, ?, ?, ?, ?)''',
+                ('monthly-only-review', '2026-09', 9000, 8100, 900, 90),
+            )
+            connection.commit()
+
+        context = self.client.get(
+            '/api/period-reviews/month/2026-09/context?category_mode=sock'
+        ).get_json()['data']['context']
+        self.assertEqual(context['metrics']['current']['gsv'], 9000)
+        self.assertEqual(context['breakdown']['grain'], 'week')
+        self.assertEqual(context['breakdown']['rows'], [])
+
         self._seed_v2_framework_data()
 
         context = self.client.get(
@@ -1147,15 +1169,22 @@ class PeriodReviewsTests(unittest.TestCase):
         # 先存本月两个周复盘 + 上月一个月复盘（subsections 结构）
         self.client.put('/api/period-reviews/week/2026-09-W1', json={
             'reviewer': 'operator',
+            'status': 'final',
             'sections': {'category_summary': {'subsections': {
                 'analysis': 'W1 净销售达成 90%', 'root_cause': '流量下滑'}}},
         })
         self.client.put('/api/period-reviews/week/2026-09-W2', json={
             'reviewer': 'operator',
+            'status': 'final',
             'sections': {'category_summary': {'text': 'W2 纯文本老结构结论'}},
+        })
+        self.client.put('/api/period-reviews/week/2026-09-W4', json={
+            'reviewer': 'operator',
+            'sections': {'category_summary': {'text': 'W4 草稿不应汇入月复盘'}},
         })
         self.client.put('/api/period-reviews/month/2026-08', json={
             'reviewer': 'operator',
+            'status': 'final',
             'sections': {'category_summary': {'subsections': {
                 'analysis': '8月净销售 71.9 万', 'root_cause': '访客下滑 30%+，调价影响人群池'}}},
         })

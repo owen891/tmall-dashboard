@@ -60,7 +60,7 @@ class PromotionService:
             normalized = {**row, 'roi': round(deal / spend, 6) if spend else None,
                           'link_gsv': round(float(link_gsv), 6) if link_gsv is not None else None,
                           'link_net_sales': round(float(row['link_net_sales']), 6) if row.get('link_net_sales') is not None else None,
-                          'expense_ratio': round(spend / link_gsv, 6) if link_gsv else None,
+                          'expense_ratio': round(spend / row['link_net_sales'], 6) if row.get('link_net_sales') else None,
                           'ctr': round(clicks / impressions, 6) if impressions else None,
                           'cvr': round(buyers / clicks, 6) if clicks else None,
                           'cpc': round(spend / clicks, 6) if clicks else None,
@@ -238,6 +238,112 @@ class PromotionService:
         result.sort(key=lambda item: item['ad_spend'], reverse=True)
         return {'rows': result, 'availability': 'available' if result else 'no-data'}
 
+    def new_products(self, start_date, end_date, filters=None):
+        """新品看板：新品（60 天内上架）× 推广投放效率与销售贡献。
+
+        除每行指标外，返回新品全店总数、总盘对比（新品花费/成交占全店
+        推广盘的比例）以及按上架日期的投放分布，供前端看板呈现。
+        """
+        from datetime import date, timedelta
+
+        from repos.promotion_repo import NEW_PRODUCT_WINDOW_DAYS, PromotionRepo
+
+        try:
+            parsed_start = date.fromisoformat(str(start_date))
+            parsed_end = date.fromisoformat(str(end_date))
+        except (TypeError, ValueError):
+            raise PromotionValidationError('start 和 end 必须是有效的 YYYY-MM-DD 日期')
+        if parsed_start > parsed_end:
+            raise PromotionValidationError('start 不能晚于 end')
+        rows, new_total, overall = PromotionRepo.new_products(start_date, end_date, filters or {})
+        result = []
+        for row in rows:
+            spend = float(row['ad_spend'] or 0)
+            deal = float(row['attributed_payment_amount'] or 0)
+            clicks = int(row['clicks'] or 0)
+            impressions = int(row['impressions'] or 0)
+            buyers = int(row['payment_buyers'] or 0)
+            cart_adds = int(row['cart_adds'] or 0)
+            link_gsv = float(row['link_gsv'] or 0)
+            result.append({
+                **row,
+                'ad_spend': round(spend, 6),
+                'attributed_payment_amount': round(deal, 6),
+                'link_gsv': round(link_gsv, 6),
+                'link_net_sales': round(float(row['link_net_sales'] or 0), 6),
+                'roi': round(deal / spend, 6) if spend else None,
+                'expense_ratio': round(spend / float(row['link_net_sales']), 6) if row.get('link_net_sales') else None,
+                'ctr': round(clicks / impressions, 6) if impressions else None,
+                'cvr': round(buyers / clicks, 6) if clicks else None,
+                'cpc': round(spend / clicks, 6) if clicks else None,
+                'cart_rate': round(cart_adds / clicks, 6) if clicks else None,
+                'cart_cost': round(spend / cart_adds, 6) if cart_adds else None,
+            })
+        # 上架节奏以 products 为主表，推广/销售事实左连接，未投放新品也保留在批次中。
+        launches = PromotionRepo.new_product_launches(start_date, end_date, filters or {})
+        launch_rows = []
+        for row in launches:
+            spend = float(row['ad_spend'] or 0)
+            deal = float(row['attributed_payment_amount'] or 0)
+            impressions = int(row['impressions'] or 0)
+            clicks = int(row['clicks'] or 0)
+            buyers = int(row['payment_buyers'] or 0)
+            cart_adds = int(row['cart_adds'] or 0)
+            new_buyers = int(row['new_buyers'] or 0)
+            link_gsv = float(row['link_gsv'] or 0)
+            link_net_sales = float(row['link_net_sales'] or 0)
+            total_products = int(row['total_product_count'] or 0)
+            promoted_products = int(row['promoted_product_count'] or 0)
+            launch_rows.append({
+                'list_date': row['list_date'],
+                'product_count': total_products,
+                'total_product_count': total_products,
+                'promoted_product_count': promoted_products,
+                'unpromoted_product_count': int(row['unpromoted_product_count'] or 0),
+                'promotion_coverage': round(promoted_products / total_products, 6) if total_products else None,
+                'ad_spend': round(spend, 6),
+                'attributed_payment_amount': round(deal, 6),
+                'roi': round(deal / spend, 6) if spend else None,
+                'link_gsv': round(link_gsv, 6),
+                'link_net_sales': round(link_net_sales, 6),
+                'impressions': impressions,
+                'clicks': clicks,
+                'payment_buyers': buyers,
+                'cvr': round(buyers / clicks, 6) if clicks else None,
+                'cart_adds': cart_adds,
+                'cart_rate': round(cart_adds / clicks, 6) if clicks else None,
+                'cart_cost': round(spend / cart_adds, 6) if cart_adds else None,
+                'new_buyers': new_buyers,
+                'new_customer_cost': round(spend / new_buyers, 6) if new_buyers else None,
+                'ctr': round(clicks / impressions, 6) if impressions else None,
+                'expense_ratio': round(spend / link_net_sales, 6) if link_net_sales else None,
+            })
+        total_spend = sum(float(row['ad_spend'] or 0) for row in result)
+        total_deal = sum(float(row['attributed_payment_amount'] or 0) for row in result)
+        overall_spend = float(overall.get('ad_spend') or 0)
+        overall_deal = float(overall.get('attributed_payment_amount') or 0)
+        result.sort(key=lambda row: (float(row['ad_spend'] or 0), float(row['attributed_payment_amount'] or 0)), reverse=True)
+        return {
+            'rows': result,
+            'launches': launch_rows,
+            'totals': {
+                'product_count': len(result),
+                'new_total': new_total,
+                'ad_spend': round(total_spend, 6),
+                'attributed_payment_amount': round(total_deal, 6),
+                'roi': round(total_deal / total_spend, 6) if total_spend else None,
+                'spend_share': round(total_spend / overall_spend, 6) if overall_spend else None,
+                'deal_share': round(total_deal / overall_deal, 6) if overall_deal else None,
+            },
+            'window_days': NEW_PRODUCT_WINDOW_DAYS,
+            'new_cutoff': (parsed_end - timedelta(days=NEW_PRODUCT_WINDOW_DAYS)).isoformat(),
+            'availability': 'available' if (result or launch_rows) else 'no-data',
+            'limitations': [
+                f'新品口径：周期结束日前 {NEW_PRODUCT_WINDOW_DAYS} 天内上架（list_date）',
+                '商品明细仅展示有推广事实的新品；上架节奏包含全部新品，并区分已投放与未投放数量',
+            ],
+        }
+
     @staticmethod
     def _detail_row_metrics(row, plan_type=None):
         spend = float(row.get('ad_spend') or 0)
@@ -362,9 +468,9 @@ class PromotionService:
             'products': products,
         }
 
-    def creative_board(self, shop_label=None):
+    def creative_board(self, shop_label=None, product_id=None, include_system=False):
         """素材点击率看板：全历史累计,按单品分组返回创意及其指标。"""
-        rows = PromotionRepo.creative_board(shop_label)
+        rows = PromotionRepo.creative_board(shop_label, product_id, include_system)
         products = {}
         for row in rows:
             spend = float(row['ad_spend'] or 0)

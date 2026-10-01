@@ -92,11 +92,13 @@
   margin: 0 16px 12px;
 }
 
-/* 拆因长页的分节锚点 chips（吸顶常驻，滚动到哪都有一键跳转）。 */
+/* 拆因长页的分节锚点 chips（吸顶常驻，滚动到哪都有一键跳转）。
+   top 对齐顶栏下沿（与 pr-control-strip 同法）：top:0 会被 sticky 顶栏挡住，
+   z-index 也必须低于顶栏(10)，否则滚动时 chips 悬浮盖在顶栏上面。 */
 .pr-anchor-chips {
   position: sticky;
-  top: 0;
-  z-index: 20;
+  top: calc(var(--topbar-height) - 1px);
+  z-index: 9;
   display: flex;
   gap: 8px;
   padding: 8px 0;
@@ -210,6 +212,24 @@
   margin: 0 0 10px;
 }
 
+/* 市场监控分节：单 panel 通栏呈现，右半栏不再空置（与流量来源分节同修法）。 */
+.pr-analysis-grid[data-pr-market-analysis] {
+  grid-template-columns: 1fr;
+}
+
+/* 商品榜/搜索词两张 6 列监控表并排省一半纵向高度：各自 min-width 620px，
+   视口不够两份时自动回退单列堆叠（auto-fit 不会挤成窄表）。
+   两表都不在（或只有一张）时 JS 不建该容器，保持通栏堆叠。 */
+.pr-market-pair {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(620px, 1fr));
+  gap: 0 14px;
+}
+
+.pr-market-pair .pr-material {
+  min-width: 0;
+}
+
 /* ------------------------------------------------ 竞店行展开日趋势 */
 /* is-collapsed 控制显隐（tr[hidden] 在表格布局下取消后高度仍为 0，不可用）。 */
 .pr-rival-detail.is-collapsed {
@@ -317,6 +337,46 @@
   color: var(--text-muted);
 }
 
+/* 折叠形态：归因明细默认收起，首屏把位置让给工作区 TAB；summary 摘要句
+   承担「完成率一眼可读」，样式对齐 pr-toolbar--collapsible 的折叠约定。 */
+.pr-gap-panel--collapsible {
+  padding: 0;
+}
+
+.pr-gap-panel__summary {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px;
+  cursor: pointer;
+  list-style: none;
+  color: var(--text-primary);
+  font-size: 13px;
+  user-select: none;
+}
+
+.pr-gap-panel__summary::-webkit-details-marker { display: none; }
+
+.pr-gap-panel__summary-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+}
+
+.pr-gap-panel__summary-hint {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.pr-gap-panel--collapsible[open] .pr-gap-panel__summary {
+  border-bottom: 1px solid var(--border-default);
+}
+
+.pr-gap-panel--collapsible[open] .pr-gap-panel__body {
+  margin: 0 16px 12px;
+}
+
 .pr-gap__headline {
   margin: 0;
   font-size: 14px;
@@ -361,6 +421,15 @@
   font-size: 12px;
 }
 
+/* 驾驶舱分组小标签：完成率卡与执行信号条各一段（参考 demo 的分组节奏）。 */
+.pr-command-center__section-label {
+  margin: 2px 0 -6px;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
 /* 驾驶舱紧凑状态条：风险/动作信号一行带过。 */
 .pr-command-center__strip {
   display: flex;
@@ -370,10 +439,13 @@
 }
 
 /* ------------------------------------------------ 段落三段式（分析/根因/下一步） */
+/* 卡片化 + 左侧品牌描边，对齐 demo 三卡的「编号步骤」阅读节奏；
+   编号用 CSS 计数器，不依赖 JS 输出。 */
 .pr-subsections {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
   gap: 12px;
+  counter-reset: pr-sub;
 }
 
 .pr-subsection {
@@ -381,6 +453,11 @@
   display: flex;
   flex-direction: column;
   gap: 6px;
+  padding: 10px 12px;
+  border: 1px solid var(--border-default);
+  border-left: 3px solid var(--brand);
+  border-radius: var(--radius-sm);
+  background: var(--surface-muted);
 }
 
 .pr-subsection__label {
@@ -392,12 +469,29 @@
   color: var(--text-primary);
 }
 
+.pr-subsection__label::before {
+  counter-increment: pr-sub;
+  content: counter(pr-sub);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  flex: none;
+  border-radius: 999px;
+  background: var(--brand-tint);
+  color: var(--brand);
+  font-size: 11px;
+  font-weight: 700;
+}
+
 .pr-subsection__label em {
   font-style: normal;
   padding: 1px 6px;
   border-radius: 999px;
-  background: var(--surface-muted);
-  color: var(--text-muted);
+  background: var(--surface-raised);
+  border: 1px solid var(--border-default);
+  color: var(--danger);
   font-size: 11px;
   font-weight: 500;
 }
@@ -418,11 +512,6 @@
 .pr-subsection textarea:focus {
   outline: none;
   border-color: var(--brand);
-}
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  align-items: center;
 }
 
 .pr-strip-item {
@@ -1232,6 +1321,38 @@
 }
 
 /* ---------- 重做后的复盘工作台 ---------- */
+/* 复盘范围条（ui-context-bar）：周期 / 品类 / 对比口径集中在页头下方一行，
+   与工作区共用 .demo-page 的 16px 纵向节奏，去掉组件默认外边距避免双倍留白。 */
+.pr-context-bar {
+  margin-bottom: 0;
+}
+
+/* 底部固定操作栏（ui-sticky-action-bar）：结论 / 问题 / 工作区之后常驻，
+   刷新素材、导出复盘、保存复盘在任何滚动位置都可触达。 */
+.pr-action-bar {
+  margin-top: 0;
+}
+
+.pr-action-bar .ui-sticky-action-bar__content {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pr-action-bar .ui-sticky-action-bar__actions .ui-button {
+  white-space: nowrap;
+}
+
+/* 窄屏：组件已将两个条块改为纵向堆叠，这里只补上按钮换行与文案回流。 */
+@media (max-width: 720px) {
+  .pr-action-bar .ui-sticky-action-bar__content {
+    white-space: normal;
+  }
+
+  .pr-action-bar .ui-sticky-action-bar__actions {
+    flex-wrap: wrap;
+  }
+}
 .pr-page-header {
   align-items: flex-end;
 }
@@ -1452,9 +1573,12 @@ body[data-page="period-review"] .demo-topbar__filters {
   cursor: pointer;
 }
 
-.pr-workbench-tabs button:hover,
-.pr-workbench-tabs button.is-active {
+.pr-workbench-tabs button:hover {
   color: var(--text-primary);
+}
+
+.pr-workbench-tabs button.is-active {
+  color: var(--brand);
   border-bottom-color: var(--brand);
 }
 
@@ -1471,8 +1595,8 @@ body[data-page="period-review"] .demo-topbar__filters {
 .pr-command-center {
   display: flex;
   flex-direction: column;
-  gap: 16px;
-  padding: 18px 20px;
+  gap: 12px;
+  padding: 18px 20px 16px;
   background: var(--surface-raised);
   border: 1px solid var(--border-default);
   border-radius: var(--radius-md);
@@ -1483,11 +1607,21 @@ body[data-page="period-review"] .demo-topbar__filters {
   align-items: flex-start;
   justify-content: space-between;
   gap: 18px;
+  padding-bottom: 4px;
+}
+
+.pr-command-center__eyebrow {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--brand);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .04em;
 }
 
 .pr-command-center__head h3 {
   margin: 0 0 4px;
-  font-size: 18px;
+  font-size: 20px;
   color: var(--text-primary);
 }
 
@@ -1497,6 +1631,27 @@ body[data-page="period-review"] .demo-topbar__filters {
   color: var(--text-secondary);
   font-size: 13px;
   line-height: 1.65;
+}
+
+.pr-command-center__data-state {
+  flex: none;
+  padding: 4px 9px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-full);
+  color: var(--text-muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.pr-command-center__data-state.is-ready {
+  border-color: var(--border-success-subtle, var(--border-default));
+  color: var(--success);
+  background: color-mix(in srgb, var(--success) 6%, var(--surface-raised));
+}
+
+.pr-command-center__data-state.is-empty {
+  color: var(--warning);
+  background: color-mix(in srgb, var(--warning) 6%, var(--surface-raised));
 }
 
 .pr-command-center__grid {
@@ -1536,62 +1691,90 @@ body[data-page="period-review"] .demo-topbar__filters {
   line-height: 1.5;
 }
 
-/* ------------------------------------------------ 三大指标完成率卡（XMind 口径） */
+/* ------------------------------------------------ 四大经营指标卡（XMind 口径） */
 .pr-metric-cards {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
 }
 
 .pr-metric-card {
   min-width: 0;
-  padding: 12px 14px;
-  background: var(--surface-muted);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 16px 18px;
+  background: var(--surface-base, var(--surface-muted));
   border: 1px solid var(--border-default);
-  border-left: 3px solid var(--border-default);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-md);
+  transition: background-color .18s ease, border-color .18s ease, box-shadow .18s ease;
 }
 
 .pr-metric-card--primary {
-  border-left-color: var(--brand);
+  padding: 18px;
+  box-shadow: 0 4px 16px rgba(17,24,39,.06);
 }
 
-/* 完成率状态色沿目标卡同口径：绿=达标 / 黄=接近 / 红=未达标 */
-.pr-metric-card.is-success { border-left-color: var(--success, #16a34a); }
-.pr-metric-card.is-warning { border-left-color: var(--warning, #d97706); }
-.pr-metric-card.is-danger { border-left-color: var(--danger, #dc2626); }
+/* 用轻背景表达状态，避免左侧色条造成强烈的告警感。 */
+.pr-metric-card.is-success { background: color-mix(in srgb, var(--success, #16a34a) 5%, var(--surface-base, #fff)); }
+.pr-metric-card.is-warning { background: color-mix(in srgb, var(--warning, #d97706) 6%, var(--surface-base, #fff)); }
+.pr-metric-card.is-danger { background: color-mix(in srgb, var(--danger, #dc2626) 5%, var(--surface-base, #fff)); }
+
+.pr-metric-card__head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+}
+
+.pr-metric-card__status-dot {
+  width: 7px;
+  height: 7px;
+  flex: 0 0 7px;
+  border-radius: 50%;
+  background: var(--border-strong);
+}
+
+.pr-metric-card__status-dot.is-success { background: var(--success, #16a34a); }
+.pr-metric-card__status-dot.is-warning { background: var(--warning, #d97706); }
+.pr-metric-card__status-dot.is-danger { background: var(--danger, #dc2626); }
 
 .pr-metric-card__label {
-  display: block;
-  color: var(--text-muted);
-  font-size: 12px;
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.pr-metric-card__priority {
+  padding: 2px 6px;
+  border-radius: var(--radius-full);
+  background: var(--brand-tint);
+  color: var(--brand);
+  font-size: 10px;
+  font-weight: 600;
 }
 
 .pr-metric-card__value {
-  display: flex;
-  align-items: baseline;
-  flex-wrap: wrap;
-  gap: 4px 10px;
-  margin-top: 5px;
-}
-
-.pr-metric-card__value strong {
   color: var(--text-primary);
-  font-size: 22px;
+  font-size: 30px;
+  line-height: 1.1;
   font-variant-numeric: tabular-nums;
+  font-family: var(--font-display, inherit);
 }
 
-.pr-metric-card__value small {
+.pr-metric-card__target {
   color: var(--text-muted);
   font-size: 12px;
-  line-height: 1.5;
 }
 
 .pr-metric-card__rate {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  margin-top: 6px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px;
+  border-radius: var(--radius-full);
+  background: var(--surface-muted);
 }
 
 .pr-metric-card__rate-label {
@@ -1600,7 +1783,7 @@ body[data-page="period-review"] .demo-topbar__filters {
 }
 
 .pr-metric-card__rate strong {
-  font-size: 15px;
+  font-size: 14px;
   font-variant-numeric: tabular-nums;
 }
 
@@ -1611,13 +1794,43 @@ body[data-page="period-review"] .demo-topbar__filters {
 .pr-metric-card__changes {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px 10px;
-  margin-top: 6px;
+  gap: 4px 12px;
   font-size: 12px;
 }
 
+.pr-metric-card__insight {
+  display: flex;
+  align-items: flex-start;
+  width: 100%;
+  box-sizing: border-box;
+  gap: 8px;
+  margin-top: 6px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--border-default);
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.pr-metric-card__insight strong {
+  flex: 0 0 auto;
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.pr-metric-card__insight span {
+  min-width: 0;
+}
+
+.pr-metric-card__insight--efficiency {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px 10px;
+}
+
 .pr-metric-card__hint {
-  margin: 6px 0 0;
+  flex-basis: 100%;
+  margin: 0;
   color: var(--text-muted);
   font-size: 12px;
 }
@@ -1725,8 +1938,23 @@ body[data-page="period-review"] .demo-topbar__filters {
 
 @media (max-width: 960px) {
   .pr-command-center__grid,
-  .pr-analysis-grid {
+  .pr-analysis-grid,
+  .pr-metric-cards {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 961px) {
+  [data-pr-workbench-panel="conclusion"] .pr-sections {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px;
+    align-items: start;
+  }
+
+  [data-pr-workbench-panel="conclusion"] .pr-sections > .pr-section:first-child,
+  [data-pr-workbench-panel="conclusion"] .pr-sections > .pr-section:last-child {
+    grid-column: 1 / -1;
   }
 }
 
@@ -1753,12 +1981,22 @@ body[data-page="period-review"] .demo-topbar__filters {
     flex: 1;
   }
 
+  .pr-command-center {
+    padding: 14px;
+  }
+
   .pr-command-center__head {
     flex-direction: column;
+    gap: 8px;
+  }
+
+  .pr-command-center__data-state {
+    align-self: flex-start;
   }
 
   .pr-command-center__grid,
-  .pr-analysis-grid {
+  .pr-analysis-grid,
+  .pr-metric-cards {
     grid-template-columns: 1fr;
   }
 

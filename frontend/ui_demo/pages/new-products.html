@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>新品推广看板 | 天猫数据仪表盘</title>
+  <link rel="stylesheet" href="../assets/tokens.css">
+  <link rel="stylesheet" href="../assets/shell.css">
+  <link rel="stylesheet" href="../assets/components.css?v=20260919-field-selector3">
+  <link rel="stylesheet" href="../assets/themes/product-domain.css">
+  <link rel="stylesheet" href="../assets/themes/promotion-domain.css">
+  <link rel="stylesheet" href="../assets/themes/overview-domain.css">
+  <link rel="stylesheet" href="../assets/themes/lifecycle-domain.css">
+  <link rel="stylesheet" href="../assets/themes/settings-domain.css">
+  <link rel="stylesheet" href="../assets/promotion-views.css?v=20260930a">
+  <link rel="stylesheet" href="../assets/creative-board.css?v=20260930a">
+  <script src="../assets/lucide-custom.min.js"></script>
+  <script src="../assets/echarts-custom.min.js"></script>
+</head>
+<body data-page="new-products">
+  <div class="demo-app">
+    <aside class="demo-sidebar" data-shell-sidebar></aside>
+    <div class="demo-main">
+      <header class="demo-topbar" data-shell-header></header>
+      <main class="demo-page">
+        <aside data-right-rail hidden aria-label="辅助信息"></aside>
+        <div class="ui-page-header">
+          <div>
+            <h2>新品推广看板</h2>
+            <p>新品从上架到打爆的投放效率：花多少、转化多少、拉动多少销售额。</p>
+          </div>
+          <div class="demo-page__actions">
+            <a class="ui-button" href="/promotion"><i data-lucide="megaphone"></i>推广分析</a>
+            <button class="ui-button ui-button--primary" type="button" data-new-products-info><i data-lucide="circle-help"></i>数据口径</button>
+          </div>
+        </div>
+
+        <section class="ui-context-bar" role="status" aria-label="新品看板数据范围">
+          <div class="ui-context-bar__copy">
+            <span class="ui-context-bar__label">当前范围</span>
+            <strong class="ui-context-bar__value" data-promotion-new-scope>新品口径：周期结束日前 60 天内上架</strong>
+            <span class="ui-context-bar__meta" data-promotion-new-note>商品明细只列已投放新品；上架节奏统计全部上架新品，并区分已投放与未投放。</span>
+          </div>
+          <div class="ui-context-bar__actions">
+            <button class="ui-button ui-button--ghost" type="button" data-new-products-info><i data-lucide="circle-help"></i><span>数据口径</span></button>
+          </div>
+        </section>
+
+        <section class="promotion-command" aria-labelledby="promotionNewConclusionTitle">
+          <div>
+            <div class="promotion-command__heading">
+              <div><span class="section-kicker">经营结论 · 当前状态</span><h1 id="promotionNewConclusionTitle">新品投放经营看板</h1><p>围绕新品上架后的投入、流量、推广成交和销售联动判断投放节奏。</p></div>
+              <span class="promotion-command__status" data-promotion-new-health data-tone="success"><i data-lucide="circle-check" aria-hidden="true"></i><span>加载中…</span></span>
+            </div>
+            <div class="promotion-funnel" aria-label="新品投放链路">
+              <div class="promotion-funnel__step"><span class="promotion-funnel__label"><i data-lucide="wallet-cards"></i>投入</span><strong class="promotion-funnel__value" data-promotion-new-funnel="spend">--</strong><span class="promotion-funnel__meta" data-promotion-new-funnel-meta="spend">新品推广花费 · 占全店 --</span></div>
+              <div class="promotion-funnel__step"><span class="promotion-funnel__label"><i data-lucide="mouse-pointer-click"></i>流量</span><strong class="promotion-funnel__value" data-promotion-new-funnel="clicks">--</strong><span class="promotion-funnel__meta" data-promotion-new-funnel-meta="clicks">点击量 / 展现量 --</span></div>
+              <div class="promotion-funnel__step"><span class="promotion-funnel__label"><i data-lucide="shopping-bag"></i>推广成交</span><strong class="promotion-funnel__value" data-promotion-new-funnel="deal">--</strong><span class="promotion-funnel__meta" data-promotion-new-funnel-meta="deal">推广成交 · 新品 ROI --</span></div>
+            </div>
+            <div class="promotion-command__insight"><i data-lucide="lightbulb"></i><div><strong data-promotion-new-insight-title>正在读取新品投放判断</strong><span data-promotion-new-insight-copy>判断将根据新品投放与销售数据动态生成。</span></div></div>
+          </div>
+          <aside class="promotion-command__signals" aria-label="新品投放信号">
+            <h3>本期信号</h3>
+            <div class="promotion-signal"><span>投放新品数</span><strong data-promotion-new-signal="products">--</strong></div>
+            <div class="promotion-signal"><span>新品总数</span><strong data-promotion-new-signal="new_total">--</strong></div>
+            <div class="promotion-signal"><span>新品花费占比</span><strong data-promotion-new-signal="spend_share">--</strong></div>
+            <div class="promotion-signal"><span>新品成交占比</span><strong data-promotion-new-signal="deal_share">--</strong></div>
+          </aside>
+        </section>
+
+        <div class="section-kicker">核心指标</div>
+        <section class="ui-metric-grid" aria-label="新品核心指标">
+          <article class="ui-metric-card"><div class="metric-card__label">新品推广花费</div><div class="metric-card__value" data-promotion-new-kpi="spend">--</div><div class="metric-card__meta"><i data-lucide="wallet-cards"></i><span data-promotion-new-kpi-note="spend">按商品记录汇总</span></div></article>
+          <article class="ui-metric-card"><div class="metric-card__label">新品推广成交</div><div class="metric-card__value" data-promotion-new-kpi="deal">--</div><div class="metric-card__meta"><i data-lucide="shopping-bag"></i>商品当期推广成交</div></article>
+          <article class="ui-metric-card"><div class="metric-card__label">新品 ROI</div><div class="metric-card__value" data-promotion-new-kpi="roi">--</div><div class="metric-card__meta"><i data-lucide="target"></i>推广成交 / 推广花费</div></article>
+          <article class="ui-metric-card"><div class="metric-card__label">费比</div><div class="metric-card__value" data-promotion-new-kpi="expense_ratio">--</div><div class="metric-card__meta"><i data-lucide="percent"></i>推广花费 / 新品净销售额</div></article>
+          <article class="ui-metric-card"><div class="metric-card__label">点击率 / 转化率</div><div class="metric-card__value" data-promotion-new-kpi="ctr">--</div><div class="metric-card__meta"><span data-promotion-new-kpi="cvr">--</span></div></article>
+          <article class="ui-metric-card"><div class="metric-card__label">加购成本 / 拉新成本</div><div class="metric-card__value" data-promotion-new-kpi="cart_cost">--</div><div class="metric-card__meta"><span data-promotion-new-kpi="new_customer_cost">--</span></div></article>
+        </section>
+
+        <section class="ui-panel" aria-label="新品上架节奏" data-promotion-new-launch-section>
+          <div class="panel__header"><div><span class="section-kicker">商品证据</span><h3 class="panel__title">新品上架节奏</h3><p class="panel__hint" data-promotion-new-launch-hint>按上架日期聚合全部新品；查看每批已投放数量、未投放数量和推广结果。</p></div><div class="panel__actions"><span class="ui-badge ui-badge--info" data-promotion-new-launch-count>--</span><button class="ui-button ui-button--ghost" type="button" data-promotion-new-launch-toggle aria-expanded="false" hidden>查看全部批次</button></div></div>
+          <div class="ui-table-wrap promotion-new-launch-table-wrap"><table class="ui-data-table" data-promotion-new-launch-table><thead><tr><th>上架日期</th><th>上架新品数</th><th>已投放 / 未投放</th><th>投放覆盖率</th><th>推广花费</th><th>推广成交</th><th>批次 ROI</th><th>销售额</th></tr></thead><tbody data-promotion-new-launch-body><tr><td>加载中…</td></tr></tbody></table></div>
+        </section>
+
+        <section class="ui-panel" aria-label="新品投放明细" data-promotion-new-products-section>
+          <div class="panel__header"><div><span class="section-kicker">商品列表</span><h3 class="panel__title">新品投放明细</h3><p class="panel__hint">每个新品的投放效率与销售联动；点击行可查看该商品完整推广结构。</p></div></div>
+          <div class="ui-table-toolbar">
+            <div class="ui-table-toolbar__main">
+              <input class="input" data-promotion-new-search placeholder="搜索商品 ID / 标题" aria-label="搜索新品">
+              <select class="select" data-promotion-new-sort aria-label="排序"><option value="ad_spend">按花费排序</option><option value="attributed_payment_amount">按推广成交排序</option><option value="roi">按 ROI 排序</option><option value="link_gsv">按销售额排序</option><option value="list_date">按上架日期排序</option></select>
+            </div>
+            <div class="ui-table-toolbar__side">
+              <span class="ui-table-toolbar__summary" data-promotion-new-row-count>--</span>
+              <button class="ui-button ui-button--ghost" type="button" data-promotion-new-refresh><i data-lucide="refresh-cw"></i>刷新</button>
+            </div>
+          </div>
+          <div class="ui-table-wrap"><table class="ui-data-table" data-promotion-new-table><thead><tr><th>商品 / 上架日</th><th>上架天数</th><th>推广花费</th><th>推广成交</th><th>ROI</th><th>销售额</th><th>费比</th><th>点击率</th><th>转化率</th><th>加购成本</th><th>操作</th></tr></thead><tbody data-promotion-new-body><tr><td>加载中…</td></tr></tbody></table></div>
+        </section>
+
+        <div class="ui-sticky-action-bar" data-new-products-actions>
+          <div class="ui-sticky-action-bar__content" data-promotion-new-action-status>选择数据范围后导出已投放新品明细。</div>
+          <div class="ui-sticky-action-bar__actions">
+            <button class="ui-button ui-button--ghost" type="button" data-promotion-new-refresh><i data-lucide="refresh-cw"></i><span>刷新</span></button>
+            <button class="ui-button ui-button--primary" type="button" data-promotion-new-export><i data-lucide="download"></i><span>导出这些商品</span></button>
+          </div>
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <dialog class="promotion-dialog" data-promotion-structure-dialog data-modal-kind="detail" aria-labelledby="promotionStructureTitle">
+    <div class="promotion-detail-dialog__shell">
+      <div class="lifecycle-detail__header promotion-detail-dialog__header">
+        <div class="lifecycle-detail__product"><span class="lifecycle-detail__image promotion-detail-dialog__image" data-promotion-structure-image aria-hidden="true"><i data-lucide="package"></i></span><div><h2 id="promotionStructureTitle" class="panel__title" data-promotion-structure-title>商品推广结构</h2><p class="panel__hint" data-promotion-structure-subtitle>--</p><div class="lifecycle-detail__id" data-promotion-structure-id>--</div></div></div>
+        <button class="ui-button ui-button--ghost" type="button" data-promotion-structure-close aria-label="关闭商品推广结构"><i data-lucide="x"></i><span>关闭</span></button>
+      </div>
+      <div class="promotion-detail-dialog__body"><div class="lifecycle-detail-tabs promotion-detail-dialog__tabs" data-promotion-structure-tabs role="tablist" aria-label="商品推广结构分组"><button class="lifecycle-detail-tab" type="button" data-promotion-structure-tab="mix" aria-selected="true">流量结构</button><button class="lifecycle-detail-tab" type="button" data-promotion-structure-tab="campaigns" aria-selected="false">所有计划</button><button class="lifecycle-detail-tab" type="button" data-promotion-structure-tab="creatives" aria-selected="false">素材表现</button></div><div class="promotion-detail-dialog__panels" data-promotion-structure-body></div></div>
+    </div>
+  </dialog>
+
+  <dialog class="modal-form cb-image-dialog" data-new-products-image-dialog data-modal-kind="detail" aria-labelledby="new-products-image-title"><div class="modal-form__header"><h3 id="new-products-image-title">素材预览</h3><button class="ui-button ui-button--ghost" type="button" data-new-products-image-close aria-label="关闭图片预览"><i data-lucide="x"></i></button></div><div class="cb-image-dialog__body"><img data-new-products-image-preview alt="素材预览"></div></dialog>
+
+  <script src="../assets/api.js"></script>
+  <script src="../assets/navigation.js"></script>
+  <script src="../assets/charts.js"></script>
+  <script src="../assets/shell.js"></script>
+  <script src="../assets/ui-components.js"></script>
+  <script src="../assets/format.js"></script>
+  <script src="../assets/new-products-live.js?v=20260930b"></script>
+</body>
+</html>

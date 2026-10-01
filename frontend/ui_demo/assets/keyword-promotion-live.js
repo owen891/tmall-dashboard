@@ -7,6 +7,13 @@
   const API_BASE = '/api/keyword-promotion';
   const STORAGE_KEY = 'tmall-kp-visible-columns';
   const dateRange = () => window.TmallDateRange?.getState?.() || {};
+  const syncContextRange = (range = dateRange()) => {
+    const target = $('[data-kp-context-range]');
+    if (!target) return;
+    target.textContent = range?.startDate && range?.endDate
+      ? `${range.startDate} ~ ${range.endDate}`
+      : '当前数据范围';
+  };
 
   // ===== 字段定义（分组） =====
   const FIELD_GROUPS = [
@@ -669,7 +676,8 @@
     state.filters = buildFilters();
     loadSummary();
     loadProducts();
-    window.addEventListener('tmall:date-range-change', () => reload());
+    syncContextRange();
+    window.addEventListener('tmall:date-range-change', (event) => { syncContextRange(event.detail); reload(); });
     if (window.lucide) lucide.createIcons();
   }
 

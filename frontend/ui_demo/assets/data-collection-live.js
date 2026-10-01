@@ -95,9 +95,12 @@
       const resp = await fetch('/api/collect/status');
       const result = await resp.json();
       if (result.ok) {
-        // 使用前端计算的新鲜度
+        // 后端已按数据源节奏（日度/周窗口/月度）算好 freshness；
+        // 仅当后端未给出时才回退到前端本地计算。
         result.data.sources.forEach(s => {
-          s.freshness = calcFreshness(s.latest_date);
+          if (!s.freshness || s.freshness === 'unknown') {
+            s.freshness = calcFreshness(s.latest_date);
+          }
         });
         renderSources(result.data.sources);
         renderSummary(result.data.sources);
@@ -241,6 +244,7 @@
               <p class="collect-source-card__desc">${escapeHtml(source.description || '')}</p>
             </div>
             <div style="display:flex;flex-direction:column;gap:4px;align-items:flex-end;">
+              ${source.cadence === 'window' ? '<span style="padding:2px 8px;border-radius:4px;font-size:11px;font-weight:500;background:#6366f120;color:#6366f1;">周窗口源</span>' : ''}
               <span class="freshness-badge freshness-${escapeHtml(freshness)}">${escapeHtml(freshnessLabels[freshness] || freshness)}</span>
               ${source.status && source.status !== 'idle' ? `
                 <span style="padding:2px 8px;border-radius:4px;font-size:12px;font-weight:500;background:${statusColors[source.status] || '#6b7280'}20;color:${statusColors[source.status] || '#6b7280'};">
@@ -341,7 +345,9 @@
       const resp = await fetch('/api/collect/status');
       const result = await resp.json();
       if (result.ok) {
-        const sources = result.data.sources.filter(s => s.status !== 'running');
+        // 周窗口源（如店透视市场榜单）按月节奏人工触发，不进每日一键采集，
+        // 避免浏览器自动化任务被天天拉起撞风控。
+        const sources = result.data.sources.filter(s => s.status !== 'running' && s.cadence !== 'window');
         const prepare = await fetch('/api/collect/prepare', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ sources: sources.map(source => source.key) })

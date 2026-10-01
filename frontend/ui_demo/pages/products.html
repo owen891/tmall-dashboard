@@ -22,6 +22,7 @@
             <p>数据库商品经营表现</p>
           </div>
           <div class="demo-page__actions product-page-controls">
+            <span class="product-page-controls__eyebrow">当前视图</span>
             <div class="product-field-controls">
               <div class="product-control-group product-control-group--display">
                 <span class="product-control-label">展示</span>
@@ -93,7 +94,14 @@
             </div>
           </div>
 
-          <div class="ui-filter-toolbar product-filters" data-products-filter-toolbar>
+          <div class="product-filter-stack">
+            <div class="product-filter-stack__heading">
+              <div>
+                <span class="product-filter-stack__eyebrow">数据范围</span>
+                <strong>筛选与排序</strong>
+              </div>
+            </div>
+            <div class="ui-filter-toolbar ui-table-toolbar product-filters" data-products-filter-toolbar>
             <div class="product-filters__main">
               <label class="product-filters__search">
                 <span class="sr-only">搜索商品</span>
@@ -131,6 +139,7 @@
               <select class="select" data-products-growth-stage aria-label="筛选货品成长阶段"><option value="">全部成长阶段</option></select>
               <select class="select" data-products-seasonality aria-label="筛选季节属性"><option value="">全部季节属性</option></select>
               <select class="select" data-products-pending-action aria-label="筛选待办动作"><option value="">全部待办动作</option><option value="true">有待办动作</option><option value="false">无待办动作</option></select>
+            </div>
             </div>
           </div>
 
@@ -176,7 +185,7 @@
     </div>
   </div>
 
-  <dialog class="modal-form ui-panel product-rule-detail-dialog" data-product-rule-detail-dialog data-modal-kind="detail" aria-labelledby="productRuleDetailTitle" hidden>
+  <dialog class="modal-form ui-panel ui-drawer-dialog product-rule-detail-dialog" data-product-rule-detail-dialog data-modal-kind="detail" aria-labelledby="productRuleDetailTitle" hidden>
     <div class="modal-form__header">
       <div>
         <h3 id="productRuleDetailTitle" data-product-rule-detail-title>经营规则详情</h3>

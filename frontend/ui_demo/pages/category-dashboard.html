@@ -21,6 +21,9 @@
           <div><div class="dashboard-eyebrow">品类经营</div><h1 id="dashboardTitle">标品袜子 · 本月经营</h1><p id="dashboardPeriodLabel">正在加载当前经营周期</p></div>
           <button class="ui-button ui-button--primary" type="button" id="categoryDashboardRefresh"><i data-lucide="refresh-cw"></i><span>刷新</span></button>
         </header>
+        <section class="ui-context-bar category-dashboard-context" aria-label="看板数据范围">
+          <div class="ui-context-bar__copy"><span class="ui-context-bar__label">当前范围</span><strong class="ui-context-bar__value" id="categoryDashboardContext">当前品类 · 当前经营周期</strong><span class="ui-context-bar__meta">切换周期或主指标后，结论与趋势同步更新。</span></div>
+        </section>
         <nav class="dashboard-mode-tabs" aria-label="看板模式">
           <button type="button" class="is-active" data-dashboard-mode="month">本月经营</button>
           <button type="button" data-dashboard-mode="week">本周经营</button>

@@ -2,6 +2,7 @@ import json
 
 from db import get_db, get_shop_id
 from repos.audit_repo import AuditRepo
+from services.product_identity_service import refresh_promotion_identities
 from services.source_resolution_service import _materialize_daily_fact, record_daily_observation
 
 
@@ -234,10 +235,14 @@ class ImportRepo:
                     )
                 if table_name == 'promotion_daily_facts':
                     grouped = {}
+                    promotion_product_ids_by_shop = {}
                     for row in rows:
                         product_id = str(row.get('product_id') or '').strip()
                         if not product_id:
                             continue
+                        if str(row.get('grain') or '').strip() == 'product':
+                            shop_id = str(row.get('shop_id') or batch.get('shop_id') or 'default')
+                            promotion_product_ids_by_shop.setdefault(shop_id, set()).add(product_id)
                         key = (str(row.get('shop_id') or 'default'), product_id, row['date'])
                         item = grouped.setdefault(key, {
                             'shop_id': str(row.get('shop_id') or 'default'),
@@ -277,6 +282,12 @@ class ImportRepo:
                         resolution_summary['conflicts'] += len(result.get('conflict_fields', []))
                         resolution_summary['primary_kept'] += len(result.get('primary_fields', []))
                         resolution_summary['effective_unique'] += len(result.get('unique_fields', []))
+                    for shop_id, product_ids in promotion_product_ids_by_shop.items():
+                        refresh_promotion_identities(
+                            connection,
+                            shop_id=shop_id,
+                            product_ids=product_ids,
+                        )
                 quality_summary = json.loads(batch['quality_summary']) if isinstance(batch.get('quality_summary'), str) else dict(batch.get('quality_summary') or {})
                 quality_summary['source_resolution'] = resolution_summary
                 connection.execute(

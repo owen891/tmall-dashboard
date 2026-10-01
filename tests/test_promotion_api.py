@@ -54,7 +54,7 @@ class PromotionApiTests(unittest.TestCase):
         self.assertEqual(item['image_url'], 'https://cdn.example.com/p1.jpg')
         self.assertEqual(item['link_gsv'], 200.0)
         self.assertEqual(item['link_net_sales'], 180.0)
-        self.assertEqual(item['expense_ratio'], .05)
+        self.assertEqual(item['expense_ratio'], 0.055556)
         self.assertEqual(item['cart_adds'], 4)
         self.assertEqual(item['cart_cost'], 2.5)
         self.assertEqual(item['new_buyers'], 2)

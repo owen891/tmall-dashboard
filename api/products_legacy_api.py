@@ -383,8 +383,9 @@ def get_products():
                     {cart_qty_expr} as cart_qty,
                     {fav_users_expr} as fav_users,
                    {click_score_cols}
-                   COALESCE(d.net_sales, 0) as net_sales,
-                   CASE WHEN COALESCE(d.payment_amount, 0) > 0 THEN COALESCE(d.ad_spend, 0) * 1.0 / d.payment_amount ELSE NULL END as expense_ratio,
+                   COALESCE(NULLIF(d.net_sales, 0), d.payment_amount - d.refund_amount, 0) as net_sales,
+                   CASE WHEN COALESCE(NULLIF(d.net_sales, 0), d.payment_amount - d.refund_amount, 0) > 0
+                        THEN COALESCE(d.ad_spend, 0) * 1.0 / COALESCE(NULLIF(d.net_sales, 0), d.payment_amount - d.refund_amount, 0) ELSE NULL END as expense_ratio,
                    {('d.trend_change' if dimension == 'daily' and start and end else 'NULL')} as trend_change,
                    {monthly_traffic_cols}
                    {dmp_metric_cols}
@@ -624,15 +625,15 @@ def get_products_timeline():
             f'''SELECT d.product_id, d.{date_col} AS period,
                        COALESCE(d.payment_amount, 0) AS payment_amount,
                        COALESCE(d.refund_amount, 0) AS refund_amount,
-                       COALESCE(d.net_sales, d.payment_amount - d.refund_amount, 0) AS net_sales,
+                       COALESCE(NULLIF(d.net_sales, 0), d.payment_amount - d.refund_amount, 0) AS net_sales,
                        COALESCE(d.{visitors_col}, 0) AS visitors,
                        COALESCE(d.payment_conversion, 0) AS conversion,
                        COALESCE(d.ad_spend, 0) AS ad_spend,
                        COALESCE(d.ad_roi, 0) AS roi,
                        CASE WHEN COALESCE(d.payment_amount, 0) > 0
                             THEN COALESCE(d.refund_amount, 0) * 1.0 / d.payment_amount ELSE 0 END AS refund_rate,
-                       CASE WHEN COALESCE(d.payment_amount, 0) > 0
-                            THEN COALESCE(d.ad_spend, 0) * 1.0 / d.payment_amount ELSE 0 END AS expense_ratio,
+                   CASE WHEN COALESCE(NULLIF(d.net_sales, 0), d.payment_amount - d.refund_amount, 0) > 0
+                        THEN COALESCE(d.ad_spend, 0) * 1.0 / COALESCE(NULLIF(d.net_sales, 0), d.payment_amount - d.refund_amount, 0) ELSE NULL END AS expense_ratio,
                        {paid_ipv_expr} AS paid_ipv,
                        {organic_ipv_expr} AS organic_ipv,
                        {search_ipv_expr} AS search_ipv,
@@ -659,7 +660,7 @@ def get_products_timeline():
                            date(d.date, '-' || ((CAST(strftime('%w', d.date) AS INTEGER) + 6) % 7) || ' days') AS period,
                            SUM(COALESCE(d.payment_amount, 0)) AS payment_amount,
                            SUM(COALESCE(d.refund_amount, 0)) AS refund_amount,
-                           SUM(COALESCE(d.net_sales, d.payment_amount - d.refund_amount, 0)) AS net_sales,
+                           SUM(COALESCE(NULLIF(d.net_sales, 0), d.payment_amount - d.refund_amount, 0)) AS net_sales,
                            SUM(COALESCE(d.ipv, 0)) AS visitors,
                            AVG(COALESCE(d.payment_conversion, 0)) AS conversion,
                            SUM(COALESCE(d.ad_spend, 0)) AS ad_spend,
@@ -667,8 +668,8 @@ def get_products_timeline():
                                 THEN SUM(COALESCE(d.payment_amount, 0)) / SUM(COALESCE(d.ad_spend, 0)) ELSE 0 END AS roi,
                            CASE WHEN SUM(COALESCE(d.payment_amount, 0)) > 0
                                 THEN SUM(COALESCE(d.refund_amount, 0)) * 1.0 / SUM(COALESCE(d.payment_amount, 0)) ELSE 0 END AS refund_rate,
-                           CASE WHEN SUM(COALESCE(d.payment_amount, 0)) > 0
-                                THEN SUM(COALESCE(d.ad_spend, 0)) * 1.0 / SUM(COALESCE(d.payment_amount, 0)) ELSE 0 END AS expense_ratio,
+                           CASE WHEN SUM(COALESCE(NULLIF(d.net_sales, 0), d.payment_amount - d.refund_amount, 0)) > 0
+                                THEN SUM(COALESCE(d.ad_spend, 0)) * 1.0 / SUM(COALESCE(NULLIF(d.net_sales, 0), d.payment_amount - d.refund_amount, 0)) ELSE NULL END AS expense_ratio,
                            SUM(COALESCE(d.paid_ipv, 0)) AS paid_ipv,
                            SUM(COALESCE(d.organic_ipv, 0)) AS organic_ipv,
                            SUM(COALESCE(d.search_ipv, 0)) AS search_ipv,

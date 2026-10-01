@@ -11,13 +11,10 @@ if (-not (Test-Path -LiteralPath $python -PathType Leaf)) {
 Push-Location $root
 try {
     # Some PowerShell hosts pass a lone "-" through when no script arguments
-    # were supplied. Never forward that sentinel to pytest as a test path.
-    $pytestArgs = @($args | Where-Object { $_ -and $_ -ne '-' })
-    if (-not $pytestArgs.Count) {
-        $pytestArgs = @('-q')
-    }
+    # were supplied. Never forward that sentinel to unittest as a test path.
+    $testArgs = @($args | Where-Object { $_ -and $_ -ne '-' })
     Write-Host '[1/5] Running Python tests...'
-    & $python -m pytest @pytestArgs
+    & $python -W error::ResourceWarning -m unittest discover -s tests -v @testArgs
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
     Write-Host '[2/5] Checking frontend JavaScript syntax...'
@@ -36,7 +33,7 @@ try {
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
     Write-Host '[5/5] Validating database audit contracts...'
-    & $python -m pytest -q tests/test_db_inventory.py tests/test_db_quality_check.py tests/test_schema_baseline.py
+    & $python -m unittest tests.test_db_inventory tests.test_db_quality_check tests.test_schema_baseline -v
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
     Write-Host 'TEST_ALL_OK'

@@ -240,6 +240,8 @@ DATA_SOURCES = {
         'date_col': 'month',
         'script': 'aggregate_monthly.py',
         'description': 'BI商品月度数据聚合',
+        # 月度源：按月节奏判新鲜度，日度 3 天阈值对它永远不健康
+        'fresh_days': 40,
     },
     'sycm_flow': {
         'name': '生意参谋-店铺流量',
@@ -269,6 +271,18 @@ DATA_SOURCES = {
         'script': 'collect_wanxiangtai_dims_v4.py',
         'description': '万相台推广数据采集',
     },
+    'dts_market': {
+        'name': '店透视-市场榜单',
+        # 与其它源不同：店透视趋势分析按 4 周窗口成批导入 market_products，
+        # 最新数据日期取 market_analysis_runs.analysis_date（窗口结束日）。
+        'table': 'market_analysis_runs',
+        'date_col': 'analysis_date',
+        'script': 'collect_dts_market.py',
+        'description': '店透视市场排行趋势分析（三类目 4 周窗口批量导入）',
+        # 周窗口源：一键采集与日度新鲜度判定均按窗口节奏处理，不走日度默认
+        'cadence': 'window',
+        'fresh_days': 40,
+    },
 }
 
 COLLECTOR_CATALOG = {
@@ -278,6 +292,7 @@ COLLECTOR_CATALOG = {
     'sycm_item_flow': {'unit_type': 'product_channel', 'publish_mode': 'staging_atomic', 'fields': ['stat_date', 'item_id', 'channel_name', 'uv']},
     'sycm_market': {'unit_type': 'category_rank', 'publish_mode': 'staging_atomic', 'fields': ['stat_date', 'cate_id', 'item_id', 'rank']},
     'wanxiangtai': {'unit_type': 'promotion_unit', 'publish_mode': 'staging_atomic', 'fields': ['date', 'channel', 'ad_spend', 'clicks']},
+    'dts_market': {'unit_type': 'market_batch', 'publish_mode': 'batch_import', 'fields': ['analysis_date', 'period_start', 'period_end', 'category', 'rank']},
 }
 
 # 采集任务状态
@@ -319,17 +334,31 @@ def get_collect_status():
         sources = []
         for key, config in DATA_SOURCES.items():
             try:
-                c.execute(f'SELECT MAX({config["date_col"]}), COUNT(*) FROM {config["table"]}')
-                latest, count = c.fetchone()
+                if key == 'dts_market':
+                    # 周窗口源：最新数据日期=最新批次窗口结束日，记录数=该批次商品行数
+                    row = c.execute(
+                        "SELECT analysis_date, id FROM market_analysis_runs "
+                        "WHERE source='店透视市场排行' ORDER BY id DESC LIMIT 1").fetchone()
+                    latest = row[0] if row else None
+                    count = c.execute(
+                        'SELECT COUNT(*) FROM market_products WHERE run_id=?',
+                        (row[1],)).fetchone()[0] if row else 0
+                else:
+                    c.execute(f'SELECT MAX({config["date_col"]}), COUNT(*) FROM {config["table"]}')
+                    latest, count = c.fetchone()
 
-                # 计算数据新鲜度
+                # 计算数据新鲜度（周窗口源按 fresh_days 阈值，日度源按 1 天）
                 freshness = 'unknown'
+                fresh_days = config.get('fresh_days')
                 if latest:
                     try:
                         latest_date = datetime.strptime(str(latest)[:10], '%Y-%m-%d').date()
                         today = datetime.now().date()
                         days_diff = (today - latest_date).days
-                        if days_diff == 0:
+                        if fresh_days is not None:
+                            # 周窗口源：只有超过窗口阈值才算过期
+                            freshness = 'stale' if days_diff > fresh_days else 'recent'
+                        elif days_diff == 0:
                             freshness = 'today'
                         elif days_diff == 1:
                             freshness = 'yesterday'
@@ -350,6 +379,7 @@ def get_collect_status():
                     'latest_date': str(latest) if latest else None,
                     'record_count': count,
                     'freshness': freshness,
+                    'cadence': config.get('cadence', 'daily'),
                     'script': config['script'],
                     'status': _display_status(
                         durable_run, legacy_task.get('status', 'idle')
@@ -432,6 +462,7 @@ def get_collect_health():
                 'failed_runs_7d': failed,
                 'consecutive_failures': consecutive_failures,
                 'table_error': table_error,
+                'fresh_days': config.get('fresh_days', 3),
             })
             latest_value = latest['latest']
             source_rows[-1]['age_days'] = None
@@ -440,14 +471,19 @@ def get_collect_health():
                     parsed = datetime.strptime(str(latest_value)[:10], '%Y-%m-%d').date()
                     source_rows[-1]['age_days'] = max(0, (datetime.now().date() - parsed).days)
                 except ValueError:
-                    source_rows[-1]['age_days'] = None
+                    # 月度表 date_col='month' 存 'YYYY-MM'，按当月 1 日解析
+                    try:
+                        parsed = datetime.strptime(str(latest_value)[:7], '%Y-%m').date()
+                        source_rows[-1]['age_days'] = max(0, (datetime.now().date() - parsed).days)
+                    except ValueError:
+                        source_rows[-1]['age_days'] = None
         staging = conn.execute(
             '''SELECT status, COUNT(*) AS count FROM collector_data_staging
                WHERE created_at >= datetime('now', '-7 days') GROUP BY status'''
         ).fetchall()
     unhealthy = [row for row in source_rows
                   if row['table_error'] or not row['last_run'] or row['age_days'] is None
-                  or row['age_days'] > 3
+                  or row['age_days'] > row.get('fresh_days', 3)
                   or row['last_run']['status'] in {'failed', 'auth_required', 'blocked', 'partial'}]
     return success({
         'sources': source_rows,
@@ -612,6 +648,11 @@ def trigger_collect():
     # 全量 BI 采集需要分批设置列模板（676 列 / 每批 23 列 ≈ 30 批），
     # 单轮远超旧的 300 秒上限，放宽到 900 秒。
     COLLECT_TIMEOUT = 900  # 15分钟
+    # 店透视是浏览器自动化（三类目串行导出 + 防风控停顿），15 分钟不够；
+    # 且重试会再次驱动真实浏览器（可能撞 x5sec 风控），失败留给人工判断。
+    if source_key == 'dts_market':
+        COLLECT_TIMEOUT = 2400  # 40分钟
+        MAX_RETRIES = 0
 
     def run_collection():
         all_output = []

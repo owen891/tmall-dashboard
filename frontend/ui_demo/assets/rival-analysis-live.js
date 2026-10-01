@@ -202,6 +202,11 @@
   function renderMetrics() {
     const s = state.summary;
     $('[data-rival-date]').textContent = `统计日 ${s.stat_date} · 单日观察`;
+    const context = $('[data-rival-context]');
+    const range = window.TmallDateRange?.getState?.() || {};
+    if (context) context.textContent = range.startDate && range.endDate
+      ? `${range.startDate} ~ ${range.endDate} · 统计日 ${s.stat_date}`
+      : `统计日 ${s.stat_date}`;
     $('[data-rival-total]').textContent = fmtInt(s.total_shops);
     $('[data-rival-avg-uv]').textContent = fmtWan(s.avg_uv);
     $('[data-rival-avg-buyers]').textContent = fmtWan(s.avg_pay_buyers);

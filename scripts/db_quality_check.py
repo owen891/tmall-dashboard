@@ -478,6 +478,92 @@ def _promotion_unregistered_batch_metrics(connection: sqlite3.Connection) -> dic
     }
 
 
+def _promotion_unresolved_product_rows(connection: sqlite3.Connection) -> int:
+    """Count product-grain facts still needing an identity decision."""
+    table = "promotion_daily_facts"
+    if not _has_table(connection, table) or not _has_table(connection, "products"):
+        return 0
+    product_missing = f"""
+        p.grain = 'product'
+        AND NULLIF(TRIM(p.product_id), '') IS NOT NULL
+        AND NOT EXISTS (
+            SELECT 1 FROM products x WHERE x.product_id = p.product_id
+        )
+    """
+    if not _has_table(connection, "product_identity_map"):
+        return int(connection.execute(
+            f"SELECT COUNT(*) FROM {quote_identifier(table)} p WHERE {product_missing}"
+        ).fetchone()[0] or 0)
+    return int(connection.execute(
+        f"""SELECT COUNT(*)
+             FROM {quote_identifier(table)} p
+             LEFT JOIN product_identity_map m
+               ON m.shop_id = COALESCE(p.shop_id, 'default')
+              AND m.source_system = 'promotion'
+              AND m.external_product_id = p.product_id
+             WHERE {product_missing}
+               AND (m.external_product_id IS NULL OR m.identity_status = 'unresolved')"""
+    ).fetchone()[0] or 0)
+
+
+def check_action_history_orphans(connection: sqlite3.Connection) -> dict:
+    """Report action history rows whose parent action is missing."""
+    if not _has_table(connection, "product_action_history") or not _has_table(connection, "product_actions"):
+        return _result(
+            "action_history_orphans",
+            "skipped",
+            {"tables_present": False, "orphan_count": 0},
+        )
+    rows = connection.execute(
+        """SELECT h.id AS history_id, h.action_id, h.from_status, h.to_status,
+                  h.detail, h.operator, h.version, h.created_at
+           FROM product_action_history h
+           LEFT JOIN product_actions a ON a.id = h.action_id
+           WHERE a.id IS NULL
+           ORDER BY h.id"""
+    ).fetchall()
+    by_status = {}
+    for row in rows:
+        status = row["to_status"] or ""
+        by_status[status] = by_status.get(status, 0) + 1
+    all_history = connection.execute(
+        "SELECT COUNT(*) FROM product_action_history"
+    ).fetchone()[0]
+    parent_count = connection.execute(
+        "SELECT COUNT(*) FROM product_actions"
+    ).fetchone()[0]
+    metrics = {
+        "history_count": int(all_history or 0),
+        "parent_count": int(parent_count or 0),
+        "orphan_count": len(rows),
+        "by_to_status": by_status,
+        "oldest_created_at": rows[0]["created_at"] if rows else None,
+        "newest_created_at": rows[-1]["created_at"] if rows else None,
+    }
+    issues = [
+        {
+            "severity": "error",
+            "code": "orphan_action_history",
+            "history_id": row["history_id"],
+            "action_id": row["action_id"],
+            "from_status": row["from_status"],
+            "to_status": row["to_status"],
+            "detail": row["detail"],
+            "operator": row["operator"],
+            "version": row["version"],
+            "created_at": row["created_at"],
+            "parent_exists": False,
+        }
+        for row in rows
+    ]
+    return _result(
+        "action_history_orphans",
+        "error" if issues else "ok",
+        metrics,
+        issues,
+    )
+
+
 def check_provenance_and_orphans(connection: sqlite3.Connection) -> dict:
     observation_metrics = _daily_observation_orphan_metrics(connection)
     relations = [
@@ -528,18 +614,7 @@ def check_provenance_and_orphans(connection: sqlite3.Connection) -> dict:
                 "key": ["shop_id", "product_id", "date"],
             }
         )
-    product_linkage_rows = next(
-        (
-            item["row_count"]
-            for item in promotion_metrics["by_classification"]
-            if item["classification"] == "unresolved_product"
-        ),
-        sum(
-            item["row_count"]
-            for item in promotion_metrics["by_grain"]
-            if item["grain"] == "product"
-        ),
-    )
+    product_linkage_rows = _promotion_unresolved_product_rows(connection)
     if product_linkage_rows:
         issues.append(
             {
@@ -891,6 +966,7 @@ def collect_checks(
         check_duplicates(connection),
         check_future_facts(connection, as_of_date),
         check_provenance_and_orphans(connection),
+        check_action_history_orphans(connection),
         check_foreign_keys(connection),
         check_promotion_grain(connection),
         check_staging_retention(connection, staging_retention_days),

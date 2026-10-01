@@ -222,7 +222,8 @@ class MetricsRepo:
             item['net_sales'] = round(payment - refund, 2)
             item['refund_rate'] = round(refund / payment, 6) if payment else None
             item['payment_conversion_rate'] = round(buyers / visitors, 6) if visitors else None
-            item['expense_ratio'] = round(float(item.get('ad_spend') or 0) / payment, 6) if payment else None
+            net_sales = item['net_sales']
+            item['expense_ratio'] = round(float(item.get('ad_spend') or 0) / net_sales, 6) if net_sales else None
             item['average_order_value'] = round(payment / buyers, 2) if buyers else None
             returning = item.get('returning_payment_buyers')
             item['returning_buyer_ratio'] = round(float(returning) / buyers, 6) if returning is not None and buyers else None

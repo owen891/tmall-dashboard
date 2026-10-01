@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
@@ -54,6 +54,10 @@
   .market-entity-grid { grid-template-columns: 1fr; }
 }
 @media (max-width: 900px) { .market-chart-row, .market-keyword-grid { grid-template-columns: 1fr; } }
+.market-section { margin: 0 0 var(--space-4); }
+.market-section .ui-metric-grid { margin-bottom: 0; }
+body[data-page="market-ranking"] .market-command-grid--single { grid-template-columns: minmax(0, 1fr); }
+body[data-page="market-ranking"] .market-entry-grid--block { margin-top: 0; padding: var(--space-4); }
 </style>
 </head>
 <body data-page="market-ranking">
@@ -68,40 +72,29 @@
           <h2>市场分析</h2>
           <p>店透视市场排行数据 · 类目对比 · 热卖趋势 · 关键词洞察</p>
         </div>
-        <div class="demo-page__actions">
-          <span class="ui-badge ui-badge--info" data-mr-period>--</span>
-          <span class="ui-badge ui-badge--warning" data-mr-freshness>批次状态读取中…</span>
-        </div>
       </div>
 
-      <!-- 指标卡片 -->
-      <section class="ui-metric-grid">
-        <article class="ui-metric-card">
-          <div class="metric-card__label">分析类目</div>
-          <div class="metric-card__value" data-mr-cat-count>--</div>
-          <div class="metric-card__meta">中筒袜 / 长筒袜</div>
-        </article>
-        <article class="ui-metric-card">
-          <div class="metric-card__label">在榜商品</div>
-          <div class="metric-card__value" data-mr-product-count>--</div>
-          <div class="metric-card__meta">6类榜单合计</div>
-        </article>
-        <article class="ui-metric-card">
-          <div class="metric-card__label">关键词</div>
-          <div class="metric-card__value" data-mr-kw-count>--</div>
-          <div class="metric-card__meta">搜索词 + 标题词</div>
-        </article>
-        <article class="ui-metric-card">
-          <div class="metric-card__label">重叠店铺</div>
-          <div class="metric-card__value" data-mr-overlap-count>--</div>
-          <div class="metric-card__meta">同时在两类目在榜</div>
-        </article>
+      <!-- 上下文 -->
+      <section class="ui-context-bar" aria-label="当前分析范围">
+        <div class="ui-context-bar__copy">
+          <span class="ui-context-bar__label">当前范围</span>
+          <strong class="ui-context-bar__value" data-mr-period>--</strong>
+          <span class="ui-context-bar__meta">数据来源：店透视市场排行 · 类目对比 · 热卖趋势 · 关键词洞察</span>
+        </div>
+        <div class="ui-context-bar__actions">
+          <span class="ui-badge ui-badge--warning" data-mr-freshness>批次状态读取中…</span>
+        </div>
       </section>
 
-      <section class="market-command-grid" aria-label="市场判断摘要">
+      <!-- 结论 / 当前状态 -->
+      <section class="market-command-grid market-command-grid--single" aria-label="市场判断摘要">
         <section class="ui-panel market-command-panel">
           <div class="panel__header">
-            <div><h3 class="panel__title">市场判断</h3><p class="panel__hint">先判断市场规模、集中度和变化方向，再进入榜单证据。</p></div>
+            <div>
+              <span class="section-kicker">结论 · 当前状态</span>
+              <h3 class="panel__title">市场判断</h3>
+              <p class="panel__hint">先判断市场规模、集中度和变化方向，再进入榜单证据。</p>
+            </div>
             <span class="ui-badge ui-badge--info">自动归纳</span>
           </div>
           <div class="market-command-list">
@@ -111,24 +104,43 @@
             <div class="market-command-item"><strong>实际趋势</strong><span data-mr-insight-actual-trend>正在读取实际日期趋势…</span></div>
           </div>
         </section>
-        <section class="ui-panel market-command-panel">
-          <div class="panel__header">
-            <div><h3 class="panel__title">分析入口</h3><p class="panel__hint">类目看格局，商品看样本，关键词看需求。</p></div>
-          </div>
-          <div class="market-entry-grid">
-            <button type="button" class="market-entry-card is-active" data-market-entry="overview"><i data-lucide="layout-dashboard"></i><span><strong>市场总览</strong><small>类目对比与重叠店铺</small></span></button>
-            <button type="button" class="market-entry-card" data-market-entry="products"><i data-lucide="package"></i><span><strong>商品机会</strong><small>榜单商品与头部样本</small></span></button>
-            <button type="button" class="market-entry-card" data-market-entry="keywords"><i data-lucide="search"></i><span><strong>关键词机会</strong><small>搜索词与标题词结构</small></span></button>
-            <button type="button" class="market-entry-card" data-market-entry="sycm"><i data-lucide="database"></i><span><strong>生意参谋证据</strong><small>商品排行与搜索排行</small></span></button>
-          </div>
-        </section>
       </section>
 
+      <!-- 核心指标 -->
+      <section class="market-section" aria-label="核心指标">
+        <span class="section-kicker">核心指标</span>
+        <div class="ui-metric-grid">
+          <article class="ui-metric-card">
+            <div class="metric-card__label">分析类目</div>
+            <div class="metric-card__value" data-mr-cat-count>--</div>
+            <div class="metric-card__meta">中筒袜 / 长筒袜</div>
+          </article>
+          <article class="ui-metric-card">
+            <div class="metric-card__label">在榜商品</div>
+            <div class="metric-card__value" data-mr-product-count>--</div>
+            <div class="metric-card__meta">6类榜单合计</div>
+          </article>
+          <article class="ui-metric-card">
+            <div class="metric-card__label">关键词</div>
+            <div class="metric-card__value" data-mr-kw-count>--</div>
+            <div class="metric-card__meta">搜索词 + 标题词</div>
+          </article>
+          <article class="ui-metric-card">
+            <div class="metric-card__label">重叠店铺</div>
+            <div class="metric-card__value" data-mr-overlap-count>--</div>
+            <div class="metric-card__meta">同时在两类目在榜</div>
+          </article>
+        </div>
+      </section>
+
+      <!-- 排名与证据 -->
+      <section class="market-section" aria-label="排名与证据">
+        <span class="section-kicker">排名 · 证据</span>
       <nav class="market-workbench-tabs" role="tablist" aria-label="市场分析工作台">
-        <button type="button" class="is-active" data-market-tab="overview">市场总览</button>
-        <button type="button" data-market-tab="products">商品机会</button>
-        <button type="button" data-market-tab="keywords">关键词机会</button>
-        <button type="button" data-market-tab="sycm">生意参谋证据</button>
+        <button type="button" role="tab" aria-selected="true" class="is-active" data-market-tab="overview">市场总览</button>
+        <button type="button" role="tab" aria-selected="false" data-market-tab="products">商品机会</button>
+        <button type="button" role="tab" aria-selected="false" data-market-tab="keywords">关键词机会</button>
+        <button type="button" role="tab" aria-selected="false" data-market-tab="sycm">生意参谋证据</button>
       </nav>
 
       <!-- 类目统计对比 -->
@@ -220,7 +232,7 @@
             <p class="panel__hint">支付买家数TOP / 访客数TOP / 上升榜 / 下降榜 / 新上榜 / 店铺TOP</p>
           </div>
         </div>
-        <div class="ui-filter-toolbar product-filters">
+        <div class="ui-filter-toolbar ui-table-toolbar product-filters">
           <div class="product-filters__main">
             <div class="product-filters__core">
               <select class="select" data-mr-filter-category>
@@ -241,12 +253,13 @@
                 <th style="width:100px">榜单</th>
                 <th>商品标题</th>
                 <th style="width:160px">店铺</th>
+                <th style="width:80px">变化</th>
                 <th style="width:100px">买家数</th>
                 <th style="width:100px">访客数</th>
               </tr>
             </thead>
             <tbody data-mr-products-body>
-              <tr><td colspan="7" style="text-align:center;color:var(--text-tertiary);padding:24px">加载中…</td></tr>
+              <tr><td colspan="8" style="text-align:center;color:var(--text-tertiary);padding:24px">加载中…</td></tr>
             </tbody>
           </table>
         </div>
@@ -370,7 +383,27 @@
         </div>
       </section>
 
-    </main>
+
+      </section>
+
+      <!-- 行动 -->
+      <section class="ui-panel market-section" aria-label="下一步行动">
+        <div class="panel__header">
+          <div>
+            <span class="section-kicker">行动</span>
+            <h3 class="panel__title">下一步入口</h3>
+            <p class="panel__hint">类目看格局，商品看样本，关键词看需求，生意参谋看证据。</p>
+          </div>
+        </div>
+        <div class="market-entry-grid market-entry-grid--block">
+          <button type="button" class="market-entry-card is-active" data-market-entry="overview" aria-pressed="true"><i data-lucide="layout-dashboard"></i><span><strong>市场总览</strong><small>类目对比与重叠店铺</small></span></button>
+          <button type="button" class="market-entry-card" data-market-entry="products" aria-pressed="false"><i data-lucide="package"></i><span><strong>商品机会</strong><small>榜单商品与头部样本</small></span></button>
+          <button type="button" class="market-entry-card" data-market-entry="keywords" aria-pressed="false"><i data-lucide="search"></i><span><strong>关键词机会</strong><small>搜索词与标题词结构</small></span></button>
+          <button type="button" class="market-entry-card" data-market-entry="sycm" aria-pressed="false"><i data-lucide="database"></i><span><strong>生意参谋证据</strong><small>商品排行与搜索排行</small></span></button>
+        </div>
+      </section>
+
+</main>
   </div>
 </div>
 

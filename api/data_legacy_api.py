@@ -95,6 +95,8 @@ def compare_periods():
                     {_aov_expression(dim)} as aov,
                     CASE WHEN SUM(payment_amount) > 0 THEN SUM(refund_amount) * 1.0 / SUM(payment_amount) ELSE 0 END as refund_rate,
                     COALESCE(SUM(ad_spend),0) as ad_spend,
+                    CASE WHEN COALESCE(SUM(payment_amount),0) - COALESCE(SUM(refund_amount),0) > 0
+                         THEN SUM(ad_spend) * 1.0 / (SUM(payment_amount) - SUM(refund_amount)) ELSE NULL END as expense_ratio,
                     CASE WHEN SUM(ad_spend) > 0 THEN SUM(payment_amount) * 1.0 / SUM(ad_spend) ELSE 0 END as roi,
                     AVG(payment_conversion) as conversion
                 FROM {table}{_join_sql} WHERE {scope_sql}{date_col} = ?{_kpi_where}
@@ -129,7 +131,7 @@ def compare_periods():
         # KPI对比
         kpi_compare = {}
         if kpi_a and kpi_b:
-            for key in ['gmv', 'net_sales', 'visitors', 'aov', 'ad_spend', 'roi', 'conversion']:
+            for key in ['gmv', 'net_sales', 'visitors', 'aov', 'ad_spend', 'roi', 'conversion', 'expense_ratio']:
                 va = kpi_a.get(key, 0) or 0
                 vb = kpi_b.get(key, 0) or 0
                 change = round((vb - va) / va * 100, 1) if va > 0 else None
@@ -459,7 +461,7 @@ def export_data():
             _monthly_only = dim == 'monthly'
             data_cols = {
                 'payment_amount': 'COALESCE(d.payment_amount,0)', 'refund_amount': 'COALESCE(d.refund_amount,0)',
-                'net_sales': 'COALESCE(d.net_sales,0)', 'visitors': f'COALESCE(d.{visitors_col},0)',
+                'net_sales': 'COALESCE(NULLIF(d.net_sales, 0), d.payment_amount - d.refund_amount, 0)', 'visitors': f'COALESCE(d.{visitors_col},0)',
                 'uv_value': 'COALESCE(d.uv_value,0)' if _monthly_only else '0',
                 'search_visitors': 'COALESCE(d.search_visitors,0)' if _monthly_only else '0',
                 'search_ratio': 'COALESCE(d.search_ratio,0)' if _monthly_only else '0',
@@ -475,7 +477,7 @@ def export_data():
                 'roi': 'COALESCE(d.ad_roi,0)',
                 'overall_roi': 'COALESCE(d.overall_roi,0)' if _monthly_only else '0',
                 'paid_ratio': 'COALESCE(d.paid_ratio,0)' if _monthly_only else '0',
-                'expense_ratio': 'CASE WHEN COALESCE(d.payment_amount,0) > 0 THEN COALESCE(d.ad_spend,0) * 1.0 / d.payment_amount ELSE NULL END',
+                'expense_ratio': 'CASE WHEN COALESCE(NULLIF(d.net_sales, 0), d.payment_amount - d.refund_amount, 0) > 0 THEN COALESCE(d.ad_spend,0) * 1.0 / COALESCE(NULLIF(d.net_sales, 0), d.payment_amount - d.refund_amount, 0) ELSE NULL END',
                 'refund_rate': 'COALESCE(d.refund_rate,0)' if _monthly_only else '0',
                 'repurchase_rate': 'COALESCE(d.repurchase_rate,0)', 'repurchase_users': 'COALESCE(d.repurchase_users,0)',
                 'presale_amount': 'COALESCE(d.presale_amount,0)' if not _monthly_only else '0',

@@ -63,9 +63,10 @@
 <body data-page="data-collection"><div class="demo-app"><aside class="demo-sidebar" data-shell-sidebar></aside><div class="demo-main"><header class="demo-topbar" data-shell-header></header><main class="demo-page"><aside data-right-rail hidden aria-label="辅助信息"></aside>
   <div class="ui-page-header"><div><h2>数据采集</h2><p>查看各数据源的采集状态，手动触发数据采集。生意参谋和万相台采集依赖Chrome调试模式（端口9222）。</p></div><div class="demo-page__actions"><button class="ui-button" type="button" data-collect-credentials-open><i data-lucide="key-round"></i><span>账号配置</span></button><button class="ui-button ui-button--primary" type="button" data-collect-all><i data-lucide="play"></i><span>一键采集全部</span></button></div></div>
 
-  <div class="collect-deps">
-    <strong>采集依赖说明：</strong>生意参谋和万相台采集需要Chrome以调试模式启动（<code>--remote-debugging-port=9222</code>）并已登录对应平台。BI商品总览采集为本地脚本，无需浏览器。  </div>
+  <section class="ui-context-bar collect-deps" aria-label="采集依赖">
+    <strong>采集依赖说明：</strong>生意参谋和万相台采集需要Chrome以调试模式启动（<code>--remote-debugging-port=9222</code>）并已登录对应平台。BI商品总览采集为本地脚本，无需浏览器。</section>
 
+  <div class="section-kicker">当前状态</div>
   <section class="ui-metric-grid" aria-label="采集概览">
     <article class="ui-metric-card"><div class="metric-card__label">数据源总数</div><div class="metric-card__value" data-collect-summary="total">--</div><div class="metric-card__meta">已配置采集任务</div></article>
     <article class="ui-metric-card"><div class="metric-card__label">今日已更新</div><div class="metric-card__value" data-collect-summary="today">--</div><div class="metric-card__meta">数据为最新状态</div></article>
@@ -83,8 +84,14 @@
     </div>
   </section>
 
+  <section class="ui-panel"><div class="panel__header"><div><span class="section-kicker">待处理任务</span><h3 class="panel__title">数据源状态</h3><p class="panel__hint">各数据源的最新数据日期、记录数和采集状态</p></div><button class="ui-button" type="button" data-collect-refresh><i data-lucide="refresh-cw"></i><span>刷新</span></button></div>
+    <div class="collect-source-grid" data-collect-grid>
+      <div style="grid-column:1/-1;text-align:center;color:var(--text-secondary);padding:48px;">加载中...</div>
+    </div>
+  </section>
+
   <section class="ui-panel" aria-label="全项目数据整合目录">
-    <div class="panel__header"><div><h3 class="panel__title">全项目数据整合</h3><p class="panel__hint">统一查看已接入、人工处理、待接入和阻塞的数据能力</p></div><div class="integration-toolbar"><select class="select" data-integration-domain aria-label="业务域"><option value="">全部业务域</option></select><select class="select" data-integration-readiness aria-label="接入状态"><option value="">全部状态</option><option value="connected">已接入</option><option value="manual">人工/按需</option><option value="planned">待接入</option><option value="blocked">阻塞</option></select><button class="ui-button" type="button" data-integration-refresh aria-label="刷新整合目录"><i data-lucide="refresh-cw"></i><span>刷新</span></button></div></div>
+    <div class="panel__header"><div><span class="section-kicker">配置与接入</span><h3 class="panel__title">全项目数据整合</h3><p class="panel__hint">统一查看已接入、人工处理、待接入和阻塞的数据能力</p></div><div class="integration-toolbar ui-table-toolbar"><select class="select" data-integration-domain aria-label="业务域"><option value="">全部业务域</option></select><select class="select" data-integration-readiness aria-label="接入状态"><option value="">全部状态</option><option value="connected">已接入</option><option value="manual">人工/按需</option><option value="planned">待接入</option><option value="blocked">阻塞</option></select><button class="ui-button" type="button" data-integration-refresh aria-label="刷新整合目录"><i data-lucide="refresh-cw"></i><span>刷新</span></button></div></div>
     <div class="ui-metric-grid" data-integration-summary aria-label="整合摘要">
       <article class="ui-metric-card"><div class="metric-card__label">目录总数</div><div class="metric-card__value" data-integration-count="total">--</div></article>
       <article class="ui-metric-card"><div class="metric-card__label">已接入</div><div class="metric-card__value" data-integration-count="connected">--</div></article>
@@ -92,12 +99,6 @@
       <article class="ui-metric-card"><div class="metric-card__label">阻塞</div><div class="metric-card__value" data-integration-count="blocked">--</div></article>
     </div>
     <div class="integration-grid" data-integration-grid><div class="integration-empty">加载中...</div></div>
-  </section>
-
-  <section class="ui-panel"><div class="panel__header"><div><h3 class="panel__title">数据源状态</h3><p class="panel__hint">各数据源的最新数据日期、记录数和采集状态</p></div><button class="ui-button" type="button" data-collect-refresh><i data-lucide="refresh-cw"></i><span>刷新</span></button></div>
-    <div class="collect-source-grid" data-collect-grid>
-      <div style="grid-column:1/-1;text-align:center;color:var(--text-secondary);padding:48px;">加载中...</div>
-    </div>
   </section>
 
   <section class="ui-panel collect-log-panel" data-log-panel hidden>

@@ -1,0 +1,2030 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>月度复盘 - 天猫数据仪表盘</title>
+<link rel="stylesheet" href="../assets/tokens.css">
+<link rel="stylesheet" href="../assets/components.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&family=Noto+Sans+SC:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/* ===================================================================
+   周月复盘页面重构 demo — 设计 tokens
+   =================================================================== */
+:root {
+  --color-gray-25: #fcfcfd; --color-gray-50: #f5f5f5; --color-gray-100: #f3f4f6;
+  --color-gray-200: #e5e7eb; --color-gray-300: #d1d5db; --color-gray-400: #9ca3af;
+  --color-gray-500: #6b7280; --color-gray-700: #374151; --color-gray-900: #111827;
+  --color-indigo-100: #eef2ff; --color-indigo-500: #6366f1; --color-indigo-600: #4f46e5;
+  --color-green-600: #10b981; --color-amber-600: #f59e0b; --color-red-600: #ef4444;
+  --color-blue-100: #eff6ff; --color-blue-600: #3b82f6;
+
+  --surface-page: #f5f5f5; --surface-base: #fff; --surface-raised: #fff; --surface-muted: #f3f4f6;
+  --text-primary: #111827; --text-secondary: #6b7280; --text-tertiary: #9ca3af;
+  --border-default: #e5e7eb; --border-strong: #d1d5db;
+  --brand: #6366f1; --brand-hover: #4f46e5; --brand-tint: #eef2ff;
+  --success: #10b981; --warning: #f59e0b; --danger: #ef4444; --info: #3b82f6;
+  --radius-sm: 8px; --radius-md: 12px; --radius-lg: 16px; --radius-full: 999px;
+  --font-sans: "DM Sans", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  --font-display: "Space Grotesk", "Noto Sans SC", system-ui, sans-serif;
+  --space-1: 4px; --space-2: 8px; --space-3: 12px; --space-4: 16px;
+  --space-5: 20px; --space-6: 24px; --space-8: 32px;
+  --topbar-height: 60px; --sidebar-width: 260px;
+}
+
+/* ===================================================================
+   Reset & Base
+   =================================================================== */
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html { background: var(--surface-page); -webkit-text-size-adjust: 100%; }
+body {
+  font-family: var(--font-sans);
+  font-size: 14px; line-height: 1.5;
+  color: var(--text-primary);
+  background: var(--surface-page);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+a { color: inherit; text-decoration: none; }
+button, input, select, textarea { font: inherit; }
+button { cursor: pointer; border: none; background: none; }
+ul, ol { list-style: none; }
+table { border-collapse: collapse; width: 100%; }
+
+/* ===================================================================
+   App Layout
+   =================================================================== */
+.app { display: flex; min-height: 100vh; }
+
+/* ---------- Sidebar ---------- */
+.sidebar {
+  position: fixed; top: 0; left: 0; bottom: 0;
+  width: var(--sidebar-width);
+  background: var(--surface-base);
+  border-right: 1px solid var(--border-default);
+  display: flex; flex-direction: column;
+  z-index: 30;
+}
+.brand {
+  display: flex; align-items: center; gap: var(--space-3);
+  height: var(--topbar-height); padding: 0 var(--space-5);
+  border-bottom: 1px solid var(--border-default);
+  flex-shrink: 0;
+}
+.brand__mark {
+  display: grid; place-items: center;
+  width: 36px; height: 36px; flex-shrink: 0;
+  border-radius: var(--radius-md);
+  background: var(--brand); color: #fff;
+  font-family: var(--font-display); font-size: 18px; font-weight: 700;
+}
+.brand__name {
+  font-family: var(--font-display);
+  font-size: 15px; font-weight: 700; line-height: 1.2;
+  color: var(--text-primary);
+}
+.brand__sub { font-size: 11px; color: var(--text-tertiary); font-weight: 500; }
+
+.nav { flex: 1; overflow-y: auto; padding: var(--space-4) var(--space-3); }
+.nav__label {
+  padding: 0 var(--space-3) var(--space-2);
+  font-size: 11px; font-weight: 700; letter-spacing: .06em;
+  color: var(--text-tertiary); text-transform: uppercase;
+}
+.nav__group { display: flex; flex-direction: column; gap: 2px; }
+.nav__item {
+  display: flex; align-items: center; gap: var(--space-3);
+  min-height: 42px; padding: 0 var(--space-3);
+  border-radius: var(--radius-md);
+  color: var(--text-secondary); font-size: 14px; font-weight: 500;
+  transition: background .16s ease, color .16s ease;
+  cursor: pointer;
+}
+.nav__item:hover { background: var(--surface-muted); color: var(--text-primary); }
+.nav__item.is-active {
+  border-left: 3px solid var(--brand);
+  background: var(--brand-tint);
+  color: var(--brand); font-weight: 600;
+  padding-left: calc(var(--space-3) - 3px);
+}
+.nav__icon { width: 18px; height: 18px; flex-shrink: 0; stroke: currentColor; stroke-width: 1.75; fill: none; }
+.sidebar__footer {
+  padding: var(--space-3) var(--space-5);
+  border-top: 1px solid var(--border-default);
+  font-size: 12px; color: var(--text-tertiary);
+  flex-shrink: 0;
+}
+
+/* ---------- Main wrapper ---------- */
+.main { margin-left: var(--sidebar-width); flex: 1; min-width: 0; }
+
+/* ---------- Topbar ---------- */
+.topbar {
+  position: sticky; top: 0; z-index: 20;
+  height: var(--topbar-height);
+  background: var(--surface-base);
+  border-bottom: 1px solid var(--border-default);
+  display: flex; align-items: center; gap: var(--space-4);
+  padding: 0 var(--space-6);
+}
+.period-tabs {
+  display: inline-flex; gap: 2px;
+  background: var(--surface-muted);
+  border-radius: var(--radius-full);
+  padding: 3px;
+}
+.period-tabs button {
+  padding: 6px 16px; border-radius: var(--radius-full);
+  font-size: 13px; font-weight: 600;
+  color: var(--text-secondary);
+  transition: all .16s ease;
+}
+.period-tabs button.is-active {
+  background: var(--surface-base); color: var(--text-primary);
+  box-shadow: 0 1px 2px rgba(17,24,39,.06);
+}
+.topbar__divider { width: 1px; height: 24px; background: var(--border-default); }
+.topbar__period {
+  display: flex; align-items: center; gap: var(--space-2);
+  font-size: 14px; font-weight: 600; color: var(--text-primary);
+}
+.topbar__period-tag {
+  padding: 4px 10px; border-radius: var(--radius-sm);
+  background: var(--brand-tint); color: var(--brand);
+  font-size: 12px; font-weight: 600;
+}
+.topbar__compare {
+  display: flex; align-items: center; gap: var(--space-2);
+  font-size: 13px; color: var(--text-secondary);
+}
+.topbar__compare select {
+  padding: 5px 28px 5px 10px;
+  border: 1px solid var(--border-default); border-radius: var(--radius-sm);
+  background: var(--surface-base); font-size: 13px; color: var(--text-primary);
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right 8px center;
+}
+.topbar__spacer { flex: 1; }
+.topbar__actions { display: flex; gap: var(--space-2); }
+.btn {
+  display: inline-flex; align-items: center; gap: var(--space-2);
+  height: 36px; padding: 0 14px;
+  border: 1px solid var(--border-default); border-radius: var(--radius-sm);
+  background: var(--surface-base); color: var(--text-primary);
+  font-size: 13px; font-weight: 500;
+  transition: all .16s ease;
+}
+.btn:hover { border-color: var(--border-strong); background: var(--surface-muted); }
+.btn--primary { background: var(--brand); border-color: var(--brand); color: #fff; }
+.btn--primary:hover { background: var(--brand-hover); border-color: var(--brand-hover); }
+.btn svg { width: 15px; height: 15px; flex-shrink: 0; }
+
+/* ---------- Page content ---------- */
+.page-content { padding: var(--space-6); }
+
+/* ---------- Page header ---------- */
+.page-header { margin-bottom: var(--space-6); }
+.page-header__kicker {
+  font-size: 12px; font-weight: 600; letter-spacing: .08em;
+  text-transform: uppercase; color: var(--brand); margin-bottom: var(--space-1);
+}
+.page-header__title {
+  font-family: var(--font-display);
+  font-size: 26px; font-weight: 700; color: var(--text-primary);
+  margin-bottom: var(--space-2); line-height: 1.2;
+}
+.page-header__desc { font-size: 14px; color: var(--text-secondary); max-width: 680px; }
+
+/* ===================================================================
+   Command Center (指标总览驾驶舱)
+   =================================================================== */
+.command-center {
+  background: var(--surface-base);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  padding: var(--space-6);
+  margin-bottom: var(--space-6);
+}
+.cc-section-label {
+  font-size: 13px; font-weight: 600; color: var(--text-secondary);
+  margin-bottom: var(--space-3);
+}
+.cc-metrics { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--space-4); margin-bottom: var(--space-6); }
+.redesign-metric-card {
+  border: 1px solid var(--border-default); border-radius: var(--radius-md);
+  padding: var(--space-4);
+  border-left: 3px solid var(--border-default);
+  background: var(--surface-base);
+}
+.redesign-metric-card.is-danger { border-left-color: var(--danger); }
+.redesign-metric-card.is-warning { border-left-color: var(--warning); }
+.redesign-metric-card.is-success { border-left-color: var(--success); }
+.redesign-metric-card__label { font-size: 13px; font-weight: 500; color: var(--text-secondary); margin-bottom: var(--space-2); }
+.redesign-metric-card__value {
+  font-size: 28px; font-weight: 700; font-variant-numeric: tabular-nums;
+  color: var(--text-primary); line-height: 1.1; margin-bottom: var(--space-1);
+  font-family: var(--font-display);
+}
+.redesign-metric-card__target { font-size: 12px; color: var(--text-tertiary); margin-bottom: var(--space-2); }
+.redesign-metric-card__rate {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 3px 8px; border-radius: var(--radius-full);
+  font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums;
+  margin-bottom: var(--space-2);
+}
+.redesign-metric-card__rate.is-danger { background: #fef2f2; color: var(--danger); }
+.redesign-metric-card__rate.is-warning { background: #fffbeb; color: var(--warning); }
+.redesign-metric-card__rate.is-success { background: #ecfdf5; color: var(--success); }
+.redesign-metric-card__deltas { display: flex; flex-wrap: wrap; gap: var(--space-4); font-size: 12px; }
+.redesign-metric-card__delta { display: flex; align-items: center; gap: 3px; }
+.redesign-metric-card__delta-label { color: var(--text-tertiary); }
+.redesign-metric-card__delta-val { font-weight: 600; font-variant-numeric: tabular-nums; }
+.redesign-metric-card__extra { font-size: 12px; color: var(--text-secondary); margin-top: var(--space-2); padding-top: var(--space-2); border-top: 1px solid var(--border-default); }
+.redesign-metric-card__insight { display: flex; align-items: flex-start; width: 100%; box-sizing: border-box; gap: 8px; margin-top: 12px; padding-top: 10px; border-top: 1px dashed var(--border-default); font-size: 12px; line-height: 1.5; color: var(--text-secondary); }
+.redesign-metric-card__insight strong { flex: 0 0 auto; color: var(--text-primary); font-weight: 600; }
+.redesign-metric-card__insight span { min-width: 0; }
+.redesign-metric-card__insight strong { color: var(--text-primary); font-weight: 600; }
+.redesign-metric-card--primary { padding: 20px; box-shadow: 0 4px 16px rgba(17,24,39,.06); }
+.redesign-metric-card--primary .redesign-metric-card__value { font-size: 34px; }
+.redesign-metric-card--primary .redesign-metric-card__label { color: var(--text-primary); font-weight: 600; }
+.redesign-metric-card__priority { display: inline-flex; margin-left: 6px; padding: 2px 6px; border-radius: var(--radius-full); background: var(--brand-tint); color: var(--brand); font-size: 10px; font-weight: 600; vertical-align: 2px; }
+
+.cc-base-data { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--space-3); margin-bottom: var(--space-4); }
+.cc-signal-label { display: flex; align-items: center; gap: 8px; margin: 2px 0 10px; font-size: 12px; color: var(--text-tertiary); }
+.cc-signal-label::after { content: ''; flex: 1; height: 1px; background: var(--border-default); }
+.base-card {
+  border: 1px solid var(--border-default); border-radius: var(--radius-md);
+  padding: var(--space-3) var(--space-4);
+  background: var(--surface-base);
+}
+.base-card.is-danger { border-left: 3px solid var(--danger); }
+.base-card.is-warning { border-left: 3px solid var(--warning); }
+.base-card.is-muted { border-left: 3px solid var(--border-strong); }
+.base-card__label { font-size: 12px; color: var(--text-secondary); margin-bottom: 4px; }
+.base-card__value { font-size: 15px; font-weight: 600; color: var(--text-primary); }
+.base-card__value .is-danger { color: var(--danger); }
+.base-card__value .is-warning { color: var(--warning); }
+.base-card__value .is-muted { color: var(--text-tertiary); }
+
+.cc-paid {
+  display: flex; align-items: center; gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--border-default); border-left: 3px solid var(--danger);
+  border-radius: var(--radius-md); background: var(--surface-base);
+}
+.cc-paid__label { font-size: 13px; font-weight: 500; color: var(--text-secondary); }
+.cc-paid__value { font-size: 14px; font-weight: 600; color: var(--danger); font-variant-numeric: tabular-nums; }
+
+/* ===================================================================
+   Main Tabs (sticky)
+   =================================================================== */
+.main-tabs {
+  position: sticky; top: var(--topbar-height); z-index: 10;
+  background: var(--surface-page);
+  display: flex; gap: 0; overflow-x: auto;
+  border-bottom: 1px solid var(--border-default);
+  margin-bottom: var(--space-6);
+  -webkit-overflow-scrolling: touch;
+}
+.main-tabs::-webkit-scrollbar { height: 3px; }
+.main-tabs::-webkit-scrollbar-thumb { background: var(--border-default); border-radius: 2px; }
+.main-tab {
+  position: relative;
+  padding: 12px 20px;
+  font-size: 14px; font-weight: 500; color: var(--text-secondary);
+  white-space: nowrap; flex-shrink: 0;
+  transition: color .16s ease;
+}
+.main-tab:hover { color: var(--text-primary); }
+.main-tab.is-active { color: var(--brand); font-weight: 600; }
+.main-tab.is-active::after {
+  content: ''; position: absolute; left: 0; right: 0; bottom: -1px;
+  height: 2px; background: var(--brand); border-radius: 2px;
+}
+
+/* ===================================================================
+   Panel base
+   =================================================================== */
+.redesign-panel { display: none; }
+.redesign-panel.is-active { display: block; }
+
+/* ---------- Section header ---------- */
+.section-head {
+  display: flex; align-items: center; gap: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+.section-head__title {
+  font-size: 16px; font-weight: 600; color: var(--text-primary);
+  white-space: nowrap;
+}
+.section-head__line { flex: 1; height: 1px; background: var(--border-default); }
+.section-head__extra { display: flex; align-items: center; gap: var(--space-2); }
+
+/* ---------- Dimension toggle (月/周) ---------- */
+.dim-toggle {
+  display: inline-flex; gap: 2px;
+  background: var(--surface-muted); border-radius: var(--radius-full); padding: 2px;
+}
+.dim-toggle button {
+  padding: 4px 14px; border-radius: var(--radius-full);
+  font-size: 12px; font-weight: 600; color: var(--text-secondary);
+  transition: all .16s ease;
+}
+.dim-toggle button.is-active {
+  background: var(--surface-base); color: var(--text-primary);
+  box-shadow: 0 1px 2px rgba(17,24,39,.06);
+}
+
+.dim-view { display: none; }
+.dim-view.is-active { display: block; }
+
+/* ===================================================================
+   Data tables
+   =================================================================== */
+.table-wrap {
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  margin-bottom: var(--space-6);
+}
+.table-scroll { overflow-x: auto; }
+.redesign-data-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.redesign-data-table thead th {
+  background: var(--surface-muted);
+  padding: 10px 12px;
+  text-align: left; font-weight: 600; color: var(--text-secondary);
+  font-size: 12px; white-space: nowrap;
+  border-bottom: 1px solid var(--border-default);
+  position: sticky; top: 0;
+}
+.redesign-data-table thead th.num { text-align: right; }
+.redesign-data-table tbody td {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border-default);
+  color: var(--text-primary);
+}
+.redesign-data-table tbody td.num { text-align: right; font-variant-numeric: tabular-nums; font-weight: 500; }
+.redesign-data-table tbody td.label { font-weight: 500; color: var(--text-secondary); }
+.redesign-data-table tbody tr:last-child td { border-bottom: none; }
+.redesign-data-table tbody tr:hover { background: var(--color-gray-25); }
+
+.trend { display: inline-flex; align-items: center; gap: 2px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.is-up { color: var(--success); }
+.is-down { color: var(--danger); }
+.is-flat { color: var(--text-tertiary); }
+
+/* ===================================================================
+   Three-section cards (分析/根因/下一步)
+   =================================================================== */
+.tri-sections { display: flex; flex-direction: column; gap: var(--space-3); }
+.tri-card {
+  display: flex; gap: var(--space-3);
+  padding: var(--space-4) var(--space-4) var(--space-4) var(--space-4);
+  border: 1px solid var(--border-default); border-left: 3px solid var(--brand);
+  border-radius: var(--radius-md);
+  background: var(--color-gray-50);
+}
+.tri-card__num {
+  flex-shrink: 0; width: 24px; height: 24px;
+  display: grid; place-items: center;
+  border-radius: var(--radius-full);
+  background: var(--brand-tint); color: var(--brand);
+  font-size: 12px; font-weight: 700;
+}
+.tri-card__body { flex: 1; min-width: 0; }
+.tri-card__title { font-size: 13px; font-weight: 600; color: var(--text-primary); margin-bottom: var(--space-1); }
+.tri-card__text { font-size: 13px; color: var(--text-secondary); line-height: 1.6; }
+.tri-card--action { background: var(--brand-tint); border-left-color: var(--brand); }
+.tri-card__meta { display: flex; flex-wrap: wrap; gap: 8px 16px; margin-top: 10px; font-size: 12px; color: var(--text-secondary); }
+.tri-card__meta span { display: inline-flex; align-items: center; gap: 4px; }
+.tri-card__meta strong { color: var(--text-primary); font-weight: 600; }
+
+/* ===================================================================
+   Product analysis
+   =================================================================== */
+.cat-overview { display: grid; grid-template-columns: repeat(2, 1fr); gap: var(--space-4); margin-bottom: var(--space-6); }
+.cat-card {
+  border: 1px solid var(--border-default); border-radius: var(--radius-md);
+  padding: var(--space-4); background: var(--surface-base);
+}
+.cat-card__head { display: flex; align-items: center; gap: var(--space-2); margin-bottom: var(--space-3); }
+.cat-card__badge { padding: 3px 10px; border-radius: var(--radius-sm); font-size: 12px; font-weight: 600; }
+.cat-card__badge--male { background: var(--color-blue-100); color: var(--color-blue-600); }
+.cat-card__badge--female { background: #fdf4ff; color: #a855f7; }
+.cat-card__title { font-size: 15px; font-weight: 600; color: var(--text-primary); }
+.cat-card__metrics { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--space-3); }
+.cat-card__metric { }
+.cat-card__metric-label { font-size: 12px; color: var(--text-tertiary); margin-bottom: 2px; }
+.cat-card__metric-value { font-size: 16px; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--text-primary); }
+.cat-card__metric-value.is-danger { color: var(--danger); }
+.cat-card__metric-value.is-success { color: var(--success); }
+
+/* Product table specific */
+.product-table-wrap {
+  border: 1px solid var(--border-default); border-radius: var(--radius-md);
+  overflow: hidden; margin-bottom: var(--space-6);
+}
+.product-table-scroll { overflow-x: auto; }
+.product-table { min-width: max-content; border-collapse: collapse; font-size: 13px; }
+.product-table thead th {
+  background: var(--surface-muted); padding: 10px 12px;
+  text-align: left; font-weight: 600; color: var(--text-secondary);
+  font-size: 12px; white-space: nowrap;
+  border-bottom: 1px solid var(--border-default);
+  position: sticky; top: 0; z-index: 1;
+}
+.product-table thead th.num { text-align: right; }
+.product-table tbody td { padding: 10px 12px; border-bottom: 1px solid var(--border-default); }
+.product-table tbody td.num { text-align: right; font-variant-numeric: tabular-nums; font-weight: 500; }
+.product-table tbody tr:hover { background: var(--color-gray-25); }
+.product-cell { display: flex; align-items: center; gap: var(--space-2); }
+.product-thumb {
+  width: 36px; height: 36px; flex-shrink: 0;
+  border-radius: var(--radius-sm); border: 1px solid var(--border-default);
+  background: linear-gradient(135deg, var(--color-gray-100), var(--color-gray-200));
+  display: grid; place-items: center; font-size: 16px;
+}
+.product-title {
+  max-width: 262px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-weight: 500; color: var(--text-primary);
+}
+.product-id { font-size: 12px; color: var(--text-tertiary); font-variant-numeric: tabular-nums; }
+
+/* Sub-section titles in goods redesign-panel */
+.subsection { margin-bottom: var(--space-6); }
+.subsection__hint { font-size: 13px; color: var(--text-secondary); margin-bottom: var(--space-3); }
+
+/* ===================================================================
+   Ad analysis (nested channel headers)
+   =================================================================== */
+.ad-table { min-width: max-content; border-collapse: collapse; font-size: 13px; }
+.ad-table thead th {
+  background: var(--surface-muted); padding: 8px 10px;
+  text-align: center; font-weight: 600; color: var(--text-secondary);
+  font-size: 12px; white-space: nowrap;
+  border-bottom: 1px solid var(--border-default); border-right: 1px solid var(--border-default);
+}
+.ad-table thead th:last-child { border-right: none; }
+.ad-table thead th.num { text-align: right; }
+.ad-table thead tr:nth-child(2) th { font-size: 11px; color: var(--text-tertiary); }
+.ad-table thead .group-all站 { background: var(--color-gray-50); }
+.ad-table thead .group-关键词 { background: var(--color-gray-50); }
+.ad-table thead .group-人群 { background: var(--color-gray-50); }
+.ad-table tbody td { padding: 9px 10px; border-bottom: 1px solid var(--border-default); border-right: 1px solid var(--border-default); }
+.ad-table tbody td:last-child { border-right: none; }
+.ad-table tbody td.num { text-align: right; font-variant-numeric: tabular-nums; font-weight: 500; }
+.ad-table tbody tr:hover { background: var(--color-gray-25); }
+
+/* ===================================================================
+   Market monitoring
+   =================================================================== */
+.market-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: var(--space-4); margin-bottom: var(--space-6); }
+.market-card {
+  border: 1px solid var(--border-default); border-radius: var(--radius-md);
+  padding: var(--space-4); background: var(--surface-base);
+}
+.market-card__title { font-size: 14px; font-weight: 600; color: var(--text-primary); margin-bottom: var(--space-3); display: flex; align-items: center; gap: var(--space-2); }
+.market-card__tag { padding: 2px 8px; border-radius: var(--radius-sm); font-size: 11px; font-weight: 600; background: var(--brand-tint); color: var(--brand); }
+
+.competitor-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: var(--space-3); margin-bottom: var(--space-6); }
+.competitor-card {
+  border: 1px solid var(--border-default); border-radius: var(--radius-md);
+  padding: var(--space-4); background: var(--surface-base);
+}
+.competitor-card__head { display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--space-3); }
+.competitor-card__name { font-size: 14px; font-weight: 600; color: var(--text-primary); }
+.competitor-card__rank { font-size: 12px; color: var(--text-tertiary); }
+.competitor-card__metrics { display: grid; grid-template-columns: repeat(2, 1fr); gap: var(--space-2); font-size: 12px; }
+.competitor-card__metric { display: flex; flex-direction: column; }
+.competitor-card__metric-label { color: var(--text-tertiary); font-size: 11px; }
+.competitor-card__metric-value { color: var(--text-primary); font-weight: 600; font-variant-numeric: tabular-nums; }
+
+/* ===================================================================
+   Planning redesign-panel
+   =================================================================== */
+.plan-grid { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-4); margin-bottom: var(--space-6); }
+.plan-card {
+  border: 1px solid var(--border-default); border-radius: var(--radius-md);
+  padding: var(--space-4); background: var(--surface-base);
+}
+.plan-card__title { font-size: 14px; font-weight: 600; color: var(--text-primary); margin-bottom: var(--space-3); }
+.plan-list { display: flex; flex-direction: column; gap: var(--space-2); }
+.plan-item { display: flex; gap: var(--space-2); font-size: 13px; }
+.plan-item__dot { flex-shrink: 0; width: 6px; height: 6px; border-radius: 50%; background: var(--brand); margin-top: 7px; }
+.plan-item__text { color: var(--text-secondary); line-height: 1.6; }
+
+.schedule-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.schedule-table thead th { background: var(--surface-muted); padding: 10px 12px; font-size: 12px; font-weight: 600; color: var(--text-secondary); border-bottom: 1px solid var(--border-default); text-align: left; }
+.schedule-table tbody td { padding: 10px 12px; border-bottom: 1px solid var(--border-default); }
+.schedule-table .week-cell { font-weight: 600; color: var(--brand); white-space: nowrap; }
+
+/* ===================================================================
+   Responsive
+   =================================================================== */
+@media (max-width: 960px) {
+  .cc-metrics { grid-template-columns: repeat(2, 1fr); }
+  .cc-base-data { grid-template-columns: repeat(2, 1fr); }
+  .cat-overview { grid-template-columns: 1fr; }
+  .market-grid { grid-template-columns: 1fr; }
+  .plan-grid { grid-template-columns: 1fr; }
+  .cat-card__metrics { grid-template-columns: repeat(3, 1fr); }
+}
+@media (max-width: 640px) {
+  .sidebar { transform: translateX(-100%); }
+  .main { margin-left: 0; }
+  .cc-metrics { grid-template-columns: 1fr; }
+  .cc-base-data { grid-template-columns: 1fr; }
+  .cat-card__metrics { grid-template-columns: repeat(2, 1fr); }
+  .topbar { gap: var(--space-2); padding: 0 var(--space-4); overflow: hidden; }
+  .topbar__period, .topbar__compare, .topbar__divider { display: none; }
+  .topbar__actions { flex-shrink: 0; }
+  .topbar__actions .btn { width: 36px; padding: 0; justify-content: center; font-size: 0; }
+  .period-tabs button { padding-left: 10px; padding-right: 10px; }
+  .page-content { padding: var(--space-4); }
+}
+</style>
+</head>
+<body>
+<div class="app">
+
+<!-- ================================================================
+     SIDEBAR
+     ================================================================ -->
+<aside class="sidebar" data-shell-sidebar>
+  <div class="brand">
+    <div class="brand__mark">T</div>
+    <div>
+      <div class="brand__name">天猫数据仪表盘</div>
+      <div class="brand__sub">Tmall Dashboard</div>
+    </div>
+  </div>
+  <nav class="nav">
+    <div class="nav__label">主导航</div>
+    <div class="nav__group">
+      <a class="nav__item">
+        <svg class="nav__icon" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+        概览
+      </a>
+      <a class="nav__item">
+        <svg class="nav__icon" viewBox="0 0 24 24"><path d="M21 8l-9 4-9-4 9-4 9 4z"/><path d="M3 8v8c0 1 4 3 9 3s9-2 9-3V8"/></svg>
+        商品管理
+      </a>
+      <a class="nav__item">
+        <svg class="nav__icon" viewBox="0 0 24 24"><path d="M3 3v18h18"/><path d="M7 14l4-4 3 3 5-6"/></svg>
+        推广分析
+      </a>
+      <a class="nav__item">
+        <svg class="nav__icon" viewBox="0 0 24 24"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+        流量分析
+      </a>
+      <a class="nav__item is-active">
+        <svg class="nav__icon" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+        周月复盘
+      </a>
+      <a class="nav__item">
+        <svg class="nav__icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15 15 0 010 20 15 15 0 010-20z"/></svg>
+        市场监控
+      </a>
+    </div>
+    <div class="nav__label" style="margin-top: var(--space-5);">系统</div>
+    <div class="nav__group">
+      <a class="nav__item">
+        <svg class="nav__icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19 12a7 7 0 01-.1 1l2 1.5-2 3.5-2.4-1a7 7 0 01-1.7 1l-.4 2.5h-4l-.4-2.5a7 7 0 01-1.7-1l-2.4 1-2-3.5 2-1.5a7 7 0 010-2l-2-1.5 2-3.5 2.4 1a7 7 0 011.7-1L9.5 2h4l.4 2.5a7 7 0 011.7 1l2.4-1 2 3.5-2 1.5a7 7 0 01.1 1z"/></svg>
+        设置
+      </a>
+    </div>
+  </nav>
+  <div class="sidebar__footer">v2.6.0 · 2026-09-29</div>
+</aside>
+
+<!-- ================================================================
+     MAIN
+     ================================================================ -->
+<div class="main">
+
+  <!-- ---------- Topbar ---------- -->
+  <header class="topbar" data-shell-header>
+    <div class="period-tabs">
+      <button class="is-active" data-period="month">月复盘</button>
+      <button data-period="week">周复盘</button>
+    </div>
+    <div class="topbar__divider"></div>
+    <div class="topbar__period">
+      <span>当前周期</span>
+      <span class="topbar__period-tag">2026年8月</span>
+    </div>
+    <div class="topbar__divider"></div>
+    <div class="topbar__compare">
+      <span>对比</span>
+      <select>
+        <option>环比上月</option>
+        <option>同比去年同期</option>
+        <option>自定义对比周期</option>
+      </select>
+    </div>
+    <div class="topbar__spacer"></div>
+    <div class="topbar__actions">
+      <button class="btn">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6M1 20v-6h6"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/></svg>
+        刷新素材
+      </button>
+      <button class="btn">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><path d="M7 10l5 5 5-5M12 15V3"/></svg>
+        导出复盘
+      </button>
+      <button class="btn btn--primary">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z"/><path d="M17 21v-8H7v8M7 3v5h8"/></svg>
+        保存复盘
+      </button>
+    </div>
+  </header>
+
+  <!-- ---------- Page content ---------- -->
+  <main class="page-content">
+
+    <!-- ====== Page Header ====== -->
+    <div class="page-header">
+      <div class="page-header__kicker">经营决策工作台</div>
+      <h1 class="page-header__title">月度复盘</h1>
+      <p class="page-header__desc">先确认结果和变化，再定位商品、推广与执行问题，最后沉淀可验收的下一步动作。</p>
+    </div>
+
+    <!-- ====== Command Center (指标总览驾驶舱) ====== -->
+    <section class="command-center">
+      <div class="cc-section-label">三大指标完成率</div>
+      <div class="cc-metrics">
+        <!-- GSV -->
+        <div class="redesign-metric-card redesign-metric-card--primary is-danger">
+          <div class="redesign-metric-card__label">GSV 净销售额 <span class="redesign-metric-card__priority">核心结果</span></div>
+          <div class="redesign-metric-card__value">71.9万</div>
+          <div class="redesign-metric-card__target">目标 120万</div>
+          <div class="redesign-metric-card__rate is-danger">完成率 59.9%</div>
+          <div class="redesign-metric-card__deltas">
+            <div class="redesign-metric-card__delta">
+              <span class="redesign-metric-card__delta-label">环比</span>
+              <span class="redesign-metric-card__delta-val is-down">↓30.7%</span>
+            </div>
+            <div class="redesign-metric-card__delta">
+              <span class="redesign-metric-card__delta-label">同比</span>
+              <span class="redesign-metric-card__delta-val is-down">↓20.9%</span>
+            </div>
+          </div>
+          <div class="redesign-metric-card__insight"><strong>主要问题</strong><span>访客同比下降 35%，流量端是首要缺口。</span></div>
+        </div>
+        <!-- 净利润 -->
+        <div class="redesign-metric-card redesign-metric-card--primary is-danger">
+          <div class="redesign-metric-card__label">净利润 <span class="redesign-metric-card__priority">核心结果</span></div>
+          <div class="redesign-metric-card__value">-1.6万</div>
+          <div class="redesign-metric-card__target">目标 3.5万</div>
+          <div class="redesign-metric-card__rate is-danger">完成率 -45.7%</div>
+          <div class="redesign-metric-card__deltas">
+            <div class="redesign-metric-card__delta">
+              <span class="redesign-metric-card__delta-label">环比</span>
+              <span class="redesign-metric-card__delta-val is-down">↓70.9%</span>
+            </div>
+            <div class="redesign-metric-card__delta">
+              <span class="redesign-metric-card__delta-label">同比</span>
+              <span class="redesign-metric-card__delta-val is-down">↓120.1%</span>
+            </div>
+          </div>
+          <div class="redesign-metric-card__insight"><strong>经营判断</strong><span>收入下滑叠加费比上升，本月已进入亏损区间。</span></div>
+        </div>
+        <!-- 费比 -->
+        <div class="redesign-metric-card is-warning">
+          <div class="redesign-metric-card__label">费比</div>
+          <div class="redesign-metric-card__value">20.29%</div>
+          <div class="redesign-metric-card__target">目标 15%</div>
+          <div class="redesign-metric-card__rate is-warning">完成率 135.3%</div>
+          <div class="redesign-metric-card__deltas">
+            <div class="redesign-metric-card__delta">
+              <span class="redesign-metric-card__delta-label">环比</span>
+              <span class="redesign-metric-card__delta-val is-up">↑5.36pp</span>
+            </div>
+            <div class="redesign-metric-card__delta">
+              <span class="redesign-metric-card__delta-label">同比</span>
+              <span class="redesign-metric-card__delta-val is-up">↑4.23pp</span>
+            </div>
+          </div>
+          <div class="redesign-metric-card__extra">推广花费 14.6万；比去年持平，比7月低6%</div>
+          <div class="redesign-metric-card__insight"><strong>拖累来源</strong><span>男款费比偏高，商品数量偏少，推广效率不足。</span></div>
+        </div>
+      </div>
+
+      <div class="cc-signal-label">经营诊断信号 · 用于定位结果变化</div>
+      <div class="cc-base-data">
+        <div class="base-card is-danger">
+          <div class="base-card__label">访客数</div>
+          <div class="base-card__value"><span class="is-danger">同比环比均 -30%+</span></div>
+        </div>
+        <div class="base-card is-danger">
+          <div class="base-card__label">转化率</div>
+          <div class="base-card__value"><span class="is-danger">同比 -7.6%</span></div>
+        </div>
+        <div class="base-card is-warning">
+          <div class="base-card__label">客单价</div>
+          <div class="base-card__value"><span class="is-warning">同比 +53.9%</span></div>
+        </div>
+        <div class="base-card is-muted">
+          <div class="base-card__label">加购率</div>
+          <div class="base-card__value"><span class="is-muted">基本不变</span></div>
+        </div>
+      </div>
+
+      <div class="cc-signal-label">付费效率 · 需要重点关注</div>
+      <div class="cc-paid">
+        <span class="cc-paid__label">单次付费访客成本</span>
+        <span class="cc-paid__value">同比 ↑26.8%</span>
+      </div>
+    </section>
+
+    <!-- ====== Main Tabs (sticky) ====== -->
+    <nav class="main-tabs" id="mainTabs">
+      <button class="main-tab is-active" data-tab="cat">品类汇总</button>
+      <button class="main-tab" data-tab="goods">货品分析</button>
+      <button class="main-tab" data-tab="ads">广告分析</button>
+      <button class="main-tab" data-tab="market">市场监控</button>
+      <button class="main-tab" data-tab="plan">下月规划</button>
+    </nav>
+
+    <!-- ================================================================
+         PANEL 1: 品类汇总
+         ================================================================ -->
+    <section class="redesign-panel is-active" data-panel="cat">
+
+      <!-- ---- 销售指标 ---- -->
+      <div class="subsection">
+        <div class="section-head">
+          <span class="section-head__title">销售指标</span>
+          <div class="section-head__line"></div>
+          <div class="section-head__extra">
+            <div class="dim-toggle" data-dim-group="sales">
+              <button class="is-active" data-dim="month">月维度</button>
+              <button data-dim="week">周维度</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 月维度 -->
+        <div class="dim-view is-active" data-dim-view="sales-month">
+          <div class="table-wrap"><div class="table-scroll">
+          <table class="redesign-data-table">
+            <thead>
+              <tr>
+                <th>指标</th>
+                <th class="num">8月</th>
+                <th class="num">7月</th>
+                <th class="num">环比</th>
+                <th class="num">去年同期</th>
+                <th class="num">同比</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td class="label">GSV（净销售）</td>
+                <td class="num">71.9万</td>
+                <td class="num">103.8万</td>
+                <td class="num"><span class="trend is-down">↓30.7%</span></td>
+                <td class="num">90.9万</td>
+                <td class="num"><span class="trend is-down">↓20.9%</span></td>
+              </tr>
+              <tr>
+                <td class="label">净利润</td>
+                <td class="num">-1.6万</td>
+                <td class="num">5.5万</td>
+                <td class="num"><span class="trend is-down">↓70.9%</span></td>
+                <td class="num">7.9万</td>
+                <td class="num"><span class="trend is-down">↓120.1%</span></td>
+              </tr>
+              <tr>
+                <td class="label">推广费</td>
+                <td class="num">14.6万</td>
+                <td class="num">15.5万</td>
+                <td class="num"><span class="trend is-down">↓5.8%</span></td>
+                <td class="num">14.6万</td>
+                <td class="num"><span class="trend is-flat">0.0%</span></td>
+              </tr>
+              <tr>
+                <td class="label">费比</td>
+                <td class="num">20.29%</td>
+                <td class="num">14.93%</td>
+                <td class="num"><span class="trend is-up">↑5.36pp</span></td>
+                <td class="num">16.06%</td>
+                <td class="num"><span class="trend is-up">↑4.23pp</span></td>
+              </tr>
+              <tr>
+                <td class="label">访客数</td>
+                <td class="num">10.0万</td>
+                <td class="num">14.5万</td>
+                <td class="num"><span class="trend is-down">↓31.0%</span></td>
+                <td class="num">15.4万</td>
+                <td class="num"><span class="trend is-down">↓35.0%</span></td>
+              </tr>
+              <tr>
+                <td class="label">转化率</td>
+                <td class="num">3.89%</td>
+                <td class="num">4.21%</td>
+                <td class="num"><span class="trend is-down">↓0.32pp</span></td>
+                <td class="num">4.21%</td>
+                <td class="num"><span class="trend is-down">↓7.6%</span></td>
+              </tr>
+              <tr>
+                <td class="label">客单价</td>
+                <td class="num">185元</td>
+                <td class="num">170元</td>
+                <td class="num"><span class="trend is-up">↑8.8%</span></td>
+                <td class="num">120元</td>
+                <td class="num"><span class="trend is-up">↑53.9%</span></td>
+              </tr>
+              <tr>
+                <td class="label">加购率</td>
+                <td class="num">8.50%</td>
+                <td class="num">8.60%</td>
+                <td class="num"><span class="trend is-down">↓0.10pp</span></td>
+                <td class="num">8.50%</td>
+                <td class="num"><span class="trend is-flat">0.0%</span></td>
+              </tr>
+              <tr>
+                <td class="label">单次付费访客成本</td>
+                <td class="num">2.85元</td>
+                <td class="num">2.21元</td>
+                <td class="num"><span class="trend is-up">↑28.9%</span></td>
+                <td class="num">2.25元</td>
+                <td class="num"><span class="trend is-up">↑26.8%</span></td>
+              </tr>
+            </tbody>
+          </table>
+          </div></div>
+        </div>
+
+        <!-- 周维度 -->
+        <div class="dim-view" data-dim-view="sales-week">
+          <div class="table-wrap"><div class="table-scroll">
+          <table class="redesign-data-table">
+            <thead>
+              <tr>
+                <th>指标</th>
+                <th class="num">W1 (8.1-8.7)</th>
+                <th class="num">W2 (8.8-8.14)</th>
+                <th class="num">W3 (8.15-8.21)</th>
+                <th class="num">W4 (8.22-8.31)</th>
+                <th class="num">周均值</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td class="label">GSV（净销售）</td>
+                <td class="num">22.1万</td>
+                <td class="num">19.5万</td>
+                <td class="num">16.8万</td>
+                <td class="num">13.5万</td>
+                <td class="num">18.0万</td>
+              </tr>
+              <tr>
+                <td class="label">净利润</td>
+                <td class="num">1.2万</td>
+                <td class="num">0.3万</td>
+                <td class="num">-1.1万</td>
+                <td class="num">-2.0万</td>
+                <td class="num">-0.4万</td>
+              </tr>
+              <tr>
+                <td class="label">推广费</td>
+                <td class="num">3.8万</td>
+                <td class="num">3.7万</td>
+                <td class="num">3.6万</td>
+                <td class="num">3.5万</td>
+                <td class="num">3.65万</td>
+              </tr>
+              <tr>
+                <td class="label">费比</td>
+                <td class="num">17.2%</td>
+                <td class="num">18.9%</td>
+                <td class="num">21.4%</td>
+                <td class="num">25.9%</td>
+                <td class="num">20.9%</td>
+              </tr>
+              <tr>
+                <td class="label">访客数</td>
+                <td class="num">3.2万</td>
+                <td class="num">2.8万</td>
+                <td class="num">2.3万</td>
+                <td class="num">1.7万</td>
+                <td class="num">2.5万</td>
+              </tr>
+              <tr>
+                <td class="label">转化率</td>
+                <td class="num">4.12%</td>
+                <td class="num">3.95%</td>
+                <td class="num">3.82%</td>
+                <td class="num">3.65%</td>
+                <td class="num">3.89%</td>
+              </tr>
+              <tr>
+                <td class="label">客单价</td>
+                <td class="num">168元</td>
+                <td class="num">176元</td>
+                <td class="num">192元</td>
+                <td class="num">218元</td>
+                <td class="num">185元</td>
+              </tr>
+              <tr>
+                <td class="label">加购率</td>
+                <td class="num">8.62%</td>
+                <td class="num">8.55%</td>
+                <td class="num">8.48%</td>
+                <td class="num">8.32%</td>
+                <td class="num">8.50%</td>
+              </tr>
+              <tr>
+                <td class="label">单次付费访客成本</td>
+                <td class="num">2.21元</td>
+                <td class="num">2.58元</td>
+                <td class="num">2.96元</td>
+                <td class="num">3.82元</td>
+                <td class="num">2.89元</td>
+              </tr>
+            </tbody>
+          </table>
+          </div></div>
+        </div>
+      </div>
+
+      <!-- ---- 利润指标 ---- -->
+      <div class="subsection">
+        <div class="section-head">
+          <span class="section-head__title">利润指标</span>
+          <div class="section-head__line"></div>
+          <div class="section-head__extra">
+            <div class="dim-toggle" data-dim-group="profit">
+              <button class="is-active" data-dim="month">月维度</button>
+              <button data-dim="week">周维度</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 月维度 -->
+        <div class="dim-view is-active" data-dim-view="profit-month">
+          <div class="table-wrap"><div class="table-scroll">
+          <table class="redesign-data-table">
+            <thead>
+              <tr>
+                <th>指标</th>
+                <th class="num">8月</th>
+                <th class="num">7月</th>
+                <th class="num">环比</th>
+                <th class="num">去年同期</th>
+                <th class="num">同比</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td class="label">净利润</td>
+                <td class="num">-1.6万</td>
+                <td class="num">5.5万</td>
+                <td class="num"><span class="trend is-down">↓70.9%</span></td>
+                <td class="num">7.9万</td>
+                <td class="num"><span class="trend is-down">↓120.1%</span></td>
+              </tr>
+              <tr>
+                <td class="label">净利润率</td>
+                <td class="num">-2.2%</td>
+                <td class="num">5.3%</td>
+                <td class="num"><span class="trend is-down">↓7.5pp</span></td>
+                <td class="num">8.7%</td>
+                <td class="num"><span class="trend is-down">↓10.9pp</span></td>
+              </tr>
+              <tr>
+                <td class="label">毛利润</td>
+                <td class="num">14.3万</td>
+                <td class="num">28.0万</td>
+                <td class="num"><span class="trend is-down">↓48.9%</span></td>
+                <td class="num">25.2万</td>
+                <td class="num"><span class="trend is-down">↓43.3%</span></td>
+              </tr>
+              <tr>
+                <td class="label">毛利率</td>
+                <td class="num">19.9%</td>
+                <td class="num">27.0%</td>
+                <td class="num"><span class="trend is-down">↓7.1pp</span></td>
+                <td class="num">27.7%</td>
+                <td class="num"><span class="trend is-down">↓7.8pp</span></td>
+              </tr>
+              <tr>
+                <td class="label">推广费</td>
+                <td class="num">14.6万</td>
+                <td class="num">15.5万</td>
+                <td class="num"><span class="trend is-down">↓5.8%</span></td>
+                <td class="num">14.6万</td>
+                <td class="num"><span class="trend is-flat">0.0%</span></td>
+              </tr>
+              <tr>
+                <td class="label">费比</td>
+                <td class="num">20.29%</td>
+                <td class="num">14.93%</td>
+                <td class="num"><span class="trend is-up">↑5.36pp</span></td>
+                <td class="num">16.06%</td>
+                <td class="num"><span class="trend is-up">↑4.23pp</span></td>
+              </tr>
+              <tr>
+                <td class="label">退款金额</td>
+                <td class="num">8.2万</td>
+                <td class="num">7.1万</td>
+                <td class="num"><span class="trend is-up">↑15.5%</span></td>
+                <td class="num">6.5万</td>
+                <td class="num"><span class="trend is-up">↑26.2%</span></td>
+              </tr>
+              <tr>
+                <td class="label">退款率</td>
+                <td class="num">11.4%</td>
+                <td class="num">6.8%</td>
+                <td class="num"><span class="trend is-up">↑4.6pp</span></td>
+                <td class="num">7.2%</td>
+                <td class="num"><span class="trend is-up">↑4.2pp</span></td>
+              </tr>
+            </tbody>
+          </table>
+          </div></div>
+        </div>
+
+        <!-- 周维度 -->
+        <div class="dim-view" data-dim-view="profit-week">
+          <div class="table-wrap"><div class="table-scroll">
+          <table class="redesign-data-table">
+            <thead>
+              <tr>
+                <th>指标</th>
+                <th class="num">W1</th>
+                <th class="num">W2</th>
+                <th class="num">W3</th>
+                <th class="num">W4</th>
+                <th class="num">周均值</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td class="label">净利润</td>
+                <td class="num">1.2万</td>
+                <td class="num">0.3万</td>
+                <td class="num">-1.1万</td>
+                <td class="num">-2.0万</td>
+                <td class="num">-0.4万</td>
+              </tr>
+              <tr>
+                <td class="label">净利润率</td>
+                <td class="num">5.4%</td>
+                <td class="num">1.5%</td>
+                <td class="num">-6.5%</td>
+                <td class="num">-14.8%</td>
+                <td class="num">-2.2%</td>
+              </tr>
+              <tr>
+                <td class="label">毛利率</td>
+                <td class="num">24.1%</td>
+                <td class="num">20.5%</td>
+                <td class="num">18.2%</td>
+                <td class="num">16.3%</td>
+                <td class="num">19.9%</td>
+              </tr>
+              <tr>
+                <td class="label">费比</td>
+                <td class="num">17.2%</td>
+                <td class="num">18.9%</td>
+                <td class="num">21.4%</td>
+                <td class="num">25.9%</td>
+                <td class="num">20.9%</td>
+              </tr>
+              <tr>
+                <td class="label">退款率</td>
+                <td class="num">8.2%</td>
+                <td class="num">10.1%</td>
+                <td class="num">12.5%</td>
+                <td class="num">15.8%</td>
+                <td class="num">11.4%</td>
+              </tr>
+            </tbody>
+          </table>
+          </div></div>
+        </div>
+      </div>
+
+      <!-- ---- 总结-分析 ---- -->
+      <div class="subsection">
+        <div class="section-head">
+          <span class="section-head__title">总结与分析</span>
+          <div class="section-head__line"></div>
+        </div>
+        <div class="tri-sections">
+          <div class="tri-card">
+            <div class="tri-card__num">1</div>
+            <div class="tri-card__body">
+              <div class="tri-card__title">分析</div>
+              <div class="tri-card__text">持续下滑单品占比较高；男款费比高，商品数量偏少；中性情侣款数据表现好。</div>
+            </div>
+          </div>
+          <div class="tri-card">
+            <div class="tri-card__num">2</div>
+            <div class="tri-card__body">
+              <div class="tri-card__title">根因</div>
+              <div class="tri-card__text">换季节奏偏慢，主推款深度不够；25年TOP10链接GSV占比53%，下滑较大；新品上架少，7-8月上架8个链接贡献不足2万。</div>
+            </div>
+          </div>
+          <div class="tri-card tri-card--action">
+            <div class="tri-card__num">3</div>
+            <div class="tri-card__body">
+              <div class="tri-card__title">下一步规划 · 先修复流量与费比</div>
+              <div class="tri-card__text">换季节点先提升费比到25-30%；产品分层：引流款费比30%+/利润款10%内/动销款不推广；调整付费渠道，直通车/人群/内容拉新+全站收割。</div>
+              <div class="tri-card__meta"><span>负责人 <strong>商品组 / 推广组</strong></span><span>截止 <strong>9月10日</strong></span><span>验收 <strong>新增5个链接，费比≤18%</strong></span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================================================================
+         PANEL 2: 货品分析
+         ================================================================ -->
+    <section class="redesign-panel" data-panel="goods">
+
+      <!-- ---- 品类概览 ---- -->
+      <div class="subsection">
+        <div class="section-head">
+          <span class="section-head__title">品类概览</span>
+          <div class="section-head__line"></div>
+        </div>
+        <div class="cat-overview">
+          <div class="cat-card">
+            <div class="cat-card__head">
+              <span class="cat-card__badge cat-card__badge--male">男款</span>
+              <span class="cat-card__title">男款汇总</span>
+            </div>
+            <div class="cat-card__metrics">
+              <div class="cat-card__metric">
+                <div class="cat-card__metric-label">GSV</div>
+                <div class="cat-card__metric-value">32.5万</div>
+              </div>
+              <div class="cat-card__metric">
+                <div class="cat-card__metric-label">净利润</div>
+                <div class="cat-card__metric-value is-danger">-3.2万</div>
+              </div>
+              <div class="cat-card__metric">
+                <div class="cat-card__metric-label">费比</div>
+                <div class="cat-card__metric-value is-danger">24.8%</div>
+              </div>
+              <div class="cat-card__metric">
+                <div class="cat-card__metric-label">访客数</div>
+                <div class="cat-card__metric-value">4.2万</div>
+              </div>
+              <div class="cat-card__metric">
+                <div class="cat-card__metric-label">商品数</div>
+                <div class="cat-card__metric-value">156</div>
+              </div>
+              <div class="cat-card__metric">
+                <div class="cat-card__metric-label">退款率</div>
+                <div class="cat-card__metric-value is-danger">13.5%</div>
+              </div>
+            </div>
+          </div>
+          <div class="cat-card">
+            <div class="cat-card__head">
+              <span class="cat-card__badge cat-card__badge--female">女款</span>
+              <span class="cat-card__title">女款汇总</span>
+            </div>
+            <div class="cat-card__metrics">
+              <div class="cat-card__metric">
+                <div class="cat-card__metric-label">GSV</div>
+                <div class="cat-card__metric-value">39.4万</div>
+              </div>
+              <div class="cat-card__metric">
+                <div class="cat-card__metric-label">净利润</div>
+                <div class="cat-card__metric-value is-success">1.6万</div>
+              </div>
+              <div class="cat-card__metric">
+                <div class="cat-card__metric-label">费比</div>
+                <div class="cat-card__metric-value">17.5%</div>
+              </div>
+              <div class="cat-card__metric">
+                <div class="cat-card__metric-label">访客数</div>
+                <div class="cat-card__metric-value">5.8万</div>
+              </div>
+              <div class="cat-card__metric">
+                <div class="cat-card__metric-label">商品数</div>
+                <div class="cat-card__metric-value">203</div>
+              </div>
+              <div class="cat-card__metric">
+                <div class="cat-card__metric-label">退款率</div>
+                <div class="cat-card__metric-value">9.8%</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ---- TOP单品榜单 ---- -->
+      <div class="subsection">
+        <div class="section-head">
+          <span class="section-head__title">净销售 TOP10 单品</span>
+          <div class="section-head__line"></div>
+        </div>
+        <div class="product-table-wrap"><div class="product-table-scroll">
+        <table class="product-table">
+          <thead>
+            <tr>
+              <th>商品</th>
+              <th>商品ID</th>
+              <th class="num">GSV</th>
+              <th class="num">退款率</th>
+              <th class="num">净利润</th>
+              <th class="num">推广费</th>
+              <th class="num">费比</th>
+              <th class="num">访客数</th>
+              <th class="num">转化率</th>
+              <th class="num">销售件数</th>
+              <th class="num">客单价</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><div class="product-cell"><div class="product-thumb">🧦</div><span class="product-title">纯棉中筒袜男女款 6双装 春秋透气抗菌</span></div></td>
+              <td><span class="product-id">681234</span></td>
+              <td class="num">8.6万</td>
+              <td class="num"><span class="is-down">8.2%</span></td>
+              <td class="num">1.8万</td>
+              <td class="num">2.1万</td>
+              <td class="num">24.4%</td>
+              <td class="num">1.2万</td>
+              <td class="num">4.8%</td>
+              <td class="num">1420</td>
+              <td class="num">60.6元</td>
+            </tr>
+            <tr>
+              <td><div class="product-cell"><div class="product-thumb">🧦</div><span class="product-title">抗菌冰丝船袜 5双装 夏季隐形浅口</span></div></td>
+              <td><span class="product-id">681892</span></td>
+              <td class="num">6.3万</td>
+              <td class="num"><span class="is-down">11.5%</span></td>
+              <td class="num">0.9万</td>
+              <td class="num">1.8万</td>
+              <td class="num">28.6%</td>
+              <td class="num">0.9万</td>
+              <td class="num">4.2%</td>
+              <td class="num">1050</td>
+              <td class="num">60.0元</td>
+            </tr>
+            <tr>
+              <td><div class="product-cell"><div class="product-thumb">🧦</div><span class="product-title">精梳棉低帮短袜 8双装 男女同款</span></div></td>
+              <td><span class="product-id">679201</span></td>
+              <td class="num">5.8万</td>
+              <td class="num"><span class="is-down">6.8%</span></td>
+              <td class="num">1.5万</td>
+              <td class="num">1.2万</td>
+              <td class="num">20.7%</td>
+              <td class="num">0.8万</td>
+              <td class="num">5.1%</td>
+              <td class="num">980</td>
+              <td class="num">59.2元</td>
+            </tr>
+            <tr>
+              <td><div class="product-cell"><div class="product-thumb">🧦</div><span class="product-title">竹纤维隐形袜 3双装 防滑不掉跟</span></div></td>
+              <td><span class="product-id">682455</span></td>
+              <td class="num">4.9万</td>
+              <td class="num"><span class="is-down">9.2%</span></td>
+              <td class="num">0.7万</td>
+              <td class="num">1.5万</td>
+              <td class="num">30.6%</td>
+              <td class="num">0.7万</td>
+              <td class="num">3.9%</td>
+              <td class="num">820</td>
+              <td class="num">59.8元</td>
+            </tr>
+            <tr>
+              <td><div class="product-cell"><div class="product-thumb">🧦</div><span class="product-title">羊毛混纺中筒袜 4双装 冬季保暖</span></div></td>
+              <td><span class="product-id">675108</span></td>
+              <td class="num">4.5万</td>
+              <td class="num"><span class="is-down">5.5%</span></td>
+              <td class="num">1.3万</td>
+              <td class="num">0.9万</td>
+              <td class="num">20.0%</td>
+              <td class="num">0.6万</td>
+              <td class="num">5.5%</td>
+              <td class="num">720</td>
+              <td class="num">62.5元</td>
+            </tr>
+            <tr>
+              <td><div class="product-cell"><div class="product-thumb">🧦</div><span class="product-title">运动跑步袜 3双装 减震透气网眼</span></div></td>
+              <td><span class="product-id">683901</span></td>
+              <td class="num">3.8万</td>
+              <td class="num"><span class="is-down">7.1%</span></td>
+              <td class="num">0.8万</td>
+              <td class="num">1.1万</td>
+              <td class="num">28.9%</td>
+              <td class="num">0.5万</td>
+              <td class="num">4.3%</td>
+              <td class="num">610</td>
+              <td class="num">62.3元</td>
+            </tr>
+            <tr>
+              <td><div class="product-cell"><div class="product-thumb">🧦</div><span class="product-title">情侣款中筒袜 6双装 中性百搭</span></div></td>
+              <td><span class="product-id">678022</span></td>
+              <td class="num">3.5万</td>
+              <td class="num"><span class="is-down">4.2%</span></td>
+              <td class="num">1.1万</td>
+              <td class="num">0.6万</td>
+              <td class="num">17.1%</td>
+              <td class="num">0.5万</td>
+              <td class="num">5.8%</td>
+              <td class="num">580</td>
+              <td class="num">60.3元</td>
+            </tr>
+            <tr>
+              <td><div class="product-cell"><div class="product-thumb">🧦</div><span class="product-title">纯棉船袜 10双装 日常混色组合</span></div></td>
+              <td><span class="product-id">676533</span></td>
+              <td class="num">3.1万</td>
+              <td class="num"><span class="is-down">12.8%</span></td>
+              <td class="num">0.2万</td>
+              <td class="num">1.0万</td>
+              <td class="num">32.3%</td>
+              <td class="num">0.4万</td>
+              <td class="num">3.6%</td>
+              <td class="num">520</td>
+              <td class="num">59.6元</td>
+            </tr>
+            <tr>
+              <td><div class="product-cell"><div class="product-thumb">🧦</div><span class="product-title">石墨烯抗菌袜 5双装 除臭防臭</span></div></td>
+              <td><span class="product-id">684210</span></td>
+              <td class="num">2.8万</td>
+              <td class="num"><span class="is-down">8.9%</span></td>
+              <td class="num">0.5万</td>
+              <td class="num">0.8万</td>
+              <td class="num">28.6%</td>
+              <td class="num">0.4万</td>
+              <td class="num">4.1%</td>
+              <td class="num">470</td>
+              <td class="num">59.6元</td>
+            </tr>
+            <tr>
+              <td><div class="product-cell"><div class="product-thumb">🧦</div><span class="product-title">蕾丝花边船袜 4双装 女士浅口</span></div></td>
+              <td><span class="product-id">685677</span></td>
+              <td class="num">2.5万</td>
+              <td class="num"><span class="is-down">10.2%</span></td>
+              <td class="num">0.3万</td>
+              <td class="num">0.7万</td>
+              <td class="num">28.0%</td>
+              <td class="num">0.3万</td>
+              <td class="num">3.8%</td>
+              <td class="num">430</td>
+              <td class="num">58.1元</td>
+            </tr>
+          </tbody>
+        </table>
+        </div></div>
+      </div>
+
+      <!-- ---- 其他榜单 ---- -->
+      <div class="subsection">
+        <div class="section-head">
+          <span class="section-head__title">其他榜单</span>
+          <div class="section-head__line"></div>
+        </div>
+        <div class="market-grid">
+          <div class="market-card">
+            <div class="market-card__title">付费单品 TOP10 <span class="market-card__tag">付费</span></div>
+            <div class="subsection__hint">按推广花费降序，展示付费投入最高的10个单品及对应的费比、投产、拉新成本。</div>
+          </div>
+          <div class="market-card">
+            <div class="market-card__title">盈利 TOP10 <span class="market-card__tag">盈利</span></div>
+            <div class="subsection__hint">按净利润降序，展示盈利能力最强的单品，聚焦费比低、退款率低的利润款。</div>
+          </div>
+          <div class="market-card">
+            <div class="market-card__title">亏损 TOP10 <span class="market-card__tag" style="background:#fef2f2;color:var(--danger);">亏损</span></div>
+            <div class="subsection__hint">按净利润升序，展示亏损最严重的单品，重点关注高费比+高退款率的双低单品。</div>
+          </div>
+          <div class="market-card">
+            <div class="market-card__title">新品分析 <span class="market-card__tag">新品</span></div>
+            <div class="subsection__hint">最近60天上架的新品表现：7-8月共上架8个链接，合计GSV不足2万，贡献率低于3%。</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ---- 问题单品分析 ---- -->
+      <div class="subsection">
+        <div class="section-head">
+          <span class="section-head__title">问题单品聚合分析</span>
+          <div class="section-head__line"></div>
+        </div>
+        <div class="subsection__hint">自动聚合"下滑+亏损+高费比"三类问题单品，按严重程度排序。持续下滑单品占比较高，需优先处理。</div>
+      </div>
+
+      <!-- ---- 总结 ---- -->
+      <div class="subsection">
+        <div class="section-head">
+          <span class="section-head__title">总结与分析</span>
+          <div class="section-head__line"></div>
+        </div>
+        <div class="tri-sections">
+          <div class="tri-card">
+            <div class="tri-card__num">1</div>
+            <div class="tri-card__body">
+              <div class="tri-card__title">分析</div>
+              <div class="tri-card__text">男款费比24.8%偏高且商品数仅156个偏少；女款费比17.5%相对健康；TOP10单品贡献GSV 44.9万占62%，集中度过高。</div>
+            </div>
+          </div>
+          <div class="tri-card">
+            <div class="tri-card__num">2</div>
+            <div class="tri-card__body">
+              <div class="tri-card__title">根因</div>
+              <div class="tri-card__text">主推款深度不够，TOP3链接均为老品且推广费占比高；新品8个链接贡献不足2万，上架节奏慢；持续下滑单品未及时淘汰。</div>
+            </div>
+          </div>
+          <div class="tri-card">
+            <div class="tri-card__num">3</div>
+            <div class="tri-card__body">
+              <div class="tri-card__title">下一步规划</div>
+              <div class="tri-card__text">产品分层：引流款费比30%+/利润款10%内/动销款不推广；淘汰持续下滑且亏损的底部单品；加快新品上架节奏，每月至少上架5个新链接。</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================================================================
+         PANEL 3: 广告分析
+         ================================================================ -->
+    <section class="redesign-panel" data-panel="ads">
+
+      <!-- ---- 汇总 ---- -->
+      <div class="subsection">
+        <div class="section-head">
+          <span class="section-head__title">推广汇总</span>
+          <div class="section-head__line"></div>
+        </div>
+        <div class="cc-metrics">
+          <div class="redesign-metric-card is-warning">
+            <div class="redesign-metric-card__label">推广成交金额（全站）</div>
+            <div class="redesign-metric-card__value">28.7万</div>
+            <div class="redesign-metric-card__target">全站收割占比 39.9%</div>
+          </div>
+          <div class="redesign-metric-card">
+            <div class="redesign-metric-card__label">推广成交金额（关键词）</div>
+            <div class="redesign-metric-card__value">22.1万</div>
+            <div class="redesign-metric-card__target">直通车收割占比 30.7%</div>
+          </div>
+          <div class="redesign-metric-card">
+            <div class="redesign-metric-card__label">推广成交金额（人群）</div>
+            <div class="redesign-metric-card__value">18.4万</div>
+            <div class="redesign-metric-card__target">人群收割占比 25.6%</div>
+          </div>
+        </div>
+        <div class="cc-base-data">
+          <div class="base-card">
+            <div class="base-card__label">直接ROI（全站）</div>
+            <div class="base-card__value">1.97</div>
+          </div>
+          <div class="base-card">
+            <div class="base-card__label">直接ROI（关键词）</div>
+            <div class="base-card__value">1.52</div>
+          </div>
+          <div class="base-card">
+            <div class="base-card__label">直接ROI（人群）</div>
+            <div class="base-card__value">1.26</div>
+          </div>
+          <div class="base-card is-danger">
+            <div class="base-card__label">整体直接ROI</div>
+            <div class="base-card__value"><span class="is-danger">同比 ↓15.3%</span></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ---- TOP20消耗商品 ---- -->
+      <div class="subsection">
+        <div class="section-head">
+          <span class="section-head__title">TOP20 消耗商品（三渠道分组）</span>
+          <div class="section-head__line"></div>
+        </div>
+        <div class="product-table-wrap"><div class="product-table-scroll">
+        <table class="ad-table">
+          <thead>
+            <tr>
+              <th rowspan="2">商品</th>
+              <th rowspan="2" class="num">花费</th>
+              <th rowspan="2" class="num">费比</th>
+              <th colspan="3" class="group-all站">总投产</th>
+              <th colspan="3" class="group-关键词">直接投产</th>
+              <th colspan="3" class="group-人群">加购成本</th>
+              <th colspan="3" class="group-all站">拉新成本</th>
+              <th colspan="3" class="group-关键词">加购率</th>
+            </tr>
+            <tr>
+              <th class="num group-all站">全站</th>
+              <th class="num group-all站">关键词</th>
+              <th class="num group-all站">人群</th>
+              <th class="num group-关键词">全站</th>
+              <th class="num group-关键词">关键词</th>
+              <th class="num group-关键词">人群</th>
+              <th class="num group-人群">全站</th>
+              <th class="num group-人群">关键词</th>
+              <th class="num group-人群">人群</th>
+              <th class="num group-all站">全站</th>
+              <th class="num group-all站">关键词</th>
+              <th class="num group-all站">人群</th>
+              <th class="num group-关键词">全站</th>
+              <th class="num group-关键词">关键词</th>
+              <th class="num group-关键词">人群</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><div class="product-cell"><div class="product-thumb">🧦</div><span class="product-title">纯棉中筒袜男女款 6双装</span></div></td>
+              <td class="num">2.1万</td>
+              <td class="num">24.4%</td>
+              <td class="num">4.10</td><td class="num">3.52</td><td class="num">2.80</td>
+              <td class="num">2.05</td><td class="num">1.82</td><td class="num">1.45</td>
+              <td class="num">3.21</td><td class="num">2.85</td><td class="num">2.40</td>
+              <td class="num">4.55</td><td class="num">4.10</td><td class="num">3.65</td>
+              <td class="num">8.2%</td><td class="num">7.5%</td><td class="num">6.8%</td>
+            </tr>
+            <tr>
+              <td><div class="product-cell"><div class="product-thumb">🧦</div><span class="product-title">抗菌冰丝船袜 5双装</span></div></td>
+              <td class="num">1.8万</td>
+              <td class="num">28.6%</td>
+              <td class="num">3.50</td><td class="num">2.80</td><td class="num">2.20</td>
+              <td class="num">1.75</td><td class="num">1.42</td><td class="num">1.10</td>
+              <td class="num">3.85</td><td class="num">3.40</td><td class="num">2.95</td>
+              <td class="num">5.20</td><td class="num">4.65</td><td class="num">4.10</td>
+              <td class="num">7.1%</td><td class="num">6.3%</td><td class="num">5.5%</td>
+            </tr>
+            <tr>
+              <td><div class="product-cell"><div class="product-thumb">🧦</div><span class="product-title">竹纤维隐形袜 3双装</span></div></td>
+              <td class="num">1.5万</td>
+              <td class="num">30.6%</td>
+              <td class="num">3.27</td><td class="num">2.50</td><td class="num">1.90</td>
+              <td class="num">1.63</td><td class="num">1.25</td><td class="num">0.95</td>
+              <td class="num">4.10</td><td class="num">3.65</td><td class="num">3.20</td>
+              <td class="num">5.80</td><td class="num">5.10</td><td class="num">4.50</td>
+              <td class="num">6.5%</td><td class="num">5.8%</td><td class="num">4.9%</td>
+            </tr>
+            <tr>
+              <td><div class="product-cell"><div class="product-thumb">🧦</div><span class="product-title">运动跑步袜 3双装</span></div></td>
+              <td class="num">1.1万</td>
+              <td class="num">28.9%</td>
+              <td class="num">3.45</td><td class="num">2.72</td><td class="num">2.15</td>
+              <td class="num">1.73</td><td class="num">1.36</td><td class="num">1.08</td>
+              <td class="num">3.95</td><td class="num">3.50</td><td class="num">3.05</td>
+              <td class="num">5.50</td><td class="num">4.90</td><td class="num">4.30</td>
+              <td class="num">6.8%</td><td class="num">6.0%</td><td class="num">5.2%</td>
+            </tr>
+            <tr>
+              <td><div class="product-cell"><div class="product-thumb">🧦</div><span class="product-title">纯棉船袜 10双装</span></div></td>
+              <td class="num">1.0万</td>
+              <td class="num">32.3%</td>
+              <td class="num">3.10</td><td class="num">2.30</td><td class="num">1.70</td>
+              <td class="num">1.55</td><td class="num">1.15</td><td class="num">0.85</td>
+              <td class="num">4.25</td><td class="num">3.80</td><td class="num">3.35</td>
+              <td class="num">6.10</td><td class="num">5.40</td><td class="num">4.80</td>
+              <td class="num">5.9%</td><td class="num">5.1%</td><td class="num">4.3%</td>
+            </tr>
+            <tr>
+              <td><div class="product-cell"><div class="product-thumb">🧦</div><span class="product-title">石墨烯抗菌袜 5双装</span></div></td>
+              <td class="num">0.8万</td>
+              <td class="num">28.6%</td>
+              <td class="num">3.50</td><td class="num">2.80</td><td class="num">2.20</td>
+              <td class="num">1.75</td><td class="num">1.40</td><td class="num">1.10</td>
+              <td class="num">3.80</td><td class="num">3.35</td><td class="num">2.90</td>
+              <td class="num">5.30</td><td class="num">4.70</td><td class="num">4.15</td>
+              <td class="num">6.3%</td><td class="num">5.6%</td><td class="num">4.8%</td>
+            </tr>
+          </tbody>
+        </table>
+        </div></div>
+      </div>
+
+      <!-- ---- 总结 ---- -->
+      <div class="subsection">
+        <div class="section-head">
+          <span class="section-head__title">总结与分析</span>
+          <div class="section-head__line"></div>
+        </div>
+        <div class="tri-sections">
+          <div class="tri-card">
+            <div class="tri-card__num">1</div>
+            <div class="tri-card__body">
+              <div class="tri-card__title">分析</div>
+              <div class="tri-card__text">整体直接ROI 1.97，同比下滑15.3%；全站收割渠道投产最高，人群渠道投产最低；TOP5消耗单品费比均超24%，投入产出失衡。</div>
+            </div>
+          </div>
+          <div class="tri-card">
+            <div class="tri-card__num">2</div>
+            <div class="tri-card__body">
+              <div class="tri-card__title">根因</div>
+              <div class="tri-card__text">付费策略以收割为主，拉新投入不足；关键词渠道竞争加剧导致单次点击成本上升；高费比单品未及时调价，拉低了整体投产。</div>
+            </div>
+          </div>
+          <div class="tri-card">
+            <div class="tri-card__num">3</div>
+            <div class="tri-card__body">
+              <div class="tri-card__title">下一步规划</div>
+              <div class="tri-card__text">调整付费渠道结构：直通车/人群/内容拉新+全站收割；对费比超30%的单品降价或暂停；优化关键词出价策略，降低单次付费访客成本。</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================================================================
+         PANEL 4: 市场监控
+         ================================================================ -->
+    <section class="redesign-panel" data-panel="market">
+
+      <!-- ---- 行业：商品排行 ---- -->
+      <div class="subsection">
+        <div class="section-head">
+          <span class="section-head__title">行业 - 商品排行</span>
+          <div class="section-head__line"></div>
+        </div>
+        <div class="market-grid">
+          <div class="market-card">
+            <div class="market-card__title">趋势市场 <span class="market-card__tag">趋势</span></div>
+            <div class="subsection__hint">当前行业热销趋势品类：春秋中筒袜、抗菌功能袜、运动专业袜增速最快，环比增长超25%。</div>
+          </div>
+          <div class="market-card">
+            <div class="market-card__title">蓝海市场 <span class="market-card__tag" style="background:#ecfdf5;color:var(--success);">蓝海</span></div>
+            <div class="subsection__hint">竞争度低+需求增长：情侣款中性袜、石墨烯功能袜、儿童抗菌袜，搜索量增长但卖家数少。</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ---- 行业：关键词排行 ---- -->
+      <div class="subsection">
+        <div class="section-head">
+          <span class="section-head__title">行业 - 关键词排行</span>
+          <div class="section-head__line"></div>
+        </div>
+        <div class="market-grid">
+          <div class="market-card">
+            <div class="market-card__title">8大归类 <span class="market-card__tag">分类</span></div>
+            <div class="subsection__hint">按品类维度划分8大关键词归类：男袜/女袜/儿童袜/运动袜/功能袜/季节袜/材质袜/礼盒装，各类目搜索热度与竞争度一览。</div>
+          </div>
+          <div class="market-card">
+            <div class="market-card__title">词根需求分析 <span class="market-card__tag">词根</span></div>
+            <div class="subsection__hint">核心词根：抗菌/冰丝/纯棉/透气/隐形，需求量同比+18%；长尾词根"不掉跟""防臭"搜索增速超40%。</div>
+          </div>
+          <div class="market-card">
+            <div class="market-card__title">趋势节点分析 <span class="market-card__tag">趋势</span></div>
+            <div class="subsection__hint">换季节点8月底至9月初为春秋袜搜索高峰，需提前15天完成主推款上架和推广蓄水。</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ---- 竞店 ---- -->
+      <div class="subsection">
+        <div class="section-head">
+          <span class="section-head__title">竞店监控（7个品牌）</span>
+          <div class="section-head__line"></div>
+        </div>
+        <div class="competitor-grid">
+          <div class="competitor-card">
+            <div class="competitor-card__head">
+              <span class="competitor-card__name">蕉内</span>
+              <span class="competitor-card__rank">行业 #1</span>
+            </div>
+            <div class="competitor-card__metrics">
+              <div class="competitor-card__metric"><span class="competitor-card__metric-label">月GMV</span><span class="competitor-card__metric-value">320万</span></div>
+              <div class="competitor-card__metric"><span class="competitor-card__metric-label">动销SKU</span><span class="competitor-card__metric-value">186</span></div>
+              <div class="competitor-card__metric"><span class="competitor-card__metric-label">爆品数</span><span class="competitor-card__metric-value">12</span></div>
+              <div class="competitor-card__metric"><span class="competitor-card__metric-label">趋势品</span><span class="competitor-card__metric-value">抗菌袜</span></div>
+            </div>
+          </div>
+          <div class="competitor-card">
+            <div class="competitor-card__head">
+              <span class="competitor-card__name">有棵树</span>
+              <span class="competitor-card__rank">行业 #2</span>
+            </div>
+            <div class="competitor-card__metrics">
+              <div class="competitor-card__metric"><span class="competitor-card__metric-label">月GMV</span><span class="competitor-card__metric-value">280万</span></div>
+              <div class="competitor-card__metric"><span class="competitor-card__metric-label">动销SKU</span><span class="competitor-card__metric-value">165</span></div>
+              <div class="competitor-card__metric"><span class="competitor-card__metric-label">爆品数</span><span class="competitor-card__metric-value">9</span></div>
+              <div class="competitor-card__metric"><span class="competitor-card__metric-label">趋势品</span><span class="competitor-card__metric-value">冰丝袜</span></div>
+            </div>
+          </div>
+          <div class="competitor-card">
+            <div class="competitor-card__head">
+              <span class="competitor-card__name">SW</span>
+              <span class="competitor-card__rank">行业 #3</span>
+            </div>
+            <div class="competitor-card__metrics">
+              <div class="competitor-card__metric"><span class="competitor-card__metric-label">月GMV</span><span class="competitor-card__metric-value">195万</span></div>
+              <div class="competitor-card__metric"><span class="competitor-card__metric-label">动销SKU</span><span class="competitor-card__metric-value">142</span></div>
+              <div class="competitor-card__metric"><span class="competitor-card__metric-label">爆品数</span><span class="competitor-card__metric-value">7</span></div>
+              <div class="competitor-card__metric"><span class="competitor-card__metric-label">趋势品</span><span class="competitor-card__metric-value">运动袜</span></div>
+            </div>
+          </div>
+          <div class="competitor-card">
+            <div class="competitor-card__head">
+              <span class="competitor-card__name">棉竹屋</span>
+              <span class="competitor-card__rank">行业 #4</span>
+            </div>
+            <div class="competitor-card__metrics">
+              <div class="competitor-card__metric"><span class="competitor-card__metric-label">月GMV</span><span class="competitor-card__metric-value">160万</span></div>
+              <div class="competitor-card__metric"><span class="competitor-card__metric-label">动销SKU</span><span class="competitor-card__metric-value">128</span></div>
+              <div class="competitor-card__metric"><span class="competitor-card__metric-label">爆品数</span><span class="competitor-card__metric-value">5</span></div>
+              <div class="competitor-card__metric"><span class="competitor-card__metric-label">趋势品</span><span class="competitor-card__metric-value">竹纤维</span></div>
+            </div>
+          </div>
+          <div class="competitor-card">
+            <div class="competitor-card__head">
+              <span class="competitor-card__name">棉芝士</span>
+              <span class="competitor-card__rank">行业 #5</span>
+            </div>
+            <div class="competitor-card__metrics">
+              <div class="competitor-card__metric"><span class="competitor-card__metric-label">月GMV</span><span class="competitor-card__metric-value">130万</span></div>
+              <div class="competitor-card__metric"><span class="competitor-card__metric-label">动销SKU</span><span class="competitor-card__metric-value">110</span></div>
+              <div class="competitor-card__metric"><span class="competitor-card__metric-label">爆品数</span><span class="competitor-card__metric-value">4</span></div>
+              <div class="competitor-card__metric"><span class="competitor-card__metric-label">趋势品</span><span class="competitor-card__metric-value">纯棉</span></div>
+            </div>
+          </div>
+          <div class="competitor-card">
+            <div class="competitor-card__head">
+              <span class="competitor-card__name">妮轻</span>
+              <span class="competitor-card__rank">行业 #6</span>
+            </div>
+            <div class="competitor-card__metrics">
+              <div class="competitor-card__metric"><span class="competitor-card__metric-label">月GMV</span><span class="competitor-card__metric-value">95万</span></div>
+              <div class="competitor-card__metric"><span class="competitor-card__metric-label">动销SKU</span><span class="competitor-card__metric-value">92</span></div>
+              <div class="competitor-card__metric"><span class="competitor-card__metric-label">爆品数</span><span class="competitor-card__metric-value">3</span></div>
+              <div class="competitor-card__metric"><span class="competitor-card__metric-label">趋势品</span><span class="competitor-card__metric-value">轻薄款</span></div>
+            </div>
+          </div>
+          <div class="competitor-card">
+            <div class="competitor-card__head">
+              <span class="competitor-card__name">竹久</span>
+              <span class="competitor-card__rank">行业 #7</span>
+            </div>
+            <div class="competitor-card__metrics">
+              <div class="competitor-card__metric"><span class="competitor-card__metric-label">月GMV</span><span class="competitor-card__metric-value">78万</span></div>
+              <div class="competitor-card__metric"><span class="competitor-card__metric-label">动销SKU</span><span class="competitor-card__metric-value">85</span></div>
+              <div class="competitor-card__metric"><span class="competitor-card__metric-label">爆品数</span><span class="competitor-card__metric-value">2</span></div>
+              <div class="competitor-card__metric"><span class="competitor-card__metric-label">趋势品</span><span class="competitor-card__metric-value">竹纤维</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ---- 竞品 ---- -->
+      <div class="subsection">
+        <div class="section-head">
+          <span class="section-head__title">竞品分析</span>
+          <div class="section-head__line"></div>
+        </div>
+        <div class="cat-overview">
+          <div class="cat-card">
+            <div class="cat-card__head">
+              <span class="cat-card__badge cat-card__badge--male">男款</span>
+              <span class="cat-card__title">男款竞品对标</span>
+            </div>
+            <div class="cat-card__metrics">
+              <div class="cat-card__metric"><div class="cat-card__metric-label">本品均价</div><div class="cat-card__metric-value">59.6元</div></div>
+              <div class="cat-card__metric"><div class="cat-card__metric-label">竞品均价</div><div class="cat-card__metric-value">62.3元</div></div>
+              <div class="cat-card__metric"><div class="cat-card__metric-label">本品月销</div><div class="cat-card__metric-value">5,420件</div></div>
+              <div class="cat-card__metric"><div class="cat-card__metric-label">竞品月销</div><div class="cat-card__metric-value">8,150件</div></div>
+              <div class="cat-card__metric"><div class="cat-card__metric-label">差距</div><div class="cat-card__metric-value is-danger">-33.5%</div></div>
+              <div class="cat-card__metric"><div class="cat-card__metric-label">优势品</div><div class="cat-card__metric-value">中筒袜</div></div>
+            </div>
+          </div>
+          <div class="cat-card">
+            <div class="cat-card__head">
+              <span class="cat-card__badge cat-card__badge--female">女款</span>
+              <span class="cat-card__title">女款竞品对标</span>
+            </div>
+            <div class="cat-card__metrics">
+              <div class="cat-card__metric"><div class="cat-card__metric-label">本品均价</div><div class="cat-card__metric-value">58.1元</div></div>
+              <div class="cat-card__metric"><div class="cat-card__metric-label">竞品均价</div><div class="cat-card__metric-value">56.8元</div></div>
+              <div class="cat-card__metric"><div class="cat-card__metric-label">本品月销</div><div class="cat-card__metric-value">6,780件</div></div>
+              <div class="cat-card__metric"><div class="cat-card__metric-label">竞品月销</div><div class="cat-card__metric-value">7,200件</div></div>
+              <div class="cat-card__metric"><div class="cat-card__metric-label">差距</div><div class="cat-card__metric-value is-danger">-5.8%</div></div>
+              <div class="cat-card__metric"><div class="cat-card__metric-label">优势品</div><div class="cat-card__metric-value">船袜</div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ---- 总结 ---- -->
+      <div class="subsection">
+        <div class="section-head">
+          <span class="section-head__title">总结与分析</span>
+          <div class="section-head__line"></div>
+        </div>
+        <div class="tri-sections">
+          <div class="tri-card">
+            <div class="tri-card__num">1</div>
+            <div class="tri-card__body">
+              <div class="tri-card__title">分析</div>
+              <div class="tri-card__text">行业TOP3品牌（蕉内/有棵树/SW）合计占行业60%+份额，本品排名第8；趋势品类（抗菌功能袜、运动专业袜）本品布局不足。</div>
+            </div>
+          </div>
+          <div class="tri-card">
+            <div class="tri-card__num">2</div>
+            <div class="tri-card__body">
+              <div class="tri-card__title">根因</div>
+              <div class="tri-card__text">品牌力弱于头部竞店，搜索流量获取能力不足；趋势品类布局滞后，错过搜索增长红利；男款竞品差距大(-33.5%)，需重点突破。</div>
+            </div>
+          </div>
+          <div class="tri-card">
+            <div class="tri-card__num">3</div>
+            <div class="tri-card__body">
+              <div class="tri-card__title">下一步规划</div>
+              <div class="tri-card__text">跟进趋势品类上架（抗菌功能袜/运动专业袜）；关键词布局优化，抢占比重提高；男款对标竞品调整定价与推广策略，缩小月销差距。</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================================================================
+         PANEL 5: 下月规划
+         ================================================================ -->
+    <section class="redesign-panel" data-panel="plan">
+
+      <!-- ---- 目标规划 ---- -->
+      <div class="subsection">
+        <div class="section-head">
+          <span class="section-head__title">目标规划</span>
+          <div class="section-head__line"></div>
+        </div>
+        <div class="plan-grid">
+          <div class="plan-card">
+            <div class="plan-card__title">9月目标</div>
+            <div class="plan-list">
+              <div class="plan-item"><div class="plan-item__dot"></div><div class="plan-item__text">GSV 目标 95万（环比8月+32%）</div></div>
+              <div class="plan-item"><div class="plan-item__dot"></div><div class="plan-item__text">净利润 目标 4.0万（扭亏为盈）</div></div>
+              <div class="plan-item"><div class="plan-item__dot"></div><div class="plan-item__text">费比 目标 18%（环比下降2.3pp）</div></div>
+              <div class="plan-item"><div class="plan-item__dot"></div><div class="plan-item__text">访客数 目标 13万（环比+30%）</div></div>
+              <div class="plan-item"><div class="plan-item__dot"></div><div class="plan-item__text">新品上架 至少5个新链接</div></div>
+            </div>
+          </div>
+          <div class="plan-card">
+            <div class="plan-card__title">达成路径</div>
+            <div class="plan-list">
+              <div class="plan-item"><div class="plan-item__dot"></div><div class="plan-item__text">换季节点提前蓄水：8月底完成主推款上架+推广素材</div></div>
+              <div class="plan-item"><div class="plan-item__dot"></div><div class="plan-item__text">产品分层执行：引流款费比30%+ / 利润款10%内 / 动销款不推广</div></div>
+              <div class="plan-item"><div class="plan-item__dot"></div><div class="plan-item__text">付费渠道调整：直通车+人群拉新 → 全站收割</div></div>
+              <div class="plan-item"><div class="plan-item__dot"></div><div class="plan-item__text">淘汰底部单品：清理持续下滑+亏损链接20个</div></div>
+              <div class="plan-item"><div class="plan-item__dot"></div><div class="plan-item__text">趋势品类布局：上架抗菌功能袜3款+运动袜2款</div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ---- 复盘规划 ---- -->
+      <div class="subsection">
+        <div class="section-head">
+          <span class="section-head__title">复盘规划 - 分析汇总</span>
+          <div class="section-head__line"></div>
+        </div>
+        <div class="tri-sections">
+          <div class="tri-card">
+            <div class="tri-card__num">1</div>
+            <div class="tri-card__body">
+              <div class="tri-card__title">8月复盘结论</div>
+              <div class="tri-card__text">GSV 71.9万完成率59.9%，净利润-1.6万转亏，费比20.29%超标；核心问题是访客同比环比均-30%+、转化率下滑、推广投产下降。</div>
+            </div>
+          </div>
+          <div class="tri-card">
+            <div class="tri-card__num">2</div>
+            <div class="tri-card__body">
+              <div class="tri-card__title">关键风险</div>
+              <div class="tri-card__text">换季节奏偏慢导致流量断崖；TOP10链接集中度过高（62%），抗风险能力弱；新品贡献不足2万，增长动能缺失。</div>
+            </div>
+          </div>
+          <div class="tri-card">
+            <div class="tri-card__num">3</div>
+            <div class="tri-card__body">
+              <div class="tri-card__title">9月核心策略</div>
+              <div class="tri-card__text">换季节点提升费比到25-30%抢流量 → 产品分层控费比 → 调整付费渠道拉新收割 → 加快新品上架 → 淘汰底部单品释放资源。</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ---- 任务时间节点排期 ---- -->
+      <div class="subsection">
+        <div class="section-head">
+          <span class="section-head__title">任务时间节点排期（周维度）</span>
+          <div class="section-head__line"></div>
+        </div>
+        <div class="table-wrap"><div class="table-scroll">
+        <table class="schedule-table">
+          <thead>
+            <tr>
+              <th>周次</th>
+              <th>核心目标</th>
+              <th>关键任务</th>
+              <th>负责模块</th>
+              <th>验收标准</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="week-cell">W1 (9.1-9.7)</td>
+              <td>换季蓄水</td>
+              <td>主推款上架+推广素材制作；费比提升至25%</td>
+              <td>商品+推广</td>
+              <td>5个新链接上架；素材10套</td>
+            </tr>
+            <tr>
+              <td class="week-cell">W2 (9.8-9.14)</td>
+              <td>流量拉升</td>
+              <td>直通车+人群拉新投放；关键词优化出价</td>
+              <td>推广</td>
+              <td>访客环比+50%；ROI≥1.5</td>
+            </tr>
+            <tr>
+              <td class="week-cell">W3 (9.15-9.21)</td>
+              <td>全站收割</td>
+              <td>全站收割切换；高费比单品调价</td>
+              <td>推广</td>
+              <td>费比降至20%内；ROI≥2.0</td>
+            </tr>
+            <tr>
+              <td class="week-cell">W4 (9.22-9.30)</td>
+              <td>利润修复</td>
+              <td>淘汰底部单品20个；利润款费比控10%内</td>
+              <td>商品</td>
+              <td>净利润转正；退款率≤8%</td>
+            </tr>
+          </tbody>
+        </table>
+        </div></div>
+      </div>
+    </section>
+
+  </main>
+</div><!-- /.main -->
+
+</div><!-- /.app -->
+
+<script>
+(function() {
+  'use strict';
+
+  // ---- 主导航 Tab 切换 ----
+  var mainTabs = document.querySelectorAll('.main-tab');
+  var panels = document.querySelectorAll('.redesign-panel');
+
+  mainTabs.forEach(function(tab) {
+    tab.addEventListener('click', function() {
+      var target = tab.getAttribute('data-tab');
+      // 切换 tab 高亮
+      mainTabs.forEach(function(t) { t.classList.remove('is-active'); });
+      tab.classList.add('is-active');
+      // 切换 redesign-panel 显示
+      panels.forEach(function(p) {
+        if (p.getAttribute('data-panel') === target) {
+          p.classList.add('is-active');
+        } else {
+          p.classList.remove('is-active');
+        }
+      });
+    });
+  });
+
+  // ---- 月维度/周维度 切换 ----
+  var dimToggles = document.querySelectorAll('.dim-toggle');
+
+  dimToggles.forEach(function(toggle) {
+    var group = toggle.getAttribute('data-dim-group');
+    var buttons = toggle.querySelectorAll('button');
+
+    buttons.forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        var dim = btn.getAttribute('data-dim');
+        // 切换按钮高亮
+        buttons.forEach(function(b) { b.classList.remove('is-active'); });
+        btn.classList.add('is-active');
+        // 切换对应 dim-view
+        var monthView = document.querySelector('[data-dim-view="' + group + '-month"]');
+        var weekView = document.querySelector('[data-dim-view="' + group + '-week"]');
+        if (dim === 'month') {
+          if (monthView) monthView.classList.add('is-active');
+          if (weekView) weekView.classList.remove('is-active');
+        } else {
+          if (weekView) weekView.classList.add('is-active');
+          if (monthView) monthView.classList.remove('is-active');
+        }
+      });
+    });
+  });
+
+  // ---- 周期切换 tabs（月复盘/周复盘）仅视觉切换 ----
+  var periodTabs = document.querySelectorAll('.period-tabs button');
+  periodTabs.forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      periodTabs.forEach(function(b) { b.classList.remove('is-active'); });
+      btn.classList.add('is-active');
+    });
+  });
+
+})();
+</script>
+</body>
+</html>

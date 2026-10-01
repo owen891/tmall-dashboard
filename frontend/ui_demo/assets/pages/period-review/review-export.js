@@ -123,9 +123,13 @@
         out.push(`**周期分解（${breakdown.grain === 'week' ? '月内分周' : '按日'}）**：`
           + breakdown.rows.map((row) => `${row.label}（净销售额 ${fmtMoney((row.metrics || {}).net_sales)}）`).join('；'), '');
       }
+      const sectionOrder = {
+        category_summary: '一、', goods: '二、', ads: '三、', market: '四、',
+        summary: '五、', next_plan: '六、',
+      };
       (state.template || []).forEach((section) => {
-        const order = { category_summary: '二、', goods: '三、', ads: '四、', market: '五、', summary: '六、', next_plan: '七、' };
-        out.push(`## ${order[section.key] || ''}${section.title}`.replace('（）', ''), '');
+        out.push(`## ${sectionOrder[section.key] || ''}${section.title}`.replace('（）', ''), '');
+
         if (section.key === 'goods') {
           out.push(problemItemsMd(context.products));
         }

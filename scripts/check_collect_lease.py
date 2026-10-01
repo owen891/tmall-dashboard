@@ -2,11 +2,11 @@
 """采集租约检查：计划任务链与 RPA 链（/api/collect/trigger）的数据库层互斥。
 
 用法（run_daily_collect.ps1 在启动每个采集器前调用）：
-    python scripts/check_collect_lease.py <source_key> --db-path <path>
+    python scripts/check_collect_lease.py <source_key> --shop-id <shop_id> --db-path <path>
 
 退出码：
-    0  该数据源无活跃租约，可以启动
-    3  存在活跃租约（另一条采集链正在采该源），跳过
+    0  该数据源/店铺无活跃租约，可以启动
+    3  存在活跃租约（另一条采集链正在采该源/店铺），跳过
     4  数据库不可达（视为可启动：计划任务链自身有数据库，
        而锁检查失败不应静默吞掉整晚采集）
 
@@ -30,12 +30,14 @@ def _db_path_from_env(arg_path):
     )
 
 
-def lease_is_active(db_path, source_key):
+def lease_is_active(db_path, source_key, shop_id='3828498662'):
     conn = sqlite3.connect(db_path)
     try:
         row = conn.execute(
-            "SELECT lease_until FROM collector_leases WHERE source_key = ? ORDER BY lease_until DESC LIMIT 1",
-            (source_key,),
+            """SELECT lease_until FROM collector_leases
+               WHERE source_key = ? AND shop_id = ?
+               ORDER BY lease_until DESC LIMIT 1""",
+            (source_key, shop_id),
         ).fetchone()
     finally:
         conn.close()
@@ -45,22 +47,25 @@ def lease_is_active(db_path, source_key):
         until = datetime.fromisoformat(row[0])
     except (TypeError, ValueError):
         return False
-    return until > datetime.now(timezone.utc)
+    if until.tzinfo is None:
+        until = until.replace(tzinfo=timezone.utc)
+    return until.astimezone(timezone.utc) > datetime.now(timezone.utc)
 
 
 def main():
     parser = argparse.ArgumentParser(description='检查采集数据源的跨进程租约')
     parser.add_argument('source_key')
+    parser.add_argument('--shop-id', default=os.environ.get('TMALL_SHOP_ID', '3828498662'))
     parser.add_argument('--db-path', default=None)
     args = parser.parse_args()
     db_path = _db_path_from_env(args.db_path)
     try:
-        active = lease_is_active(db_path, args.source_key)
+        active = lease_is_active(db_path, args.source_key, args.shop_id)
     except sqlite3.Error as error:
         print(f'lease-check: 数据库不可达（{error}），视为可启动', file=sys.stderr)
         return 4
     if active:
-        print(f'lease-check: {args.source_key} 存在活跃租约（另一采集链进行中），跳过', file=sys.stderr)
+        print(f'lease-check: {args.source_key}/{args.shop_id} 存在活跃租约（另一条采集链进行中），跳过', file=sys.stderr)
         return 3
     return 0
 

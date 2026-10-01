@@ -24,6 +24,9 @@
     comparePeriod: reviewControlRoot.querySelector('[data-pr-compare-period]'),
     comparePeriodField: reviewControlRoot.querySelector('[data-pr-compare-period-field]'),
     state: document.querySelector('[data-pr-state]'),
+    contextRange: document.querySelector('[data-pr-context-range]'),
+    contextMeta: document.querySelector('[data-pr-context-meta]'),
+    actionSummary: document.querySelector('[data-pr-action-summary]'),
     overview: document.querySelector('[data-pr-overview]'),
     sections: document.querySelector('[data-pr-sections]'),
     commandCenter: document.querySelector('[data-pr-command-center]'),
@@ -572,8 +575,8 @@
         h('span', { text: `${period.label} · ${period.start} ~ ${period.end} · 品类：${label}` }),
       ),
       renderKpiGrid(context.metrics),
-      targetCards.renderTarget(context.target_path),
-      targetCards.renderTargetTable(context.target_path.targets, targetCards.targetTimeProgress(period)),
+      // 目标条与目标表不再在业绩全景重复：完成率已在驾驶舱三卡 + 归因折叠
+      // 摘要里给出，目标-实际明细归「复盘设置」面板与导出，全景只留事实指标。
       breakdown && breakdown.rows && breakdown.rows.length
         ? h('div', { class: 'pr-overview__breakdown' },
           h('h4', { text: breakdownTitle }),
@@ -609,16 +612,63 @@
     );
   }
 
+  // 复盘范围：首屏给结论的同时，把周期 / 品类 / 对比口径与数据状态集中在一处，
+  // 避免同一组信息在页头、状态条、驾驶舱里反复出现。
+  function renderReviewScope(context) {
+    const period = context && context.period;
+    const hasData = Boolean(context && context.metrics && context.metrics.has_data);
+    const missing = (context && context.missing_inputs) || [];
+    if (els.contextRange) {
+      if (!period || !period.start) {
+        els.contextRange.textContent = '正在读取时间范围…';
+      } else {
+        // 周期名称本身已带日期范围（如「2026年9月第5周（09-28 ~ 09-30）」）时不再追加，
+        // 避免同一个区间在同一行里出现两次。
+        // label 里的日期是 MM-DD（如「2026年9月第5周（09-28 ~ 09-30）」），
+        // 用它判断区间是否已经写进名称，避免同一行重复两次。
+        els.contextRange.textContent = period.label.includes(period.start.slice(5))
+          ? period.label
+          : `${period.label}（${period.start} ~ ${period.end}）`;
+      }
+    }
+    if (els.contextMeta) {
+      const parts = [state.mode === 'week' ? '周复盘' : '月复盘', `品类 ${categoryLabelOf() || '全部品类'}`];
+      if (context) parts.push(`对比 ${(context.compare && context.compare.label) || '不对比'}`);
+      els.contextMeta.textContent = parts.join(' · ');
+    }
+    if (!els.actionSummary) return;
+    if (!context) {
+      els.actionSummary.textContent = '正在读取复盘状态…';
+    } else if (hasData) {
+      els.actionSummary.textContent = '素材已就绪，可在工作区编辑结论后保存。';
+    } else {
+      els.actionSummary.textContent = missing.length
+        ? `本期缺少数据源：${missing.join('、')}，仍可手动填写复盘结论。`
+        : '当前周期缺少可用经营事实，先补齐数据后再形成结论。';
+    }
+  }
+
   function renderCommandCenter(context) {
+    renderReviewScope(context);
     if (!els.commandCenter) return;
     const dangerCount = (context.anomalies || []).filter((item) => item.level === 'danger' || item.level === 'warning').length;
     const blockedCount = (context.actions_blocked || []).length;
     const plannedCount = (context.actions_planned || []).length;
     els.commandCenter.hidden = false;
+    const hasData = Boolean(context.metrics && context.metrics.has_data);
+    const periodLabel = context.period ? context.period.label : '当前周期';
     els.commandCenter.replaceChildren(
+      h('div', { class: 'pr-command-center__head' },
+        h('div', null,
+          h('span', { class: 'pr-command-center__eyebrow', text: '经营驾驶舱' }),
+          h('h3', { text: `${periodLabel}复盘结论` }),
+          h('p', { text: hasData ? '先看结果是否达标，再沿着风险信号定位商品、推广与执行问题。' : '当前周期缺少可用经营事实，先补齐数据后再形成结论。' })),
+        h('span', { class: `pr-command-center__data-state ${hasData ? 'is-ready' : 'is-empty'}`.trim(), text: hasData ? '数据已就绪' : '等待数据' })),
+      h('div', { class: 'pr-command-center__section-label', text: '核心结果' }),
       // 三大指标完成率卡（对齐月复盘 XMind「完成情况分析」）：
       // 净销售额 / 净利润 / 净费比，口径与复盘设置目标同源。
       metricCards.renderMetricCards(),
+      h('div', { class: 'pr-command-center__section-label', text: '经营信号' }),
       // 紧凑状态条：风险与执行信号一行带过，点击直达对应工作区。
       h('div', { class: 'pr-command-center__strip' },
         h('button', { type: 'button', class: 'pr-strip-item', onclick: () => activateWorkbench('diagnosis') },
@@ -631,13 +681,6 @@
           h('span', { text: '拆因分析 →' })),
       ),
     );
-    // 周期摘要写到页头说明位，替代驾驶舱内部标题区，减少一层重复信息。
-    const headSummary = document.querySelector('.pr-page-header p');
-    if (headSummary && context.period && context.period.start) {
-      headSummary.textContent = context.metrics && context.metrics.has_data
-        ? `${context.period.label}（${context.period.start} ~ ${context.period.end}）· 先看三大指标完成情况，再定位商品、推广与执行问题。`
-        : '当前周期缺少可用经营事实，先补齐数据后再形成结论。';
-    }
   }
 
   // ------------------------------------------------- 单品周趋势预览（弹窗）
@@ -1629,7 +1672,7 @@
 
   // 目标卡与「目标 vs 实际」表已拆至 pages/period-review/target-cards.js：
   // 输入口径换算、达成率配色、即时重算的状态与行为都归该模块。
-  const targetCards = window.createTargetCards({ h, formatValue, state, els });
+  const targetCards = window.createTargetCards({ h, formatValue, state, els, onTargetsChanged });
 
   // 三大指标完成率卡（净销售额/净利润/净费比）已拆至 pages/period-review/metric-cards.js：
   // 口径与复盘设置目标同源，完成率与配色方向沿用后端 _target_rows。
@@ -1642,6 +1685,14 @@
   // 目标差距归因已拆至 pages/period-review/gap-attribution.js：
   // 三因子连环替代分解（流量×转化×客单）+ 归因线索，回答「目标为啥没完成」。
   const gapAttribution = window.createGapAttribution({ h, state, formatValue, activateWorkbench });
+
+  // 目标输入变化时的可见反馈出口：归因摘要里的完成率即时重算。
+  // 驾驶舱三卡由外层 renderCommandCenter 整块重建，不在这里重复刷。
+  // 定义在 gapAttribution 之后（闭包引用），target-cards 只在输入事件里调用它。
+  function onTargetsChanged() {
+    if (!state.context) return;
+    if (els.gapAttribution) gapAttribution.renderPanel(state.context, els.gapAttribution);
+  }
 
   // 叶子类目近 3 周对比看板已拆至 pages/period-review/leaf-board.js：
   // 看板自建 #leaf-weekly-board 节点，格式化助手与加载器都归该模块。
@@ -1727,6 +1778,11 @@
       h('div', { class: 'pr-target__item' }, h('span', { text: '结论边界' }), h('strong', { text: '趋势/排名' }), h('small', { text: '不含价格、毛利、评价' })),
     )));
 
+    // 商品榜/搜索词两张 6 列监控表并排两列（半栏刚好），其余块保持通栏；
+    // 只有任一表有数据才建两列容器，否则退回逐块堆叠。
+    const monitorPair = h('div', { class: 'pr-market-pair' });
+    let hasMonitor = false;
+
     if (market.market_signals && market.market_signals.length) {
       const tr = h('tr', null,
         h('th', { text: '类目' }), h('th', { class: 'num', text: '样本天数' }),
@@ -1740,7 +1796,8 @@
         h('td', { class: 'num', text: signedPercent(row.avg_uv_change_rate === null || row.avg_uv_change_rate === undefined ? null : row.avg_uv_change_rate * 100) }),
         h('td', { class: 'num', text: signedPercent(row.avg_pay_buyer_change_rate === null || row.avg_pay_buyer_change_rate === undefined ? null : row.avg_pay_buyer_change_rate * 100) }),
       ));
-      wrap.append(materialBlock('市场事实：商品榜监控', h('table', { class: 'pr-table' }, h('thead', null, tr), h('tbody', null, ...body))));
+      monitorPair.append(materialBlock('市场事实：商品榜监控', h('table', { class: 'pr-table' }, h('thead', null, tr), h('tbody', null, ...body))));
+      hasMonitor = true;
     }
 
     if (market.keyword_signals && market.keyword_signals.length) {
@@ -1756,7 +1813,12 @@
         h('td', { class: 'num', text: signedPercent(row.search_heat_change_rate === null || row.search_heat_change_rate === undefined ? null : row.search_heat_change_rate * 100) }),
         h('td', null, stateTag(row.status === 'demand_up' ? '需求上升' : row.status === 'demand_down' ? '需求下降' : row.status === 'efficiency_up' ? '支付率改善' : row.status === 'efficiency_down' ? '支付率下降' : '稳定', row.status === 'demand_up' || row.status === 'efficiency_up' ? 'good' : row.status === 'demand_down' || row.status === 'efficiency_down' ? 'warning' : 'info')),
       ));
-      wrap.append(materialBlock('需求信号：搜索词监控', h('table', { class: 'pr-table' }, h('thead', null, tr), h('tbody', null, ...body))));
+      monitorPair.append(materialBlock('需求信号：搜索词监控', h('table', { class: 'pr-table' }, h('thead', null, tr), h('tbody', null, ...body))));
+      hasMonitor = true;
+    }
+
+    if (hasMonitor) {
+      wrap.append(monitorPair);
     }
 
     if (market.decision_hints && market.decision_hints.length) {
@@ -2340,11 +2402,12 @@
       }
 
       const missing = state.context.metrics.has_data ? [] : state.context.missing_inputs;
-      const compareLabel = (state.context.compare && state.context.compare.label) || '不对比';
+      // 这里只说“同步结果”：周期 / 品类 / 对比口径已由上方「复盘范围」条统一呈现，
+      // 状态条重复同一组信息只会增加首屏噪声。
       stateBanner(
         missing.length
           ? `本期缺少数据源：${missing.join('、')}。仍可手动填写复盘结论。`
-          : `素材已更新：${state.context.period.label}（${categoryLabelOf() || '全部品类'}）· 对比 ${compareLabel}。`,
+          : '素材已更新。',
         missing.length ? 'no-data' : '',
       );
       renderCategoryNote();
@@ -2488,8 +2551,8 @@
     load();
   });
   els.refresh?.addEventListener('click', () => load());
-  // 目标输入即时联动：先更新 target-cards 的目标卡/表（会回写 context.target_path.targets），
-  // 再重渲染驾驶舱三大指标卡，让完成率「填了立刻有反应」。
+  // 目标输入即时联动：target-cards 把输入换算回写 context.target_path（会顺带
+  // 触发归因摘要刷新），再整块重建驾驶舱让三卡完成率「填了立刻有反应」。
   const refreshTargetPanels = () => {
     targetCards.refreshTargetCard();
     if (state.context) renderCommandCenter(state.context);

@@ -18,6 +18,9 @@
   let dialogReturnFocus = null;
   let overviewPayload = null;
   let latestMatrix = { rows: [] };
+  let latestActionTodos = [];
+  let latestAnomalies = [];
+  let latestAnomalyState = 'loading';
   const matrixColumns = Object.freeze([
     { key: 'date', label: '日期', format: 'text', required: true },
     { key: 'net_sales', label: '净销售额', format: 'money' },
@@ -270,6 +273,45 @@
     const missing = details.missing_fields?.length ? `；缺失字段 ${details.missing_fields.join('、')}` : '';
     node.title = `${label}${missing}`;
   }
+  function renderDecisionFocus() {
+    const pending = latestActionTodos.filter((todo) => ['pending_review', 'blocked', 'pending_execution', 'executing'].includes(todo.status));
+    const overdue = pending.filter((todo) => todo.overdue);
+    const highRisk = latestAnomalies.filter((anomaly) => anomaly.severity === 'high');
+    const anomalyCount = latestAnomalies.length;
+    const copyNode = $('[data-overview-focus-copy]');
+    const metaNode = $('[data-overview-focus-meta]');
+    let copy = '当前无高风险异常，按计划跟进待办动作';
+    let meta = '异常优先级高于普通待办';
+    if (anomalyCount) {
+      const label = highRisk.length ? '高风险异常' : '需关注异常';
+      copy = `先处理 ${highRisk.length || anomalyCount} 条${label}`;
+      meta = highRisk.length ? '异常优先级高于普通待办' : '建议进入经营复盘确认原因';
+    } else if (latestAnomalyState === 'unavailable') {
+      copy = pending.length ? `先处理 ${pending.length} 条待办动作` : '先复核经营指标';
+      meta = '异常提醒暂不可用';
+    } else if (latestAnomalyState === 'no-data') {
+      copy = pending.length ? `先处理 ${pending.length} 条待办动作` : '当前周期暂无异常提醒';
+      meta = '异常数据未生成';
+    } else if (pending.length) {
+      copy = `先处理 ${pending.length} 条待办动作`;
+      meta = overdue.length ? `其中 ${overdue.length} 条已逾期` : '按计划日期跟进';
+    } else if (latestAnomalyState === 'loading') {
+      copy = '等待数据后给出下一步建议';
+      meta = '异常优先级高于普通待办';
+    } else {
+      copy = '当前无待处理异常或待办动作';
+      meta = '可继续查看指标、目标和数据证据';
+    }
+    text(copyNode, copy);
+    text(metaNode, meta);
+    textAll('[data-overview-summary="anomalies"]', latestAnomalyState === 'unavailable' ? '--' : String(anomalyCount));
+    textAll('[data-overview-summary-meta="anomalies"]', latestAnomalyState === 'unavailable'
+      ? '异常提醒不可用'
+      : anomalyCount
+        ? `高风险 ${highRisk.length} · 需关注 ${anomalyCount - highRisk.length}`
+        : latestAnomalyState === 'no-data' ? '异常数据未生成' : '暂无异常提醒');
+  }
+
   function renderContext(overview, response = {}) {
     const context = overview.context || {}; const batch = context.latest_import;
     const missing_date_ranges = overview.missing_date_ranges || [];
@@ -302,6 +344,8 @@
     }) : [item('div', '当前没有待办动作', 'ui-empty-state')];
     const pending = todos.filter((todo) => ['pending_review', 'blocked', 'pending_execution', 'executing'].includes(todo.status)).length;
     textAll('[data-overview-summary="actions"]', String(pending));
+    latestActionTodos = todos;
+    renderDecisionFocus();
     window.dispatchEvent(new CustomEvent('tmall:overview-actions-ready', { detail: { todos } }));
   }
 
@@ -436,15 +480,23 @@
 
   function renderAnomalies(data, retry) {
     if (data?.error) {
+      latestAnomalies = [];
+      latestAnomalyState = 'unavailable';
+      renderDecisionFocus();
       window.dispatchEvent(new CustomEvent('tmall:overview-anomalies-ready', { detail: { anomalies: [] } }));
       return;
     }
     if (data?.availability === 'no-data' || data?.availability === 'partial') {
+      latestAnomalies = [];
+      latestAnomalyState = 'no-data';
+      renderDecisionFocus();
       window.dispatchEvent(new CustomEvent('tmall:overview-anomalies-ready', { detail: { anomalies: [] } }));
       return;
     }
-    const anomalies = unwrap(data, 'anomalies');
-    window.dispatchEvent(new CustomEvent('tmall:overview-anomalies-ready', { detail: { anomalies } }));
+    latestAnomalies = Array.isArray(unwrap(data, 'anomalies')) ? unwrap(data, 'anomalies') : [];
+    latestAnomalyState = 'ready';
+    renderDecisionFocus();
+    window.dispatchEvent(new CustomEvent('tmall:overview-anomalies-ready', { detail: { anomalies: latestAnomalies } }));
   }
 
   // 表格横向溢出时给滚动容器打标记，驱动常显的“向右滚动”角标

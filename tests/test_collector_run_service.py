@@ -335,6 +335,21 @@ class CollectorRunServiceTests(unittest.TestCase):
         self.assertEqual(conn.execute('SELECT COUNT(*) FROM bi_product_daily_raw').fetchone()[0], 0)
         conn.close()
 
+    def test_database_lease_isolated_by_shop_for_scheduled_check(self):
+        from scripts.check_collect_lease import lease_is_active
+        from services.collector_run_service import acquire_lease, create_run
+
+        shop_a_run = create_run('bi_daily', 'shop-a', db_path=self.db_path)
+        self.assertTrue(acquire_lease('bi_daily', 'shop-a', shop_a_run, db_path=self.db_path))
+        self.assertTrue(lease_is_active(self.db_path, 'bi_daily', 'shop-a'))
+        self.assertFalse(lease_is_active(self.db_path, 'bi_daily', 'shop-b'))
+
+    def test_scheduled_launcher_passes_shop_scope_to_lease_check(self):
+        from pathlib import Path
+
+        script = (Path(__file__).resolve().parents[1] / 'scripts' / 'run_daily_collect.ps1').read_text(encoding='utf-8')
+        self.assertIn('check_collect_lease.py\') $leaseKey --shop-id $ShopId --db-path $DbPath', script)
+
     def test_database_lease_blocks_duplicate_source_and_releases(self):
         from services.collector_run_service import (
             acquire_lease, create_run, release_lease,

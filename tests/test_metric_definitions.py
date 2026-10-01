@@ -19,7 +19,7 @@ class MetricDefinitionTests(unittest.TestCase):
         self.assertEqual(result['values']['refund_rate'], 0.1)
         self.assertEqual(result['values']['payment_conversion_rate'], 0.1)
         self.assertEqual(result['values']['average_order_value'], 50.0)
-        self.assertEqual(result['values']['expense_ratio'], 0.08)
+        self.assertEqual(result['values']['expense_ratio'], 0.088889)
         self.assertEqual(result['values']['ad_roi'], 3.0)
         self.assertEqual(result['values']['returning_buyer_ratio'], 0.25)
         self.assertEqual(result['missing_fields'], [])

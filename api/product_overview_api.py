@@ -90,7 +90,10 @@ def product_overview_rule_results():
                 "payment_buyers": buyers,
                 "cart_rate": cart_rate,
                 "refund_rate": (float(refund) / float(payment)) if payment not in (None, 0) and refund is not None else None,
-                "expense_ratio": (float(spend) / float(payment)) if payment not in (None, 0) and spend is not None else None,
+                "net_sales": (float(payment) - float(refund)) if payment is not None and refund is not None else None,
+                "expense_ratio": ((float(spend) / (float(payment) - float(refund)))
+                                  if payment is not None and refund is not None
+                                  and float(payment) - float(refund) > 0 and spend is not None else None),
                 "payment_conversion_rate": conversion,
                 "average_order_value": aov if aov is not None else ((float(payment) / float(buyers)) if payment is not None and buyers not in (None, 0) else None),
             }

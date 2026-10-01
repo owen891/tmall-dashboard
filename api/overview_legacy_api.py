@@ -72,6 +72,8 @@ def get_trend():
                    SUM(payment_amount) - SUM(refund_amount) as net_sales,
                    SUM({visitors_col}) as visitors,
                    SUM(ad_spend) as ad_spend,
+                   CASE WHEN SUM(payment_amount) - SUM(refund_amount) > 0
+                        THEN SUM(ad_spend) * 1.0 / (SUM(payment_amount) - SUM(refund_amount)) ELSE NULL END as expense_ratio,
                    AVG(payment_conversion) as conversion,
                    {payment_qty_expr} as payment_count,
                    AVG(cart_rate) as cart_rate,

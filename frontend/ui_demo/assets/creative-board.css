@@ -4,6 +4,8 @@ body[data-page="creative-board"] .demo-category { display: block; }
 .cb-summary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--space-3); margin-bottom: var(--space-4); }
 body[data-page="creative-board"] .cb-summary .ui-metric-card { min-height: 104px; padding: var(--space-4); }
 .cb-toolbar { display: grid; grid-template-columns: minmax(240px, 360px); align-items: center; gap: var(--space-3); margin-bottom: var(--space-4); }
+body[data-page="creative-board"] .cb-toolbar.ui-table-toolbar { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: var(--space-3); padding: 10px 12px; border: 1px solid var(--border-default); border-radius: var(--radius-md); background: var(--surface-base); margin-bottom: var(--space-3); }
+body[data-page="creative-board"] .cb-toolbar.ui-table-toolbar .cb-search { flex: 0 1 360px; width: 100%; min-width: 220px; max-width: 360px; }
 .cb-category-tabs { display: flex; min-width: 0; overflow-x: auto; }
 .cb-category-tabs button { gap: 6px; white-space: nowrap; }
 .cb-category-tabs .cb-count { padding: 2px 7px; border: 1px solid var(--border-default); border-radius: var(--radius-full); background: var(--surface-muted); color: var(--text-tertiary); font-size: var(--font-size-meta); }
@@ -30,6 +32,21 @@ body[data-page="creative-board"] .cb-summary .ui-metric-card { min-height: 104px
 .cb-detail-summary span { display: grid; gap: 2px; color: var(--text-secondary); font-size: var(--font-size-meta); }
 .cb-detail-summary b { color: var(--text-primary); font-size: var(--font-size-body); font-variant-numeric: tabular-nums; }
 .cb-detail-list { display: grid; overflow: hidden; border: 1px solid var(--border-default); border-radius: var(--radius-md); }
+.cb-detail-list--table { display: block; overflow: auto; }
+.cb-creative-table { min-width: 940px; }
+.cb-creative-table thead th { white-space: nowrap; }
+.cb-creative-table tbody td { vertical-align: middle; }
+.cb-creative-table__asset { display: flex; min-width: 280px; align-items: center; gap: var(--space-3); }
+.cb-creative-table__asset .cb-creative-image,
+.cb-creative-table__asset .cb-creative-row__thumb { flex: 0 0 56px; }
+.cb-creative-table__identity { display: grid; min-width: 0; gap: 3px; }
+.cb-creative-table__identity strong { overflow: hidden; color: var(--text-primary); font-size: var(--font-size-secondary); text-overflow: ellipsis; white-space: nowrap; }
+.cb-creative-table__identity small { color: var(--text-tertiary); font-size: var(--font-size-meta); white-space: nowrap; }
+.cb-sort-button { display: inline-flex; align-items: center; gap: 4px; min-height: 28px; padding: 2px 6px; border: 1px solid transparent; border-radius: var(--radius-sm); background: transparent; color: var(--text-secondary); font: inherit; font-weight: 600; white-space: nowrap; cursor: pointer; }
+.cb-sort-button:hover { border-color: var(--border-default); background: var(--surface-muted); color: var(--text-primary); }
+.cb-sort-button.is-active { border-color: var(--border-default); background: var(--surface-muted); color: var(--text-primary); }
+.cb-sort-button:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+.cb-sort-button svg { width: 14px; height: 14px; }
 .cb-creative-row { display: grid; grid-template-columns: 56px minmax(220px, 1fr) minmax(420px, 1.4fr); gap: var(--space-3); align-items: center; padding: var(--space-3); border-bottom: 1px solid var(--border-default); }
 .cb-creative-row:last-child { border-bottom: 0; }
 .cb-creative-row:hover { background: var(--surface-muted); }
@@ -95,6 +112,10 @@ body[data-page="creative-board"] .cb-summary .ui-metric-card { min-height: 104px
 @media (max-width: 900px) {
   .cb-product-table { min-width: 760px; }
   .cb-creative-row__stats { grid-template-columns: repeat(3, minmax(50px, 1fr)); }
+}
+@media (max-width: 720px) {
+  body[data-page="creative-board"] .cb-toolbar.ui-table-toolbar { align-items: stretch; flex-direction: column; }
+  body[data-page="creative-board"] .cb-toolbar.ui-table-toolbar .cb-search { flex: 1 1 auto; width: 100%; min-width: 0; max-width: none; }
 }
 @media (max-width: 560px) {
   .cb-summary { gap: var(--space-2); }

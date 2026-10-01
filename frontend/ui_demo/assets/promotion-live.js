@@ -1319,6 +1319,10 @@
   async function load(detail) {
     const token = ++state.token;
     state.period = getPeriod(detail);
+    const rangeNode = $('[data-promotion-range]');
+    const rangeMetaNode = $('[data-promotion-range-meta]');
+    if (rangeNode) rangeNode.textContent = `${state.period} 推广经营数据`;
+    if (rangeMetaNode) rangeMetaNode.textContent = '店铺维度 · 含渠道 / 计划 / 商品三粒度';
     $('[data-promotion-period]').textContent = `${state.period} 商品推广趋势`;
     clearTable('加载推广数据中…');
     renderKpis([]);

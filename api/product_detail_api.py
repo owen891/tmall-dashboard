@@ -310,7 +310,7 @@ def _aggregate_detail_rows(rows):
     summary['refund_rate'] = refund / payment if payment not in (None, 0) and refund is not None else None
     summary['payment_conversion_rate'] = buyers / visitors if visitors not in (None, 0) and buyers is not None else None
     summary['average_order_value'] = payment / buyers if buyers not in (None, 0) and payment is not None else None
-    summary['expense_ratio'] = summary['ad_spend'] / payment if payment not in (None, 0) and summary.get('ad_spend') is not None else None
+    summary['expense_ratio'] = summary['ad_spend'] / summary['net_sales'] if summary.get('net_sales') not in (None, 0) and summary.get('ad_spend') is not None else None
     summary['search_ratio'] = summary['search_visitors'] / visitors if visitors not in (None, 0) and summary.get('search_visitors') is not None else None
     summary['data_cutoff_date'] = records[-1].get('date') if records else None
     return summary
@@ -479,7 +479,7 @@ def _monthly_analysis(connection, product_id, start=None, end=None):
         payment = item.get('payment_amount')
         visitors = item.get('product_visitors')
         item['payment_conversion_rate'] = (item['payment_buyers'] / visitors) if payment is not None and visitors else None
-        item['expense_ratio'] = (item['ad_spend'] / payment) if payment not in (None, 0) and item.get('ad_spend') is not None else None
+        item['expense_ratio'] = (item['ad_spend'] / item['net_sales']) if item.get('net_sales') not in (None, 0) and item.get('ad_spend') is not None else None
         item['average_order_value'] = (payment / item['payment_buyers']) if payment is not None and item['payment_buyers'] else None
         result.append(item)
     comparisons = []
@@ -569,6 +569,7 @@ def product_detail(product_id):
         'product_visitors': summary['product_visitors'],
         'payment_buyers': summary['payment_buyers'],
         'ad_spend': summary['ad_spend'],
+        'net_sales': summary.get('net_sales'),
     }, names=(
         'net_sales', 'refund_rate', 'payment_conversion_rate',
         'average_order_value', 'expense_ratio',

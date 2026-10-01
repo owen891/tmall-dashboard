@@ -537,6 +537,46 @@ class ImportWorkflowTests(unittest.TestCase):
             ).fetchone()
         self.assertEqual(tuple(row), ('search', 'campaign-a', 60.0))
 
+    def test_generic_promotion_import_refreshes_identity_map_without_catalog_placeholder(self):
+        promotion = self.client.post(
+            '/api/imports/preview?source_type=promotion_product_day',
+            data={'file': (workbook_bytes(
+                ['date', 'channel', 'product_id', 'ad_spend', 'attributed_payment_amount'],
+                [
+                    ['2026-04-05', 'search', 'identity-external', 12, 60],
+                    ['2026-04-05', 'search', 'identity-campaign', 8, 30],
+                ],
+            ), 'promotion-identity.xlsx')},
+            content_type='multipart/form-data',
+        )
+        payload = promotion.get_json()['data']
+        promotion.close()
+        confirmed = self.client.post('/api/imports', json={
+            'preview_id': payload['id'], 'mapping': payload['mapping'],
+        })
+        self.assertEqual(confirmed.status_code, 201)
+        confirmed.close()
+
+        with self.get_db(self.database_path) as connection:
+            identities = connection.execute(
+                """SELECT external_product_id, identity_status, fact_row_count
+                   FROM product_identity_map
+                   WHERE source_system = 'promotion'
+                   ORDER BY external_product_id"""
+            ).fetchall()
+            product_count = connection.execute(
+                "SELECT COUNT(*) FROM products WHERE product_id LIKE 'identity-%'"
+            ).fetchone()[0]
+            facts = connection.execute(
+                "SELECT COUNT(*) FROM promotion_daily_facts WHERE product_id LIKE 'identity-%'"
+            ).fetchone()[0]
+        self.assertEqual(
+            [tuple(row) for row in identities],
+            [('identity-campaign', 'unresolved', 1), ('identity-external', 'unresolved', 1)],
+        )
+        self.assertEqual(product_count, 0)
+        self.assertEqual(facts, 2)
+
     def test_promotion_observation_remains_primary_when_dmp_is_imported_afterwards(self):
         promotion = self.client.post(
             '/api/imports/preview?source_type=promotion_product_day',

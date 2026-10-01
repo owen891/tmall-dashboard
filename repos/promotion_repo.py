@@ -1,5 +1,8 @@
 from db import get_db, get_shop_id
 
+# 新品窗口：周期结束日前 N 天内上架视为新品（与复盘页 period_context 口径一致）。
+NEW_PRODUCT_WINDOW_DAYS = 60
+
 
 class PromotionRepo:
     GROUP_COLUMNS = {
@@ -352,17 +355,25 @@ class PromotionRepo:
         return dict(row) if row else {}
 
     @staticmethod
-    def creative_board(shop_label=None):
-        """素材历史累计看板：以商品目录为主表关联人工素材，不含时间筛选。"""
+    def creative_board(shop_label=None, product_id=None, include_system=False):
+        """素材历史累计看板：以商品目录为主表关联素材，不含时间筛选。
+
+        全局看板默认隐藏系统自动创意；商品级明细可显式包含它们，
+        便于从新品或商品结构进入时查看该商品的完整素材投放记录。
+        """
         shop_id = get_shop_id()
         where = [
             "COALESCE(p.product_id, '') != ''",
             "c.creative_id IS NOT NULL",
         ]
         params = [shop_id]
+        if product_id:
+            where.append('p.product_id = ?')
+            params.append(product_id)
         if shop_label:
             where.append("(COALESCE(p.shop_label, '') = ? OR instr(',' || COALESCE(p.shop_label, '') || ',', ',' || ? || ',') > 0)")
             params.extend([shop_label, shop_label])
+        creative_filter = '' if include_system else f'AND {PromotionRepo.SYSTEM_CREATIVE_SQL}'
         with get_db() as connection:
             rows = connection.execute(
                     f'''SELECT c.creative_id, MAX(c.creative_name) AS creative_name,
@@ -383,7 +394,7 @@ class PromotionRepo:
                      FROM products p
                      LEFT JOIN promotion_creatives c
                          ON c.shop_id = ? AND c.product_id = p.product_id
-                         AND {PromotionRepo.SYSTEM_CREATIVE_SQL}
+                         {creative_filter}
                      LEFT JOIN promotion_creative_daily f
                          ON f.shop_id = c.shop_id AND f.creative_id = c.creative_id
                      WHERE {' AND '.join(where)}
@@ -459,6 +470,187 @@ class PromotionRepo:
                    HAVING SUM(COALESCE(f.ad_spend, 0)) > 0
                    ORDER BY ad_spend DESC''',
                 [start_date, end_date, shop_id, product_id],
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    # 新品 list_date 口径：入库时可能带 '2026-09-05 00:00:00' 一类脏值，
+    # 统一截取前 10 位参与日期比较。
+    NEW_DATE_COLUMNS = "substr(p.list_date, 1, 10)"
+
+    @staticmethod
+    def new_products(start_date, end_date, filters):
+        """新品看板：周期结束日前 60 天内上架的商品 × 推广/销售聚合。
+
+        新品口径与复盘页（period_context）一致：list_date 落在
+        [end-60d, end] 区间。推广取 product/unit 粒度行（与商品视图同口径），
+        销售从 daily_data 带出链接净销售额，供"推广是否拉动新品"判断。
+        返回 (新品行, 新品全店总数, 全店推广盘汇总)。
+        """
+        shop_id = get_shop_id()
+        filters = filters or {}
+        date_col = PromotionRepo.NEW_DATE_COLUMNS
+        where = [
+            "(grain IN ('product', 'unit') OR grain = '')",
+            'pdf.shop_id = ?',
+            'pdf.date BETWEEN ? AND ?',
+            "p.list_date IS NOT NULL AND p.list_date != ''",
+            f"{date_col} GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'",
+            f'{date_col} <= ?',
+            f"date(?, '-' || ? || ' day') <= {date_col}",
+        ]
+        params = [shop_id, start_date, end_date, end_date, end_date, NEW_PRODUCT_WINDOW_DAYS]
+        if filters.get('shop_label'):
+            label = filters['shop_label']
+            where.append("(p.shop_label = ? OR instr(',' || p.shop_label || ',', ',' || ? || ',') > 0)")
+            params.extend([label, label])
+        for key in ('channel', 'campaign_id', 'unit_id', 'product_id'):
+            if filters.get(key):
+                where.append(f'pdf.{key} = ?')
+                params.append(filters[key])
+        with get_db() as connection:
+            rows = connection.execute(
+                f'''SELECT p.product_id,
+                           MAX(p.title) AS title,
+                           MAX(NULLIF(p.image_url, '')) AS image_url,
+                           MAX({date_col}) AS list_date,
+                           MAX(COALESCE(p.shop_label, '')) AS shop_label,
+                           MAX(COALESCE(p.product_growth_stage, '')) AS growth_stage,
+                           SUM(pdf.ad_spend) AS ad_spend,
+                           SUM(pdf.attributed_payment_amount) AS attributed_payment_amount,
+                           SUM(pdf.impressions) AS impressions,
+                           SUM(pdf.clicks) AS clicks,
+                           SUM(pdf.payment_buyers) AS payment_buyers,
+                           SUM(COALESCE(pdf.cart_adds, 0)) AS cart_adds,
+                           SUM(COALESCE(pdf.new_buyers, 0)) AS new_buyers,
+                           COALESCE(link.link_gsv, 0) AS link_gsv,
+                           COALESCE(link.link_net_sales, 0) AS link_net_sales
+                    FROM promotion_daily_facts pdf
+                    JOIN products p ON p.product_id = pdf.product_id
+                    LEFT JOIN (
+                        SELECT product_id,
+                               SUM(COALESCE(payment_amount, 0)) AS link_gsv,
+                               SUM(COALESCE(payment_amount, 0) - COALESCE(refund_amount, 0)) AS link_net_sales
+                        FROM daily_data
+                        WHERE shop_id = ? AND date BETWEEN ? AND ?
+                        GROUP BY product_id
+                    ) link ON link.product_id = pdf.product_id
+                    WHERE {' AND '.join(where)}
+                    GROUP BY p.product_id
+                    ORDER BY ad_spend DESC''',
+                [shop_id, start_date, end_date, *params],
+            ).fetchall()
+            total_where = [
+                "p.list_date IS NOT NULL AND p.list_date != ''",
+                f"{date_col} GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'",
+                f'{date_col} <= ?',
+                f"date(?, '-' || ? || ' day') <= {date_col}",
+            ]
+            total_params = [end_date, end_date, NEW_PRODUCT_WINDOW_DAYS]
+            if filters.get('shop_label'):
+                label = filters['shop_label']
+                total_where.append("(p.shop_label = ? OR instr(',' || p.shop_label || ',', ',' || ? || ',') > 0)")
+                total_params.extend([label, label])
+            new_total = connection.execute(
+                f'''SELECT COUNT(DISTINCT p.product_id) FROM products p
+                    WHERE {' AND '.join(total_where)}''',
+                total_params,
+            ).fetchone()[0]
+            # 全店推广盘（同窗口、同品类筛选；不含 channel 等下钻维度，
+            # 占比要对照"全店推广投放了多少给新品"）
+            overall_where = ["(grain IN ('product', 'unit') OR grain = '')", 'shop_id = ?', 'date BETWEEN ? AND ?']
+            overall_params = [shop_id, start_date, end_date]
+            if filters.get('shop_label'):
+                label = filters['shop_label']
+                overall_where.append("(p.shop_label = ? OR instr(',' || p.shop_label || ',', ',' || ? || ',') > 0)")
+                overall_params.extend([label, label])
+            overall = connection.execute(
+                f'''SELECT COALESCE(SUM(ad_spend), 0) AS ad_spend,
+                           COALESCE(SUM(attributed_payment_amount), 0) AS attributed_payment_amount
+                    FROM promotion_daily_facts pdf
+                    JOIN products p ON p.product_id = pdf.product_id
+                    WHERE {' AND '.join(overall_where)}''',
+                overall_params,
+            ).fetchone()
+        return [dict(row) for row in rows], int(new_total or 0), dict(overall or {})
+
+    @staticmethod
+    def new_product_launches(start_date, end_date, filters):
+        """按新品上架日期聚合全量新品，并左连接推广与销售事实。"""
+        shop_id = get_shop_id()
+        filters = filters or {}
+        date_col = PromotionRepo.NEW_DATE_COLUMNS
+        product_where = [
+            "p.list_date IS NOT NULL AND p.list_date != ''",
+            f"{date_col} GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'",
+            f'{date_col} <= ?',
+            f"date(?, '-' || ? || ' day') <= {date_col}",
+        ]
+        product_params = [end_date, end_date, NEW_PRODUCT_WINDOW_DAYS]
+        if filters.get('shop_label'):
+            label = filters['shop_label']
+            product_where.append("(p.shop_label = ? OR instr(',' || p.shop_label || ',', ',' || ? || ',') > 0)")
+            product_params.extend([label, label])
+        if filters.get('product_id'):
+            product_where.append('p.product_id = ?')
+            product_params.append(filters['product_id'])
+
+        fact_where = [
+            "(pdf.grain IN ('product', 'unit') OR pdf.grain = '')",
+            'pdf.shop_id = ?',
+            'pdf.date BETWEEN ? AND ?',
+            "pdf.product_id != ''",
+        ]
+        fact_params = [shop_id, start_date, end_date]
+        for key in ('channel', 'campaign_id', 'unit_id', 'product_id'):
+            if filters.get(key):
+                fact_where.append(f'pdf.{key} = ?')
+                fact_params.append(filters[key])
+
+        with get_db() as connection:
+            rows = connection.execute(
+                f'''WITH candidates AS (
+                        SELECT p.product_id, {date_col} AS list_date
+                        FROM products p
+                        WHERE {' AND '.join(product_where)}
+                    ), facts AS (
+                        SELECT pdf.product_id,
+                               SUM(COALESCE(pdf.ad_spend, 0)) AS ad_spend,
+                               SUM(COALESCE(pdf.attributed_payment_amount, 0)) AS attributed_payment_amount,
+                               SUM(COALESCE(pdf.impressions, 0)) AS impressions,
+                               SUM(COALESCE(pdf.clicks, 0)) AS clicks,
+                               SUM(COALESCE(pdf.payment_buyers, 0)) AS payment_buyers,
+                               SUM(COALESCE(pdf.cart_adds, 0)) AS cart_adds,
+                               SUM(COALESCE(pdf.new_buyers, 0)) AS new_buyers
+                        FROM promotion_daily_facts pdf
+                        WHERE {' AND '.join(fact_where)}
+                        GROUP BY pdf.product_id
+                    ), links AS (
+                        SELECT dd.product_id,
+                               SUM(COALESCE(dd.payment_amount, 0)) AS link_gsv,
+                               SUM(COALESCE(NULLIF(dd.net_sales, 0), dd.payment_amount - dd.refund_amount, 0)) AS link_net_sales
+                        FROM daily_data dd
+                        WHERE dd.shop_id = ? AND dd.date BETWEEN ? AND ?
+                        GROUP BY dd.product_id
+                    )
+                    SELECT c.list_date,
+                           COUNT(*) AS total_product_count,
+                           SUM(CASE WHEN f.product_id IS NOT NULL THEN 1 ELSE 0 END) AS promoted_product_count,
+                           SUM(CASE WHEN f.product_id IS NULL THEN 1 ELSE 0 END) AS unpromoted_product_count,
+                           COALESCE(SUM(f.ad_spend), 0) AS ad_spend,
+                           COALESCE(SUM(f.attributed_payment_amount), 0) AS attributed_payment_amount,
+                           COALESCE(SUM(f.impressions), 0) AS impressions,
+                           COALESCE(SUM(f.clicks), 0) AS clicks,
+                           COALESCE(SUM(f.payment_buyers), 0) AS payment_buyers,
+                           COALESCE(SUM(f.cart_adds), 0) AS cart_adds,
+                           COALESCE(SUM(f.new_buyers), 0) AS new_buyers,
+                           COALESCE(SUM(l.link_gsv), 0) AS link_gsv,
+                           COALESCE(SUM(l.link_net_sales), 0) AS link_net_sales
+                    FROM candidates c
+                    LEFT JOIN facts f ON f.product_id = c.product_id
+                    LEFT JOIN links l ON l.product_id = c.product_id
+                    GROUP BY c.list_date
+                    ORDER BY c.list_date DESC''',
+                [*product_params, *fact_params, shop_id, start_date, end_date],
             ).fetchall()
         return [dict(row) for row in rows]
 

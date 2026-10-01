@@ -605,9 +605,17 @@
   }
 
   function setMarketView(target) {
-    $$('[data-market-tab]').forEach(tab => tab.classList.toggle('is-active', tab.dataset.marketTab === target));
+    $$('[data-market-tab]').forEach(tab => {
+      const active = tab.dataset.marketTab === target;
+      tab.classList.toggle('is-active', active);
+      tab.setAttribute('aria-selected', String(active));
+    });
     $$('[data-market-panel]').forEach(panel => { panel.hidden = panel.dataset.marketPanel !== target; });
-    $$('[data-market-entry]').forEach(entry => entry.classList.toggle('is-active', entry.dataset.marketEntry === target));
+    $$('[data-market-entry]').forEach(entry => {
+      const active = entry.dataset.marketEntry === target;
+      entry.classList.toggle('is-active', active);
+      entry.setAttribute('aria-pressed', String(active));
+    });
     window.lucide?.createIcons();
   }
 
@@ -732,19 +740,23 @@
   function renderProducts(products) {
     const tbody = $('[data-mr-products-body]');
     if (!products.length) {
-      tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--text-tertiary);padding:24px">没有符合条件的数据</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--text-tertiary);padding:24px">没有符合条件的数据</td></tr>';
       return;
     }
     tbody.innerHTML = products.map(p => {
       const rankBadge = p.rank <= 3
         ? `<span class="ui-badge ui-badge--${p.rank === 1 ? 'danger' : p.rank === 2 ? 'warning' : 'success'}">${p.rank}</span>`
         : `<span class="ui-badge ui-badge--muted">${p.rank}</span>`;
+      const changeBadge = p.rank_change == null
+        ? '<span style="color:var(--text-tertiary)">-</span>'
+        : `<span style="font-family:var(--font-mono);color:var(${p.list_type === '下降榜' ? '--text-secondary' : '--color-success, #10b981'})">${p.list_type === '下降榜' ? '↓' : '↑'}${Math.abs(p.rank_change)}</span>`;
       return `<tr>
         <td>${rankBadge}</td>
         <td><span class="ui-badge ui-badge--info">${escapeHtml(p.category)}</span></td>
         <td><span class="ui-badge ui-badge--muted">${escapeHtml(p.list_type)}</span></td>
         <td style="max-width:300px">${escapeHtml(p.title || '-')}</td>
         <td style="color:var(--text-secondary)">${escapeHtml(p.shop || '-')}</td>
+        <td>${changeBadge}</td>
         <td style="font-family:var(--font-mono)">${fmtInt(p.buyers)}</td>
         <td style="font-family:var(--font-mono)">${fmtInt(p.visitors)}</td>
       </tr>`;

@@ -1,4 +1,10 @@
 /* 推广分析视图扩展样式（总览渠道卡 / 计划看板 / 结构抽屉）。 */
+/* 第二批 NUI 收敛：上下文条 / 结论区 / 筛选工具条 */
+.promotion-context-bar { margin-bottom: var(--space-3); }
+.promotion-decision-card.ui-decision-card { padding: 0; border: 0; background: transparent; }
+.promotion-decision-card > .promotion-command { margin-bottom: 0; }
+.promotion-campaigns__filters, .promotion-drill-toolbar { margin-bottom: var(--space-3); }
+.promotion-drill-toolbar .ui-table-toolbar__main .input { min-width: 140px; }
 .promotion-view-tabs { display: flex; width: 100%; margin-bottom: 16px; }
 .promotion-view-tabs button { flex: 1; justify-content: center; min-width: 0; }
     .promotion-view-tabs button { display: inline-flex; align-items: center; gap: 6px; }
@@ -29,11 +35,21 @@
 .promotion-pager:empty { display: none; }
 .promotion-campaign-toggle { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; padding: 0; border: 0; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; }
 .promotion-campaign-toggle:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+.promotion-new__filters { margin-bottom: var(--space-2); }
+.promotion-new-launch-table-wrap { max-height: 360px; overflow-y: auto; }
+.promotion-new-launch-table-wrap thead th { position: sticky; top: 0; z-index: 1; background: var(--surface-base); }
+.promotion-new-launch-table-wrap td, .promotion-new-launch-table-wrap th { white-space: nowrap; }
+.promotion-new-product { display: flex; align-items: center; gap: var(--space-2); min-width: 0; }
+.promotion-new-product img { width: 32px; height: 32px; border-radius: var(--radius-sm); object-fit: cover; flex: 0 0 auto; }
+.promotion-new-product__title { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 260px; }
+.promotion-new-product__sub { font-size: var(--font-size-meta); color: var(--text-secondary); white-space: nowrap; }
 @media (max-width: 760px) {
   .promotion-view-tabs { overflow-x: auto; justify-content: flex-start; }
   .promotion-view-tabs button { flex: 0 0 auto; min-width: 120px; }
   .promotion-campaigns__filters { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .promotion-campaigns__filters > * { min-width: 0; width: 100%; }
+  .promotion-new__filters { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .promotion-new__filters > * { min-width: 0; width: 100%; }
 }
 @media (max-width: 560px) {
   .promotion-campaigns__filters { grid-template-columns: 1fr; }

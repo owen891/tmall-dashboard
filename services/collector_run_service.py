@@ -446,6 +446,8 @@ def stage_source_snapshot(batch_id, source_key, table, date_col, *, db_path=None
     they are migrated to native two-phase publishing.
     """
     import json as _json
+    if source_key == 'dts_market':
+        return _stage_dts_market_snapshot(batch_id, db_path=db_path)
     allowed_tables = {
         'daily_data', 'monthly_data', 'sycm_flow_source_daily',
         'sycm_item_flow_source_daily', 'sycm_market_item_rank',
@@ -484,6 +486,50 @@ def stage_source_snapshot(batch_id, source_key, table, date_col, *, db_path=None
             )
         conn.commit()
     return {'row_count': len(rows), 'status': 'published', 'latest': latest}
+
+
+def _stage_dts_market_snapshot(batch_id, *, db_path=None):
+    """dts_market 快照分支：按最新市场分析批次快照 market_products 行。
+
+    该源按 4 周窗口成批导入（无单一日期事实表），采集器自身已写
+    collector-native staging 摘要行；这里校验最新批次并发布快照摘要。
+    """
+    import json as _json
+    with get_db(db_path) as conn:
+        existing_row = conn.execute(
+            "SELECT COUNT(*) AS count, SUM(status = 'published') AS published "
+            "FROM collector_data_staging WHERE batch_id = ?", (batch_id,)
+        ).fetchone()
+        if existing_row['count'] and existing_row['count'] == existing_row['published']:
+            return {'row_count': existing_row['count'], 'status': 'published',
+                    'source': 'collector-native-staging'}
+        latest = conn.execute(
+            "SELECT id, analysis_date FROM market_analysis_runs "
+            "WHERE source='店透视市场排行' ORDER BY id DESC LIMIT 1"
+        ).fetchone()
+        if latest is None:
+            return {'row_count': 0, 'status': 'rejected', 'reason': 'empty_source'}
+        row_count = conn.execute(
+            'SELECT COUNT(*) FROM market_products WHERE run_id = ?', (latest['id'],)
+        ).fetchone()[0]
+        conn.execute('DELETE FROM collector_data_staging WHERE batch_id = ?', (batch_id,))
+        payload = {
+            'market_run_id': latest['id'],
+            'analysis_date': latest['analysis_date'],
+            'row_count': row_count,
+        }
+        conn.execute(
+            '''INSERT INTO collector_data_staging
+               (source_key, batch_id, unit_type, unit_key, payload_json, status,
+                quality_message, published_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)''',
+            ('dts_market', batch_id, 'market_batch', f"run:{latest['id']}",
+             _json.dumps(payload, ensure_ascii=False), 'published',
+             f"market batch snapshot date={latest['analysis_date']}"),
+        )
+        conn.commit()
+    return {'row_count': row_count, 'status': 'published',
+            'latest': latest['analysis_date']}
 
 
 def read_artifact(artifact_id, run_id, *, db_path=None):

@@ -65,7 +65,11 @@
     if (compareControl) { compareControl.style.display = annual ? 'none' : 'grid'; }
     document.querySelector('.dashboard-operating-view').style.display = annual ? 'none' : 'grid';
     $('dashboardAnnualView').style.display = annual ? 'block' : 'none';
-    $('dashboardTitle').textContent = `${document.querySelector('[data-category-mode]')?.selectedOptions?.[0]?.textContent || '全部品类'} · ${annual ? '年度复盘' : mode === 'week' ? '本周经营' : mode === 'custom' ? '自定义周期' : '本月经营'}`;
+    const categoryLabel = document.querySelector('[data-category-mode]')?.selectedOptions?.[0]?.textContent || '全部品类';
+    const periodLabel = annual ? '年度复盘' : mode === 'week' ? '本周经营' : mode === 'custom' ? '自定义周期' : '本月经营';
+    $('dashboardTitle').textContent = `${categoryLabel} · ${periodLabel}`;
+    const context = $('categoryDashboardContext');
+    if (context) context.textContent = `${categoryLabel} · ${periodLabel}`;
   }
 
   function basisText(basis) {

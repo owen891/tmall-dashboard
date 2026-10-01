@@ -4,7 +4,7 @@ const { spawnSync } = require('node:child_process');
 
 const root = path.resolve(__dirname, '..', 'frontend', 'ui_demo');
 const pagesDir = path.join(root, 'pages');
-const required = ['overview', 'products', 'promotion', 'lifecycle', 'reviews', 'data-center', 'settings', 'creative-board'];
+const required = ['overview', 'products', 'promotion', 'new-products', 'lifecycle', 'reviews', 'data-center', 'settings', 'creative-board'];
 const errors = [];
 const read = (file) => {
   try { return fs.readFileSync(file, 'utf8').replace(/\r\n?/g, '\n'); }
@@ -93,12 +93,35 @@ for (const hook of ['data-promotion-alerts', 'data-promotion-tabs', 'data-promot
 const promotionAdapter = read(path.join(root, 'assets', 'promotion-live.js'));
 assert(promotionAdapter.includes("DemoApi.domainRequest('/api/promotion?"), 'promotion: primary data must use the promotion domain API');
 
+const newProducts = read(path.join(pagesDir, 'new-products.html'));
+const newProductsAdapter = read(path.join(root, 'assets', 'new-products-live.js'));
+for (const hook of ['data-promotion-new-funnel', 'data-promotion-new-kpi', 'data-promotion-new-launch-body', 'data-promotion-new-body', 'data-promotion-structure-dialog', 'data-new-products-image-dialog', 'data-new-products-image-preview']) {
+  assert(newProducts.includes(hook), `new-products: missing workflow hook ${hook}`);
+}
+assert(newProducts.includes('../assets/creative-board.css?'), 'new-products: missing creative detail styles');
+assert(newProducts.includes('../assets/new-products-live.js'), 'new-products: missing live adapter');
+assert(newProductsAdapter.includes('/api/promotion/new-products?'), 'new-products: missing API request');
+assert(newProductsAdapter.includes('/api/creative-board?'), 'new-products: missing inline creative API request');
+assert(newProductsAdapter.includes('renderCreativePanel'), 'new-products: missing inline creative renderer');
+assert(newProductsAdapter.includes('data-new-products-image'), 'new-products: missing creative preview hook');
+assert(!newProductsAdapter.includes('window.location.href = `/creative-board?'), 'new-products: creative tab must not navigate away');
+assert(newProductsAdapter.includes("addEventListener('tmall:date-range-change'"), 'new-products: missing date range listener');
+assert(newProducts.includes('data-promotion-new-launch-toggle'), 'new-products: missing launch expand control');
+assert(newProductsAdapter.includes('total_product_count'), 'new-products: missing complete launch count');
+assert(newProductsAdapter.includes('promotion_coverage'), 'new-products: missing launch coverage metric');
+assert(newProductsAdapter.includes('launchesExpanded'), 'new-products: missing launch expand state');
+assert(newProductsAdapter.includes('cb-creative-table'), 'new-products: missing creative table');
+assert(newProductsAdapter.includes('data-new-products-creative-sort'), 'new-products: missing creative sort controls');
+assert(newProductsAdapter.includes("creativeSort: { key: 'clicks', direction: 'desc' }"), 'new-products: missing default creative sort');
+assert(read(path.join(root, 'assets', 'creative-board.css')).includes('.cb-creative-table'), 'new-products: missing creative table styles');
+assert(!promotion.includes('new-products'), 'promotion: new-products must be a standalone page');
+
 const creativeBoard = read(path.join(pagesDir, 'creative-board.html'));
 const creativeBoardAdapter = read(path.join(root, 'assets', 'creative-board-live.js'));
 const creativeBoardStyles = read(path.join(root, 'assets', 'creative-board.css'));
 assert(creativeBoard.includes('data-page="creative-board"'), 'creative-board: wrong data-page');
 assert(creativeBoard.includes('../assets/creative-board-live.js'), 'creative-board: missing live adapter');
-assert(creativeBoardAdapter.includes("DemoApi.domainRequest('/api/creative-board')"), 'creative-board: missing API request');
+assert(creativeBoardAdapter.includes("DemoApi.domainRequest('/api/creative-board'") , 'creative-board: missing API request');
 assert(creativeBoardStyles.includes('@media (max-width: 900px)'), 'creative-board: missing narrow layout contract');
 assert(creativeBoardStyles.includes('@media (max-width: 560px)'), 'creative-board: missing mobile layout contract');
 
@@ -150,15 +173,18 @@ assert(!settingsAdapter.includes('view_templates'), 'settings: product view temp
 assert(settingsAdapter.includes('mapping_templates: clone(templateDraft.mapping_templates)'), 'settings: import rules must save a minimal mapping payload');
 const shell = read(path.join(root, 'assets', 'shell.js'));
 const shellCss = read(path.join(root, 'assets', 'shell.css'));
+const dateRangeStore = read(path.join(root, 'assets', 'runtime', 'date-range-store.js'));
 for (const value of ['today', 'yesterday', '7d', '30d', '90d', 'this_week', 'last_week', 'this_month', 'last_month', 'custom']) {
   assert(shell.includes(`value="${value}"`), `shell: missing date preset ${value}`);
 }
 for (const value of ['none', 'previous_period', 'year_over_year']) {
   assert(shell.includes(`value="${value}"`), `shell: missing compare mode ${value}`);
 }
-assert(shell.includes("DemoApi.request('/api/periods?dim=daily')"), 'shell: date anchor must come from the database');
-assert(shell.includes("new CustomEvent('tmall:date-range-change'"), 'shell: missing shared date range event');
-assert(shell.includes('compareMode'), 'shell: missing compare mode state');
+assert(shell.includes('runtime/date-range-store.js'), 'shell: missing date-range-store module bootstrap');
+assert(shell.includes('createDateRangeStore({'), 'shell: date range store must be wired with explicit deps');
+assert(dateRangeStore.includes("DemoApi.request('/api/periods?dim=daily')"), 'date-range-store: date anchor must come from the database');
+assert(dateRangeStore.includes("new CustomEvent('tmall:date-range-change'"), 'date-range-store: missing shared date range event');
+assert(dateRangeStore.includes('compareMode'), 'date-range-store: missing compare mode state');
 for (const state of ['loading', 'no-data', 'insufficient-data', 'missing-fields', 'calculation-failed', 'source-unavailable', 'partial']) {
   assert(shell.includes(state), `shell: missing data state ${state}`);
 }
@@ -172,15 +198,15 @@ for (const removed of ['health', 'review', 'market', 'keywords', 'traffic', 'pos
   assert(!new RegExp(`\\['${removed}'`).test(shell), `shell: removed module ${removed} remains in navigation`);
 }
 assert(shell.includes('data-calendar-month="0"') && shell.includes('data-calendar-month="1"'), 'shell: custom picker must render two calendar months');
-assert(shell.includes("draftStart ? formatDate(draftStart) : state.startDate") && shell.includes("draftStart ? '' : state.endDate"), 'shell: calendar must render the pending custom range instead of the previously applied range');
-assert(shell.includes('renderCalendar();') && shell.includes('请选择结束日期'), 'shell: choosing a custom start date must immediately refresh the calendar and prompt for an end date');
-assert(shell.includes("event.stopPropagation();") && shell.includes("event.target.closest('[data-calendar-date]')"), 'shell: calendar date clicks must not be mistaken for outside clicks after the calendar rerenders');
-assert(shell.includes('当前范围：') && shell.includes('点击任意日期重新选择'), 'shell: an applied custom range must have an unambiguous reopening prompt');
-assert(shell.includes("event.key !== 'Escape'") && shell.includes('trigger.focus()'), 'shell: the custom picker must close and return focus on Escape');
-assert(shell.includes("closePopover(true)") && shell.includes("trigger.addEventListener('click'"), 'shell: closing the custom picker from its trigger must clear a half-selected range');
-assert(shell.includes("if (resetDraft) {\n      resetDraftRange();\n      presetSelect.value = state.preset;"), 'shell: cancelling a custom range must restore the previously applied shortcut');
-assert(shell.includes("if (preset === 'custom') { openPopover(); return; }\n    closePopover(true);"), 'shell: selecting a shortcut must discard a half-selected custom range');
-assert(shell.includes("window.addEventListener('popstate'"), 'shell: browser history navigation must restore the active date range');
+assert(dateRangeStore.includes("draftStart ? formatDate(draftStart) : state.startDate") && dateRangeStore.includes("draftStart ? '' : state.endDate"), 'date-range-store: calendar must render the pending custom range instead of the previously applied range');
+assert(dateRangeStore.includes('renderCalendar();') && dateRangeStore.includes('请选择结束日期'), 'date-range-store: choosing a custom start date must immediately refresh the calendar and prompt for an end date');
+assert(dateRangeStore.includes("event.stopPropagation();") && dateRangeStore.includes("event.target.closest('[data-calendar-date]')"), 'date-range-store: calendar date clicks must not be mistaken for outside clicks after the calendar rerenders');
+assert(dateRangeStore.includes('当前范围：') && dateRangeStore.includes('点击任意日期重新选择'), 'date-range-store: an applied custom range must have an unambiguous reopening prompt');
+assert(dateRangeStore.includes("event.key !== 'Escape'") && dateRangeStore.includes('trigger.focus()'), 'date-range-store: the custom picker must close and return focus on Escape');
+assert(dateRangeStore.includes("closePopover(true)") && dateRangeStore.includes("trigger.addEventListener('click'"), 'date-range-store: closing the custom picker from its trigger must clear a half-selected range');
+assert(dateRangeStore.includes("if (resetDraft) {\n      resetDraftRange();\n      presetSelect.value = state.preset;") || dateRangeStore.includes("if (resetDraft) {\n        resetDraftRange();\n        presetSelect.value = state.preset;"), 'date-range-store: cancelling a custom range must restore the previously applied shortcut');
+assert(dateRangeStore.includes("if (preset === 'custom') { openPopover(); return; }\n    closePopover(true);") || dateRangeStore.includes("if (preset === 'custom') { openPopover(); return; }\n      closePopover(true);"), 'date-range-store: selecting a shortcut must discard a half-selected custom range');
+assert(dateRangeStore.includes("addEventListener('popstate'"), 'date-range-store: browser history navigation must restore the active date range');
 assert(!shell.includes('data-period="60d"'), 'shell: obsolete 60-day shortcut remains');
 assert(!shell.includes('data-period-start') && !shell.includes('data-period-end'), 'shell: native date input demo remains');
 assert(/\.toolbox-dialog\s*{[^}]*max-height:\s*calc\(100dvh - 24px\)/i.test(shellCss), 'shell.css: toolbox dialog must be bounded by the viewport');

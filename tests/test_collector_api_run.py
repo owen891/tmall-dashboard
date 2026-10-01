@@ -27,7 +27,7 @@ class CollectorApiRunTests(unittest.TestCase):
         response = self.client.get('/api/collect/health')
         self.assertEqual(response.status_code, 200)
         data = response.get_json()['data']
-        self.assertEqual(data['source_count'], 6)
+        self.assertEqual(data['source_count'], 7)
         self.assertIn('staging_7d', data)
         self.assertIn('status', data)
         self.assertIn('consecutive_failures', data['sources'][0])
@@ -36,7 +36,7 @@ class CollectorApiRunTests(unittest.TestCase):
         response = self.client.get('/api/collect/catalog')
         self.assertEqual(response.status_code, 200)
         sources = response.get_json()['data']['sources']
-        self.assertEqual(len(sources), 6)
+        self.assertEqual(len(sources), 7)
         sycm = next(item for item in sources if item['source_key'] == 'sycm_flow')
         self.assertEqual(sycm['publish_mode'], 'staging_atomic')
         self.assertIn('channel_name', sycm['fields'])

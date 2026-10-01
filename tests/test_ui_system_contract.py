@@ -167,9 +167,13 @@ def test_pages_keep_shared_shell_and_design_tokens():
 
 def test_shared_date_range_supports_late_subscribers_and_analysis_sync():
     shell = (ASSETS / "shell.js").read_text(encoding="utf-8")
+    store = (ASSETS / "runtime" / "date-range-store.js").read_text(encoding="utf-8")
     analysis = (ASSETS / "analysis-live.js").read_text(encoding="utf-8")
-    assert "subscribe: (subscriber, immediate = true)" in shell
-    assert "setRange: setSharedRange" in shell
+    # shell 拆分后只负责装配；订阅契约锚定 runtime/date-range-store.js
+    assert "runtime/date-range-store.js" in shell
+    assert "createDateRangeStore" in shell
+    assert "subscribe: (subscriber, immediate = true)" in store
+    assert "setRange: setSharedRange" in store
     assert "window.TmallDateRange?.subscribe?.((range) =>" in analysis
     assert "window.TmallDateRange?.setRange?.(start, end, 'custom')" in analysis
     assert "if (currentConfig) runAnalysis();" in analysis

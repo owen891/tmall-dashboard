@@ -28,12 +28,18 @@ class PromotionViewApiTests(unittest.TestCase):
         self.client = self.app.test_client()
         with get_db(self.path) as conn:
             conn.executescript('''
-                INSERT INTO products (product_id, title, image_url) VALUES
-                    ('p1', '演示凉感四件套', 'https://cdn.example.com/p1.jpg'),
-                    ('p2', '演示纯棉袜子', '');
+                INSERT INTO products (product_id, title, image_url, list_date) VALUES
+                    ('p1', '演示凉感四件套', 'https://cdn.example.com/p1.jpg', '2026-03-20'),
+                    ('p2', '演示纯棉袜子', '', '2026-04-05'),
+                    ('p3', '演示旧款基础袜', '', '2025-01-01');
                 INSERT INTO monthly_data (product_id, month, guide_visitors, guide_potential)
                 VALUES ('p1', '2026-04', 100, 12);
                 UPDATE products SET shop_label = '标品袜子' WHERE product_id = 'p1';
+                -- 商品销售（daily_data）供新品看板联动口径
+                INSERT INTO daily_data (shop_id, product_id, date, payment_amount, refund_amount)
+                VALUES
+                    ('default', 'p1', '2026-04-01', 300, 30),
+                    ('default', 'p1', '2026-04-02', 200, 0);
                 -- 计划粒度行（维度报表回填形态：channel=场景，带计划名与行为指标）
                 INSERT INTO promotion_daily_facts
                     (date, channel, campaign_id, campaign_name, grain, cart_adds, cart_cost, new_buyers,
@@ -46,6 +52,14 @@ class PromotionViewApiTests(unittest.TestCase):
                 INSERT INTO promotion_daily_facts
                     (date, channel, product_id, grain, ad_spend, attributed_payment_amount, impressions, clicks)
                 VALUES ('2026-04-01', '全部', 'p1', 'product', 999, 999, 9999, 999);
+                -- 新品 p2 的商品粒度推广行（60 天内上架 → 应进新品看板）
+                INSERT INTO promotion_daily_facts
+                    (date, channel, product_id, grain, ad_spend, attributed_payment_amount, impressions, clicks, payment_buyers, cart_adds)
+                VALUES ('2026-04-01', '全部', 'p2', 'product', 40, 120, 400, 80, 8, 4);
+                -- 旧款 p3 的商品粒度推广行（上架超 60 天 → 不进新品看板）
+                INSERT INTO promotion_daily_facts
+                    (date, channel, product_id, grain, ad_spend, attributed_payment_amount, impressions, clicks)
+                VALUES ('2026-04-01', '全部', 'p3', 'product', 70, 210, 700, 140);
                 -- 月度汇总行（不得进入日粒度视图）
                 INSERT INTO promotion_daily_facts
                     (date, channel, campaign_id, campaign_name, grain, ad_spend)
@@ -187,7 +201,15 @@ class PromotionViewApiTests(unittest.TestCase):
         self.assertEqual([row['product_id'] for row in category['products']], ['p1'])
         self.assertEqual(empty['products'], [])
 
-    def test_creative_board_excludes_unlinked_and_system_creatives(self):
+    def test_creative_board_product_detail_includes_system_creatives_and_ignores_category_mode(self):
+        response = self.client.get('/api/creative-board?product_id=p1&category_mode=sock')
+        self.assertEqual(response.status_code, 200)
+        data = response.get_json()['data']
+        self.assertEqual([row['product_id'] for row in data['products']], ['p1'])
+        self.assertEqual(data['totals']['creative_count'], 5)
+        names = {row['creative_id'] for row in data['products'][0]['creatives']}
+        self.assertEqual(names, {'cr1', 'cr2', 'cr3', 'cr4', 'cr5'})
+
         response = self.client.get('/api/creative-board')
         data = response.get_json()['data']
         names = [creative['creative_name'] for product in data['products'] for creative in product['creatives']]
@@ -218,11 +240,13 @@ class PromotionViewApiTests(unittest.TestCase):
         self.assertAlmostEqual(plans['c1']['new_customer_cost'], 150 / 3, places=6)
 
     def test_product_detail_falls_back_to_product_fact_when_plan_fact_is_missing(self):
+        # p2 在 setUp 里已有一行商品粒度事实（花费 40），本测试再补一行，
+        # 商品总账兜底应聚合两行：花费 120、加购 12、拉新 2。
         from db import get_db
         with get_db(self.path) as conn:
             conn.execute(
                 "INSERT INTO promotion_daily_facts (date, channel, product_id, grain, ad_spend, attributed_payment_amount, impressions, clicks, payment_buyers, cart_adds, new_buyers) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                ('2026-04-01', '全部', 'p2', 'product', 80, 200, 1000, 50, 4, 8, 2),
+                ('2026-04-02', '全部', 'p2', 'product', 80, 200, 1000, 50, 4, 8, 2),
             )
             conn.commit()
         response = self.client.get('/api/promotion/product-detail?start=2026-04-01&end=2026-04-02&product_id=p2')
@@ -231,8 +255,174 @@ class PromotionViewApiTests(unittest.TestCase):
         self.assertEqual(len(data['campaigns']), 1)
         self.assertEqual(data['campaigns'][0]['campaign_id'], 'product:p2')
         self.assertEqual(data['channel_mix'][0]['channel'], '全部')
-        self.assertEqual(data['summary']['cart_adds'], 8)
-        self.assertAlmostEqual(data['summary']['new_customer_cost'], 40.0, places=6)
+        self.assertEqual(data['summary']['cart_adds'], 12)
+        self.assertAlmostEqual(data['summary']['new_customer_cost'], 60.0, places=6)
+
+    def test_new_products_scopes_to_60_day_window_and_excludes_old_items(self):
+        """新品看板：60 天内上架商品进榜，旧款排除；含销售联动与全店占比。"""
+        response = self.client.get('/api/promotion/new-products?start=2026-04-01&end=2026-04-02')
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        data = payload['data']
+        rows = {row['product_id']: row for row in data['rows']}
+        # p2 上架 2026-04-05？——窗口以 end=2026-04-02 回看 60 天，
+        # p2 的 list_date=2026-04-05 晚于周期末，不算新品（口径与复盘一致：上架不能晚于周期末）
+        self.assertNotIn('p3', rows, '上架超 60 天的旧款不应出现在新品看板')
+        # p1（2026-03-20 上架，窗口内）进榜
+        self.assertIn('p1', rows)
+        self.assertAlmostEqual(rows['p1']['ad_spend'], 999.0, places=6)
+        self.assertAlmostEqual(rows['p1']['link_gsv'], 500.0, places=6)
+        self.assertAlmostEqual(rows['p1']['link_net_sales'], 470.0, places=6)
+        self.assertAlmostEqual(rows['p1']['roi'], 999.0 / 999.0, places=6)
+        # totals：新品花费 999 占全店商品粒度盘（999+40+70=1109）的比例
+        totals = data['totals']
+        self.assertEqual(totals['product_count'], 1)
+        self.assertAlmostEqual(totals['spend_share'], 999.0 / 1109.0, places=6)
+        self.assertEqual(data['window_days'], 60)
+        self.assertEqual(data['new_cutoff'], '2026-02-01')
+        # 上架节奏按 list_date 聚合
+        self.assertEqual([item['list_date'] for item in data['launches']], ['2026-03-20'])
+
+    def test_new_products_excludes_products_listed_after_period_end(self):
+        """list_date 晚于周期末的商品不算新品（复盘口径：上架不能晚于周期末）。"""
+        from db import get_db
+        with get_db(self.path) as conn:
+            conn.execute("UPDATE products SET list_date = '2026-04-10' WHERE product_id = 'p1'")
+            conn.commit()
+        response = self.client.get('/api/promotion/new-products?start=2026-04-01&end=2026-04-02')
+        data = response.get_json()['data']
+        self.assertEqual(data['rows'], [])
+        self.assertEqual(data['totals']['product_count'], 0)
+
+    def test_new_products_requires_valid_dates(self):
+        response = self.client.get('/api/promotion/new-products')
+        self.assertEqual(response.status_code, 422)
+        response = self.client.get('/api/promotion/new-products?start=2026-13-01&end=2026-04-02')
+        self.assertEqual(response.status_code, 422)
+
+    def test_new_products_includes_exact_cutoff_and_normalizes_timestamp(self):
+        """新品窗口包含截止日，带时间的 list_date 参与日期比较。"""
+        from db import get_db
+
+        with get_db(self.path) as conn:
+            conn.execute(
+                "INSERT INTO products (product_id, title, list_date) VALUES (?, ?, ?)",
+                ('p-cutoff', '窗口边界商品', '2026-02-01 12:34:56'),
+            )
+            conn.execute(
+                """INSERT INTO promotion_daily_facts
+                   (shop_id, date, channel, product_id, grain, ad_spend, attributed_payment_amount)
+                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                ('default', '2026-04-02', '全部', 'p-cutoff', 'product', 10, 30),
+            )
+            conn.commit()
+
+        response = self.client.get('/api/promotion/new-products?start=2026-04-01&end=2026-04-02')
+        self.assertEqual(response.status_code, 200)
+        data = response.get_json()['data']
+        row = next(item for item in data['rows'] if item['product_id'] == 'p-cutoff')
+        self.assertEqual(row['list_date'], '2026-02-01')
+        self.assertEqual(data['new_cutoff'], '2026-02-01')
+
+    def test_new_products_total_counts_unpromoted_items_but_rows_do_not_fabricate_them(self):
+        """未投放新品计入新品总数，但不能伪造推广事实行。"""
+        from db import get_db
+
+        with get_db(self.path) as conn:
+            conn.execute(
+                "INSERT INTO products (product_id, title, list_date) VALUES (?, ?, ?)",
+                ('p-unpromoted', '未投放新品', '2026-03-01'),
+            )
+            conn.commit()
+
+        response = self.client.get('/api/promotion/new-products?start=2026-04-01&end=2026-04-02')
+        self.assertEqual(response.status_code, 200)
+        data = response.get_json()['data']
+        self.assertNotIn('p-unpromoted', {row['product_id'] for row in data['rows']})
+        self.assertGreaterEqual(data['totals']['new_total'], data['totals']['product_count'])
+        self.assertTrue(any(
+            limitation.startswith('商品明细仅展示有推广事实的新品')
+            for limitation in data['limitations']
+        ))
+        launch = next(item for item in data['launches'] if item['list_date'] == '2026-03-01')
+        self.assertEqual(launch['total_product_count'], 1)
+        self.assertEqual(launch['promoted_product_count'], 0)
+        self.assertEqual(launch['unpromoted_product_count'], 1)
+        self.assertEqual(launch['promotion_coverage'], 0)
+        self.assertEqual(data['availability'], 'available')
+
+    def test_new_product_launches_aggregate_same_list_date_and_expose_metrics(self):
+        """上架同日的多个新品合并为一个批次，并保留投放与销售汇总。"""
+        from db import get_db
+
+        with get_db(self.path) as conn:
+            conn.execute(
+                "INSERT INTO products (product_id, title, list_date) VALUES (?, ?, ?)",
+                ('p-same-day', '同批次新品', '2026-03-20'),
+            )
+            conn.execute(
+                """INSERT INTO promotion_daily_facts
+                   (shop_id, date, channel, product_id, grain, ad_spend,
+                    attributed_payment_amount, impressions, clicks, payment_buyers,
+                    cart_adds, new_buyers)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                ('default', '2026-04-02', '全部', 'p-same-day', 'product', 60, 180, 600, 120, 12, 6, 3),
+            )
+            conn.execute(
+                """INSERT INTO daily_data
+                   (shop_id, product_id, date, payment_amount, refund_amount)
+                   VALUES (?, ?, ?, ?, ?)""",
+                ('default', 'p-same-day', '2026-04-02', 90, 10),
+            )
+            conn.commit()
+
+        data = self.client.get(
+            '/api/promotion/new-products?start=2026-04-01&end=2026-04-02'
+        ).get_json()['data']
+        launch = next(item for item in data['launches'] if item['list_date'] == '2026-03-20')
+        self.assertEqual(launch['total_product_count'], 2)
+        self.assertEqual(launch['promoted_product_count'], 2)
+        self.assertEqual(launch['unpromoted_product_count'], 0)
+        self.assertEqual(launch['promotion_coverage'], 1)
+        self.assertAlmostEqual(launch['ad_spend'], 1059.0, places=6)
+        self.assertAlmostEqual(launch['link_net_sales'], 550.0, places=6)
+        self.assertEqual(launch['clicks'], 999 + 120)
+        self.assertEqual(launch['cart_adds'], 6)
+
+    def test_new_products_are_scoped_by_shop(self):
+        """同一商品维度存在其他店铺投放时，当前店铺不能读到对方事实。"""
+        from db import get_db
+
+        with get_db(self.path) as conn:
+            conn.execute(
+                "INSERT INTO products (product_id, title, list_date) VALUES (?, ?, ?)",
+                ('p-shop-b', '店铺B新品', '2026-03-01'),
+            )
+            conn.execute(
+                """INSERT INTO promotion_daily_facts
+                   (shop_id, date, channel, product_id, grain, ad_spend, attributed_payment_amount)
+                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                ('shop-b', '2026-04-01', '全部', 'p-shop-b', 'product', 80, 240),
+            )
+            conn.execute(
+                """INSERT INTO daily_data
+                   (shop_id, product_id, date, payment_amount, refund_amount)
+                   VALUES (?, ?, ?, ?, ?)""",
+                ('shop-b', 'p-shop-b', '2026-04-01', 500, 20),
+            )
+            conn.commit()
+
+        default_data = self.client.get(
+            '/api/promotion/new-products?start=2026-04-01&end=2026-04-02'
+        ).get_json()['data']
+        self.assertNotIn('p-shop-b', {row['product_id'] for row in default_data['rows']})
+
+        shop_b_data = self.client.get(
+            '/api/promotion/new-products?start=2026-04-01&end=2026-04-02&shop_id=shop-b'
+        ).get_json()['data']
+        shop_b_row = next(row for row in shop_b_data['rows'] if row['product_id'] == 'p-shop-b')
+        self.assertEqual(shop_b_row['ad_spend'], 80.0)
+        self.assertEqual(shop_b_row['link_net_sales'], 480.0)
 
     def test_campaign_detail_returns_products_from_edges(self):
         response = self.client.get('/api/promotion/campaign-detail?start=2026-04-01&end=2026-04-02&campaign_id=c1')
