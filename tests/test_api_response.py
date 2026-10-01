@@ -116,6 +116,23 @@ class ApiResponseTests(unittest.TestCase):
         self.assertEqual(payload['assumptions'], ['按自然日聚合'])
         self.assertEqual(payload['unknowns'], ['缺少渠道归因'])
 
+    def test_failure_maps_unambiguous_codes_to_availability(self):
+        from flask import Flask
+        from api.api_response import failure
+
+        app = Flask(__name__)
+        with app.test_request_context('/'):
+            no_data, no_data_status = failure('NOT_FOUND', '该年度尚未创建目标')
+            unmapped, unmapped_status = failure('SOMETHING_ELSE', 'boom')
+            no_data_payload = no_data.get_json()
+            unmapped_payload = unmapped.get_json()
+
+        self.assertEqual(no_data_status, 400)
+        self.assertEqual(no_data_payload['availability'], 'no-data')
+        # 未映射的错误码保留历史默认值，调用方行为不因映射表而意外改变。
+        self.assertEqual(unmapped_status, 400)
+        self.assertEqual(unmapped_payload['availability'], 'calculation-failed')
+
 
 if __name__ == '__main__':
     unittest.main()

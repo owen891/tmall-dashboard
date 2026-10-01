@@ -70,7 +70,13 @@ def get_goals(year):
         return denied
     result = goals_service.get_year(year)
     if result is None:
-        return failure('NOT_FOUND', '该年度尚未创建目标', status=404)
+        # 「该年度尚未创建目标」是正常业务空态而非错误：以 200 + no-data 契约表达，
+        # 前端按 availability 分支渲染空态，监控/审计不再把它记成 httpError。
+        return success(
+            None,
+            availability='no-data',
+            freshness={'period': str(year)},
+        )
     return success(
         result,
         evidence_level='full',

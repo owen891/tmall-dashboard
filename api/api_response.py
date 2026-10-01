@@ -1,6 +1,6 @@
 from uuid import uuid4
 
-from flask import jsonify
+from flask import current_app, has_app_context, jsonify
 from werkzeug.exceptions import BadRequest, UnsupportedMediaType
 
 
@@ -9,6 +9,37 @@ AVAILABILITY_VALUES = {
     'calculation-failed', 'source-unavailable', 'partial',
 }
 EVIDENCE_LEVEL_VALUES = {'full', 'partial', 'insufficient'}
+
+# Error responses carry an availability so the UI can explain *why* there is
+# nothing to show. `failure()` used to hard-code 'calculation-failed' for every
+# error, so all 252 call sites reported "计算失败" — including a missing query
+# parameter and an empty year. Map the codes whose meaning is unambiguous;
+# anything unmapped keeps the historical default so no caller changes behaviour
+# by accident.
+CODE_AVAILABILITY = {
+    'NO_DATA': 'no-data',
+    'NOT_FOUND': 'no-data',
+    'VALIDATION_ERROR': 'missing-fields',
+    'DATA_CAPABILITY_ERROR': 'missing-fields',
+    'PAGE_CAPABILITY_ERROR': 'missing-fields',
+    'ENVIRONMENT_ERROR': 'source-unavailable',
+    'TOOL_NOT_AVAILABLE': 'source-unavailable',
+    'QUALITY_GATE_FAILED': 'insufficient-data',
+}
+
+
+def _resolve_availability(availability, code=None):
+    """Pick the availability for an error response, warning when it is bogus."""
+    if availability is None:
+        return CODE_AVAILABILITY.get(code, 'calculation-failed')
+    if availability not in AVAILABILITY_VALUES:
+        if has_app_context():
+            current_app.logger.warning(
+                'invalid availability %r for error code %s; falling back to calculation-failed',
+                availability, code,
+            )
+        return 'calculation-failed'
+    return availability
 
 
 class JsonObjectError(ValueError):
@@ -56,6 +87,11 @@ def success(data, availability='available', status=200, *, capabilities=None,
             freshness=None, evidence=None, assumptions=None, unknowns=None,
             scan_environment=None):
     if availability not in AVAILABILITY_VALUES:
+        if has_app_context():
+            current_app.logger.warning(
+                'invalid availability %r passed to success(); falling back to calculation-failed',
+                availability,
+            )
         availability = 'calculation-failed'
     if evidence_level not in EVIDENCE_LEVEL_VALUES:
         evidence_level = 'insufficient'
@@ -80,7 +116,7 @@ def success(data, availability='available', status=200, *, capabilities=None,
     }), status
 
 
-def failure(code, message, details=None, status=400):
+def failure(code, message, details=None, status=400, *, availability=None):
     return jsonify({
         'ok': False,
         'code': code,
@@ -88,7 +124,9 @@ def failure(code, message, details=None, status=400):
         'details': details or {},
         # Error responses carry the same context contract as successful
         # responses so the UI can explain what is blocked without parsing text.
-        'availability': 'calculation-failed',
+        # `availability` defaults to a per-code mapping (see CODE_AVAILABILITY)
+        # rather than a blanket 'calculation-failed'.
+        'availability': _resolve_availability(availability, code),
         'capabilities': {},
         'filters': {},
         'missing_fields': [],

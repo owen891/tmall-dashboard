@@ -29,6 +29,16 @@ class GoalsWorkflowTests(unittest.TestCase):
         response.close()
         return status, payload
 
+    def test_get_year_without_goal_is_no_data_not_404(self):
+        # 「该年度尚未创建目标」是正常业务空态：契约用 200 + no-data，
+        # 不再用 404（那会让前端硬编码状态码分支、审计把空态记成 httpError）。
+        status, payload = self.request('GET', '/api/goals/2026')
+
+        self.assertEqual(status, 200)
+        self.assertTrue(payload['ok'])
+        self.assertEqual(payload['availability'], 'no-data')
+        self.assertIsNone(payload['data'])
+
     def test_create_leap_year_allocation_conserves_annual_total(self):
         status, payload = self.request(
             'POST', '/api/goals', json={'year': 2024, 'annual_target': 36600},

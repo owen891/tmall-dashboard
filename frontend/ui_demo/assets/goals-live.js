@@ -153,6 +153,16 @@
     try {
       const goal = await DemoApi.domainRequest(`/api/goals/${year}`);
       if (token !== loadToken) return;
+      // 空年度契约：后端以 200 + availability='no-data' 表达「该年度尚未创建目标」，
+      // 不再用 404；空态渲染只看 availability，不猜状态码。
+      if (!goal.data || goal.availability === 'no-data') {
+        current = null; capabilities = {};
+        versionLabel.textContent = '该年度尚未创建目标';
+        renderDataState('no-data', { message: '保存年度目标后显示月度执行计划' });
+        setTableMessage(monthsBody, 5, '保存年度目标后显示月度执行计划');
+        queuePreview();
+        return;
+      }
       current = goal.data;
       capabilities = goal.capabilities || {};
       updateAnnualControls();
@@ -166,14 +176,9 @@
     } catch (error) {
       if (token !== loadToken) return;
       current = null; capabilities = {};
-      versionLabel.textContent = '该年度尚未创建目标';
-      if (error.status === 404) {
-        renderDataState('no-data', { message: '保存年度目标后显示月度执行计划' });
-        setTableMessage(monthsBody, 5, '保存年度目标后显示月度执行计划');
-      } else {
-        renderDataState('calculation-failed', { message: error.message || '目标加载失败', retry: () => load(year, replaceAnnualTarget) });
-        setTableMessage(monthsBody, 5, error.message || '目标加载失败');
-      }
+      versionLabel.textContent = '目标加载失败';
+      renderDataState('calculation-failed', { message: error.message || '目标加载失败', retry: () => load(year, replaceAnnualTarget) });
+      setTableMessage(monthsBody, 5, error.message || '目标加载失败');
       queuePreview();
     }
   }
