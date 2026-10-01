@@ -22,7 +22,9 @@ class PageCapabilitiesApiTests(unittest.TestCase):
         payload = response.get_json()
 
         self.assertTrue(payload['ok'])
-        self.assertEqual(payload['data']['summary']['page_count'], 13)
+        from services.page_capability_service import PAGE_DEFINITIONS
+
+        self.assertEqual(payload['data']['summary']['page_count'], len(PAGE_DEFINITIONS))
         self.assertIn('surfaces', payload['data'])
         self.assertIn('unsupported_capabilities', payload['data'])
         self.assertTrue(payload['capabilities']['can_view_registry'])

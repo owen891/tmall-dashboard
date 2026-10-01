@@ -146,7 +146,7 @@ async function runPage(browser, id, path, viewport) {
 
     if (id === 'promotion') {
       await clickIfVisible(page, '[data-promotion-info]', 'promotion definition open', failures);
-      await clickIfVisible(page, '[data-promotion-dialog-close]', 'promotion definition close', failures);
+      await clickIfVisible(page, '.ui-drawer.is-open .ui-drawer__close', 'promotion definition close', failures);
       await selectIfReady(page, '[data-promotion-drill-level]', 'product', 'promotion drill level', failures);
       await clickIfVisible(page, '[data-promotion-drill-load]', 'promotion drill load', failures);
       await clickIfVisible(page, '[data-promotion-manage-fields]', 'promotion fields open', failures);

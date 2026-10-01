@@ -1,6 +1,8 @@
 ﻿import gzip
 import hmac
+import json
 from urllib.parse import unquote, urlsplit
+from urllib.request import urlopen
 
 from flask import Flask, g, jsonify, redirect, request, send_from_directory
 from werkzeug.local import LocalProxy
@@ -48,6 +50,7 @@ from api.misc_legacy_api import misc_legacy_bp
 from api.api_response import JsonObjectError
 from config import APP_VERSION, Config, DEFAULT_IMPORT_SCAN_INBOX, _sqlite_url, normalize_import_scan_roots
 from desktop_runtime import resource_root
+from services.application_pages import APPLICATION_PAGES, LEGACY_REDIRECT_PAGES
 from services.shop_scope_service import (
     authorize_request_shop,
     current_request_shop_id,
@@ -57,6 +60,37 @@ from services.shop_scope_service import (
 # 获取项目根目录的绝对路径
 project_root = resource_root()
 demo_root = os.path.join(project_root, 'frontend', 'ui_demo')
+
+
+# The web client used to call the upstream release API straight from the
+# browser. Whenever the host was unreachable that produced a CORS/network
+# failure in the console on every page load, which buried real errors during
+# debugging. Proxy it here: the browser only ever talks to our own origin, and a
+# failed lookup degrades to "no new version" instead of console noise.
+_RELEASE_API = 'https://gitcode.com/api/v5/repos/owen891/tmall-dashboard/releases/latest'
+_RELEASE_PAGE = 'https://gitcode.com/owen891/tmall-dashboard/releases/latest'
+_RELEASE_TTL_SECONDS = 30 * 60
+_release_cache = {'checked_at': 0.0, 'payload': None}
+
+
+def _latest_release():
+    """Best-effort upstream release lookup. Never raises, never blocks long."""
+    now = time.monotonic()
+    if _release_cache['checked_at'] and now - _release_cache['checked_at'] < _RELEASE_TTL_SECONDS:
+        return _release_cache['payload']
+    payload = None
+    try:
+        with urlopen(_RELEASE_API, timeout=3) as response:
+            body = json.loads(response.read().decode('utf-8'))
+        payload = {
+            'tag_name': body.get('tag_name') or body.get('name'),
+            'html_url': body.get('html_url') or _RELEASE_PAGE,
+        }
+    except Exception:
+        # Offline, blocked, rate limited or malformed: all the same to us.
+        payload = None
+    _release_cache.update({'checked_at': now, 'payload': payload})
+    return payload
 
 
 def _database_path_from_uri(uri):
@@ -300,16 +334,23 @@ def create_app(config=None):
 
     @app.route('/<page>')
     def application_page(page):
-        if page == 'compare':
-            return redirect('/reviews')
-        if page == 'manage':
-            return redirect('/settings')
-        if page not in {'overview', 'analysis', 'category-dashboard', 'products', 'promotion', 'keyword-promotion', 'new-products', 'market-ranking', 'lifecycle', 'reviews', 'data-center', 'settings', 'goals', 'flow-source', 'rival-analysis', 'data-collection', 'component-catalog', 'creative-board', 'period-review'}:
+        # Legacy paths redirect to the page that replaced them. The map lives in
+        # services.application_pages so the capability registry can validate
+        # against the same source instead of a second hand-maintained list.
+        if page in LEGACY_REDIRECT_PAGES:
+            return redirect(LEGACY_REDIRECT_PAGES[page])
+        if page not in APPLICATION_PAGES:
             return jsonify({'error': 'page not found'}), 404
         return send_from_directory(os.path.join(demo_root, 'pages'), f'{page}.html', max_age=0)
 
     @app.route('/products/<product_id>')
     def product_detail_page(product_id):
+        return send_from_directory(os.path.join(demo_root, 'pages'), 'product-detail.html', max_age=0)
+
+    @app.route('/product-detail')
+    def product_detail_landing():
+        # Deep link with no product id. Serve the shell so the page can explain
+        # how to get there instead of answering a bare 404.
         return send_from_directory(os.path.join(demo_root, 'pages'), 'product-detail.html', max_age=0)
 
     @app.route('/pages/<path:path>')
@@ -327,14 +368,16 @@ def create_app(config=None):
 
     @app.route('/api/version')
     def app_version():
-        return jsonify({
-            'ok': True,
-            'data': {
-                'name': 'tmall-dashboard',
-                'version': APP_VERSION,
-                'channel': 'stable',
-            },
-        })
+        data = {
+            'name': 'tmall-dashboard',
+            'version': APP_VERSION,
+            'channel': 'stable',
+        }
+        # `?release=1` additionally reports the upstream latest release so the
+        # browser never has to reach a third-party origin itself.
+        if request.args.get('release') == '1':
+            data['latest_release'] = _latest_release()
+        return jsonify({'ok': True, 'data': data})
 
     @app.route('/healthz')
     def health_check():

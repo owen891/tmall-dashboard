@@ -113,8 +113,8 @@ async function inspectDialogs(page, id, browser, viewport) {
     const info = page.locator('[data-promotion-info]');
     if (await info.isDisabled()) await info.evaluate((element) => { element.disabled = false; element.removeAttribute('disabled'); });
     await info.click();
-    await inspectOpenDialog('[data-promotion-dialog]', 'promotion-definition');
-    await page.locator('[data-promotion-dialog-close]').click();
+    await inspectOpenDialog('.ui-drawer.is-open', 'promotion-definition');
+    await page.locator('.ui-drawer.is-open .ui-drawer__close').click();
     const manageFields = page.locator('[data-promotion-manage-fields]');
     if (await manageFields.isVisible()) {
       await manageFields.click();

@@ -131,7 +131,9 @@ class FrontendPrdContractTests(unittest.TestCase):
         )
         self.assertEqual(set(keys), set(export_columns))
         self.assertEqual(len(keys), len(export_columns))
-        self.assertIn("tmall-overview-matrix-columns-v2", adapter)
+        # 5-3：默认列从 14 收成 8 列，存储 key 必须跟着从 -v2 提到 -v3，
+        # 否则老用户 localStorage 里的 14 列会覆盖新默认（本断言原写死 -v2，已过期）。
+        self.assertIn("tmall-overview-matrix-columns-v3", adapter)
         page = self.read('frontend/ui_demo/pages/overview.html')
         styles = self.read_global_styles()
         self.assertIn('overview-matrix-columns-dialog', page)
@@ -206,7 +208,12 @@ class FrontendPrdContractTests(unittest.TestCase):
         self.assertIn('data-modal-kind="detail"', page)
         self.assertIn("DemoApi.domainRequest('/api/data-capabilities')", adapter)
         self.assertIn('catalog.unsupported_capabilities', adapter)
-        self.assertIn('trigger?.focus()', adapter)
+        # 焦点还原已收敛到共享的 TmallUI.detailDrawer：open(trigger) 记录来源，
+        # close() 里统一还原。页面适配器只负责把触发按钮传进去，不再自己 focus()。
+        # （原断言写死适配器里的 trigger?.focus()，是重构前的旧契约，已过期。）
+        self.assertIn('capabilityDrawer.open(trigger)', adapter)
+        self.assertIn('restore.focus({ preventScroll: true })', self.read('frontend/ui_demo/assets/ui-components.js'))
+        self.assertIn('returnFocusNode = trigger ||', self.read('frontend/ui_demo/assets/ui-components.js'))
         self.assertIn('domain.evidence_level', adapter)
         self.assertIn('domain.freshness', adapter)
         self.assertIn("DemoApi.domainRequest('/api/imports')",
@@ -222,7 +229,9 @@ class FrontendPrdContractTests(unittest.TestCase):
             self.assertIn(hook, page)
         self.assertIn("DemoApi.domainRequest('/api/page-capabilities')", adapter)
         self.assertIn('data-modal-kind="detail"', page)
-        self.assertIn('pageCapabilityTrigger?.focus()', adapter)
+        # 同上：焦点还原在共享 detailDrawer 里，适配器只传触发按钮。
+        self.assertIn('capabilityDrawer.open(button)', adapter)
+        self.assertIn('restore.focus({ preventScroll: true })', self.read('frontend/ui_demo/assets/ui-components.js'))
         self.assertIn('capability.evidence_level', adapter)
         self.assertIn('capability.limitations', adapter)
         self.assertIn('capability.freshness', adapter)
@@ -284,7 +293,7 @@ class FrontendPrdContractTests(unittest.TestCase):
         for script in (
             'overview-live.js', 'product-detail-live.js',
             'promotion-live.js', 'lifecycle-live.js', 'goals-live.js',
-            'pages/data-center/import-workflow.js', 'reviews-live.js', 'settings-live.js', 'manage-live.js',
+            'pages/data-center/import-workflow.js', 'reviews-live.js', 'settings-live.js',
         ):
             content = self.read(f'frontend/ui_demo/assets/{script}')
             self.assertIn('DemoApi.can(', content, script)
@@ -354,24 +363,27 @@ class FrontendPrdContractTests(unittest.TestCase):
         self.assertIn('TmallScanUi', shell)
         self.assertNotIn('/api/manage/schedules', shell)
 
-    def test_manage_uses_folder_scan_domain_endpoints(self):
-        manage = self.read('frontend/ui_demo/assets/manage-live.js')
-        page = self.read('frontend/ui_demo/pages/manage.html')
+    def test_folder_scan_uses_import_scans_domain_endpoints(self):
+        # 4-8：manage.html / manage-live.js 已退役（/manage 302 → /settings，且不在导航里）。
+        # 原先这条用例断言的是 manage 页面；文件夹扫描的完整实现在 settings 里（超集：
+        # 除 /run 外还有 /runs、/files、/files/<id>/retry、/delete），断言随之迁移过来。
+        settings = self.read('frontend/ui_demo/assets/settings-live.js')
+        page = self.read('frontend/ui_demo/pages/settings.html')
 
-        self.assertIn("DemoApi.domainRequest('/api/import-scans')", manage)
-        self.assertIn('/api/import-scans/${Number(item.id)}', manage)
-        self.assertIn('/api/import-scans/${Number(item.id)}/run', manage)
-        self.assertIn('JSON.stringify({ force: true })', manage)
-        self.assertNotIn('/api/manage/schedules', manage)
+        self.assertIn("DemoApi.domainRequest('/api/import-scans')", settings)
+        self.assertIn('/api/import-scans/${Number(job.id)}', settings)
+        self.assertIn('/api/import-scans/${Number(job.id)}/run', settings)
+        self.assertIn('/api/import-scans/${Number(job.id)}/runs', settings)
+        self.assertIn('/api/import-scans/${Number(job.id)}/files', settings)
+        self.assertIn('JSON.stringify({ force: true })', settings)
+        # 废弃的旧端点不得复活
+        self.assertNotIn('/api/manage/schedules', settings)
+        self.assertNotIn('/api/manage/schedules', page)
         self.assertIn('name="folder_path"', page)
         self.assertIn('name="source_type"', page)
-        self.assertIn('data-manage-select-scan-folder', page)
+        self.assertIn('data-settings-select-scan-folder', page)
         self.assertIn('IMPORT_SCAN_ALLOWED_ROOTS', page)
-        self.assertIn('TmallScanUi', manage)
-        self.assertIn("DemoApi.domainRequest('/api/manage/tasks')", manage)
-        self.assertIn("DemoApi.domainRequest(`/api/manage/kpis?period=", manage)
-        self.assertNotIn("'/api/tasks'", manage)
-        self.assertNotIn("'/api/user_kpis'", manage)
+        self.assertIn('TmallScanUi', settings)
 
     def test_settings_manual_scan_forces_immediate_discovery(self):
         settings = self.read('frontend/ui_demo/assets/settings-live.js')
@@ -440,8 +452,6 @@ class FrontendPrdContractTests(unittest.TestCase):
         labels = self.read('frontend/ui_demo/assets/labels.js')
         products = self.read('frontend/ui_demo/assets/products-live.js')
         overview = self.read('frontend/ui_demo/assets/overview-live.js')
-        manage = self.read('frontend/ui_demo/assets/manage-live.js')
-        manage_page = self.read('frontend/ui_demo/pages/manage.html')
         reviews = self.read('frontend/ui_demo/assets/reviews-live.js')
         data_center = self.read('frontend/ui_demo/assets/pages/data-center/import-workflow.js')
 
@@ -453,18 +463,15 @@ class FrontendPrdContractTests(unittest.TestCase):
             self.assertIn(label, labels)
         self.assertNotIn('服务器分页 limit', products)
         self.assertIn("DemoLabels.label('action'", overview)
-        self.assertIn("DemoLabels.label('priority'", manage)
-        self.assertIn("DemoLabels.label('rating'", manage)
         self.assertIn("DemoLabels.label('quality'", data_center)
         self.assertIn("todo.action_type || '运营动作'", overview)
-        self.assertNotIn('>P0</option>', manage_page)
-        self.assertNotIn('>A</option>', manage_page)
         self.assertNotIn('value="operator"', reviews)
 
         for page in ('goals.html', 'reviews.html', 'lifecycle.html'):
             self.assertNotIn('value="operator"', self.read(f'frontend/ui_demo/pages/{page}'))
 
-        for page in ('overview.html', 'manage.html'):
+        # 4-8：原第二条是 manage.html（已退役），换成同样加载 labels.js 的 settings.html。
+        for page in ('overview.html', 'settings.html'):
             self.assertIn('../assets/labels.js', self.read(f'frontend/ui_demo/pages/{page}'))
 
     def test_lifecycle_editor_options_are_generated_from_settings_dictionary(self):
@@ -914,7 +921,7 @@ class FrontendPrdContractTests(unittest.TestCase):
         self.assertIn('<dialog class="toolbox-dialog" data-toolbox-dialog', shell)
         self.assertNotIn('toolbox-overlay', shell)
         self.assertNotIn('toolbox-drawer', shell)
-        self.assertIn('<dialog class="promotion-dialog" data-promotion-dialog', promotion)
+        self.assertIn('<template data-promotion-dialog-template', promotion)
         self.assertNotIn('demo-drawer__backdrop', promotion)
         self.assertNotIn('data-promotion-drawer', promotion)
         self.assertIn('role="tablist"', component)
@@ -1036,7 +1043,8 @@ class FrontendPrdContractTests(unittest.TestCase):
         self.assertNotIn('demo-keyword-', adapter)
 
     def test_echarts_pages_use_block_containers_not_canvas_elements(self):
-        for page in ('overview.html', 'promotion.html', 'lifecycle.html', 'compare.html'):
+        # 4-8：compare.html 已退役。
+        for page in ('overview.html', 'promotion.html', 'lifecycle.html'):
             content = self.read(f'frontend/ui_demo/pages/{page}')
             self.assertNotIn('<canvas id=', content)
             self.assertIn('class="chart-canvas"', content)
@@ -1082,10 +1090,10 @@ class FrontendPrdContractTests(unittest.TestCase):
         self.assertIn('当前周期暂无趋势数据', adapter)
         self.assertIn('if (!rows.length)', adapter)
 
-    def test_compare_page_explains_when_no_periods_are_available(self):
-        adapter = self.read('frontend/ui_demo/assets/compare-live.js')
-        self.assertIn('当前暂无可对比趋势数据', adapter)
-        self.assertIn('if (!periods.length)', adapter)
+    # 4-8：原 test_compare_page_explains_when_no_periods_are_available 随 compare.html /
+    # compare-live.js 一起退役。该空态断言针对的是 compare 页独有的“无可对比周期”分支，
+    # 没有可迁移的目标（overview 的对比模式走 /api/compare?dim=monthly，空态由
+    # test_overview_trend_has_an_explicit_empty_state 覆盖）。
 
     def test_ui_audit_regressions_are_covered(self):
         shell = self.read('frontend/ui_demo/assets/shell.js')

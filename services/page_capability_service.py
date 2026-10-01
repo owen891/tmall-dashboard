@@ -1,5 +1,6 @@
 from collections import Counter
 
+from services.application_pages import LEGACY_REDIRECT_PAGES, registry_keys
 from services.data_capability_service import DOMAIN_DEFINITIONS, build_catalog
 
 
@@ -80,17 +81,68 @@ PAGE_DEFINITIONS = (
         'data_domains': ('goals', 'store_daily'),
         'capability_keys': ('goals.view', 'goals.bootstrap', 'goals.adjust', 'goals.lock'),
     },
+    # 4-8：compare / manage 已退役（页面文件删除，/compare 与 /manage 保留为
+    # 重定向到 /reviews 与 /settings，见 services/application_pages.LEGACY_REDIRECT_PAGES）。
+    # 它们不再是可路由页面，因此也不再登记为 page / capability / surface。
+    # The pages below were routable in `app.py` but missing from this registry,
+    # so `/api/page-capabilities?page=<key>` answered 422 and the front-end gate
+    # silently never applied. `services/application_pages.py` is now the single
+    # source of truth and `validate_registry()` fails when the two drift.
     {
-        'key': 'compare', 'label': '周期对比', 'page_type': 'context', 'route': '/compare',
-        'core_question': '两个周期差异在哪里',
-        'data_domains': ('product_weekly',),
-        'capability_keys': ('compare.view', 'compare.export'),
+        'key': 'analysis', 'label': '经营分析', 'page_type': 'primary', 'route': '/analysis',
+        'core_question': '经营指标之间如何相互影响',
+        'data_domains': ('store_daily', 'product_daily', 'product_weekly'),
+        'capability_keys': ('analysis.view', 'analysis.compare'),
     },
     {
-        'key': 'manage', 'label': '管理工作台', 'page_type': 'admin', 'route': '/manage',
-        'core_question': '谁负责什么、何时执行',
-        'data_domains': ('actions', 'imports'),
-        'capability_keys': ('manage.view', 'manage.schedule'),
+        'key': 'keyword-promotion', 'label': '关键词推广', 'page_type': 'primary', 'route': '/keyword-promotion',
+        'core_question': '哪些关键词值得继续投入',
+        'data_domains': ('promotion_daily', 'product_master'),
+        'capability_keys': ('keyword-promotion.view', 'keyword-promotion.products', 'keyword-promotion.export'),
+    },
+    {
+        'key': 'new-products', 'label': '新品投放', 'page_type': 'primary', 'route': '/new-products',
+        'core_question': '新品投放是否跑出效果',
+        'data_domains': ('promotion_daily', 'product_daily', 'product_master'),
+        'capability_keys': ('new-products.view', 'new-products.product_detail'),
+    },
+    {
+        'key': 'market-ranking', 'label': '市场排行', 'page_type': 'primary', 'route': '/market-ranking',
+        'core_question': '市场大盘与竞品处于什么位置',
+        'data_domains': ('market',),
+        'capability_keys': ('market-ranking.view', 'market-ranking.drilldown'),
+    },
+    {
+        'key': 'flow-source', 'label': '流量来源', 'page_type': 'primary', 'route': '/flow-source',
+        'core_question': '流量从哪里来、质量如何',
+        'data_domains': ('market',),
+        'capability_keys': ('flow-source.view', 'flow-source.item_flow'),
+    },
+    {
+        'key': 'rival-analysis', 'label': '竞品分析', 'page_type': 'primary', 'route': '/rival-analysis',
+        'core_question': '竞品在卖什么、怎么卖',
+        'data_domains': ('market',),
+        'capability_keys': ('rival-analysis.view', 'rival-analysis.trend'),
+    },
+    {
+        'key': 'data-collection', 'label': '数据采集', 'page_type': 'admin', 'route': '/data-collection',
+        'core_question': '采集链路是否正常',
+        'data_domains': ('imports',),
+        'capability_keys': ('data-collection.view', 'data-collection.trigger'),
+    },
+    {
+        'key': 'catalog', 'label': '组件目录', 'page_type': 'admin', 'route': '/component-catalog',
+        'core_question': '设计系统提供了哪些组件',
+        # A static design-system showcase: it renders without any business data
+        # domain, so its gate is always satisfiable.
+        'data_domains': (),
+        'capability_keys': ('catalog.view',),
+    },
+    {
+        'key': 'creative-board', 'label': '创意看板', 'page_type': 'primary', 'route': '/creative-board',
+        'core_question': '投放创意表现如何',
+        'data_domains': (),
+        'capability_keys': ('creative-board.view',),
     },
 )
 
@@ -147,11 +199,30 @@ CAPABILITY_DEFINITIONS = (
     {'key': 'goals.bootstrap', 'page_key': 'goals', 'label': '创建首个年度目标', 'mode': 'workflow', 'support_level': 'supported', 'data_domains': (), 'metric_keys': (), 'api_endpoints': ('POST /api/goals',)},
     {'key': 'goals.adjust', 'page_key': 'goals', 'label': '调整经营目标', 'mode': 'workflow', 'support_level': 'conditional', 'data_domains': ('goals',), 'metric_keys': (), 'api_endpoints': ('POST /api/goals/:year/adjustments',)},
     {'key': 'goals.lock', 'page_key': 'goals', 'label': '锁定经营目标', 'mode': 'workflow', 'support_level': 'conditional', 'data_domains': ('goals',), 'metric_keys': (), 'api_endpoints': ('POST /api/goals/:year/locks',)},
-    {'key': 'compare.view', 'page_key': 'compare', 'label': '比较两个周期', 'mode': 'analyze', 'support_level': 'conditional', 'data_domains': ('product_weekly',), 'metric_keys': ('net_sales',), 'api_endpoints': ('GET /api/period-reviews',)},
-    {'key': 'compare.export', 'page_key': 'compare', 'label': '导出周期比较', 'mode': 'export', 'support_level': 'conditional', 'data_domains': ('product_weekly',), 'metric_keys': (), 'api_endpoints': ('GET /api/period-reviews',)},
-    {'key': 'manage.view', 'page_key': 'manage', 'label': '查看管理任务', 'mode': 'observe', 'support_level': 'conditional', 'data_domains': ('actions',), 'metric_keys': (), 'api_endpoints': ('GET /api/manage/tasks', 'GET /api/manage/kpis')},
-    {'key': 'manage.schedule', 'page_key': 'manage', 'label': '执行调度流程', 'mode': 'workflow', 'support_level': 'conditional', 'data_domains': ('imports',), 'metric_keys': (), 'api_endpoints': ('GET /api/import-scans', 'POST /api/import-scans', 'PUT /api/import-scans/:job_id', 'DELETE /api/import-scans/:job_id', 'POST /api/import-scans/:job_id/run')},
     {'key': 'promotion.causal_attribution', 'page_key': 'promotion', 'label': '严格因果归因', 'mode': 'analyze', 'support_level': 'unsupported', 'data_domains': (), 'metric_keys': (), 'api_endpoints': ()},
+    # Capabilities for the pages added in 0-1. Every non-`unsupported` entry must
+    # declare at least one endpoint that really exists in the Flask url map, or
+    # `build_page_catalog()` reports it in `endpoint_missing` and blocks release.
+    {'key': 'analysis.view', 'page_key': 'analysis', 'label': '查看经营分析', 'mode': 'observe', 'support_level': 'supported', 'data_domains': ('store_daily',), 'metric_keys': ('net_sales',), 'api_endpoints': ('GET /api/trend',)},
+    {'key': 'analysis.compare', 'page_key': 'analysis', 'label': '比较品类周期', 'mode': 'analyze', 'support_level': 'conditional', 'data_domains': ('product_daily', 'product_weekly'), 'metric_keys': ('net_sales',), 'api_endpoints': ('GET /api/category-analysis/compare',)},
+    {'key': 'keyword-promotion.view', 'page_key': 'keyword-promotion', 'label': '查看关键词推广', 'mode': 'observe', 'support_level': 'supported', 'data_domains': ('promotion_daily',), 'metric_keys': ('ad_roi',), 'api_endpoints': ('GET /api/keyword-promotion/summary',)},
+    {'key': 'keyword-promotion.products', 'page_key': 'keyword-promotion', 'label': '下钻关键词商品', 'mode': 'analyze', 'support_level': 'conditional', 'data_domains': ('promotion_daily',), 'metric_keys': ('ad_roi',), 'api_endpoints': ('GET /api/keyword-promotion/products',)},
+    {'key': 'keyword-promotion.export', 'page_key': 'keyword-promotion', 'label': '导出关键词结果', 'mode': 'export', 'support_level': 'conditional', 'data_domains': ('promotion_daily',), 'metric_keys': (), 'api_endpoints': ('GET /api/keyword-promotion/products',)},
+    {'key': 'new-products.view', 'page_key': 'new-products', 'label': '查看新品投放', 'mode': 'observe', 'support_level': 'supported', 'data_domains': ('promotion_daily',), 'metric_keys': ('ad_roi',), 'api_endpoints': ('GET /api/promotion/new-products',)},
+    {'key': 'new-products.product_detail', 'page_key': 'new-products', 'label': '下钻单品投放', 'mode': 'analyze', 'support_level': 'conditional', 'data_domains': ('product_daily',), 'metric_keys': ('net_sales',), 'api_endpoints': ('GET /api/promotion/product-detail',)},
+    {'key': 'market-ranking.view', 'page_key': 'market-ranking', 'label': '查看市场排行', 'mode': 'observe', 'support_level': 'conditional', 'data_domains': ('market',), 'metric_keys': (), 'api_endpoints': ('GET /api/market-ranking/summary',)},
+    {'key': 'market-ranking.drilldown', 'page_key': 'market-ranking', 'label': '市场排行下钻', 'mode': 'analyze', 'support_level': 'conditional', 'data_domains': ('market',), 'metric_keys': (), 'api_endpoints': ('GET /api/market-ranking/products', 'GET /api/sycm/market/item-rank')},
+    {'key': 'flow-source.view', 'page_key': 'flow-source', 'label': '查看流量来源', 'mode': 'observe', 'support_level': 'conditional', 'data_domains': ('market',), 'metric_keys': (), 'api_endpoints': ('GET /api/sycm/flow-source/summary',)},
+    {'key': 'flow-source.item_flow', 'page_key': 'flow-source', 'label': '查看单品流量构成', 'mode': 'analyze', 'support_level': 'conditional', 'data_domains': ('market',), 'metric_keys': (), 'api_endpoints': ('GET /api/sycm/item-flow/summary', 'GET /api/sycm/item-flow/top-items')},
+    {'key': 'rival-analysis.view', 'page_key': 'rival-analysis', 'label': '查看竞品分析', 'mode': 'observe', 'support_level': 'conditional', 'data_domains': ('market',), 'metric_keys': (), 'api_endpoints': ('GET /api/sycm/rival-shops/summary',)},
+    {'key': 'rival-analysis.trend', 'page_key': 'rival-analysis', 'label': '竞品趋势对比', 'mode': 'analyze', 'support_level': 'conditional', 'data_domains': ('market',), 'metric_keys': (), 'api_endpoints': ('GET /api/sycm/rival-shops/trend', 'GET /api/sycm/rival-items/trend')},
+    {'key': 'data-collection.view', 'page_key': 'data-collection', 'label': '查看采集状态', 'mode': 'observe', 'support_level': 'supported', 'data_domains': ('imports',), 'metric_keys': (), 'api_endpoints': ('GET /api/collect/status',)},
+    {'key': 'data-collection.trigger', 'page_key': 'data-collection', 'label': '触发采集任务', 'mode': 'workflow', 'support_level': 'conditional', 'data_domains': ('imports',), 'metric_keys': (), 'api_endpoints': ('POST /api/collect/trigger', 'POST /api/collect/prepare')},
+    # The catalog page is a static design-system showcase; `/api/version` is the
+    # only endpoint its bundle calls, and it keeps the release gate satisfiable
+    # without pretending a business data domain exists.
+    {'key': 'catalog.view', 'page_key': 'catalog', 'label': '查看组件目录', 'mode': 'observe', 'support_level': 'supported', 'data_domains': (), 'metric_keys': (), 'api_endpoints': ('GET /api/version',)},
+    {'key': 'creative-board.view', 'page_key': 'creative-board', 'label': '查看创意看板', 'mode': 'observe', 'support_level': 'supported', 'data_domains': (), 'metric_keys': (), 'api_endpoints': ('GET /api/creative-board',)},
 )
 
 
@@ -165,7 +236,6 @@ SURFACE_DEFINITIONS = (
     {'key': 'settings.alert-rule', 'page_key': 'settings', 'label': '预警规则编辑', 'modal_kind': 'config', 'trigger_capability': 'settings.configure_alerts', 'selector': '.alert-rules-dialog'},
     {'key': 'product-detail.dialog', 'page_key': 'product-detail', 'label': '共享商品详情', 'modal_kind': 'detail', 'trigger_capability': 'product-detail.view', 'selector': '[data-modal-kind="detail"]', 'target_files': ('frontend/ui_demo/pages/product-detail.html', 'frontend/ui_demo/assets/product-detail-dialog.js')},
     {'key': 'goals.adjust', 'page_key': 'goals', 'label': '目标调整', 'modal_kind': 'flow', 'trigger_capability': 'goals.adjust', 'selector': '[data-goals-months]'},
-    {'key': 'manage.schedule', 'page_key': 'manage', 'label': '调度任务', 'modal_kind': 'flow', 'trigger_capability': 'manage.schedule', 'selector': '[data-manage-schedule-dialog]'},
 )
 
 
@@ -186,8 +256,16 @@ _PAGE_TARGET_FILES = {
     'settings': ('frontend/ui_demo/pages/settings.html', 'frontend/ui_demo/assets/settings-live.js'),
     'product-detail': ('frontend/ui_demo/pages/product-detail.html', 'frontend/ui_demo/assets/product-detail-live.js'),
     'goals': ('frontend/ui_demo/pages/goals.html', 'frontend/ui_demo/assets/goals-live.js'),
-    'compare': ('frontend/ui_demo/pages/compare.html', 'frontend/ui_demo/assets/compare-live.js'),
-    'manage': ('frontend/ui_demo/pages/manage.html', 'frontend/ui_demo/assets/manage-live.js'),
+    'analysis': ('frontend/ui_demo/pages/analysis.html', 'frontend/ui_demo/assets/analysis-live.js'),
+    'keyword-promotion': ('frontend/ui_demo/pages/keyword-promotion.html', 'frontend/ui_demo/assets/keyword-promotion-live.js'),
+    'new-products': ('frontend/ui_demo/pages/new-products.html', 'frontend/ui_demo/assets/new-products-live.js'),
+    'market-ranking': ('frontend/ui_demo/pages/market-ranking.html', 'frontend/ui_demo/assets/market-ranking-live.js'),
+    'flow-source': ('frontend/ui_demo/pages/flow-source.html', 'frontend/ui_demo/assets/flow-source-live.js'),
+    'rival-analysis': ('frontend/ui_demo/pages/rival-analysis.html', 'frontend/ui_demo/assets/rival-analysis-live.js'),
+    'data-collection': ('frontend/ui_demo/pages/data-collection.html', 'frontend/ui_demo/assets/data-collection-live.js'),
+    # The catalog renders from ui-components.js only — it has no page adapter.
+    'catalog': ('frontend/ui_demo/pages/component-catalog.html', 'frontend/ui_demo/assets/ui-components.js'),
+    'creative-board': ('frontend/ui_demo/pages/creative-board.html', 'frontend/ui_demo/assets/creative-board-live.js'),
 }
 
 
@@ -267,8 +345,19 @@ def validate_registry(app=None):
     page_keys = [item['key'] for item in PAGE_DEFINITIONS]
     capability_keys = [item['key'] for item in CAPABILITY_DEFINITIONS]
     surface_keys = [item['key'] for item in SURFACE_DEFINITIONS]
-    if len(PAGE_DEFINITIONS) != 13:
-        errors.append('expected thirteen page definitions')
+    # The routable page set and this registry used to be two hand-maintained
+    # lists, and they drifted: nine routable pages were missing here, so
+    # `/api/page-capabilities?page=<key>` answered 422 and the front-end gate
+    # silently never applied. Derive the expectation from the single source of
+    # truth instead of asserting a magic count.
+    expected_pages = registry_keys()
+    registered_pages = set(page_keys)
+    missing_pages = sorted(expected_pages - registered_pages)
+    if missing_pages:
+        errors.append(f'unregistered pages: {", ".join(missing_pages)}')
+    unknown_pages = sorted(registered_pages - expected_pages - set(LEGACY_REDIRECT_PAGES))
+    if unknown_pages:
+        errors.append(f'registered but not routable: {", ".join(unknown_pages)}')
     for label, keys in (('page', page_keys), ('capability', capability_keys), ('surface', surface_keys)):
         duplicates = sorted(key for key, count in Counter(keys).items() if count > 1)
         if duplicates:

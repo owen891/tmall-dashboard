@@ -15,7 +15,8 @@ class PageCapabilityServiceTests(unittest.TestCase):
     def tearDown(self):
         self.temp_dir.cleanup()
 
-    def test_registry_has_thirteen_unique_pages_and_valid_surfaces(self):
+    def test_registry_declares_every_routable_page_exactly_once(self):
+        from services.application_pages import registry_keys
         from services.page_capability_service import (
             PAGE_DEFINITIONS,
             SURFACE_DEFINITIONS,
@@ -24,8 +25,14 @@ class PageCapabilityServiceTests(unittest.TestCase):
 
         result = validate_registry()
         self.assertEqual(result['errors'], [])
-        self.assertEqual(len(PAGE_DEFINITIONS), 13)
-        self.assertEqual(len({item['key'] for item in PAGE_DEFINITIONS}), 13)
+        # Derived from the routing table, not a magic count: a page that is
+        # routable but unregistered must fail here instead of 422-ing at runtime.
+        expected = registry_keys()
+        declared = [item['key'] for item in PAGE_DEFINITIONS]
+        self.assertEqual(len(declared), len(set(declared)))
+        # 4-8：compare / manage 已退役（页面文件删除，路由保留 302），
+        # 注册表与 registry_keys() 都不再声明它们，两边应当严格相等。
+        self.assertEqual(set(declared), expected)
         self.assertGreaterEqual(len(SURFACE_DEFINITIONS), 1)
         self.assertTrue(all(item['modal_kind'] in {
             'detail', 'edit', 'config', 'flow'
@@ -50,7 +57,10 @@ class PageCapabilityServiceTests(unittest.TestCase):
         surfaces = {item['key']: item for item in SURFACE_DEFINITIONS}
         self.assertEqual(surfaces['promotion.drilldown-detail']['selector'], '[data-promotion-dialog]')
         self.assertNotIn('data-promotion-drawer', surfaces['promotion.drilldown-detail']['selector'])
-        self.assertEqual(surfaces['manage.schedule']['modal_kind'], 'flow')
+        # 4-8：manage.schedule（[data-manage-schedule-dialog]）随 manage 页面退役。
+        # 改用仍在线的 data-center.import flow surface，继续守住「flow 面存在且指向当前选择器」。
+        self.assertEqual(surfaces['data-center.import']['modal_kind'], 'flow')
+        self.assertEqual(surfaces['data-center.import']['selector'], '[data-import-confirm]')
 
     def test_product_detail_page_and_shared_dialog_have_distinct_targets(self):
         from services.page_capability_service import (
@@ -97,7 +107,9 @@ class PageCapabilityServiceTests(unittest.TestCase):
         from services.page_capability_service import build_page_catalog
 
         result = build_page_catalog(self.app.config['DATABASE_PATH'])
-        self.assertEqual(result['summary']['page_count'], 13)
+        from services.page_capability_service import PAGE_DEFINITIONS
+
+        self.assertEqual(result['summary']['page_count'], len(PAGE_DEFINITIONS))
         self.assertEqual(result['summary']['unclassified'], 0)
         self.assertFalse(result['summary']['can_release'])
         overview = next(item for item in result['pages'] if item['key'] == 'overview')
@@ -119,7 +131,8 @@ class PageCapabilityServiceTests(unittest.TestCase):
         self.assertIn('PUT /api/products/:product_id/metadata', by_key['products.catalog_edit']['api_endpoints'])
         self.assertIn('POST /api/imports/preview', by_key['data-center.import']['api_endpoints'])
         self.assertIn('POST /api/alert-rules', by_key['settings.configure_alerts']['api_endpoints'])
-        self.assertIn('POST /api/import-scans', by_key['manage.schedule']['api_endpoints'])
+        # 4-8：manage.schedule 已退役，本地扫描任务的调度能力归到 settings.import_scan_manage。
+        self.assertIn('POST /api/import-scans', by_key['settings.import_scan_manage']['api_endpoints'])
 
     def test_advanced_promotion_capabilities_have_explicit_release_boundaries(self):
         from services.page_capability_service import CAPABILITY_DEFINITIONS

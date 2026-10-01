@@ -66,9 +66,13 @@ for (const contract of ['/api/actions?limit=200', '/api/actions/calendar?', '/ap
   assert(operationsCenter.includes(contract), `operations center: missing ${contract}`);
 }
 assert(operationsCenter.includes("setAttribute('aria-label'"), 'operations center: calendar count must expose aria-label');
+// 4-4：日历月初/月末的补位格子原来既无文本也无 aria-label，读屏只能念出「按钮」。
+assert(operationsCenter.includes("setAttribute('aria-label', '空白格')"), 'operations center: calendar placeholder cells must expose an accessible name');
 assert(operationsCenter.includes('calendarToken'), 'operations center: calendar requests need a race token');
 assert(overview.includes('data-overview-decision'), 'overview: missing decision-first summary region');
-assert(overview.includes('data-overview-secondary-kpis'), 'overview: missing secondary KPI disclosure region');
+// 批次 1/2（首屏决策区）已把「更多经营指标」从 <details data-overview-secondary-kpis> 改为
+// 决策区内的 .overview-decision__secondary，原断言指向已不存在的旧标记，按现状更新。
+assert(overview.includes('overview-decision__secondary'), 'overview: missing secondary KPI region');
 assert(overviewAdapter.includes('data-overview-retry'), 'overview adapter: failed regions must expose local retry');
 assert(!overview.includes('overview-legacy'), 'overview: legacy analysis block remains');
 
@@ -87,7 +91,7 @@ const promotion = read(path.join(pagesDir, 'promotion.html'));
 assert(promotion.includes('../assets/promotion-live.js'), 'promotion: missing live adapter');
 assert(!promotion.includes('../assets/promotion.js"') && !promotion.includes("../assets/promotion.js'"), 'promotion: legacy interaction module must not load');
 assert(!fs.existsSync(path.join(root, 'assets', 'promotion.js')), 'promotion: legacy interaction module must be removed');
-for (const hook of ['data-promotion-alerts', 'data-promotion-tabs', 'data-promotion-dialog', 'data-promotion-drill']) {
+for (const hook of ['data-promotion-alerts', 'data-promotion-tabs', 'data-promotion-dialog-template', 'data-promotion-drill']) {
   assert(promotion.includes(hook), `promotion: missing workflow hook ${hook}`);
 }
 const promotionAdapter = read(path.join(root, 'assets', 'promotion-live.js'));
@@ -145,12 +149,8 @@ assert(dataCenterAdapter.includes("/api/product-identities/${encodeURIComponent(
 assert(dataCenterAdapter.includes("/api/products?"), 'data-center: identity review must use existing product master candidates');
 
 const settings = read(path.join(pagesDir, 'settings.html'));
-const compare = read(path.join(pagesDir, 'compare.html'));
-const compareAdapter = read(path.join(root, 'assets', 'compare-live.js'));
-assert(compare.includes('../assets/compare-live.js'), 'compare: missing live adapter');
-assert(compare.includes('../assets/api.js') && compare.includes('../assets/shell.js'), 'compare: missing shared runtime dependencies');
-assert(compareAdapter.includes('/api/compare?dim=monthly'), 'compare: missing period comparison API request');
-assert(compareAdapter.includes("addEventListener('tmall:date-range-change'"), 'compare: missing date range listener');
+// 4-8：compare / manage 已退役（页面文件删除，路由保留 302 到 /reviews 与 /settings）。
+// 原此处对 compare.html / compare-live.js 的断言随之移除。
 
 assert(settings.includes('Asia/Shanghai'), 'settings: missing default timezone disclosure');
 assert(settings.includes('核心指标公式不可'), 'settings: missing formula edit boundary');
@@ -229,7 +229,7 @@ for (const adapter of ['overview-live.js', 'products-live.js', 'promotion-live.j
   assert(source.includes('DemoApi.renderDataState('), `assets/${adapter}: must render shared data states`);
 }
 
-for (const adapter of ['overview-live.js', 'products-live.js', 'promotion-live.js', 'compare-live.js']) {
+for (const adapter of ['overview-live.js', 'products-live.js', 'promotion-live.js']) {
   const source = read(path.join(root, 'assets', adapter));
   assert(source.includes("addEventListener('tmall:date-range-change'"), `assets/${adapter}: date changes do not refresh data`);
 }
