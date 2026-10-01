@@ -47,7 +47,7 @@ def backup_database(source, destination=None):
         source_connection.close()
 
     integrity = _integrity(destination_path)
-    return {
+    report = {
         'ok': integrity == 'ok',
         'source': str(source_path),
         'destination': str(destination_path),
@@ -56,6 +56,24 @@ def backup_database(source, destination=None):
         'integrity': integrity,
         'size_bytes': destination_path.stat().st_size,
     }
+    # 改进路线 2026-10-01 P1.3：轮转以前只挂在「默认落点」的 CLI 路径上，
+    # aggregate_store_daily / backfill_* 这类显式指定目的地的调用方从未被
+    # 裁剪，data/backups 因此堆到 7 份 24GB（config 上限 4 份 20GB）。
+    # 移到函数级：每次备份后都按 config.yaml 裁剪，刚生成的这份受 protected
+    # 保护；轮转失败不影响备份本身的成立。
+    try:
+        try:
+            from scripts.backup_retention import prune_backups, retention_settings
+        except ImportError:
+            from backup_retention import prune_backups, retention_settings
+        keep_newest, max_total_bytes = retention_settings()
+        report['pruned'] = [str(item) for item in prune_backups(
+            destination_path.parent, keep_newest=keep_newest,
+            max_total_bytes=max_total_bytes, protected=[destination_path])]
+    except Exception as error:
+        report['pruned'] = None
+        report['prune_warning'] = str(error)
+    return report
 
 
 def main():
@@ -64,13 +82,6 @@ def main():
     parser.add_argument('--destination', default=None)
     args = parser.parse_args()
     report = backup_database(args.source, args.destination)
-    if args.destination is None:
-        # 默认落到 data/backups/：同样要裁剪，否则手工备份也会堆满磁盘
-        from backup_retention import prune_backups, retention_settings
-
-        keep_newest, max_total_bytes = retention_settings()
-        prune_backups(Path(report['destination']).parent, keep_newest=keep_newest,
-                      max_total_bytes=max_total_bytes, protected=[report['destination']])
     print(json.dumps(report, ensure_ascii=False, indent=2))
     raise SystemExit(0 if report['ok'] else 1)
 
