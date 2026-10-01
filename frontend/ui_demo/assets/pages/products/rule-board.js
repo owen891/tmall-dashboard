@@ -21,6 +21,38 @@
     const { state, $, number, currentMonthPeriod, syncUrlState, load } = deps;
 
     let selectedRuleDetail = null;
+    let ruleDetailDrawer = null;
+
+    // 详情面统一 NUI 抽屉：template 承载内容与 footer（关闭/应用到商品列表）
+    function ensureRuleDetailDrawer() {
+      if (ruleDetailDrawer) return ruleDetailDrawer;
+      const template = $('[data-product-rule-detail-template]');
+      if (!template || !window.TmallUI?.detailDrawer) return null;
+      ruleDetailDrawer = window.TmallUI.detailDrawer({
+        title: '经营规则详情',
+        description: '查看规则定义、字段口径和当前周期命中证据',
+        size: 'lg',
+        onClose: () => { selectedRuleDetail = null; },
+      });
+      const content = template.content.cloneNode(true);
+      const footerTemplate = content.querySelector('[data-product-rule-detail-footer]');
+      let footer = null;
+      if (footerTemplate) {
+        footer = document.createElement('div');
+        footer.append(...footerTemplate.content.cloneNode(true).childNodes);
+        footerTemplate.remove();
+      }
+      ruleDetailDrawer.body.append(content);
+      if (footer) ruleDetailDrawer.ensureFooter().append(...footer.childNodes);
+      ruleDetailDrawer.node.querySelectorAll('[data-product-rule-detail-close]').forEach((button) => button.addEventListener('click', closeRuleDetail));
+      ruleDetailDrawer.node.querySelector('[data-product-rule-detail-apply]')?.addEventListener('click', () => {
+        if (!selectedRuleDetail) return;
+        state.ruleKey = selectedRuleDetail.key;
+        closeRuleDetail();
+        refreshWithFilter();
+      });
+      return ruleDetailDrawer;
+    }
 
     // 规则筛选变化后的公共流程：ruleKey 由调用方先行写入
     function refreshWithFilter() {
@@ -126,11 +158,12 @@
 
     function openRuleDetail(rule) {
       selectedRuleDetail = rule;
-      const dialog = $('[data-product-rule-detail-dialog]');
-      if (!dialog) return;
-      $('[data-product-rule-detail-title]').textContent = `${rule.name} · 规则详情`;
-      $('[data-product-rule-detail-description]').textContent = rule.description || '查看规则定义、字段口径和当前周期命中证据';
-      const summary = $('[data-product-rule-detail-summary]');
+      const drawer = ensureRuleDetailDrawer();
+      if (!drawer) return;
+      drawer.node.querySelector('.ui-drawer__copy h2').textContent = `${rule.name} · 规则详情`;
+      const description = drawer.node.querySelector('.ui-drawer__copy p');
+      if (description) description.textContent = rule.description || '查看规则定义、字段口径和当前周期命中证据';
+      const summary = $('[data-product-rule-detail-summary]', drawer.node);
       summary.replaceChildren(...[
         ['规则类型', ({ segmentation: '分群规则', alert: '预警规则', diagnosis: '诊断规则', recommendation: '动作建议规则' }[rule.rule_type] || '--')],
         ['规则版本', rule.version || '--'], ['统计周期', rule.period || '--'],
@@ -141,13 +174,13 @@
         const val = document.createElement('strong'); val.textContent = value;
         item.append(name, val); return item;
       }));
-      const conditions = $('[data-product-rule-detail-conditions]');
+      const conditions = $('[data-product-rule-detail-conditions]', drawer.node);
       const conditionList = Array.isArray(rule.conditions) ? rule.conditions : [];
       conditions.replaceChildren(...(conditionList.length ? conditionList : [{ label: '规则条件', field: 'SQL', operator: '=', value: rule.condition || '--' }]).map((condition) => {
         const item = document.createElement('div'); item.className = 'product-rule-detail-dialog__condition';
         item.textContent = ruleConditionText(condition); return item;
       }));
-      const evidence = $('[data-product-rule-detail-evidence]');
+      const evidence = $('[data-product-rule-detail-evidence]', drawer.node);
       const evidenceSummary = rule.evidence_summary || {};
       evidence.replaceChildren(...[
         ['来源表', evidenceSummary.source || 'monthly_data'], ['数据粒度', evidenceSummary.grain || 'product-month'],
@@ -160,19 +193,17 @@
         const right = document.createElement('span'); right.className = 'status-list__value'; right.textContent = value;
         item.append(left, right); return item;
       }));
-      $('[data-product-rule-detail-query]').textContent = JSON.stringify({
+      $('[data-product-rule-detail-query]', drawer.node).textContent = JSON.stringify({
         rule_key: rule.key, period: rule.period, category_mode: state.categoryMode || null,
         status: $('[data-products-status-filter]')?.value || 'active', matched_product_ids: rule.matched_product_ids || [],
       }, null, 2);
-      dialog.hidden = false;
-      dialog.showModal?.();
+      drawer.open();
       window.lucide?.createIcons();
     }
 
     function closeRuleDetail() {
-      const dialog = $('[data-product-rule-detail-dialog]');
-      if (!dialog) return;
-      dialog.close?.(); dialog.hidden = true; selectedRuleDetail = null;
+      ruleDetailDrawer?.close();
+      selectedRuleDetail = null;
     }
 
     async function loadRuleCards() {
@@ -196,13 +227,7 @@
         state.ruleBoardExpanded = !state.ruleBoardExpanded;
         renderRuleCards();
       });
-      document.querySelectorAll('[data-product-rule-detail-close]').forEach((button) => button.addEventListener('click', closeRuleDetail));
-      $('[data-product-rule-detail-apply]')?.addEventListener('click', () => {
-        if (!selectedRuleDetail) return;
-        state.ruleKey = selectedRuleDetail.key;
-        closeRuleDetail();
-        refreshWithFilter();
-      });
+      ensureRuleDetailDrawer();
     }
 
     return Object.freeze({

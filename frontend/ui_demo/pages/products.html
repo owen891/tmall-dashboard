@@ -185,14 +185,7 @@
     </div>
   </div>
 
-  <dialog class="modal-form ui-panel ui-drawer-dialog product-rule-detail-dialog" data-product-rule-detail-dialog data-modal-kind="detail" aria-labelledby="productRuleDetailTitle" hidden>
-    <div class="modal-form__header">
-      <div>
-        <h3 id="productRuleDetailTitle" data-product-rule-detail-title>经营规则详情</h3>
-        <p class="panel__hint" data-product-rule-detail-description>查看规则定义、字段口径和当前周期命中证据</p>
-      </div>
-      <button class="ui-button ui-button--ghost" type="button" data-product-rule-detail-close aria-label="关闭规则详情"><i data-lucide="x"></i></button>
-    </div>
+  <template data-product-rule-detail-template>
     <div class="product-rule-detail-dialog__body">
       <div class="product-rule-detail-dialog__summary" data-product-rule-detail-summary></div>
       <section>
@@ -208,11 +201,11 @@
         <pre class="product-rule-detail-dialog__query" data-product-rule-detail-query></pre>
       </section>
     </div>
-    <div class="modal-form__footer">
+    <template data-product-rule-detail-footer>
       <button class="ui-button" type="button" data-product-rule-detail-close>关闭</button>
       <button class="ui-button ui-button--primary" type="button" data-product-rule-detail-apply><i data-lucide="filter"></i>应用到商品列表</button>
-    </div>
-  </dialog>
+    </template>
+  </template>
 
   <dialog class="modal-form ui-panel ui-field-selector-dialog products-columns-dialog" data-products-columns-dialog data-modal-kind="config" aria-labelledby="productsColumnsTitle" hidden>
     <div class="modal-form__header">

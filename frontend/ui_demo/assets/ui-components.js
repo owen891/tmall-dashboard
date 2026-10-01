@@ -272,6 +272,15 @@
     document.body.append(node);
     let counted = false;
     let returnFocusNode = null;
+    // Late-attach footer: creators that build their footer content after the drawer
+    // (e.g. from a <template>) can call handle.ensureFooter() instead of pre-building it.
+    handle.ensureFooter = () => {
+      if (handle.footer) return handle.footer;
+      const footerNode = create('footer', 'ui-drawer__footer');
+      sheet.append(footerNode);
+      handle.footer = footerNode;
+      return footerNode;
+    };
     const focusables = () => [...node.querySelectorAll('a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])')].filter((item) => item.getClientRects().length);
     const close = () => {
       if (node.hidden) return handle;
