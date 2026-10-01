@@ -385,15 +385,26 @@
 
   // ── 商品推广结构抽屉 ───────────────────────────────────────────────────
 
+  let structureDrawer = null;
+  let structureReturnFocus = null;
+
   function bindStructureDialog() {
-    const dialog = $('[data-promotion-structure-dialog]');
-    if (!dialog) return;
-    $('[data-promotion-structure-close]')?.addEventListener('click', () => dialog.close());
-    $$('[data-promotion-structure-tab]').forEach((button) => {
+    const template = $('[data-promotion-structure-template]');
+    if (!template || !window.TmallUI?.detailDrawer) return;
+    structureDrawer = window.TmallUI.detailDrawer({
+      title: '商品推广结构',
+      description: '查看渠道结构、计划与素材表现',
+      size: 'lg',
+      onClose: () => {
+        structureReturnFocus?.focus?.();
+        structureReturnFocus = null;
+      },
+    });
+    structureDrawer.body.append(template.content.cloneNode(true));
+    const tabs = $$('[data-promotion-structure-tab]', structureDrawer.node);
+    tabs.forEach((button) => {
       button.addEventListener('click', () => {
-        $$('[data-promotion-structure-tab]').forEach((item) => {
-          item.setAttribute('aria-selected', String(item === button));
-        });
+        tabs.forEach((item) => item.setAttribute('aria-selected', String(item === button)));
         renderStructurePanel(button.dataset.promotionStructureTab);
       });
     });
@@ -412,7 +423,7 @@
         structureButton.title = '查看该商品的渠道结构与计划';
         structureButton.addEventListener('click', (event) => {
           event.stopPropagation();
-          openStructureDialog(productId);
+          openStructureDialog(productId, structureButton);
         });
         button.after(structureButton);
       });
@@ -421,14 +432,17 @@
     addStructureButtons();
   }
 
-  function openStructureDialog(productId) {
-    const dialog = $('[data-promotion-structure-dialog]');
-    if (!dialog || !productId) return;
+  function openStructureDialog(productId, trigger = null) {
+    if (!structureDrawer || !productId) return;
     state.structureProduct = productId;
-    dialog.showModal();
-    $$('[data-promotion-structure-tab]').forEach((item, index) => {
-      item.setAttribute('aria-selected', String(index === 0));
-    });
+    structureReturnFocus = trigger || document.activeElement;
+    const title = structureDrawer.node.querySelector('.ui-drawer__copy h2');
+    const description = structureDrawer.node.querySelector('.ui-drawer__copy p');
+    if (title) title.textContent = '商品推广结构';
+    if (description) description.textContent = `商品 ID ${productId} · 渠道结构、计划与素材表现`;
+    const tabs = $$('[data-promotion-structure-tab]', structureDrawer.node);
+    tabs.forEach((item, index) => item.setAttribute('aria-selected', String(index === 0)));
+    structureDrawer.open();
     renderStructurePanel('mix');
   }
 
@@ -484,7 +498,7 @@
     }
     if (tab === 'creatives') {
       // 素材表现已拆到独立看板页,带商品 ID 跳转
-      dialog.close();
+      structureDrawer?.close();
       window.location.href = `/creative-board?product_id=${encodeURIComponent(state.structureProduct || '')}`;
     }
   }

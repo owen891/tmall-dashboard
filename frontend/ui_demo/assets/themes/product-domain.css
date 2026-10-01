@@ -191,8 +191,8 @@ body[data-page="products"] .product-list__header .product-field-controls { grid-
 .product-detail-promotion-grid { display: flex; min-width: 0; gap: 12px; flex-direction: column; }
 .product-detail-promotion-block { min-width: 0; padding: 11px; border: 1px solid var(--border-default); border-radius: var(--radius-md); background: var(--surface-muted); }
 .product-detail-promotion-block__title { margin: 0 0 8px; color: var(--text-secondary); font-size: var(--font-size-secondary); font-weight: 600; }
-.product-detail-promotion-table { min-width: 620px; }
-.product-detail-promotion-note { margin: 10px 0 0; }
+.product-detail-promotion-table { min-width: 0; max-width: 100%; overflow-x: auto; }
+.product-detail-promotion-table .ui-data-table { min-width: 620px; }
 .product-detail-overview-trend__header { padding-bottom: 10px; }
 .product-detail-overview-trend__header h4 { margin: 0; font-size: var(--font-size-label); }
 .product-detail-overview-trend__header p { margin: 3px 0 0; color: var(--text-secondary); font-size: var(--font-size-meta); line-height: var(--line-height-secondary); }

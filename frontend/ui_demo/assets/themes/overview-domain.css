@@ -194,6 +194,9 @@
 .overview-v2-secondary-kpis > .ui-metric-grid { margin: 0; padding: 0 var(--space-3) var(--space-3); }
 @media (max-width: 560px) {
   .overview-decision__intro { flex-wrap: wrap; }
+  .overview-decision__intro > .overview-v2-context__meta { min-width: 0; flex: 1 1 auto; white-space: normal; }
+  .overview-decision__intro .overview-decision__context { min-width: 0; white-space: normal; overflow-wrap: anywhere; }
+
   .overview-decision__items { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .overview-decision__item { padding: var(--space-2); }
   .overview-decision__item strong { font-size: var(--font-size-label); }
@@ -324,4 +327,12 @@
   }
   body[data-page="overview"] .overview-home-matrix .ui-table-wrap { max-height: 470px; overflow: auto; }
   body[data-page="overview"] .overview-home-matrix .ui-data-table thead th { position: sticky; top: 0; z-index: 2; background: var(--surface-muted); }
+}
+
+/* 窄屏：趋势选择器去掉通用组件的 min-width，避免撑宽页面 */
+@media (max-width: 360px) {
+  body[data-page="overview"] .overview-v2-main-grid .panel__header { flex-wrap: wrap; gap: 8px; }
+  body[data-page="overview"] .trend-picker { width: 100%; }
+  body[data-page="overview"] .trend-picker__trigger { min-width: 0; max-width: 100%; }
+  body[data-page="overview"] .trend-picker__trigger > span { min-width: 0; }
 }

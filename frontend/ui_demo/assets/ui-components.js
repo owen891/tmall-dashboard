@@ -45,6 +45,7 @@
     const key = stateKey(state);
     node.replaceChildren();
     node.classList.add('data-state');
+    node.dataset.state = key;
     node.setAttribute('role', 'status');
     node.setAttribute('aria-live', 'polite');
     node.append(create('strong', '', dataStateTitles[key]), create('span', '', stateDetail(key, details)));

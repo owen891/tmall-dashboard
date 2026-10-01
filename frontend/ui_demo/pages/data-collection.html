@@ -6,7 +6,7 @@
   <link rel="stylesheet" href="../assets/tokens.css"><link rel="stylesheet" href="../assets/shell.css"><link rel="stylesheet" href="../assets/components.css"><link rel="stylesheet" href="../assets/themes/product-domain.css"><link rel="stylesheet" href="../assets/themes/promotion-domain.css"><link rel="stylesheet" href="../assets/themes/overview-domain.css"><link rel="stylesheet" href="../assets/themes/lifecycle-domain.css"><link rel="stylesheet" href="../assets/themes/settings-domain.css">
   <script src="../assets/lucide-custom.min.js"></script>
   <style>
-    .collect-source-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(380px, 1fr)); gap: 16px; }
+    .collect-source-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 380px), 1fr)); gap: 16px; }
     .collect-source-card { display: flex; flex-direction: column; gap: 12px; }
     .collect-source-card__header { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
     .collect-source-card__title { font-size: 15px; font-weight: 600; margin: 0; }
@@ -36,7 +36,7 @@
     .collect-health-status--degraded { color: #b45309; }
     .integration-toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
     .integration-toolbar .select { min-width: 150px; }
-    .integration-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 12px; }
+    .integration-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 320px), 1fr)); gap: 12px; }
     .integration-card { display: flex; flex-direction: column; gap: 8px; border: 1px solid var(--border-subtle, #e5e7eb); border-radius: 6px; padding: 14px; background: var(--surface-primary, #fff); }
     .integration-card__header { display: flex; justify-content: space-between; gap: 10px; align-items: flex-start; }
     .integration-card__title { margin: 0; font-size: 14px; font-weight: 650; }
@@ -49,7 +49,7 @@
     .integration-badge--planned { background: #f3f4f6; color: #4b5563; }
     .integration-badge--blocked { background: #fee2e2; color: #991b1b; }
     .integration-badge--fresh { background: #fef3c7; color: #92400e; }
-    .integration-card__issue { margin: 0; padding-top: 7px; border-top: 1px solid var(--border-subtle, #e5e7eb); color: #9a3412; font-size: 12px; }
+    .integration-card__issue { overflow-wrap: anywhere; margin: 0; padding-top: 7px; border-top: 1px solid var(--border-subtle, #e5e7eb); color: #9a3412; font-size: 12px; }
     .integration-empty { grid-column: 1 / -1; padding: 28px; text-align: center; color: var(--text-secondary); }
     .collect-credentials-dialog { width: min(680px, calc(100vw - 24px)); }
     .collect-credentials__grid { display: grid; grid-template-columns: 100px minmax(0, 1fr) minmax(0, 1fr); gap: var(--space-2) var(--space-3); align-items: center; }
@@ -58,6 +58,7 @@
     .collect-credentials__status { min-height: var(--line-height-meta); margin: 0; color: var(--text-secondary); font-size: var(--font-size-meta); }
     @media (max-width: 760px) { .collect-credentials__grid { grid-template-columns: 1fr; gap: var(--space-2); } .collect-credentials__grid > strong:first-of-type, .collect-credentials__grid > strong:nth-of-type(2) { display: none; } }
     @media (max-width: 760px) { .collect-health-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+    @media (max-width: 560px) { body[data-page="data-collection"] .panel__header { align-items: stretch; flex-direction: column; } .integration-toolbar { width: 100%; } .integration-toolbar .select { flex: 1 1 140px; width: 100%; min-width: 0; } }
   </style>
 </head>
 <body data-page="data-collection"><div class="demo-app"><aside class="demo-sidebar" data-shell-sidebar></aside><div class="demo-main"><header class="demo-topbar" data-shell-header></header><main class="demo-page"><aside data-right-rail hidden aria-label="辅助信息"></aside>

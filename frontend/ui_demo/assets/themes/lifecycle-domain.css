@@ -93,6 +93,12 @@
 .lifecycle-insight span { display: block; margin-top: 2px; color: var(--text-secondary); font-size: var(--font-size-meta); }
 @media (max-width: 1100px) { .lifecycle-metrics { grid-template-columns: repeat(3, minmax(0, 1fr)); } .lifecycle-insights { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 1000px) { .lifecycle-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .lifecycle-chart-grid { grid-template-columns: 1fr; } .diagnostic-grid { grid-template-columns: 1fr; } }
+@media (max-width: 620px) {
+  body[data-page="lifecycle"] .ui-metric-grid { grid-template-columns: 1fr; }
+  body[data-page="lifecycle"] .ui-metric-card { min-width: 0; }
+  body[data-page="lifecycle"] .metric-card__value,
+  body[data-page="lifecycle"] .ui-metric-card__value { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+}
 @media (max-width: 620px) { .lifecycle-grid { grid-template-columns: 1fr; } .lifecycle-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); } .lifecycle-insights { grid-template-columns: 1fr; } .lifecycle-detail__header { align-items: flex-start; } .lifecycle-detail__product { min-width: 0; } .lifecycle-detail__product > div { min-width: 0; } .lifecycle-detail__product .panel__title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .lifecycle-detail__header .ui-button span { display: none; } .lifecycle-detail > .lifecycle-metrics, .lifecycle-detail > .lifecycle-chart-grid, .lifecycle-detail > .lifecycle-insights, .lifecycle-detail > .ui-panel { margin-inline: 10px; } .lifecycle-chart-box { height: 260px; min-height: 260px; } .lifecycle-assessment-header, .lifecycle-assessment-toolbar { align-items: stretch; flex-direction: column; } .lifecycle-assessment-toolbar .input { width: 100%; } .lifecycle-edit-grid { grid-template-columns: 1fr; }
 }
 @media (max-width: 620px) { .lifecycle-detail-tabs { top: 92px; margin-inline: 10px; overflow-x: auto; } .lifecycle-detail-tab { flex: 0 0 auto; } .lifecycle-detail-panel { margin-inline: 10px; } }

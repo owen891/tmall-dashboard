@@ -5,6 +5,39 @@
   <title>数据中心 | 天猫数据仪表盘</title>
   <link rel="stylesheet" href="../assets/tokens.css"><link rel="stylesheet" href="../assets/shell.css"><link rel="stylesheet" href="../assets/components.css"><link rel="stylesheet" href="../assets/themes/product-domain.css"><link rel="stylesheet" href="../assets/themes/promotion-domain.css"><link rel="stylesheet" href="../assets/themes/overview-domain.css"><link rel="stylesheet" href="../assets/themes/lifecycle-domain.css"><link rel="stylesheet" href="../assets/themes/settings-domain.css">
   <script src="../assets/lucide-custom.min.js"></script>
+  <style>
+    body[data-page="data-center"] .demo-topbar__tools .dc-import-trigger {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: var(--space-2);
+      min-height: var(--control-height);
+      padding: 0 var(--space-3);
+      border: 1px solid var(--border-default);
+      border-radius: var(--radius-md);
+      background: var(--surface-base);
+      color: var(--text-secondary);
+      font-weight: 600;
+      white-space: nowrap;
+      cursor: pointer;
+    }
+    body[data-page="data-center"] .demo-topbar__tools .dc-import-trigger:hover {
+      border-color: var(--brand);
+      background: var(--brand-tint);
+      color: var(--brand);
+    }
+    body[data-page="data-center"] .demo-topbar__tools .dc-import-trigger i,
+    body[data-page="data-center"] .demo-topbar__tools .dc-import-trigger .lucide {
+      width: var(--icon-inline);
+      height: var(--icon-inline);
+      stroke-width: 1.75;
+    }
+    @media (max-width: 760px) {
+      body[data-page="data-center"] .demo-topbar__tools .dc-import-trigger {
+        min-height: var(--control-height-touch);
+      }
+    }
+  </style>
 </head>
 <body data-page="data-center"><div class="demo-app"><aside class="demo-sidebar" data-shell-sidebar></aside><div class="demo-main"><header class="demo-topbar" data-shell-header></header><main class="demo-page"><aside data-right-rail hidden aria-label="辅助信息"></aside>
   <div class="ui-page-header"><div><h2>数据中心</h2><p>上传表格后先逐份预览字段映射和质量结果，确认后才会写入数据。</p></div></div>
@@ -73,4 +106,23 @@
    <dialog class="modal-form page-capability-detail" data-page-capability-detail data-modal-kind="detail" aria-labelledby="page-capability-detail-title"><div class="modal-form__header"><div><h3 id="page-capability-detail-title">页面能力详情</h3><p data-page-capability-detail-subtitle></p></div><button class="ui-button ui-button--ghost" type="button" data-page-capability-detail-close aria-label="关闭"><i data-lucide="x"></i></button></div><div class="modal-form__body" data-page-capability-detail-body></div></dialog>
      </div>
    </details>
-</main></div></div><script src="../assets/api.js"></script><script src="../assets/navigation.js"></script><script src="../assets/labels.js"></script><script src="../assets/shell.js"></script><script src="../assets/format.js"></script><script src="../assets/ui-components.js"></script><script src="../assets/pages/data-center/import-workflow.js"></script><script src="../assets/pages/data-center/identity-review.js"></script><script src="../assets/pages/data-center/capability-map.js"></script><script src="../assets/pages/data-center/page-capabilities.js"></script></body></html>
+</main></div></div><script src="../assets/api.js"></script><script src="../assets/navigation.js"></script><script src="../assets/labels.js"></script><script src="../assets/shell.js"></script><script src="../assets/format.js"></script><script src="../assets/ui-components.js"></script><script src="../assets/pages/data-center/import-workflow.js"></script><script src="../assets/pages/data-center/identity-review.js"></script><script src="../assets/pages/data-center/capability-map.js"></script><script src="../assets/pages/data-center/page-capabilities.js"></script><script>
+(function () {
+  if (document.body.dataset.page !== 'data-center') return;
+  const tools = document.querySelector('.demo-topbar__tools');
+  const dialog = document.querySelector('[data-toolbox-dialog]');
+  if (!tools || !dialog) return;
+  const sidebarTrigger = document.querySelector('.demo-sidebar [data-open-toolbox]');
+  if (sidebarTrigger) sidebarTrigger.removeAttribute('data-open-toolbox');
+  tools.insertAdjacentHTML('afterbegin',
+    '<button class="dc-import-trigger" type="button" data-open-toolbox aria-label="导入数据" title="导入数据"><i data-lucide="upload" aria-hidden="true"></i><span>导入数据</span></button>');
+  if (window.lucide) window.lucide.createIcons();
+  const trigger = tools.querySelector('[data-open-toolbox]');
+  trigger.addEventListener('click', function () {
+    if (dialog.open) return;
+    dialog.showModal();
+    document.body.classList.add('demo-scroll-lock');
+  });
+})();
+</script>
+</body></html>

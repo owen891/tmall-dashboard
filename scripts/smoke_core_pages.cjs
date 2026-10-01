@@ -181,7 +181,7 @@ async function inspect(browser, viewport, label) {
     const dialogs = await inspectDialogs(page, id, browser, viewport);
 
     if (id === 'creative-board') {
-      const productCount = await page.locator('[data-cb-products] .cb-product, [data-cb-products] .ui-empty-state').count();
+      const productCount = await page.locator('[data-cb-products] tr[data-cb-open], [data-cb-products] .ui-empty-state').count();
       if (!productCount) throw new Error('creative board did not render products or empty state');
     }
     results.push({ id, label, status: response?.status(), errors, overflow, canvas, nonblankCanvas, dialogs, ...metrics });
