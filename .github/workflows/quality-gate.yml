@@ -73,6 +73,7 @@ jobs:
           node scripts/browser_prd_gates.cjs
           TMALL_CAPABILITY_ONLY=1 node scripts/browser_prd_gates.cjs
           node scripts/audit_core_interactions.cjs
+          node scripts/audit_ui_contrast.cjs --states
 
       - name: Upload browser diagnostics
         if: always()
