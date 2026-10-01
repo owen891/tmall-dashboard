@@ -1,3 +1,4 @@
+import re
 from pathlib import Path
 
 
@@ -19,8 +20,11 @@ def test_web_update_checker_is_loaded_by_the_common_shell():
     checker = (PROJECT_ROOT / 'frontend' / 'ui_demo' / 'assets' / 'version-check.js').read_text(encoding='utf-8')
     version = (PROJECT_ROOT / 'frontend' / 'ui_demo' / 'assets' / 'version.js').read_text(encoding='utf-8')
 
-    assert "new URL('version.js', assetBase)" in shell
-    assert "new URL('version-check.js', assetBase)" in shell
+    # shell.js 给动态加载的脚本带 ?v= 穿透 7 天静态缓存，断言表达契约本身
+    #（用 new URL(name, assetBase) 加载 version.js / version-check.js），
+    # 不要写死「无查询串」的字面量 —— 那样一 bump 缓存串就误报。
+    assert re.search(r"new URL\('version\.js(?:\?[^']*)?', assetBase\)", shell)
+    assert re.search(r"new URL\('version-check\.js(?:\?[^']*)?', assetBase\)", shell)
     assert "new URL('../api/version?client=web', assetBase)" in checker
     assert '立即刷新' in checker
     assert 'TMALL_WEB_VERSION' in version

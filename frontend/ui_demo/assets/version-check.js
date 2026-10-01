@@ -9,7 +9,6 @@
   if (window.tmallDesktop?.isDesktop) return;
   const project = window.TMALL_PROJECT || {
     latestRelease: 'https://gitcode.com/owen891/tmall-dashboard/releases/latest',
-    latestReleaseApi: 'https://gitcode.com/api/v5/repos/owen891/tmall-dashboard/releases/latest',
   };
 
   const newerThan = (candidate, current) => {
@@ -93,11 +92,14 @@
     if (!releaseCheckDue()) return;
     markReleaseCheck();
     try {
-      const response = await fetch(project.latestReleaseApi, { cache: 'no-store', headers: { Accept: 'application/json' } });
+      // Ask our own backend, which proxies the upstream release API. Calling the
+      // third-party API directly from the browser logged a CORS failure on every
+      // page load whenever the host was unreachable.
+      const response = await fetch(new URL('../api/version?client=web&release=1', assetBase), { cache: 'no-store', headers: { Accept: 'application/json' } });
       if (!response.ok) return;
-      const release = await response.json();
+      const release = (await response.json())?.data?.latest_release;
       const version = release?.tag_name;
-      if (newerThan(version, currentVersion)) showBanner(version, project.latestRelease);
+      if (newerThan(version, currentVersion)) showBanner(version, release?.html_url || project.latestRelease);
     } catch {
       // Release checks are best-effort and must not affect dashboard use.
     }
