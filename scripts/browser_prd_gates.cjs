@@ -44,10 +44,10 @@ async function gateDataCapabilities(page) {
   if (filteredCapabilityRows !== 1 || filteredCapabilityRows >= allCapabilityRows) throw new Error(`data capability search did not narrow rows: ${filteredCapabilityRows}/${allCapabilityRows}`);
   const marketTrigger = page.locator('[data-capability-domain="market"]');
   await marketTrigger.click();
-  const capabilityDetail = page.locator('[data-capability-detail]');
-  if (await capabilityDetail.getAttribute('data-modal-kind') !== 'detail') throw new Error('data capability drawer is not classified as detail');
+  const capabilityDetail = page.locator('.ui-drawer.is-open');
+  if (await page.locator('[data-capability-detail]').getAttribute('data-modal-kind') !== 'detail') throw new Error('data capability drawer is not classified as detail');
   if (!(await capabilityDetail.textContent()).includes('当前不承诺完整市场机会分析')) throw new Error('market limitation was replaced by a fabricated capability');
-  await page.locator('[data-capability-detail-close]').click();
+  await page.locator('.ui-drawer.is-open .ui-drawer__close').click();
   if (!await marketTrigger.evaluate((button) => document.activeElement === button)) throw new Error('data capability detail did not restore trigger focus');
   return { capabilityCounts, allCapabilityRows, filteredCapabilityRows };
 }
@@ -65,9 +65,9 @@ async function gatePageCapabilities(page) {
   if (!filteredRows || filteredRows >= allRows) throw new Error(`page capability search did not narrow rows: ${filteredRows}/${allRows}`);
   const trigger = page.locator('[data-page-capability-table] button').first();
   await trigger.click();
-  const detail = page.locator('[data-page-capability-detail]');
-  if (await detail.getAttribute('data-modal-kind') !== 'detail') throw new Error('page capability detail is not classified as detail');
-  await page.locator('[data-page-capability-detail-close]').click();
+  const detail = page.locator('.ui-drawer.is-open');
+  if (await page.locator('[data-page-capability-detail]').getAttribute('data-modal-kind') !== 'detail') throw new Error('page capability detail is not classified as detail');
+  await page.locator('.ui-drawer.is-open .ui-drawer__close').click();
   if (!await trigger.evaluate((button) => document.activeElement === button)) throw new Error('page capability detail did not restore trigger focus');
   return { counts, allRows, filteredRows };
 }
@@ -403,10 +403,10 @@ const flowImpactLabel = '影响';
   const marketTrigger = page.locator('[data-capability-domain="market"]');
   await marketTrigger.scrollIntoViewIfNeeded();
   await marketTrigger.click();
-  const capabilityDetail = page.locator('[data-capability-detail]');
-  if (await capabilityDetail.getAttribute('data-modal-kind') !== 'detail') throw new Error('data capability drawer is not classified as detail');
+  const capabilityDetail = page.locator('.ui-drawer.is-open');
+  if (await page.locator('[data-capability-detail]').getAttribute('data-modal-kind') !== 'detail') throw new Error('data capability drawer is not classified as detail');
   if (!(await capabilityDetail.textContent()).includes('当前不承诺完整市场机会分析')) throw new Error('market limitation was replaced by a fabricated capability');
-  await page.locator('[data-capability-detail-close]').click();
+  await page.locator('.ui-drawer.is-open .ui-drawer__close').click();
   if (!await marketTrigger.evaluate((button) => document.activeElement === button)) throw new Error('data capability detail did not restore trigger focus');
   await gatePageCapabilities(page);
   console.log('[gate] navigation, availability and template refresh');

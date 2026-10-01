@@ -91,7 +91,9 @@
      <div class="ui-table-wrap ui-table-wrap--discoverable"><table class="ui-data-table data-capability-table"><thead><tr><th>数据域</th><th>粒度</th><th>覆盖范围</th><th>原始字段</th><th>派生指标</th><th>消费页面</th><th>限制</th><th>证据</th></tr></thead><tbody data-capability-table><tr><td colspan="8">加载中…</td></tr></tbody></table></div>
     <div class="unsupported-capabilities" data-unsupported-capabilities></div>
   </section>
-  <dialog class="modal-form data-capability-detail" data-capability-detail data-modal-kind="detail" aria-labelledby="data-capability-detail-title"><div class="modal-form__header"><div><h3 id="data-capability-detail-title">数据域详情</h3><p data-capability-detail-subtitle></p></div><button class="ui-button ui-button--ghost" type="button" data-capability-detail-close aria-label="关闭"><i data-lucide="x"></i></button></div><div class="modal-form__body" data-capability-detail-body></div></dialog>
+  <template data-capability-detail data-modal-kind="detail">
+    <div class="modal-form__body" data-capability-detail-body></div>
+  </template>
   <section class="ui-panel page-capability-map" data-page-capability-map>
     <div class="panel__header"><div><h3 class="panel__title">页面能力地图</h3><p class="panel__hint">页面、操作和弹窗只展示当前数据条件允许的状态；注册表不可在此编辑。</p></div></div>
     <div class="ui-metric-grid data-page-capability-summary" data-page-capability-summary>
@@ -103,7 +105,9 @@
     <div class="ui-filter-toolbar ui-table-toolbar"><div class="filter-group"><input class="input" type="search" placeholder="搜索页面或能力" data-page-capability-filter="search" aria-label="搜索页面或能力"><select class="select" data-page-capability-filter="support" aria-label="筛选能力状态"><option value="">全部状态</option><option value="supported">可用</option><option value="conditional">受条件限制</option><option value="unsupported">明确不支持</option></select></div><p class="panel__hint" data-page-capability-status role="status" aria-live="polite"></p></div>
      <div class="ui-table-wrap ui-table-wrap--discoverable"><table class="ui-data-table page-capability-table"><thead><tr><th>页面</th><th>核心问题</th><th>能力</th><th>当前状态</th><th>数据依赖</th><th>弹窗</th><th>详情</th></tr></thead><tbody data-page-capability-table><tr><td colspan="7">加载中…</td></tr></tbody></table></div>
   </section>
-   <dialog class="modal-form page-capability-detail" data-page-capability-detail data-modal-kind="detail" aria-labelledby="page-capability-detail-title"><div class="modal-form__header"><div><h3 id="page-capability-detail-title">页面能力详情</h3><p data-page-capability-detail-subtitle></p></div><button class="ui-button ui-button--ghost" type="button" data-page-capability-detail-close aria-label="关闭"><i data-lucide="x"></i></button></div><div class="modal-form__body" data-page-capability-detail-body></div></dialog>
+  <template data-page-capability-detail data-modal-kind="detail">
+    <div class="modal-form__body" data-page-capability-detail-body></div>
+  </template>
      </div>
    </details>
 </main></div></div><script src="../assets/api.js"></script><script src="../assets/navigation.js"></script><script src="../assets/labels.js"></script><script src="../assets/shell.js"></script><script src="../assets/format.js"></script><script src="../assets/ui-components.js"></script><script src="../assets/pages/data-center/import-workflow.js"></script><script src="../assets/pages/data-center/identity-review.js"></script><script src="../assets/pages/data-center/capability-map.js"></script><script src="../assets/pages/data-center/page-capabilities.js"></script><script>

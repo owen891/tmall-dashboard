@@ -7,11 +7,16 @@
   const unsupported = document.querySelector('[data-unsupported-capabilities]');
   const search = document.querySelector('[data-capability-filter="search"]');
   const availability = document.querySelector('[data-capability-filter="availability"]');
-  const dialog = document.querySelector('[data-capability-detail]');
-  const detailTitle = document.querySelector('#data-capability-detail-title');
-  const detailSubtitle = document.querySelector('[data-capability-detail-subtitle]');
-  const detailBody = document.querySelector('[data-capability-detail-body]');
-  const closeButton = document.querySelector('[data-capability-detail-close]');
+  const capabilityDrawer = (() => {
+    const template = document.querySelector('[data-capability-detail]');
+    if (!template || !window.TmallUI?.detailDrawer) return null;
+    const drawer = window.TmallUI.detailDrawer({ title: '数据域详情', description: '证据等级、新鲜度、来源与限制', size: 'md' });
+    drawer.body.append(template.content.cloneNode(true));
+    return drawer;
+  })();
+  const detailTitle = capabilityDrawer?.node.querySelector('.ui-drawer__copy h2');
+  const detailSubtitle = capabilityDrawer?.node.querySelector('.ui-drawer__copy p');
+  const detailBody = capabilityDrawer?.node.querySelector('[data-capability-detail-body]');
   let catalog = null;
   let trigger = null;
 
@@ -37,6 +42,7 @@
   };
   const openDetail = (domain, button) => {
     trigger = button;
+    if (!capabilityDrawer) return;
     detailTitle.textContent = domain.label;
     detailSubtitle.textContent = `${availabilityLabel(domain.availability)} · ${coverageText(domain.coverage)}`;
     detailBody.replaceChildren(
@@ -54,16 +60,9 @@
       detailSection('消费页面', domain.consumer_pages),
       detailSection('限制', domain.limitations)
     );
-    dialog.showModal();
-    closeButton.focus();
+    capabilityDrawer.open(trigger);
   };
-  const closeDetail = () => {
-    if (dialog.open) dialog.close();
-    trigger?.focus();
-  };
-  closeButton?.addEventListener('click', closeDetail);
-  dialog?.addEventListener('cancel', (event) => { event.preventDefault(); closeDetail(); });
-  dialog?.addEventListener('click', (event) => { if (event.target === dialog) closeDetail(); });
+  const closeDetail = () => capabilityDrawer?.close();
 
   const renderUnsupported = () => {
     unsupported.replaceChildren(make('h4', '当前明确不支持'));

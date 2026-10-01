@@ -6,11 +6,16 @@
   const status = document.querySelector('[data-page-capability-status]');
   const search = document.querySelector('[data-page-capability-filter="search"]');
   const support = document.querySelector('[data-page-capability-filter="support"]');
-  const dialog = document.querySelector('[data-page-capability-detail]');
-  const detailTitle = document.querySelector('#page-capability-detail-title');
-  const detailSubtitle = document.querySelector('[data-page-capability-detail-subtitle]');
-  const detailBody = document.querySelector('[data-page-capability-detail-body]');
-  const closeButton = document.querySelector('[data-page-capability-detail-close]');
+  const capabilityDrawer = (() => {
+    const template = document.querySelector('[data-page-capability-detail]');
+    if (!template || !window.TmallUI?.detailDrawer) return null;
+    const drawer = window.TmallUI.detailDrawer({ title: '页面能力详情', description: '支持状态、数据依赖与限制', size: 'md' });
+    drawer.body.append(template.content.cloneNode(true));
+    return drawer;
+  })();
+  const detailTitle = capabilityDrawer?.node.querySelector('.ui-drawer__copy h2');
+  const detailSubtitle = capabilityDrawer?.node.querySelector('.ui-drawer__copy p');
+  const detailBody = capabilityDrawer?.node.querySelector('[data-page-capability-detail-body]');
   const labels = { supported: '可用', conditional: '受条件限制', unsupported: '明确不支持', unclassified: '未分类' };
   let catalog = null;
   let pageCapabilityTrigger = null;
@@ -25,12 +30,10 @@
   const capabilityRows = () => (catalog?.pages || []).flatMap((page) =>
     (page.capabilities || []).map((capability) => ({ page, capability }))
   );
-  const closeDetail = () => {
-    if (dialog?.open) dialog.close();
-    pageCapabilityTrigger?.focus();
-  };
+  const closeDetail = () => capabilityDrawer?.close();
   const openDetail = (page, capability, button) => {
     pageCapabilityTrigger = button;
+    if (!capabilityDrawer) return;
     detailTitle.textContent = `${page.label} · ${capability.label}`;
     detailSubtitle.textContent = `${labels[capability.support_level] || capability.support_level} · ${capability.interaction_state === 'enabled' ? '当前可执行' : '当前不可执行'}`;
     const sections = [
@@ -51,8 +54,7 @@
       section.append(make('h4', title), make('p', list(values), 'panel__hint'));
       return section;
     }));
-    dialog.showModal();
-    closeButton.focus();
+    capabilityDrawer.open(button);
   };
   const renderRows = () => {
     const query = (search?.value || '').trim().toLowerCase();
@@ -115,9 +117,6 @@
       DemoApi.renderDataState(status, 'source-unavailable', { message: error.message, retry: load });
     }
   };
-  closeButton?.addEventListener('click', closeDetail);
-  dialog?.addEventListener('cancel', (event) => { event.preventDefault(); closeDetail(); });
-  dialog?.addEventListener('click', (event) => { if (event.target === dialog) closeDetail(); });
   search?.addEventListener('input', () => catalog && renderRows());
   support?.addEventListener('change', () => catalog && renderRows());
   load();
