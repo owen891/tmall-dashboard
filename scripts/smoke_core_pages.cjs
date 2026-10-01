@@ -75,7 +75,7 @@ async function inspectDialogs(page, id, browser, viewport) {
     const metrics = await dialog.evaluate((element) => {
       const rect = element.getBoundingClientRect();
       return {
-        open: element.open,
+        open: element.open !== false,
         insideViewport: rect.left >= -1 && rect.right <= window.innerWidth + 1 && rect.top >= -1 && rect.bottom <= window.innerHeight + 1,
         noHorizontalOverflow: element.scrollWidth <= element.clientWidth + 2,
       };
@@ -126,10 +126,10 @@ async function inspectDialogs(page, id, browser, viewport) {
     const lifecycleCard = page.locator('[data-lifecycle-card]').first();
     await lifecycleCard.waitFor({ state: 'visible' });
     await lifecycleCard.click();
-    await page.locator('[data-lifecycle-detail][open]').waitFor({ state: 'visible' });
-    await inspectOpenDialog('[data-lifecycle-detail]', 'lifecycle-detail');
+    await page.locator('.ui-drawer.is-open').waitFor({ state: 'visible' });
+    await inspectOpenDialog('.ui-drawer.is-open', 'lifecycle-detail');
     await page.locator('[data-lifecycle-detail-tab="table"]').click();
-    await inspectOpenDialog('[data-lifecycle-detail]', 'lifecycle-detail-table');
+    await inspectOpenDialog('.ui-drawer.is-open', 'lifecycle-detail-table');
     await page.locator('[data-lifecycle-columns-open]').waitFor({ state: 'visible' });
     await page.locator('[data-lifecycle-columns-open]').click();
     await page.locator('[data-lifecycle-template-manager] [data-field-template-edit]').first().waitFor({ state: 'visible' });

@@ -167,7 +167,7 @@ async function runPage(browser, id, path, viewport) {
       await clickIfVisible(page, '[data-lifecycle-columns-clear-all]', 'lifecycle columns clear', failures);
       await clickIfVisible(page, '[data-lifecycle-columns-reset]', 'lifecycle columns reset', failures);
       await clickIfVisible(page, '[data-lifecycle-columns-close]', 'lifecycle columns close', failures);
-      await clickIfVisible(page, '[data-lifecycle-back]', 'lifecycle detail close', failures);
+      await clickIfVisible(page, '.ui-drawer.is-open .ui-drawer__close', 'lifecycle detail close', failures);
     }
 
     if (id === 'goals') {

@@ -92,14 +92,30 @@
   const initialLifecycleParams = new URLSearchParams(window.location.search);
   const initialLifecyclePage = Number(initialLifecycleParams.get('page'));
   const initialAssessmentPage = Number(initialLifecycleParams.get('assessment_page'));
-  const state = { summaries: [], rowsByProduct: new Map(), range: null, selectedId: '', previousFocus: null, requestId: 0, scaleChart: null, efficiencyChart: null, efficiencyMode: 'refundRate', detailTab: 'overview', detailFields: loadLifecycleDetailFields(), page: Number.isInteger(initialLifecyclePage) && initialLifecyclePage > 0 ? initialLifecyclePage : 1, urlRestored: false };
-  const detailTabUI = (() => {
+  const state = { summaries: [], rowsByProduct: new Map(), range: null, selectedId: '', requestId: 0, scaleChart: null, efficiencyChart: null, efficiencyMode: 'refundRate', detailTab: 'overview', detailFields: loadLifecycleDetailFields(), page: Number.isInteger(initialLifecyclePage) && initialLifecyclePage > 0 ? initialLifecyclePage : 1, urlRestored: false };
+  // 详情面统一 NUI 抽屉：dialog 壳仅作内容来源，初始化时搬移进抽屉（对齐 market-ranking 先例）
+  const lifecycleDetailDrawer = (() => {
     const dialog = $('[data-lifecycle-detail]');
-    if (!dialog) return null;
-    const metrics = $('[data-lifecycle-metrics]', dialog);
-    const chartGrid = $('.lifecycle-chart-grid', dialog);
-    const insights = $('[data-lifecycle-insights]', dialog);
-    const table = [...dialog.children].find((item) => item.matches('article.ui-panel'));
+    if (!dialog || !window.TmallUI?.detailDrawer) return null;
+    const content = document.createElement('div');
+    content.className = 'lifecycle-detail__drawer-body';
+    [...dialog.children].forEach((child) => content.appendChild(child));
+    const drawer = window.TmallUI.detailDrawer({
+      title: '商品生命周期详情',
+      description: '月度经营规模、效率与明细',
+      size: 'lg',
+    });
+    drawer.body.append(content);
+    content.querySelector('[data-lifecycle-back]')?.remove();
+    return drawer;
+  })();
+  const detailTabUI = (() => {
+    const root = lifecycleDetailDrawer?.body?.firstElementChild || $('[data-lifecycle-detail]');
+    if (!root) return null;
+    const metrics = $('[data-lifecycle-metrics]', root);
+    const chartGrid = $('.lifecycle-chart-grid', root);
+    const insights = $('[data-lifecycle-insights]', root);
+    const table = [...root.children].find((item) => item.matches('article.ui-panel'));
     const scaleChart = chartGrid?.querySelector('.lifecycle-chart-panel:first-child');
     const efficiencyChart = chartGrid?.querySelector('.lifecycle-chart-panel:nth-child(2)');
     if (!metrics || !chartGrid || !insights || !table || !scaleChart || !efficiencyChart) return null;
@@ -141,10 +157,10 @@
       tabList.appendChild(button);
       return button;
     });
-    dialog.querySelector('.lifecycle-detail__header')?.after(tabList);
+    root.querySelector('.lifecycle-detail__header')?.after(tabList);
     chartGrid.remove();
-    Object.values(panels).forEach((element) => dialog.appendChild(element));
-    return { dialog, tabs, panels };
+    Object.values(panels).forEach((element) => root.appendChild(element));
+    return { tabs, panels };
   })();
   const lifecycleColumnsDialog = $('[data-lifecycle-columns-dialog]');
   let lifecycleColumnSelector = null;
@@ -762,7 +778,7 @@
   }
 
   async function openDetail(productId, trigger) {
-    state.selectedId = String(productId); state.previousFocus = trigger || document.activeElement;
+    state.selectedId = String(productId);
     state.detailTab = 'overview';
     const record = state.summaries.find((item) => String(item.product_id) === state.selectedId);
     if (record) {
@@ -770,21 +786,14 @@
       if (state.selectedId !== String(productId) || !rows.length) return;
       record.rows = rows;
     }
-    const dialog = $('[data-lifecycle-detail]');
-    dialog.hidden = false;
-    if (!dialog.open) dialog.showModal();
+    lifecycleDetailDrawer?.open(trigger || document.activeElement);
     await refreshDetail();
-    $('[data-lifecycle-back]').focus();
   }
 
   function closeDetail() {
     state.selectedId = '';
-    const dialog = $('[data-lifecycle-detail]');
-    if (dialog.open) dialog.close();
-    dialog.hidden = true;
+    lifecycleDetailDrawer?.close();
     state.scaleChart?.destroy(); state.scaleChart = null; state.efficiencyChart?.destroy(); state.efficiencyChart = null;
-    state.previousFocus?.focus?.();
-    state.previousFocus = null;
   }
 
   function exportCsv() {
@@ -819,9 +828,6 @@
   $('[data-lifecycle-assessment-stage]').addEventListener('change', () => { assessmentPage = 1; syncLifecycleUrl(); renderAssessments(); });
   $('[data-lifecycle-assessment-prev]').addEventListener('click', () => { if (assessmentPage > 1) { assessmentPage -= 1; syncLifecycleUrl(); renderAssessments(); } });
   $('[data-lifecycle-assessment-next]').addEventListener('click', () => { const pages = Math.max(1, Math.ceil(visibleAssessments().length / assessmentPageSize)); if (assessmentPage < pages) { assessmentPage += 1; syncLifecycleUrl(); renderAssessments(); } });
-  $('[data-lifecycle-back]').addEventListener('click', closeDetail);
-  $('[data-lifecycle-detail]').addEventListener('cancel', (event) => { event.preventDefault(); closeDetail(); });
-  $('[data-lifecycle-detail]').addEventListener('click', (event) => { if (event.target === event.currentTarget) closeDetail(); });
   $('[data-lifecycle-columns-open]')?.addEventListener('click', openLifecycleColumnsDialog);
   document.querySelectorAll('[data-lifecycle-columns-close]').forEach((button) => button.addEventListener('click', closeLifecycleColumnsDialog));
   $('[data-lifecycle-template-apply]')?.addEventListener('click', applyLifecycleTemplate);
