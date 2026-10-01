@@ -99,3 +99,6 @@ ui-manage-toolbox-check.png
 
 # Stray tool-generated HTML artifacts (not part of the application)
 pelican-*.html
+
+# redesign XMind 导出图（redesign 方向已终止，本地留档不入库）
+.xmind_extract/
