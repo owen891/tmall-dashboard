@@ -1,4 +1,4 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param(
     [string]$RunId = $(if ($env:TMALL_COLLECT_RUN_ID) { $env:TMALL_COLLECT_RUN_ID } else { [guid]::NewGuid().ToString('N') }),
     [string]$ShopId = $(if ($env:TMALL_SHOP_ID) { $env:TMALL_SHOP_ID } else { '3828498662' }),
@@ -28,6 +28,37 @@ $env:TMALL_COLLECT_RUN_ID = $RunId
 $env:TMALL_SHOP_ID = $ShopId
 $env:TMALL_CDP_PORT = [string]$CdpPort
 if ($DbPath) { $env:TMALL_DB_PATH = (Resolve-Path -LiteralPath $DbPath -ErrorAction Stop).Path }
+
+# ==================== 采集互斥锁（改进路线 2026-10-01 P3.2） ====================
+# 两条采集链（计划任务链 run_daily_collect.ps1 / RPA 链 auto-collect.ps1）共用同一
+# 数据库与同一 CDP Chrome，同时运行会互相污染（09-30 曾出现采集失败）。锁文件带
+# PID + 2 小时 TTL：崩溃残留不会永久死锁（PID 已死或超时即自动接管）。
+$CollectLockPath = Join-Path $LogDir 'collect.lock'
+$CollectLockTtlSeconds = 7200
+function Test-CollectLockBusy {
+    if (-not (Test-Path -LiteralPath $CollectLockPath)) { return $false }
+    $raw = (Get-Content -LiteralPath $CollectLockPath -ErrorAction SilentlyContinue | Select-Object -First 1) -as [string]
+    $ownerPid = $null
+    if ($raw -match '"pid"\s*:\s*(\d+)') { $ownerPid = [int]$Matches[1] }
+    $ageSeconds = ((Get-Date) - (Get-Item -LiteralPath $CollectLockPath).LastWriteTime).TotalSeconds
+    $ownerAlive = $false
+    if ($ownerPid) { $ownerAlive = [bool](Get-Process -Id $ownerPid -ErrorAction SilentlyContinue) }
+    if ($ageSeconds -lt $CollectLockTtlSeconds -and $ownerAlive) { return $true }
+    Remove-Item -LiteralPath $CollectLockPath -Force -ErrorAction SilentlyContinue
+    return $false
+}
+function Release-CollectLock {
+    if (Test-Path -LiteralPath $CollectLockPath) {
+        Remove-Item -LiteralPath $CollectLockPath -Force -ErrorAction SilentlyContinue
+    }
+}
+if (Test-CollectLockBusy) {
+    Write-Output "SKIP: 另一条采集链正在运行（锁：$CollectLockPath）。本次退出，避免双链并发。"
+    exit 0
+}
+('{"pid": ' + $PID + ', "started_at": "' + (Get-Date -Format o) + '"}') | Set-Content -LiteralPath $CollectLockPath -Encoding UTF8
+# ==================== 互斥锁已获取 ====================
+
 
 if (-not (Test-Path -LiteralPath $VENV_PYTHON)) { throw "采集 Python 不存在: $VENV_PYTHON" }
 if (-not (Test-Path -LiteralPath $COLLECTORS_DIR)) { throw "采集器目录不存在: $COLLECTORS_DIR" }
@@ -201,4 +232,5 @@ Get-ChildItem -Path $LOG_DIR -Filter "collect-*.log" | Where-Object {
     $_.LastWriteTime -lt (Get-Date).AddDays(-7)
 } | Remove-Item -Force -ErrorAction SilentlyContinue
 
+Release-CollectLock
 exit $failCount

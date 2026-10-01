@@ -35,6 +35,37 @@ $LogDir = if ($env:TMALL_LOG_DIR) { $env:TMALL_LOG_DIR } else { Join-Path $Proje
 
 if (-not (Test-Path -LiteralPath $PythonPath)) { throw "采集 Python 不存在: $PythonPath" }
 
+# ==================== 采集互斥锁（改进路线 2026-10-01 P3.2） ====================
+# 两条采集链（计划任务链 run_daily_collect.ps1 / RPA 链 auto-collect.ps1）共用同一
+# 数据库与同一 CDP Chrome，同时运行会互相污染（09-30 曾出现采集失败）。锁文件带
+# PID + 2 小时 TTL：崩溃残留不会永久死锁（PID 已死或超时即自动接管）。
+$CollectLockPath = Join-Path $LogDir 'collect.lock'
+$CollectLockTtlSeconds = 7200
+function Test-CollectLockBusy {
+    if (-not (Test-Path -LiteralPath $CollectLockPath)) { return $false }
+    $raw = (Get-Content -LiteralPath $CollectLockPath -ErrorAction SilentlyContinue | Select-Object -First 1) -as [string]
+    $ownerPid = $null
+    if ($raw -match '"pid"\s*:\s*(\d+)') { $ownerPid = [int]$Matches[1] }
+    $ageSeconds = ((Get-Date) - (Get-Item -LiteralPath $CollectLockPath).LastWriteTime).TotalSeconds
+    $ownerAlive = $false
+    if ($ownerPid) { $ownerAlive = [bool](Get-Process -Id $ownerPid -ErrorAction SilentlyContinue) }
+    if ($ageSeconds -lt $CollectLockTtlSeconds -and $ownerAlive) { return $true }
+    Remove-Item -LiteralPath $CollectLockPath -Force -ErrorAction SilentlyContinue
+    return $false
+}
+function Release-CollectLock {
+    if (Test-Path -LiteralPath $CollectLockPath) {
+        Remove-Item -LiteralPath $CollectLockPath -Force -ErrorAction SilentlyContinue
+    }
+}
+if (Test-CollectLockBusy) {
+    Write-Output "SKIP: 另一条采集链正在运行（锁：$CollectLockPath）。本次退出，避免双链并发。"
+    exit 0
+}
+('{"pid": ' + $PID + ', "started_at": "' + (Get-Date -Format o) + '"}') | Set-Content -LiteralPath $CollectLockPath -Encoding UTF8
+# ==================== 互斥锁已获取 ====================
+
+
 $ChromeStartTimeout = 30
 # Must exceed COLLECT_TIMEOUT in api/collect_api.py (900s for full-column BI collection).
 $CollectWaitTimeout = if ($env:TMALL_COLLECT_WAIT_TIMEOUT) { [int]$env:TMALL_COLLECT_WAIT_TIMEOUT } else { 1200 }
@@ -115,6 +146,7 @@ if (Test-Dashboard) {
     }
     if (-not $dashboardReady) {
         Write-Log "  ✗ 看板服务自动启动失败，无法触发采集" "ERROR"
+        Release-CollectLock
         exit 1
     }
 }
@@ -241,7 +273,7 @@ foreach ($source in $Sources) {
     Start-Sleep -Seconds 2
 }
 
-if ($triggered.Count -eq 0) { Write-Log "  ✗ 没有触发任何任务" "ERROR"; exit 1 }
+if ($triggered.Count -eq 0) { Write-Log "  ✗ 没有触发任何任务" "ERROR"; Release-CollectLock; exit 1 }
 Write-Log "  成功触发 $($triggered.Count) 个任务"
 
 # 5. 等待采集完成
@@ -302,4 +334,5 @@ Write-Log "========================================"
 Write-Log "  成功: $successCount, 失败: $failCount"
 Write-Log "========================================"
 
+Release-CollectLock
 if ($failCount -gt 0 -or $aggregateFailed) { exit 1 } else { exit 0 }
