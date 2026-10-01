@@ -27,17 +27,19 @@
       ? '--'
       : Number(v).toLocaleString('zh-CN', { maximumFractionDigits: 0 });
 
-    function deltaBadge(rate) {
+    // 4-3：极性必须按指标区分 —— 改之前这里是「正=绿」一刀切，
+    // 于是「推广花费上涨」「费比上涨」也被涂成绿色（负向指标误色）。
+    function deltaBadge(rate, metricKey) {
       if (rate === null || rate === undefined || Number.isNaN(Number(rate))) return h('span', { class: 'lb-delta lb-delta--na', text: '--' });
       const n = Number(rate);
-      const cls = n > 0.0001 ? 'is-up' : n < -0.0001 ? 'is-down' : 'is-flat';
+      const cls = MetricPolarity.deltaClass(metricKey, n, { deadBand: 0.0001 });
       const sign = n > 0 ? '+' : '';
       return h('span', { class: `lb-delta ${cls}`, text: `${sign}${(n * 100).toFixed(1)}%` });
     }
-    function ppBadge(pp) {
+    function ppBadge(pp, metricKey) {
       if (pp === null || pp === undefined || Number.isNaN(Number(pp))) return h('span', { class: 'lb-delta lb-delta--na', text: '--' });
       const n = Number(pp);
-      const cls = n > 0.0001 ? 'is-up' : n < -0.0001 ? 'is-down' : 'is-flat';
+      const cls = MetricPolarity.deltaClass(metricKey, n, { deadBand: 0.0001 });
       const sign = n > 0 ? '+' : '';
       return h('span', { class: `lb-delta ${cls}`, text: `${sign}${(n * 100).toFixed(1)}pp` });
     }
@@ -89,11 +91,11 @@
 
       // KPI 行
       const kpis = [
-        { label: '本周净销售额', value: `¥${fmtWan(w0.net_sales)}`, delta: deltaBadge(pctChange(w0.net_sales, baseline.net_sales)) },
-        { label: '本周推广花费', value: `¥${fmtWan(w0.ad_spend)}`, delta: deltaBadge(pctChange(w0.ad_spend, baseline.ad_spend)) },
-        { label: '本周利润', value: `¥${fmtWan(w0.profit)}`, delta: deltaBadge(pctChange(w0.profit, baseline.profit)) },
-        { label: '本周利润率', value: fmtPct(w0.profit_rate), delta: ppBadge(ppChange(w0.profit_rate, baseline.profit_rate)) },
-        { label: '本周费比', value: fmtPct(w0.ad_ratio), delta: ppBadge(ppChange(w0.ad_ratio, baseline.ad_ratio)) },
+        { label: '本周净销售额', value: `¥${fmtWan(w0.net_sales)}`, delta: deltaBadge(pctChange(w0.net_sales, baseline.net_sales), 'net_sales') },
+        { label: '本周推广花费', value: `¥${fmtWan(w0.ad_spend)}`, delta: deltaBadge(pctChange(w0.ad_spend, baseline.ad_spend), 'ad_spend') },
+        { label: '本周利润', value: `¥${fmtWan(w0.profit)}`, delta: deltaBadge(pctChange(w0.profit, baseline.profit), 'profit') },
+        { label: '本周利润率', value: fmtPct(w0.profit_rate), delta: ppBadge(ppChange(w0.profit_rate, baseline.profit_rate), 'profit_rate') },
+        { label: '本周费比', value: fmtPct(w0.ad_ratio), delta: ppBadge(ppChange(w0.ad_ratio, baseline.ad_ratio), 'ad_ratio') },
       ];
       const kpiRow = h('div', { class: 'leaf-board__kpis' }, ...kpis.map((k) =>
         h('div', { class: 'leaf-board__kpi' },
@@ -148,11 +150,11 @@
           const previous = baselineWeek[field];
           const denominator = field === 'links_active' ? previous || 1 : Math.abs(previous || 1);
           const change = previous != null && previous !== 0 && v != null ? (v - previous) / denominator : null;
-          return lbCell(display, deltaBadge(change), compareLabel);
+          return lbCell(display, deltaBadge(change, field), compareLabel);
         };
         // 占比类指标用百分点
         const ratioCell = (field) => lbCell(
-          fmtPct(w[field]), ppBadge(ppChange(w[field], baselineWeek[field])), compareLabel);
+          fmtPct(w[field]), ppBadge(ppChange(w[field], baselineWeek[field]), field), compareLabel);
         return h('tr', { class: 'leaf-board__row' },
           h('td', { class: 'leaf-board__td leaf-board__td--leaf' }, row.leaf),
           lbCell(fmtNum(row.links_on_sale), null, null),

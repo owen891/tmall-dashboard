@@ -16,6 +16,38 @@
     return table.tBodies[0] ? [...table.tBodies[0].rows].filter((row) => !isPlaceholderRow(row)) : [];
   }
 
+  // 5-1：分页不再「全部行建 DOM 再用 hidden 藏起来」，只把「当前页 + 下一页」挂在 tbody 上。
+  // 其余行仍保留在 state.allRows 里（detached），翻页时按需挂回。
+  // 这样 data-center 那种 4 表 × 100 行的页面节点数从 2.4 万降到万级以内。
+  const RENDER_WINDOW_FACTOR = 2;
+
+  // 缓存是否仍然可信：tbody 里不能出现缓存不认识的行；缓存里「未被我们主动摘除」的行必须还在 tbody。
+  // 页面脚本整体重渲染 tbody 时，这里会失配 → 丢弃缓存，以 tbody 为准。
+  function cachedRowsValid(table, state) {
+    const cached = state.allRows;
+    const body = table.tBodies[0];
+    if (!cached || !body) return false;
+    const cachedSet = new Set(cached);
+    for (const row of body.rows) {
+      if (isPlaceholderRow(row)) continue;
+      if (!cachedSet.has(row)) return false;
+    }
+    const parked = state.parked || new Set();
+    for (const row of cached) {
+      if (parked.has(row)) continue;
+      if (row.parentNode !== body) return false;
+    }
+    return true;
+  }
+
+  function allRows(table, state) {
+    if (state.allRows && cachedRowsValid(table, state)) return state.allRows;
+    const rows = rowsFor(table);
+    state.allRows = rows;
+    state.parked = new Set();
+    return rows;
+  }
+
   function pageSizesFor(table, state) {
     const configured = String(table.dataset.pageSizes || '')
       .split(',')
@@ -110,6 +142,8 @@
       ignoreBodyMutation: false,
       ignoreHeadMutation: false,
       refreshQueued: false,
+      allRows: null,
+      parked: null,
     };
     tableStates.set(table, state);
     liveStates.add(state);
@@ -183,13 +217,45 @@
     const row = currentHeaderRow(table);
     const index = row ? [...row.cells].findIndex((cell, cellIndex) => headerKey(cell, cellIndex) === state.sortKey) : -1;
     if (index < 0) return;
-    const rows = rowsFor(table);
+    const rows = allRows(table, state);
     const sorted = rows.map((item, originalIndex) => ({ item, originalIndex })).sort((first, second) => {
       const result = compareCells(cellSortValue(first.item.cells[index]), cellSortValue(second.item.cells[index]), state.sortDirection);
       return result || first.originalIndex - second.originalIndex;
     });
-    if (sorted.length) state.ignoreBodyMutation = true;
-    sorted.forEach(({ item }) => table.tBodies[0].appendChild(item));
+    state.allRows = sorted.map(({ item }) => item);
+    // server 模式（products 等）没有客户端分页，也就没有 materialize 环节，这里直接按序回挂。
+    if (!state.controls) {
+      if (sorted.length) state.ignoreBodyMutation = true;
+      sorted.forEach(({ item }) => table.tBodies[0].appendChild(item));
+    }
+  }
+
+  // 只保证「当前页 + 下一页」在 DOM 里：窗口外的行 detach，窗口内第二页的行 hidden。
+  function materializeRows(table, state, rows) {
+    const body = table.tBodies[0];
+    if (!body) return;
+    const pageSize = state.pageSize;
+    const start = (state.page - 1) * pageSize;
+    const end = Math.min(rows.length, start + pageSize * RENDER_WINDOW_FACTOR);
+    const window = rows.slice(start, end);
+
+    const current = [...body.rows].filter((item) => !isPlaceholderRow(item));
+    const windowSet = new Set(window);
+    let mutated = false;
+    current.forEach((item) => {
+      if (!windowSet.has(item)) { item.remove(); mutated = true; }
+    });
+    const orderMatches = !mutated && current.length === window.length
+      && current.every((item, index) => item === window[index]);
+    if (!orderMatches) {
+      const fragment = document.createDocumentFragment();
+      window.forEach((item) => fragment.appendChild(item));
+      body.appendChild(fragment);
+      mutated = true;
+    }
+    window.forEach((item, index) => { item.hidden = index >= pageSize; });
+    state.parked = new Set([...rows.slice(0, start), ...rows.slice(end)]);
+    if (mutated) state.ignoreBodyMutation = true;
   }
 
   function ensureControls(table, state) {
@@ -248,15 +314,13 @@
   }
 
   function updatePagination(table, state) {
-    const rows = rowsFor(table);
     const controls = state.controls;
     if (!controls) return;
+    const rows = allRows(table, state);
     state.totalRows = rows.length;
     state.totalPages = Math.max(1, Math.ceil(rows.length / state.pageSize));
     state.page = Math.min(Math.max(1, state.page), state.totalPages);
-    rows.forEach((row, index) => {
-      row.hidden = index < (state.page - 1) * state.pageSize || index >= state.page * state.pageSize;
-    });
+    materializeRows(table, state, rows);
     controls.root.hidden = rows.length === 0;
     controls.select.value = String(state.pageSize);
     controls.previous.disabled = state.page <= 1;
@@ -473,6 +537,9 @@
     if (!state.bodyObserver && table.tBodies[0]) {
       state.bodyObserver = new MutationObserver(() => {
         if (state.ignoreBodyMutation) { state.ignoreBodyMutation = false; return; }
+        // 外部（页面脚本）重建了 tbody → 行缓存失效，以下一次 tbody 为准。
+        state.allRows = null;
+        state.parked = null;
         scheduleRefresh(table, state);
       });
       state.bodyObserver.observe(table.tBodies[0], { childList: true });

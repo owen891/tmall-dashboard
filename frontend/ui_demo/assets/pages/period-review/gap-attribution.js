@@ -77,7 +77,8 @@
     }
 
     function factorRow(name, contribution, factText) {
-      const cls = contribution > 0 ? 'is-up' : contribution < 0 ? 'is-down' : '';
+      // 4-3：这里的 contribution 是「该因子对销售额变化的贡献」，极性跟随销售额（越高越好）。
+      const cls = contribution === 0 ? '' : MetricPolarity.deltaClass('gsv', contribution);
       return h('tr', null,
         h('td', { text: name }),
         h('td', { class: `num pr-delta ${cls}`.trim(), text: signedMoney(contribution) }),

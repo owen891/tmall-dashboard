@@ -167,7 +167,7 @@
     return payload;
   };
   async function loadPageCapabilities(pageKey = document.body?.dataset.page) {
-    if (!pageKey || pageKey === 'creative-board') return null;
+    if (!pageKey) return null;
     if (!pageCapabilityCache.has(pageKey)) {
       const query = `?page=${encodeURIComponent(pageKey)}`;
       const pending = domainRequest(`/api/page-capabilities${query}`);
@@ -192,5 +192,15 @@
   // TmallUI owns the canonical renderer; every page loads ui-components.js.
   const renderDataState = (container, state, details = {}) => window.TmallUI.renderDataState(container, state, details);
   window.DemoApi = { request, domainRequest, optional, context, can, loadPageCapabilities, canPage, renderDataState };
-  loadPageCapabilities().catch(() => {});
+  // This used to be `.catch(() => {})`. Swallowing the failure is how nine
+  // routable pages stayed gated by nothing: their capability lookup answered
+  // 422 and no one ever saw it. Keep the last failure reachable so the
+  // data-center capability map can flag it, and warn once for the console.
+  loadPageCapabilities().catch((error) => {
+    window.DemoApi.lastCapabilityError = {
+      page: document.body?.dataset.page || null,
+      message: error?.message || String(error),
+    };
+    console.warn('[tmall] page capabilities unavailable:', window.DemoApi.lastCapabilityError);
+  });
 })();

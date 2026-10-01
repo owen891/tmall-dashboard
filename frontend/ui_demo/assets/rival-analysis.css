@@ -21,8 +21,8 @@
     background: transparent;
     color: var(--text-secondary);
   }
-  body[data-page="rival-analysis"] .rival-tab:hover { background: var(--surface-base); color: var(--brand); }
-  body[data-page="rival-analysis"] .rival-tab.active { background: var(--brand); color: var(--text-on-brand); }
+  body[data-page="rival-analysis"] .rival-tab:hover { background: var(--surface-base); color: var(--brand-text); }
+  body[data-page="rival-analysis"] .rival-tab.active { background: var(--brand-solid); color: var(--text-on-brand); }
   body[data-page="rival-analysis"] .rival-chart-row { gap: var(--space-3); margin-bottom: var(--space-3); }
   body[data-page="rival-analysis"] .rival-chart-box {
     min-height: 280px;
@@ -47,7 +47,7 @@
   body[data-page="rival-analysis"] .rival-command-item span { color: var(--text-secondary); font-size: var(--font-size-meta); line-height: 1.55; }
   body[data-page="rival-analysis"] .rival-entry-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-2); margin-top: var(--space-3); }
   body[data-page="rival-analysis"] .rival-entry-card { display: flex; align-items: flex-start; gap: 10px; min-height: 86px; padding: 12px; border: 1px solid var(--border-default); border-radius: var(--radius-sm); background: var(--surface-base); color: var(--text-secondary); text-align: left; cursor: pointer; }
-  body[data-page="rival-analysis"] .rival-entry-card:hover, body[data-page="rival-analysis"] .rival-entry-card.is-active { border-color: var(--brand); color: var(--brand); background: var(--info-tint); }
+  body[data-page="rival-analysis"] .rival-entry-card:hover, body[data-page="rival-analysis"] .rival-entry-card.is-active { border-color: var(--brand); color: var(--brand-text); background: var(--info-tint); }
   body[data-page="rival-analysis"] .rival-entry-card i { width: 18px; height: 18px; flex: 0 0 auto; }
   body[data-page="rival-analysis"] .rival-entry-card span { display: grid; gap: 4px; }
   body[data-page="rival-analysis"] .rival-entry-card strong { color: inherit; font-size: var(--font-size-secondary); }

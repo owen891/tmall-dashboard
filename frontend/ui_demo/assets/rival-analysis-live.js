@@ -359,7 +359,7 @@
     if (filteredCount) filteredCount.textContent = shops.length;
 
     if (!shops.length) {
-      tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--text-tertiary);padding:24px">暂无符合条件的竞店</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--text-secondary);padding:24px">暂无符合条件的竞店</td></tr>';
       return;
     }
 
@@ -415,7 +415,7 @@
             ${item.shop_name ? `<span>店铺: ${escapeHtml(item.shop_name)}</span>` : ''}
             <span>访客: ${fmtWan(item.uv)}</span>
             <span>支付买家: ${fmtWan(item.pay_buyer_count)}</span>
-            ${detailUrl ? `<a href="${escapeHtml(detailUrl)}" target="_blank" rel="noopener noreferrer" style="color:var(--primary-color)">查看详情</a>` : ''}
+            ${detailUrl ? `<a href="${escapeHtml(detailUrl)}" target="_blank" rel="noopener noreferrer" style="color:var(--brand-text)">查看详情</a>` : ''}
           </div>
         </div>
       </div>`;
@@ -526,7 +526,7 @@
     } catch (err) {
       console.error('加载竞店竞品数据失败:', err);
       document.querySelectorAll('[data-rival-shops-body], [data-rival-items-list]').forEach(el => {
-        el.innerHTML = `<div style="text-align:center;color:var(--text-danger);padding:24px">加载失败: ${escapeHtml(err.message)}</div>`;
+        el.innerHTML = `<div style="text-align:center;color:var(--danger-text);padding:24px">加载失败: ${escapeHtml(err.message)}</div>`;
       });
     }
   }

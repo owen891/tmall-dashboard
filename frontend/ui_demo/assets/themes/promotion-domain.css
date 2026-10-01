@@ -10,7 +10,7 @@
 .promotion-subviews .ui-panel { min-width: 0; }
 .promotion-drill { margin-top: 20px; }
 .promotion-drill__context { display: flex; align-items: center; gap: 8px; min-height: 32px; margin: 12px 0; color: var(--text-secondary); font-size: var(--font-size-meta); }
-.promotion-drill__crumb { padding: 0; border: 0; background: transparent; color: var(--brand); font: inherit; cursor: pointer; }
+.promotion-drill__crumb { padding: 0; border: 0; background: transparent; color: var(--brand-text); font: inherit; cursor: pointer; }
 .promotion-drill__crumb.is-current { color: var(--text-primary); font-weight: 600; }
 .promotion-drill__level-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 8px 0; }
 .promotion-drill__level-head strong, .promotion-drill__level-head span { display: block; }
@@ -94,8 +94,8 @@ body[data-page="goals"] .goals-stage { border-color: var(--border-default); }
 }
 .promotion-source-strip { display: flex; flex-wrap: wrap; gap: var(--space-2); margin: calc(var(--space-2) * -1) 0 var(--space-4); padding: 10px var(--space-3); border: 1px solid var(--border-default); border-radius: var(--radius-md); background: var(--surface-base); }
 .promotion-source-strip__item { display: inline-flex; align-items: center; gap: var(--space-1); padding: var(--space-1) var(--space-2); border-radius: var(--radius-sm); font-size: var(--font-size-meta); font-weight: 600; }
-.promotion-source-strip__item--real { background: var(--success-tint); color: var(--success); }
-.promotion-source-strip__item--demo { background: var(--warning-tint); color: var(--warning); }
+.promotion-source-strip__item--real { background: var(--success-tint); color: var(--success-text); }
+.promotion-source-strip__item--demo { background: var(--warning-tint); color: var(--warning-text); }
 .promotion-source-strip__note { color: var(--text-secondary); font-size: var(--font-size-meta); line-height: var(--line-height-secondary); }
 .promotion-table-mode { margin-left: auto; }
 .promotion-board-grid { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, .95fr); gap: var(--space-4); margin-top: var(--space-4); }
@@ -120,17 +120,20 @@ body[data-page="goals"] .goals-stage { border-color: var(--border-default); }
 .promotion-command__heading { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-3); margin-bottom: var(--space-4); }
 .promotion-command__heading h1 { margin: 0; font-size: var(--font-size-title); line-height: var(--line-height-title); letter-spacing: 0; font-weight: 700; }
 .promotion-command__heading p { margin: var(--space-1) 0 0; color: var(--text-secondary); font-size: var(--font-size-secondary); }
-.promotion-command__status { display: inline-flex; align-items: center; gap: var(--space-1); flex: 0 0 auto; padding: 5px 9px; border-radius: var(--radius-sm); background: var(--success-tint); color: var(--success); font-size: var(--font-size-meta); font-weight: 700; white-space: nowrap; }
-.promotion-command__status[data-tone="warning"] { background: var(--warning-tint); color: var(--warning); }
-.promotion-command__status[data-tone="danger"] { background: var(--danger-tint); color: var(--danger); }
+.promotion-command__status { display: inline-flex; align-items: center; gap: var(--space-1); flex: 0 0 auto; padding: 5px 9px; border-radius: var(--radius-sm); background: var(--success-tint); color: var(--success-text); font-size: var(--font-size-meta); font-weight: 700; white-space: nowrap; }
+.promotion-command__status[data-tone="warning"] { background: var(--warning-tint); color: var(--warning-text); }
+.promotion-command__status[data-tone="danger"] { background: var(--danger-tint); color: var(--danger-text); }
 .promotion-funnel { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-3); align-items: stretch; }
 .promotion-funnel__step { position: relative; min-width: 0; padding: var(--space-3); border: 1px solid var(--border-default); border-radius: var(--radius-md); background: var(--surface-selected); }
-.promotion-funnel__step:not(:last-child)::after { position: absolute; top: 50%; right: -17px; z-index: 1; color: var(--text-tertiary); content: '→'; font-size: var(--font-size-section); transform: translateY(-50%); }
+/* ::after 里的 '→'/'↓' 是**文字字符**（17px，不是大字），要按正文口径 >= 4.5:1。
+   --text-tertiary #9ca3af 只有 2.54:1 —— 而且它测不到：对比度探针走 querySelectorAll('*')，
+   伪元素的 content 文本既不在 childNodes 里、也不在 '*' 集合里。这是 2026-10-01 复查才发现的漏网。 */
+.promotion-funnel__step:not(:last-child)::after { position: absolute; top: 50%; right: -17px; z-index: 1; color: var(--text-secondary); content: '→'; font-size: var(--font-size-section); transform: translateY(-50%); }
 .promotion-funnel__label { display: flex; align-items: center; gap: var(--space-1); color: var(--text-secondary); font-size: var(--font-size-meta); font-weight: 600; }
 .promotion-funnel__value { display: block; margin-top: var(--space-1); font-size: var(--font-size-kpi); line-height: var(--line-height-title); font-weight: 700; font-variant-numeric: tabular-nums; }
 .promotion-funnel__meta { display: block; margin-top: var(--space-1); color: var(--text-secondary); font-size: var(--font-size-meta); }
 .promotion-command__insight { display: flex; align-items: flex-start; gap: 10px; margin-top: var(--space-4); padding-top: var(--space-3); border-top: 1px solid var(--border-default); }
-.promotion-command__insight .lucide { width: var(--icon-nav); height: var(--icon-nav); flex: 0 0 auto; margin-top: var(--space-1); color: var(--brand); }
+.promotion-command__insight .lucide { width: var(--icon-nav); height: var(--icon-nav); flex: 0 0 auto; margin-top: var(--space-1); color: var(--brand-text); }
 .promotion-command__insight strong { display: block; font-size: var(--font-size-secondary); }
 .promotion-command__insight span { display: block; margin-top: var(--space-1); color: var(--text-secondary); font-size: var(--font-size-meta); line-height: var(--line-height-secondary); }
 .promotion-command__signals { display: grid; align-content: start; gap: 0; padding-left: var(--space-5); border-left: 1px solid var(--border-default); }
@@ -139,9 +142,9 @@ body[data-page="goals"] .goals-stage { border-color: var(--border-default); }
 .promotion-signal:last-child { border-bottom: 0; }
 .promotion-signal span { color: var(--text-secondary); font-size: var(--font-size-secondary); }
 .promotion-signal strong { font-size: var(--font-size-secondary); font-variant-numeric: tabular-nums; }
-.promotion-signal strong[data-tone="success"] { color: var(--success); }
-.promotion-signal strong[data-tone="warning"] { color: var(--warning); }
-.promotion-signal strong[data-tone="danger"] { color: var(--danger); }
+.promotion-signal strong[data-tone="success"] { color: var(--success-text); }
+.promotion-signal strong[data-tone="warning"] { color: var(--warning-text); }
+.promotion-signal strong[data-tone="danger"] { color: var(--danger-text); }
 .promotion-detail-table-wrap { min-width: 0; overflow-x: auto; }
 .promotion-detail-table { width: 100%; min-width: 620px; border-collapse: collapse; }
 .promotion-detail-table th, .promotion-detail-table td { padding: 9px var(--space-1); border-bottom: 1px solid var(--border-default); font-size: var(--font-size-secondary); text-align: left; white-space: nowrap; }
@@ -206,7 +209,7 @@ body[data-page="goals"] .goals-stage { border-color: var(--border-default); }
   font-weight: 600;
   cursor: pointer;
 }
-.promotion-sort-button:hover { color: var(--brand); }
+.promotion-sort-button:hover { color: var(--brand-text); }
 @media (min-width: 1001px) {
 
   .promotion-command {

@@ -54,8 +54,10 @@
       // —— 推广
       { key: 'ad_spend', label: '推广花费', kind: 'money', scope: 'both', group: 'ads', default: false },
       // —— 环比变化（下滑榜定位跌在哪里）
-      { key: 'delta', label: '变化', kind: 'money', scope: 'delta', group: 'delta', default: true, signed: true, reason: '不可判断' },
-      { key: 'change_rate', label: '变化比例', kind: 'percent', scope: 'delta', group: 'delta', default: true },
+      // 4-3：极性统一走 MetricPolarity。polarityKey 声明「这列表达的是哪个指标的涨跌」——
+      // 变化 / 变化比例都是销售额的派生列，极性跟随 gsv（越高越好）。
+      { key: 'delta', label: '变化', kind: 'money', scope: 'delta', group: 'delta', default: true, signed: true, polarityKey: 'gsv', reason: '不可判断' },
+      { key: 'change_rate', label: '变化比例', kind: 'percent', scope: 'delta', group: 'delta', default: true, polarityKey: 'gsv' },
       // —— 其他
       { key: 'refund_rate', label: '退款率', kind: 'percent', scope: 'both', group: 'other', default: false },
       { key: 'tags', label: '商品标签', kind: 'text', scope: 'both', group: 'other', default: false },
@@ -166,7 +168,7 @@
         if (col.key === 'change_rate') {
           const rate = declineRate(row);
           if (rate === null) return { text: '不可判断', cls: 'num' };
-          return { text: `${(rate * 100).toFixed(2)}%`, cls: `num pr-delta ${rate < 0 ? 'is-down' : 'is-up'}` };
+          return { text: `${(rate * 100).toFixed(2)}%`, cls: `num pr-delta ${MetricPolarity.deltaClass(col.polarityKey || col.key, rate)}` };
         }
         return { text: safeMetric(row[col.key], 'percent'), cls: 'num' };
       }
@@ -184,7 +186,7 @@
       const signable = col.signed && value !== null && value !== undefined;
       return {
         text: safeMetric(value, col.kind, col.reason || '暂无数据'),
-        cls: signable ? `num pr-delta ${Number(value) < 0 ? 'is-down' : 'is-up'}` : 'num',
+        cls: signable ? `num pr-delta ${MetricPolarity.deltaClass(col.polarityKey || col.key, Number(value))}` : 'num',
       };
     }
 

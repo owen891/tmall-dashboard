@@ -150,11 +150,16 @@
     node.append(header, create('div', 'ui-panel__body'));
     return node;
   };
-  const pageHeader = ({ title, description = '', actions = null } = {}) => {
+  const pageHeader = ({ title, description = '', scope = '', actions = null } = {}) => {
     const node = create('header', 'ui-page-header');
     const copy = create('div', 'ui-page-header__copy');
-    copy.append(create('h2', '', title));
+    // The page title is the document's single h1; section headings below it use
+    // h2/h3. `components.css` styles `.ui-page-header :is(h1, h2)`.
+    copy.append(create('h1', '', title));
     if (description) copy.append(create('p', '', description));
+    // Which shop / period / dataset this page is showing — the one thing the
+    // description cannot say and the old `.ui-context-bar` used to carry.
+    if (scope) copy.append(create('p', 'ui-page-header__scope', scope));
     node.append(copy);
     if (actions) node.append(actions);
     return node;
@@ -227,16 +232,12 @@
     if (side.childNodes.length) node.append(side);
     return node;
   };
-  const decisionCard = ({ eyebrow = '', title = '', detail = '', tone = 'default', action = null, className = '' } = {}) => {
-    const node = create('article', ['ui-decision-card', `ui-decision-card--${tone}`, className].filter(Boolean).join(' '));
-    const copy = create('div', 'ui-decision-card__copy');
-    if (eyebrow) copy.append(create('span', 'ui-decision-card__eyebrow', eyebrow));
-    if (title) copy.append(create('strong', 'ui-decision-card__title', title));
-    if (detail) copy.append(create('span', 'ui-decision-card__detail', detail));
-    node.append(copy);
-    if (action) { const actionWrap = create('div', 'ui-decision-card__action'); appendContent(actionWrap, action); node.append(actionWrap); }
-    return node;
-  };
+  // 4-9：原 ui-decision-card 工厂在此删除。它自建出来就没有任何调用点（全仓库 grep
+  // decisionCard / ui-decision-card 只有定义处与 export 列表），唯一“使用”是 promotion.html
+  // 的 <article class="ui-decision-card promotion-decision-card">，而 promotion-views.css
+  // 立刻用 `.promotion-decision-card.ui-decision-card { padding:0; border:0; background:transparent }`
+  // 把组件样式全部覆盖掉 —— 等于挂了个类名却不用组件。按仓库自定标准
+  // 「新组件必须 ≥2 页复用才能进 ui-components.js」，直接删掉。
   // A reusable side panel for evidence/details. It does not alter routing or page state.
   const detailDrawer = ({ title, description = '', body = null, footer = null, size = 'md', onClose = null } = {}) => {
     const node = create('aside', ['ui-drawer', `ui-drawer--${size}`, 'is-hidden'].join(' '));
@@ -459,8 +460,17 @@
     root.querySelectorAll('.ui-empty-state[data-state]').forEach((node) => {
       if (!node.querySelector('strong')) issues.push({ node, message: '带状态的空态缺少标题节点' });
     });
+    // A page has exactly one h1 — its title. Without this rule the heading level
+    // drifts back as soon as someone copies a page skeleton.
+    const ownerDocument = root.nodeType === 9 ? root : root.ownerDocument;
+    if (ownerDocument) {
+      const headings = ownerDocument.querySelectorAll('h1');
+      if (headings.length !== 1) {
+        issues.push({ node: ownerDocument.body, message: `页面应有且仅有一个 h1，当前 ${headings.length} 个` });
+      }
+    }
     return issues;
   };
-  const api = { text, create, clear, escape, formatDateTime, format, status, renderDataState, icon, button, badge, emptyState, dataState, metricCard, metricGrid, panel, pageHeader, filterToolbar, table, setState, contextBar, tableToolbar, decisionCard, detailDrawer, stickyActionBar, modal, confirm, fieldSelector, audit };
+  const api = { text, create, clear, escape, formatDateTime, format, status, renderDataState, icon, button, badge, emptyState, dataState, metricCard, metricGrid, panel, pageHeader, filterToolbar, table, setState, contextBar, tableToolbar, detailDrawer, stickyActionBar, modal, confirm, fieldSelector, audit };
   window.TmallUI = Object.freeze(api);
 })();

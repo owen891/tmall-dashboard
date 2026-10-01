@@ -1,13 +1,13 @@
-﻿<!doctype html>
+<!doctype html>
 <html lang="zh-CN">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>商品详情 | 天猫数据仪表盘</title>
-  <link rel="stylesheet" href="../assets/tokens.css">
-  <link rel="stylesheet" href="../assets/shell.css">
-  <link rel="stylesheet" href="../assets/components.css"><link rel="stylesheet" href="../assets/themes/product-domain.css"><link rel="stylesheet" href="../assets/themes/promotion-domain.css"><link rel="stylesheet" href="../assets/themes/overview-domain.css"><link rel="stylesheet" href="../assets/themes/lifecycle-domain.css"><link rel="stylesheet" href="../assets/themes/settings-domain.css">
-  <script src="../assets/lucide-custom.min.js"></script>
+  <link rel="stylesheet" href="../assets/tokens.css?v=20261001j">
+  <link rel="stylesheet" href="../assets/shell.css?v=20261001j">
+  <link rel="stylesheet" href="../assets/components.css?v=20261001j"><link rel="stylesheet" href="../assets/themes/product-domain.css?v=20261001j"><link rel="stylesheet" href="../assets/themes/promotion-domain.css?v=20261001j"><link rel="stylesheet" href="../assets/themes/overview-domain.css?v=20261001j"><link rel="stylesheet" href="../assets/themes/lifecycle-domain.css?v=20261001j"><link rel="stylesheet" href="../assets/themes/settings-domain.css?v=20261001j">
+  <script src="../assets/lucide-custom.min.js?v=20261001j"></script>
 </head>
 <body data-page="product-detail">
   <div class="demo-app">
@@ -130,7 +130,7 @@
                   </tr>
                 </thead>
                 <tbody data-item-flow-table>
-                  <tr><td colspan="10" style="text-align:center;color:var(--text-tertiary);padding:24px">加载中…</td></tr>
+                  <tr><td colspan="10" style="text-align:center;color:var(--text-secondary);padding:24px">加载中…</td></tr>
                 </tbody>
               </table>
             </div>
@@ -243,7 +243,7 @@
           </div>
         </div>
         <div class="drill-modal__chart" data-drill-chart></div>
-        <div class="drill-modal__table-wrap">
+        <div class="ui-table-wrap drill-modal__table-wrap">
           <table class="ui-data-table drill-modal__table">
             <thead><tr><th>周期</th><th class="num">数值</th><th class="num">环比</th></tr></thead>
             <tbody data-drill-table></tbody>
@@ -258,60 +258,60 @@
     .drill-modal{position:fixed;inset:0;z-index:1000;display:flex;align-items:center;justify-content:center}
     .drill-modal[hidden]{display:none}
     .drill-modal__overlay{position:absolute;inset:0;background:rgba(0,0,0,.5);backdrop-filter:blur(2px)}
-    .drill-modal__dialog{position:relative;background:var(--bg-surface,#fff);border-radius:12px;box-shadow:0 20px 60px rgba(0,0,0,.3);width:min(900px,92vw);max-height:88vh;display:flex;flex-direction:column;overflow:hidden}
-    .drill-modal__header{display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid var(--border-subtle,#eee)}
+    .drill-modal__dialog{position:relative;background:var(--surface-base);border-radius:12px;box-shadow:0 20px 60px rgba(0,0,0,.3);width:min(900px,92vw);max-height:88vh;display:flex;flex-direction:column;overflow:hidden}
+    .drill-modal__header{display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid var(--border-default)}
     .drill-modal__title{margin:0;font-size:16px;font-weight:600}
     .drill-modal__close{background:none;border:none;cursor:pointer;padding:6px;border-radius:6px;color:var(--text-secondary,#666)}
-    .drill-modal__close:hover{background:var(--bg-hover,#f5f5f5)}
+    .drill-modal__close:hover{background:var(--surface-muted)}
     .drill-modal__body{padding:20px;overflow-y:auto;flex:1}
     .drill-modal__stats{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px}
-    .drill-modal__stat{background:var(--bg-subtle,#f8f9fa);border-radius:8px;padding:12px;text-align:center}
+    .drill-modal__stat{background:var(--surface-muted);border-radius:8px;padding:12px;text-align:center}
     .drill-modal__stat-label{font-size:12px;color:var(--text-secondary,#666);margin-bottom:4px}
     .drill-modal__stat-value{font-size:18px;font-weight:600;color:var(--text-primary,#222)}
     .drill-modal__controls{display:flex;justify-content:flex-end;margin-bottom:12px}
-    .drill-modal__seg{display:inline-flex;background:var(--bg-subtle,#f0f0f0);border-radius:8px;padding:2px}
+    .drill-modal__seg{display:inline-flex;background:var(--surface-muted);border-radius:8px;padding:2px}
     .drill-modal__seg-btn{border:none;background:transparent;padding:6px 14px;border-radius:6px;cursor:pointer;font-size:13px;color:var(--text-secondary,#666)}
-    .drill-modal__seg-btn.is-active{background:var(--bg-surface,#fff);color:var(--text-primary,#222);box-shadow:0 1px 3px rgba(0,0,0,.1)}
+    .drill-modal__seg-btn.is-active{background:var(--surface-base);color:var(--text-primary,#222);box-shadow:0 1px 3px rgba(0,0,0,.1)}
     .drill-modal__chart{height:280px;margin-bottom:16px}
     .drill-modal__table-wrap{max-height:240px;overflow-y:auto}
     .drill-modal__table{width:100%;border-collapse:collapse;font-size:13px}
-    .drill-modal__table th,.drill-modal__table td{padding:8px 12px;text-align:left;border-bottom:1px solid var(--border-subtle,#eee)}
+    .drill-modal__table th,.drill-modal__table td{padding:8px 12px;text-align:left;border-bottom:1px solid var(--border-default)}
     .drill-modal__table .num{text-align:right;font-variant-numeric:tabular-nums}
     .drill-modal__table .up{color:#d4380d}
     .drill-modal__table .down{color:#389e0d}
-    .product-workbench__problem-context{margin-top:var(--space-4);border-left:3px solid var(--border-warning,#f0ad4e)}
+    .product-workbench__problem-context{margin-top:var(--space-4);border-left:3px solid var(--border-warning-subtle)}
     .product-problem-context__grid{display:grid;grid-template-columns:minmax(220px,.8fr) minmax(280px,1.2fr) minmax(220px,.9fr);gap:var(--space-4)}
     .product-problem-context__checks,.product-problem-context__suggestions{display:grid;gap:8px;align-content:start}
     .product-problem-context__item{display:flex;justify-content:space-between;gap:12px;padding:9px 10px;border:1px solid var(--border-default);border-radius:var(--radius-md);background:var(--surface-base)}
     .product-problem-context__item strong{font-weight:600}
-    .product-problem-context__item small{color:var(--text-tertiary)}
-    .product-problem-context__status--matched{color:var(--text-success,#16803c)}
-    .product-problem-context__status--not-matched{color:var(--text-tertiary)}
-    .product-problem-context__status--not-computable{color:var(--text-warning,#ad6800)}
+    .product-problem-context__item small{color:var(--text-secondary)}
+    .product-problem-context__status--matched{color:var(--success-text)}
+    .product-problem-context__status--not-matched{color:var(--text-secondary)}
+    .product-problem-context__status--not-computable{color:var(--warning-text)}
     @media (max-width:900px){.product-problem-context__grid{grid-template-columns:1fr}}
     .product-theme-metrics{margin:0 0 var(--space-4)}
     .product-theme-unavailable{padding:var(--space-4);border:1px dashed var(--border-default);border-radius:var(--radius-md);color:var(--text-secondary)}
-    .product-theme-limitations{margin:var(--space-3) 0 0;color:var(--text-tertiary);font-size:var(--font-size-secondary)}
+    .product-theme-limitations{margin:var(--space-3) 0 0;color:var(--text-secondary);font-size:var(--font-size-secondary)}
     .product-granular-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:var(--space-3)}
-    .product-granular-card{min-width:0;padding:var(--space-4);border:1px solid var(--border-default);border-radius:var(--radius-md);background:var(--surface-subtle)}
+    .product-granular-card{min-width:0;padding:var(--space-4);border:1px solid var(--border-default);border-radius:var(--radius-md);background:var(--surface-muted)}
     .product-granular-card__header{display:flex;align-items:center;justify-content:space-between;gap:var(--space-2)}
     .product-granular-card__header h3{margin:0;color:var(--text-primary);font-size:var(--font-size-body);font-weight:700}
     .product-granular-card__meta,.product-granular-card__coverage{margin:var(--space-3) 0 0;color:var(--text-secondary);font-size:var(--font-size-secondary);line-height:1.6}
     .product-granular-card__capabilities{display:flex;flex-wrap:wrap;gap:var(--space-2);margin-top:var(--space-3)}
-    .product-granular-card__readiness{display:grid;gap:4px;margin-top:var(--space-3);padding-top:var(--space-3);border-top:1px solid var(--border-subtle)}
+    .product-granular-card__readiness{display:grid;gap:4px;margin-top:var(--space-3);padding-top:var(--space-3);border-top:1px solid var(--border-default)}
     .product-granular-card__readiness p{margin:0;font-size:var(--font-size-secondary);line-height:1.5}
-    .product-granular-card__readiness .is-ready{color:var(--text-success,#16803c)}
-    .product-granular-card__readiness .is-blocked,.product-granular-card__missing{color:var(--text-warning,#ad6800)}
+    .product-granular-card__readiness .is-ready{color:var(--success-text)}
+    .product-granular-card__readiness .is-blocked,.product-granular-card__missing{color:var(--warning-text)}
     .product-granular-card__actions{display:flex;justify-content:flex-end;margin-top:var(--space-3)}
     .product-granular-analysis[hidden]{display:none}
-    .product-granular-card__muted{color:var(--text-tertiary);font-size:var(--font-size-secondary)}
+    .product-granular-card__muted{color:var(--text-secondary);font-size:var(--font-size-secondary)}
     @media (max-width: 900px){.product-granular-grid{grid-template-columns:1fr}}
     [data-product-promotion-campaigns] button{white-space:nowrap}
   </style>
-  <script src="../assets/api.js"></script>
-  <script src="../assets/navigation.js"></script>
-  <script src="../assets/labels.js"></script>
-  <script src="../assets/shell.js"></script>
-  <script src="../assets/format.js"></script><script src="../assets/ui-components.js"></script><script src="../assets/product-detail-live.js"></script>
+  <script src="../assets/api.js?v=20261001j"></script>
+  <script src="../assets/navigation.js?v=20261001j"></script>
+  <script src="../assets/labels.js?v=20261001j"></script>
+  <script src="../assets/shell.js?v=20261001j"></script>
+  <script src="../assets/format.js?v=20261001j"></script><script src="../assets/ui-components.js?v=20261001j"></script><script src="../assets/product-detail-live.js?v=20261001j"></script>
 </body>
 </html>

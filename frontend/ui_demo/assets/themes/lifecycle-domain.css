@@ -32,12 +32,25 @@
 .lifecycle-assessment-toolbar { display: flex; justify-content: flex-end; gap: 8px; padding: 0 14px 12px; }
 .lifecycle-assessment-toolbar .input { width: min(320px, 100%); }
 .lifecycle-assessment-table { min-width: 980px; }
-.lifecycle-assessment-table th:nth-child(1) { width: 25%; }
-.lifecycle-assessment-table th:nth-child(5) { width: 40%; }
-.lifecycle-assessment-product { display: grid; gap: 3px; min-width: 220px; }
+/* 5-3：本表 6 列，「商品」「判断依据」都是可换行的多行堆叠，但全局 .ui-data-table td 是
+   white-space: nowrap，两列于是按 max-content 撑开（实测 390 + 475），整表 1238px、
+   溢出容器 1082px 共 156px。放行这两列换行，并给六列显式百分比预算。 */
+.lifecycle-assessment-table th:nth-child(1) { width: 22%; }
+.lifecycle-assessment-table th:nth-child(2) { width: 9%; }
+.lifecycle-assessment-table th:nth-child(3) { width: 10%; }
+.lifecycle-assessment-table th:nth-child(4) { width: 11%; }
+.lifecycle-assessment-table th:nth-child(5) { width: 38%; }
+.lifecycle-assessment-table th:nth-child(6) { width: 10%; }
+.lifecycle-assessment-table td:nth-child(1),
+.lifecycle-assessment-table td:nth-child(5) { white-space: normal; }
+.lifecycle-assessment-product { display: grid; gap: 3px; min-width: 0; }
 .lifecycle-assessment-product strong { font-size: var(--font-size-meta); line-height: var(--line-height-secondary); }
-.lifecycle-assessment-product span { color: var(--text-tertiary); font-family: var(--font-mono); font-size: var(--font-size-meta); }
-.lifecycle-assessment-evidence { display: grid; gap: 4px; min-width: 360px; max-width: 620px; }
+.lifecycle-assessment-product span { color: var(--text-secondary); font-family: var(--font-mono); font-size: var(--font-size-meta); }
+.lifecycle-assessment-product strong,
+.lifecycle-assessment-product span,
+.lifecycle-assessment-evidence strong,
+.lifecycle-assessment-evidence span { overflow-wrap: anywhere; }
+.lifecycle-assessment-evidence { display: grid; gap: 4px; min-width: 0; max-width: none; }
 .lifecycle-assessment-evidence strong { font-size: var(--font-size-meta); line-height: var(--line-height-body); }
 .lifecycle-assessment-evidence span { color: var(--text-secondary); font-size: var(--font-size-meta); line-height: var(--line-height-secondary); }
 .lifecycle-assessment-pagination { padding: 12px 14px; border-top: 1px solid var(--border-default); }
@@ -60,12 +73,12 @@
 .lifecycle-card__stat strong { display: block; font-family: var(--font-mono); font-size: var(--font-size-secondary); }
 .lifecycle-card__stat span { display: block; margin-top: 2px; color: var(--text-secondary); font-size: var(--font-size-meta); }
 .lifecycle-card__trend { margin-left: 4px; font-family: var(--font-sans); font-size: var(--font-size-meta); font-weight: 600; }
-.lifecycle-card__trend.is-up { color: var(--success); }
-.lifecycle-card__trend.is-down { color: var(--danger); }
+.lifecycle-card__trend.is-up { color: var(--success-text); }
+.lifecycle-card__trend.is-down { color: var(--danger-text); }
 .lifecycle-detail__header { position: sticky; top: 0; z-index: 3; display: flex; min-width: 0; align-items: center; justify-content: space-between; gap: 12px; padding: 16px 18px 12px; border-bottom: 1px solid var(--border-default); background: var(--surface-base); }
 .lifecycle-detail-tabs { position: sticky; top: 81px; z-index: 2; display: flex; gap: 4px; margin: 0 18px; padding: 4px; border: 1px solid var(--border-default); border-radius: var(--radius-md); background: var(--surface-muted); }
 .lifecycle-detail-tab { min-height: 36px; padding: 7px 12px; border: 1px solid transparent; border-radius: var(--radius-sm); background: transparent; color: var(--text-secondary); font: inherit; font-size: var(--font-size-meta); cursor: pointer; }
-.lifecycle-detail-tab[aria-selected="true"] { border-color: var(--brand); background: var(--brand-tint); color: var(--brand); font-weight: 600; }
+.lifecycle-detail-tab[aria-selected="true"] { border-color: var(--brand); background: var(--brand-tint); color: var(--brand-text); font-weight: 600; }
 .lifecycle-detail-tab:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
 .lifecycle-detail-panel { display: grid; min-width: 0; gap: 12px; margin-inline: 18px; }
 .lifecycle-detail-panel[hidden] { display: none; }
@@ -76,7 +89,7 @@
 .lifecycle-detail__product { display: flex; min-width: 0; flex: 1 1 auto; align-items: center; gap: 10px; }
 .lifecycle-detail__image, .lifecycle-detail__image img { display: block; width: 52px; height: 52px; border: 1px solid var(--border-default); border-radius: var(--radius-md); background: var(--surface-muted); }
 .lifecycle-detail__image img { object-fit: cover; }
-.lifecycle-detail__id { margin-top: 2px; color: var(--text-tertiary); font-family: var(--font-mono); font-size: var(--font-size-meta); }
+.lifecycle-detail__id { margin-top: 2px; color: var(--text-secondary); font-family: var(--font-mono); font-size: var(--font-size-meta); }
 .lifecycle-metrics { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 8px; }
 .lifecycle-metric { min-width: 0; padding: 10px; border: 1px solid var(--border-default); border-radius: var(--radius-md); background: var(--surface-base); }
 .lifecycle-metric strong { display: block; overflow: hidden; font-family: var(--font-mono); font-size: var(--font-size-body); text-overflow: ellipsis; white-space: nowrap; }

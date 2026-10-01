@@ -103,7 +103,7 @@
   gap: 8px;
   padding: 8px 0;
   margin: 0 0 4px;
-  background: var(--surface-default, var(--surface));
+  background: var(--surface);
   border-bottom: 1px solid var(--border-default);
 }
 
@@ -315,7 +315,7 @@
   white-space: nowrap;
   padding: 2px 6px;
   border: 0;
-  background: var(--surface-default, #fff);
+  background: var(--surface-base);
   border: 1px solid var(--border-default);
   border-radius: var(--radius-sm);
   color: var(--text-primary);
@@ -480,7 +480,7 @@
   flex: none;
   border-radius: 999px;
   background: var(--brand-tint);
-  color: var(--brand);
+  color: var(--brand-text);
   font-size: 11px;
   font-weight: 700;
 }
@@ -491,7 +491,7 @@
   border-radius: 999px;
   background: var(--surface-raised);
   border: 1px solid var(--border-default);
-  color: var(--danger);
+  color: var(--danger-text);
   font-size: 11px;
   font-weight: 500;
 }
@@ -502,7 +502,7 @@
   padding: 8px 10px;
   border: 1px solid var(--border-default);
   border-radius: var(--radius-sm);
-  background: var(--surface-default, #fff);
+  background: var(--surface-base);
   color: var(--text-primary);
   font-size: 13px;
   line-height: 1.6;
@@ -595,7 +595,7 @@
 }
 
 [data-pr-category-note]:not(:empty) {
-  color: var(--warning);
+  color: var(--warning-text);
   font-weight: 600;
 }
 
@@ -672,7 +672,7 @@
 }
 
 .pr-trend-chart {
-  color: var(--brand, #3b82f6);
+  color: var(--brand-text);
 }
 
 .pr-trend-svg {
@@ -700,7 +700,7 @@
 /* 段落恢复草稿提示 */
 .pr-draft-note {
   margin: 0 0 6px;
-  color: var(--warning, #b45309);
+  color: var(--warning-text);
 }
 
 /* 下滑榜异常线索列：有标签时用警示色弱底 */
@@ -710,7 +710,7 @@
 }
 
 .pr-table__anomaly.has-tags {
-  color: var(--warning, #b45309);
+  color: var(--warning-text);
   font-weight: 500;
 }
 
@@ -773,12 +773,12 @@
 }
 
 .pr-delta.is-up {
-  color: var(--success);
+  color: var(--success-text);
   font-weight: 600;
 }
 
 .pr-delta.is-down {
-  color: var(--danger);
+  color: var(--danger-text);
   font-weight: 600;
 }
 
@@ -809,7 +809,7 @@
 .pr-target__item--wide strong {
   font-size: 13px;
   font-weight: 600;
-  color: var(--warning);
+  color: var(--warning-text);
 }
 
 .pr-target__item strong {
@@ -847,7 +847,7 @@
 .pr-target-table__grid td {
   padding: 9px 16px;
   text-align: left;
-  border-bottom: 1px solid var(--border-subtle, var(--border-default));
+  border-bottom: 1px solid var(--border-default);
   color: var(--text-primary);
 }
 
@@ -867,15 +867,15 @@
 }
 
 .pr-target-table__grid .is-success {
-  color: var(--success);
+  color: var(--success-text);
 }
 
 .pr-target-table__grid .is-warning {
-  color: var(--warning);
+  color: var(--warning-text);
 }
 
 .pr-target-table__grid .is-danger {
-  color: var(--danger);
+  color: var(--danger-text);
 }
 
 /* 时间进度：跨行合并的一个单元格，用底色区分「不是逐指标算出来的值」 */
@@ -914,6 +914,10 @@
   display: flex;
   align-items: center;
   gap: 8px;
+  /* 5-3 附带：.panel__title 的 max-width(--title-width-lg=360px) 会把
+     「3本周广告复盘（渠道与单品消耗 / 投产 / 费比）」这类长标题截掉 40~46px。
+     本页区块标题独占一行，放开上限让它吃满 518px。 */
+  max-width: none;
 }
 
 .pr-section__index {
@@ -924,7 +928,7 @@
   height: 22px;
   border-radius: var(--radius-full);
   background: var(--brand-tint, var(--surface-muted));
-  color: var(--brand);
+  color: var(--brand-text);
   font-size: 12px;
   font-weight: 700;
   flex: none;
@@ -932,7 +936,7 @@
 
 .pr-section__required {
   font-size: 11px;
-  color: var(--danger);
+  color: var(--danger-text);
   font-weight: 600;
 }
 
@@ -963,7 +967,9 @@
 
 .pr-material__empty {
   font-size: 12px;
-  color: var(--text-soft);
+  /* 4-7：原为 --text-soft（= --text-tertiary = gray-400，#9ca3af 在浅底只有 2.3~2.5:1，
+     未过 WCAG AA）。全站唯一一处 --text-soft 用法，改为 --text-secondary。 */
+  color: var(--text-secondary);
   margin: 0;
 }
 
@@ -992,9 +998,9 @@
   color: var(--text-secondary);
 }
 
-.pr-chip.is-danger { border-color: var(--border-danger-subtle); color: var(--danger); }
-.pr-chip.is-warning { border-color: var(--border-warning-subtle); color: var(--warning); }
-.pr-chip.is-info { border-color: var(--border-info-subtle); color: var(--info, var(--brand)); }
+.pr-chip.is-danger { border-color: var(--border-danger-subtle); color: var(--danger-text); }
+.pr-chip.is-warning { border-color: var(--border-warning-subtle); color: var(--warning-text); }
+.pr-chip.is-info { border-color: var(--border-info-subtle); color: var(--info-text); }
 
 .pr-table {
   width: 100%;
@@ -1125,6 +1131,18 @@
   grid-column: 1 / -1;
 }
 
+/* 5-3：「本周货品复盘」的展开证据里有 2 张 7~8 列货品表（实测 963px）。
+   它原本落在 550px 栏里，被 panel__body / subsections / subsection / details / materials
+   五层内边距一路收到 410px，横向溢出 553px。与上面两条同一手法：宽表所在区块占通栏。 */
+[data-pr-sections] > .pr-section[data-section-key="goods"] {
+  grid-column: 1 / -1;
+}
+/* 通栏后 .pr-subsections 的 auto-fit 会自己拆成 4 列（每列 268px），反而更窄；
+   本节内的子节要单列铺满，证据表格才有 ~1050px 可用。 */
+[data-pr-sections] > .pr-section[data-section-key="goods"] .pr-subsections {
+  grid-template-columns: minmax(0, 1fr);
+}
+
 /* 数据参考区的矩阵/类目/历史都是宽表，单列通栏。 */
 [data-pr-workbench-panel="reference"] .pr-analysis-grid {
   grid-template-columns: 1fr;
@@ -1153,7 +1171,7 @@
 
 .pr-load-failure .pr-material__empty {
   margin: 0;
-  color: var(--danger);
+  color: var(--danger-text);
 }
 
 .pr-action-dialog {
@@ -1164,10 +1182,10 @@
   background: var(--surface);
   border: 1px solid var(--border-default);
   border-radius: var(--radius-md);
-  box-shadow: var(--shadow-lg, 0 16px 48px rgb(0 0 0 / 18%));
+  box-shadow: var(--shadow-lg);
 }
 
-.pr-action-dialog::backdrop { background: rgb(15 23 42 / 34%); }
+.pr-action-dialog::backdrop { background: var(--overlay-backdrop); }
 .pr-action-dialog__head,
 .pr-action-dialog__actions {
   display: flex;
@@ -1202,7 +1220,7 @@
 .pr-action-field input:focus,
 .pr-action-field textarea:focus { outline: none; border-color: var(--brand); }
 .pr-action-form__grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
-.pr-action-form__status { min-height: 18px; margin: 10px 0 0; color: var(--danger); font-size: 12px; }
+.pr-action-form__status { min-height: 18px; margin: 10px 0 0; color: var(--danger-text); font-size: 12px; }
 .pr-action-dialog__actions { justify-content: flex-end; margin-top: 12px; }
 
 .pr-table img {
@@ -1578,7 +1596,7 @@ body[data-page="period-review"] .demo-topbar__filters {
 }
 
 .pr-workbench-tabs button.is-active {
-  color: var(--brand);
+  color: var(--brand-text);
   border-bottom-color: var(--brand);
 }
 
@@ -1613,7 +1631,7 @@ body[data-page="period-review"] .demo-topbar__filters {
 .pr-command-center__eyebrow {
   display: block;
   margin-bottom: 4px;
-  color: var(--brand);
+  color: var(--brand-text);
   font-size: 11px;
   font-weight: 700;
   letter-spacing: .04em;
@@ -1645,12 +1663,12 @@ body[data-page="period-review"] .demo-topbar__filters {
 
 .pr-command-center__data-state.is-ready {
   border-color: var(--border-success-subtle, var(--border-default));
-  color: var(--success);
+  color: var(--success-text);
   background: color-mix(in srgb, var(--success) 6%, var(--surface-raised));
 }
 
 .pr-command-center__data-state.is-empty {
-  color: var(--warning);
+  color: var(--warning-text);
   background: color-mix(in srgb, var(--warning) 6%, var(--surface-raised));
 }
 
@@ -1713,19 +1731,27 @@ body[data-page="period-review"] .demo-topbar__filters {
 
 .pr-metric-card--primary {
   padding: 18px;
-  box-shadow: 0 4px 16px rgba(17,24,39,.06);
+  box-shadow: var(--elevation-lg);
 }
 
 /* 用轻背景表达状态，避免左侧色条造成强烈的告警感。 */
-.pr-metric-card.is-success { background: color-mix(in srgb, var(--success, #16a34a) 5%, var(--surface-base, #fff)); }
-.pr-metric-card.is-warning { background: color-mix(in srgb, var(--warning, #d97706) 6%, var(--surface-base, #fff)); }
-.pr-metric-card.is-danger { background: color-mix(in srgb, var(--danger, #dc2626) 5%, var(--surface-base, #fff)); }
+.pr-metric-card.is-success { background: color-mix(in srgb, var(--success) 5%, var(--surface-base)); }
+.pr-metric-card.is-warning { background: color-mix(in srgb, var(--warning) 6%, var(--surface-base)); }
+.pr-metric-card.is-danger { background: color-mix(in srgb, var(--danger) 5%, var(--surface-base)); }
 
 .pr-metric-card__head {
   display: flex;
   align-items: center;
   gap: 6px;
   width: 100%;
+}
+
+/* 4-6：状态指示器 = 圆点 + 文字。文字是主线索（色觉障碍/读屏都能拿到），圆点降级为装饰。 */
+.pr-metric-card__status {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 4px;
 }
 
 .pr-metric-card__status-dot {
@@ -1736,9 +1762,21 @@ body[data-page="period-review"] .demo-topbar__filters {
   background: var(--border-strong);
 }
 
-.pr-metric-card__status-dot.is-success { background: var(--success, #16a34a); }
-.pr-metric-card__status-dot.is-warning { background: var(--warning, #d97706); }
-.pr-metric-card__status-dot.is-danger { background: var(--danger, #dc2626); }
+.pr-metric-card__status.is-success .pr-metric-card__status-dot { background: var(--success); }
+.pr-metric-card__status.is-warning .pr-metric-card__status-dot { background: var(--warning); }
+.pr-metric-card__status.is-danger .pr-metric-card__status-dot { background: var(--danger); }
+
+.pr-metric-card__status-text {
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.pr-metric-card__status.is-success .pr-metric-card__status-text { color: var(--success-text); }
+.pr-metric-card__status.is-warning .pr-metric-card__status-text { color: var(--warning-text); }
+.pr-metric-card__status.is-danger .pr-metric-card__status-text { color: var(--danger-text); }
 
 .pr-metric-card__label {
   color: var(--text-primary);
@@ -1750,7 +1788,7 @@ body[data-page="period-review"] .demo-topbar__filters {
   padding: 2px 6px;
   border-radius: var(--radius-full);
   background: var(--brand-tint);
-  color: var(--brand);
+  color: var(--brand-text);
   font-size: 10px;
   font-weight: 600;
 }
@@ -1787,9 +1825,9 @@ body[data-page="period-review"] .demo-topbar__filters {
   font-variant-numeric: tabular-nums;
 }
 
-.pr-metric-card.is-success .pr-metric-card__rate strong { color: var(--success, #16a34a); }
-.pr-metric-card.is-warning .pr-metric-card__rate strong { color: var(--warning, #d97706); }
-.pr-metric-card.is-danger .pr-metric-card__rate strong { color: var(--danger, #dc2626); }
+.pr-metric-card.is-success .pr-metric-card__rate strong { color: var(--success-text); }
+.pr-metric-card.is-warning .pr-metric-card__rate strong { color: var(--warning-text); }
+.pr-metric-card.is-danger .pr-metric-card__rate strong { color: var(--danger-text); }
 
 .pr-metric-card__changes {
   display: flex;
@@ -1846,7 +1884,7 @@ body[data-page="period-review"] .demo-topbar__filters {
   padding: 0;
   border: 0;
   background: transparent;
-  color: var(--brand);
+  color: var(--brand-text);
   font: inherit;
   font-size: 13px;
   cursor: pointer;
@@ -1862,8 +1900,8 @@ body[data-page="period-review"] .demo-topbar__filters {
   white-space: nowrap;
 }
 
-.pr-status-tag.good { color: var(--success); border-color: var(--border-success-subtle, var(--border-default)); }
-.pr-status-tag.warning { color: var(--warning); border-color: var(--border-warning-subtle, var(--border-default)); }
+.pr-status-tag.good { color: var(--success-text); border-color: var(--border-success-subtle, var(--border-default)); }
+.pr-status-tag.warning { color: var(--warning-text); border-color: var(--border-warning-subtle, var(--border-default)); }
 .pr-status-tag.muted { color: var(--text-muted); }
 
 .pr-analysis-grid {
@@ -2128,19 +2166,19 @@ body[data-page="period-review"] .demo-topbar__filters {
   font-variant-numeric: tabular-nums;
 }
 
-.pr-matrix-cell__delta.is-up { color: var(--success); }
-.pr-matrix-cell__delta.is-down { color: var(--danger); }
+.pr-matrix-cell__delta.is-up { color: var(--success-text); }
+.pr-matrix-cell__delta.is-down { color: var(--danger-text); }
 .pr-matrix-cell__delta.is-neutral { color: var(--text-muted); }
 
 /* 行状态色（与截图一致：整行底色区分） */
 .pr-matrix-row.is-success td {
-  background-color: rgba(34, 197, 94, 0.06);
+  background-color: color-mix(in srgb, var(--success) 6%, transparent);
 }
 .pr-matrix-row.is-warning td {
-  background-color: rgba(234, 179, 8, 0.08);
+  background-color: color-mix(in srgb, var(--warning) 8%, transparent);
 }
 .pr-matrix-row.is-danger td {
-  background-color: rgba(239, 68, 68, 0.08);
+  background-color: color-mix(in srgb, var(--danger) 8%, transparent);
 }
 .pr-matrix-row.is-normal td {
   background-color: transparent;
@@ -2152,19 +2190,19 @@ body[data-page="period-review"] .demo-topbar__filters {
 }
 
 .pr-status-tag.success {
-  color: var(--success);
+  color: var(--success-text);
   border-color: var(--border-success-subtle, var(--success));
-  background: rgba(34, 197, 94, 0.08);
+  background: color-mix(in srgb, var(--success) 8%, transparent);
 }
 .pr-status-tag.warning {
-  color: var(--warning);
+  color: var(--warning-text);
   border-color: var(--border-warning-subtle, var(--warning));
-  background: rgba(234, 179, 8, 0.10);
+  background: color-mix(in srgb, var(--warning) 10%, transparent);
 }
 .pr-status-tag.danger {
-  color: var(--danger);
+  color: var(--danger-text);
   border-color: var(--border-danger-subtle, var(--danger));
-  background: rgba(239, 68, 68, 0.10);
+  background: color-mix(in srgb, var(--danger) 10%, transparent);
 }
 .pr-status-tag.normal {
   color: var(--text-muted);
@@ -2203,10 +2241,10 @@ body[data-page="period-review"] .demo-topbar__filters {
 .leaf-board__kpi-deltas { margin-top: 6px; font-size: 12px; color: var(--text-muted); display: flex; gap: 10px; flex-wrap: wrap; }
 .leaf-board__kpi-deltas .lb-delta-label { display: inline-flex; gap: 3px; align-items: center; }
 .lb-delta { font-weight: 600; }
-.lb-delta.is-up { color: var(--success); }
-.lb-delta.is-down { color: var(--danger); }
+.lb-delta.is-up { color: var(--success-text); }
+.lb-delta.is-down { color: var(--danger-text); }
 .lb-delta.is-flat { color: var(--text-muted); font-weight: 500; }
-.lb-delta--na { color: var(--text-tertiary); font-weight: 400; }
+.lb-delta--na { color: var(--text-secondary); font-weight: 400; }
 
 .leaf-board__bars { display: flex; flex-direction: column; gap: 8px; margin-bottom: 16px; padding: 12px 14px; border: 1px solid var(--border-default); border-radius: var(--radius-md); background: var(--surface-raised); }
 .leaf-board__bar-row { display: grid; grid-template-columns: 120px 1fr 80px; align-items: center; gap: 12px; font-size: 12px; }
@@ -2226,11 +2264,30 @@ body[data-page="period-review"] .demo-topbar__filters {
 .lb-cell__value { font-weight: 600; color: var(--text-primary); }
 .lb-cell__delta { display: flex; flex-direction: row; gap: 4px; margin-top: 2px; font-size: 11px; align-items: center; justify-content: flex-end; }
 .lb-cell__comparison { display: inline-flex; align-items: center; gap: 3px; }
-.lb-cell__comparison-label { color: var(--text-tertiary); font-size: 10px; }
-.lb-cell__sep { color: var(--text-tertiary); }
+.lb-cell__comparison-label { color: var(--text-secondary); font-size: 10px; }
+.lb-cell__sep { color: var(--text-secondary); }
 .leaf-board__hint { margin-top: 12px; font-size: 12px; color: var(--text-muted); line-height: 1.6; }
 
 @media (max-width: 768px) {
   .leaf-board__table { display: block; overflow-x: auto; }
   .leaf-board__bar-row { grid-template-columns: 90px 1fr 70px; }
+}
+
+/* ---------- 4-5 键盘焦点环补齐 ----------
+   本文件有 4 处 `:focus { outline: none }`（.pr-subsection textarea / .pr-field input+select /
+   .pr-action-field input+textarea / .pr-input textarea），原意是「鼠标点进来不要焦点环」。
+   但它们同时把全局 `textarea:focus-visible`（components.css:200）的 outline 一起关掉了：
+   前者特异性 0,2,1 > 后者 0,1,1，于是键盘 Tab 进来完全看不到焦点落在哪
+   （实测 period-review 18 个 textarea 全是 outline 0px/none，是 13 页里唯一失败的一页）。
+   修法：保留 `:focus` 的 outline:none（鼠标态），只在 `:focus-visible`（键盘态）把环加回来。
+   必须放在文件末尾 —— 与上面那些 `:focus` 规则特异性相同（0,2,1），靠源码顺序取胜。 */
+.pr-subsection textarea:focus-visible,
+.pr-field input:focus-visible,
+.pr-field select:focus-visible,
+.pr-action-field input:focus-visible,
+.pr-action-field textarea:focus-visible,
+.pr-input textarea:focus-visible,
+.pr-input input:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
 }

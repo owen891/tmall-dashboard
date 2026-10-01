@@ -202,12 +202,12 @@
     switch (key) {
       case 'image':
         return row.image_url
-          ? `<a href="${safeProductUrl(row.product_id)}" target="_blank" rel="noopener noreferrer"><img loading="lazy" src="${escapeHtml(row.image_url)}" alt="" style="width:40px;height:40px;object-fit:cover;border-radius:4px;"></a>`
-          : `<a href="${safeProductUrl(row.product_id)}" target="_blank" rel="noopener noreferrer"><div style="width:40px;height:40px;background:var(--surface-2);border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:10px;color:var(--text-tertiary);">无图</div></a>`;
+          ? `<a href="${safeProductUrl(row.product_id)}" target="_blank" rel="noopener noreferrer"><img loading="lazy" src="${escapeHtml(row.image_url)}" alt="" class="kp-thumb"></a>`
+          : `<a href="${safeProductUrl(row.product_id)}" target="_blank" rel="noopener noreferrer"><div class="kp-thumb kp-thumb--empty">无图</div></a>`;
       case 'title':
-        return `<a href="${safeProductUrl(row.product_id)}" target="_blank" rel="noopener noreferrer" title="${escapeHtml(row.title || '')}" style="color:inherit;text-decoration:none;display:-webkit-box;-webkit-line-clamp:1;-webkit-box-orient:vertical;overflow:hidden;">${escapeHtml(row.title || '--')}</a>`;
+        return `<a href="${safeProductUrl(row.product_id)}" target="_blank" rel="noopener noreferrer" title="${escapeHtml(row.title || '')}" class="kp-title-link">${escapeHtml(row.title || '--')}</a>`;
       case 'product_id':
-        return `<code style="font-size:11px;">${escapeHtml(row.product_id || '--')}</code>`;
+        return `<code class="kp-pid">${escapeHtml(row.product_id || '--')}</code>`;
       case 'total_score':
         return `<strong>${fmtNum(v, 1)}</strong>`;
       case 'score_grade':
@@ -395,7 +395,7 @@
       $('[data-kp-status]').textContent = `共 ${result.total} 个商品，当前第 ${state.page} 页`;
     } catch (e) {
       console.error('加载商品列表失败', e);
-      tbody.innerHTML = `<tr><td colspan="${colCount}" style="color:#dc2626">加载失败: ${e.message || e}</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="${colCount}" class="kp-error">加载失败: ${e.message || e}</td></tr>`;
     }
   }
 

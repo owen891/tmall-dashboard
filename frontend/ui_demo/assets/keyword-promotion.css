@@ -44,15 +44,15 @@
   font-size: var(--font-size-meta);
   font-weight: 500;
 }
-.kp-badge--s { background: var(--success-tint); color: var(--success); }
-.kp-badge--a { background: var(--info-tint); color: var(--info); }
-.kp-badge--b { background: var(--warning-tint); color: var(--warning); }
-.kp-badge--c { background: var(--danger-tint); color: var(--danger); }
+.kp-badge--s { background: var(--success-tint); color: var(--success-text); }
+.kp-badge--a { background: var(--info-tint); color: var(--info-text); }
+.kp-badge--b { background: var(--warning-tint); color: var(--warning-text); }
+.kp-badge--c { background: var(--danger-tint); color: var(--danger-text); }
 .kp-badge--data { background: var(--surface-muted); color: var(--text-secondary); }
 
 /* ROI颜色 */
-.kp-roi-good { color: var(--success); font-weight: 500; }
-.kp-roi-bad { color: var(--danger); font-weight: 500; }
+.kp-roi-good { color: var(--success-text); font-weight: 500; }
+.kp-roi-bad { color: var(--danger-text); font-weight: 500; }
 
 /* 标签 */
 .kp-tag {
@@ -66,7 +66,7 @@
 }
 .kp-tag--action {
   background: var(--info-tint);
-  color: var(--info);
+  color: var(--info-text);
 }
 
 /* 排序图标 */
@@ -78,7 +78,7 @@
 }
 .sort-icon--active {
   opacity: 1;
-  color: var(--info);
+  color: var(--info-text);
 }
 
 @media (min-width: 1001px) {
@@ -206,3 +206,40 @@
     grid-template-columns: repeat(2, 1fr);
   }
 }
+
+/* ------------------------------------------------ 4-1：JS 内联样式迁入 CSS（P2-3）
+   原先这三处在 keyword-promotion-live.js 的模板字符串里拼 style 属性，
+   按行渲染后审计口径（style 含 color|background|border|font-size|margin|padding）
+   单页命中 150 个元素（50 行 × 3）。迁到类上之后该页为 0。
+   注：`<th style="min-width:…">` 保留 —— 那是 45 列的列宽数据，不是视觉样式，
+   搬进 CSS 等于把同一份数字维护两遍，且不在审计口径内。 */
+.kp-thumb {
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-sm);
+  object-fit: cover;
+}
+/* 无图占位。原写法用 var(--surface-2)，但 tokens.css 里没有这个变量
+   （只有 --surface-page/-base/-raised/-muted/-selected），背景实际是透明的，这里一并修正。
+   字号用 --font-size-meta(12px)：validate_visual_system.cjs 禁止字面量 9/10/25px。 */
+.kp-thumb--empty {
+  display: flex;
+  width: 40px;
+  height: 40px;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-sm);
+  background: var(--surface-muted);
+  color: var(--text-secondary);
+  font-size: var(--font-size-meta);
+}
+.kp-title-link {
+  display: -webkit-box;
+  overflow: hidden;
+  color: inherit;
+  text-decoration: none;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 1;
+}
+.kp-pid { font-size: var(--font-size-meta); }
+.kp-error { color: var(--danger-text); }

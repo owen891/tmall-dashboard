@@ -88,6 +88,22 @@
     }
     status.textContent = `显示 ${rows.length} / ${capabilityRows().length} 项能力`;
   };
+  // The registry is the page gate. When it drifts (a routable page is not
+  // registered) or when a page's capability lookup fails, say so here instead of
+  // letting the gate silently apply to nothing.
+  const renderHealth = () => {
+    document.querySelectorAll('[data-page-capability-health]').forEach((node) => node.remove());
+    const notes = [];
+    const errors = catalog.registry_errors || [];
+    if (errors.length) notes.push(`注册表 ${errors.length} 项问题：${errors.join('；')}`);
+    const lastFailure = window.DemoApi?.lastCapabilityError;
+    if (lastFailure?.page) notes.push(`页面能力查询失败（${lastFailure.page}）：${lastFailure.message}`);
+    if (!notes.length) return;
+    const alert = make('p', notes.join(' · '), 'panel__hint');
+    alert.dataset.pageCapabilityHealth = 'error';
+    alert.setAttribute('role', 'status');
+    status.after(alert);
+  };
   const render = () => {
     const summary = catalog.summary || {};
     const counts = { pages: summary.page_count, supported: summary.supported, conditional: summary.conditional, unsupported: summary.unsupported };
@@ -96,6 +112,7 @@
       if (node) node.textContent = value ?? 0;
     });
     renderRows();
+    renderHealth();
   };
   const load = async () => {
     DemoApi.renderDataState(status, 'loading');

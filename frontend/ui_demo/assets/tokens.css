@@ -10,6 +10,10 @@
   --color-gray-300: #d1d5db;
   --color-gray-400: #9ca3af;
   --color-gray-500: #6b7280;
+  /* 2026-10-01：为 --text-secondary 专设的半档。gray-500 在白底 4.83:1 达标，
+     但在 --surface-muted #f3f4f6（4.39）与 brand-tint #eef2ff（4.32）上不够 4.5。
+     取 #646c79 → 最差 4.74:1（brand-tint）。改值前先跑 scripts/pick_text_tokens.py。 */
+  --color-gray-550: #646c79;
   --color-gray-700: #374151;
   --color-gray-900: #111827;
   /* Indigo family (the product brand color). Previously mislabeled "orange". */
@@ -80,7 +84,7 @@
   --surface-muted: var(--color-gray-100);
   --surface-selected: var(--color-gray-25);
   --text-primary: var(--color-gray-900);
-  --text-secondary: var(--color-gray-500);
+  --text-secondary: var(--color-gray-550);
   --text-tertiary: var(--color-gray-400);
   --text-on-brand: var(--color-white);
   --border-default: var(--color-gray-200);
@@ -102,6 +106,27 @@
   --info-tint: var(--color-blue-100);
   --purple: var(--color-purple-600);
   --purple-tint: var(--color-purple-100);
+
+  /* ---------- 文字专用语义色 / 填充块专用实色（无障碍）----------
+     语义色原值当「文字色」用时过不了 WCAG AA 4.5:1：
+       --success #10b981 = 2.54:1、--warning #f59e0b = 1.95:1、--brand #6366f1 = 4.47:1、
+       --danger #ef4444 = 3.76:1、--info #3b82f6 = 3.68:1、--purple #8b5cf6 = 4.23:1（均在白底）。
+     所以拆成三组，各司其职，**不改主色**：
+       --X        背景 / 边框 / 图表填充（保持原色，视觉不变）
+       --X-text   color: 用（深一档，全部 >= 4.5:1）
+       --X-solid  纯色填充块背景，上面压 --text-on-brand 白字（白字 >= 4.5:1）
+     取值由 scripts/pick_text_tokens.py 按 WCAG 相对亮度算出：对「全部 10 种可能底色」取最差值，
+     所以不只是在纯白上达标。改值前先跑那个脚本。 */
+  --brand-text: #4f46e5;     /* 最差 5.62:1 @ brand-tint */
+  --success-text: #047857;   /* 最差 4.90:1 @ brand-tint */
+  --warning-text: #92400e;   /* 最差 6.34:1 @ brand-tint */
+  --danger-text: #b91c1c;    /* 最差 5.79:1 @ brand-tint */
+  --info-text: #2563eb;      /* 最差 4.62:1 @ brand-tint */
+  --purple-text: #7c3aed;    /* 最差 5.10:1 @ brand-tint */
+  --brand-solid: #4f46e5;    /* 白字 6.29:1 */
+  --brand-solid-hover: #4338ca;  /* 白字 7.90:1，hover 再深一档 */
+  --danger-solid: #b91c1c;   /* 白字 6.47:1 */
+
   --focus-ring: color-mix(in srgb, var(--brand) 30%, transparent);
   --overlay-backdrop: rgb(15 23 42 / 0.42);
   --chart-brand-fill: rgb(99 102 241 / 0.65);
@@ -133,8 +158,8 @@
   --badge-height: 22px;
   --chip-height: 24px;
   --progress-height: 8px;
-  --button-primary-bg: var(--brand);
-  --button-primary-bg-hover: var(--brand-hover);
+  --button-primary-bg: var(--brand-solid);
+  --button-primary-bg-hover: var(--brand-solid-hover);
   --button-secondary-bg: var(--surface-base);
   --button-border: var(--border-default);
   --input-height: var(--control-height);
@@ -198,6 +223,16 @@
   --danger-tint: #35131a;
   --info-tint: #142747;
   --purple-tint: #271d43;
+  /* 文字专用语义色 / 填充块实色（暗色模式）。取色依据同浅色区注释，最坏底色是 --surface-muted #293451。 */
+  --brand-text: #a5b4fc;     /* 最差 6.18:1 @ surface-muted（--brand #818cf8 只有 4.13:1，不够） */
+  --success-text: #10b981;   /* 最差 4.86:1 @ surface-muted */
+  --warning-text: #f59e0b;   /* 最差 5.74:1 @ surface-muted */
+  --danger-text: #fca5a5;    /* 最差 6.49:1 @ surface-muted（--danger #ef4444 只有 3.27:1，不够） */
+  --info-text: #60a5fa;      /* 最差 4.85:1 @ surface-muted（--info #3b82f6 只有 3.35:1，不够） */
+  --purple-text: #a78bfa;    /* 最差 4.53:1 @ surface-muted（--purple #8b5cf6 只有 2.91:1，不够） */
+  --brand-solid: #4f46e5;    /* 白字 6.29:1（暗色下 --brand 是浅色，压白字只有 2.98:1） */
+  --brand-solid-hover: #4338ca;  /* 白字 7.90:1 */
+  --danger-solid: #b91c1c;   /* 白字 6.47:1 */
   --focus-ring: color-mix(in srgb, var(--brand) 42%, transparent);
   --overlay-backdrop: rgb(0 0 0 / 0.52);
   --chart-brand-fill: rgb(129 140 248 / 0.68);

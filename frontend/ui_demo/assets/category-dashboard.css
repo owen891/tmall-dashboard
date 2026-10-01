@@ -1,6 +1,6 @@
 .category-dashboard-page { max-width:1440px; margin:0 auto; padding:28px 32px 56px; }
 .category-dashboard-header { display:flex; justify-content:space-between; align-items:flex-start; gap:24px; margin-bottom:20px; }
-.dashboard-eyebrow { color:var(--text-tertiary); font-size:12px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; }
+.dashboard-eyebrow { color: var(--text-secondary); font-size:12px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; }
 .category-dashboard-header h1 { margin:5px 0 0; font-size:26px; line-height:1.2; }
 .category-dashboard-header p { margin:8px 0 0; color:var(--text-secondary); }
 .dashboard-mode-tabs { display:flex; gap:4px; border-bottom:1px solid var(--border-default); margin-bottom:16px; }
@@ -12,12 +12,12 @@
 .dashboard-control select, .dashboard-control input { min-height:38px; padding:0 10px; border:1px solid var(--border-default); border-radius:4px; background:var(--surface-base); color:var(--text-primary); }
 .dashboard-custom-only, .dashboard-annual-only, .dashboard-compare-custom { display:none; }
 .dashboard-state { min-height:22px; margin-bottom:12px; color:var(--text-secondary); font-size:13px; }
-.dashboard-state.is-error { color:var(--danger); }
+.dashboard-state.is-error { color:var(--danger-text); }
 .dashboard-kpis { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:12px; margin-bottom:14px; }
 .dashboard-kpi { min-height:112px; padding:16px; border:1px solid var(--border-default); background:var(--surface-base); }
 .dashboard-kpi span, .dashboard-kpi small { display:block; color:var(--text-secondary); font-size:12px; }
 .dashboard-kpi strong { display:block; margin:10px 0 6px; font-size:24px; font-variant-numeric:tabular-nums; }
-.dashboard-kpi small { color:var(--text-tertiary); }
+.dashboard-kpi small { color: var(--text-secondary); }
 .dashboard-insight { margin:0 0 16px; padding:14px 16px; border-left:3px solid var(--text-primary); background:var(--surface-muted); color:var(--text-primary); line-height:1.6; }
 .dashboard-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px; }
 .dashboard-panel { min-width:0; padding:18px; border:1px solid var(--border-default); background:var(--surface-base); }

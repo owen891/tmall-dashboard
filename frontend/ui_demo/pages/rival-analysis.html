@@ -1,31 +1,31 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>竞店竞品分析 - 天猫数据仪表盘</title>
-<link rel="stylesheet" href="../assets/tokens.css">
-<link rel="stylesheet" href="../assets/shell.css">
-<link rel="stylesheet" href="../assets/components.css"><link rel="stylesheet" href="../assets/themes/product-domain.css"><link rel="stylesheet" href="../assets/themes/promotion-domain.css"><link rel="stylesheet" href="../assets/themes/overview-domain.css"><link rel="stylesheet" href="../assets/themes/lifecycle-domain.css"><link rel="stylesheet" href="../assets/themes/settings-domain.css">
-<link rel="stylesheet" href="../assets/rival-analysis.css?v=20260923a">
-<script src="../assets/lucide-custom.min.js"></script>
-<script src="../assets/echarts-custom.min.js"></script>
+<link rel="stylesheet" href="../assets/tokens.css?v=20261001j">
+<link rel="stylesheet" href="../assets/shell.css?v=20261001j">
+<link rel="stylesheet" href="../assets/components.css?v=20261001j"><link rel="stylesheet" href="../assets/themes/product-domain.css?v=20261001j"><link rel="stylesheet" href="../assets/themes/promotion-domain.css?v=20261001j"><link rel="stylesheet" href="../assets/themes/overview-domain.css?v=20261001j"><link rel="stylesheet" href="../assets/themes/lifecycle-domain.css?v=20261001j"><link rel="stylesheet" href="../assets/themes/settings-domain.css?v=20261001j">
+<link rel="stylesheet" href="../assets/rival-analysis.css?v=20261001j">
+<script src="../assets/lucide-custom.min.js?v=20261001j"></script>
+<script src="../assets/echarts-custom.min.js?v=20261001j"></script>
 <style>
 .rival-chart-row { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-4); margin-bottom: var(--space-4); }
 .rival-chart-box { background: var(--surface-muted); border-radius: var(--radius-md); padding: var(--space-3); min-height: 320px; }
 .rival-chart-title { font-size: var(--font-size-secondary); font-weight: 600; color: var(--text-secondary); margin-bottom: var(--space-2); text-align: center; }
 .rival-table-wrap { overflow-x: auto; }
 .rival-table { width: 100%; border-collapse: collapse; font-size: var(--font-size-meta); }
-.rival-table th { background: var(--surface-muted); padding: 10px 12px; text-align: left; font-weight: 600; color: var(--text-secondary); border-bottom: 2px solid var(--border-color); white-space: nowrap; }
-.rival-table td { padding: 10px 12px; border-bottom: 1px solid var(--border-color); color: var(--text-primary); }
-.rival-table tr:hover { background: var(--surface-hover); }
+.rival-table th { background: var(--surface-muted); padding: 10px 12px; text-align: left; font-weight: 600; color: var(--text-secondary); border-bottom: 2px solid var(--border-default); white-space: nowrap; }
+.rival-table td { padding: 10px 12px; border-bottom: 1px solid var(--border-default); color: var(--text-primary); }
+.rival-table tr:hover { background: var(--surface-muted); }
 .rival-table .num { text-align: right; font-family: var(--font-mono); }
 .rival-table .pct { text-align: right; font-family: var(--font-mono); color: var(--text-secondary); }
 .rival-badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 500; }
-.rival-badge--tmall { background: rgba(239, 68, 68, 0.1); color: #ef4444; }
-.rival-badge--taobao { background: rgba(245, 158, 11, 0.1); color: #f59e0b; }
-.rival-item-card { display: flex; gap: var(--space-3); padding: var(--space-3); border-bottom: 1px solid var(--border-color); }
-.rival-item-card:hover { background: var(--surface-hover); }
+.rival-badge--tmall { background: rgba(239, 68, 68, 0.1); color: var(--danger-text); }
+.rival-badge--taobao { background: rgba(245, 158, 11, 0.1); color: var(--warning-text); }
+.rival-item-card { display: flex; gap: var(--space-3); padding: var(--space-3); border-bottom: 1px solid var(--border-default); }
+.rival-item-card:hover { background: var(--surface-muted); }
 .rival-item-img { width: 80px; height: 80px; border-radius: var(--radius-sm); background: var(--surface-muted); flex-shrink: 0; overflow: hidden; }
 .rival-item-img img { width: 100%; height: 100%; object-fit: cover; }
 .rival-item-info { flex: 1; min-width: 0; }
@@ -34,8 +34,8 @@
 .rival-item-meta span { font-family: var(--font-mono); }
 .rival-tabs { display: flex; gap: var(--space-2); margin-bottom: var(--space-4); }
 .rival-tab { padding: 8px 16px; border-radius: var(--radius-sm); cursor: pointer; font-size: var(--font-size-secondary); color: var(--text-secondary); background: var(--surface-muted); border: none; }
-.rival-tab.active { background: var(--primary-color); color: white; }
-.rival-period-notice { margin: 0 0 var(--space-4); padding: 10px 12px; border-left: 3px solid var(--primary-color); background: var(--surface-muted); color: var(--text-secondary); font-size: var(--font-size-meta); line-height: 1.5; }
+.rival-tab.active { background: var(--brand-solid); color: var(--text-on-brand); }
+.rival-period-notice { margin: 0 0 var(--space-4); padding: 10px 12px; border-left: 3px solid var(--brand); background: var(--surface-muted); color: var(--text-secondary); font-size: var(--font-size-meta); line-height: 1.5; }
 @media (max-width: 900px) { .rival-chart-row { grid-template-columns: 1fr; } }
 </style>
 </head>
@@ -48,21 +48,16 @@
 
       <div class="ui-page-header">
         <div>
-          <h2>竞店竞品分析</h2>
+          <h1>竞店竞品分析</h1>
           <p>生意参谋 · 当前按统计日展示竞店规模与竞品样本，不代表周期趋势或已验证打法</p>
+            <p class="ui-page-header__scope" data-rival-context>正在读取统计范围…</p>
         </div>
         <div class="demo-page__actions">
           <span class="ui-badge ui-badge--info" data-rival-date>--</span>
         </div>
       </div>
 
-      <section class="ui-context-bar" aria-label="竞店竞品分析范围">
-        <div class="ui-context-bar__copy">
-          <span class="ui-context-bar__label">当前范围</span>
-          <strong class="ui-context-bar__value" data-rival-context>正在读取统计范围…</strong>
-          <span class="ui-context-bar__meta">接口按统计日提供竞店与竞品样本；先看竞争态势，再进入店铺或商品证据。</span>
-        </div>
-      </section>
+      
 
       <!-- 指标卡片 -->
       <section class="ui-metric-grid">
@@ -126,7 +121,7 @@
             <select class="select" data-rival-shop-select style="min-width:260px"><option value="">选择竞店</option></select>
           </div>
           <div class="rival-chart-box"><div id="rivalShopDetailChart" style="width:100%;height:280px;"></div></div>
-          <div class="rival-table-wrap"><table class="rival-table"><thead><tr><th>日期</th><th class="num">UV</th><th class="num">支付买家</th><th class="pct">支付转化率</th><th>采集状态</th></tr></thead><tbody data-rival-shop-detail-body><tr><td colspan="5" style="text-align:center;color:var(--text-tertiary);padding:20px">请选择竞店</td></tr></tbody></table></div>
+          <div class="rival-table-wrap"><table class="rival-table"><thead><tr><th>日期</th><th class="num">UV</th><th class="num">支付买家</th><th class="pct">支付转化率</th><th>采集状态</th></tr></thead><tbody data-rival-shop-detail-body><tr><td colspan="5" style="text-align:center;color:var(--text-secondary);padding:20px">请选择竞店</td></tr></tbody></table></div>
         </section>
         <section class="rival-chart-row">
           <div class="rival-chart-box">
@@ -176,7 +171,7 @@
                 </tr>
               </thead>
               <tbody data-rival-shops-body>
-                <tr><td colspan="8" style="text-align:center;color:var(--text-tertiary);padding:24px">加载中…</td></tr>
+                <tr><td colspan="8" style="text-align:center;color:var(--text-secondary);padding:24px">加载中…</td></tr>
               </tbody>
             </table>
           </div>
@@ -198,13 +193,13 @@
             <select class="select" data-rival-item-select style="min-width:360px"><option value="">选择竞品单品</option></select>
           </div>
           <div class="rival-chart-box"><div id="rivalItemDetailChart" style="width:100%;height:280px;"></div></div>
-          <div class="rival-table-wrap"><table class="rival-table"><thead><tr><th>日期</th><th class="num">UV</th><th class="num">支付买家</th><th class="pct">支付转化率</th><th>采集状态</th></tr></thead><tbody data-rival-item-detail-body><tr><td colspan="5" style="text-align:center;color:var(--text-tertiary);padding:20px">请选择竞品</td></tr></tbody></table></div>
+          <div class="rival-table-wrap"><table class="rival-table"><thead><tr><th>日期</th><th class="num">UV</th><th class="num">支付买家</th><th class="pct">支付转化率</th><th>采集状态</th></tr></thead><tbody data-rival-item-detail-body><tr><td colspan="5" style="text-align:center;color:var(--text-secondary);padding:20px">请选择竞品</td></tr></tbody></table></div>
           <div class="rival-chart-box" style="margin-bottom:var(--space-3)">
             <div class="rival-chart-title">竞品样本支付转化率</div>
             <div id="rivalPeriodRateChart" style="width:100%;height:240px;"></div>
           </div>
           <div data-rival-items-list>
-            <div style="text-align:center;color:var(--text-tertiary);padding:24px">加载中…</div>
+            <div style="text-align:center;color:var(--text-secondary);padding:24px">加载中…</div>
           </div>
         </section>
       </div>
@@ -213,10 +208,10 @@
   </div>
 </div>
 
-<script src="../assets/api.js"></script>
-<script src="../assets/navigation.js"></script>
-<script src="../assets/labels.js"></script>
-<script src="../assets/shell.js"></script>
-<script src="../assets/runtime/date-range-scope.js"></script><script src="../assets/format.js"></script><script src="../assets/ui-components.js"></script><script src="../assets/rival-analysis-live.js?v=20260923f"></script>
+<script src="../assets/api.js?v=20261001j"></script>
+<script src="../assets/navigation.js?v=20261001j"></script>
+<script src="../assets/labels.js?v=20261001j"></script>
+<script src="../assets/shell.js?v=20261001j"></script>
+<script src="../assets/runtime/date-range-scope.js?v=20261001j"></script><script src="../assets/format.js?v=20261001j"></script><script src="../assets/ui-components.js?v=20261001j"></script><script src="../assets/rival-analysis-live.js?v=20261001j"></script>
 </body>
 </html>

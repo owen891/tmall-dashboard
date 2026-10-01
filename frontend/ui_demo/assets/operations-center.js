@@ -188,14 +188,25 @@
     const map = state.calendarActions.reduce((result, action) => { const key = formatDate(action.planned_at); if (key) (result[key] ||= []).push(action); return result; }, {});
     $('[data-operations-calendar-month]').textContent = `${state.viewYear}年${state.viewMonth + 1}月`;
     const grid = $('[data-operations-calendar-grid]'); const cells = [];
-    for (let index = 0; index < first; index += 1) { const button = document.createElement('button'); button.type = 'button'; button.className = 'operations-center__calendar-day is-muted'; button.disabled = true; cells.push(button); }
+    // 4-4：月初/月末的补位格子既没有文本也没有 aria-label，读屏只能念出一个没有名字的
+    // 「按钮」（审计在 overview 抓到 5 个）。补上名称；它们只是视觉占位，对读屏没有信息量，
+    // 因此同时 aria-hidden 掉，避免在一周里连播 6 个「空白格」。
+    const pushPlaceholder = () => {
+      const button = document.createElement('button'); button.type = 'button'; button.className = 'operations-center__calendar-day is-muted'; button.disabled = true;
+      button.setAttribute('aria-label', '空白格'); button.setAttribute('aria-hidden', 'true'); cells.push(button);
+    };
+    for (let index = 0; index < first; index += 1) pushPlaceholder();
     for (let day = 1; day <= days; day += 1) {
       const date = `${state.viewYear}-${String(state.viewMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
       const button = document.createElement('button'); button.type = 'button'; button.className = 'operations-center__calendar-day'; button.dataset.operationsCalendarDate = date; if (date === today()) button.classList.add('is-today'); if (date === state.selectedDate || (!state.selectedDate && date === today())) button.classList.add('is-selected');
       button.appendChild(Object.assign(document.createElement('span'), { className: 'operations-center__calendar-day-number', textContent: String(day) }));
-      const count = (map[date] || []).length; if (count) { const marker = document.createElement('span'); marker.className = 'operations-center__calendar-day-count'; marker.textContent = String(count); marker.setAttribute('aria-label', `${count} 项运营动作`); button.appendChild(marker); } cells.push(button);
+      const count = (map[date] || []).length;
+      // 4-4：只读一个「1」脱离上下文没有意义。给整个格子一个完整名称，
+      // 它同时会覆盖子节点的可访问名（aria-label 优先于内容），所以计数徽标转 aria-hidden。
+      button.setAttribute('aria-label', count ? `${date}，${count} 项运营动作` : `${date}，无运营动作`);
+      if (count) { const marker = document.createElement('span'); marker.className = 'operations-center__calendar-day-count'; marker.textContent = String(count); marker.setAttribute('aria-hidden', 'true'); button.appendChild(marker); } cells.push(button);
     }
-    while (cells.length % 7) { const button = document.createElement('button'); button.type = 'button'; button.className = 'operations-center__calendar-day is-muted'; button.disabled = true; cells.push(button); }
+    while (cells.length % 7) pushPlaceholder();
     grid.replaceChildren(...cells); renderCalendarDetails(state.selectedDate || (state.viewYear === new Date().getFullYear() && state.viewMonth === new Date().getMonth() ? today() : `${state.viewYear}-${String(state.viewMonth + 1).padStart(2, '0')}-01`)); window.lucide?.createIcons?.();
   }
   function calendarMonthLabel() { return `${state.viewYear}年${state.viewMonth + 1}月`; }

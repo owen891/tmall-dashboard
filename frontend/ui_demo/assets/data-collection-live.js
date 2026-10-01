@@ -45,15 +45,18 @@
     'failed': '失败'
   };
 
+  // 状态色拆两份：fill 只用于背景（保持原色，拼 `20` 做浅底），
+  // text 用于文字（深一档的 --*-text，原色当 12px 文字过不了 WCAG AA）。
   const statusColors = {
-    'idle': '#6b7280',
-    'queued': '#2563eb',
-    'running': '#2563eb',
-    'completed': '#16a34a',
-    'partial': '#d97706',
-    'failed': '#dc2626',
-    'timed_out': '#dc2626'
+    'idle': { fill: '#6b7280', text: 'var(--text-secondary)' },
+    'queued': { fill: '#2563eb', text: 'var(--info-text)' },
+    'running': { fill: '#2563eb', text: 'var(--info-text)' },
+    'completed': { fill: '#16a34a', text: 'var(--success-text)' },
+    'partial': { fill: '#d97706', text: 'var(--warning-text)' },
+    'failed': { fill: '#dc2626', text: 'var(--danger-text)' },
+    'timed_out': { fill: '#dc2626', text: 'var(--danger-text)' }
   };
+  const statusColor = (status) => statusColors[status] || statusColors.idle;
 
 
   // 计算数据新鲜度，支持YYYY-MM和YYYY-MM-DD格式
@@ -105,10 +108,10 @@
         renderSources(result.data.sources);
         renderSummary(result.data.sources);
       } else {
-        grid.innerHTML = `<div style="grid-column:1/-1;text-align:center;color:#ef4444;padding:48px;">加载失败: ${result.message || '未知错误'}</div>`;
+        grid.innerHTML = `<div style="grid-column:1/-1;text-align:center;color:var(--danger-text);padding:48px;">加载失败: ${result.message || '未知错误'}</div>`;
       }
     } catch (e) {
-      grid.innerHTML = `<div style="grid-column:1/-1;text-align:center;color:#ef4444;padding:48px;">加载失败: ${e.message}</div>`;
+      grid.innerHTML = `<div style="grid-column:1/-1;text-align:center;color:var(--danger-text);padding:48px;">加载失败: ${e.message}</div>`;
     }
   }
 
@@ -244,10 +247,10 @@
               <p class="collect-source-card__desc">${escapeHtml(source.description || '')}</p>
             </div>
             <div style="display:flex;flex-direction:column;gap:4px;align-items:flex-end;">
-              ${source.cadence === 'window' ? '<span style="padding:2px 8px;border-radius:4px;font-size:11px;font-weight:500;background:#6366f120;color:#6366f1;">周窗口源</span>' : ''}
+              ${source.cadence === 'window' ? '<span style="padding:2px 8px;border-radius:4px;font-size:11px;font-weight:500;background:var(--brand-tint);color:var(--brand-text);">周窗口源</span>' : ''}
               <span class="freshness-badge freshness-${escapeHtml(freshness)}">${escapeHtml(freshnessLabels[freshness] || freshness)}</span>
               ${source.status && source.status !== 'idle' ? `
-                <span style="padding:2px 8px;border-radius:4px;font-size:12px;font-weight:500;background:${statusColors[source.status] || '#6b7280'}20;color:${statusColors[source.status] || '#6b7280'};">
+                <span style="padding:2px 8px;border-radius:4px;font-size:12px;font-weight:500;background:${statusColor(source.status).fill}20;color:${statusColor(source.status).text};">
                   ${escapeHtml(statusLabels[source.status] || source.status)}
                 </span>
               ` : ''}

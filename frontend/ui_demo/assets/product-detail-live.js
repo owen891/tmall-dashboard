@@ -1,5 +1,10 @@
 ﻿(function () {
-  const id = decodeURIComponent(location.pathname.split('/').pop());
+  // `/products/<product_id>` carries the id as the last segment. `/product-detail`
+  // is the id-less deep link: its last segment is the route name itself, so it
+  // must not be mistaken for a product id.
+  const segments = location.pathname.split('/');
+  const lastSegment = segments[segments.length - 1] || '';
+  const id = lastSegment && lastSegment !== 'product-detail' ? decodeURIComponent(lastSegment) : '';
   const $ = (selector) => document.querySelector(selector);
   const $$ = (selector) => [...document.querySelectorAll(selector)];
   const setText = (selector, value) => $$(selector).forEach((node) => { node.textContent = value ?? '--'; });
@@ -567,7 +572,7 @@
       }
       if (!d.ok) {
         const tbody = document.querySelector('[data-item-flow-table]');
-        if (tbody) tbody.innerHTML = `<tr><td colspan="11" style="text-align:center;color:var(--text-tertiary);padding:24px">${d.message || '暂无流量来源数据'}</td></tr>`;
+        if (tbody) tbody.innerHTML = `<tr><td colspan="11" style="text-align:center;color:var(--text-secondary);padding:24px">${d.message || '暂无流量来源数据'}</td></tr>`;
         return;
       }
       const data = d.data;
@@ -615,7 +620,7 @@
       const tbody = document.querySelector('[data-item-flow-table]');
       if (!tbody) return;
       if (!tree.length) {
-        tbody.innerHTML = '<tr><td colspan="11" style="text-align:center;color:var(--text-tertiary);padding:24px">暂无流量来源数据</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="11" style="text-align:center;color:var(--text-secondary);padding:24px">暂无流量来源数据</td></tr>';
         return;
       }
 
@@ -749,6 +754,16 @@
   }
 
   async function load(range) {
+    // No product id: `/product-detail` was opened directly. Say how to get here
+    // rather than requesting `/api/products//detail` and reporting that as a
+    // calculation failure.
+    if (!id) {
+      DemoApi.renderDataState($('[data-product-detail-status]'), 'no-data', {
+        message: '请从商品列表进入详情',
+        retry: null,
+      });
+      return;
+    }
     try {
       const previousRangeKey = `${selectedRange.startDate || ''}|${selectedRange.endDate || ''}`;
       selectedRange = range || window.TmallDateRange?.getState?.() || selectedRange || {};
@@ -877,7 +892,7 @@
       const avg = values.reduce((a, b) => a + b, 0) / values.length, max = Math.max(...values), min = Math.min(...values), latest = values[values.length - 1];
       stats.innerHTML = '<div class="drill-modal__stat"><div class="drill-modal__stat-label">最新值</div><div class="drill-modal__stat-value">' + format(latest) + '</div></div><div class="drill-modal__stat"><div class="drill-modal__stat-label">平均值</div><div class="drill-modal__stat-value">' + format(avg) + '</div></div><div class="drill-modal__stat"><div class="drill-modal__stat-label">最高值</div><div class="drill-modal__stat-value">' + format(max) + '</div></div><div class="drill-modal__stat"><div class="drill-modal__stat-label">最低值</div><div class="drill-modal__stat-value">' + format(min) + '</div></div>';
     } else {
-      stats.innerHTML = '<div class="drill-modal__stat" style="grid-column:1/-1;text-align:center;color:var(--text-tertiary);">暂无数据</div>';
+      stats.innerHTML = '<div class="drill-modal__stat" style="grid-column:1/-1;text-align:center;color:var(--text-secondary);">暂无数据</div>';
     }
     const chartEl = document.querySelector('[data-drill-chart]');
     disposeDrillChart();
@@ -891,7 +906,7 @@
         series: [{ name: drillMetricLabels[metric], type: 'line', smooth: true, data: data.map(function(d) { return getDrillValue(d, metric); }), areaStyle: { opacity: 0.1 }, lineStyle: { width: 2 }, itemStyle: { color: '#3b82f6' } }],
       });
     } else {
-      chartEl.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--text-tertiary);">暂无趋势数据</div>';
+      chartEl.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--text-secondary);">暂无趋势数据</div>';
     }
     const table = document.querySelector('[data-drill-table]');
     if (data.length) {
@@ -903,14 +918,14 @@
         [item.date, format(val), (change != null ? (change > 0 ? '+' : '') + change.toFixed(1) + '%' : '--')].forEach(function(value, index) {
           var td = document.createElement('td'); td.textContent = value;
           if (index > 0) td.className = 'num';
-          if (index === 2 && change != null) td.style.color = change > 0 ? '#10b981' : '#ef4444';
+          if (index === 2 && change != null) td.style.color = change > 0 ? 'var(--success-text)' : 'var(--danger-text)';
           tr.appendChild(td);
         });
         return tr;
       });
       table.replaceChildren.apply(table, rows);
     } else {
-      table.innerHTML = '<tr><td colspan="3" style="text-align:center;color:var(--text-tertiary);padding:24px;">暂无数据</td></tr>';
+      table.innerHTML = '<tr><td colspan="3" style="text-align:center;color:var(--text-secondary);padding:24px;">暂无数据</td></tr>';
     }
   }
 

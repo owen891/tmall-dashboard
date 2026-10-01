@@ -38,7 +38,13 @@
     { key: 'data_source', label: '数据来源', format: 'source' },
   ]);
   const matrixColumnsByKey = new Map(matrixColumns.map((column) => [column.key, column]));
-  const matrixColumnsStorageKey = 'tmall-overview-matrix-columns-v2';
+  // 5-3：默认只展示 8 列（决策相关的那批），其余 6 列走列设置。
+  // key 从 -v2 提到 -v3：老用户 localStorage 里存的是 14 列，不换 key 新默认不会生效。
+  const matrixColumnsStorageKey = 'tmall-overview-matrix-columns-v3';
+  const DEFAULT_MATRIX_COLUMNS = Object.freeze([
+    'date', 'net_sales', 'payment_amount', 'refund_rate', 'visitors',
+    'payment_conversion_rate', 'ad_spend', 'expense_ratio',
+  ]);
   let matrixVisibleColumns = loadMatrixColumns();
   let matrixColumnSelector = null;
   let matrixColumnsReturnFocus = null;
@@ -127,8 +133,8 @@
   function loadMatrixColumns() {
     try {
       const stored = JSON.parse(localStorage.getItem(matrixColumnsStorageKey));
-      return Array.isArray(stored) && stored.length ? normalizeMatrixColumns(stored) : matrixColumns.map((column) => column.key);
-    } catch (_) { return matrixColumns.map((column) => column.key); }
+      return Array.isArray(stored) && stored.length ? normalizeMatrixColumns(stored) : [...DEFAULT_MATRIX_COLUMNS];
+    } catch (_) { return [...DEFAULT_MATRIX_COLUMNS]; }
   }
 
   function saveMatrixColumns() {
@@ -228,8 +234,8 @@
         : key === 'ad_roi'
           ? Number(Number(change?.period_b || 0) - Number(change?.period_a || 0)).toFixed(2)
           : Number(direction).toFixed(1);
-      const isCostMetric = ['ad_spend', 'refund_rate', 'expense_ratio'].includes(key);
-      const trendClass = direction === 0 ? '' : ((direction > 0) !== isCostMetric ? 'is-up' : 'is-down');
+      // 4-3：成本指标清单（原为硬编码 ['ad_spend','refund_rate','expense_ratio']）统一走 MetricPolarity。
+      const trendClass = direction === 0 ? '' : MetricPolarity.deltaClass(key, direction);
       const metaNodes = [...document.querySelectorAll(`[data-overview-kpi-meta="${key}"]`)];
       metaNodes.forEach((node) => {
         node.classList.toggle('is-up', trendClass === 'is-up');

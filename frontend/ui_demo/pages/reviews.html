@@ -1,13 +1,13 @@
-﻿<!doctype html>
+<!doctype html>
 <html lang="zh-CN">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>经营复盘 | 天猫数据仪表盘</title>
-  <link rel="stylesheet" href="../assets/tokens.css">
-  <link rel="stylesheet" href="../assets/shell.css">
-  <link rel="stylesheet" href="../assets/components.css"><link rel="stylesheet" href="../assets/themes/product-domain.css"><link rel="stylesheet" href="../assets/themes/promotion-domain.css"><link rel="stylesheet" href="../assets/themes/overview-domain.css"><link rel="stylesheet" href="../assets/themes/lifecycle-domain.css"><link rel="stylesheet" href="../assets/themes/settings-domain.css">
-  <script src="../assets/lucide-custom.min.js"></script>
+  <link rel="stylesheet" href="../assets/tokens.css?v=20261001j">
+  <link rel="stylesheet" href="../assets/shell.css?v=20261001j">
+  <link rel="stylesheet" href="../assets/components.css?v=20261001j"><link rel="stylesheet" href="../assets/themes/product-domain.css?v=20261001j"><link rel="stylesheet" href="../assets/themes/promotion-domain.css?v=20261001j"><link rel="stylesheet" href="../assets/themes/overview-domain.css?v=20261001j"><link rel="stylesheet" href="../assets/themes/lifecycle-domain.css?v=20261001j"><link rel="stylesheet" href="../assets/themes/settings-domain.css?v=20261001j">
+  <script src="../assets/lucide-custom.min.js?v=20261001j"></script>
 </head>
 <body data-page="reviews">
   <div class="demo-app">
@@ -17,16 +17,11 @@
       <main class="demo-page">
         <aside data-right-rail hidden aria-label="辅助信息"></aside>
         <div class="ui-page-header">
-          <div><h2>经营复盘</h2><p>先看动作状态，再处理待复盘结论和日、周、月周期复盘。</p></div>
+          <div><h1>经营复盘</h1><p>先看动作状态，再处理待复盘结论和日、周、月周期复盘。</p>
+            <p class="ui-page-header__scope" data-reviews-context-range>正在读取数据范围…</p></div>
           <button type="button" class="ui-button" data-reviews-refresh><i data-lucide="refresh-cw"></i><span>刷新</span></button>
         </div>
-        <section class="ui-context-bar" aria-label="复盘数据范围">
-          <div class="ui-context-bar__copy">
-            <span class="ui-context-bar__label">当前范围</span>
-            <strong class="ui-context-bar__value" data-reviews-context-range>正在读取数据范围…</strong>
-            <span class="ui-context-bar__meta">先处理待复盘动作，再沉淀周期结论；动作状态与周期复盘保持同一工作区。</span>
-          </div>
-        </section>
+        
         <section class="ui-metric-grid review-summary-grid" aria-label="复盘摘要">
           <article class="ui-metric-card"><div class="metric-card__label">待复盘</div><div class="metric-card__value" data-reviews-summary="pending_review">--</div><div class="metric-card__meta">观察窗口已结束</div></article>
           <article class="ui-metric-card"><div class="metric-card__label">观察中</div><div class="metric-card__value" data-reviews-summary="observing">--</div><div class="metric-card__meta">等待窗口结束</div></article>
@@ -57,10 +52,10 @@
       </main>
     </div>
   </div>
-  <script src="../assets/api.js"></script>
-  <script src="../assets/navigation.js"></script>
-  <script src="../assets/labels.js"></script>
-  <script src="../assets/shell.js"></script>
-  <script src="../assets/format.js"></script><script src="../assets/ui-components.js"></script><script src="../assets/reviews-live.js"></script>
+  <script src="../assets/api.js?v=20261001j"></script>
+  <script src="../assets/navigation.js?v=20261001j"></script>
+  <script src="../assets/labels.js?v=20261001j"></script>
+  <script src="../assets/shell.js?v=20261001j"></script>
+  <script src="../assets/format.js?v=20261001j"></script><script src="../assets/ui-components.js?v=20261001j"></script><script src="../assets/reviews-live.js?v=20261001j"></script>
 </body>
 </html>

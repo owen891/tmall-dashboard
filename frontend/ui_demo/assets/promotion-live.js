@@ -1,6 +1,5 @@
 (function () {
   const $ = (selector, root = document) => root.querySelector(selector);
-  const focusableSelector = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
   const promotionDetailTabs = ['overview', 'units'];
   const tabDefinitions = {
     products: {
@@ -436,9 +435,30 @@
     rows.forEach((alert) => container.appendChild(createAlertItem(alert)));
   }
 
+  // 全部投放预警抽屉：modal-form__body 内的列表迁入抽屉 body，footer 晚挂载
+  let promotionAlertsDrawer = null;
+
+  function ensureAlertsDrawer() {
+    if (promotionAlertsDrawer) return promotionAlertsDrawer;
+    const template = $('[data-promotion-alert-dialog-template]');
+    if (!template || !window.TmallUI?.detailDrawer) return null;
+    promotionAlertsDrawer = window.TmallUI.detailDrawer({
+      title: '全部投放预警',
+      description: `${state.period || '--'} · 预警由 API 按商品推广 ROI 与推广花费规则计算`,
+      size: 'md',
+    });
+    const content = template.content.cloneNode(true);
+    const footerTemplate = content.querySelector('[data-promotion-alert-dialog-footer]');
+    promotionAlertsDrawer.body.append(content);
+    if (footerTemplate) promotionAlertsDrawer.ensureFooter().append(...footerTemplate.content.cloneNode(true).childNodes);
+    promotionAlertsDrawer.node.querySelectorAll('[data-promotion-alert-dialog-close]').forEach((button) => button.addEventListener('click', closeAlertsDialog));
+    window.lucide?.createIcons();
+    return promotionAlertsDrawer;
+  }
+
   function renderAlertDialog(rows) {
     const list = $('[data-promotion-alert-dialog-list]');
-    const subtitle = $('[data-promotion-alert-dialog-subtitle]');
+    const subtitle = promotionAlertsDrawer?.node.querySelector('.ui-drawer__copy p');
     if (!list) return;
     if (subtitle) subtitle.textContent = `${state.period || '--'} · 共 ${rows.length} 条投放预警`;
     renderAlertItems(list, rows);
@@ -455,8 +475,8 @@
       moreButton.hidden = alerts.length <= PROMOTION_ALERT_PREVIEW_LIMIT;
       moreButton.textContent = `查看全部 ${alerts.length} 条`;
     }
-    const dialog = $('[data-promotion-alert-dialog]');
-    if (dialog?.open) renderAlertDialog(alerts);
+    const dialog = promotionAlertsDrawer?.node;
+    if (dialog?.classList.contains('is-open')) renderAlertDialog(alerts);
   }
 
   function clearTable(message) {
@@ -1034,8 +1054,7 @@
 
   function renderPromotionDialogImage(product, icon = 'megaphone') {
     const imageRoot = $('[data-promotion-dialog-image]');
-    if (!imageRoot) return;
-    imageRoot.replaceChildren();
+    if (!imageRoot) return;    imageRoot.replaceChildren();
     const thumbnailUrl = String(product?.image_url || '').trim();
     if (thumbnailUrl) {
       const image = new Image(52, 52);
@@ -1155,16 +1174,49 @@
     updatePromotionDetailTabState();
   }
 
+  // 详情面统一 NUI 抽屉：dialog 壳仅作内容来源，初始化时搬移进抽屉；
+  // 头部（图片/标题/副标题/商品 ID）并入 body 顶部以承载动态填充。
+  let promotionDetailDrawer = null;
+
+  function ensurePromotionDetailDrawer() {
+    if (promotionDetailDrawer) return promotionDetailDrawer;
+    const template = $('[data-promotion-dialog-template]');
+    if (!template || !window.TmallUI?.detailDrawer) return null;
+    const header = document.createElement('div');
+    header.className = 'lifecycle-detail__header promotion-detail-drawer__header';
+    header.innerHTML = '<div class="lifecycle-detail__product"><span class="lifecycle-detail__image promotion-detail-dialog__image" data-promotion-dialog-image aria-hidden="true"><i data-lucide="megaphone"></i></span><div><h2 class="panel__title" data-promotion-dialog-title>推广明细</h2><p class="panel__hint" data-promotion-dialog-subtitle>--</p><div class="lifecycle-detail__id" data-promotion-dialog-id>--</div></div></div>';
+    const content = template.content.cloneNode(true);
+    const bodyWrap = document.createElement('div');
+    bodyWrap.append(header, content);
+    promotionDetailDrawer = window.TmallUI.detailDrawer({ title: '推广明细', size: 'lg' });
+    promotionDetailDrawer.body.append(bodyWrap);
+    const tablist = content.querySelector('[data-promotion-dialog-tabs]');
+    tablist.addEventListener('click', (event) => {
+      const tab = event.target.closest('[data-promotion-detail-tab]');
+      if (tab) selectPromotionDetailTab(tab.dataset.promotionDetailTab);
+    });
+    tablist.addEventListener('keydown', (event) => {
+      const tabs = [...tablist.querySelectorAll('[data-promotion-detail-tab]')];
+      const index = tabs.indexOf(event.target.closest('[data-promotion-detail-tab]'));
+      if (index < 0 || !['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+      event.preventDefault();
+      const nextIndex = event.key === 'Home' ? 0 : event.key === 'End' ? tabs.length - 1 : (index + (event.key === 'ArrowRight' ? 1 : -1) + tabs.length) % tabs.length;
+      selectPromotionDetailTab(tabs[nextIndex].dataset.promotionDetailTab, true);
+    });
+    window.lucide?.createIcons();
+    return promotionDetailDrawer;
+  }
+
   async function openPromotionDetail(row, trigger) {
     const requestToken = ++state.promotionDetailRequest;
     const product = state.rows.find((item) => productId(item) === productId(row)) || row;
     state.promotionDetailTab = 'overview';
+    if (!ensurePromotionDetailDrawerOpen(trigger)) return;
     $('[data-promotion-dialog-title]').textContent = productTitle(product) || '推广明细';
     $('[data-promotion-dialog-subtitle]').textContent = `推广明细 · ${state.period || '--'} 数据范围`;
     $('[data-promotion-dialog-id]').textContent = `商品 ID ${productId(product) || '未关联'}`;
     renderPromotionDialogImage(product);
     renderPromotionDetail(product, [], 'loading');
-    openDialog(trigger);
     try {
       const response = await DemoApi.domainRequest(`/api/promotion?${promotionDetailQuery(product)}`);
       if (requestToken !== state.promotionDetailRequest) return;
@@ -1179,6 +1231,7 @@
   }
 
   function openInfoDialog(trigger) {
+    if (!ensurePromotionDetailDrawerOpen(trigger)) return;
     $('[data-promotion-dialog-title]').textContent = '数据口径说明';
     $('[data-promotion-dialog-subtitle]').textContent = `${state.period || '--'} 月度数据`;
     $('[data-promotion-dialog-id]').textContent = '推广分析 · 当前筛选范围';
@@ -1209,67 +1262,20 @@
     });
   }
 
-  function visibleFocusables() {
-    const dialog = $('[data-promotion-dialog]');
-    return Array.from(dialog.querySelectorAll(focusableSelector)).filter((item) => {
-      const rect = item.getBoundingClientRect();
-      const style = window.getComputedStyle(item);
-      return style.display !== 'none' && style.visibility !== 'hidden' && rect.width > 0 && rect.height > 0;
-    });
-  }
-
-  function openDialog(trigger) {
-    const dialog = $('[data-promotion-dialog]');
-    state.dialogReturnFocus = trigger || document.activeElement;
-    dialog.showModal();
-    document.body.classList.add('demo-scroll-lock');
-    window.setTimeout(() => (visibleFocusables()[0] || dialog).focus(), 0);
-    window.lucide?.createIcons();
+  function ensurePromotionDetailDrawerOpen(trigger) {
+    const drawer = ensurePromotionDetailDrawer();
+    if (!drawer) return false;
+    drawer.open(trigger);
+    return true;
   }
 
   function closeDialog() {
-    const dialog = $('[data-promotion-dialog]');
     state.promotionDetailRequest += 1;
-    if (dialog.open) dialog.close();
+    promotionDetailDrawer?.close();
   }
 
   function bindDialog() {
-    const dialog = $('[data-promotion-dialog]');
-    $('[data-promotion-dialog-close]').addEventListener('click', closeDialog);
-    const tablist = $('[data-promotion-dialog-tabs]');
-    tablist.addEventListener('click', (event) => {
-      const tab = event.target.closest('[data-promotion-detail-tab]');
-      if (tab) selectPromotionDetailTab(tab.dataset.promotionDetailTab);
-    });
-    tablist.addEventListener('keydown', (event) => {
-      const tabs = [...tablist.querySelectorAll('[data-promotion-detail-tab]')];
-      const index = tabs.indexOf(event.target.closest('[data-promotion-detail-tab]'));
-      if (index < 0 || !['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
-      event.preventDefault();
-      const nextIndex = event.key === 'Home' ? 0 : event.key === 'End' ? tabs.length - 1 : (index + (event.key === 'ArrowRight' ? 1 : -1) + tabs.length) % tabs.length;
-      selectPromotionDetailTab(tabs[nextIndex].dataset.promotionDetailTab, true);
-    });
-    dialog.addEventListener('click', (event) => { if (event.target === dialog) closeDialog(); });
-    dialog.addEventListener('close', () => {
-      document.body.classList.remove('demo-scroll-lock');
-      state.dialogReturnFocus?.focus?.();
-      state.dialogReturnFocus = null;
-    });
-    dialog.addEventListener('cancel', (event) => {
-      event.preventDefault();
-      closeDialog();
-    });
-    dialog.addEventListener('keydown', (event) => {
-      if (event.key === 'Escape') { event.preventDefault(); closeDialog(); return; }
-      if (event.key !== 'Tab') return;
-      const items = visibleFocusables();
-      if (!items.length) { event.preventDefault(); dialog.focus(); return; }
-      const first = items[0];
-      const last = items[items.length - 1];
-      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
-      if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
-    });
-    document.addEventListener('keydown', (event) => { if (event.key === 'Escape' && dialog.open) closeDialog(); });
+    ensurePromotionDetailDrawer();
   }
 
   function selectTab(tab) {
@@ -1398,31 +1404,20 @@
   }
 
   function openAlertsDialog(trigger) {
-    const dialog = $('[data-promotion-alert-dialog]');
-    if (!dialog) return;
-    state.alertDialogReturnFocus = trigger || document.activeElement;
+    const drawer = ensureAlertsDrawer();
+    if (!drawer) return;
     renderAlertDialog(state.alerts || []);
-    dialog.showModal();
-    window.setTimeout(() => dialog.querySelector('[data-promotion-alert-dialog-close]')?.focus(), 0);
+    drawer.open(trigger);
     window.lucide?.createIcons();
   }
 
   function closeAlertsDialog() {
-    const dialog = $('[data-promotion-alert-dialog]');
-    if (dialog?.open) dialog.close();
+    promotionAlertsDrawer?.close();
   }
 
   function bindAlertsDialog() {
-    const dialog = $('[data-promotion-alert-dialog]');
-    if (!dialog) return;
+    if (!ensureAlertsDrawer()) return;
     $('[data-promotion-alerts-more]')?.addEventListener('click', (event) => openAlertsDialog(event.currentTarget));
-    dialog.querySelectorAll('[data-promotion-alert-dialog-close]').forEach((button) => button.addEventListener('click', closeAlertsDialog));
-    dialog.addEventListener('click', (event) => { if (event.target === dialog) closeAlertsDialog(); });
-    dialog.addEventListener('cancel', (event) => { event.preventDefault(); closeAlertsDialog(); });
-    dialog.addEventListener('close', () => {
-      state.alertDialogReturnFocus?.focus?.();
-      state.alertDialogReturnFocus = null;
-    });
   }
 
   function bindFieldSettings() {

@@ -16,8 +16,8 @@
 .analysis-chart__canvas { width: 100%; height: 320px; }
 .analysis-templates { display: flex; gap: var(--space-3); margin-bottom: var(--space-5); flex-wrap: wrap; }
 .analysis-template { padding: var(--space-2) var(--space-4); border: 1px solid var(--border-default); border-radius: var(--radius-sm); background: var(--surface-base); color: var(--text-secondary); cursor: pointer; font-size: var(--font-size-secondary); }
-.analysis-template:hover, .analysis-template--active { border-color: var(--brand); color: var(--brand); }
-.analysis-template--active { background: var(--brand); color: var(--text-on-brand); }
+.analysis-template:hover, .analysis-template--active { border-color: var(--brand); color: var(--brand-text); }
+.analysis-template--active { background: var(--brand-solid); color: var(--text-on-brand); }
 .analysis-saved { margin-top: var(--space-5); }
 .analysis-saved__title { margin-bottom: var(--space-3); font-size: var(--font-size-body); font-weight: 600; }
 .analysis-saved__list { display: flex; flex-direction: column; gap: var(--space-2); }
@@ -25,7 +25,7 @@
 .analysis-saved__name { font-weight: 500; }
 .analysis-saved__meta { color: var(--text-secondary); font-size: var(--font-size-meta); }
 .analysis-saved__actions { display: flex; gap: var(--space-2); }
-.analysis-empty { padding: var(--space-8); color: var(--text-tertiary); text-align: center; }
+.analysis-empty { padding: var(--space-8); color: var(--text-secondary); text-align: center; }
 .analysis-empty__icon { margin-bottom: var(--space-3); font-size: var(--font-size-kpi); opacity: .3; }
 .category-analysis-config { margin-bottom: var(--space-5); padding: var(--space-5); border: 1px solid var(--border-default); border-radius: var(--radius-lg); background: var(--surface-base); }
 .category-analysis-config__grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: var(--space-4); }
@@ -37,7 +37,7 @@
 .category-analysis-breakdown__list { display: grid; gap: var(--space-2); }
 .category-analysis-breakdown__list div { display: flex; justify-content: space-between; border-bottom: 1px solid var(--border-default); padding: 7px 0; }
 .category-analysis-quality p { margin: 0 0 var(--space-2); color: var(--text-secondary); }
-.category-analysis-quality small { color: var(--text-tertiary); }
+.category-analysis-quality small { color: var(--text-secondary); }
 @media (max-width: 640px) { .analysis-charts { grid-template-columns: 1fr; } }
 @media (max-width: 760px) { .category-analysis-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 
@@ -69,8 +69,8 @@
     text-align: center;
   }
   .analysis-template:hover { background: var(--surface-base); }
-  .analysis-template--active { background: var(--brand); color: var(--text-on-brand); }
-  .analysis-template--active:hover { background: var(--brand-hover); color: var(--text-on-brand); }
+  .analysis-template--active { background: var(--brand-solid); color: var(--text-on-brand); }
+  .analysis-template--active:hover { background: var(--brand-solid-hover); color: var(--text-on-brand); }
   .analysis-config,
   .category-analysis-config {
     margin: 0;

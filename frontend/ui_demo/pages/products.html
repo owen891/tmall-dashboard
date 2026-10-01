@@ -4,11 +4,11 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>商品运营 | 天猫数据仪表盘</title>
-  <link rel="stylesheet" href="../assets/tokens.css">
-  <link rel="stylesheet" href="../assets/shell.css">
-  <link rel="stylesheet" href="../assets/components.css?v=20260922-products-layout-21"><link rel="stylesheet" href="../assets/themes/product-domain.css"><link rel="stylesheet" href="../assets/themes/promotion-domain.css"><link rel="stylesheet" href="../assets/themes/overview-domain.css"><link rel="stylesheet" href="../assets/themes/lifecycle-domain.css"><link rel="stylesheet" href="../assets/themes/settings-domain.css">
-  <script src="../assets/lucide-custom.min.js"></script>
-  <script src="../assets/echarts-custom.min.js"></script>
+  <link rel="stylesheet" href="../assets/tokens.css?v=20261001j">
+  <link rel="stylesheet" href="../assets/shell.css?v=20261001j">
+  <link rel="stylesheet" href="../assets/components.css?v=20261001j"><link rel="stylesheet" href="../assets/themes/product-domain.css?v=20261001j"><link rel="stylesheet" href="../assets/themes/promotion-domain.css?v=20261001j"><link rel="stylesheet" href="../assets/themes/overview-domain.css?v=20261001j"><link rel="stylesheet" href="../assets/themes/lifecycle-domain.css?v=20261001j"><link rel="stylesheet" href="../assets/themes/settings-domain.css?v=20261001j">
+  <script src="../assets/lucide-custom.min.js?v=20261001j"></script>
+  <script src="../assets/echarts-custom.min.js?v=20261001j"></script>
 </head>
 <body data-page="products">
   <div class="demo-app">
@@ -18,34 +18,11 @@
       <main class="demo-page"><aside data-right-rail hidden aria-label="辅助信息"></aside>
         <div class="ui-page-header">
           <div>
-            <h2>商品运营</h2>
+            <h1>商品运营</h1>
             <p>数据库商品经营表现</p>
           </div>
           <div class="demo-page__actions product-page-controls">
-            <span class="product-page-controls__eyebrow">当前视图</span>
             <div class="product-field-controls">
-              <div class="product-control-group product-control-group--display">
-                <span class="product-control-label">展示</span>
-                <div class="segmented product-mode-switch" role="group" aria-label="商品展示模式">
-                  <button type="button" data-products-mode="list" aria-pressed="true"><i data-lucide="list"></i>普通列表</button>
-                  <button type="button" data-products-mode="timeline" aria-pressed="false"><i data-lucide="rows-3"></i>周期视图</button>
-                </div>
-              </div>
-              <div class="product-control-group product-control-group--period">
-                <span class="product-control-label">周期</span>
-                <div class="segmented product-period-switch" role="group" aria-label="商品数据周期">
-                  <button type="button" data-products-period="daily" aria-pressed="true">日</button>
-                  <button type="button" data-products-period="weekly" aria-pressed="false">周</button>
-                  <button type="button" data-products-period="monthly" aria-pressed="false">月</button>
-                </div>
-                <div class="product-timeline-tools" data-products-timeline-tools hidden>
-                  <div class="segmented product-timeline-limit-switch" role="group" aria-label="周期视图显示周期数量">
-                    <button type="button" data-products-timeline-limit="3" aria-pressed="true">3 期</button>
-                    <button type="button" data-products-timeline-limit="6" aria-pressed="false">6 期</button>
-                    <button type="button" data-products-timeline-limit="12" aria-pressed="false">12 期</button>
-                  </div>
-                </div>
-              </div>
               <div class="product-control-group product-control-group--fields">
                 <span class="product-control-label">字段</span>
                 <div class="segmented" role="group" aria-label="字段模板">
@@ -58,7 +35,6 @@
               </div>
               <button class="ui-button" type="button" data-products-columns-open><i data-lucide="settings-2"></i>列设置</button>
             </div>
-            <button class="ui-button" type="button" data-capability-key="products.list" data-products-reset><i data-lucide="rotate-ccw"></i>重置</button>
           </div>
         </div>
 
@@ -102,6 +78,30 @@
               </div>
             </div>
             <div class="ui-filter-toolbar ui-table-toolbar product-filters" data-products-filter-toolbar>
+            <div class="product-view-switch" role="group" aria-label="商品呈现方式">
+              <div class="product-control-group product-control-group--display">
+                <span class="product-control-label">展示</span>
+                <div class="segmented product-mode-switch" role="group" aria-label="商品展示模式">
+                  <button type="button" data-products-mode="list" aria-pressed="true"><i data-lucide="list"></i>普通列表</button>
+                  <button type="button" data-products-mode="timeline" aria-pressed="false"><i data-lucide="rows-3"></i>周期视图</button>
+                </div>
+              </div>
+              <div class="product-control-group product-control-group--period">
+                <span class="product-control-label">周期</span>
+                <div class="segmented product-period-switch" role="group" aria-label="商品数据周期">
+                  <button type="button" data-products-period="daily" aria-pressed="true">日</button>
+                  <button type="button" data-products-period="weekly" aria-pressed="false">周</button>
+                  <button type="button" data-products-period="monthly" aria-pressed="false">月</button>
+                </div>
+                <div class="product-timeline-tools" data-products-timeline-tools hidden>
+                  <div class="segmented product-timeline-limit-switch" role="group" aria-label="周期视图显示周期数量">
+                    <button type="button" data-products-timeline-limit="3" aria-pressed="true">3 期</button>
+                    <button type="button" data-products-timeline-limit="6" aria-pressed="false">6 期</button>
+                    <button type="button" data-products-timeline-limit="12" aria-pressed="false">12 期</button>
+                  </div>
+                </div>
+              </div>
+            </div>
             <div class="product-filters__main">
               <label class="product-filters__search">
                 <span class="sr-only">搜索商品</span>
@@ -131,6 +131,7 @@
             <div class="product-filters__actions">
               <button class="ui-button" type="button" data-products-more-filters-toggle aria-controls="products-more-filters" aria-expanded="false"><i data-lucide="sliders-horizontal"></i><span>更多筛选</span></button>
               <button class="ui-button" type="button" data-capability-key="products.catalog_edit" data-products-starred aria-pressed="false"><i data-lucide="star"></i><span>当前页收藏</span></button>
+              <button class="ui-button" type="button" data-capability-key="products.list" data-products-reset><i data-lucide="rotate-ccw"></i><span>重置</span></button>
             </div>
             <div id="products-more-filters" class="product-filters__advanced" data-products-more-filters hidden>
               <select class="select" data-products-style aria-label="筛选风格"><option value="">全部风格</option></select>
@@ -240,23 +241,23 @@
     </div>
   </dialog>
 
-  <script src="../assets/api.js"></script>
-  <script src="../assets/navigation.js"></script>
-  <script src="../assets/labels.js"></script>
-  <script src="../assets/charts.js"></script>
-  <script src="../assets/shell.js"></script>
-  <script src="../assets/ui-components.js"></script>
-  <script src="../assets/field-selector.js"></script>
-  <script src="../assets/field-template-manager.js"></script>
-  <script src="../assets/promotion-field-definitions.js"></script>
-  <script src="../assets/runtime/request-scope.js"></script>
-  <script src="../assets/runtime/event-scope.js"></script>
-  <script src="../assets/pages/products/query-model.js?v=20260922-3"></script>
-  <script src="../assets/pages/products/column-settings.js"></script>
-  <script src="../assets/pages/products/rule-board.js"></script>
-  <script src="../assets/pages/products/table-render.js"></script>
-  <script src="../assets/pages/products/batch-ops.js"></script>
-  <script src="../assets/product-detail-dialog.js"></script>
-  <script src="../assets/format.js"></script><script src="../assets/products-live.js?v=20260922-timeline-fields-3"></script>
+  <script src="../assets/api.js?v=20261001j"></script>
+  <script src="../assets/navigation.js?v=20261001j"></script>
+  <script src="../assets/labels.js?v=20261001j"></script>
+  <script src="../assets/charts.js?v=20261001j"></script>
+  <script src="../assets/shell.js?v=20261001j"></script>
+  <script src="../assets/ui-components.js?v=20261001j"></script>
+  <script src="../assets/field-selector.js?v=20261001j"></script><script src="../assets/metric-polarity.js?v=20261001j"></script>
+  <script src="../assets/field-template-manager.js?v=20261001j"></script>
+  <script src="../assets/promotion-field-definitions.js?v=20261001j"></script>
+  <script src="../assets/runtime/request-scope.js?v=20261001j"></script>
+  <script src="../assets/runtime/event-scope.js?v=20261001j"></script>
+  <script src="../assets/pages/products/query-model.js?v=20261001j"></script>
+  <script src="../assets/pages/products/column-settings.js?v=20261001j"></script>
+  <script src="../assets/pages/products/rule-board.js?v=20261001j"></script>
+  <script src="../assets/pages/products/table-render.js?v=20261001j"></script>
+  <script src="../assets/pages/products/batch-ops.js?v=20261001j"></script>
+  <script src="../assets/product-detail-dialog.js?v=20261001j"></script>
+  <script src="../assets/format.js?v=20261001j"></script><script src="../assets/products-live.js?v=20261001j"></script>
 </body>
 </html>

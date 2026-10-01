@@ -67,6 +67,11 @@
       return value >= 1 ? 'is-success' : value >= 0.9 ? 'is-warning' : 'is-danger';
     }
 
+    // 4-6：完成率状态的文字表达。原来只有一个小圆点靠颜色区分（实测全站 4 个
+    // `.pr-metric-card__status-dot` 是「无文本/无 aria/无图标」的纯颜色指示器），
+    // 色觉障碍用户与读屏都拿不到状态。这里给每个状态配一个词，圆点保留但降级为装饰。
+    const RATE_STATE_TEXT = { 'is-success': '达标', 'is-warning': '临界', 'is-danger': '未达标' };
+
     function formatRate(rate) {
       return rate === null || rate === undefined ? '—' : `${(Number(rate) * 100).toFixed(1)}%`;
     }
@@ -79,8 +84,10 @@
     function changeNode(key, kind, lowerBetter) {
       const change = metricChange(key, kind);
       if (change === null) return null;
-      const good = lowerBetter ? change < 0 : change > 0;
-      const cls = change === 0 ? 'pr-delta' : `pr-delta ${good ? 'is-up' : 'is-down'}`;
+      // 4-3：极性统一走 MetricPolarity，目标口径的 rate_better/reverse_rate 作为显式覆盖传入。
+      const cls = change === 0
+        ? 'pr-delta'
+        : `pr-delta ${MetricPolarity.deltaClass(key, change, { lowerBetter })}`;
       const label = kind === 'mom' ? (state.context?.compare?.short_label || '环比') : '同比';
       return h('span', { class: cls, text: `${label} ${change > 0 ? '+' : ''}${change}%` });
     }
@@ -151,7 +158,11 @@
           class: `pr-metric-card ${spec.primary ? 'pr-metric-card--primary' : ''} ${rateState}`.trim(),
         },
         h('div', { class: 'pr-metric-card__head' },
-          h('span', { class: `pr-metric-card__status-dot ${rateState}`.trim(), 'aria-hidden': 'true' }),
+          h('span', { class: `pr-metric-card__status ${rateState}`.trim() },
+            h('span', { class: 'pr-metric-card__status-dot', 'aria-hidden': 'true' }),
+            RATE_STATE_TEXT[rateState]
+              ? h('span', { class: 'pr-metric-card__status-text', text: RATE_STATE_TEXT[rateState] })
+              : null),
           h('span', { class: 'pr-metric-card__label', text: spec.label }),
           spec.primary ? h('span', { class: 'pr-metric-card__priority', text: '核心结果' }) : null),
         h('strong', { class: 'pr-metric-card__value', text: formatValue(value, targetRow.format) }),

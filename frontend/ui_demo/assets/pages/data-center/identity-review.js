@@ -40,6 +40,20 @@
     });
     select.value = selectedId || '';
   };
+  // 候选商品约 200 个，而每一行都有一个 <select>：全量填充会把这张表顶到 8,500+ 个节点
+  // （整页 24,333 节点里它占 8,553）。改成首次交互（鼠标按下 / 键盘聚焦）时才填，
+  // 静态 DOM 里只留一个占位 option。pointerdown 早于 select 展开默认行为，展开时看到的就是新列表。
+  const armProductOptions = (select) => {
+    let filled = false;
+    const fill = () => {
+      if (filled) return;
+      filled = true;
+      productOptions(select, select.value);
+    };
+    select.addEventListener('pointerdown', fill);
+    select.addEventListener('focus', fill);
+    select.addEventListener('keydown', fill);
+  };
   const renderRows = () => {
     if (!state.identities.length) return renderState('当前没有待确认的商品身份');
     rows.replaceChildren(...state.identities.map((item) => {
@@ -55,7 +69,8 @@
       const productSelect = document.createElement('select');
       productSelect.className = 'select';
       productSelect.setAttribute('aria-label', `为 ${item.external_product_id} 选择已有商品`);
-      productOptions(productSelect, '');
+      productSelect.append(new Option('选择已有商品', ''));
+      armProductOptions(productSelect);
       productCell.append(productSelect);
       row.append(productCell);
       const reasonCell = make('td');

@@ -1,4 +1,4 @@
-﻿(function () {
+(function () {
 
   // 全局 HTML 转义函数，防止 XSS
   window.escapeHtml = function (value) {
@@ -89,10 +89,12 @@
     return null;
   });
 
-  loadOptionalScript('table-controls.js');
+  // table-controls.js / version-check.js 不在任何页面的 HTML 里，只由这里动态加载；
+  // 必须带 ?v= 才能穿透 7 天静态缓存（两个文件都改过，?v= 不 bump 就会一直加载旧版本）。
+  loadOptionalScript('table-controls.js?v=20261001j');
   loadOptionalScript('ui-components.js');
   loadScriptOnce(new URL('version.js', assetBase).href)
-    .then(() => loadScriptOnce(new URL('version-check.js', assetBase).href))
+    .then(() => loadScriptOnce(new URL('version-check.js?v=20261001j', assetBase).href))
     .catch((error) => {
       window.TmallFrontendErrors?.report('runtime_bootstrap_failed', error.message, error.stack || '', 0, 0, error);
       console.error('[tmall] version check unavailable', error);
@@ -251,7 +253,7 @@
       <div class="demo-brand__mark" aria-hidden="true">TM</div>
       <div class="demo-brand__name"><strong>天猫数据</strong><strong>仪表盘</strong></div>
     </div>
-    <nav class="demo-nav" aria-label="主导航">${navGroups.map((group, groupIndex) => `<section class="demo-nav__section${groupIndex === 0 ? ' demo-nav__section--primary' : ''}"><h2 class="demo-nav__label">${group.label}</h2><div class="demo-nav__group">${group.items.map(([id, label, iconName, page]) => `<a class="demo-nav__item" data-page-link="${id}" href="${route(page)}" aria-label="${label}" title="${label}"><i data-lucide="${iconName}"></i><span>${label}</span>${id === 'reviews' ? '<b class="demo-nav__badge" data-nav-action-count hidden aria-label="待处理动作数量"></b>' : ''}</a>`).join('')}</div></section>`).join('')}</nav>
+    <nav class="demo-nav" aria-label="主导航">${navGroups.map((group, groupIndex) => `<section class="demo-nav__section${groupIndex === 0 ? ' demo-nav__section--primary' : ''}"><span class="demo-nav__label">${group.label}</span><div class="demo-nav__group">${group.items.map(([id, label, iconName, page]) => `<a class="demo-nav__item" data-page-link="${id}" href="${route(page)}" aria-label="${label}" title="${label}"><i data-lucide="${iconName}"></i><span>${label}</span>${id === 'reviews' ? '<b class="demo-nav__badge" data-nav-action-count hidden aria-label="待处理动作数量"></b>' : ''}</a>`).join('')}</div></section>`).join('')}</nav>
     <div class="demo-sidebar__footer">
       <div class="demo-sidebar__meta" data-sidebar-meta role="group" aria-label="版本与项目链接">
         <div class="demo-sidebar__utility-row">

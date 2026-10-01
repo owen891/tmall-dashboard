@@ -4,18 +4,18 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>新品推广看板 | 天猫数据仪表盘</title>
-  <link rel="stylesheet" href="../assets/tokens.css">
-  <link rel="stylesheet" href="../assets/shell.css">
-  <link rel="stylesheet" href="../assets/components.css?v=20260919-field-selector3">
-  <link rel="stylesheet" href="../assets/themes/product-domain.css">
-  <link rel="stylesheet" href="../assets/themes/promotion-domain.css">
-  <link rel="stylesheet" href="../assets/themes/overview-domain.css">
-  <link rel="stylesheet" href="../assets/themes/lifecycle-domain.css">
-  <link rel="stylesheet" href="../assets/themes/settings-domain.css">
-  <link rel="stylesheet" href="../assets/promotion-views.css?v=20260930a">
-  <link rel="stylesheet" href="../assets/creative-board.css?v=20260930a">
-  <script src="../assets/lucide-custom.min.js"></script>
-  <script src="../assets/echarts-custom.min.js"></script>
+  <link rel="stylesheet" href="../assets/tokens.css?v=20261001j">
+  <link rel="stylesheet" href="../assets/shell.css?v=20261001j">
+  <link rel="stylesheet" href="../assets/components.css?v=20261001j">
+  <link rel="stylesheet" href="../assets/themes/product-domain.css?v=20261001j">
+  <link rel="stylesheet" href="../assets/themes/promotion-domain.css?v=20261001j">
+  <link rel="stylesheet" href="../assets/themes/overview-domain.css?v=20261001j">
+  <link rel="stylesheet" href="../assets/themes/lifecycle-domain.css?v=20261001j">
+  <link rel="stylesheet" href="../assets/themes/settings-domain.css?v=20261001j">
+  <link rel="stylesheet" href="../assets/promotion-views.css?v=20261001j">
+  <link rel="stylesheet" href="../assets/creative-board.css?v=20261001j">
+  <script src="../assets/lucide-custom.min.js?v=20261001j"></script>
+  <script src="../assets/echarts-custom.min.js?v=20261001j"></script>
 </head>
 <body data-page="new-products">
   <div class="demo-app">
@@ -26,7 +26,7 @@
         <aside data-right-rail hidden aria-label="辅助信息"></aside>
         <div class="ui-page-header">
           <div>
-            <h2>新品推广看板</h2>
+            <h1>新品推广看板</h1>
             <p>新品从上架到打爆的投放效率：花多少、转化多少、拉动多少销售额。</p>
           </div>
           <div class="demo-page__actions">
@@ -49,7 +49,7 @@
         <section class="promotion-command" aria-labelledby="promotionNewConclusionTitle">
           <div>
             <div class="promotion-command__heading">
-              <div><span class="section-kicker">经营结论 · 当前状态</span><h1 id="promotionNewConclusionTitle">新品投放经营看板</h1><p>围绕新品上架后的投入、流量、推广成交和销售联动判断投放节奏。</p></div>
+              <div><h2 id="promotionNewConclusionTitle">新品投放经营看板</h2><p>围绕新品上架后的投入、流量、推广成交和销售联动判断投放节奏。</p></div>
               <span class="promotion-command__status" data-promotion-new-health data-tone="success"><i data-lucide="circle-check" aria-hidden="true"></i><span>加载中…</span></span>
             </div>
             <div class="promotion-funnel" aria-label="新品投放链路">
@@ -79,12 +79,12 @@
         </section>
 
         <section class="ui-panel" aria-label="新品上架节奏" data-promotion-new-launch-section>
-          <div class="panel__header"><div><span class="section-kicker">商品证据</span><h3 class="panel__title">新品上架节奏</h3><p class="panel__hint" data-promotion-new-launch-hint>按上架日期聚合全部新品；查看每批已投放数量、未投放数量和推广结果。</p></div><div class="panel__actions"><span class="ui-badge ui-badge--info" data-promotion-new-launch-count>--</span><button class="ui-button ui-button--ghost" type="button" data-promotion-new-launch-toggle aria-expanded="false" hidden>查看全部批次</button></div></div>
+          <div class="panel__header"><div><h3 class="panel__title">新品上架节奏</h3><p class="panel__hint" data-promotion-new-launch-hint>按上架日期聚合全部新品；查看每批已投放数量、未投放数量和推广结果。</p></div><div class="panel__actions"><span class="ui-badge ui-badge--info" data-promotion-new-launch-count>--</span><button class="ui-button ui-button--ghost" type="button" data-promotion-new-launch-toggle aria-expanded="false" hidden>查看全部批次</button></div></div>
           <div class="ui-table-wrap promotion-new-launch-table-wrap"><table class="ui-data-table" data-promotion-new-launch-table><thead><tr><th>上架日期</th><th>上架新品数</th><th>已投放 / 未投放</th><th>投放覆盖率</th><th>推广花费</th><th>推广成交</th><th>批次 ROI</th><th>销售额</th></tr></thead><tbody data-promotion-new-launch-body><tr><td>加载中…</td></tr></tbody></table></div>
         </section>
 
         <section class="ui-panel" aria-label="新品投放明细" data-promotion-new-products-section>
-          <div class="panel__header"><div><span class="section-kicker">商品列表</span><h3 class="panel__title">新品投放明细</h3><p class="panel__hint">每个新品的投放效率与销售联动；点击行可查看该商品完整推广结构。</p></div></div>
+          <div class="panel__header"><div><h3 class="panel__title">新品投放明细</h3><p class="panel__hint">每个新品的投放效率与销售联动；点击行可查看该商品完整推广结构。</p></div></div>
           <div class="ui-table-toolbar">
             <div class="ui-table-toolbar__main">
               <input class="input" data-promotion-new-search placeholder="搜索商品 ID / 标题" aria-label="搜索新品">
@@ -115,12 +115,12 @@
 
   <dialog class="modal-form cb-image-dialog" data-new-products-image-dialog data-modal-kind="detail" aria-labelledby="new-products-image-title"><div class="modal-form__header"><h3 id="new-products-image-title">素材预览</h3><button class="ui-button ui-button--ghost" type="button" data-new-products-image-close aria-label="关闭图片预览"><i data-lucide="x"></i></button></div><div class="cb-image-dialog__body"><img data-new-products-image-preview alt="素材预览"></div></dialog>
 
-  <script src="../assets/api.js"></script>
-  <script src="../assets/navigation.js"></script>
-  <script src="../assets/charts.js"></script>
-  <script src="../assets/shell.js"></script>
-  <script src="../assets/ui-components.js"></script>
-  <script src="../assets/format.js"></script>
-  <script src="../assets/new-products-live.js?v=20260930b"></script>
+  <script src="../assets/api.js?v=20261001j"></script>
+  <script src="../assets/navigation.js?v=20261001j"></script>
+  <script src="../assets/charts.js?v=20261001j"></script>
+  <script src="../assets/shell.js?v=20261001j"></script>
+  <script src="../assets/ui-components.js?v=20261001j"></script>
+  <script src="../assets/format.js?v=20261001j"></script>
+  <script src="../assets/new-products-live.js?v=20261001j"></script>
 </body>
 </html>

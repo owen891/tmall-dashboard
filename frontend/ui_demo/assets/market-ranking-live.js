@@ -487,7 +487,7 @@
     } catch (error) {
       if (requestId !== state.marketModalRequest) return;
       if (meta) meta.textContent = error.message;
-      if (body) body.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:18px;color:var(--text-tertiary)">暂无趋势数据</td></tr>';
+      if (body) body.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:18px;color:var(--text-secondary)">暂无趋势数据</td></tr>';
       if (itemsPanel) itemsPanel.hidden = true;
     }
   }
@@ -548,7 +548,7 @@
       if (body) body.innerHTML = data.daily.map(row => `<tr><td>${escapeHtml(row.stat_date)}</td><td class="num">${fmtInt(row.item_count)}</td><td class="num">${fmtWan(row.uv)}</td><td class="num">${fmtWan(row.pay_buyer_count)}</td><td class="num">${fmtPct(row.pay_rate)}</td></tr>`).join('');
     } catch (error) {
       if (meta) meta.textContent = error.message;
-      if (body) body.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--text-tertiary);padding:18px">暂无趋势数据</td></tr>';
+      if (body) body.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--text-secondary);padding:18px">暂无趋势数据</td></tr>';
     }
   }
 
@@ -570,7 +570,7 @@
       if (body) body.innerHTML = data.daily.map(row => `<tr><td>${escapeHtml(row.stat_date)}</td><td class="num">${fmtWan(row.uv)}</td><td class="num">${fmtWan(row.pay_buyer_count)}</td><td class="num">${fmtPct(row.pay_rate)}</td><td class="num">${fmtInt(row.rank)}</td></tr>`).join('');
     } catch (error) {
       if (meta) meta.textContent = error.message;
-      if (body) body.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--text-tertiary);padding:18px">暂无趋势数据</td></tr>';
+      if (body) body.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--text-secondary);padding:18px">暂无趋势数据</td></tr>';
     }
   }
 
@@ -594,7 +594,7 @@
     const comparison = state.marketSnapshots?.comparisons?.[type];
     if (!comparison || comparison.status !== 'comparable') {
       if (meta) meta.textContent = '该榜单目前只有一个可比较周期。';
-      if (body) body.innerHTML = '<tr><td colspan="4" style="text-align:center;color:var(--text-tertiary);padding:18px">暂无可比较周期</td></tr>';
+      if (body) body.innerHTML = '<tr><td colspan="4" style="text-align:center;color:var(--text-secondary);padding:18px">暂无可比较周期</td></tr>';
       if (chartNode && typeof echarts !== 'undefined' && echarts.getInstanceByDom(chartNode)) {
         echarts.getInstanceByDom(chartNode).clear();
       }
@@ -608,7 +608,7 @@
     };
     if (meta) meta.textContent = `${labels[type]} · ${comparison.previous_period.start}~${comparison.previous_period.end} → ${comparison.current_period.start}~${comparison.current_period.end} · 同榜实体 ${comparison.shared_entity_count} 个 · 指标按区间中点估算`;
     const rows = comparison.rows || [];
-    if (body) body.innerHTML = rows.map(row => `<tr><td>${escapeHtml(row.entity_name || row.entity_id)}</td><td class="num">${fmtWan(row.previous_metric)}</td><td class="num">${fmtWan(row.current_metric)}</td><td class="num">${row.delta_rate == null ? '--' : `${row.delta_rate >= 0 ? '+' : ''}${(row.delta_rate * 100).toFixed(1)}%`}</td></tr>`).join('') || '<tr><td colspan="4" style="text-align:center;color:var(--text-tertiary);padding:18px">没有跨周期重复实体</td></tr>';
+    if (body) body.innerHTML = rows.map(row => `<tr><td>${escapeHtml(row.entity_name || row.entity_id)}</td><td class="num">${fmtWan(row.previous_metric)}</td><td class="num">${fmtWan(row.current_metric)}</td><td class="num">${row.delta_rate == null ? '--' : `${row.delta_rate >= 0 ? '+' : ''}${(row.delta_rate * 100).toFixed(1)}%`}</td></tr>`).join('') || '<tr><td colspan="4" style="text-align:center;color:var(--text-secondary);padding:18px">没有跨周期重复实体</td></tr>';
     if (chartNode && typeof echarts !== 'undefined') {
       const chart = echarts.getInstanceByDom(chartNode) || echarts.init(chartNode);
       const plot = rows.slice(0, 12);
@@ -665,6 +665,8 @@
   // ===== 渲染类目对比 =====
   function renderCategoryComparison(categories) {
     const COLORS = { '中筒袜': '#4f46e5', '长筒袜': '#10b981' };
+    // 图表填充 / 柱条继续用原色；**文字**用深一档的 --*-text（原色当文字过不了 WCAG AA：success 2.54:1）。
+    const TEXT_COLORS = { '中筒袜': 'var(--brand-text)', '长筒袜': 'var(--success-text)' };
 
     // 店铺类型分布
     let shopHtml = '';
@@ -674,14 +676,14 @@
       shopHtml += `
         <div style="margin-bottom:12px">
           <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px">
-            <span style="font-weight:600;color:${COLORS[cat.category] || '#666'}">${escapeHtml(cat.category)}</span>
+            <span style="font-weight:600;color:${TEXT_COLORS[cat.category] || 'var(--text-secondary)'}">${escapeHtml(cat.category)}</span>
             <span style="color:var(--text-secondary)">天猫 ${tmallPct.toFixed(1)}% / 淘宝 ${(100-tmallPct).toFixed(1)}%</span>
           </div>
           <div style="display:flex;height:20px;border-radius:4px;overflow:hidden">
             <div style="width:${tmallPct}%;background:#3b82f6"></div>
             <div style="width:${100-tmallPct}%;background:#f59e0b"></div>
           </div>
-          <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text-tertiary);margin-top:2px">
+          <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text-secondary);margin-top:2px">
             <span>天猫 ${fmtInt(cat.shop_tmall)}</span>
             <span>淘宝 ${fmtInt(cat.shop_taobao)}</span>
           </div>
@@ -718,7 +720,7 @@
     categories.forEach(cat => {
       concHtml += `
         <div style="margin-bottom:16px">
-          <div style="font-weight:600;font-size:12px;color:${COLORS[cat.category]};margin-bottom:6px">${escapeHtml(cat.category)}</div>
+          <div style="font-weight:600;font-size:12px;color:${TEXT_COLORS[cat.category]};margin-bottom:6px">${escapeHtml(cat.category)}</div>
           <div class="market-bar-row">
             <span class="market-bar-label">TOP10</span>
             <div class="market-bar-track"><div class="market-bar-fill" style="width:${cat.concentration_top10 || 0}%;background:#4f46e5"></div></div>
@@ -742,7 +744,7 @@
       totalHtml += `
         <div style="margin-bottom:16px">
           <div style="display:flex;justify-content:space-between;margin-bottom:4px">
-            <span style="font-weight:600;font-size:13px;color:${COLORS[cat.category]}">${escapeHtml(cat.category)}</span>
+            <span style="font-weight:600;font-size:13px;color:${TEXT_COLORS[cat.category]}">${escapeHtml(cat.category)}</span>
             <span style="font-family:var(--font-display);font-size:18px;font-weight:700">${fmtWan(cat.total_buyers)}</span>
           </div>
           <div style="height:24px;background:var(--surface-base);border-radius:4px;overflow:hidden">
@@ -777,7 +779,7 @@
   function renderProducts(products) {
     const tbody = $('[data-mr-products-body]');
     if (!products.length) {
-      tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--text-tertiary);padding:24px">没有符合条件的数据</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--text-secondary);padding:24px">没有符合条件的数据</td></tr>';
       return;
     }
     tbody.innerHTML = products.map(p => {
@@ -785,8 +787,8 @@
         ? `<span class="ui-badge ui-badge--${p.rank === 1 ? 'danger' : p.rank === 2 ? 'warning' : 'success'}">${p.rank}</span>`
         : `<span class="ui-badge ui-badge--muted">${p.rank}</span>`;
       const changeBadge = p.rank_change == null
-        ? '<span style="color:var(--text-tertiary)">-</span>'
-        : `<span style="font-family:var(--font-mono);color:var(${p.list_type === '下降榜' ? '--text-secondary' : '--color-success, #10b981'})">${p.list_type === '下降榜' ? '↓' : '↑'}${Math.abs(p.rank_change)}</span>`;
+        ? '<span style="color:var(--text-secondary)">-</span>'
+        : `<span style="font-family:var(--font-mono);color:var(${p.list_type === '下降榜' ? '--text-secondary' : '--success-text'})">${p.list_type === '下降榜' ? '↓' : '↑'}${Math.abs(p.rank_change)}</span>`;
       return `<tr>
         <td>${rankBadge}</td>
         <td><span class="ui-badge ui-badge--info">${escapeHtml(p.category)}</span></td>
@@ -806,7 +808,7 @@
     const titleKw = keywords.filter(k => k.keyword_type === '标题词').slice(0, 15);
 
     const renderBarList = (list, color) => {
-      if (!list.length) return '<div style="color:var(--text-tertiary);text-align:center;padding:20px">暂无数据</div>';
+      if (!list.length) return '<div style="color:var(--text-secondary);text-align:center;padding:20px">暂无数据</div>';
       const max = Math.max(...list.map(k => k.count), 1);
       return list.map(k => `
         <div class="market-bar-row">
@@ -825,7 +827,7 @@
   function renderOverlapShops(shops) {
     const container = $('[data-mr-overlap-list]');
     if (!shops.length) {
-      container.innerHTML = '<span style="color:var(--text-tertiary)">暂无重叠店铺</span>';
+      container.innerHTML = '<span style="color:var(--text-secondary)">暂无重叠店铺</span>';
       return;
     }
     container.innerHTML = shops.map(s => `<span class="market-overlap-tag">${escapeHtml(s)}</span>`).join('');
@@ -888,7 +890,7 @@
       const tbody = document.querySelector('[data-sycm-item-rank-body]');
       if (!tbody) return;
       if (!d.ok || !d.data.items.length) {
-        tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--text-tertiary);padding:24px">暂无数据</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--text-secondary);padding:24px">暂无数据</td></tr>';
         return;
       }
       tbody.innerHTML = d.data.items.map((item, idx) => {
@@ -921,7 +923,7 @@
       const tbody = document.querySelector('[data-sycm-search-rank-body]');
       if (!tbody) return;
       if (!d.ok || !d.data.keywords.length) {
-        tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--text-tertiary);padding:24px">暂无数据</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--text-secondary);padding:24px">暂无数据</td></tr>';
         return;
       }
       tbody.innerHTML = d.data.keywords.map((kw, idx) => `

@@ -1,15 +1,15 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>流量来源分析 - 天猫数据仪表盘</title>
-<link rel="stylesheet" href="../assets/tokens.css">
-<link rel="stylesheet" href="../assets/shell.css">
-<link rel="stylesheet" href="../assets/components.css"><link rel="stylesheet" href="../assets/themes/product-domain.css"><link rel="stylesheet" href="../assets/themes/promotion-domain.css"><link rel="stylesheet" href="../assets/themes/overview-domain.css"><link rel="stylesheet" href="../assets/themes/lifecycle-domain.css"><link rel="stylesheet" href="../assets/themes/settings-domain.css">
-<link rel="stylesheet" href="../assets/flow-source.css">
-<script src="../assets/lucide-custom.min.js"></script>
-<script src="../assets/echarts-custom.min.js"></script>
+<link rel="stylesheet" href="../assets/tokens.css?v=20261001j">
+<link rel="stylesheet" href="../assets/shell.css?v=20261001j">
+<link rel="stylesheet" href="../assets/components.css?v=20261001j"><link rel="stylesheet" href="../assets/themes/product-domain.css?v=20261001j"><link rel="stylesheet" href="../assets/themes/promotion-domain.css?v=20261001j"><link rel="stylesheet" href="../assets/themes/overview-domain.css?v=20261001j"><link rel="stylesheet" href="../assets/themes/lifecycle-domain.css?v=20261001j"><link rel="stylesheet" href="../assets/themes/settings-domain.css?v=20261001j">
+<link rel="stylesheet" href="../assets/flow-source.css?v=20261001j">
+<script src="../assets/lucide-custom.min.js?v=20261001j"></script>
+<script src="../assets/echarts-custom.min.js?v=20261001j"></script>
 <style>
 .flow-chart-row { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-4); margin-bottom: var(--space-4); }
 .flow-chart-box { background: var(--surface-muted); border-radius: var(--radius-md); padding: var(--space-3); min-height: 320px; }
@@ -21,15 +21,15 @@
 .flow-channel-value { width: 80px; font-size: var(--font-size-meta); font-family: var(--font-mono); color: var(--text-primary); flex-shrink: 0; text-align: right; }
 .flow-table-wrap { overflow-x: auto; }
 .flow-table { width: 100%; border-collapse: collapse; font-size: var(--font-size-meta); }
-.flow-table th { background: var(--surface-muted); padding: 10px 12px; text-align: left; font-weight: 600; color: var(--text-secondary); border-bottom: 2px solid var(--border-color); white-space: nowrap; }
-.flow-table td { padding: 10px 12px; border-bottom: 1px solid var(--border-color); color: var(--text-primary); }
-.flow-table tr:hover { background: var(--surface-hover); }
+.flow-table th { background: var(--surface-muted); padding: 10px 12px; text-align: left; font-weight: 600; color: var(--text-secondary); border-bottom: 2px solid var(--border-default); white-space: nowrap; }
+.flow-table td { padding: 10px 12px; border-bottom: 1px solid var(--border-default); color: var(--text-primary); }
+.flow-table tr:hover { background: var(--surface-muted); }
 .flow-table .num { text-align: right; font-family: var(--font-mono); }
 .flow-table .pct { text-align: right; font-family: var(--font-mono); color: var(--text-secondary); }
 .flow-badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 500; }
-.flow-badge--paid { background: rgba(239, 68, 68, 0.1); color: #ef4444; }
-.flow-badge--free { background: rgba(34, 197, 94, 0.1); color: #22c55e; }
-.flow-badge--other { background: rgba(100, 116, 139, 0.1); color: #64748b; }
+.flow-badge--paid { background: rgba(239, 68, 68, 0.1); color: var(--danger-text); }
+.flow-badge--free { background: rgba(34, 197, 94, 0.1); color: var(--success-text); }
+.flow-badge--other { background: rgba(100, 116, 139, 0.1); color: var(--text-secondary); }
 @media (min-width: 1001px) {
   .flow-chart-row { gap: 12px; margin-bottom: 12px; }
   .flow-chart-box { min-height: 280px; padding: 12px; border: 1px solid var(--border-default); background: var(--surface-base); }
@@ -49,7 +49,7 @@
 
       <div class="ui-page-header">
         <div>
-          <h2>流量来源分析</h2>
+          <h1>流量来源分析</h1>
           <p>生意参谋 · 第一次访问来源口径 · 渠道结构与转化分析</p>
         </div>
         <div class="demo-page__actions">
@@ -58,9 +58,7 @@
         </div>
       </div>
 
-      <section class="ui-context-bar flow-context-bar" aria-label="流量数据范围">
-        <div class="ui-context-bar__copy"><span class="ui-context-bar__label">数据范围</span><strong class="ui-context-bar__value">第一次访问来源 · 当前统计日</strong><span class="ui-context-bar__meta">先看渠道规模与效率，再进入一级、二级渠道明细。</span></div>
-      </section>
+      
 
       <!-- 指标卡片 -->
       <section class="ui-metric-grid">
@@ -154,7 +152,7 @@
               </tr>
             </thead>
             <tbody data-flow-level1-body>
-              <tr><td colspan="11" style="text-align:center;color:var(--text-tertiary);padding:24px">加载中…</td></tr>
+              <tr><td colspan="11" style="text-align:center;color:var(--text-secondary);padding:24px">加载中…</td></tr>
             </tbody>
           </table>
         </div>
@@ -190,7 +188,7 @@
               </tr>
             </thead>
             <tbody data-flow-level2-body>
-              <tr><td colspan="10" style="text-align:center;color:var(--text-tertiary);padding:24px">加载中…</td></tr>
+              <tr><td colspan="10" style="text-align:center;color:var(--text-secondary);padding:24px">加载中…</td></tr>
             </tbody>
           </table>
         </div>
@@ -200,10 +198,10 @@
   </div>
 </div>
 
-<script src="../assets/api.js"></script>
-<script src="../assets/navigation.js"></script>
-<script src="../assets/labels.js"></script>
-<script src="../assets/shell.js"></script>
-<script src="../assets/runtime/date-range-scope.js"></script><script src="../assets/format.js"></script><script src="../assets/ui-components.js"></script><script src="../assets/flow-source-live.js"></script>
+<script src="../assets/api.js?v=20261001j"></script>
+<script src="../assets/navigation.js?v=20261001j"></script>
+<script src="../assets/labels.js?v=20261001j"></script>
+<script src="../assets/shell.js?v=20261001j"></script>
+<script src="../assets/runtime/date-range-scope.js?v=20261001j"></script><script src="../assets/format.js?v=20261001j"></script><script src="../assets/ui-components.js?v=20261001j"></script><script src="../assets/flow-source-live.js?v=20261001j"></script>
 </body>
 </html>

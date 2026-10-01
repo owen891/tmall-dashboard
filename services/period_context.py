@@ -407,6 +407,12 @@ def _target_path(period, target, target_source, net_sales, category_label=None,
 #   但「花得少」仍然是好事，所以配色单独用 rate_better='low' 表达，
 #   不能靠 reverse_rate 兼顾——两件事必须分开。
 # 净费比则确实是倒数：W1 23.70/23.01=103.01%、W2 23.70/21.55=110%、W3 23.70/26.04=91%。
+#
+# ⚠️ 这里的 rate_better='low' 与「涨跌配色」是**两套语义**，2026-10-01 业务已确认：
+#   涨跌配色（assets/metric-polarity.js）：推广花费涨 = 投放规模扩大 = 好（绿），
+#     ad_spend 归 HIGHER_IS_BETTER，与 MATRIX_METRICS 的 lower_better=False 一致；
+#   目标达成率（本表）：推广费是「预算使用率」，花超预算算超标，所以越低越好。
+#   两者刻意不统一，别顺手改。若将来要统一，需要业务重新定义「推广费预算」是不是硬上限。
 TARGET_METRICS = (
     ('net_sales', '销售额', 'money', False, 'high'),
     ('profit', '净利润额', 'money', False, 'high'),

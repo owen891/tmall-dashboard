@@ -199,8 +199,8 @@
     }
 
     if (!level1.length) {
-      if (level1Body) level1Body.innerHTML = '<tr><td colspan="11" style="text-align:center;color:var(--text-tertiary);padding:24px">暂无数据</td></tr>';
-      if (level2Body) level2Body.innerHTML = '<tr><td colspan="10" style="text-align:center;color:var(--text-tertiary);padding:24px">暂无数据</td></tr>';
+      if (level1Body) level1Body.innerHTML = '<tr><td colspan="11" style="text-align:center;color:var(--text-secondary);padding:24px">暂无数据</td></tr>';
+      if (level2Body) level2Body.innerHTML = '<tr><td colspan="10" style="text-align:center;color:var(--text-secondary);padding:24px">暂无数据</td></tr>';
       return;
     }
 
@@ -247,7 +247,7 @@
     if (level1Body) level1Body.innerHTML = level1.map(renderLevel1Row).join('');
     if (level2Body) level2Body.innerHTML = level2.length
       ? level2.map(renderLevel2Row).join('')
-      : '<tr><td colspan="10" style="text-align:center;color:var(--text-tertiary);padding:24px">暂无子渠道数据</td></tr>';
+      : '<tr><td colspan="10" style="text-align:center;color:var(--text-secondary);padding:24px">暂无子渠道数据</td></tr>';
   }
 
   // 渲染统计
@@ -327,7 +327,7 @@
         .map((selector) => $(selector))
         .filter(Boolean);
       bodies.forEach((body) => {
-        body.innerHTML = `<tr><td colspan="14" style="text-align:center;color:var(--text-danger);padding:24px">加载失败: ${escapeHtml(err.message)}</td></tr>`;
+        body.innerHTML = `<tr><td colspan="14" style="text-align:center;color:var(--danger-text);padding:24px">加载失败: ${escapeHtml(err.message)}</td></tr>`;
       });
     }
   }

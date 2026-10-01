@@ -4,12 +4,12 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>生命周期 | 天猫数据仪表盘</title>
-  <link rel="stylesheet" href="../assets/tokens.css">
-  <link rel="stylesheet" href="../assets/shell.css">
-  <link rel="stylesheet" href="../assets/components.css?v=20260919-field-selector3"><link rel="stylesheet" href="../assets/themes/product-domain.css"><link rel="stylesheet" href="../assets/themes/promotion-domain.css"><link rel="stylesheet" href="../assets/themes/overview-domain.css"><link rel="stylesheet" href="../assets/themes/lifecycle-domain.css"><link rel="stylesheet" href="../assets/themes/settings-domain.css">
-  <script src="../assets/lucide-custom.min.js"></script>
-  <script src="../assets/echarts-custom.min.js"></script>
-  <script src="../assets/charts.js"></script>
+  <link rel="stylesheet" href="../assets/tokens.css?v=20261001j">
+  <link rel="stylesheet" href="../assets/shell.css?v=20261001j">
+  <link rel="stylesheet" href="../assets/components.css?v=20261001j"><link rel="stylesheet" href="../assets/themes/product-domain.css?v=20261001j"><link rel="stylesheet" href="../assets/themes/promotion-domain.css?v=20261001j"><link rel="stylesheet" href="../assets/themes/overview-domain.css?v=20261001j"><link rel="stylesheet" href="../assets/themes/lifecycle-domain.css?v=20261001j"><link rel="stylesheet" href="../assets/themes/settings-domain.css?v=20261001j">
+  <script src="../assets/lucide-custom.min.js?v=20261001j"></script>
+  <script src="../assets/echarts-custom.min.js?v=20261001j"></script>
+  <script src="../assets/charts.js?v=20261001j"></script>
 </head>
 <body data-page="lifecycle">
   <div class="demo-app">
@@ -19,7 +19,7 @@
       <main class="demo-page"><aside data-right-rail hidden aria-label="辅助信息"></aside>
         <div class="ui-page-header">
           <div>
-            <h2>生命周期</h2>
+            <h1>生命周期</h1>
             <p data-lifecycle-period>正在加载数据库中的月度经营记录…</p>
           </div>
           <div class="demo-page__actions">
@@ -29,13 +29,7 @@
         </div>
 
 
-        <section class="ui-context-bar" aria-label="生命周期数据范围">
-          <div class="ui-context-bar__copy">
-            <span class="ui-context-bar__label">当前范围</span>
-            <strong class="ui-context-bar__value" data-lifecycle-context>当前店铺 · 月度生命周期记录</strong>
-            <span class="ui-context-bar__meta">先看商品阶段和增长变化，再进入月度明细与人工调整。</span>
-          </div>
-        </section>
+        
 
         <section class="ui-metric-grid" aria-label="生命周期概览">
           <article class="ui-metric-card"><div class="metric-card__label">跟踪商品</div><div class="metric-card__value" data-lifecycle-kpi="products">--</div><div class="metric-card__meta"><i data-lucide="package-search"></i>当前筛选范围内</div></article>
@@ -148,13 +142,13 @@
       </main>
     </div>
   </div>
-  <script src="../assets/api.js"></script>
-  <script src="../assets/navigation.js"></script>
-  <script src="../assets/labels.js"></script>
-  <script src="../assets/shell.js"></script>
-  <script src="../assets/field-selector.js"></script>
-  <script src="../assets/field-template-manager.js"></script>
+  <script src="../assets/api.js?v=20261001j"></script>
+  <script src="../assets/navigation.js?v=20261001j"></script>
+  <script src="../assets/labels.js?v=20261001j"></script>
+  <script src="../assets/shell.js?v=20261001j"></script>
+  <script src="../assets/field-selector.js?v=20261001j"></script><script src="../assets/metric-polarity.js?v=20261001j"></script>
+  <script src="../assets/field-template-manager.js?v=20261001j"></script>
   <!-- Live adapter calls DemoApi.request('/api/lifecycle?limit=2000') for the product summary. -->
-  <script src="../assets/format.js"></script><script src="../assets/ui-components.js"></script><script src="../assets/lifecycle-live.js"></script>
+  <script src="../assets/format.js?v=20261001j"></script><script src="../assets/ui-components.js?v=20261001j"></script><script src="../assets/lifecycle-live.js?v=20261001j"></script>
 </body>
 </html>

@@ -18,24 +18,36 @@
 .product-section__heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
 .product-section__heading h3 { margin: 0; font-size: var(--font-size-section); }
 .product-section__heading p { margin: 2px 0 0; color: var(--text-secondary); font-size: var(--font-size-meta); }
-.product-table { min-width: 1280px; }
+.product-table { min-width: 1080px; }
+/* 5-3：keyword-promotion 复用 .product-table 但没有列宽规则，纯内容定宽 →
+   全局 td{white-space:nowrap} 把「商品标题」顶到 456px，整表 1428px（容器 1082）。
+   这一页是纯文本型列表，放行换行即可回到容器内。 */
+body[data-page="keyword-promotion"] .product-table td { white-space: normal; }
+body[data-page="keyword-promotion"] .product-table th { white-space: normal; }
+/* 5-3：新品投放明细「商品 / 上架日」是标题+日期的两行堆叠，被 nowrap 顶到 324px，
+   整表 1163px（容器 1082）。同样放行换行。 */
+body[data-page="new-products"] .ui-data-table:has(tbody[data-promotion-new-body]) td { white-space: normal; }
+body[data-page="new-products"] .ui-data-table:has(tbody[data-promotion-new-body]) th { white-space: normal; }
+/* 标题/副标题在 promotion-views.css 里是 max-width:260px + nowrap + ellipsis（设计内省略），
+   两行堆叠最宽只能到 260，把整列顶到 324px。收到 190px，整表落回容器内。 */
+body[data-page="new-products"] .promotion-new-product__title { max-width: 190px; }
 .product-period-switch { flex: 0 0 auto; }
 .product-period-switch button { min-width: 42px; }
 .product-timeline-tools { display: inline-flex; align-items: center; gap: 8px; }
 .product-timeline-limit-switch button { min-width: 48px; }
 .product-timeline-trend { white-space: nowrap; }
 .product-timeline-trend .lucide { width: 14px; height: 14px; margin-right: 3px; vertical-align: -2px; }
-.product-timeline-trend--up { color: var(--success); }
-.product-timeline-trend--down { color: var(--danger); }
+.product-timeline-trend--up { color: var(--success-text); }
+.product-timeline-trend--down { color: var(--danger-text); }
 .product-timeline-trend--flat { color: var(--text-secondary); }
 .product-mode-switch { flex: 0 0 auto; }
 .product-mode-switch button { min-width: 104px; }
 .product-mode-switch .lucide { width: 14px; height: 14px; vertical-align: -2px; }
 .product-timeline-row--first td { border-top: 2px solid var(--border-default); }
 .product-timeline-row--first:first-child td { border-top: 0; }
-.product-timeline-row--continuation td { border-top: 1px solid var(--border-subtle, var(--border-default)); }
+.product-timeline-row--continuation td { border-top: 1px solid var(--border-default); }
 .product-timeline-row td { padding-top: 8px; padding-bottom: 8px; }
-.product-timeline-row:not(.product-timeline-row--first) td { background: var(--surface-subtle, var(--surface-base)); }
+.product-timeline-row:not(.product-timeline-row--first) td { background: var(--surface-base); }
 .product-timeline-row:not(.product-timeline-row--first) td[data-field-key="period"] { color: var(--text-secondary); font-family: var(--font-mono); }
 .product-timeline-row--first td[data-field-key="period"] { color: var(--text-primary); font-weight: 600; }
 .product-timeline-row--first .metric-bar-cell::after { background: var(--brand); opacity: .72; }
@@ -160,9 +172,28 @@ body[data-page="products"] .product-list__header .product-field-controls { grid-
 .product-identity { display: grid; grid-template-columns: 44px minmax(160px, 1fr); align-items: center; gap: var(--space-3); }
 .product-thumb { width: 44px; height: 44px; border: 1px solid var(--border-default); border-radius: var(--radius-md); object-fit: cover; background: var(--surface-muted); }
 .product-title { display: grid; min-width: 0; gap: 2px; }
-.product-title strong { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; overflow-wrap: anywhere; font-weight: 600; }
-.product-title__link { max-width: 240px; overflow: hidden; padding: 0; border: 0; background: transparent; color: var(--text-primary); font: inherit; font-size: var(--font-size-secondary); font-weight: 600; text-align: left; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
-.product-title__link:hover { color: var(--brand); text-decoration: underline; }
+.product-title strong { font-weight: 600; }
+.product-title__link {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-primary);
+  font: inherit;
+  font-size: var(--font-size-secondary);
+  font-weight: 600;
+  text-align: left;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+  /* 5-4：恢复两行。components.css 的基础规则带 white-space: nowrap，必须显式压回去。 */
+  white-space: normal;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+.product-title__link:hover { color: var(--brand-text); text-decoration: underline; }
 .product-title__link:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
 .product-title span { color: var(--text-secondary); font-family: var(--font-mono); font-size: var(--font-size-meta); }
 @media (max-width: 520px) { .ui-metric-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; } body[data-page="promotion"] .ui-metric-grid .ui-metric-card:last-child { grid-column: 1 / -1; } .ui-metric-card { min-height: 104px; padding: 12px; } .metric-card__value { font-size: var(--font-size-kpi); } .ui-panel { padding: 14px; } .ui-filter-toolbar { align-items: stretch; } .filter-group { width: 100%; } .input, .select, .ui-button { min-height: 44px; } .input, .select { min-width: 0; flex: 1; } .segmented button { min-height: var(--control-height-touch); } .field-order-preview__item { min-height: 48px; } .field-order-preview__button { width: 44px; min-width: 44px; height: 44px; } .product-filters { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); } .product-filters [data-product-search], .product-filters [data-star-filter] { grid-column: 1 / -1; width: 100%; } .product-filters .select { width: 100%; } .products-alert { align-items: flex-start; flex-direction: column; } .products-alert .ui-button { width: 100%; } .products-issue { align-items: flex-start; flex-direction: column; } .products-issue .ui-button { width: 100%; } }
@@ -232,24 +263,24 @@ body[data-page="products"] .product-list__header .product-field-controls { grid-
   .product-detail-promotion-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .product-detail-search-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
-.product-thumb--placeholder { display: grid; place-items: center; color: var(--text-tertiary); }
+.product-thumb--placeholder { display: grid; place-items: center; color: var(--text-secondary); }
 .product-thumb--placeholder .lucide { width: var(--icon-control); height: var(--icon-control); stroke-width: 1.75; }
 .product-workbench { min-width: 0; }
 .product-workbench__crumb { margin-bottom: var(--space-3); color: var(--text-secondary); font-size: var(--font-size-meta); line-height: var(--line-height-meta); }
 .product-workbench__header { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-4); margin-bottom: var(--space-5); }
 .product-workbench__identity { min-width: 0; }
-.product-workbench__eyebrow { color: var(--brand); font-size: var(--font-size-meta); font-weight: 600; line-height: var(--line-height-meta); }
+.product-workbench__eyebrow { color: var(--brand-text); font-size: var(--font-size-meta); font-weight: 600; line-height: var(--line-height-meta); }
 .product-workbench__title { margin: 2px 0 0; overflow-wrap: anywhere; color: var(--text-primary); font-size: clamp(24px, 3vw, 34px); line-height: 1.2; }
 .product-workbench__meta, .product-workbench__status { margin: 5px 0 0; color: var(--text-secondary); font-size: var(--font-size-secondary); line-height: var(--line-height-secondary); }
-.product-workbench__status { color: var(--brand); }
+.product-workbench__status { color: var(--brand-text); }
 .product-workbench__actions { display: flex; flex: 0 0 auto; flex-wrap: wrap; justify-content: flex-end; gap: var(--space-2); }
 .product-workbench__kpis { grid-template-columns: repeat(5, minmax(0, 1fr)); margin-bottom: var(--space-5); }
 .product-workbench__kpis .ui-metric-card { min-width: 0; min-height: 116px; }
-.product-workbench__kpis .metric-card__hint { margin-top: 4px; color: var(--text-tertiary); font-size: var(--font-size-meta); line-height: var(--line-height-meta); }
+.product-workbench__kpis .metric-card__hint { margin-top: 4px; color: var(--text-secondary); font-size: var(--font-size-meta); line-height: var(--line-height-meta); }
 .product-workbench__tabs { display: flex; min-width: 0; gap: var(--space-5); overflow-x: auto; border-bottom: 1px solid var(--border-default); }
 .product-workbench__tab { flex: 0 0 auto; min-height: 42px; padding: 8px 2px 9px; border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--text-secondary); font-size: var(--font-size-secondary); font-weight: 500; white-space: nowrap; }
 .product-workbench__tab:hover { color: var(--text-primary); }
-.product-workbench__tab[aria-selected="true"] { border-bottom-color: var(--brand); color: var(--brand); font-weight: 700; }
+.product-workbench__tab[aria-selected="true"] { border-bottom-color: var(--brand); color: var(--brand-text); font-weight: 700; }
 .product-workbench__panel { display: grid; min-width: 0; gap: var(--space-4); padding-top: var(--space-4); }
 .product-workbench__panel[hidden] { display: none; }
 .product-workbench__grid { display: grid; min-width: 0; gap: var(--space-4); }
@@ -261,8 +292,8 @@ body[data-page="products"] .product-list__header .product-field-controls { grid-
 .product-detail-metric { display: grid; min-width: 0; gap: 3px; padding: 9px 10px; border: 1px solid var(--border-default); border-radius: var(--radius-sm); background: var(--surface-base); }
 .product-detail-metric__label, .product-detail-metric__source { overflow: hidden; color: var(--text-secondary); font-size: var(--font-size-meta); text-overflow: ellipsis; white-space: nowrap; }
 .product-detail-metric__value { overflow: hidden; color: var(--text-primary); font-family: var(--font-mono); font-size: var(--font-size-secondary); text-overflow: ellipsis; white-space: nowrap; }
-.product-detail-metric__source { color: var(--text-tertiary); }
-.product-detail-metric.is-missing .product-detail-metric__value { color: var(--text-tertiary); }
+.product-detail-metric__source { color: var(--text-secondary); }
+.product-detail-metric.is-missing .product-detail-metric__value { color: var(--text-secondary); }
 .product-workbench__callout { background: var(--brand-tint); border-color: var(--border-warning-subtle); }
 .product-workbench__suggestions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-3); }
 .product-workbench__suggestions > div { display: grid; gap: 3px; min-width: 0; padding: var(--space-3); border: 1px solid color-mix(in srgb, var(--brand) 22%, var(--border-default)); border-radius: var(--radius-md); background: var(--surface-base); }
@@ -830,7 +861,7 @@ body[data-page="products"] .product-list__header .panel__hint {
     left: 386px;
   }
   body[data-page="products"] .product-table .product-title__link {
-    max-width: 280px;
+    max-width: 100%;
   }
 }
 @media (min-width: 901px) {
@@ -859,7 +890,7 @@ body[data-page="products"] .product-list__header .panel__hint {
     min-width: 250px;
   }
   body[data-page="products"] .product-table .product-title__link {
-    max-width: 230px;
+    max-width: 100%;
   }
 }
 body[data-page="products"] .product-title__meta {
@@ -886,10 +917,16 @@ body[data-page="products"] .product-title__meta .star-button .lucide {
   height: 16px;
 }
 @media (min-width: 1001px) {
+  /* 5-3：products 12 列实测 1522px（容器 1094）。三处收紧：
+     ① 指标列 120 → 96（tabular-nums 下 1,234,567.89 ≈ 68px 文本 + 24px 内边距，够放）；
+     ② 表头放行换行——th 的 nowrap 来自 .table-sort-button，只改 th 没用；
+     ③ 否则「商品支付转化率」按 min-content 把该列顶到 147px、「搜索访客数」顶到 123px。 */
+  body[data-page="products"] .product-table th { white-space: normal; }
+  body[data-page="products"] .product-table th .table-sort-button { white-space: normal; }
   body[data-page="products"] .product-table th[data-field-key]:not([data-field-key="select"]):not([data-field-key="title"]),
   body[data-page="products"] .product-table td[data-field-key]:not([data-field-key="select"]):not([data-field-key="title"]) {
-    width: 120px;
-    min-width: 120px;
+    width: 96px;
+    min-width: 96px;
     box-sizing: border-box;
   }
   body[data-page="products"] .product-table th.num,
@@ -1097,7 +1134,7 @@ body[data-page="products"] .product-title__meta .star-button .lucide {
 /* Products page hierarchy: quiet controls, explicit state, readable diagnostics. */
 body[data-page="products"] .product-page-controls__eyebrow {
   flex: 0 0 auto;
-  color: var(--text-tertiary);
+  color: var(--text-secondary);
   font-size: var(--font-size-meta);
   font-weight: 600;
   letter-spacing: 0;
@@ -1110,7 +1147,7 @@ body[data-page="products"] .product-page-controls .product-field-controls {
   background: var(--surface-muted);
 }
 body[data-page="products"] .product-page-controls .product-control-label {
-  color: var(--text-tertiary);
+  color: var(--text-secondary);
 }
 body[data-page="products"] .product-page-controls > [data-products-reset] {
   color: var(--text-secondary);
@@ -1118,7 +1155,7 @@ body[data-page="products"] .product-page-controls > [data-products-reset] {
   background: transparent;
 }
 body[data-page="products"] .product-page-controls > [data-products-reset]:hover {
-  color: var(--brand);
+  color: var(--brand-text);
   background: var(--brand-tint);
 }
 body[data-page="products"] .product-filter-stack {
@@ -1142,7 +1179,7 @@ body[data-page="products"] .product-filter-stack__heading > div {
   gap: var(--space-2);
 }
 body[data-page="products"] .product-filter-stack__eyebrow {
-  color: var(--brand);
+  color: var(--brand-text);
   font-size: var(--font-size-meta);
   font-weight: 700;
 }
@@ -1155,6 +1192,40 @@ body[data-page="products"] .product-filter-stack .product-filters {
   padding: 0;
   border: 0;
   background: transparent;
+}
+/* 2-3：呈现方式（展示/周期/粒度）从页头下移到表格工具栏，页头只留「字段 + 列设置」 */
+body[data-page="products"] .product-view-switch {
+  display: flex;
+  grid-column: 1 / -1;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  padding-bottom: var(--space-2);
+  border-bottom: 1px solid var(--border-default);
+}
+body[data-page="products"] .product-view-switch[hidden] { display: none; }
+body[data-page="products"] .product-view-switch .product-control-group { flex: 0 0 auto; }
+body[data-page="products"] .product-view-switch .product-control-label {
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+body[data-page="products"] .product-view-switch .product-mode-switch button { min-width: 96px; }
+body[data-page="products"] .product-view-switch .product-period-switch button,
+body[data-page="products"] .product-view-switch .product-timeline-limit-switch button { min-width: 42px; }
+body[data-page="products"] .product-view-switch .product-timeline-tools { gap: 6px; }
+body[data-page="products"] .product-filters__actions > [data-products-reset] {
+  color: var(--text-secondary);
+  border-color: transparent;
+  background: transparent;
+}
+body[data-page="products"] .product-filters__actions > [data-products-reset]:hover {
+  color: var(--brand-text);
+  background: var(--brand-tint);
+}
+@media (max-width: 900px) {
+  body[data-page="products"] .product-view-switch { gap: var(--space-2); }
+  body[data-page="products"] .product-view-switch .product-control-group { width: 100%; }
+  body[data-page="products"] .product-view-switch .product-control-group > .segmented { max-width: 100%; }
 }
 body[data-page="products"] .product-list__header {
   padding-bottom: var(--space-2);
@@ -1224,7 +1295,7 @@ body[data-page="products"] .products-mobile-summary__identity strong {
   color: var(--text-primary);
 }
 body[data-page="products"] .products-mobile-summary__metrics dd {
-  color: var(--brand);
+  color: var(--brand-text);
 }
 
 @media (max-width: 760px) {

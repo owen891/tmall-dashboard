@@ -4,12 +4,12 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>推广分析 | 天猫数据仪表盘</title>
-  <link rel="stylesheet" href="../assets/tokens.css">
-  <link rel="stylesheet" href="../assets/shell.css">
-  <link rel="stylesheet" href="../assets/components.css?v=20260919-field-selector3"><link rel="stylesheet" href="../assets/themes/product-domain.css"><link rel="stylesheet" href="../assets/themes/promotion-domain.css"><link rel="stylesheet" href="../assets/themes/overview-domain.css"><link rel="stylesheet" href="../assets/themes/lifecycle-domain.css"><link rel="stylesheet" href="../assets/themes/settings-domain.css">
-  <link rel="stylesheet" href="../assets/promotion-views.css?v=20260930a">
-  <script src="../assets/lucide-custom.min.js"></script>
-    <script src="../assets/echarts-custom.min.js"></script>
+  <link rel="stylesheet" href="../assets/tokens.css?v=20261001j">
+  <link rel="stylesheet" href="../assets/shell.css?v=20261001j">
+  <link rel="stylesheet" href="../assets/components.css?v=20261001j"><link rel="stylesheet" href="../assets/themes/product-domain.css?v=20261001j"><link rel="stylesheet" href="../assets/themes/promotion-domain.css?v=20261001j"><link rel="stylesheet" href="../assets/themes/overview-domain.css?v=20261001j"><link rel="stylesheet" href="../assets/themes/lifecycle-domain.css?v=20261001j"><link rel="stylesheet" href="../assets/themes/settings-domain.css?v=20261001j">
+  <link rel="stylesheet" href="../assets/promotion-views.css?v=20261001j">
+  <script src="../assets/lucide-custom.min.js?v=20261001j"></script>
+    <script src="../assets/echarts-custom.min.js?v=20261001j"></script>
 </head>
 <body data-page="promotion">
   <div class="demo-app">
@@ -19,7 +19,7 @@
       <main class="demo-page"><aside data-right-rail hidden aria-label="辅助信息"></aside>
         <div class="ui-page-header">
           <div>
-            <h2>推广分析</h2>
+            <h1>推广分析</h1>
             <p>总览看渠道效率，计划看投放方式，商品看经营结构；素材点击质量已拆到独立历史看板。</p>
           </div>
           <div class="demo-page__actions">
@@ -50,10 +50,10 @@
           <span class="promotion-source-strip__note" data-promotion-source-note>渠道指标来自计划报表按场景归因；商品行不带渠道归属，不参与渠道对比。</span>
         </div>
 
-        <article class="ui-decision-card promotion-decision-card" aria-labelledby="promotionCommandTitle"><section class="promotion-command" aria-label="推广经营结论">
+        <article class="promotion-decision-card" aria-labelledby="promotionCommandTitle"><section class="promotion-command" aria-label="推广经营结论">
           <div>
             <div class="promotion-command__heading">
-              <div><h1 id="promotionCommandTitle">推广经营看板</h1><p>围绕商品经营看投入、流量和推广成交，计划与商品分别核算。</p></div>
+              <div><h2 id="promotionCommandTitle">推广经营看板</h2><p>围绕商品经营看投入、流量和推广成交，计划与商品分别核算。</p></div>
               <span class="promotion-command__status" data-promotion-health-badge data-tone="success"><i data-lucide="circle-check" aria-hidden="true"></i><span>加载中…</span></span>
             </div>
             <div class="promotion-funnel" aria-label="推广经营链路">
@@ -198,28 +198,15 @@
     </div>
   </div>
 
-  <dialog class="promotion-dialog" data-promotion-dialog data-modal-kind="detail" aria-labelledby="promotionDialogTitle">
-    <div class="promotion-detail-dialog__shell">
-      <div class="lifecycle-detail__header promotion-detail-dialog__header">
-        <div class="lifecycle-detail__product">
-          <span class="lifecycle-detail__image promotion-detail-dialog__image" data-promotion-dialog-image aria-hidden="true"><i data-lucide="megaphone"></i></span>
-          <div>
-            <h2 id="promotionDialogTitle" class="panel__title" data-promotion-dialog-title>推广明细</h2>
-            <p class="panel__hint" data-promotion-dialog-subtitle>--</p>
-            <div class="lifecycle-detail__id" data-promotion-dialog-id>--</div>
-          </div>
-        </div>
-        <button class="ui-button ui-button--ghost" type="button" data-promotion-dialog-close aria-label="关闭推广详情"><i data-lucide="x"></i><span>关闭</span></button>
+  <template data-promotion-dialog-template>
+    <div class="promotion-detail-dialog__body">
+      <div class="lifecycle-detail-tabs promotion-detail-dialog__tabs" data-promotion-dialog-tabs role="tablist" aria-label="推广详情分组">
+        <button class="lifecycle-detail-tab" id="promotion-detail-tab-overview" role="tab" type="button" data-promotion-detail-tab="overview" aria-selected="true" aria-controls="promotion-detail-panel-overview" tabindex="0">推广概览</button>
+        <button class="lifecycle-detail-tab" id="promotion-detail-tab-units" role="tab" type="button" data-promotion-detail-tab="units" aria-selected="false" aria-controls="promotion-detail-panel-units" tabindex="-1">计划 / 单元明细</button>
       </div>
-      <div class="promotion-detail-dialog__body">
-        <div class="lifecycle-detail-tabs promotion-detail-dialog__tabs" data-promotion-dialog-tabs role="tablist" aria-label="推广详情分组">
-          <button class="lifecycle-detail-tab" id="promotion-detail-tab-overview" role="tab" type="button" data-promotion-detail-tab="overview" aria-selected="true" aria-controls="promotion-detail-panel-overview" tabindex="0">推广概览</button>
-          <button class="lifecycle-detail-tab" id="promotion-detail-tab-units" role="tab" type="button" data-promotion-detail-tab="units" aria-selected="false" aria-controls="promotion-detail-panel-units" tabindex="-1">计划 / 单元明细</button>
-        </div>
-        <div class="promotion-detail-dialog__panels" data-promotion-dialog-body></div>
-      </div>
+      <div class="promotion-detail-dialog__panels" data-promotion-dialog-body></div>
     </div>
-  </dialog>
+  </template>
 
   <template data-promotion-structure-template>
     <div class="promotion-detail-dialog__body">
@@ -232,18 +219,14 @@
     </div>
   </template>
 
-  <dialog class="modal-form promotion-alert-dialog" data-promotion-alert-dialog data-modal-kind="detail" aria-labelledby="promotionAlertDialogTitle">
-    <div class="modal-form__header">
-      <div><h3 id="promotionAlertDialogTitle">全部投放预警</h3><p data-promotion-alert-dialog-subtitle>--</p></div>
-      <button class="ui-button ui-button--ghost" type="button" data-promotion-alert-dialog-close aria-label="关闭全部投放预警"><i data-lucide="x"></i></button>
-    </div>
+  <template data-promotion-alert-dialog-template>
     <div class="modal-form__body">
       <div class="alert-list promotion-alert-dialog__list" data-promotion-alert-dialog-list></div>
     </div>
-    <div class="modal-form__footer">
+    <template data-promotion-alert-dialog-footer>
       <button class="ui-button" type="button" data-promotion-alert-dialog-close>关闭</button>
-    </div>
-  </dialog>
+    </template>
+  </template>
 
 
     <dialog class="modal-form ui-field-selector-dialog promotion-field-dialog" data-promotion-field-dialog data-modal-kind="config" aria-labelledby="promotionFieldDialogTitle">
@@ -277,17 +260,17 @@
   </dialog>
 
 
-  <script src="../assets/api.js"></script>
-  <script src="../assets/navigation.js"></script>
-  <script src="../assets/charts.js"></script>
-  <script src="../assets/shell.js"></script>
-  <script src="../assets/ui-components.js"></script>
-  <script src="../assets/field-selector.js"></script>
-  <script src="../assets/field-template-manager.js"></script>
-  <script src="../assets/promotion-field-definitions.js"></script>
-  <script src="../assets/alert-rules.js"></script>
-  <script src="../assets/product-detail-dialog.js"></script>
-  <script src="../assets/format.js"></script><script src="../assets/promotion-live.js?v=20260930a"></script>
-  <script src="../assets/promotion-views-live.js?v=20260930a"></script>
+  <script src="../assets/api.js?v=20261001j"></script>
+  <script src="../assets/navigation.js?v=20261001j"></script>
+  <script src="../assets/charts.js?v=20261001j"></script>
+  <script src="../assets/shell.js?v=20261001j"></script>
+  <script src="../assets/ui-components.js?v=20261001j"></script>
+  <script src="../assets/field-selector.js?v=20261001j"></script>
+  <script src="../assets/field-template-manager.js?v=20261001j"></script>
+  <script src="../assets/promotion-field-definitions.js?v=20261001j"></script>
+  <script src="../assets/alert-rules.js?v=20261001j"></script>
+  <script src="../assets/product-detail-dialog.js?v=20261001j"></script>
+  <script src="../assets/format.js?v=20261001j"></script><script src="../assets/promotion-live.js?v=20261001j"></script>
+  <script src="../assets/promotion-views-live.js?v=20261001j"></script>
 </body>
 </html>

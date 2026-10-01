@@ -715,7 +715,7 @@
 
       roots.forEach(ch => appendRow(ch, 0));
       if (!visible) {
-        tbody.innerHTML = `<tr><td colspan="${columns.length}" style="text-align:center;color:var(--text-tertiary);padding:16px;">暂无渠道数据</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="${columns.length}" style="text-align:center;color:var(--text-secondary);padding:16px;">暂无渠道数据</td></tr>`;
       }
       table.appendChild(tbody);
       tableWrap.appendChild(table);

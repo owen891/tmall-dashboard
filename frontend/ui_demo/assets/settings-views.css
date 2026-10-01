@@ -11,7 +11,7 @@
 }
 .settings-hero__avatar {
   display: grid; place-items: center; width: 46px; height: 46px; flex: 0 0 auto;
-  border-radius: var(--radius-md); background: var(--brand-tint); color: var(--brand);
+  border-radius: var(--radius-md); background: var(--brand-tint); color: var(--brand-text);
 }
 .settings-hero__avatar svg { width: 22px; height: 22px; }
 .settings-hero__identity { min-width: 0; flex: 1; display: grid; gap: 4px; }
@@ -22,8 +22,8 @@
   padding: 6px 12px; border-radius: var(--radius-full); font-size: var(--font-size-meta); font-weight: 600;
   border: 1px solid var(--border-default); color: var(--text-secondary); background: var(--surface-base);
 }
-.settings-save-pill[data-tone="success"] { border-color: color-mix(in srgb, var(--success) 45%, transparent); color: var(--success); background: color-mix(in srgb, var(--success) 8%, var(--surface-base)); }
-.settings-save-pill[data-tone="warning"] { border-color: color-mix(in srgb, var(--warning) 45%, transparent); color: var(--warning); background: color-mix(in srgb, var(--warning) 8%, var(--surface-base)); }
+.settings-save-pill[data-tone="success"] { border-color: color-mix(in srgb, var(--success) 45%, transparent); color: var(--success-text); background: color-mix(in srgb, var(--success) 8%, var(--surface-base)); }
+.settings-save-pill[data-tone="warning"] { border-color: color-mix(in srgb, var(--warning) 45%, transparent); color: var(--warning-text); background: color-mix(in srgb, var(--warning) 8%, var(--surface-base)); }
 .settings-save-pill svg { width: 14px; height: 14px; }
 
 /* ── 横排页签：等宽铺满（设计系统 4.7 分段控制器） ─────────────────── */
@@ -48,20 +48,20 @@
 .set-card--link h4 { margin: 0 0 2px; font-size: var(--font-size-body); }
 .set-card--link p { margin: 0; color: var(--text-secondary); font-size: var(--font-size-meta); }
 .set-card__header { display: flex; align-items: flex-start; gap: 10px; }
-.set-card__header > svg { width: 17px; height: 17px; flex: 0 0 auto; margin-top: 2px; color: var(--brand); }
+.set-card__header > svg { width: 17px; height: 17px; flex: 0 0 auto; margin-top: 2px; color: var(--brand-text); }
 .set-card__header h4, .set-card__header .panel__title { margin: 0 0 2px; font-size: var(--font-size-body); }
 .set-card__header p { margin: 0; color: var(--text-secondary); font-size: var(--font-size-meta); }
 .set-field { display: grid; gap: 4px; color: var(--text-secondary); font-size: var(--font-size-meta); }
 .set-chip-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; }
 .set-chip-row .set-field input[readonly], .set-chip-row .set-field select { background: var(--surface-muted); }
-.set-note { display: flex; align-items: flex-start; gap: 6px; margin: 0; color: var(--text-tertiary); font-size: var(--font-size-meta); }
+.set-note { display: flex; align-items: flex-start; gap: 6px; margin: 0; color: var(--text-secondary); font-size: var(--font-size-meta); }
 .set-note svg { width: 13px; height: 13px; flex: 0 0 auto; margin-top: 2px; }
 .set-status-pill {
   align-self: flex-start; margin: 0; padding: 4px 10px; border-radius: var(--radius-full);
   font-size: var(--font-size-meta); font-weight: 600;
   border: 1px solid var(--border-default); color: var(--text-secondary); background: var(--surface-muted);
 }
-.set-status-pill[data-tone="success"] { border-color: color-mix(in srgb, var(--success) 45%, transparent); color: var(--success); background: color-mix(in srgb, var(--success) 8%, var(--surface-base)); }
+.set-status-pill[data-tone="success"] { border-color: color-mix(in srgb, var(--success) 45%, transparent); color: var(--success-text); background: color-mix(in srgb, var(--success) 8%, var(--surface-base)); }
 .set-scope-row { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; padding: 8px 10px; border-radius: var(--radius-md); background: var(--surface-muted); font-size: var(--font-size-meta); color: var(--text-secondary); }
 .set-scope-row strong { color: var(--text-primary); font-size: var(--font-size-body); }
 
@@ -69,15 +69,15 @@
 .set-formula-list { display: grid; gap: 8px; }
 .set-formula-row { display: grid; grid-template-columns: 120px minmax(0, 1fr); align-items: center; gap: 12px; padding: 10px 12px; border: 1px dashed var(--border-default); border-radius: var(--radius-md); background: var(--surface-muted); }
 .set-formula-row > span { color: var(--text-secondary); font-size: var(--font-size-meta); }
-.set-formula-row code { font-family: var(--font-family-mono, ui-monospace, monospace); font-size: var(--font-size-meta); color: var(--text-primary); overflow-wrap: anywhere; }
+.set-formula-row code { font-family: var(--font-mono, ui-monospace, monospace); font-size: var(--font-size-meta); color: var(--text-primary); overflow-wrap: anywhere; }
 
 /* ── 保存条：贴合新视觉 ────────────────────────────────────────────── */
 .settings-main .settings-savebar { border-radius: var(--radius-full); padding: 8px 10px 8px 16px; }
-.settings-savebar__dirty { font-weight: 600; margin-right: auto; color: var(--text-tertiary); }
-.settings-savebar.is-dirty .settings-savebar__dirty { color: var(--warning); }
+.settings-savebar__dirty { font-weight: 600; margin-right: auto; color: var(--text-secondary); }
+.settings-savebar.is-dirty .settings-savebar__dirty { color: var(--warning-text); }
 
 /* ── 扫描任务：表头计数与 cron 提示 ────────────────────────────────── */
-.settings-main [data-scan-jobs] .scan-cron-hint { margin-top: 2px; color: var(--text-tertiary); font-size: var(--font-size-meta); }
+.settings-main [data-scan-jobs] .scan-cron-hint { margin-top: 2px; color: var(--text-secondary); font-size: var(--font-size-meta); }
 .panel__header .ui-badge { margin-right: var(--space-2); }
 
 /* ── 响应式 ───────────────────────────────────────────────────────── */

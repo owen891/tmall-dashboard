@@ -491,8 +491,8 @@
     const compare = (state.context && state.context.compare) || { mode: 'previous', short_label: '环比' };
     const build = (label, change) => {
       if (change === null || change === undefined) return null;
-      const good = item.lower_better ? change < 0 : change > 0;
-      const cls = change === 0 ? 'pr-delta' : `pr-delta ${good ? 'is-up' : 'is-down'}`;
+      const good = MetricPolarity.isGood(item.key, change, { lowerBetter: item.lower_better });
+      const cls = good === null ? 'pr-delta' : `pr-delta ${good ? 'is-up' : 'is-down'}`;
       return h('span', { class: cls, text: `${label} ${change > 0 ? '+' : ''}${change}%` });
     };
     const nodes = [];
@@ -1034,9 +1034,9 @@
   function matrixDelta(metric) {
     if (!metric || metric.change_rate === null || metric.change_rate === undefined) return null;
     const change = Number(metric.change_rate);
-    const lowerBetter = metric.lower_better;
-    const good = lowerBetter ? change < 0 : change > 0;
-    const kind = change === 0 ? 'neutral' : (good ? 'up' : 'down');
+    // 4-3：极性判断统一走 MetricPolarity（这里显式传后端下发的 lower_better）。
+    const good = MetricPolarity.isGood(metric.key, change, { lowerBetter: metric.lower_better });
+    const kind = good === null ? 'neutral' : (good ? 'up' : 'down');
     const sign = change > 0 ? '+' : '';
     const text = `${sign}${(change * 100).toFixed(1)}%`;
     return { text, kind };
