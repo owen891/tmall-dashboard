@@ -117,13 +117,14 @@ class Config:
     MAX_CONTENT_LENGTH = 25 * 1024 * 1024
     DASHBOARD_USERNAME = os.environ.get('DASHBOARD_USERNAME')
     DASHBOARD_PASSWORD = os.environ.get('DASHBOARD_PASSWORD')
-    SQLALCHEMY_DATABASE_URI = os.environ.get(
+    # 「SQLALCHEMY_*」是已删除的 Flask-SQLAlchemy 栈的历史残留命名（改进路线
+    # 2026-10-01 P3.1）：这条 URI 现在只被 app.py 的 DATABASE_PATH 归一化消费，
+    # 改成语义准确的 DATABASE_URL；TRACK_MODIFICATIONS 无任何消费者，直接删。
+    # An explicit TMALL_DB_PATH still takes precedence for tests and desktop runs.
+    DATABASE_URL = os.environ.get(
         'DATABASE_URL',
         _sqlite_url(os.environ.get('TMALL_DB_PATH', DEFAULT_DATABASE_PATH)),
     )
-    SQLALCHEMY_TRACK_MODIFICATIONS = False
-    # Keep the raw SQLite connection and Flask-SQLAlchemy on one database.
-    # An explicit TMALL_DB_PATH still takes precedence for tests and desktop runs.
     DATABASE_PATH = os.environ.get('TMALL_DB_PATH', DEFAULT_DATABASE_PATH)
     UPLOAD_FOLDER = os.environ.get('TMALL_UPLOAD_FOLDER', DEFAULT_UPLOAD_FOLDER)
     IMPORT_SCAN_ALLOWED_ROOTS = resolve_import_scan_allowed_roots()

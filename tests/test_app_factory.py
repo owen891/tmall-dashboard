@@ -136,7 +136,7 @@ class AppFactoryTests(unittest.TestCase):
             app = create_app({
                 'TESTING': True,
                 'DATABASE_PATH': stale_path,
-                'SQLALCHEMY_DATABASE_URI': f"sqlite:///{uri_path.replace(os.sep, '/')}",
+                'DATABASE_URL': f"sqlite:///{uri_path.replace(os.sep, '/')}",
             })
 
             self.assertEqual(app.config['DATABASE_PATH'], os.path.abspath(uri_path))
@@ -152,7 +152,7 @@ class AppFactoryTests(unittest.TestCase):
             try:
                 app = create_app({
                     'TESTING': True,
-                    'SQLALCHEMY_DATABASE_URI': 'sqlite:///relative.db',
+                    'DATABASE_URL': 'sqlite:///relative.db',
                 })
             finally:
                 os.chdir(original_cwd)

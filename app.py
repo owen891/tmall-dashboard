@@ -95,10 +95,10 @@ def _latest_release():
 def _database_path_from_uri(uri):
     parsed = urlsplit(str(uri or ''))
     if parsed.scheme != 'sqlite':
-        raise ValueError('SQLALCHEMY_DATABASE_URI must use sqlite so raw database access stays consistent')
+        raise ValueError('DATABASE_URL must use sqlite so raw database access stays consistent')
     path = unquote(parsed.path or '')
     if path in {'', '/:memory:', ':memory:'}:
-        raise ValueError('SQLALCHEMY_DATABASE_URI must reference a file-backed sqlite database')
+        raise ValueError('DATABASE_URL must reference a file-backed sqlite database')
     # urlsplit keeps a leading slash before Windows drive letters.
     if len(path) >= 3 and path[0] == '/' and path[2] == ':':
         path = path[1:]
@@ -112,8 +112,8 @@ def create_app(config=None):
     # An environment DATABASE_URL must be treated exactly like an explicit
     # factory URI; otherwise the later DATABASE_PATH normalization silently
     # replaces it with the default SQLite file.
-    explicit_sqlalchemy_uri = bool(
-        (config and 'SQLALCHEMY_DATABASE_URI' in config)
+    explicit_database_url = bool(
+        (config and 'DATABASE_URL' in config)
         or os.environ.get('DATABASE_URL')
     )
     app = Flask(__name__, static_folder=None)
@@ -126,16 +126,16 @@ def create_app(config=None):
     if app.config.get('TESTING') and not app.config.get('SHOP_ID'):
         app.config['SHOP_ID'] = 'default'
 
-    if explicit_sqlalchemy_uri:
-        uri = app.config['SQLALCHEMY_DATABASE_URI']
-        if not (config and 'SQLALCHEMY_DATABASE_URI' in config):
+    if explicit_database_url:
+        uri = app.config['DATABASE_URL']
+        if not (config and 'DATABASE_URL' in config):
             uri = os.environ.get('DATABASE_URL', uri)
-        app.config['SQLALCHEMY_DATABASE_URI'] = uri
+        app.config['DATABASE_URL'] = uri
         app.config['DATABASE_PATH'] = _database_path_from_uri(uri)
     else:
         configured_path = (config or {}).get('DATABASE_PATH') or os.environ.get('TMALL_DB_PATH') or app.config.get('DATABASE_PATH') or get_db_path()
         app.config['DATABASE_PATH'] = os.path.abspath(configured_path)
-        app.config['SQLALCHEMY_DATABASE_URI'] = _sqlite_url(app.config['DATABASE_PATH'])
+        app.config['DATABASE_URL'] = _sqlite_url(app.config['DATABASE_PATH'])
     scan_roots = normalize_import_scan_roots(app.config.get('IMPORT_SCAN_ALLOWED_ROOTS'))
     app.config['IMPORT_SCAN_ALLOWED_ROOTS'] = scan_roots
     own_inbox = os.path.normcase(os.path.realpath(os.path.abspath(DEFAULT_IMPORT_SCAN_INBOX)))

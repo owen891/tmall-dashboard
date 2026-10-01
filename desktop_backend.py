@@ -48,7 +48,7 @@ def build_app_config(paths: DesktopPaths):
     return {
         'TESTING': False,
         'DATABASE_PATH': paths.database,
-        'SQLALCHEMY_DATABASE_URI': environment['DATABASE_URL'],
+        'DATABASE_URL': environment['DATABASE_URL'],
         'UPLOAD_FOLDER': paths.uploads,
         'IMPORT_SCAN_ALLOWED_ROOTS': scan_roots,
         'TMALL_DESKTOP_MODE': environment['TMALL_DESKTOP_MODE'],

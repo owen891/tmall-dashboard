@@ -163,7 +163,7 @@ class DesktopRuntimeTests(unittest.TestCase):
 
         self.assertEqual(app.config['DATABASE_PATH'], database_path)
         self.assertEqual(
-            app.config['SQLALCHEMY_DATABASE_URI'],
+            app.config['DATABASE_URL'],
             'sqlite:///' + database_path.replace('\\', '/'),
         )
 

@@ -48,7 +48,7 @@ class DesktopBackendTests(unittest.TestCase):
             config = build_app_config(paths)
 
         self.assertEqual(config['DATABASE_PATH'], 'D:/db/dashboard.db')
-        self.assertEqual(config['SQLALCHEMY_DATABASE_URI'], 'sqlite:///D:/db/dashboard.db')
+        self.assertEqual(config['DATABASE_URL'], 'sqlite:///D:/db/dashboard.db')
         self.assertEqual(config['UPLOAD_FOLDER'], 'D:/uploads')
         self.assertEqual(config['IMPORT_SCAN_ALLOWED_ROOTS'], ['D:/inbox'])
         self.assertEqual(config['TMALL_DESKTOP_MODE'], '1')
