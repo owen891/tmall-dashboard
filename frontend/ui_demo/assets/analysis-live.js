@@ -129,13 +129,13 @@
     currentConfig = config;
 
     const chartsContainer = $('#analysisCharts');
-    chartsContainer.innerHTML = '<div class="analysis-empty"><p>加载中…</p></div>';
+    DemoApi.renderDataState(chartsContainer, 'loading', { message: '正在计算经营分析…' });
 
     try {
       const data = await fetchAnalysisData(config);
       renderCharts(config, data);
     } catch (error) {
-      chartsContainer.innerHTML = `<div class="analysis-empty"><p>加载失败：${error.message}</p></div>`;
+      DemoApi.renderDataState(chartsContainer, 'calculation-failed', { message: error.message, retry: () => runAnalysis() });
     }
   }
 
@@ -198,12 +198,12 @@
     const config = categoryConfig();
     currentConfig = { template: 'category-period', ...config };
     const container = $('#analysisCharts');
-    container.innerHTML = '<div class="analysis-empty"><p>加载中...</p></div>';
+    DemoApi.renderDataState(container, 'loading', { message: '正在计算品类对比…' });
     try {
       const payload = await fetchCategoryAnalysis(config);
       renderCategoryAnalysis(config, payload?.data || payload || {});
     } catch (error) {
-      container.innerHTML = `<div class="analysis-empty"><p>加载失败：${error.message}</p></div>`;
+      DemoApi.renderDataState(container, 'calculation-failed', { message: error.message, retry: () => runCategoryAnalysis() });
     }
   }
 
@@ -293,7 +293,7 @@
     const series = data.series || data.values || [];
 
     if (!categories.length && !series.length) {
-      chartsContainer.innerHTML = '<div class="analysis-empty"><p>暂无数据，请调整时间范围或指标</p></div>';
+      DemoApi.renderDataState(chartsContainer, 'no-data', { message: '请调整时间范围或指标' });
       return;
     }
 

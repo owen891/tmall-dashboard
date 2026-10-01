@@ -797,7 +797,7 @@
     const titleKw = keywords.filter(k => k.keyword_type === '标题词').slice(0, 15);
 
     const renderBarList = (list, color) => {
-      if (!list.length) return '<div style="color:var(--text-secondary);text-align:center;padding:20px">暂无数据</div>';
+      if (!list.length) return '<div class="ui-empty-state"><span>暂无数据</span></div>';
       const max = Math.max(...list.map(k => k.count), 1);
       return list.map(k => `
         <div class="market-bar-row">
@@ -979,8 +979,9 @@ async function init() {
       window.lucide?.createIcons();
     } catch (e) {
       console.error('市场分析加载失败:', e);
-      document.querySelector('.demo-page').innerHTML =
-        `<div style="padding:40px;text-align:center;color:var(--danger)">加载失败：${e.message}</div>`;
+      // 4-3：整页错误态走共享渲染器（原手拼 div 还在用已废弃的 var(--danger)）。
+      DemoApi.renderDataState(document.querySelector('.demo-page'), 'source-unavailable',
+        { message: `市场分析加载失败：${e.message}`, retry: () => window.location.reload() });
 }
 
   }

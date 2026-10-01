@@ -5,6 +5,14 @@
     : (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 
   const grid = document.querySelector('[data-collect-grid]');
+  // 4-3：区域级空态/错误态统一走 renderDataState；grid 容器需要一个通栏包装。
+  const renderGridState = (state, message) => {
+    grid.replaceChildren();
+    const wrap = document.createElement('div');
+    wrap.style.gridColumn = '1 / -1';
+    grid.append(wrap);
+    DemoApi.renderDataState(wrap, state, { message, retry: () => loadStatus() });
+  };
   const logPanel = document.querySelector('[data-log-panel]');
   const logTitle = document.querySelector('[data-log-title]');
   const logContent = document.querySelector('[data-log-content]');
@@ -108,10 +116,10 @@
         renderSources(result.data.sources);
         renderSummary(result.data.sources);
       } else {
-        grid.innerHTML = `<div style="grid-column:1/-1;text-align:center;color:var(--danger-text);padding:48px;">加载失败: ${result.message || '未知错误'}</div>`;
+        renderGridState('calculation-failed', result.message || '未知错误');
       }
     } catch (e) {
-      grid.innerHTML = `<div style="grid-column:1/-1;text-align:center;color:var(--danger-text);padding:48px;">加载失败: ${e.message}</div>`;
+      renderGridState('calculation-failed', e.message);
     }
   }
 
@@ -230,7 +238,7 @@
 
   function renderSources(sources) {
     if (!sources || sources.length === 0) {
-      grid.innerHTML = '<div style="grid-column:1/-1;text-align:center;color:var(--text-secondary);padding:48px;">暂无数据源</div>';
+      renderGridState('no-data', '暂无数据源');
       return;
     }
 

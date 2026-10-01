@@ -525,8 +525,12 @@
       }
     } catch (err) {
       console.error('加载竞店竞品数据失败:', err);
-      document.querySelectorAll('[data-rival-shops-body], [data-rival-items-list]').forEach(el => {
-        el.innerHTML = `<div style="text-align:center;color:var(--danger-text);padding:24px">加载失败: ${escapeHtml(err.message)}</div>`;
+      // 4-3：表格体保持 <td> 占位语义；卡片列表这类区域状态走共享渲染器。
+      document.querySelectorAll('[data-rival-shops-body]').forEach((body) => {
+        body.innerHTML = `<tr><td colspan="8" style="text-align:center;color:var(--danger-text);padding:24px">加载失败: ${escapeHtml(err.message)}</td></tr>`;
+      });
+      document.querySelectorAll('[data-rival-items-list]').forEach((list) => {
+        DemoApi.renderDataState(list, 'calculation-failed', { message: err.message, retry: () => window.location.reload() });
       });
     }
   }

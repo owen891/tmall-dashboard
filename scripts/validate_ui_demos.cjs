@@ -224,7 +224,10 @@ for (const adapter of ['overview-live.js', 'products-live.js', 'promotion-live.j
   assert(!source.includes('DemoApi.optional('), `assets/${adapter}: fallback is forbidden`);
 }
 
-for (const adapter of ['overview-live.js', 'products-live.js', 'promotion-live.js', 'lifecycle-live.js', 'reviews-live.js', 'pages/data-center/import-workflow.js', 'pages/data-center/capability-map.js', 'pages/data-center/page-capabilities.js', 'settings-live.js', 'goals-live.js']) {
+// 4-3：区域级空态/错误态/加载态必须走共享渲染器；analysis / data-collection
+// 曾手拼 <div>，已迁移。表格单元格内的 <td colspan> 占位行是表格语义的合法形态，
+// 不在本断言范围（下方有专项防线禁止其逃逸出表格语义）。
+for (const adapter of ['overview-live.js', 'products-live.js', 'promotion-live.js', 'lifecycle-live.js', 'reviews-live.js', 'pages/data-center/import-workflow.js', 'pages/data-center/capability-map.js', 'pages/data-center/page-capabilities.js', 'settings-live.js', 'goals-live.js', 'analysis-live.js', 'data-collection-live.js']) {
   const source = read(path.join(root, 'assets', adapter));
   assert(source.includes('DemoApi.renderDataState('), `assets/${adapter}: must render shared data states`);
 }
@@ -232,6 +235,14 @@ for (const adapter of ['overview-live.js', 'products-live.js', 'promotion-live.j
 for (const adapter of ['overview-live.js', 'products-live.js', 'promotion-live.js']) {
   const source = read(path.join(root, 'assets', adapter));
   assert(source.includes("addEventListener('tmall:date-range-change'"), `assets/${adapter}: date changes do not refresh data`);
+}
+
+// 4-3 防线：状态 UI 不允许手拼 —— 自定义空态类与内联样式的「加载失败/暂无」
+// 块一律禁止（表格 <td> 占位除外，上面注释已约定）。
+for (const file of fs.readdirSync(path.join(root, 'assets')).filter((f) => f.endsWith('.js'))) {
+  const source = read(path.join(root, 'assets', file));
+  assert(!source.includes('analysis-empty'), `assets/${file}: hand-built analysis-empty state is forbidden; use DemoApi.renderDataState`);
+  assert(!/<div(?![^>]*ui-empty-state)[^>]*style="[^"]*padding:\s*\d+px[^"]*">(加载失败|暂无)/.test(source), `assets/${file}: inline-styled state div is forbidden; use DemoApi.renderDataState`);
 }
 
 if (errors.length) {
