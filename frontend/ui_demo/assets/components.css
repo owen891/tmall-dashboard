@@ -741,7 +741,11 @@ body[data-page="reviews"] [data-period-review-list] .status-list__item strong { 
 .data-governance-disclosure { margin-top: var(--space-4); }
 .data-governance-disclosure > summary { display: flex; min-height: var(--control-height); align-items: center; justify-content: space-between; gap: var(--space-3); padding: var(--space-3) var(--space-4); border: 1px solid var(--border-default); border-radius: var(--panel-radius); background: var(--surface-base); color: var(--text-primary); cursor: pointer; font-size: var(--font-size-label); font-weight: 600; list-style-position: inside; }
 .data-governance-disclosure > summary span:last-child { color: var(--text-secondary); font-size: var(--font-size-meta); font-weight: 400; }
-.data-governance-disclosure__body { display: grid; gap: var(--space-4); margin-top: var(--space-3); }
+/* 3.1：body 的 display 必须挂在 [open] 上——直接写 display:grid 会压过 UA 对
+   未展开 <details> 子元素的 display:none，导致能力地图「收起仍可见」，
+   data-center 可交互元素因此常驻 +61。 */
+.data-governance-disclosure__body { display: none; gap: var(--space-4); margin-top: var(--space-3); }
+.data-governance-disclosure[open] > .data-governance-disclosure__body { display: grid; }
 .data-governance-disclosure__body > .ui-panel { margin-bottom: 0; }
 .products-mobile-summary { display: none; }
 .products-mobile-summary__item { display: grid; gap: var(--space-3); padding: var(--space-3); border: 1px solid var(--border-default); border-radius: var(--radius-md); background: var(--surface-base); }
