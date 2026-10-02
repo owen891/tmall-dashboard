@@ -324,18 +324,18 @@ body[data-page="market-ranking"] .market-entry-grid--block { margin-top: 0; padd
         </div>
       </section>
 
-      <!-- 蓝海机会词（口径：细分词高搜索×高转化，剔除泛词） -->
+      <!-- 蓝海机会词（口径：细分词高搜索×高转化，剔除泛词；供给分级=每万搜索覆盖） -->
       <section class="ui-panel" data-market-panel="keywords" hidden style="margin-top: var(--space-4);">
         <div class="panel__header">
           <div>
             <h3 class="panel__title">蓝海机会词 TOP10</h3>
-            <p class="panel__hint">近 7 天日均搜索热度 × 支付转化率，剔除泛词；「每万供给覆盖」字段未采集，当前为近似口径</p>
+            <p class="panel__hint" data-mr-blue-ocean-hint>近 7 天日均搜索热度 × 支付转化率，剔除泛词；「每万供给覆盖」需在榜商品数据，缺失时仅按蓝海度排序</p>
           </div>
         </div>
         <div class="ui-table-wrap">
           <table class="ui-data-table">
-            <thead><tr><th>关键词</th><th class="num">搜索热度（近7天日均）</th><th class="num">支付转化率</th><th class="num">蓝海度</th></tr></thead>
-            <tbody data-mr-blue-ocean-body><tr><td colspan="4" style="text-align:center;color:var(--text-secondary);padding:18px">加载中…</td></tr></tbody>
+            <thead><tr><th>关键词</th><th class="num">搜索热度（近7天日均）</th><th class="num">支付转化率</th><th class="num">蓝海度</th><th class="num">供给分级</th></tr></thead>
+            <tbody data-mr-blue-ocean-body><tr><td colspan="5" style="text-align:center;color:var(--text-secondary);padding:18px">加载中…</td></tr></tbody>
           </table>
         </div>
       </section>
@@ -486,7 +486,7 @@ body[data-page="market-ranking"] .market-entry-grid--block { margin-top: 0; padd
 <script src="../assets/labels.js?v=20261001j"></script>
 <script src="../assets/shell.js?v=20261001j"></script>
 <script src="../assets/format.js?v=20261001j"></script><script src="../assets/ui-components.js?v=20261001j"></script>
-<script src="../assets/market-ranking-live.js?v=20261002a"></script>
+<script src="../assets/market-ranking-live.js?v=20261002b"></script>
 </body>
 </html>
 

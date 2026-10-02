@@ -14,6 +14,7 @@ if PROJECT_ROOT not in sys.path:
 
 from services.market_monitor_service import (
     _classify_keyword,
+    blue_ocean_words,
     keyword_insights,
     rival_item_moves,
 )
@@ -101,6 +102,49 @@ class KeywordInsightsTests(unittest.TestCase):
         self.assertFalse(result['available'])
         self.assertIn('sycm_market_search_rank', result['missing_inputs'])
         self.assertEqual(result['categories'], [])
+
+
+class BlueOceanFullTests(unittest.TestCase):
+    def test_cover_per_10k_and_grade(self):
+        """SKILL 完整口径：精确热度 + 最新日在榜 title 匹配 → 每万覆盖分级。"""
+        rows = [
+            ('2026-09-28', '压力袜', 500, 0.1, 0.2),
+            ('2026-09-28', '五指袜', 300, 0.1, 0.2),
+            ('2026-09-28', '袜子', 100000, 0.2, 0.3),
+            ('2026-09-28', '低热词', 50, 0.1, 0.2),
+        ]
+        titles = ['压力袜男', '压力袜女', '五指袜', '无关商品']
+        result = blue_ocean_words(rows, titles)
+
+        self.assertTrue(result['available'])
+        by_word = {item['keyword']: item for item in result['words']}
+        # 泛词与低热词剔除。
+        self.assertNotIn('袜子', by_word)
+        self.assertNotIn('低热词', by_word)
+        self.assertAlmostEqual(by_word['压力袜']['cover_per_10k'], 40.0, places=1)
+        self.assertEqual(by_word['压力袜']['grade'], '供给偏多')
+        self.assertAlmostEqual(by_word['五指袜']['cover_per_10k'], 33.33, places=1)
+        # 覆盖为 0 的词排最前（高潜优先）。
+        words = result['words']
+        if len(words) > 1:
+            self.assertLessEqual(words[0]['cover_per_10k'], words[-1]['cover_per_10k'])
+
+    def test_zero_cover_is_high_potential(self):
+        rows = [('2026-09-28', '月子袜', 200, 0.1, 0.2)]
+        result = blue_ocean_words(rows, ['完全无关商品'])
+        self.assertTrue(result['available'])
+        word = result['words'][0]
+        self.assertEqual(word['cover_count'], 0)
+        self.assertEqual(word['cover_per_10k'], 0.0)
+        self.assertEqual(word['grade'], '高潜蓝海')
+
+    def test_missing_titles_still_ranks_by_heat(self):
+        rows = [('2026-09-28', '压力袜', 500, 0.1, 0.2)]
+        result = blue_ocean_words(rows, [])
+        self.assertTrue(result['available'])
+        word = result['words'][0]
+        self.assertEqual(word['cover_count'], 0)
+        self.assertEqual(word['grade'], '高潜蓝海')
 
 
 class RivalItemMovesTests(unittest.TestCase):

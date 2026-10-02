@@ -972,15 +972,34 @@
     }
     const blueBody = document.querySelector('[data-mr-blue-ocean-body]');
     if (data && data.available && data.blue_ocean.length) {
-      setTableRows(blueBody, 4, data.blue_ocean.map(item => `
+      // 优先渲染完整口径（每万搜索覆盖：title 匹配在榜商品），缺失时回落蓝海度近似。
+      const full = data.blue_ocean_full || {};
+      const fullMap = {};
+      (full.words || []).forEach(item => { fullMap[item.keyword] = item; });
+      setTableRows(blueBody, 5, data.blue_ocean.map(item => {
+        const fullItem = fullMap[item.keyword];
+        const grade = fullItem ? fullItem.grade : '--';
+        const coverText = fullItem
+          ? `${fullItem.cover_count} 品 · ${fullItem.cover_per_10k}/万`
+          : '--';
+        const titleAttr = fullItem ? `title="每万搜索覆盖 ${fullItem.cover_per_10k}（在榜 ${fullItem.cover_count} 品含该词）"` : '';
+        return `
         <tr>
           <td>${escapeHtml(item.keyword)}</td>
           <td class="num">${fmtInt(item.search_heat)}</td>
           <td class="num">${(item.pay_rate * 100).toFixed(2)}%</td>
           <td class="num">${item.score.toFixed(3)}</td>
-        </tr>`).join(''));
+          <td class="num" ${titleAttr}><span class="ui-badge ${fullItem && fullItem.grade === '高潜蓝海' ? 'ui-badge--success' : 'ui-badge--muted'}">${escapeHtml(grade)}</span> <small style="color:var(--text-secondary)">${coverText}</span></td>
+        </tr>`;
+      }).join(''));
+      const blueHint = document.querySelector('[data-mr-blue-ocean-hint]');
+      if (blueHint) {
+        blueHint.textContent = full && full.available
+          ? '近 7 天日均热度 × 支付转化率，剔除泛词；供给分级=每万搜索覆盖（最新日在榜商品 title 匹配）：<5 高潜 / 5-10 中等 / >10 供给偏多'
+          : '近 7 天日均搜索热度 × 支付转化率，剔除泛词；「每万供给覆盖」需在榜商品数据，缺失时仅按蓝海度排序';
+      }
     } else {
-      setTableRows(blueBody, 4, '');
+      setTableRows(blueBody, 5, '');
     }
     const renderTrend = (selector, rows) => {
       const node = document.querySelector(selector);

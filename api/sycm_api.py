@@ -405,7 +405,7 @@ def market_keyword_insights():
     口径迁移自月复盘 SKILL：蓝海=细分词高搜索×高转化（剔除泛词；供给覆盖
     字段未采集，用近似口径并标注）；趋势节点=近7天 vs 前置窗口日均增速。
     """
-    from services.market_monitor_service import keyword_insights
+    from services.market_monitor_service import keyword_insights, blue_ocean_words
     end_date = (request.args.get('end') or request.args.get('end_date')
                 or get_latest_date('sycm_market_search_rank'))
     start_date = request.args.get('start') or request.args.get('start_date')
@@ -419,6 +419,15 @@ def market_keyword_insights():
             freshness={'period': f'{start_date}~{end_date}'},
         )
     payload = keyword_insights(str(start_date), str(end_date), [tuple(row) for row in rows])
+    # 蓝海完整口径（SKILL 阶段二点五）：最新采集日在榜商品 title 匹配 → 每万覆盖。
+    # 与近似口径（蓝海度）并存：近似口径看「有没有需求」，完整口径看「供给挤不挤」。
+    item_titles = [row['title'] for row in _repo_market_item_rank_window_rows(
+        str(end_date), str(end_date))]
+    payload['blue_ocean_full'] = blue_ocean_words([tuple(row) for row in rows], item_titles)
+    if item_titles:
+        payload['limitations'] = [
+            '蓝海分级依据「每万搜索覆盖」（最新采集日在榜商品 title 匹配）：<5 高潜蓝海、5-10 中等、>10 供给偏多。'
+        ]
     return success(payload, freshness={'period': f'{start_date}~{end_date}'})
 
 

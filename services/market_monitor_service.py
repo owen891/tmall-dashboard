@@ -94,6 +94,51 @@ def _clean_days(rows):
     return by_date
 
 
+def blue_ocean_words(keyword_rows, item_titles):
+    """蓝海完整口径（SKILL 阶段二点五，硬约束）：
+
+    - 搜索量 = 词精确匹配的近 30 天日均搜索热度（不累加词根下其他词）；
+    - 商品覆盖 = 最新采集日在榜商品 title 含该词的商品数（product_id 去重）；
+    - 每万覆盖 = 覆盖数 ÷ (日均热度 / 10000)，<5 高潜蓝海、5-10 中等、>10 供给偏多；
+    - 泛词剔除、转化率作辅助维度。
+    """
+    by_date = _clean_days(keyword_rows)
+    dates = sorted(by_date)
+    if not dates:
+        return {'available': False, 'words': [],
+                'missing_inputs': ['sycm_market_search_rank']}
+    recent_dates = dates[-7:]
+    term_daily = defaultdict(list)
+    for date in recent_dates:
+        for keyword, metrics in by_date[date].items():
+            if str(keyword).strip().lower() in GENERIC_KEYWORDS or len(str(keyword).strip()) < 2:
+                continue
+            if metrics['search_heat'] is not None:
+                term_daily[str(keyword)].append(float(metrics['search_heat']))
+    max_rate = 0.0
+    words = []
+    for keyword, heats in term_daily.items():
+        daily_heat = sum(heats) / len(heats)
+        if daily_heat < 100:
+            continue
+        cover = sum(1 for title in item_titles if keyword in str(title or ''))
+        cover_per_10k = (cover / (daily_heat / 10000.0)) if daily_heat else None
+        words.append({
+            'keyword': keyword,
+            'search_heat': round(daily_heat, 1),
+            'cover_count': cover,
+            'cover_per_10k': (round(cover_per_10k, 2) if cover_per_10k is not None else None),
+            'grade': ('高潜蓝海' if cover_per_10k is not None and cover_per_10k < 5
+                      else '中等' if cover_per_10k is not None and cover_per_10k <= 10 else '供给偏多'),
+        })
+    return {
+        'available': bool(words),
+        'words': sorted(words, key=lambda item: (item['cover_per_10k'] is None,
+                                                 item['cover_per_10k'] or 0))[:12],
+        'missing_inputs': [] if words else ['sycm_market_item_rank.title'],
+    }
+
+
 def _avg_over_dates(by_date, dates, keyword, field):
     values = [by_date[d][keyword][field] for d in dates if keyword in by_date[d]
               and by_date[d][keyword][field] is not None]
