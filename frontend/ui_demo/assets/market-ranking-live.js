@@ -931,6 +931,125 @@
     }
   }
 
+  // ===== 关键词洞察（8大归类 / 蓝海 / 趋势节点）与竞店爆品排名变化 =====
+  // 对应后端 /api/sycm/market/keyword-insights 与 /api/sycm/market/rival-item-moves，
+  // 补齐月复盘 XMind「市场监控」缺口：8大归类 / 词根需求 / 趋势节点 / 蓝海 / 竞店爆品。
+  function setTableRows(node, colspan, html) {
+    if (!node) return;
+    node.innerHTML = html || `<tr><td colspan="${colspan}" style="text-align:center;color:var(--text-secondary);padding:14px">暂无数据</td></tr>`;
+  }
+
+  async function loadKeywordInsights() {
+    try {
+      const response = await fetch('/api/sycm/market/keyword-insights');
+      const result = await response.json();
+      renderKeywordInsights(result.ok ? result.data : null);
+    } catch (e) {
+      console.error('加载关键词洞察失败:', e);
+      setTableRows(document.querySelector('[data-mr-kw-categories-body]'), 4, '');
+      setTableRows(document.querySelector('[data-mr-blue-ocean-body]'), 4, '');
+    }
+  }
+
+  function renderKeywordInsights(data) {
+    const meta = document.querySelector('[data-mr-kw-insights-meta]');
+    if (meta) {
+      meta.textContent = data && data.available
+        ? `窗口 ${data.window.start} ~ ${data.window.end}（${data.window.day_count} 天）· 去重 ${data.unique_keyword_count} 词`
+        : '暂无搜索榜数据（等待 sycm_market_search_rank 采集）';
+    }
+    const categoriesBody = document.querySelector('[data-mr-kw-categories-body]');
+    if (data && data.available && data.categories.length) {
+      setTableRows(categoriesBody, 4, data.categories.map(cat => `
+        <tr>
+          <td style="font-weight:600">${escapeHtml(cat.label)}</td>
+          <td class="num">${fmtInt(cat.keyword_count)}</td>
+          <td class="num">${cat.heat_share === null || cat.heat_share === undefined ? '--' : (cat.heat_share * 100).toFixed(1) + '%'}</td>
+          <td>${escapeHtml(cat.top_keywords.map(item => item.keyword).join('、'))}</td>
+        </tr>`).join(''));
+    } else {
+      setTableRows(categoriesBody, 4, '');
+    }
+    const blueBody = document.querySelector('[data-mr-blue-ocean-body]');
+    if (data && data.available && data.blue_ocean.length) {
+      setTableRows(blueBody, 4, data.blue_ocean.map(item => `
+        <tr>
+          <td>${escapeHtml(item.keyword)}</td>
+          <td class="num">${fmtInt(item.search_heat)}</td>
+          <td class="num">${(item.pay_rate * 100).toFixed(2)}%</td>
+          <td class="num">${item.score.toFixed(3)}</td>
+        </tr>`).join(''));
+    } else {
+      setTableRows(blueBody, 4, '');
+    }
+    const renderTrend = (selector, rows) => {
+      const node = document.querySelector(selector);
+      if (data && data.available && rows.length) {
+        setTableRows(node, 4, rows.map(item => `
+          <tr>
+            <td>${escapeHtml(item.keyword)}</td>
+            <td class="num">${fmtInt(item.recent_heat)}</td>
+            <td class="num">${fmtInt(item.baseline_heat)}</td>
+            <td class="num" style="color:${item.growth > 0 ? 'var(--success-text)' : 'var(--danger-text)'}">${item.growth > 0 ? '+' : ''}${(item.growth * 100).toFixed(0)}%</td>
+          </tr>`).join(''));
+      } else {
+        setTableRows(node, 4, '');
+      }
+    };
+    const nodes = (data && data.available && data.trend_nodes) || {};
+    renderTrend('[data-mr-rising-body]', nodes.rising || []);
+    renderTrend('[data-mr-cooling-body]', nodes.cooling || []);
+  }
+
+  async function loadRivalItemMoves() {
+    try {
+      const response = await fetch('/api/sycm/market/rival-item-moves');
+      const result = await response.json();
+      renderRivalItemMoves(result.ok ? result.data : null);
+    } catch (e) {
+      console.error('加载竞店爆品变动失败:', e);
+      const body = document.querySelector('[data-mr-rival-moves-body]');
+      if (body) body.innerHTML = '<div class="market-list-empty">读取失败，请稍后重试</div>';
+    }
+  }
+
+  function renderRivalItemMoves(data) {
+    const meta = document.querySelector('[data-mr-rival-moves-meta]');
+    const body = document.querySelector('[data-mr-rival-moves-body]');
+    if (!meta || !body) return;
+    if (!data || !data.available || !data.shops.length) {
+      meta.textContent = '暂无商品榜数据（等待 sycm_market_item_rank 采集）';
+      body.innerHTML = '<div class="market-list-empty">暂无数据</div>';
+      return;
+    }
+    meta.textContent = `共 ${data.shop_count} 家店在榜，展示变动最活跃的 ${data.shops.length} 家`;
+    const fmtRank = (value) => (value === null || value === undefined ? '--' : `#${value}`);
+    body.innerHTML = data.shops.map(shop => {
+      const movers = (shop.movers || []).slice(0, 6);
+      const counts = `↑${shop.rising_count} ↓${shop.falling_count} 新进榜 ${shop.new_count} 退出 ${shop.exit_count}`;
+      const table = movers.length ? `
+        <div class="ui-table-wrap"><table class="ui-data-table market-entity-table">
+          <thead><tr><th>商品</th><th class="num">排名变化</th><th class="num">首日→末日</th><th class="num">访客数</th><th class="num">支付买家</th></tr></thead>
+          <tbody>${movers.map(item => `
+            <tr>
+              <td style="max-width:420px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escapeHtml(item.title)}">${escapeHtml(item.title)}</td>
+              <td class="num" style="color:${item.rank_change > 0 ? 'var(--success-text)' : 'var(--danger-text)'}">${item.rank_change > 0 ? '+' : ''}${item.rank_change}</td>
+              <td class="num">${fmtRank(item.first_rank)} → ${fmtRank(item.last_rank)}</td>
+              <td class="num">${fmtInt(item.uv)}</td>
+              <td class="num">${fmtInt(item.pay_buyer_count)}</td>
+            </tr>`).join('')}</tbody>
+        </table></div>` : '<div class="market-list-empty">该店窗口内无在榜商品变动</div>';
+      return `
+        <details class="market-rival-shop" style="margin-bottom:8px;border:1px solid var(--border-subtle,#e5e7eb);border-radius:8px;padding:8px 12px">
+          <summary style="cursor:pointer;font-weight:600">
+            ${escapeHtml(shop.shop_name)}
+            <span style="font-weight:400;color:var(--text-secondary);margin-left:8px">${counts} · 在榜 ${shop.item_count} 品（${shop.window.start} ~ ${shop.window.end}）</span>
+          </summary>
+          <div style="margin-top:8px">${table}</div>
+        </details>`;
+    }).join('');
+  }
+
   function bindSycmFilters() {
     setTimeout(() => {
       const cateFilter = document.querySelector('[data-sycm-cate-filter]');
@@ -974,6 +1093,8 @@ async function init() {
 
       await loadMarketEntities();
       await loadMarketSnapshots();
+      // 关键词洞察与竞店爆品变动（XMind 市场监控缺口补齐）。
+      await Promise.all([loadKeywordInsights(), loadRivalItemMoves()]);
 
       initMarketTrendDrawer();
       window.lucide?.createIcons();

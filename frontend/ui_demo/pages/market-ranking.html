@@ -196,6 +196,15 @@ body[data-page="market-ranking"] .market-entry-grid--block { margin-top: 0; padd
         </div>
       </section>
 
+      <!-- 竞店爆品排名变化（XMind：竞店-爆品排名变化） -->
+      <section class="market-section" data-market-panel="trends" hidden aria-label="竞店爆品排名变化">
+        <section class="ui-panel">
+          <div class="panel__header"><div><h3 class="panel__title">竞店爆品排名变化</h3><p class="panel__hint">近 14 天生意参谋商品榜首尾对比：排名上升 / 下降 / 新进榜 / 退出，按变动活跃度取 TOP15 店铺</p></div></div>
+          <p class="market-list-hint" data-mr-rival-moves-meta>正在读取竞店爆品变动…</p>
+          <div data-mr-rival-moves-body><div class="market-list-empty">加载中…</div></div>
+        </section>
+      </section>
+
       <div class="market-trend-modal" data-market-trend-modal data-modal-kind="detail" hidden>
         <div class="market-trend-modal__backdrop" data-market-trend-close></div>
         <section class="market-trend-modal__dialog" role="dialog" aria-modal="true" aria-labelledby="market-trend-modal-title">
@@ -294,6 +303,65 @@ body[data-page="market-ranking"] .market-entry-grid--block { margin-top: 0; padd
           <div class="market-chart-box">
             <div class="market-chart-title">标题词 TOP15</div>
             <div data-mr-title-kw></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 需求 8 大归类与核心词根（XMind：行业-关键词排行） -->
+      <section class="ui-panel" data-market-panel="keywords" hidden style="margin-top: var(--space-4);">
+        <div class="panel__header">
+          <div>
+            <h3 class="panel__title">需求 8 大归类与核心词根</h3>
+            <p class="panel__hint">类目 / 人群 / 属性 / 风格 / 场景 / 功能 / 品牌 / 价格；占比按窗口内搜索热度累加，核心词根取该类热度 TOP3</p>
+          </div>
+        </div>
+        <p class="market-list-hint" data-mr-kw-insights-meta>正在读取关键词归类…</p>
+        <div class="ui-table-wrap">
+          <table class="ui-data-table">
+            <thead><tr><th>归类</th><th class="num">覆盖词数</th><th class="num">搜索热度占比</th><th>核心词根（热度 TOP3）</th></tr></thead>
+            <tbody data-mr-kw-categories-body><tr><td colspan="4" style="text-align:center;color:var(--text-secondary);padding:18px">加载中…</td></tr></tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- 蓝海机会词（口径：细分词高搜索×高转化，剔除泛词） -->
+      <section class="ui-panel" data-market-panel="keywords" hidden style="margin-top: var(--space-4);">
+        <div class="panel__header">
+          <div>
+            <h3 class="panel__title">蓝海机会词 TOP10</h3>
+            <p class="panel__hint">近 7 天日均搜索热度 × 支付转化率，剔除泛词；「每万供给覆盖」字段未采集，当前为近似口径</p>
+          </div>
+        </div>
+        <div class="ui-table-wrap">
+          <table class="ui-data-table">
+            <thead><tr><th>关键词</th><th class="num">搜索热度（近7天日均）</th><th class="num">支付转化率</th><th class="num">蓝海度</th></tr></thead>
+            <tbody data-mr-blue-ocean-body><tr><td colspan="4" style="text-align:center;color:var(--text-secondary);padding:18px">加载中…</td></tr></tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- 趋势节点（近7天 vs 前置窗口搜索增速） -->
+      <section class="ui-panel" data-market-panel="keywords" hidden style="margin-top: var(--space-4);">
+        <div class="panel__header">
+          <div>
+            <h3 class="panel__title">趋势节点 · 起势词 / 退势词</h3>
+            <p class="panel__hint">近 7 天日均搜索热度对比前置窗口（至多 23 天，凑足 30 天口径），日均增速 ≥±50% 判定起势 / 退势</p>
+          </div>
+        </div>
+        <div class="market-keyword-grid" data-mr-trend-nodes-grid>
+          <div class="market-chart-box">
+            <div class="market-chart-title">起势词（需求上行）</div>
+            <div class="ui-table-wrap"><table class="ui-data-table">
+              <thead><tr><th>关键词</th><th class="num">近7天</th><th class="num">前期</th><th class="num">增速</th></tr></thead>
+              <tbody data-mr-rising-body><tr><td colspan="4" style="text-align:center;color:var(--text-secondary);padding:14px">加载中…</td></tr></tbody>
+            </table></div>
+          </div>
+          <div class="market-chart-box">
+            <div class="market-chart-title">退势词（需求降温）</div>
+            <div class="ui-table-wrap"><table class="ui-data-table">
+              <thead><tr><th>关键词</th><th class="num">近7天</th><th class="num">前期</th><th class="num">增速</th></tr></thead>
+              <tbody data-mr-cooling-body><tr><td colspan="4" style="text-align:center;color:var(--text-secondary);padding:14px">加载中…</td></tr></tbody>
+            </table></div>
           </div>
         </div>
       </section>
@@ -418,7 +486,7 @@ body[data-page="market-ranking"] .market-entry-grid--block { margin-top: 0; padd
 <script src="../assets/labels.js?v=20261001j"></script>
 <script src="../assets/shell.js?v=20261001j"></script>
 <script src="../assets/format.js?v=20261001j"></script><script src="../assets/ui-components.js?v=20261001j"></script>
-<script src="../assets/market-ranking-live.js?v=20261001j"></script>
+<script src="../assets/market-ranking-live.js?v=20261002a"></script>
 </body>
 </html>
 

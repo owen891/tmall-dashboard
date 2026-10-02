@@ -32,6 +32,8 @@ from repos.sycm_repo import (
     market_category_list as _repo_market_category_list,
     market_item_sample_daily as _repo_market_item_sample_daily,
     market_search_daily as _repo_market_search_daily,
+    market_keyword_heat_rows as _repo_market_keyword_heat_rows,
+    market_item_rank_window_rows as _repo_market_item_rank_window_rows,
     market_shop_entities as _repo_market_shop_entities,
     market_shop_entity_trend as _repo_market_shop_entity_trend,
     market_item_entities as _repo_market_item_entities,
@@ -394,6 +396,49 @@ def market_search_rank():
     limit = int(request.args.get('limit', 50))
     keywords = _repo_market_search_rank_rows(stat_date, cate_id, cate_name, limit)
     return success({'stat_date': stat_date, 'keywords': keywords})
+
+
+@sycm_bp.route('/market/keyword-insights', methods=['GET'])
+def market_keyword_insights():
+    """关键词洞察：8大归类+词根需求 / 蓝海机会词 / 趋势节点（XMind 市场监控-行业）。
+
+    口径迁移自月复盘 SKILL：蓝海=细分词高搜索×高转化（剔除泛词；供给覆盖
+    字段未采集，用近似口径并标注）；趋势节点=近7天 vs 前置窗口日均增速。
+    """
+    from services.market_monitor_service import keyword_insights
+    end_date = (request.args.get('end') or request.args.get('end_date')
+                or get_latest_date('sycm_market_search_rank'))
+    start_date = request.args.get('start') or request.args.get('start_date')
+    start_date = start_date or (date_type.fromisoformat(str(end_date)) - timedelta(days=29)).isoformat()
+    rows = _repo_market_keyword_heat_rows(str(start_date), str(end_date))
+    if not rows:
+        return success(
+            {'available': False, 'missing_inputs': ['sycm_market_search_rank'],
+             'categories': [], 'blue_ocean': [], 'trend_nodes': {'rising': [], 'cooling': []}},
+            availability='no-data',
+            freshness={'period': f'{start_date}~{end_date}'},
+        )
+    payload = keyword_insights(str(start_date), str(end_date), [tuple(row) for row in rows])
+    return success(payload, freshness={'period': f'{start_date}~{end_date}'})
+
+
+@sycm_bp.route('/market/rival-item-moves', methods=['GET'])
+def market_rival_item_moves():
+    """竞店爆品排名变化：商品榜窗口首尾对比（XMind 竞店-爆品排名变化）。"""
+    from services.market_monitor_service import rival_item_moves
+    end_date = (request.args.get('end') or request.args.get('end_date')
+                or get_latest_date('sycm_market_item_rank'))
+    start_date = request.args.get('start') or request.args.get('start_date')
+    start_date = start_date or (date_type.fromisoformat(str(end_date)) - timedelta(days=13)).isoformat()
+    rows = _repo_market_item_rank_window_rows(str(start_date), str(end_date))
+    if not rows:
+        return success(
+            {'available': False, 'missing_inputs': ['sycm_market_item_rank'], 'shops': []},
+            availability='no-data',
+            freshness={'period': f'{start_date}~{end_date}'},
+        )
+    payload = rival_item_moves(str(start_date), str(end_date), [tuple(row) for row in rows])
+    return success(payload, freshness={'period': f'{start_date}~{end_date}'})
 
 
 @sycm_bp.route('/market/categories', methods=['GET'])

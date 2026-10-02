@@ -707,6 +707,32 @@ def market_search_daily(start_date, end_date):
         conn.close()
 
 
+def market_keyword_heat_rows(start_date, end_date):
+    """搜索榜关键词×日原始行（供 8大归类 / 蓝海 / 趋势节点 计算）。"""
+    conn = get_connection()
+    try:
+        return conn.execute(
+            '''SELECT stat_date, keyword, search_heat, pay_rate, click_rate
+               FROM sycm_market_search_rank
+               WHERE stat_date BETWEEN ? AND ? ORDER BY stat_date''',
+            (start_date, end_date)).fetchall()
+    finally:
+        conn.close()
+
+
+def market_item_rank_window_rows(start_date, end_date):
+    """商品榜窗口原始行（供竞店爆品排名变化；含自家标记由服务层过滤）。"""
+    conn = get_connection()
+    try:
+        return conn.execute(
+            '''SELECT stat_date, item_id, title, shop_name, rank, is_self, uv, pay_buyer_count
+               FROM sycm_market_item_rank
+               WHERE stat_date BETWEEN ? AND ? ORDER BY stat_date, rank''',
+            (start_date, end_date)).fetchall()
+    finally:
+        conn.close()
+
+
 def market_shop_entities(start_date, end_date):
     """市场商品榜覆盖到的店铺实体列表（含逐日序列与最新值）。"""
     conn = get_connection()
