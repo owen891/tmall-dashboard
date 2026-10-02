@@ -54,3 +54,13 @@
   body[data-page="rival-analysis"] .rival-entry-card small { color: var(--text-secondary); font-size: var(--font-size-meta); line-height: 1.4; }
   body[data-page="rival-analysis"] .rival-filter-toolbar { margin: 0 0 var(--space-3); }
 }
+
+/* F3.2：单店逐日趋势折叠——移动端默认收起（80 行趋势表 ≈2,500px），
+   桌面由 JS 自动展开。summary 对齐 data-governance-disclosure 的视觉语言。 */
+.rival-trend-fold { margin-top: var(--space-4); }
+.rival-trend-fold > summary { display: flex; min-height: var(--control-height); align-items: center; justify-content: space-between; gap: var(--space-3); padding: var(--space-3) var(--space-4); border: 1px solid var(--border-default); border-radius: var(--panel-radius); background: var(--surface-base); color: var(--text-primary); cursor: pointer; font-size: var(--font-size-label); font-weight: 600; list-style-position: inside; }
+.rival-trend-fold > summary span:last-child { color: var(--text-secondary); font-size: var(--font-size-meta); font-weight: 400; }
+.rival-trend-fold[open] > summary { border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
+.rival-trend-fold__title { display: inline-flex; align-items: center; gap: var(--space-2); }
+.rival-trend-fold__title .lucide { width: 16px; height: 16px; }
+.rival-trend-fold > .ui-panel { margin-top: 0; border-top-left-radius: 0; border-top-right-radius: 0; }

@@ -497,6 +497,21 @@
     });
   }
 
+  // F3.2：单店逐日趋势折叠。桌面默认展开（保持原信息架构不变），移动端收起
+  // 把页面高度从 ~8,300px 压回 6,000px 内。展开瞬间要唤醒裸 echarts 实例
+  // （初始化在收起态里拿到 0×0 容器，echarts 自己不会监听尺寸恢复）。
+  const trendFold = $('[data-rival-trend-fold]');
+  if (trendFold) {
+    if (window.matchMedia('(min-width: 901px)').matches) trendFold.open = true;
+    trendFold.addEventListener('toggle', () => {
+      if (!trendFold.open) return;
+      ['rivalShopDetailChart'].forEach((id) => {
+        const node = document.getElementById(id);
+        if (node && window.echarts?.getInstanceByDom(node)) window.echarts.getInstanceByDom(node).resize();
+      });
+    });
+  }
+
   // 初始化
   async function init(detail) {
     try {
