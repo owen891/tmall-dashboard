@@ -152,3 +152,25 @@ def adjust_goal_period(year):
         return failure('CONFLICT', str(error), status=409)
     except (GoalValidationError, TypeError, ValueError) as error:
         return failure('VALIDATION_ERROR', str(error), status=422)
+
+
+@goals_bp.route('/api/goals/<int:year>/metric-targets', methods=['POST'])
+def set_metric_targets(year):
+    """净利润/推广费/净费比目标（按周期预置，独立于销售额守恒分配）。"""
+    if (denied := _legacy_scope_denied()):
+        return denied
+    payload = json_object(request)
+    try:
+        result = goals_service.set_metric_targets(
+            year, payload.get('period_type'), payload.get('period_key'),
+            payload.get('targets') or {}, payload.get('operator') or '运营人员',
+        )
+    except (GoalValidationError, TypeError, ValueError) as error:
+        return failure('VALIDATION_ERROR', str(error), status=422)
+    return success(
+        result,
+        status=201,
+        freshness={'period': str(year)},
+        evidence=[{'source': 'goal_metric_targets', 'year': year,
+                   'period_key': result.get('period_key'), 'metrics': sorted(result.get('targets', {}))}],
+    )

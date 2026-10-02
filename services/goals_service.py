@@ -231,7 +231,8 @@ class GoalsService:
         period_data = GoalsRepo.periods(year)
         return {'year': year, 'version': record['version'], 'months': period_data['months'],
                 'locked_months': period_data['locked_months'], 'levels': GoalsRepo.period_summaries(year),
-                'actual': GoalsRepo.actual_summaries(year)}
+                'actual': GoalsRepo.actual_summaries(year),
+                'metric_targets': GoalsRepo.list_metric_targets(year)}
 
     def adjust_period(self, year, version, period_type, period_key, target_amount, operator, reason, lock=False):
         if period_type not in {'year', 'quarter', 'month', 'week', 'date'}:
@@ -248,6 +249,37 @@ class GoalsService:
         if result is None:
             raise GoalConflictError('目标版本已更新，请刷新后重试')
         return {'year': year, 'version': result, 'period_type': period_type, 'period_key': period_key}
+
+    def set_metric_targets(self, year, period_type, period_key, targets, operator):
+        """净利润/推广费/净费比目标（不走年度守恒重分配，独立按周期预置）。
+
+        targets 里值为 None/缺省 = 清除该指标；全空即整行清空。
+        """
+        if not isinstance(year, int) or year < 2000 or year > 2100:
+            raise GoalValidationError('年份不合法')
+        if period_type not in {'year', 'quarter', 'month', 'week'}:
+            raise GoalValidationError('辅助目标支持年/季/月/周周期')
+        _validate_period_key(year, period_type, period_key)
+        if not isinstance(targets, dict):
+            raise GoalValidationError('目标值必须是对象')
+        normalized = {}
+        for metric, raw in targets.items():
+            if metric not in GoalsRepo.METRIC_TARGET_KEYS:
+                raise GoalValidationError(f'不支持的目标指标：{metric}')
+            if raw in (None, ''):
+                normalized[metric] = None
+                continue
+            value = _finite_number(raw, f'{metric} 目标值')
+            if value < 0:
+                raise GoalValidationError(f'{metric} 目标值不能为负数')
+            normalized[metric] = round(value, 4)
+        if not normalized:
+            raise GoalValidationError('至少提供一项目标指标')
+        GoalsRepo.upsert_metric_targets(year, period_type, period_key, normalized, operator or '')
+        return {
+            'year': year, 'period_type': period_type, 'period_key': period_key,
+            'targets': {k: v for k, v in normalized.items() if v is not None},
+        }
 
 
 goals_service = GoalsService()

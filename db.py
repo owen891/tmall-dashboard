@@ -815,6 +815,21 @@ def _run_init_migrations(conn):
     );
     CREATE INDEX IF NOT EXISTS idx_goal_adjustments_year ON goal_adjustments(year, created_at DESC);
 
+    -- 辅助目标（净利润/推广费/净费比）按周期预置：不参与年度守恒的日级重分配
+    -- （那些机制只适用于销售额），复盘页目标表在该指标未手填时读取这里。
+    CREATE TABLE IF NOT EXISTS goal_metric_targets (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        year INTEGER NOT NULL,
+        period_type TEXT NOT NULL,
+        period_key TEXT NOT NULL,
+        metric TEXT NOT NULL,
+        target_value REAL NOT NULL,
+        operator TEXT NOT NULL DEFAULT '',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(year, period_type, period_key, metric)
+    );
+    CREATE INDEX IF NOT EXISTS idx_goal_metric_targets_year ON goal_metric_targets(year, period_key);
+
     CREATE TABLE IF NOT EXISTS goal_locks (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         year INTEGER NOT NULL,

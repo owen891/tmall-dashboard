@@ -402,3 +402,49 @@ class GoalsRepo:
                    FROM goal_adjustments WHERE year = ? ORDER BY id DESC''', (year,)
             ).fetchall()
         return [dict(row) for row in rows]
+
+    #: 辅助目标白名单：净利润额 / 推广费 / 净费比（销售额走 daily_goals，不在此表）。
+    METRIC_TARGET_KEYS = ('profit', 'ad_spend', 'net_expense_ratio')
+
+    @staticmethod
+    def upsert_metric_targets(year, period_type, period_key, targets, operator):
+        """按 (year, period, metric) 幂等写入辅助目标；传 None 表示清除该指标。"""
+        with get_db() as connection:
+            try:
+                connection.execute('BEGIN IMMEDIATE')
+                for metric, value in targets.items():
+                    if value is None:
+                        connection.execute(
+                            '''DELETE FROM goal_metric_targets
+                               WHERE year = ? AND period_type = ? AND period_key = ? AND metric = ?''',
+                            (year, period_type, period_key, metric),
+                        )
+                        continue
+                    connection.execute(
+                        '''INSERT INTO goal_metric_targets
+                               (year, period_type, period_key, metric, target_value, operator)
+                           VALUES (?, ?, ?, ?, ?, ?)
+                           ON CONFLICT(year, period_type, period_key, metric) DO UPDATE SET
+                             target_value = excluded.target_value, operator = excluded.operator,
+                             created_at = CURRENT_TIMESTAMP''',
+                        (year, period_type, period_key, metric, float(value), operator or ''),
+                    )
+                connection.commit()
+            except Exception:
+                connection.rollback()
+                raise
+
+    @staticmethod
+    def list_metric_targets(year):
+        """返回 {period_key: {metric: value}}，按 period_key 聚合，供目标页与复盘页读取。"""
+        with get_db() as connection:
+            rows = connection.execute(
+                '''SELECT period_type, period_key, metric, target_value
+                   FROM goal_metric_targets WHERE year = ? ORDER BY period_key, metric''',
+                (year,),
+            ).fetchall()
+        result = {}
+        for row in rows:
+            entry = result.setdefault(row['period_key'], {})
+            entry[row['metric']] = float(row['target_value'])
+        return result

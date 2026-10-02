@@ -100,11 +100,37 @@
     previewTimer = window.setTimeout(loadPreview, 180);
   }
 
+  // 辅助目标（净利润/推广费/净费比）：与销售额守恒分配无关，按月独立预置，
+  // 复盘页目标表在未手填时自动读取（来源标记「目标页」）。
+  const METRIC_TARGET_FIELDS = [
+    ['profit', '净利润目标'],
+    ['ad_spend', '推广费目标'],
+    ['net_expense_ratio', '净费比目标'],
+  ];
+
+  function metricTargetInput(metricKey, monthKey, value, disabled) {
+    const input = document.createElement('input');
+    input.className = 'input goals-month-target goals-metric-target';
+    input.type = 'number';
+    input.min = '0';
+    input.step = metricKey === 'net_expense_ratio' ? '0.01' : '0.01';
+    input.inputMode = 'decimal';
+    input.value = value === undefined || value === null ? '' : Number(value).toFixed(2);
+    input.placeholder = '未设置';
+    input.setAttribute('data-goals-metric-target', metricKey);
+    input.setAttribute('data-goals-metric-month', monthKey);
+    input.setAttribute('aria-label', `${monthKey}${METRIC_TARGET_FIELDS.find(([key]) => key === metricKey)?.[1] || metricKey}`);
+    input.disabled = disabled;
+    return input;
+  }
+
   function renderMonths(periods) {
     const locked = new Set(periods.locked_months || []);
+    const metricTargets = periods.metric_targets || {};
     monthsBody.replaceChildren(...(periods.months || []).map((month) => {
       const row = document.createElement('tr');
       const completeLocked = locked.has(month.period_key);
+      const monthMetricTargets = metricTargets[month.period_key] || {};
       const monthCell = row.insertCell(); monthCell.textContent = month.period_key;
       const targetCell = row.insertCell(); targetCell.className = 'num';
       const input = document.createElement('input');
@@ -119,6 +145,10 @@
       input.disabled = completeLocked || !canEdit();
       input.setAttribute('aria-label', `${month.period_key}月度目标`);
       targetCell.append(input);
+      METRIC_TARGET_FIELDS.forEach(([metricKey]) => {
+        const cell = row.insertCell(); cell.className = 'num';
+        cell.append(metricTargetInput(metricKey, month.period_key, monthMetricTargets[metricKey], !canEdit()));
+      });
       const sourceCell = row.insertCell();
       const source = document.createElement('span');
       source.className = `ui-badge ${month.source === 'manual' ? 'ui-badge--warning' : 'ui-badge--muted'}`;
@@ -134,22 +164,51 @@
         actionsCell.textContent = '--';
       } else {
         const actions = document.createElement('div'); actions.className = 'goals-month-actions';
-        const save = makeIconButton('save', '保存本月目标', () => saveMonth(month.period_key, input));
+        const save = makeIconButton('save', '保存本月销售额目标', () => saveMonth(month.period_key, input));
+        const saveMetrics = makeIconButton('target', '保存辅助目标（净利润/推广费/净费比）', () => saveMetricTargets(month.period_key, row));
         const lock = makeIconButton('lock', '锁定本月目标', () => lockMonth(month.period_key));
         save.disabled = !canEdit();
+        saveMetrics.disabled = !canEdit();
         lock.disabled = !canLock();
-        actions.append(save, lock); actionsCell.append(actions);
+        actions.append(save, saveMetrics, lock); actionsCell.append(actions);
       }
       return row;
     }));
-    if (!periods.months?.length) setTableMessage(monthsBody, 5, '该年度尚未创建目标');
+    if (!periods.months?.length) setTableMessage(monthsBody, 8, '该年度尚未创建目标');
     window.lucide?.createIcons();
+  }
+
+  async function saveMetricTargets(periodKey, row) {
+    if (!current || pendingMonths.has(`metrics:${periodKey}`)) return;
+    const targets = {};
+    row.querySelectorAll('[data-goals-metric-target]').forEach((input) => {
+      const metric = input.getAttribute('data-goals-metric-target');
+      const raw = String(input.value || '').trim();
+      targets[metric] = raw === '' ? null : Number(raw);
+      if (raw !== '' && !Number.isFinite(targets[metric])) targets.invalid = true;
+    });
+    if (targets.invalid) { setStatus('辅助目标必须是有效数字（留空表示清除）'); return; }
+    if (Object.values(targets).every((value) => value === null)) { setStatus('辅助目标至少填写一项（留空表示清除）'); return; }
+    pendingMonths.add(`metrics:${periodKey}`);
+    row.querySelectorAll('[data-goals-metric-target]').forEach((input) => { input.disabled = true; });
+    try {
+      await DemoApi.domainRequest(`/api/goals/${current.year}/metric-targets`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ period_type: 'month', period_key: periodKey, targets, operator: '运营人员' }),
+      });
+      setStatus(`已保存 ${periodKey} 辅助目标（净利润/推广费/净费比）`);
+      await load(current.year);
+    } catch (error) { setStatus(error.message || '辅助目标保存失败'); }
+    finally {
+      pendingMonths.delete(`metrics:${periodKey}`);
+      row.querySelectorAll('[data-goals-metric-target]').forEach((input) => { input.disabled = !canEdit(); });
+    }
   }
 
   async function load(year, replaceAnnualTarget = false) {
     const token = ++loadToken;
     renderDataState('loading', { message: '正在加载年度目标…' });
-    setTableMessage(monthsBody, 5, '正在加载月度执行计划…');
+    setTableMessage(monthsBody, 8, '正在加载月度执行计划…');
     try {
       const goal = await DemoApi.domainRequest(`/api/goals/${year}`);
       if (token !== loadToken) return;
@@ -159,7 +218,7 @@
         current = null; capabilities = {};
         versionLabel.textContent = '该年度尚未创建目标';
         renderDataState('no-data', { message: '保存年度目标后显示月度执行计划' });
-        setTableMessage(monthsBody, 5, '保存年度目标后显示月度执行计划');
+        setTableMessage(monthsBody, 8, '保存年度目标后显示月度执行计划');
         queuePreview();
         return;
       }
@@ -178,7 +237,7 @@
       current = null; capabilities = {};
       versionLabel.textContent = '目标加载失败';
       renderDataState('calculation-failed', { message: error.message || '目标加载失败', retry: () => load(year, replaceAnnualTarget) });
-      setTableMessage(monthsBody, 5, error.message || '目标加载失败');
+      setTableMessage(monthsBody, 8, error.message || '目标加载失败');
       queuePreview();
     }
   }
