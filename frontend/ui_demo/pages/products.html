@@ -62,6 +62,28 @@
           </div>
         </section>
 
+        <section class="ui-panel" data-product-matrix-board aria-labelledby="productMatrixTitle">
+          <div class="panel__header">
+            <div>
+              <h3 class="panel__title" id="productMatrixTitle">货品矩阵地图</h3>
+              <p class="panel__hint" data-matrix-status>引流款（费比≥30% 付费主投）/ 利润款（费比&lt;10% 扫流）/ 动销款（不推广），亏损与角色正交</p>
+            </div>
+            <div class="panel__tools">
+              <button class="ui-button ui-button--ghost" type="button" data-matrix-apply-tier>分层写回 tier</button>
+            </div>
+          </div>
+          <div class="product-matrix-grid" style="display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr);gap:var(--space-4)">
+            <div class="market-chart-box" style="min-width:0">
+              <div class="market-chart-title">推广强度 × 引流能力（气泡=净销售额）</div>
+              <div data-matrix-scatter style="min-height:320px">加载中…</div>
+            </div>
+            <div class="market-chart-box" style="min-width:0">
+              <div class="market-chart-title">分层统计</div>
+              <div data-matrix-stats>加载中…</div>
+            </div>
+          </div>
+        </section>
+
         <section class="ui-panel">
           <div class="panel__header product-list__header">
             <div>
@@ -255,9 +277,10 @@
   <script src="../assets/pages/products/query-model.js?v=20261001j"></script>
   <script src="../assets/pages/products/column-settings.js?v=20261001j"></script>
   <script src="../assets/pages/products/rule-board.js?v=20261001j"></script>
+  <script src="../assets/pages/products/matrix-board.js?v=20261002a"></script>
   <script src="../assets/pages/products/table-render.js?v=20261001j"></script>
   <script src="../assets/pages/products/batch-ops.js?v=20261001j"></script>
   <script src="../assets/product-detail-dialog.js?v=20261001j"></script>
-  <script src="../assets/format.js?v=20261001j"></script><script src="../assets/products-live.js?v=20261001j"></script>
+  <script src="../assets/format.js?v=20261002a"></script><script src="../assets/products-live.js?v=20261002a"></script>
 </body>
 </html>

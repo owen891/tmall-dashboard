@@ -2049,6 +2049,36 @@ def _products_block(conn, period, category_label=None, compare_range=None):
         for row in structure_rows[:5]
     ]
 
+    # 产品分层汇总（XMind「下一步规划-产品分层」；口径与矩阵地图同源：
+    # 引流=费比≥30%有花费、利润=利润>0 且费比<10%、动销=有动销无花费）。
+    # 复盘页只引用汇总数字，完整矩阵在 products 页矩阵地图。
+    segment_summary = {}
+    for product_id, row in current.items():
+        gsv_value = float(row.get('gsv') or 0)
+        spend_value = float(row.get('ad_spend') or 0)
+        profit_value = row.get('operating_profit')
+        ad_ratio_value = (spend_value / gsv_value) if gsv_value and spend_value else None
+        if ad_ratio_value is not None and ad_ratio_value >= 0.30:
+            segment = '引流款'
+        elif profit_value is not None and float(profit_value) > 0 and (ad_ratio_value is None or ad_ratio_value < 0.10):
+            segment = '利润款'
+        elif gsv_value > 0 and not spend_value:
+            segment = '动销款'
+        else:
+            segment = '其他'
+        entry = segment_summary.setdefault(segment, {'count': 0, 'gsv': 0.0})
+        entry['count'] += 1
+        entry['gsv'] += gsv_value
+    segment_stats = [
+        {
+            'segment': key,
+            'count': value['count'],
+            'gsv': round(value['gsv'], 2),
+            'gsv_share': (round(value['gsv'] / total_gsv, 6) if total_gsv else None),
+        }
+        for key, value in sorted(segment_summary.items(), key=lambda pair: -pair[1]['gsv'])
+    ]
+
     return {
         'top': [with_meta(product_id) for product_id in top_ids],
         'decline': [with_meta(product_id) for product_id in decline_ids],
@@ -2064,6 +2094,7 @@ def _products_block(conn, period, category_label=None, compare_range=None):
             'sell_through_rate': (sold_count / listed_count if listed_count else None),
             'new_sold_count': new_sold_count,
             'category_structure': category_structure,
+            'segment_stats': segment_stats,
         },
     }
 

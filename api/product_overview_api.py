@@ -140,3 +140,48 @@ def product_overview_rule_results():
         freshness={"period": period, "status": status, **category_filters},
         evidence=[{"source": "monthly_data", "row_count": eligible_count}],
     )
+
+
+@product_overview_bp.get("/api/product-overview/matrix")
+def product_overview_matrix():
+    """货品矩阵地图：单品自动分层（引流/利润/动销）+ 四象限散点数据。
+
+    口径（2026-10-02 用户拍板）：费比 = 推广花费 ÷ GSV；引流款费比≥30%、
+    利润款>0 且费比<10%、动销款有动销无花费；亏损与角色正交（loss 标志）。
+    """
+    from services.product_matrix_service import product_matrix
+    period = request.args.get("period", "").strip() or None
+    category_filters = category_filters_from_request()
+    with get_db() as conn:
+        matrix = product_matrix(conn, period, category_label=category_filters.get("shop_label"))
+    availability = "available" if matrix.get("available") else "no-data"
+    missing_inputs = matrix.get("missing_inputs") or ([] if availability == "available" else ["daily_data"])
+    return success(
+        matrix,
+        availability=availability,
+        evidence_level=evidence_level_for(availability, missing_inputs=missing_inputs),
+        missing_inputs=missing_inputs,
+        limitations=limitations_for(availability, missing_inputs=missing_inputs),
+        freshness={"period": matrix.get("month"), **category_filters},
+        evidence=[{"source": "daily_data", "period": matrix.get("month"),
+                   "row_count": len(matrix.get("items") or [])}],
+    )
+
+
+@product_overview_bp.post("/api/product-overview/matrix/apply-tier")
+def product_overview_matrix_apply():
+    """把算法分层写回 products.tier：仅覆盖空值或算法自填（tier_source=matrix）的行。"""
+    from services.product_matrix_service import apply_tier_writeback, product_matrix
+    period = request.args.get("period", "").strip() or None
+    category_filters = category_filters_from_request()
+    with get_db() as conn:
+        matrix = product_matrix(conn, period, category_label=category_filters.get("shop_label"))
+        if not matrix.get("available"):
+            return failure("NO_DATA", "当前周期没有可分层的商品数据", status=422)
+        result = apply_tier_writeback(conn, matrix)
+        conn.commit()
+    return success(
+        {"period": matrix.get("month"), **result},
+        evidence=[{"source": "products.tier", "period": matrix.get("month"),
+                   "updated": result.get("updated", 0)}],
+    )

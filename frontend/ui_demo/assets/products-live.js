@@ -399,6 +399,23 @@
         state, $, number, currentMonthPeriod, syncUrlState, load,
       })
     : null;
+  // 货品矩阵地图模块（XMind：产品分层；费比口径=花费÷GSV，2026-10-02 拍板）
+  const matrixBoard = window.createProductMatrixBoard
+    ? window.createProductMatrixBoard({
+        renderDataState: (node, stateName, details) => DemoApi.renderDataState(node, stateName, details),
+      })
+    : null;
+  if (matrixBoard) {
+    matrixBoard.bind();
+    matrixBoard.load();
+    if (eventScope) {
+      eventScope.on(window, 'tmall:date-range-change', () => matrixBoard.load());
+      eventScope.on(window, 'tmall:refresh', () => matrixBoard.load());
+    } else {
+      window.addEventListener('tmall:date-range-change', () => matrixBoard.load());
+      window.addEventListener('tmall:refresh', () => matrixBoard.load());
+    }
+  }
   // 批量操作/复制选中模块（从本闭包切出，依赖显式注入）
   const batchOps = window.TmallProducts?.createBatchOps
     ? window.TmallProducts.createBatchOps({
