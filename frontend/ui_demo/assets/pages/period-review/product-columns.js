@@ -208,6 +208,13 @@
     // 否则 table-layout: auto 会把多出来的空间按内容长度比例分给标题，标题列永远最宽。
     const PRODUCT_HEAD_WIDTH = { id: '132px', title: '260px' };
 
+    // 可点看周折线的指标列（XMind「点击字段指标 → 周维度折线预览」）：
+    // 键与后端 _product_trend 周序列字段一一对应；prev_/share/anomaly 等派生列不在此列。
+    const TRENDABLE_METRIC_KEYS = new Set([
+      'gsv', 'net_sales', 'visitors', 'buyers', 'payment_qty', 'conversion',
+      'aov', 'refund_rate', 'ad_spend', 'ad_ratio', 'operating_profit', 'profit_rate',
+    ]);
+
     function renderProductTable(rows, boardKey) {
       if (!rows || !rows.length) return null;
       const board = boardOf(boardKey);
@@ -221,7 +228,23 @@
         ...columns.map((col) => {
           if (col.kind === 'title') return productTitleCell(row);
           const cell = productCellValue(row, col, board.withDelta);
-          return h('td', { class: cell.cls, text: cell.text });
+          // 数值指标单元格可点：点哪个字段看哪个字段的近 8 周折线。
+          const clickable = TRENDABLE_METRIC_KEYS.has(col.key)
+            && row[col.key] !== null && row[col.key] !== undefined;
+          const td = h('td', { class: cell.cls + (clickable ? ' pr-cell-trend' : ''), text: cell.text });
+          if (clickable) {
+            td.setAttribute('title', '点击查看该指标近 8 周折线');
+            td.setAttribute('role', 'button');
+            td.setAttribute('tabindex', '0');
+            td.addEventListener('click', () => openProductTrend(row, col.key));
+            td.addEventListener('keydown', (event) => {
+              if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault();
+                openProductTrend(row, col.key);
+              }
+            });
+          }
+          return td;
         }),
         h('td', { class: 'pr-table__action' },
           h('button', {

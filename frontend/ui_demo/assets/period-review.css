@@ -2291,3 +2291,19 @@ body[data-page="period-review"] .demo-topbar__filters {
   outline: 2px solid var(--focus-ring);
   outline-offset: 2px;
 }
+
+/* ---------- 可点看周折线的指标单元格（XMind：点击字段指标 → 周维度折线预览） ----------
+   悬停时给下划线+指针提示可点，键盘焦点环沿用全局 focus-visible 约定。 */
+.pr-table td.pr-cell-trend {
+  cursor: pointer;
+  text-decoration: underline dotted transparent;
+  text-underline-offset: 3px;
+  transition: text-decoration-color var(--transition-fast, 120ms);
+}
+.pr-table td.pr-cell-trend:hover {
+  text-decoration-color: var(--brand-text, #4f46e5);
+}
+.pr-table td.pr-cell-trend:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 1px;
+}
