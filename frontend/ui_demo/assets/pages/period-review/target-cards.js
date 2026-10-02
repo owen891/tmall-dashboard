@@ -103,8 +103,14 @@
         const gapText = gap === null || gap === undefined
           ? '—'
           : `${gap > 0 ? '+' : ''}${formatTargetValue(gap, row.format)}`;
+        const labelCell = h('td');
+        labelCell.append(row.label);
+        // 目标来源标注：目标页按月预置（复盘未手填时生效），提示数据出处。
+        if (row.target_source === 'goals_page') {
+          labelCell.append(h('span', { class: 'pr-chip', text: '目标页', title: '该目标来自经营目标页的月度预置' }));
+        }
         const cells = [
-          h('td', { text: row.label }),
+          labelCell,
           h('td', { class: 'num', text: formatTargetValue(row.target, row.format) }),
           h('td', { class: 'num', text: formatTargetValue(row.actual, row.format) }),
           h('td', { class: `num ${rateClass}`.trim(), text: rateText }),
@@ -143,7 +149,14 @@
       const rows = saved.map((row) => {
         const spec = TARGET_SPEC_BY_KEY[row.key];
         const target = spec ? targetFormValue(spec) : null;
-        if (target === null) return { ...row, target: null, gap: null, achieved_rate: null };
+        if (target === null) {
+          // 输入为空时：目标页预置的辅助目标仍然生效（来源=goals_page 的行保留），
+          // 复盘里手填过的行按「已清除」处理，与旧口径一致。
+          if (row.target_source !== 'goals_page') {
+            return { ...row, target: null, target_source: null, gap: null, achieved_rate: null };
+          }
+          return row;
+        }
         const actual = row.actual;
         const gap = target - (actual || 0);
         // 与后端 _target_rows 同口径：reverse_rate 的指标取倒数（净费比），其余为实际÷目标。

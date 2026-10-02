@@ -684,12 +684,25 @@
   }
 
   // ------------------------------------------------- 单品周趋势预览（弹窗）
-  // 点击货品榜「趋势」按钮：近 8 周销售额/访客/转化 SVG 折线，无图表库依赖。
+  // 点击货品榜「趋势」按钮：近 8 周指标 SVG 折线，无图表库依赖。
+  // 字段集对齐后端 _product_trend 周序列（XMind「点击字段指标 → 周维度折线」）：
+  // 弹窗顶部以字段 chips 切换，默认展示净销售额。
   let trendDialog = null;
+  let trendMetricKey = 'net_sales';
+  let trendCache = null; // {productId, data}——同一商品切字段不重复请求。
   const TREND_METRICS = [
+    ['net_sales', '净销售额（元）', 'money'],
     ['gsv', '销售额（元）', 'money'],
     ['visitors', '访客数', 'number'],
-    ['conversion', '转化率', 'percent'],
+    ['buyers', '支付买家数', 'number'],
+    ['payment_qty', '销售件数', 'number'],
+    ['conversion', '支付转化率', 'percent'],
+    ['aov', '客单价（元）', 'money'],
+    ['refund_rate', '退款率', 'percent'],
+    ['ad_spend', '推广花费（元）', 'money'],
+    ['ad_ratio', '费比', 'percent'],
+    ['operating_profit', '经营利润（元）', 'money'],
+    ['profit_rate', '利润率', 'percent'],
   ];
 
   function trendSvg(rows, key, format) {
@@ -733,7 +746,8 @@
     return wrap;
   }
 
-  async function openProductTrend(row) {
+  async function openProductTrend(row, metricKey) {
+    if (metricKey) trendMetricKey = metricKey;
     if (!trendDialog) {
       trendDialog = h('dialog', { class: 'pr-action-dialog pr-trend-dialog' });
       document.body.append(trendDialog);
@@ -752,24 +766,42 @@
 
     let data = null;
     let error = null;
-    try {
-      const response = await DemoApi.domainRequest(
-        `/api/period-reviews/product-trend/${encodeURIComponent(row.product_id)}?weeks=8`);
-      data = response.data;
-    } catch (err) { error = err; }
+    if (trendCache && trendCache.productId === row.product_id) {
+      data = trendCache.data;
+    } else {
+      try {
+        const response = await DemoApi.domainRequest(
+          `/api/period-reviews/product-trend/${encodeURIComponent(row.product_id)}?weeks=8`);
+        data = response.data;
+        trendCache = { productId: row.product_id, data };
+      } catch (err) { error = err; }
+    }
 
     const loading = trendDialog.querySelector('[data-pr-trend-loading]');
     const body = error || !data || !data.available || !data.weeks.length
       ? h('div', { class: 'pr-diagnostic-block' },
         h('p', { class: 'pr-material__empty', text: error ? `趋势读取失败：${describeRequestError(error)}` : '该商品近 8 周没有日数据，无法生成趋势。' }))
-      : h('div', { class: 'pr-diagnostic-block' },
-        ...TREND_METRICS.map(([key, label, format]) => h('div', { class: 'pr-trend-metric' },
-          h('h4', { text: label }),
-          trendSvg(data.weeks, key, format),
-          h('div', { class: 'pr-trend-labels' },
-            ...data.weeks.map((week, index) => h('span', { text: `W${index + 1}`, title: `${week.label}（${week.start} ~ ${week.end}）` }))),
-        )),
-        h('p', { class: 'pr-material__empty', text: '横轴 W1→W8 为最近 8 个完整月内周，悬停可见具体周区间；本周为进行中数据不纳入。' }));
+      : (() => {
+        // 「点击字段指标看折线」：字段 chips 即点即换；无数据点的字段禁用。
+        const active = TREND_METRICS.find(([key]) => key === trendMetricKey) || TREND_METRICS[0];
+        const hasPoints = (key) => data.weeks.some((week) => week[key] !== null && week[key] !== undefined);
+        const chips = TREND_METRICS.map(([key, label]) => h('button', {
+          type: 'button',
+          class: `pr-chip pr-trend-chip${key === active[0] ? ' is-active' : ''}`,
+          disabled: !hasPoints(key),
+          text: label.replace(/（元）$/, ''),
+          onclick: () => { trendMetricKey = key; openProductTrend(row, key); },
+        }));
+        return h('div', { class: 'pr-diagnostic-block' },
+          h('div', { class: 'pr-chip-row pr-trend-chips' }, ...chips),
+          h('div', { class: 'pr-trend-metric' },
+            h('h4', { text: active[1] }),
+            trendSvg(data.weeks, active[0], active[2]),
+            h('div', { class: 'pr-trend-labels' },
+              ...data.weeks.map((week, index) => h('span', { text: `W${index + 1}`, title: `${week.label}（${week.start} ~ ${week.end}）` }))),
+          ),
+          h('p', { class: 'pr-material__empty', text: '横轴 W1→W8 为最近 8 个完整月内周，悬停可见具体周区间；比率列按周总量重推，与榜单口径一致；本周为进行中数据不纳入。' }));
+      })();
     if (loading) loading.replaceWith(body);
   }
 
@@ -823,6 +855,30 @@
       scroll, null);
   }
 
+  /** 货品汇总卡（对齐 XMind「货品-汇总」）：在架/动销/动销率 + 60 天新品动销 + 类目结构。 */
+  function goodsSummaryPanel(summary) {
+    const info = summary && (summary.sold_count !== undefined) ? summary : null;
+    if (!info) return null;
+    const items = [];
+    const push = (label, value) => items.push(h('div', { class: 'pr-target__item' }, h('span', { text: label }), h('strong', { text: value })));
+    push('在架商品', info.listed_count === null || info.listed_count === undefined ? '不可判断' : formatValue(info.listed_count, 'number'));
+    push('本期动销', formatValue(info.sold_count, 'number'));
+    push('动销率', info.sell_through_rate === null || info.sell_through_rate === undefined ? '不可判断' : `${(info.sell_through_rate * 100).toFixed(2)}%`);
+    push('60天新品动销', formatValue(info.new_sold_count, 'number'));
+    const structure = (info.category_structure || []).filter((row) => row.net_sales !== null);
+    const structureBody = structure.length
+      ? h('ul', { class: 'pr-linked-list' }, ...structure.map((row) => h('li', { class: 'pr-linked-item' },
+        h('span', { class: 'pr-table__title-text', title: row.category, text: row.category || '未分类' }),
+        h('span', { class: 'num', text: `${formatValue(row.net_sales, 'money')}${row.share === null || row.share === undefined ? '' : ` · ${(row.share * 100).toFixed(1)}%`}` }))))
+      : null;
+    return analysisPanel('货品汇总',
+      '在架=商品库在售总数；动销=本期有正向销售的商品数。类目结构按净销售额占比取 TOP5。',
+      h('div', { class: 'pr-materials' },
+        materialBlock('货品规模', h('div', { class: 'pr-target' }, ...items)),
+        structureBody ? materialBlock('净销售额结构 TOP5（按类目）', structureBody) : materialBlock('净销售额结构 TOP5（按类目）', null, '本期没有类目可归的数据。'),
+      ), null);
+  }
+
   function renderProductAnalysis(context) {
     if (!els.productAnalysis) return;
     productColumns.rememberContext(context);
@@ -830,8 +886,9 @@
     // 每张榜单一份字段设置工具栏：列开关按榜独立（默认列随榜单定位差异化）。
     const board = productColumns.productBoardPanel;
     els.productAnalysis.replaceChildren(
+      goodsSummaryPanel(products.summary),
       problemItemsPanel(products.problem_items),
-      board('销售贡献 TOP10', '按本期销售额 排序，先识别需要保住的核心商品。', products.top, 'top', '本期没有正向销售商品。'),
+      board('净销售额 TOP10', '按本期净销售额排序（净口径与达成率一致），先识别需要保住的核心商品。', products.top, 'top', '本期没有正向销售商品。'),
       board('下滑商品 TOP10', '按相对上期的销售额变化排序，作为异常诊断入口。', products.decline, 'decline', '缺少可比周期数据。'),
       board('付费单品 TOP10', '按本期推广花费排序，看钱主要花在哪些商品上（广告-单品维度入口）。', products.paid, 'paid', '本期没有推广花费记录。'),
       board('盈利 TOP10', '按本期经营利润（支付预估）排序的赚钱商品。', products.profit, 'profit', '本期没有正利润商品。'),
@@ -857,7 +914,7 @@
     // 复盘页只做摘要，深度分析跳市场分析页（带复盘区间日期）。
     const marketLink = h('p', { class: 'pr-market-links' },
       h('a', { class: 'pr-anchor-link', href: `/market-ranking?start=${period.start || ''}&end=${period.end || ''}`, text: '行业趋势 / 蓝海市场 →' }),
-      h('a', { class: 'pr-anchor-link', href: `/keyword-promotion?start=${period.start || ''}&end=${period.end || ''}`, text: '关键词归类 / 词根需求 →' }));
+      h('a', { class: 'pr-anchor-link', href: `/market-ranking?start=${period.start || ''}&end=${period.end || ''}`, text: '关键词归类 / 词根需求 / 竞店爆品 →' }));
     els.marketAnalysis.replaceChildren(
       analysisPanel('市场监控（摘要 + 深链）', '先看可复现事实，再看系统观察；价格、利润和评价结论仍需补证。', h('div', null, marketLink, renderMarket(context.market)), '暂无市场批次。'),
     );
@@ -1928,10 +1985,43 @@
     const push = (label, value) => items.push(h('div', { class: 'pr-target__item' }, h('span', { text: label }), h('strong', { text: value })));
     push('推广花费', formatValue(ads.current.ad_spend, 'money'));
     push('投产比', formatValue(ads.current.roi, 'decimal'));
+    // 汇总层直接 ROI（XMind「广告-汇总：增加直接 ROI」）：直接成交 ÷ 花费，同源口径。
+    push('直接投产', formatValue(ads.direct_roi, 'decimal'));
     push('费比', formatValue(ads.current.ad_ratio, 'percent'));
     if (cmp && ads.delta && ads.delta.ad_spend_change !== undefined) push(`${cmp}花费变化`, `${ads.delta.ad_spend_change > 0 ? '+' : ''}${ads.delta.ad_spend_change}%`);
+    if (cmp && ads.delta && ads.delta.direct_roi_delta !== undefined) push(`${cmp}直接投产变化`, `${ads.delta.direct_roi_delta > 0 ? '+' : ''}${ads.delta.direct_roi_delta}`);
     if (cmp && ads.delta && ads.delta.ad_ratio_delta_pt !== undefined) push(`${cmp}费比变化`, `${ads.delta.ad_ratio_delta_pt > 0 ? '+' : ''}${ads.delta.ad_ratio_delta_pt}pt`);
-    return h('div', { class: 'pr-materials' }, materialBlock('广告本期', h('div', { class: 'pr-target' }, ...items)));
+    const blocks = [materialBlock('广告本期', h('div', { class: 'pr-target' }, ...items))];
+    // 三渠道推广成交金额合计（XMind「推广成交金额增加三渠道金额」）。
+    const channelTotals = ads.channel_totals;
+    const scopeMissing = channelTotals && (channelTotals.missing_inputs || []).includes('promotion_category_scope');
+    if (scopeMissing) {
+      blocks.push(materialBlock('推广成交金额 · 渠道拆分', null,
+        '渠道数据来自计划粒度，不带商品映射，无法按当前品类过滤；切回「全部品类」可查看全店渠道拆分。'));
+    } else if (channelTotals && channelTotals.groups && channelTotals.groups.length) {
+      const shareText = (value) => (value === null || value === undefined ? '--' : `${(value * 100).toFixed(1)}%`);
+      const table = h('div', { class: 'pr-breakdown-table-wrap' }, h('table', { class: 'pr-table pr-breakdown-table' },
+        h('thead', null, h('tr', null,
+          h('th', { text: '渠道' }),
+          h('th', { class: 'num', text: '花费' }),
+          h('th', { class: 'num', text: '推广成交金额' }),
+          h('th', { class: 'num', text: '成交占比' }),
+          h('th', { class: 'num', text: 'ROI' }),
+        )),
+        h('tbody', null, ...channelTotals.groups.map((group) => h('tr', null,
+          h('td', { text: group.name }),
+          h('td', { class: 'num', text: formatValue(group.ad_spend, 'money') }),
+          h('td', { class: 'num', text: formatValue(group.attributed_payment, 'money') }),
+          h('td', { class: 'num', text: shareText(group.payment_share) }),
+          h('td', { class: 'num', text: formatValue(group.roi, 'decimal') }),
+        )))));
+      const sourceNote = channelTotals.source === 'campaign_month'
+        ? '渠道行来自月度汇总（该周期没有日粒度渠道数据）。'
+        : `渠道行覆盖 ${channelTotals.sample_days} 天日粒度数据。`;
+      blocks.push(materialBlock('推广成交金额 · 渠道拆分', h('div', null, table,
+        h('p', { class: 'pr-material__empty', text: sourceNote }))));
+    }
+    return h('div', { class: 'pr-materials' }, ...blocks);
   }
 
   /** 周月互汇素材块：月复盘显示本月各周结论，周复盘显示上月月复盘根因参考。

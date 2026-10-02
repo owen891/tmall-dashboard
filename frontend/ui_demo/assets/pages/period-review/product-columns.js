@@ -51,8 +51,9 @@
       { key: 'profit_rate', label: '利润率', kind: 'percent', scope: 'both', group: 'profit', default: true },
       { key: 'gross_profit', label: '毛利', kind: 'money', scope: 'both', group: 'profit', default: false },
       { key: 'product_cost', label: '货品成本', kind: 'money', scope: 'both', group: 'profit', default: false },
-      // —— 推广
+      // —— 推广（XMind：推广费 / 费比；费比=花费÷GSV，与概览口径一致）
       { key: 'ad_spend', label: '推广花费', kind: 'money', scope: 'both', group: 'ads', default: false },
+      { key: 'ad_ratio', label: '费比', kind: 'percent', scope: 'both', group: 'ads', default: false },
       // —— 环比变化（下滑榜定位跌在哪里）
       // 4-3：极性统一走 MetricPolarity。polarityKey 声明「这列表达的是哪个指标的涨跌」——
       // 变化 / 变化比例都是销售额的派生列，极性跟随 gsv（越高越好）。
@@ -81,8 +82,13 @@
     // paid/profit/loss/new 复用 both 列集，靠 defaults 差异化默认值）。
     const BOARDS = [
       {
-        key: 'top', label: '销售贡献榜', withDelta: false, scope: 'top',
-        defaults: { product_id: true, title: true, gsv: true, share_of_gsv: true, net_sales: true, operating_profit: true, profit_rate: true },
+        key: 'top', label: '净销售额 TOP10', withDelta: false, scope: 'top',
+        // 字段集对齐 XMind「净销售 TOP10」：GSV/退款率/净利润/推广费/费比/访客/转化/件数/客单价。
+        defaults: {
+          product_id: true, title: true, gsv: true, net_sales: true, share_of_gsv: true,
+          refund_rate: true, operating_profit: true, profit_rate: true, ad_spend: true, ad_ratio: true,
+          visitors: true, conversion: true, payment_qty: true, aov: true,
+        },
       },
       {
         key: 'decline', label: '下滑榜', withDelta: true, scope: 'delta',
@@ -90,7 +96,7 @@
       },
       {
         key: 'paid', label: '付费榜', withDelta: false, scope: 'both',
-        defaults: { product_id: true, title: true, gsv: true, ad_spend: true, operating_profit: true, profit_rate: true, refund_rate: true },
+        defaults: { product_id: true, title: true, gsv: true, ad_spend: true, ad_ratio: true, operating_profit: true, profit_rate: true, refund_rate: true },
       },
       {
         key: 'profit', label: '盈利榜', withDelta: false, scope: 'both',
@@ -98,7 +104,7 @@
       },
       {
         key: 'loss', label: '亏损榜', withDelta: false, scope: 'both',
-        defaults: { product_id: true, title: true, gsv: true, ad_spend: true, operating_profit: true, profit_rate: true, refund_rate: true },
+        defaults: { product_id: true, title: true, gsv: true, ad_spend: true, ad_ratio: true, operating_profit: true, profit_rate: true, refund_rate: true },
       },
       {
         key: 'new', label: '新品榜（净销）', withDelta: false, scope: 'both',
@@ -220,7 +226,7 @@
         h('td', { class: 'pr-table__action' },
           h('button', {
             type: 'button', class: 'ui-button ui-button--ghost ui-button--compact', text: '趋势',
-            title: '查看近 8 周销售额 / 访客 / 转化趋势',
+            title: '近 8 周指标折线，弹窗内可切换字段',
             onclick: () => openProductTrend(row),
           }),
           h('button', {

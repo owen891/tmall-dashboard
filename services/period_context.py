@@ -429,23 +429,32 @@ TARGET_FORM_FIELDS = {
 }
 
 
-def _target_rows(current, saved_review):
+def _target_rows(current, saved_review, preset_targets=None):
     """把复盘设置里录入的四项目标与本期实际配对，供复盘页目标表渲染。
 
     达成率：默认 = 实际 ÷ 目标；`reverse_rate` 的指标（净费比）= 目标 ÷ 实际。
     未录入目标的项 target 为 None，前端显示「未设置」而不是 0。
+
+    preset_targets 为经营目标页按周期预置的辅助目标（goal_metric_targets 表，
+    净利润/推广费/净费比）；复盘里手填的值优先，未填时回退预置值并标注来源。
     """
     saved = saved_review or {}
+    preset = preset_targets or {}
     rows = []
     for key, label, fmt, reverse_rate, rate_better in TARGET_METRICS:
         field = next((f for f, k in TARGET_FORM_FIELDS.items() if k == key), None)
         raw = saved.get(field) if field else None
         target_value = None
+        target_source = None
         if raw not in (None, ''):
             try:
                 target_value = float(raw)
+                target_source = 'review'
             except (TypeError, ValueError):
                 target_value = None
+        if target_value is None and preset.get(key) is not None:
+            target_value = float(preset[key])
+            target_source = 'goals_page'
         actual = current.get(key)
         gap = None
         achieved_rate = None
@@ -463,11 +472,32 @@ def _target_rows(current, saved_review):
             'reverse_rate': reverse_rate,
             'rate_better': rate_better,
             'target': target_value,
+            'target_source': target_source,
             'actual': actual,
             'gap': gap,
             'achieved_rate': achieved_rate,
         })
     return rows
+
+
+def _goal_metric_targets(conn, period_type, period_key):
+    """读经营目标页预置的辅助目标（净利润/推广费/净费比）。
+
+    周复盘没有按周预置（目标页只到月），回退查所属月份的预置值，
+    让周复盘至少能对照月度口径；来源标注保持 goals_page。
+    """
+    keys = [(period_type, period_key)]
+    if period_type == 'week' and len(str(period_key)) >= 7:
+        keys.append(('month', str(period_key)[:7]))
+    for row_period_type, row_period_key in keys:
+        rows = conn.execute(
+            '''SELECT metric, target_value FROM goal_metric_targets
+               WHERE year = ? AND period_type = ? AND period_key = ?''',
+            (int(str(period_key)[:4]), row_period_type, row_period_key),
+        ).fetchall()
+        if rows:
+            return {row['metric']: float(row['target_value']) for row in rows}
+    return {}
 # ---------------------------------------------------------------------------
 # 货品
 # ---------------------------------------------------------------------------
@@ -485,8 +515,113 @@ def _product_meta(conn, product_ids):
     return {row['product_id']: dict(row) for row in rows}
 
 
-def _ads_block(current, prev):
+def _ads_direct_totals(conn, start, end, category_label=None):
+    """直接成交/花费合计（推广事实表 product+'全部' 行，内部自洽口径）。
+
+    不拿 daily_data.ad_spend 当分母：两表覆盖天数有出入，混用会把缺口
+    变成虚高/虚低的 ROI。这里分子分母同源，缺口只影响覆盖，不扭曲比值。
+    """
+    try:
+        table_exists = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='promotion_daily_facts'"
+        ).fetchone()
+        if not table_exists:
+            return None
+        category_sql = ''
+        category_params = []
+        if category_label:
+            category_sql = " AND (p.shop_label = ? OR instr(',' || p.shop_label || ',', ',' || ? || ',') > 0)"
+            category_params = [category_label, category_label]
+        row = conn.execute(
+            f'''SELECT SUM(f.ad_spend) AS ad_spend,
+                       SUM(f.direct_payment_amount) AS direct_payment,
+                       COUNT(DISTINCT f.date) AS sample_days
+                FROM promotion_daily_facts f
+                LEFT JOIN products p ON p.product_id = f.product_id
+                WHERE f.date BETWEEN ? AND ? AND f.grain = 'product' AND f.channel = '全部'
+                  {category_sql}''',
+            [start, end, *category_params],
+        ).fetchone()
+        if row and row['ad_spend']:
+            return {
+                'ad_spend': float(row['ad_spend']),
+                'direct_payment': float(row['direct_payment'] or 0),
+                'sample_days': int(row['sample_days'] or 0),
+            }
+    except Exception:
+        return None
+    return None
+
+
+def _ads_channel_totals(conn, start, end, category_label=None):
+    """三渠道（全站/关键词/人群）推广成交金额合计（XMind「广告-汇总」）。
+
+    渠道名只挂在 campaign 粒度行上；campaign 日粒度 2026-08-20 才开始，
+    更早的月份只有 campaign_month 行——日粒度查空时按月回退，并标注来源。
+    """
+    try:
+        table_exists = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='promotion_daily_facts'"
+        ).fetchone()
+        if not table_exists:
+            return None
+        # 渠道行（campaign 粒度）不带商品映射，无法按品类过滤——按品类复盘时
+        # 展示全店渠道数据会混口径，显式标注 unavailable（与 _promotion_dimension
+        # 的 promotion_category_scope 约定一致），不静默返回空表。
+        if category_label:
+            return {'groups': [], 'source': 'campaign', 'sample_days': 0,
+                    'missing_inputs': ['promotion_category_scope']}
+        rows = [dict(row) for row in conn.execute(
+            '''SELECT f.channel AS channel,
+                       SUM(f.ad_spend) AS ad_spend,
+                       SUM(f.attributed_payment_amount) AS attributed_payment,
+                       COUNT(DISTINCT f.date) AS sample_days
+                FROM promotion_daily_facts f
+                WHERE f.date BETWEEN ? AND ? AND f.grain = 'campaign'
+                GROUP BY f.channel''',
+            [start, end],
+        ).fetchall()]
+        source = 'campaign'
+        if not rows:
+            month = str(start)[:7]
+            if str(end)[:7] != month:
+                return None
+            rows = [dict(row) for row in conn.execute(
+                '''SELECT channel, SUM(ad_spend) AS ad_spend,
+                          SUM(attributed_payment_amount) AS attributed_payment,
+                          COUNT(*) AS sample_days
+                   FROM promotion_daily_facts
+                   WHERE grain = 'campaign_month' AND substr(date, 1, 7) = ?
+                   GROUP BY channel''',
+                (month,),
+            ).fetchall()]
+            source = 'campaign_month'
+        if not rows:
+            return None
+        by_channel = {row['channel']: dict(row) for row in rows}
+        groups = []
+        total_payment = sum(float(row.get('attributed_payment') or 0) for row in rows)
+        for group_name, channels in PROMOTION_CHANNEL_GROUPS:
+            spend = sum(float(by_channel[c]['ad_spend'] or 0) for c in channels if c in by_channel)
+            payment = sum(float(by_channel[c].get('attributed_payment') or 0) for c in channels if c in by_channel)
+            if spend <= 0 and payment <= 0:
+                continue
+            groups.append({
+                'name': group_name,
+                'ad_spend': round(spend, 2),
+                'attributed_payment': round(payment, 2),
+                'roi': (round(payment / spend, 4) if spend else None),
+                'payment_share': (round(payment / total_payment, 6) if total_payment else None),
+            })
+        sample_days = max((int(row.get('sample_days') or 0) for row in rows), default=0)
+        return {'groups': groups, 'source': source, 'sample_days': sample_days}
+    except Exception:
+        return None
+
+
+def _ads_block(conn, current, prev, period, compare_range, category_label=None):
     def pick(source):
+        source = source or {}
         return {
             'ad_spend': source.get('ad_spend'),
             'roi': source.get('roi'),
@@ -501,7 +636,32 @@ def _ads_block(current, prev):
         delta['ad_ratio_delta_pt'] = round((cur['ad_ratio'] - pre['ad_ratio']) * 100, 2)
     if cur['roi'] is not None and pre['roi'] is not None:
         delta['roi_delta'] = round(cur['roi'] - pre['roi'], 2)
-    return {'current': cur, 'prev': pre, 'delta': delta}
+    # 汇总层直接 ROI（XMind「广告-汇总：增加直接 ROI 字段」）：
+    # 直接成交 ÷ 推广花费，分子分母同源（见 _ads_direct_totals）。
+    direct = _ads_direct_totals(conn, period['start'], period['end'], category_label)
+    direct_roi = None
+    if direct and direct['ad_spend']:
+        direct_roi = direct['direct_payment'] / direct['ad_spend']
+    direct_prev = None
+    if compare_range and compare_range.get('available'):
+        direct_prev = _ads_direct_totals(conn, compare_range['start'], compare_range['end'], category_label)
+        if direct_prev and not direct_prev['ad_spend']:
+            direct_prev = None
+    prev_direct_roi = None
+    if direct_prev and direct_prev['ad_spend']:
+        prev_direct_roi = direct_prev['direct_payment'] / direct_prev['ad_spend']
+    if direct_roi is not None and prev_direct_roi is not None:
+        delta['direct_roi_delta'] = round(direct_roi - prev_direct_roi, 2)
+    channel_totals = _ads_channel_totals(conn, period['start'], period['end'], category_label)
+    return {
+        'current': cur,
+        'prev': pre,
+        'delta': delta,
+        'direct_roi': direct_roi,
+        'prev_direct_roi': prev_direct_roi,
+        'direct_sample_days': (direct or {}).get('sample_days'),
+        'channel_totals': channel_totals,
+    }
 
 
 def _rate_change(value, baseline):
@@ -698,7 +858,11 @@ def _product_trend(conn, product_id, weeks=8, category_label=None):
                 '''SELECT COALESCE(SUM(d.payment_amount), 0) AS gsv,
                           COALESCE(SUM(d.ipv), 0) AS visitors,
                           COALESCE(SUM(d.buyers), 0) AS buyers,
-                          COALESCE(SUM(d.net_sales), 0) AS net_sales
+                          COALESCE(SUM(d.net_sales), 0) AS net_sales,
+                          COALESCE(SUM(d.refund_amount), 0) AS refund_amount,
+                          COALESCE(SUM(d.payment_qty), 0) AS payment_qty,
+                          COALESCE(SUM(d.ad_spend), 0) AS ad_spend,
+                          COALESCE(SUM(d.operating_profit), 0) AS operating_profit
                    FROM daily_data d WHERE d.product_id = ? AND d.date BETWEEN ? AND ?''',
                 (product_id, start.isoformat(), end.isoformat()),
             ).fetchone()
@@ -707,15 +871,26 @@ def _product_trend(conn, product_id, weeks=8, category_label=None):
             gsv = float(row['gsv'] or 0)
             visitors = float(row['visitors'] or 0)
             buyers = float(row['buyers'] or 0)
+            net_sales = float(row['net_sales'] or 0)
+            ad_spend = float(row['ad_spend'] or 0)
+            # 周序列带上货品榜全字段（XMind「点击字段指标看周折线」）：
+            # 比率列由周总量重推，而不是均值，保证与榜单口径一致。
             rows.append({
                 'label': label,
                 'start': start.isoformat(),
                 'end': end.isoformat(),
                 'gsv': round(gsv, 2),
-                'net_sales': round(float(row['net_sales'] or 0), 2),
+                'net_sales': round(net_sales, 2),
                 'visitors': round(visitors, 0),
                 'buyers': round(buyers, 0),
                 'conversion': round(buyers / visitors, 6) if visitors else None,
+                'refund_rate': (round(float(row['refund_amount'] or 0) / gsv, 6) if gsv else None),
+                'payment_qty': round(float(row['payment_qty'] or 0), 0),
+                'aov': round(gsv / buyers, 2) if buyers else None,
+                'ad_spend': round(ad_spend, 2),
+                'ad_ratio': round(ad_spend / gsv, 6) if gsv else None,
+                'operating_profit': round(float(row['operating_profit'] or 0), 2),
+                'profit_rate': (round(float(row['operating_profit'] or 0) / net_sales, 6) if net_sales else None),
             })
         return {'available': bool(rows), 'weeks': rows}
     except Exception:
@@ -1344,6 +1519,9 @@ def build_context(period_type, period_key, saved_target=None, category_mode=None
         traffic = _traffic_dimension(conn, period, compare, category_label)
         promotion = _promotion_dimension(conn, period, compare, category_label)
         promotion_items = _promotion_items_block(conn, period, category_label)
+        # 汇总层广告块含直接 ROI / 三渠道合计，需要 conn 查推广事实表，
+        # 必须在连接作用域内完成（与 products/promotion_items 同理）。
+        ads = _ads_block(conn, current, prev, period, compare, category_label)
         breakdown = _breakdown_block(conn, period, category_label)
         actions = _actions_block(conn, period, category_label)
         alerts = _alerts_block(conn)
@@ -1352,6 +1530,8 @@ def build_context(period_type, period_key, saved_target=None, category_mode=None
         # 月复盘读本月各周；周复盘读上月月复盘根因作参考——写月报从
         # 「从零分析」变成「检查各周结论找规律」。
         linked_summaries = _linked_period_summaries(conn, period)
+        # 经营目标页按月预置的净利润/推广费/净费比目标（XMind「下月规划」）。
+        preset_metric_targets = _goal_metric_targets(conn, period_type, period_key)
 
     has_data = bool(totals_cur['day_count'])
     missing_inputs = [] if has_data else ['daily_data']
@@ -1390,9 +1570,9 @@ def build_context(period_type, period_key, saved_target=None, category_mode=None
         # 达成率口径 = 净销售额 ÷ 目标（与经营目标表一致）。
         # 早期误用 GSV 作分子，会把含退款的支付金额算进达成率，系统性偏高约 20%。
         'target_path': _target_path(period, target, target_source, current['net_sales'], category_label,
-                                    targets=_target_rows(current, saved_review)),
+                                    targets=_target_rows(current, saved_review, preset_targets=preset_metric_targets)),
         'products': products,
-        'ads': _ads_block(current, prev),
+        'ads': ads,
         'breakdown': breakdown,
         'promotion_items': promotion_items,
         'dimensions': {
@@ -1627,6 +1807,9 @@ def _products_block(conn, period, category_label=None, compare_range=None):
         prev_aov = rate(prev_gsv, prev_buyers)
         refund_rate = rate(refund_amount, gsv)
         prev_refund_rate = rate(prev_refund_amount, prev_gsv)
+        # 单品费比与概览同口径：推广花费 ÷ GSV（净费比是另一口径，勿混）。
+        ad_ratio = rate(ad_spend, gsv)
+        prev_ad_ratio = rate(prev_ad_spend, prev_gsv)
 
         anomaly_tags = []
         system_facts = []
@@ -1691,6 +1874,8 @@ def _products_block(conn, period, category_label=None, compare_range=None):
             'prev_aov': rounded(prev_aov),
             'ad_spend': rounded(ad_spend),
             'prev_ad_spend': rounded(prev_ad_spend),
+            'ad_ratio': rounded(ad_ratio, 6),
+            'prev_ad_ratio': rounded(prev_ad_ratio, 6),
             'product_cost': rounded(product_cost),
             'prev_product_cost': rounded(prev_product_cost),
             'gross_profit': rounded(gross_profit),
@@ -1706,11 +1891,14 @@ def _products_block(conn, period, category_label=None, compare_range=None):
             'unknowns': unknowns,
         }
 
+    # XMind「净销售 TOP10」：按净销售额排序入选（净口径与达成率一致），
+    # GSV 保留为榜单列但不决定入选；旧逻辑按 GSV 排序会把含退款的水分算进“贡献”。
+    # 净销售额缺失但有销售的商品不静默剔除（unknowns 会说明缺失），排序垫底。
     top_ids = [
         product_id for product_id, row in sorted(
-            current.items(), key=lambda item: float(item[1].get('gsv') or 0), reverse=True
+            current.items(), key=lambda item: float(item[1].get('net_sales') or 0), reverse=True
         )
-        if (row.get('gsv') or 0) > 0
+        if (row.get('net_sales') or 0) > 0 or (row.get('gsv') or 0) > 0
     ][:10]
     decline_ids = [
         product_id for product_id in sorted(
@@ -1814,6 +2002,53 @@ def _products_block(conn, period, category_label=None, compare_range=None):
         problem_items.append(item)
     problem_items = problem_items[:20]
 
+    # 货品汇总卡（对齐 XMind「货品-汇总」）：在架/动销/动销率 + 60 天新品动销
+    # + 净销售额类目结构 TOP5。「在架」取商品库 active 总数，「动销」指本期有
+    # 正向销售记录的商品数——两者口径不同，动销率分母是商品库而非榜单行数。
+    listed_count = None
+    try:
+        scope_sql = ''
+        scope_params = []
+        if category_label:
+            scope_sql = " AND (p.shop_label = ? OR instr(',' || p.shop_label || ',', ',' || ? || ',') > 0)"
+            scope_params = [category_label, category_label]
+        listed_row = conn.execute(
+            f"SELECT COUNT(*) FROM products p WHERE p.status = 'active'{scope_sql}", scope_params,
+        ).fetchone()
+        listed_count = int(listed_row[0]) if listed_row else None
+    except Exception:
+        listed_count = None
+    sold_count = sum(1 for row in current.values() if (row.get('gsv') or 0) > 0)
+    new_sold_count = sum(1 for pid in new_ids if (current.get(pid, {}).get('gsv') or 0) > 0)
+    total_structure = 0.0
+    try:
+        # 类目结构始终 JOIN products（_daily_scope 无品类过滤时不带 join，
+        # 但 p.category 只在 products 表里）。
+        structure_scope_sql = ''
+        structure_scope_params = []
+        if category_label:
+            structure_scope_sql = " AND (p.shop_label = ? OR instr(',' || p.shop_label || ',', ',' || ? || ',') > 0)"
+            structure_scope_params = [category_label, category_label]
+        structure_rows = conn.execute(
+            f'''SELECT COALESCE(NULLIF(p.category, ''), '未分类') AS category,
+                       SUM(d.net_sales) AS net_sales
+                FROM daily_data d JOIN products p ON p.product_id = d.product_id
+                WHERE d.date BETWEEN ? AND ?{structure_scope_sql}
+                GROUP BY category ORDER BY net_sales DESC''',
+            (period['start'], period['end'], *structure_scope_params),
+        ).fetchall()
+    except Exception:
+        structure_rows = []
+    total_structure = sum(float(row['net_sales'] or 0) for row in structure_rows)
+    category_structure = [
+        {
+            'category': row['category'],
+            'net_sales': round(float(row['net_sales'] or 0), 2),
+            'share': (round(float(row['net_sales'] or 0) / total_structure, 6) if total_structure else None),
+        }
+        for row in structure_rows[:5]
+    ]
+
     return {
         'top': [with_meta(product_id) for product_id in top_ids],
         'decline': [with_meta(product_id) for product_id in decline_ids],
@@ -1823,5 +2058,12 @@ def _products_block(conn, period, category_label=None, compare_range=None):
         'new': [with_meta(product_id) for product_id in new_top_ids],
         'new_paid': [with_meta(product_id) for product_id in new_paid_ids],
         'problem_items': problem_items,
+        'summary': {
+            'listed_count': listed_count,
+            'sold_count': sold_count,
+            'sell_through_rate': (sold_count / listed_count if listed_count else None),
+            'new_sold_count': new_sold_count,
+            'category_structure': category_structure,
+        },
     }
 
