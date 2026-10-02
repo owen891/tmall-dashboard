@@ -113,7 +113,11 @@ def _clean_days(rows):
 def blue_ocean_words(keyword_rows, item_titles):
     """蓝海完整口径（SKILL 阶段二点五，硬约束）：
 
-    - 搜索量 = 词精确匹配的近 30 天日均搜索热度（不累加词根下其他词）；
+    - 词集收敛：只对「类目 / 功能」两类归类的词跑覆盖（SKILL 原义=细分品类/
+      功能词，如 堆堆袜/小腿袜/压力袜——先人工挑 20 个细分词再算覆盖）。
+      对全量 2500+ 词跑覆盖会让 600 款在榜样本淹没绝大多数词（覆盖=0 全被
+      误判「高潜蓝海」），品牌/人群/属性等非供给维度词不进分级榜。
+    - 搜索量 = 词精确匹配的近 7 天日均搜索热度（不累加词根下其他词）；
     - 商品覆盖 = 最新采集日在榜商品 title 含该词的商品数（product_id 去重）；
     - 每万覆盖 = 覆盖数 ÷ (日均热度 / 10000)，<5 高潜蓝海、5-10 中等、>10 供给偏多；
     - 泛词剔除、转化率作辅助维度。
@@ -123,34 +127,72 @@ def blue_ocean_words(keyword_rows, item_titles):
     if not dates:
         return {'available': False, 'words': [],
                 'missing_inputs': ['sycm_market_search_rank']}
+    # 细分词根集：类目词（形态/品类）+ 功能词，均来自 8 大归类词典——
+    # 与 SKILL CATEGORY_WORDS 同性质（细分品类/功能词，如 堆堆袜/压力袜）。
+    # 覆盖匹配按「词根」而非长尾组合词：600 款在榜样本不会原样包含
+    # 「袜子女2026新款爆款」这类长尾词，完整词匹配全得 0 覆盖；
+    # 词根才是供给粒度（与 SKILL 原文 str.contains(word) 的短词集一致）。
+    # ≥3 字下限过滤过泛功能词（如「加固」单独出现时覆盖无意义）。
+    supply_root_terms = set()
+    for key, _, terms in KEYWORD_RULES:
+        if key in ('category', 'function'):
+            for term in terms:
+                if 3 <= len(term) <= 6:
+                    supply_root_terms.add(term.lower())
     recent_dates = dates[-7:]
     term_daily = defaultdict(list)
     for date in recent_dates:
         for keyword, metrics in by_date[date].items():
-            if str(keyword).strip().lower() in GENERIC_KEYWORDS or len(str(keyword).strip()) < 2:
+            text = str(keyword).strip().lower()
+            if text in GENERIC_KEYWORDS or len(text) < 2:
                 continue
             if metrics['search_heat'] is not None:
                 term_daily[str(keyword)].append(float(metrics['search_heat']))
-    max_rate = 0.0
     words = []
     for keyword, heats in term_daily.items():
+        text = str(keyword).strip().lower()
+        # 词集收敛：词必须含细分词根；覆盖按词根匹配（长尾组合聚合到词根上）。
+        roots = [root for root in supply_root_terms if root in text]
+        if not roots:
+            continue
+        # 取最长的命中词根做匹配单位（「压力袜」优先于「袜」类泛根）。
+        root = max(roots, key=len)
         daily_heat = sum(heats) / len(heats)
         if daily_heat < 100:
             continue
-        cover = sum(1 for title in item_titles if keyword in str(title or ''))
+        cover = sum(1 for title in item_titles if root in str(title or ''))
         cover_per_10k = (cover / (daily_heat / 10000.0)) if daily_heat else None
         words.append({
-            'keyword': keyword,
+            'keyword': root,
+            'keyword_full': keyword,
             'search_heat': round(daily_heat, 1),
             'cover_count': cover,
             'cover_per_10k': (round(cover_per_10k, 2) if cover_per_10k is not None else None),
             'grade': ('高潜蓝海' if cover_per_10k is not None and cover_per_10k < 5
                       else '中等' if cover_per_10k is not None and cover_per_10k <= 10 else '供给偏多'),
         })
+    # 同词根聚合：热度/转化率取代表词（日均口径），每万覆盖同根同值。
+    aggregated = {}
+    for word in words:
+        key = word['keyword']
+        current = aggregated.get(key)
+        if current is None or word['search_heat'] > current['search_heat']:
+            aggregated[key] = word
+    words = sorted(aggregated.values(),
+                   key=lambda item: (item['cover_per_10k'] is None, item['cover_per_10k'] or 0))[:12]
+    # 从近似口径映射该词根代表词的支付转化率，供表格补列（词根本身没有转化率）。
+    pay_rate_by_keyword = {}
+    for date in dates[-7:]:
+        for keyword, metrics in by_date[date].items():
+            if metrics['pay_rate'] is not None:
+                pay_rate_by_keyword[str(keyword)] = metrics['pay_rate']
+    for word in words:
+        representative = pay_rate_by_keyword.get(word['keyword_full'])
+        word['pay_rate'] = (round(float(representative), 6) if representative is not None else None)
     return {
         'available': bool(words),
-        'words': sorted(words, key=lambda item: (item['cover_per_10k'] is None,
-                                                 item['cover_per_10k'] or 0))[:12],
+        'words': words,
+        'word_scope': '细分品类词/功能词根（8大归类中的类目+功能，词根级匹配）',
         'missing_inputs': [] if words else ['sycm_market_item_rank.title'],
     }
 

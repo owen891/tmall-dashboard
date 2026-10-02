@@ -106,34 +106,45 @@ class KeywordInsightsTests(unittest.TestCase):
 
 class BlueOceanFullTests(unittest.TestCase):
     def test_cover_per_10k_and_grade(self):
-        """SKILL 完整口径：精确热度 + 最新日在榜 title 匹配 → 每万覆盖分级。"""
+        """SKILL 完整口径：词根级覆盖（在榜 title 含词根）→ 每万覆盖分级。"""
         rows = [
             ('2026-09-28', '压力袜', 500, 0.1, 0.2),
-            ('2026-09-28', '五指袜', 300, 0.1, 0.2),
+            ('2026-09-28', '压力袜秋季新款', 300, 0.1, 0.2),
             ('2026-09-28', '袜子', 100000, 0.2, 0.3),
             ('2026-09-28', '低热词', 50, 0.1, 0.2),
         ]
-        titles = ['压力袜男', '压力袜女', '五指袜', '无关商品']
+        titles = ['压力袜男', '压力袜女', '无关商品']
         result = blue_ocean_words(rows, titles)
 
         self.assertTrue(result['available'])
         by_word = {item['keyword']: item for item in result['words']}
-        # 泛词与低热词剔除。
+        # 泛词（袜子）与低热词剔除。
         self.assertNotIn('袜子', by_word)
         self.assertNotIn('低热词', by_word)
-        self.assertAlmostEqual(by_word['压力袜']['cover_per_10k'], 40.0, places=1)
+        # 长尾组合「压力袜秋季新款」聚合到词根「压力袜」：热度取代表词，
+        # 覆盖按词根匹配（2 款在榜含「压力袜」）。
+        self.assertIn('压力袜', by_word)
+        self.assertEqual(by_word['压力袜']['cover_count'], 2)
         self.assertEqual(by_word['压力袜']['grade'], '供给偏多')
-        self.assertAlmostEqual(by_word['五指袜']['cover_per_10k'], 33.33, places=1)
-        # 覆盖为 0 的词排最前（高潜优先）。
-        words = result['words']
-        if len(words) > 1:
-            self.assertLessEqual(words[0]['cover_per_10k'], words[-1]['cover_per_10k'])
+
+    def test_root_level_matching_not_full_keyword(self):
+        """长尾组合词不单独算覆盖——在榜样本不会原样包含长尾词。"""
+        rows = [('2026-09-28', '压力袜男夏季薄款', 800, 0.1, 0.2)]
+        titles = ['压力袜男士透气', '压力袜女', '运动袜']
+        result = blue_ocean_words(rows, titles)
+        self.assertTrue(result['available'])
+        word = result['words'][0]
+        # 匹配单位是词根「压力袜」，非完整长尾词（完整词匹配会得 0）。
+        self.assertEqual(word['keyword'], '压力袜')
+        self.assertEqual(word['keyword_full'], '压力袜男夏季薄款')
+        self.assertEqual(word['cover_count'], 2)
 
     def test_zero_cover_is_high_potential(self):
-        rows = [('2026-09-28', '月子袜', 200, 0.1, 0.2)]
+        rows = [('2026-09-28', '地板袜秋冬季', 200, 0.1, 0.2)]
         result = blue_ocean_words(rows, ['完全无关商品'])
         self.assertTrue(result['available'])
         word = result['words'][0]
+        self.assertEqual(word['keyword'], '地板袜')
         self.assertEqual(word['cover_count'], 0)
         self.assertEqual(word['cover_per_10k'], 0.0)
         self.assertEqual(word['grade'], '高潜蓝海')

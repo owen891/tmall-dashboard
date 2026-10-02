@@ -872,6 +872,7 @@
         h('span', { class: 'num', text: `${formatValue(row.net_sales, 'money')}${row.share === null || row.share === undefined ? '' : ` · ${(row.share * 100).toFixed(1)}%`}` }))))
       : null;
     // 产品分层汇总（XMind「产品分层」）：引流/利润/动销，完整矩阵在 products 页。
+    // 提示口径粒度=本复盘周期，避免与矩阵页（完整自然月）数字对不上被误解。
     const segments = (info.segment_stats || []).filter((row) => row.count);
     const segmentsBody = segments.length
       ? h('ul', { class: 'pr-linked-list' }, ...segments.map((row) => h('li', { class: 'pr-linked-item' },
@@ -879,10 +880,10 @@
         h('span', { class: 'num', text: `销售额 ${formatValue(row.gsv, 'money')}${row.gsv_share === null || row.gsv_share === undefined ? '' : ` · ${(row.gsv_share * 100).toFixed(1)}%`}` }))))
       : null;
     return analysisPanel('货品汇总',
-      '在架=商品库在售总数；动销=本期有正向销售的商品数。类目结构按净销售额占比取 TOP5；产品分层口径=费比≥30% 引流 / 利润>0 且费比<10% / 不推广动销（完整矩阵在「商品 → 矩阵地图」）。',
+      '在架=商品库在售总数；动销=本期有正向销售的商品数。类目结构按净销售额占比取 TOP5；产品分层口径与矩阵地图同源（费比≥30% 引流 / 利润>0 且费比<10% / 不推广动销），但粒度=本复盘周期（矩阵页为完整自然月，数字不同属正常）。完整矩阵在「商品 → 货品矩阵地图」。',
       h('div', { class: 'pr-materials' },
         materialBlock('货品规模', h('div', { class: 'pr-target' }, ...items)),
-        segmentsBody ? materialBlock('产品分层（按推广角色）', segmentsBody) : null,
+        segmentsBody ? materialBlock('产品分层（按推广角色 · 本复盘周期）', segmentsBody) : null,
         structureBody ? materialBlock('净销售额结构 TOP5（按类目）', structureBody) : materialBlock('净销售额结构 TOP5（按类目）', null, '本期没有类目可归的数据。'),
       ), null);
   }
