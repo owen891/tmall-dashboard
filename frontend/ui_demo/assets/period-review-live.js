@@ -855,8 +855,45 @@
       scroll, null);
   }
 
+  /** 利润结构块（利润瀑布，对齐 BI 派米恒等口径）：
+   *  净销 → 销售费用/自定义费用/货本/发货/其他 → 利润，横向占比条 + 环比。
+   *  费用缺失（补采哨兵）显示「缺失」不按 0；identity note 说明残差来源。
+   */
+  function profitStructureBlock(structure) {
+    if (!structure || !structure.available) return null;
+    const net = structure.net_sales || 0;
+    const barRows = (structure.rows || []).map((row) => {
+      const share = row.share_of_net === null || row.share_of_net === undefined ? null : row.share_of_net * 100;
+      const isProfit = row.key === 'operating_profit';
+      const valueText = row.value === null || row.value === undefined ? '缺失' : formatValue(row.value, 'money');
+      const shareText = share === null ? '' : `${share.toFixed(1)}%`;
+      const change = row.change_rate === null || row.change_rate === undefined
+        ? '' : ` · ${(row.change_rate > 0 ? '+' : '')}${(row.change_rate * 100).toFixed(1)}%`;
+      const width = Math.min(Math.abs(row.share_of_net || 0) * 100, 100);
+      const color = isProfit ? (row.value < 0 ? 'var(--danger-text, #dc2626)' : 'var(--success-text, #059669)') : 'var(--brand-text, #4f46e5)';
+      return h('div', { class: 'pr-profit-row' },
+        h('span', { class: 'pr-profit-row__label', text: row.label }),
+        h('div', { class: 'pr-profit-row__bar' },
+          h('div', { class: 'pr-profit-row__fill', style: `width:${(width * 100).toFixed(1)}%;background:${color}` })),
+        h('span', { class: 'num pr-profit-row__value', text: `${valueText} · ${shareText}${change}` }));
+    });
+    const note = (structure.identity && structure.identity.note) || null;
+    const customNote = (structure.caliber && structure.caliber.custom_cost_note) || '';
+    return materialBlock('利润结构（利润瀑布）',
+      h('div', { class: 'pr-profit-structure' },
+        h('p', { class: 'pr-profit-structure__net', text: `净销售额 ${formatValue(net, 'money')}${structure.compare ? `（对比期 ${structure.compare.start} ~ ${structure.compare.end}）` : ''}` }),
+        ...barRows,
+        customCostNote(customNote),
+        note ? h('p', { class: 'pr-material__empty', text: note }) : null,
+      ));
+  }
+
+  function customCostNote(text) {
+    return text ? h('p', { class: 'pr-material__empty', text }) : null;
+  }
+
   /** 货品汇总卡（对齐 XMind「货品-汇总」）：在架/动销/动销率 + 60 天新品动销 + 类目结构。 */
-  function goodsSummaryPanel(summary) {
+  function goodsSummaryPanel(summary, profitStructure) {
     const info = summary && (summary.sold_count !== undefined) ? summary : null;
     if (!info) return null;
     const items = [];
@@ -865,9 +902,9 @@
     push('本期动销', formatValue(info.sold_count, 'number'));
     push('动销率', info.sell_through_rate === null || info.sell_through_rate === undefined ? '不可判断' : `${(info.sell_through_rate * 100).toFixed(2)}%`);
     push('60天新品动销', formatValue(info.new_sold_count, 'number'));
-    const structure = (info.category_structure || []).filter((row) => row.net_sales !== null);
-    const structureBody = structure.length
-      ? h('ul', { class: 'pr-linked-list' }, ...structure.map((row) => h('li', { class: 'pr-linked-item' },
+    const categoryStructure = (info.category_structure || []).filter((row) => row.net_sales !== null);
+    const structureBody = categoryStructure.length
+      ? h('ul', { class: 'pr-linked-list' }, ...categoryStructure.map((row) => h('li', { class: 'pr-linked-item' },
         h('span', { class: 'pr-table__title-text', title: row.category, text: row.category || '未分类' }),
         h('span', { class: 'num', text: `${formatValue(row.net_sales, 'money')}${row.share === null || row.share === undefined ? '' : ` · ${(row.share * 100).toFixed(1)}%`}` }))))
       : null;
@@ -885,6 +922,7 @@
         materialBlock('货品规模', h('div', { class: 'pr-target' }, ...items)),
         segmentsBody ? materialBlock('产品分层（按推广角色 · 本复盘周期）', segmentsBody) : null,
         structureBody ? materialBlock('净销售额结构 TOP5（按类目）', structureBody) : materialBlock('净销售额结构 TOP5（按类目）', null, '本期没有类目可归的数据。'),
+        profitStructureBlock(profitStructure),
       ), null);
   }
 
@@ -895,7 +933,7 @@
     // 每张榜单一份字段设置工具栏：列开关按榜独立（默认列随榜单定位差异化）。
     const board = productColumns.productBoardPanel;
     els.productAnalysis.replaceChildren(
-      goodsSummaryPanel(products.summary),
+      goodsSummaryPanel(products.summary, context.profit_structure),
       problemItemsPanel(products.problem_items),
       board('净销售额 TOP10', '按本期净销售额排序（净口径与达成率一致），先识别需要保住的核心商品。', products.top, 'top', '本期没有正向销售商品。'),
       board('下滑商品 TOP10', '按相对上期的销售额变化排序，作为异常诊断入口。', products.decline, 'decline', '缺少可比周期数据。'),

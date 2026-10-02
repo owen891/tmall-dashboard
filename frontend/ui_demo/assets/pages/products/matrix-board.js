@@ -130,6 +130,57 @@
       }
     }
 
+    async function loadProfitStructure() {
+      const node = document.querySelector('[data-profit-structure]');
+      if (!node) return;
+      try {
+        const response = await DemoApi.domainRequest('/api/product-overview/profit-structure');
+        const data = response.data;
+        if (!data || !data.available) {
+          node.textContent = '当前周期没有费用结构数据（等待 daily_data 费用列采集）';
+          return;
+        }
+        const net = data.net_sales || 0;
+        const frag = document.createDocumentFragment();
+        const netLine = document.createElement('p');
+        netLine.textContent = `净销售额 ${fmtMoney(net)}${data.compare ? `（对比期 ${data.compare.start} ~ ${data.compare.end}）` : ''}`;
+        netLine.style.cssText = 'font-weight:600;font-size:12px;color:var(--text-secondary);margin:0 0 6px';
+        frag.append(netLine);
+        (data.rows || []).forEach((row) => {
+          const share = row.share_of_net === null || row.share_of_net === undefined ? null : row.share_of_net * 100;
+          const isProfit = row.key === 'operating_profit';
+          const valueText = row.value === null || row.value === undefined ? '缺失' : fmtMoney(row.value);
+          const shareText = share === null ? '' : `${share.toFixed(1)}%`;
+          const change = row.change_rate === null || row.change_rate === undefined
+            ? '' : ` · ${(row.change_rate > 0 ? '+' : '')}${(row.change_rate * 100).toFixed(1)}%`;
+          const width = Math.min(Math.abs(row.share_of_net || 0) * 100, 100);
+          const color = isProfit ? (row.value < 0 ? '#dc2626' : '#059669') : '#4f46e5';
+          const line = document.createElement('div');
+          line.style.cssText = 'display:grid;grid-template-columns:96px 1fr auto;gap:8px;align-items:center;font-size:12px;margin-bottom:5px';
+          line.innerHTML = `<span style="color:var(--text-secondary)">${escapeHtml(row.label)}</span>`
+            + `<div style="height:8px;border-radius:4px;background:rgba(148,163,184,0.12);overflow:hidden"><div style="height:100%;border-radius:4px;width:${(width * 100).toFixed(1)}%;background:${color}"></div></div>`
+            + `<span style="white-space:nowrap">${valueText} · ${shareText}${change}</span>`;
+          frag.append(line);
+        });
+        if (data.caliber?.custom_cost_note) {
+          const note = document.createElement('p');
+          note.textContent = data.caliber.custom_cost_note;
+          note.style.cssText = 'color:var(--text-secondary);font-size:11px;margin:8px 0 0';
+          frag.append(note);
+        }
+        const identity = data.identity || {};
+        if (identity.note) {
+          const note = document.createElement('p');
+          note.textContent = identity.note;
+          note.style.cssText = 'color:var(--text-secondary);font-size:11px;margin:4px 0 0';
+          frag.append(note);
+        }
+        node.replaceChildren(frag);
+      } catch (error) {
+        node.textContent = `利润结构加载失败：${error.message}`;
+      }
+    }
+
     async function applyTier() {
       if (applying || !boardData || !boardData.available) return;
       applying = true;
@@ -154,7 +205,7 @@
       if (button) button.addEventListener('click', applyTier);
     }
 
-    return { load, bind };
+    return { load, bind, loadProfitStructure };
   }
 
   global.createProductMatrixBoard = createMatrixBoard;

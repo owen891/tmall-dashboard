@@ -1532,6 +1532,15 @@ def build_context(period_type, period_key, saved_target=None, category_mode=None
         linked_summaries = _linked_period_summaries(conn, period)
         # 经营目标页按月预置的净利润/推广费/净费比目标（XMind「下月规划」）。
         preset_metric_targets = _goal_metric_targets(conn, period_type, period_key)
+        # 利润结构（利润瀑布）：BI 派米恒等口径，费用 5 桶 + 利润 + 恒等校验。
+        # 对比期沿用 compare 区间（available 才有），与指标环比同源。
+        from services.profit_structure_service import profit_structure
+        profit_structure_payload = (
+            profit_structure(conn, period['start'], period['end'], category_label,
+                             compare['start'], compare['end'])
+            if compare['available']
+            else profit_structure(conn, period['start'], period['end'], category_label)
+        )
 
     has_data = bool(totals_cur['day_count'])
     missing_inputs = [] if has_data else ['daily_data']
@@ -1572,6 +1581,7 @@ def build_context(period_type, period_key, saved_target=None, category_mode=None
         'target_path': _target_path(period, target, target_source, current['net_sales'], category_label,
                                     targets=_target_rows(current, saved_review, preset_targets=preset_metric_targets)),
         'products': products,
+        'profit_structure': profit_structure_payload,
         'ads': ads,
         'breakdown': breakdown,
         'promotion_items': promotion_items,

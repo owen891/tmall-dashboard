@@ -2307,3 +2307,29 @@ body[data-page="period-review"] .demo-topbar__filters {
   outline: 2px solid var(--focus-ring);
   outline-offset: 1px;
 }
+
+/* ---------- 利润结构（利润瀑布）行样式 ----------
+   费用桶横向占比条 + 金额/占比/环比一行带过；利润行用绿/红着色。 */
+.pr-profit-structure__net {
+  font-weight: 600;
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin: 0 0 6px;
+}
+.pr-profit-row {
+  display: grid;
+  grid-template-columns: 88px 1fr auto;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  margin-bottom: 5px;
+}
+.pr-profit-row__label { color: var(--text-secondary); }
+.pr-profit-row__bar {
+  height: 8px;
+  border-radius: 4px;
+  background: var(--surface-subtle, rgba(148, 163, 184, 0.12));
+  overflow: hidden;
+}
+.pr-profit-row__fill { height: 100%; border-radius: 4px; }
+.pr-profit-row__value { color: var(--text-primary); white-space: nowrap; }

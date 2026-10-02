@@ -408,12 +408,13 @@
   if (matrixBoard) {
     matrixBoard.bind();
     matrixBoard.load();
+    matrixBoard.loadProfitStructure();
     if (eventScope) {
-      eventScope.on(window, 'tmall:date-range-change', () => matrixBoard.load());
-      eventScope.on(window, 'tmall:refresh', () => matrixBoard.load());
+      eventScope.on(window, 'tmall:date-range-change', () => { matrixBoard.load(); matrixBoard.loadProfitStructure(); });
+      eventScope.on(window, 'tmall:refresh', () => { matrixBoard.load(); matrixBoard.loadProfitStructure(); });
     } else {
-      window.addEventListener('tmall:date-range-change', () => matrixBoard.load());
-      window.addEventListener('tmall:refresh', () => matrixBoard.load());
+      window.addEventListener('tmall:date-range-change', () => { matrixBoard.load(); matrixBoard.loadProfitStructure(); });
+      window.addEventListener('tmall:refresh', () => { matrixBoard.load(); matrixBoard.loadProfitStructure(); });
     }
   }
   // 批量操作/复制选中模块（从本闭包切出，依赖显式注入）

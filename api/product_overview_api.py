@@ -1,5 +1,7 @@
 """Product overview rule cards and auditable segment results."""
 
+from datetime import date, timedelta
+
 from flask import Blueprint, request
 
 from api.api_response import evidence_level_for, failure, limitations_for, success
@@ -185,3 +187,51 @@ def product_overview_matrix_apply():
         evidence=[{"source": "products.tier", "period": matrix.get("month"),
                    "updated": result.get("updated", 0)}],
     )
+
+
+@product_overview_bp.get("/api/product-overview/profit-structure")
+def product_overview_profit_structure():
+    """利润结构（利润瀑布）：净销 → 五桶费用 → 利润，恒等校验 + 前期环比。
+
+    口径与 BI 派米「利润(支付预估)」恒等（8 月验证 diff=0）；补采窗口费用列
+    缺失按哨兵处理，不 COALESCE 成 0。
+    """
+    from services.profit_structure_service import build_structure
+    from db import get_db
+    start = (request.args.get("start") or "").strip()
+    end = (request.args.get("end") or "").strip()
+    category_filters = category_filters_from_request()
+    with get_db() as conn:
+        if not end:
+            row = conn.execute("SELECT MAX(date) AS latest FROM daily_data").fetchone()
+            latest = str(row["latest"]) if row and row["latest"] else None
+            if not latest:
+                return success(
+                    {"available": False, "missing_inputs": ["daily_data"]},
+                    availability="no-data", freshness={"period": None},
+                )
+            # 进行中的月份只覆盖部分天数，费用结构噪声大，缺省取最近一个完整月。
+            end = latest if not _is_ongoing_month(latest) else _prev_month_end(latest)
+            start = f"{end[:7]}-01"
+        payload = build_structure(conn, start, end, category_label=category_filters.get("shop_label"))
+    availability = "available" if payload.get("available") else "no-data"
+    return success(
+        payload,
+        availability=availability,
+        evidence_level=evidence_level_for(availability),
+        missing_inputs=payload.get("missing_inputs") or [],
+        freshness={"period": f'{start}~{end}'},
+        evidence=[{"source": "daily_data", "period": f'{start}~{end}'}],
+    )
+
+
+def _is_ongoing_month(latest_date):
+    today = date.today().isoformat()
+    return latest_date[:7] == today[:7]
+
+
+def _prev_month_end(latest_date):
+    latest = date.fromisoformat(latest_date)
+    first_of_month = latest.replace(day=1)
+    prev_end = first_of_month - timedelta(days=1)
+    return prev_end.isoformat()
