@@ -577,6 +577,101 @@ class PeriodReviewsTests(unittest.TestCase):
         self.assertEqual(rival['status'], 'insufficient_coverage')
         self.assertIsNone(rival['pay_buyer_change_rate'])
 
+    def test_market_block_exposes_grading_and_is_json_serializable(self):
+        """月复盘市场段必须复用市场排行页的分级算法，且响应可 JSON 序列化。
+
+        锁三件事：
+        ① 8大归类 / 趋势节点 / 蓝海供给 / 竞店爆品 / 商品趋势 五项都真的进了响应；
+        ② `grading` 集中声明窗口与口径边界（前端不再各自拼「有效期」）；
+        ③ **整条响应能 json.dumps** —— 元组 key / datetime 这类不可序列化对象
+           只有走到 API 层才暴露，单测直接调函数抓不到。
+        """
+        import json
+
+        from db import get_db
+
+        with get_db(self.app.config['DATABASE_PATH']) as connection:
+            connection.execute('''CREATE TABLE IF NOT EXISTS sycm_market_item_rank (
+                id INTEGER PRIMARY KEY AUTOINCREMENT, stat_date TEXT NOT NULL, cate_id TEXT,
+                cate_name TEXT, item_id TEXT, title TEXT, shop_name TEXT, shop_id TEXT,
+                uv REAL, pay_buyer_count REAL, core_keyword TEXT, rank INTEGER,
+                is_self INTEGER, created_at TEXT, pic_url TEXT)''')
+            connection.execute('''CREATE TABLE IF NOT EXISTS sycm_market_search_rank (
+                id INTEGER PRIMARY KEY AUTOINCREMENT, stat_date TEXT NOT NULL, cate_id TEXT,
+                cate_name TEXT, keyword TEXT, search_heat REAL, pay_rate REAL,
+                free_click_rate REAL, click_rate REAL, rank INTEGER, created_at TEXT)''')
+            # 12 天窗口：够「近 7 天 + 前置基线」两段，趋势节点才可判。
+            days = [f'2026-09-{day:02d}' for day in range(14, 26)]
+            item_rows, keyword_rows = [], []
+            for index, stat_date in enumerate(days):
+                # 竞店甲：A 商品排名 10 → 3（上升）；B 商品 3 → 10（下降）。
+                rank_a = 10 if index < 6 else 3
+                item_rows.append((stat_date, 'cate', '中筒袜', 'A', '压力袜男士透气款',
+                                  '竞店甲', 'shop-a', 100.0, 10.0, 1, rank_a, 0))
+                item_rows.append((stat_date, 'cate', '中筒袜', 'B', '压力袜女士薄款',
+                                  '竞店甲', 'shop-a', 200.0, 20.0, 1, 13 - rank_a, 0))
+                # 搜索词：压力袜有覆盖（title 含该词根），冷门词无覆盖。
+                keyword_rows.append((stat_date, 'cate', '中筒袜', '压力袜', 5000.0, 0.2, 0.1, 0.3, 1))
+                keyword_rows.append((stat_date, 'cate', '中筒袜', '毛巾袜', 500.0, 0.1, 0.1, 0.2, 2))
+            connection.executemany(
+                '''INSERT INTO sycm_market_item_rank
+                   (stat_date, cate_id, cate_name, item_id, title, shop_name, shop_id,
+                    uv, pay_buyer_count, core_keyword, rank, is_self)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+                item_rows,
+            )
+            connection.executemany(
+                '''INSERT INTO sycm_market_search_rank
+                   (stat_date, cate_id, cate_name, keyword, search_heat, pay_rate,
+                    free_click_rate, click_rate, rank)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+                keyword_rows,
+            )
+            connection.commit()
+
+        payload = self.client.get(
+            '/api/period-reviews/month/2026-09/context?category_mode=all'
+        ).get_json()
+        # ③ 序列化：不过 json.dumps 就说明有非 JSON 值混进了响应。
+        json.dumps(payload)
+        market = payload['data']['context']['market']
+
+        insights = market['keyword_insights']
+        self.assertTrue(insights['available'])
+        # 「压力袜」先命中「功能」词典（规则表有序，先命中先归类），「毛巾袜」命中「属性」。
+        labels = {row['label'] for row in insights['categories']}
+        self.assertEqual(labels, {'功能', '属性'})
+        for row in insights['categories']:
+            self.assertIn('keyword_count', row)
+            self.assertIn('heat_share', row)
+            self.assertIsInstance(row['top_keywords'], list)
+
+        supply = market['blue_ocean_supply']
+        self.assertTrue(supply['available'])
+        by_root = {row['keyword']: row for row in supply['words']}
+        # 有覆盖 → 参与分级；无覆盖 → 待核（不能判「高潜蓝海」）。
+        self.assertNotEqual(by_root['压力袜']['grade'], '待核')
+        self.assertEqual(by_root['毛巾袜']['grade'], '待核')
+        self.assertEqual(supply['pending_count'], 1)
+
+        moves = market['rival_moves']
+        self.assertTrue(moves['available'])
+        shop = next(row for row in moves['shops'] if row['shop_name'] == '竞店甲')
+        self.assertEqual(shop['rising_count'], 1)
+        self.assertEqual(shop['falling_count'], 1)
+
+        trend_items = market['trend_items']
+        self.assertTrue(trend_items['available'])
+        self.assertEqual(trend_items['rising'][0]['item_id'], 'A')
+        self.assertEqual(trend_items['rising'][0]['rank_change'], 7)
+
+        grading = market['grading']
+        self.assertIn('keyword_window', grading)
+        self.assertIn('item_window', grading)
+        self.assertIsInstance(grading['limitations'], list)
+        # 复盘周期 09-01~09-30 但市场表只到 09-25 → 必须如实声明窗口缺口。
+        self.assertTrue(any('仅覆盖' in text for text in grading['limitations']))
+
     def test_review_context_aggregates_period_facts_when_daily_data_exists(self):
         from db import get_db
 
@@ -1072,6 +1167,196 @@ class PeriodReviewsTests(unittest.TestCase):
         self.assertIn('promotion_product_channel_scope', items['missing_inputs'])
         self.assertEqual(top['channels'], {})
 
+    def test_data_status_separates_coverage_level_from_metric_usability(self):
+        """P0 #3：顶部数据状态 = 「灯 + 原因清单」，且 level 与 usable 必须分离。
+
+        关键回归：**连完整月也可能 usable=False**。实测 `month/2026-09`（覆盖 30/30 天）
+        因「利润恒等式不平 + 市场未对齐」带 2 项 warning —— 那是**结构性**的，
+        不是临时故障。若只给一盏永远为黄的灯，读者会直接忽略它，等于没做。
+        """
+        from services.period_context import _data_status
+
+        period = {'is_ongoing': False, 'elapsed_days': 30, 'total_days': 30}
+        base_coverage = {'status': 'complete', 'expected_days': 30, 'observed_days': 30,
+                         'missing_days': 0, 'observed_start': '2026-09-01', 'observed_end': '2026-09-30'}
+
+        # ① 覆盖完整 + 有 warning（利润不平 / 同比不可比）→ level=complete 但 usable=False
+        metrics = {
+            'has_data': True,
+            'coverage': dict(base_coverage),
+            'comparability': {
+                'mom': {'comparable': True, 'reason': None},
+                'yoy': {'comparable': False, 'reason': 'baseline_grain_mismatch'},
+            },
+        }
+        blocks = {
+            'profit_structure': {'available': True, 'sentinel_rows': 155,
+                                 'identity': {'ok': False, 'gap': 682843.86, 'note': '恒等残差说明'}},
+            'ads': {'channel_totals': {'partial': True}},
+            'missing_inputs': [],
+        }
+        status = _data_status(period, metrics, blocks)
+        keys = {item['key'] for item in status['degradations']}
+        self.assertIn('profit_identity', keys)
+        self.assertIn('comparability_yoy', keys)
+        self.assertIn('ads_channel_scope', keys)
+        # 覆盖完整 → level=complete；但有 warning → 数字不可直接用
+        self.assertEqual(status['level'], 'complete')
+        self.assertFalse(status['usable'])
+        self.assertEqual(status['warning_count'], 2)   # 利润 + 同比
+        self.assertEqual(status['info_count'], 1)      # 按品类渠道缺全站
+        self.assertIn('2 项影响可信度', status['label'])
+        # 可比性原因必须翻成人话，不能把内部枚举直接抛给读者
+        yoy = next(item for item in status['degradations'] if item['key'] == 'comparability_yoy')
+        self.assertNotIn('baseline_grain_mismatch', yoy['detail'])
+        # 利润项要带上未回填行数与残差，读者才能判断影响面
+        profit = next(item for item in status['degradations'] if item['key'] == 'profit_identity')
+        self.assertIn('155', profit['detail'])
+
+        # ② 只有 info（口径边界）→ usable=True，措辞不能吓人
+        clean_metrics = {
+            'has_data': True,
+            'coverage': dict(base_coverage),
+            'comparability': {'mom': {'comparable': True}, 'yoy': {'comparable': True}},
+        }
+        info_only = _data_status(period, clean_metrics, {
+            'ads': {'channel_totals': {'partial': True}}, 'missing_inputs': [],
+        })
+        self.assertEqual(info_only['level'], 'complete')
+        self.assertTrue(info_only['usable'])
+        self.assertEqual(info_only['warning_count'], 0)
+        self.assertIn('数据可用', info_only['label'])
+
+        # ③ 覆盖不足 → level=partial + coverage 降级，且说明缺几天
+        partial_metrics = {
+            'has_data': True,
+            'coverage': {'status': 'partial', 'expected_days': 3, 'observed_days': 2,
+                         'missing_days': 1, 'observed_end': '2026-10-02'},
+            'comparability': {'mom': {'comparable': True}, 'yoy': {'comparable': True}},
+        }
+        partial = _data_status({'is_ongoing': True, 'elapsed_days': 3, 'total_days': 31},
+                               partial_metrics, {'missing_inputs': []})
+        self.assertEqual(partial['level'], 'partial')
+        self.assertFalse(partial['usable'])
+        cov = next(item for item in partial['degradations'] if item['key'] == 'coverage')
+        self.assertIn('2/3', cov['detail'])
+        self.assertTrue(partial['freshness']['is_ongoing'])
+
+        # ④ 完全无数据 → no-data，不列一堆无意义的降级项
+        empty = _data_status(period, {'has_data': False, 'coverage': {'status': 'no-data'}}, {})
+        self.assertEqual(empty['level'], 'no-data')
+        self.assertFalse(empty['usable'])
+        self.assertIn('暂无数据', empty['label'])
+
+    def test_context_exposes_data_status_payload(self):
+        """data_status 必须真的进 API 响应（含 list 结构，且可 JSON 序列化）。"""
+        self._seed_category_data()
+        payload = self.client.get(
+            '/api/period-reviews/week/2026-09-W3/context?category_mode=sock'
+        ).get_json()
+        status = payload['data']['context']['data_status']
+        for key in ('level', 'usable', 'label', 'summary', 'coverage', 'freshness',
+                    'comparability', 'degradations', 'degradation_count',
+                    'warning_count', 'info_count'):
+            self.assertIn(key, status)
+        self.assertIsInstance(status['degradations'], list)
+        self.assertIn(status['level'], ('complete', 'partial', 'no-data'))
+
+    def test_campaign_attribution_is_exact_only_and_fills_all_site_channel(self):
+        """计划→商品归因：只对 1:1 计划精确归因（不摊），并补商品级「全站推广」。
+
+        回归三个既有缺口：
+        ① 商品级「全站推广」2026-08-20 后无来源（promotion_creative_daily 不含该场景）；
+        ② 品类模式下「推广计划拆解」恒空；
+        ③ 归因绝不用「按商品数均摊」凭空造数——多商品计划只在计划级展示。
+        """
+        from db import get_db
+
+        with get_db(self.app.config['DATABASE_PATH']) as connection:
+            connection.executemany(
+                'INSERT INTO products (product_id, title, image_url, shop_label) VALUES (?, ?, ?, ?)',
+                [
+                    ('A-1', '标品袜子A', '', '标品袜子'),
+                    ('B-1', '标品袜子B', '', '标品袜子'),
+                    ('C-1', '非标袜子女C', '', '非标袜子女'),
+                ],
+            )
+            # 商品级合计（channel='全部'）决定 TOP 榜顺序与「合计」列
+            connection.executemany(
+                '''INSERT INTO promotion_daily_facts
+                   (date, channel, campaign_id, product_id, grain, ad_spend,
+                    attributed_payment_amount, direct_payment_amount, cart_adds, new_buyers, clicks)
+                   VALUES (?, ?, '', ?, 'product', ?, ?, ?, 0, 0, 0)''',
+                [
+                    ('2026-09-14', '全部', 'A-1', 100, 500, 400),
+                    ('2026-09-14', '全部', 'B-1', 60, 240, 200),
+                    ('2026-09-14', '全部', 'C-1', 40, 80, 60),
+                ],
+            )
+            # 计划级事实（grain='campaign'）
+            connection.executemany(
+                '''INSERT INTO promotion_daily_facts
+                   (date, channel, campaign_id, campaign_name, grain, ad_spend,
+                    attributed_payment_amount, direct_payment_amount, clicks, impressions)
+                   VALUES (?, ?, ?, ?, 'campaign', ?, ?, ?, 0, 0)''',
+                [
+                    ('2026-09-14', '货品全站推广', 'C-EXACT', '全站_A1', 100, 500, 400),
+                    ('2026-09-14', '货品全站推广', 'C-OTHER', '全站_C1', 40, 80, 60),
+                    ('2026-09-14', '关键词推广', 'C-SHARED', '关键词_多商品', 60, 240, 200),
+                ],
+            )
+            connection.executemany(
+                '''INSERT INTO promotion_campaign_items
+                   (campaign_id, product_id, campaign_name, product_name, channel)
+                   VALUES (?, ?, ?, ?, ?)''',
+                [
+                    ('C-EXACT', 'A-1', '全站_A1', '标品袜子A', '货品全站推广'),
+                    ('C-OTHER', 'C-1', '全站_C1', '非标袜子女C', '货品全站推广'),
+                    ('C-SHARED', 'A-1', '关键词_多商品', '标品袜子A', '关键词推广'),
+                    ('C-SHARED', 'B-1', '关键词_多商品', '标品袜子B', '关键词推广'),
+                ],
+            )
+            connection.commit()
+
+        context = self.client.get(
+            '/api/period-reviews/week/2026-09-W3/context?category_mode=all'
+        ).get_json()['data']['context']
+        attr = context['campaign_attribution']
+        self.assertTrue(attr['available'])
+        self.assertIn('非均摊', attr['attribution_note'])
+        self.assertEqual(context['promotion_items']['attribution']['method'], 'exact_1to1_campaign')
+        by_id = {item['campaign_id']: item for item in attr['items']}
+        self.assertEqual(by_id['C-EXACT']['attribution'], 'exact')
+        self.assertEqual(by_id['C-EXACT']['product_id'], 'A-1')
+        self.assertEqual(by_id['C-SHARED']['attribution'], 'shared')
+        self.assertIsNone(by_id['C-SHARED']['product_id'])
+        self.assertEqual(by_id['C-SHARED']['product_count'], 2)
+        # 精确归因花费 (100+40) / 总花费 200 = 0.7；shared 的 60 不计入分子
+        self.assertAlmostEqual(attr['exact_share'], 0.7, places=4)
+
+        # ① 商品级「全站推广」被补上（此前该渠道在 2026-08-20 后恒空）
+        items = {item['product_id']: item for item in context['promotion_items']['items']}
+        self.assertIn('全站', items['A-1']['channels'])
+        self.assertAlmostEqual(items['A-1']['channels']['全站']['ad_spend'], 100, places=4)
+        self.assertEqual(items['A-1']['channel_sources']['全站'], 'campaign_exact')
+        # ③ 多商品计划不摊到任何商品：B-1 只有 shared 计划的曝光，不得凭空得到花费
+        self.assertNotIn('全站', items['B-1']['channels'])
+        self.assertEqual(items['B-1']['channels'], {})
+
+        # ② 品类模式下「推广计划拆解」不再为空，且按品类真实过滤
+        sock = self.client.get(
+            '/api/period-reviews/week/2026-09-W3/context?category_mode=sock'
+        ).get_json()['data']['context']
+        campaigns = sock['dimensions']['promotion']['campaigns']
+        self.assertTrue(campaigns['available'])
+        names = [item['name'] for item in campaigns['items']]
+        self.assertIn('全站_A1', names)
+        self.assertNotIn('全站_C1', names)      # 唯一商品在品类外 → 精确排除
+        self.assertIn('关键词_多商品', names)     # 有本品类商品 → 保留但标 partial
+        self.assertTrue(campaigns['partial'])
+        # 分母必须与分子同口径：只算通过品类过滤的计划 100/160，而不是全店 200
+        self.assertAlmostEqual(sock['campaign_attribution']['exact_share'], 100 / 160, places=4)
+
     def test_v2_legacy_sections_are_migrated_on_read(self):
         # 直接按 v1 周 key 写库（绕过 PUT 迁移），验证读取侧迁移。
         from db import get_db
@@ -1115,7 +1400,8 @@ class PeriodReviewsTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         payload = response.get_json(); response.close()
         self.assertTrue(payload['ok'])
-        weeks = payload['data']['weeks']
+        self.assertEqual(payload['data']['grain'], 'week')
+        weeks = payload['data']['points']
         # 只要有日数据就返回序列；至少覆盖铺过的周
         self.assertTrue(len(weeks) >= 2)
         # 每行字段齐全，转化率 = buyers / visitors
@@ -1131,6 +1417,38 @@ class PeriodReviewsTests(unittest.TestCase):
         self.assertEqual(clamped.status_code, 200); clamped.close()
         bad = self.client.get('/api/period-reviews/product-trend/%20')
         self.assertEqual(bad.status_code, 422); bad.close()
+
+    def test_v2_product_trend_month_grain_links_to_month_review(self):
+        """月复盘联动：grain=month 读 monthly_data 快照（生命周期同源，历史长于日导入）。"""
+        from db import get_db
+
+        with get_db(self.app.config['DATABASE_PATH']) as connection:
+            connection.executemany(
+                '''INSERT INTO monthly_data (product_id, month, payment_amount, visitors, buyers,
+                   payment_conversion, net_sales, ad_spend) VALUES (?, ?, ?, ?, ?, ?, ?, ?)''',
+                [
+                    ('V-TREND-M', '2026-05', 205435.0, 20000, 1000, 0.05, 180000.0, 30000.0),
+                    ('V-TREND-M', '2026-06', 137752.0, 15000, 800, 0.0533, 120000.0, 20000.0),
+                ],
+            )
+            connection.commit()
+
+        monthly = self.client.get('/api/period-reviews/product-trend/V-TREND-M?weeks=4&grain=month')
+        self.assertEqual(monthly.status_code, 200)
+        payload = monthly.get_json(); monthly.close()
+        self.assertTrue(payload['ok'])
+        self.assertEqual(payload['data']['grain'], 'month')
+        points = payload['data']['points']
+        # 只返回快照里已结束的月份，按时间升序
+        self.assertEqual([p['label'] for p in points], ['2026-05', '2026-06'])
+        june = points[-1]
+        self.assertAlmostEqual(june['gsv'], 137752.0, places=2)
+        self.assertAlmostEqual(june['conversion'], 0.0533, places=6)
+        # 快照没有 ad_ratio 列，费比由花费 ÷ 销售额重推
+        self.assertAlmostEqual(june['ad_ratio'], 20000.0 / 137752.0, places=6)
+
+        bad_grain = self.client.get('/api/period-reviews/product-trend/V-TREND-M?grain=quarter')
+        self.assertEqual(bad_grain.status_code, 422); bad_grain.close()
 
     def test_problem_items_aggregate_across_boards_with_sources(self):
         """P2 问题单品聚合：下滑榜/亏损榜/高费比跨榜去重并标注来源。"""

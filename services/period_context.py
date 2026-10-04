@@ -15,6 +15,9 @@ from datetime import date, datetime, timedelta
 from db import get_db
 from services.category_mode_service import mode_to_label
 from services import category_analysis_service as category_service
+# 市场分级算法（8大归类 / 词根需求 / 蓝海机会 / 趋势节点 / 竞店爆品）已投产于市场排行页，
+# 月复盘页此前未复用 → 这里直接引用同一实现，避免两套口径漂移。
+from services import market_monitor_service as market_monitor
 from services.period_parsing import (
     PERIOD_TYPES, resolve_period, resolve_compare, recent_periods,
     available_periods, _key_for, _period_label, _month_bounded_weeks,
@@ -216,7 +219,44 @@ METRIC_DEFS = [
 ]
 
 
-def _metric_items(current, prev, yoy):
+def _baseline_grain_comparable(baseline_grain, current_full_month=False):
+    """对比基线若来自月度兜底（data_grain='monthly'），只有当前周期本身是完整月
+    时量纲才一致。
+
+    daily_data 只覆盖部分日期（实测 2025-09-01~2026-10-02 但仅 93 天，2025-10
+    整月缺失），去年同周/同日、以及进行中的本月，都会整月回退到 monthly_data。
+    此时直接算变化率会把「数天 vs 整月」当成真实变化 —— 实测：
+      - week/2026-10-W1（4 天）同比 gsv -98.0%
+      - month/2026-10（进行中，仅过 3 天）同比 gsv -98.0%
+    必须拦截，而不是把极端百分比当事实展示。已完成的月（如 2026-09）即便基线
+    走月表兜底，双方都是整月，量纲一致，仍应正常对比。
+    """
+    if baseline_grain != 'monthly':
+        return True
+    return bool(current_full_month)
+
+
+def _comparability(baseline_totals, baseline_grain, baseline_available, current_full_month=False):
+    """对比基线可比性判定，供前端决定是否展示变化率（不臆造百分比）。"""
+    baseline_days = int((baseline_totals or {}).get('day_count') or 0)
+    if not baseline_available or not baseline_days:
+        return {'comparable': False, 'reason': 'baseline_no_data',
+                'baseline_grain': baseline_grain, 'baseline_days': baseline_days}
+    if not _baseline_grain_comparable(baseline_grain, current_full_month):
+        return {'comparable': False, 'reason': 'baseline_grain_mismatch',
+                'baseline_grain': baseline_grain, 'baseline_days': baseline_days}
+    return {'comparable': True, 'reason': None,
+            'baseline_grain': baseline_grain, 'baseline_days': baseline_days}
+
+
+def _metric_items(current, prev, yoy, prev_grain=None, yoy_grain=None, current_full_month=False):
+    """逐指标产出当前值 + 环比/同比。
+
+    变化率只在「基线可比」时输出；基线不可比（月度兜底量纲错配）时改为
+    输出 mom_unavailable / yoy_unavailable 原因，绝不输出极端百分比。
+    """
+    mom_comparable = _baseline_grain_comparable(prev_grain, current_full_month)
+    yoy_comparable = _baseline_grain_comparable(yoy_grain, current_full_month)
     items = []
     for key, label, fmt, lower_better in METRIC_DEFS:
         value = current.get(key)
@@ -225,13 +265,20 @@ def _metric_items(current, prev, yoy):
         item = {
             'key': key, 'label': label, 'format': fmt, 'lower_better': lower_better,
             'value': value, 'prev_value': prev_value, 'yoy_value': yoy_value,
+            'mom_comparable': mom_comparable, 'yoy_comparable': yoy_comparable,
         }
         if value is not None and prev_value:
-            item['mom_change'] = round((value - prev_value) / abs(prev_value) * 100, 1)
-            item['mom_abs'] = round(value - prev_value, 4)
+            if mom_comparable:
+                item['mom_change'] = round((value - prev_value) / abs(prev_value) * 100, 1)
+                item['mom_abs'] = round(value - prev_value, 4)
+            else:
+                item['mom_unavailable'] = 'baseline_grain_mismatch'
         if value is not None and yoy_value:
-            item['yoy_change'] = round((value - yoy_value) / abs(yoy_value) * 100, 1)
-            item['yoy_abs'] = round(value - yoy_value, 4)
+            if yoy_comparable:
+                item['yoy_change'] = round((value - yoy_value) / abs(yoy_value) * 100, 1)
+                item['yoy_abs'] = round(value - yoy_value, 4)
+            else:
+                item['yoy_unavailable'] = 'baseline_grain_mismatch'
         items.append(item)
     return items
 
@@ -504,15 +551,51 @@ def _goal_metric_targets(conn, period_type, period_key):
 
 
 def _product_meta(conn, product_ids):
+    """读取榜单商品元数据，并用广告明细图片补齐商品主档缺图。"""
     if not product_ids:
         return {}
-    placeholders = ','.join('?' for _ in product_ids)
+    ids = list(product_ids)
+    placeholders = ','.join('?' for _ in ids)
     rows = conn.execute(
         f'SELECT product_id, title, image_url, product_tags, category FROM products '
         f'WHERE product_id IN ({placeholders})',
-        list(product_ids),
+        ids,
     ).fetchall()
-    return {row['product_id']: dict(row) for row in rows}
+    meta = {row['product_id']: dict(row) for row in rows}
+    missing_ids = [
+        product_id for product_id in ids
+        if not str(meta.get(product_id, {}).get('image_url') or '').strip()
+    ]
+    if not missing_ids:
+        return meta
+
+    missing_placeholders = ','.join('?' for _ in missing_ids)
+    # 历史广告导入可能只把图片写入推广商品/创意明细，按最新记录兜底。
+    fallback_queries = (
+        "SELECT product_id, image_url, product_name AS title, updated_at"
+        " FROM promotion_campaign_items"
+        " WHERE product_id IN ({placeholders}) AND TRIM(COALESCE(image_url, '')) <> ''"
+        " ORDER BY updated_at DESC",
+        "SELECT product_id, image_url, product_name AS title, updated_at"
+        " FROM promotion_creatives"
+        " WHERE product_id IN ({placeholders}) AND TRIM(COALESCE(image_url, '')) <> ''"
+        " ORDER BY updated_at DESC",
+    )
+    for query in fallback_queries:
+        try:
+            fallback_rows = conn.execute(query.format(placeholders=missing_placeholders), missing_ids).fetchall()
+        except Exception:
+            # 兼容未初始化推广明细表的旧数据库/测试库。
+            continue
+        for row in fallback_rows:
+            product_id = row['product_id']
+            item = meta.setdefault(product_id, {'product_id': product_id})
+            if not str(item.get('image_url') or '').strip():
+                item['image_url'] = row['image_url'] or ''
+            if not item.get('title') and row['title']:
+                item['title'] = row['title']
+
+    return meta
 
 
 def _ads_direct_totals(conn, start, end, category_label=None):
@@ -556,8 +639,14 @@ def _ads_direct_totals(conn, start, end, category_label=None):
 def _ads_channel_totals(conn, start, end, category_label=None):
     """三渠道（全站/关键词/人群）推广成交金额合计（XMind「广告-汇总」）。
 
-    渠道名只挂在 campaign 粒度行上；campaign 日粒度 2026-08-20 才开始，
-    更早的月份只有 campaign_month 行——日粒度查空时按月回退，并标注来源。
+    两条口径，量纲不同不能混：
+    - **全店**（无品类过滤）：`promotion_daily_facts` 的 campaign 粒度行自带渠道名，
+      覆盖 全站/关键词/人群（campaign 日粒度 2026-08-20 起，更早月份回退
+      campaign_month 并标注来源）。
+    - **按品类**：campaign 行不带商品映射、无法过滤；改从商品×渠道明细
+      （`promotion_creative_daily`，带 product_id 可 JOIN products）聚合。它覆盖
+      关键词/人群/其他，**缺 全站推广**（creative 表不含该场景）→ 标 partial，
+      且**不计算成交占比**（分母不全，占比会误导成「全站=0」）。
     """
     try:
         table_exists = conn.execute(
@@ -565,39 +654,57 @@ def _ads_channel_totals(conn, start, end, category_label=None):
         ).fetchone()
         if not table_exists:
             return None
-        # 渠道行（campaign 粒度）不带商品映射，无法按品类过滤——按品类复盘时
-        # 展示全店渠道数据会混口径，显式标注 unavailable（与 _promotion_dimension
-        # 的 promotion_category_scope 约定一致），不静默返回空表。
-        if category_label:
-            return {'groups': [], 'source': 'campaign', 'sample_days': 0,
-                    'missing_inputs': ['promotion_category_scope']}
-        rows = [dict(row) for row in conn.execute(
-            '''SELECT f.channel AS channel,
-                       SUM(f.ad_spend) AS ad_spend,
-                       SUM(f.attributed_payment_amount) AS attributed_payment,
-                       COUNT(DISTINCT f.date) AS sample_days
-                FROM promotion_daily_facts f
-                WHERE f.date BETWEEN ? AND ? AND f.grain = 'campaign'
-                GROUP BY f.channel''',
-            [start, end],
-        ).fetchall()]
+
+        rows = []
         source = 'campaign'
-        if not rows:
-            month = str(start)[:7]
-            if str(end)[:7] != month:
-                return None
+        partial = False
+        if category_label:
+            source = 'promotion_creative_daily'
+            partial = True
+            creative_exists = conn.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='promotion_creative_daily'"
+            ).fetchone()
+            if creative_exists:
+                rows = [dict(row) for row in conn.execute(
+                    '''SELECT f.channel AS channel,
+                              SUM(f.ad_spend) AS ad_spend,
+                              SUM(f.attributed_payment_amount) AS attributed_payment,
+                              COUNT(DISTINCT f.date) AS sample_days
+                       FROM promotion_creative_daily f
+                       LEFT JOIN products p ON p.product_id = f.product_id
+                       WHERE f.date BETWEEN ? AND ?
+                         AND (p.shop_label = ? OR instr(',' || p.shop_label || ',', ',' || ? || ',') > 0)
+                       GROUP BY f.channel''',
+                    [start, end, category_label, category_label],
+                ).fetchall()]
+        else:
             rows = [dict(row) for row in conn.execute(
-                '''SELECT channel, SUM(ad_spend) AS ad_spend,
-                          SUM(attributed_payment_amount) AS attributed_payment,
-                          COUNT(*) AS sample_days
-                   FROM promotion_daily_facts
-                   WHERE grain = 'campaign_month' AND substr(date, 1, 7) = ?
-                   GROUP BY channel''',
-                (month,),
+                '''SELECT f.channel AS channel,
+                           SUM(f.ad_spend) AS ad_spend,
+                           SUM(f.attributed_payment_amount) AS attributed_payment,
+                           COUNT(DISTINCT f.date) AS sample_days
+                    FROM promotion_daily_facts f
+                    WHERE f.date BETWEEN ? AND ? AND f.grain = 'campaign'
+                    GROUP BY f.channel''',
+                [start, end],
             ).fetchall()]
-            source = 'campaign_month'
+            if not rows:
+                month = str(start)[:7]
+                if str(end)[:7] != month:
+                    return None
+                rows = [dict(row) for row in conn.execute(
+                    '''SELECT channel, SUM(ad_spend) AS ad_spend,
+                              SUM(attributed_payment_amount) AS attributed_payment,
+                              COUNT(*) AS sample_days
+                       FROM promotion_daily_facts
+                       WHERE grain = 'campaign_month' AND substr(date, 1, 7) = ?
+                       GROUP BY channel''',
+                    (month,),
+                ).fetchall()]
+                source = 'campaign_month'
         if not rows:
-            return None
+            return {'groups': [], 'source': source, 'sample_days': 0,
+                    'missing_inputs': ['promotion_category_scope' if category_label else 'promotion_channel_scope']}
         by_channel = {row['channel']: dict(row) for row in rows}
         groups = []
         total_payment = sum(float(row.get('attributed_payment') or 0) for row in rows)
@@ -611,10 +718,16 @@ def _ads_channel_totals(conn, start, end, category_label=None):
                 'ad_spend': round(spend, 2),
                 'attributed_payment': round(payment, 2),
                 'roi': (round(payment / spend, 4) if spend else None),
-                'payment_share': (round(payment / total_payment, 6) if total_payment else None),
+                # 按品类时只覆盖部分渠道（缺全站），占比分母不全 → 不给占比，避免误导。
+                'payment_share': (None if partial
+                                  else (round(payment / total_payment, 6) if total_payment else None)),
             })
         sample_days = max((int(row.get('sample_days') or 0) for row in rows), default=0)
-        return {'groups': groups, 'source': source, 'sample_days': sample_days}
+        result = {'groups': groups, 'source': source, 'sample_days': sample_days}
+        if partial:
+            result['partial'] = True
+            result['missing_inputs'] = ['promotion_channel_all_site_scope']
+        return result
     except Exception:
         return None
 
@@ -738,6 +851,63 @@ def _promotion_dimension(conn, period, compare, category_label=None):
             return {'available': False, 'grain': None, 'items': [], 'missing_inputs': ['promotion_daily_facts']}
 
         def aggregate(span, grain, dimension):
+            # 按品类 + 渠道维度：promotion_daily_facts 的渠道行不带商品映射、无法过滤，
+            # 改从商品×渠道明细（promotion_creative_daily）聚合，可 JOIN products 过滤。
+            # 它只覆盖 关键词/人群/其他，缺 全站推广（creative 表不含该场景）。
+            if category_label and dimension == 'channel':
+                if not conn.execute(
+                    "SELECT 1 FROM sqlite_master WHERE type='table' AND name='promotion_creative_daily'"
+                ).fetchone():
+                    return {}
+                rows = conn.execute(
+                    '''SELECT f.channel AS dimension_key,
+                              COUNT(DISTINCT f.date) AS sample_days,
+                              SUM(f.ad_spend) AS ad_spend,
+                              SUM(f.attributed_payment_amount) AS attributed_payment,
+                              SUM(f.impressions) AS impressions,
+                              SUM(f.clicks) AS clicks,
+                              SUM(f.payment_buyers) AS payment_buyers,
+                              SUM(f.new_buyers) AS new_buyers
+                       FROM promotion_creative_daily f
+                       LEFT JOIN products p ON p.product_id = f.product_id
+                       WHERE f.date BETWEEN ? AND ?
+                         AND (p.shop_label = ? OR instr(',' || p.shop_label || ',', ',' || ? || ',') > 0)
+                       GROUP BY dimension_key ORDER BY ad_spend DESC''',
+                    [span['start'], span['end'], category_label, category_label],
+                ).fetchall()
+                return {row['dimension_key'] or 'unknown': dict(row) for row in rows}
+            # 按品类 + 计划维度：campaign 粒度行不带商品映射，无法直接过滤。
+            # 改走「计划→商品归因」（promotion_campaign_items × campaign 事实）：
+            # 计划下有本品类商品即保留。1:1 计划是**精确**过滤；多商品计划的花费
+            # 含品类外商品，标 partial（不拆、不摊）。
+            # 这是既有缺口「品类模式下推广计划拆解为空」的正解。
+            if category_label and dimension == 'campaign':
+                attr = _campaign_attribution(conn, span, category_label, limit=None)
+                if not attr or not attr.get('available'):
+                    return {}
+                out = {}
+                for item in attr['items']:
+                    key = item['name'] or item['campaign_id']
+                    out[key] = {
+                        'dimension_key': key,
+                        'sample_days': item.get('sample_days'),
+                        'ad_spend': item.get('ad_spend'),
+                        'attributed_payment': item.get('attributed_payment'),
+                        'impressions': item.get('impressions'),
+                        'clicks': item.get('clicks'),
+                        'payment_buyers': None,
+                        'new_buyers': None,
+                        'partial': item.get('partial'),
+                    }
+                return out
+
+            # 渠道维度（全店）：实测 promotion_daily_facts **没有 grain='channel' 行**
+            # （只有 campaign / campaign_month / product / unit_month），渠道名挂在
+            # campaign 粒度行上 —— 所以渠道视图查 campaign 粒度再按 channel 分组。
+            # 这是既有 bug：原先查 grain='channel' 恒空，导致「推广渠道拆解」两种
+            # 口径下都永远没数据。
+            if dimension == 'channel':
+                grain = 'campaign'
             params = [span['start'], span['end'], grain]
             category_sql = ''
             if category_label and grain == 'product':
@@ -762,7 +932,12 @@ def _promotion_dimension(conn, period, compare, category_label=None):
             return {row['dimension_key'] or 'unknown': dict(row) for row in rows}
 
         def build_view(grain, dimension):
-            if category_label and grain != 'product':
+            # 渠道维度在品类模式下走商品×渠道明细（见 aggregate）；
+            # 计划维度在品类模式下走「计划→商品归因」（见 aggregate）；
+            # 其余非商品粒度在品类模式下仍不可用。
+            creative_channel = bool(category_label) and dimension == 'channel'
+            campaign_by_category = bool(category_label) and dimension == 'campaign'
+            if category_label and grain != 'product' and not creative_channel and not campaign_by_category:
                 return {'available': False, 'grain': grain, 'items': [],
                         'missing_inputs': ['promotion_category_scope']}
             current = aggregate(period, grain, dimension)
@@ -792,6 +967,21 @@ def _promotion_dimension(conn, period, compare, category_label=None):
                                      if old_payment is not None and old_spend not in (None, 0) else None),
                 })
             items.sort(key=lambda item: float(item.get('ad_spend') or 0), reverse=True)
+            if creative_channel:
+                # 按品类口径只覆盖部分渠道（缺全站推广），标注清楚，别让读者以为这就是全部。
+                return {'available': bool(items), 'grain': grain, 'items': items[:20],
+                        'comparison_available': bool(baseline),
+                        'partial': True,
+                        'missing_inputs': [] if items else ['promotion_channel_all_site_scope']}
+            if campaign_by_category:
+                # 计划维度按品类：1:1 计划精确过滤；多商品计划花费含品类外商品 → partial。
+                # 映射表是当前快照，只对 2026-08-20 之后成立（见 _campaign_attribution）。
+                partial = any(row.get('partial') for row in current.values())
+                return {'available': bool(items), 'grain': grain, 'items': items[:20],
+                        'comparison_available': bool(baseline),
+                        'partial': partial,
+                        'attribution_note': CAMPAIGN_ATTRIBUTION_NOTE,
+                        'missing_inputs': [] if items else ['promotion_campaign_items']}
             return {'available': bool(items), 'grain': grain, 'items': items[:20],
                     'comparison_available': bool(baseline),
                     'missing_inputs': [] if items else [f'promotion_daily_facts.{grain}']}
@@ -809,12 +999,14 @@ def _promotion_dimension(conn, period, compare, category_label=None):
 # 广告单品 TOP 消耗（对齐用户的月复盘框架「广告-单品-TOP20消耗商品」）
 #
 # 数据边界（已实测，勿改）：
-# - 商品级指标来自 channel='全部' AND grain='product' 的行：这是唯一带
-#   product_id 的完整商品级汇总（花费/归因成交/直接成交/加购/拉新/点击齐全）。
-# - 具名渠道（关键词/人群/货品全站…）的行 product_id 全为空；campaign→商品
-#   是一对多映射，join 会把花费重复计量，不能用来拆「商品×渠道」。
-#   因此渠道分组列只在采集端写出带商品映射的渠道行（历史上全站推广/product
-#   粒度存在过）时才有值，否则保持 None 并在 missing_inputs 里说明。
+# - 商品级合计来自 promotion_daily_facts 的 channel='全部' AND grain='product' 行：
+#   唯一带 product_id 的完整商品级汇总（花费/归因成交/直接成交/加购/拉新/点击齐全）。
+# - 商品×渠道**不再依赖** promotion_daily_facts 的具名渠道行（那些行 product_id 全为空，
+#   且 campaign→商品 是一对多映射，join 会重复计量花费）。正解是 promotion_creative_daily：
+#   v4 采集器逐日抓的**创意级**事实，自带 channel + product_id（实测 28,337 行，
+#   product_id 命中 products 99.8%），覆盖 关键词/人群/店铺直达，自 2026-08-20 起。
+# - 它**缺 全站推广**（creative 报表不含该场景）→ 渠道之和 ≠ 商品合计，
+#   必须显式标注 channels_partial / channels_note，不能让人把渠道加总当 100%。
 # ---------------------------------------------------------------------------
 
 PROMOTION_CHANNEL_GROUPS = (
@@ -825,36 +1017,78 @@ PROMOTION_CHANNEL_GROUPS = (
 )
 
 
-def _product_trend(conn, product_id, weeks=8, category_label=None):
-    """单商品近 N 个完整月内周的趋势序列（GSV/访客/买家/净销售/转化）。
+def _product_trend(conn, product_id, weeks=8, category_label=None, grain='week'):
+    """单商品近 N 个完整周期（周复盘=月内分周，月复盘=自然月）的趋势序列。
 
-    用于货品榜「点击字段 → 周维度折线预览」。周期口径与复盘一致
-    （_month_bounded_weeks：W1 从 1 号到第一个周日）；当前不完整周不纳入。
+    grain='week'：月内分周口径（W1 从 1 号到第一个周日），聚合 daily_data；
+    grain='month'：自然月口径，直接读 BI 月度快照 monthly_data（与生命周期分析
+    同源）——日导入可能只有最近几个月，商品的完整历史在快照里。
+    只统计已结束的周期，进行中的周/月不纳入；比率列与货品榜口径一致。
+    返回 {available, grain, points}——points 即序列行。
     """
     try:
         today = date.today()
-        # 从当月往前找 weeks 个周跨度：先算当月已有完整周数，不足再往前月补。
-        spans = []
-        year, month = today.year, today.month
-        while len(spans) < weeks:
-            month_weeks = _month_bounded_weeks(year, month)
-            # 当月只取已结束（end < 今天）的周
-            usable = [
-                (num, start, end) for num, start, end in month_weeks
-                if end < today
-            ]
-            for num, start, end in reversed(usable):
-                spans.append((f'{start.isoformat()[:7]} 第{num}周', start, end))
-                if len(spans) >= weeks:
-                    break
-            month -= 1
-            if month == 0:
-                year, month = year - 1, 12
-        spans = list(reversed(spans[:weeks]))
-
         rows = []
-        for label, start, end in spans:
-            row = conn.execute(
+        if grain == 'month':
+            # 月度复盘联动：直接读 BI 月度快照 monthly_data（与生命周期分析同源）。
+            # 它的历史远长于日导入（日导入可能只有最近几个月），商品的季节性历史
+            # 都在快照里；只取已结束的自然月（month < 当月），进行中月份不纳入。
+            current_month = f'{today.year:04d}-{today.month:02d}'
+            snapshot_rows = conn.execute(
+                '''SELECT * FROM monthly_data
+                   WHERE product_id = ? AND month < ?
+                   ORDER BY month DESC LIMIT ?''',
+                (product_id, current_month, weeks),
+            ).fetchall()
+            for snapshot in reversed(snapshot_rows):
+                month_str = str(snapshot['month'])[:7]
+                year, mon = int(month_str[:4]), int(month_str[5:7])
+                start = date(year, mon, 1)
+                end = date(year, 12, 31) if mon == 12 else date(year, mon + 1, 1) - timedelta(days=1)
+                gsv = float(snapshot['payment_amount'] or 0)
+                ad_spend = float(snapshot['ad_spend'] or 0)
+                rows.append({
+                    'label': month_str,
+                    'start': start.isoformat(),
+                    'end': end.isoformat(),
+                    'gsv': round(gsv, 2),
+                    'net_sales': round(float(snapshot['net_sales'] or 0), 2),
+                    'visitors': round(float(snapshot['visitors'] or 0), 0),
+                    'buyers': round(float(snapshot['buyers'] or 0), 0),
+                    'conversion': (round(float(snapshot['payment_conversion']), 6) if snapshot['payment_conversion'] is not None else None),
+                    'refund_rate': (round(float(snapshot['refund_rate']), 6) if snapshot['refund_rate'] is not None else None),
+                    'payment_qty': round(float(snapshot['payment_qty'] or 0), 0),
+                    'aov': (round(float(snapshot['avg_order_value']), 2) if snapshot['avg_order_value'] is not None else None),
+                    'ad_spend': round(ad_spend, 2),
+                    # 快照没有 ad_ratio 列，与榜单口径一致：花费 ÷ 销售额。
+                    'ad_ratio': (round(ad_spend / gsv, 6) if gsv else None),
+                    'operating_profit': (round(float(snapshot['operating_profit']), 2) if snapshot['operating_profit'] is not None else None),
+                    'profit_rate': (round(float(snapshot['profit_rate']), 6) if snapshot['profit_rate'] is not None else None),
+                })
+        else:
+            year, month = today.year, today.month
+            # 从当月往前找 weeks 个周跨度：先算当月已有完整周数，不足再往前月补。
+            spans = []
+            while len(spans) < weeks:
+                month_weeks = _month_bounded_weeks(year, month)
+                # 当月只取已结束（end < 今天）的周
+                usable = [
+                    (num, start, end) for num, start, end in month_weeks
+                    if end < today
+                ]
+                for num, start, end in reversed(usable):
+                    spans.append((f'{start.isoformat()[:7]} 第{num}周', start, end))
+                    if len(spans) >= weeks:
+                        break
+                month -= 1
+                if month == 0:
+                    year, month = year - 1, 12
+            spans = list(reversed(spans[:weeks]))
+            rows = []
+            # 周序列带上货品榜全字段（XMind「点击字段指标看周折线」）：
+            # 比率列由周总量重推，而不是均值，保证与榜单口径一致。
+            for label, start, end in spans:
+                row = conn.execute(
                 '''SELECT COALESCE(SUM(d.payment_amount), 0) AS gsv,
                           COALESCE(SUM(d.ipv), 0) AS visitors,
                           COALESCE(SUM(d.buyers), 0) AS buyers,
@@ -866,35 +1100,390 @@ def _product_trend(conn, product_id, weeks=8, category_label=None):
                    FROM daily_data d WHERE d.product_id = ? AND d.date BETWEEN ? AND ?''',
                 (product_id, start.isoformat(), end.isoformat()),
             ).fetchone()
-            if row is None:
-                continue
-            gsv = float(row['gsv'] or 0)
-            visitors = float(row['visitors'] or 0)
-            buyers = float(row['buyers'] or 0)
-            net_sales = float(row['net_sales'] or 0)
-            ad_spend = float(row['ad_spend'] or 0)
-            # 周序列带上货品榜全字段（XMind「点击字段指标看周折线」）：
-            # 比率列由周总量重推，而不是均值，保证与榜单口径一致。
-            rows.append({
-                'label': label,
-                'start': start.isoformat(),
-                'end': end.isoformat(),
-                'gsv': round(gsv, 2),
-                'net_sales': round(net_sales, 2),
-                'visitors': round(visitors, 0),
-                'buyers': round(buyers, 0),
-                'conversion': round(buyers / visitors, 6) if visitors else None,
-                'refund_rate': (round(float(row['refund_amount'] or 0) / gsv, 6) if gsv else None),
-                'payment_qty': round(float(row['payment_qty'] or 0), 0),
-                'aov': round(gsv / buyers, 2) if buyers else None,
-                'ad_spend': round(ad_spend, 2),
-                'ad_ratio': round(ad_spend / gsv, 6) if gsv else None,
-                'operating_profit': round(float(row['operating_profit'] or 0), 2),
-                'profit_rate': (round(float(row['operating_profit'] or 0) / net_sales, 6) if net_sales else None),
-            })
-        return {'available': bool(rows), 'weeks': rows}
+                if row is None:
+                    continue
+                gsv = float(row['gsv'] or 0)
+                visitors = float(row['visitors'] or 0)
+                buyers = float(row['buyers'] or 0)
+                net_sales = float(row['net_sales'] or 0)
+                ad_spend = float(row['ad_spend'] or 0)
+                rows.append({
+                    'label': label,
+                    'start': start.isoformat(),
+                    'end': end.isoformat(),
+                    'gsv': round(gsv, 2),
+                    'net_sales': round(net_sales, 2),
+                    'visitors': round(visitors, 0),
+                    'buyers': round(buyers, 0),
+                    'conversion': round(buyers / visitors, 6) if visitors else None,
+                    'refund_rate': (round(float(row['refund_amount'] or 0) / gsv, 6) if gsv else None),
+                    'payment_qty': round(float(row['payment_qty'] or 0), 0),
+                    'aov': round(gsv / buyers, 2) if buyers else None,
+                    'ad_spend': round(ad_spend, 2),
+                    'ad_ratio': round(ad_spend / gsv, 6) if gsv else None,
+                    'operating_profit': round(float(row['operating_profit'] or 0), 2),
+                    'profit_rate': (round(float(row['operating_profit'] or 0) / net_sales, 6) if net_sales else None),
+                })
+        return {'available': bool(rows), 'grain': grain, 'points': rows}
     except Exception:
-        return {'available': False, 'weeks': []}
+        return {'available': False, 'grain': grain, 'points': []}
+
+
+# ---------------------------------------------------------------------------
+# 计划 → 商品归因（promotion_campaign_items × campaign 粒度事实）
+#
+# 数据边界（实测 2026-10-03，勿臆改）：
+# - `promotion_campaign_items` 是「计划→商品」映射表：4,306 行 / 562 计划 /
+#   1,210 商品，但它是**当前快照**（updated_at 仅 2026-09-18 ~ 10-03），没有历史
+#   版本 —— 只能代表「最近一次采集时的计划商品构成」，所以只对 2026-08-20 之后
+#   的周期成立，更早周期不得回填。
+# - campaign 粒度事实（`promotion_daily_facts.grain='campaign'`）覆盖 2026-08-20 起，
+#   562 个计划与映射表 **100% 对得上**（计划花费里「无映射」占比 = 0%）。
+# - 归因只分两档，**一律不做均摊**：按商品数把计划花费摊到商品，等于凭空造数
+#   （实测有个 759 商品的计划，摊完每商品只剩零头，且无任何依据）。
+#     · `exact`：计划只绑 1 个商品 → 计划花费/成交**全额**归到该商品。
+#       实测覆盖 2026-09 计划花费的 73.9%；其中「货品全站推广」89.3% 是 1:1
+#       （210/212 个计划），正好补上「商品级全站推广」这个缺口。
+#     · `shared`：计划绑多个商品 → 只在计划级展示，不拆到商品。
+# ---------------------------------------------------------------------------
+
+CAMPAIGN_ATTRIBUTION_NOTE = (
+    '计划→商品归因：仅对「计划只绑 1 个商品」的计划做商品级归因（精确，非均摊）；'
+    '多商品计划只在计划级展示。映射表为当前快照，仅 2026-08-20 之后有效。'
+)
+
+
+def _campaign_attribution(conn, period, category_label=None, limit=20, include_product_rows=False):
+    """计划 → 商品归因。返回 None 表示相关表缺失。
+
+    返回 {available, items, exact_share, first_fact_date, attribution_note,
+          missing_inputs}；`include_product_rows=True` 时额外带 `product_rows`
+    —— 它的 key 是 `(channel, product_id)` **元组**，不可 JSON 序列化，
+    所以**默认不返回**，只有内部消费方（商品×渠道补全）才显式索取。
+    - items：计划级列表（按花费降序，最多 limit 条），每条含
+      campaign_id / name / channel / ad_spend / attributed_payment / roi /
+      product_count / attribution('exact'|'shared') / product_id / product_title /
+      image_url / partial
+    - product_rows：{(channel, product_id): {ad_spend, attributed_payment, ...}}
+      **只含 exact（1:1）计划**，供商品级渠道补全（尤其全站推广）使用。
+    """
+    try:
+        for table in ('promotion_campaign_items', 'promotion_daily_facts'):
+            if not conn.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (table,)
+            ).fetchone():
+                return None
+
+        # ① 计划 → 商品映射（当前快照）
+        mapping = {}
+        for row in conn.execute(
+            '''SELECT campaign_id, channel, product_id, product_name, campaign_name, image_url
+               FROM promotion_campaign_items'''
+        ).fetchall():
+            entry = mapping.setdefault(row['campaign_id'], {
+                'channel': row['channel'] or '',
+                'name': row['campaign_name'] or '',
+                'products': [],
+                'titles': {},
+                'images': {},
+            })
+            pid = row['product_id'] or ''
+            if pid and pid not in entry['products']:
+                entry['products'].append(pid)
+            if row['campaign_name']:
+                entry['name'] = row['campaign_name']
+            if row['product_name']:
+                entry['titles'].setdefault(pid, row['product_name'])
+            if row['image_url']:
+                entry['images'].setdefault(pid, row['image_url'])
+
+        # ② 品类归属（用于品类模式过滤；exact 计划可精确过滤，shared 只能近似）
+        category_products = None
+        if category_label:
+            category_products = {
+                row['product_id'] for row in conn.execute(
+                    '''SELECT product_id FROM products
+                       WHERE shop_label = ? OR instr(',' || shop_label || ',', ',' || ? || ',') > 0''',
+                    (category_label, category_label),
+                ).fetchall()
+            }
+
+        # ③ 计划级事实（campaign 粒度）
+        facts = conn.execute(
+            '''SELECT campaign_id,
+                      MAX(channel) AS channel,
+                      MAX(NULLIF(campaign_name, '')) AS campaign_name,
+                      SUM(ad_spend) AS ad_spend,
+                      SUM(attributed_payment_amount) AS attributed_payment,
+                      SUM(direct_payment_amount) AS direct_payment,
+                      SUM(cart_adds) AS cart_adds,
+                      SUM(new_buyers) AS new_buyers,
+                      SUM(clicks) AS clicks,
+                      SUM(impressions) AS impressions,
+                      COUNT(DISTINCT date) AS sample_days,
+                      MIN(date) AS first_date,
+                      MAX(date) AS last_date
+               FROM promotion_daily_facts
+               WHERE grain = 'campaign' AND date BETWEEN ? AND ?
+               GROUP BY campaign_id''',
+            (period['start'], period['end']),
+        ).fetchall()
+        if not facts:
+            empty = {
+                'available': False, 'items': [],
+                'exact_share': None, 'first_fact_date': None,
+                'attribution_note': CAMPAIGN_ATTRIBUTION_NOTE,
+                'missing_inputs': ['promotion_daily_facts.campaign'],
+            }
+            if include_product_rows:
+                empty['product_rows'] = {}
+            return empty
+
+        items = []
+        product_rows = {}
+        total_spend = 0.0
+        exact_spend = 0.0
+        first_fact_date = None
+        for row in facts:
+            cid = row['campaign_id']
+            info = mapping.get(cid, {'channel': '', 'name': '', 'products': [], 'titles': {}, 'images': {}})
+            channel = info['channel'] or row['channel'] or ''
+            products = info['products']
+            spend = float(row['ad_spend'] or 0)
+            exact = len(products) == 1
+            pid = products[0] if exact else None
+            if category_products is not None:
+                # exact：按唯一商品的品类精确判定；shared：只要计划下有本品类商品就保留，
+                # 但花费含品类外商品，必须标 partial（见下面 item['partial']）。
+                if not (set(products) & category_products):
+                    continue
+            # ⚠️ 分母必须与分子同口径：只累加**通过品类过滤**的计划，否则品类模式下
+            # exact_share 会变成「品类内精确花费 ÷ 全店总花费」，比率无意义。
+            total_spend += spend
+            if exact:
+                exact_spend += spend
+            if first_fact_date is None or (row['first_date'] and row['first_date'] < first_fact_date):
+                first_fact_date = row['first_date']
+            item = {
+                'campaign_id': cid,
+                'name': info['name'] or row['campaign_name'] or cid,
+                'channel': channel,
+                'ad_spend': round(spend, 2),
+                'attributed_payment': round(float(row['attributed_payment'] or 0), 2),
+                'direct_payment': round(float(row['direct_payment'] or 0), 2),
+                'cart_adds': int(row['cart_adds'] or 0),
+                'new_buyers': int(row['new_buyers'] or 0),
+                'clicks': row['clicks'],
+                'impressions': row['impressions'],
+                'sample_days': int(row['sample_days'] or 0),
+                'roi': (float(row['attributed_payment'] or 0) / spend if spend else None),
+                'product_count': len(products),
+                'attribution': 'exact' if exact else 'shared',
+                'product_id': pid,
+                'product_title': (info['titles'].get(pid) or pid) if pid else None,
+                'image_url': (info['images'].get(pid) or '') if pid else '',
+                'partial': (category_products is not None and not exact),
+            }
+            items.append(item)
+            if exact and pid:
+                # 商品级渠道补全：只登记 1:1 计划（精确），多商品计划不摊。
+                key = (channel, pid)
+                bucket = product_rows.get(key)
+                if bucket is None:
+                    bucket = {'ad_spend': 0.0, 'attributed_payment': 0.0,
+                              'direct_payment': 0.0, 'cart_adds': 0, 'new_buyers': 0,
+                              'clicks': 0, 'impressions': 0}
+                    product_rows[key] = bucket
+                bucket['ad_spend'] += spend
+                bucket['attributed_payment'] += float(row['attributed_payment'] or 0)
+                bucket['direct_payment'] += float(row['direct_payment'] or 0)
+                bucket['cart_adds'] += int(row['cart_adds'] or 0)
+                bucket['new_buyers'] += int(row['new_buyers'] or 0)
+                bucket['clicks'] += int(row['clicks'] or 0)
+                bucket['impressions'] += int(row['impressions'] or 0)
+
+        items.sort(key=lambda item: float(item.get('ad_spend') or 0), reverse=True)
+        exact_share = round(exact_spend / total_spend, 4) if total_spend else None
+        result = {
+            'available': bool(items),
+            'items': items[:limit] if limit else items,
+            'exact_share': exact_share,
+            'first_fact_date': first_fact_date,
+            'attribution_note': CAMPAIGN_ATTRIBUTION_NOTE,
+            'missing_inputs': [],
+        }
+        if include_product_rows:
+            result['product_rows'] = product_rows
+        return result
+    except Exception:
+        return None
+
+
+# ---------------------------------------------------------------------------
+# 全页数据状态汇总（XMind P0 #3：顶部统一「数据状态」标识）
+#
+# 原则：**不是一盏灯，而是「一盏灯 + 触发原因清单」**。
+# 只显示「部分数据」是不可操作的——必须说清**哪块降级了、为什么、影响什么**，
+# 否则读者只能选择「全部信」或「全部不信」。
+#
+# 本函数只做汇总、**不重新查库**：所有判据都从已算好的各块里取。
+# 同一事实若在两处各算一遍，就是未来不一致的根源。
+#
+# severity 两档，含义不同、处理方式也不同：
+#   warning —— 数字本身不可全信（覆盖不足 / 基线不可比 / 恒等式不平）
+#   info    —— 数字可信但口径有边界（已显式标注的部分口径）
+# ---------------------------------------------------------------------------
+
+DATA_STATUS_LABELS = {
+    'complete': '数据完整',
+    'partial': '部分数据',
+    'no-data': '暂无数据',
+}
+
+_COMPARABILITY_REASON_TEXT = {
+    'baseline_no_data': '对比周期无数据',
+    'baseline_grain_mismatch': '基线粒度与本期不匹配（整月兜底基线 vs 非完整月）',
+}
+
+
+def _data_status(period, metrics, blocks):
+    """汇总全页数据可信度（供顶部统一状态条消费）。
+
+    返回 {level, label, summary, coverage, freshness, comparability,
+          degradations: [{key, label, detail, severity}], degradation_count,
+          warning_count, info_count}
+    """
+    blocks = blocks or {}
+    coverage = (metrics or {}).get('coverage') or {}
+    comparability = (metrics or {}).get('comparability') or {}
+    degradations = []
+
+    def add(key, label, detail, severity='warning'):
+        degradations.append({'key': key, 'label': label, 'detail': detail, 'severity': severity})
+
+    # ① 周期覆盖：expected/observed 的天数差是最硬的可信度信号
+    status = coverage.get('status')
+    if status == 'no-data':
+        add('coverage', '本期无数据',
+            f"预期 {coverage.get('expected_days')} 天，实际 0 天", 'warning')
+    elif status == 'partial':
+        add('coverage', '周期覆盖不足',
+            f"仅 {coverage.get('observed_days')}/{coverage.get('expected_days')} 天"
+            f"（缺 {coverage.get('missing_days')} 天）"
+            + (f"，数据止于 {coverage.get('observed_end')}" if coverage.get('observed_end') else ''),
+            'warning')
+
+    # ② 可比性：不可比必须说明原因，否则读者会把「不可比」当成「没变化」
+    for kind, label in (('mom', '环比'), ('yoy', '同比')):
+        entry = comparability.get(kind) or {}
+        if entry.get('comparable') is False:
+            reason = _COMPARABILITY_REASON_TEXT.get(
+                entry.get('reason'), entry.get('reason') or '基线不可比')
+            add(f'comparability_{kind}', f'{label}不可比', reason, 'warning')
+
+    # ③ 利润恒等式：不平 = 利润是部分口径（实测所有口径下都不平，故必标）
+    profit = blocks.get('profit_structure') or {}
+    identity = profit.get('identity') or {}
+    if profit.get('available') and identity.get('ok') is False:
+        sentinel = profit.get('sentinel_rows')
+        detail = identity.get('note') or (
+            f"恒等残差 {identity.get('gap'):,.0f}" if identity.get('gap') is not None else '恒等式未平')
+        if sentinel:
+            detail += f'（未回填 {sentinel} 行）'
+        add('profit_identity', '利润为部分口径', detail, 'warning')
+
+    # ④ 市场：run_alignment='partial' 表示采集批次未与本期对齐
+    market = blocks.get('market') or {}
+    if market.get('run_alignment') == 'partial':
+        missing = len(market.get('missing_inputs') or [])
+        add('market_alignment', '市场数据未完全对齐本期',
+            f"采集批次与本期口径部分错配，缺 {missing} 项输入" if missing else '采集批次与本期口径部分错配',
+            'warning')
+
+    # ⑤ 口径边界（数字可信，但覆盖不完整，已在各处显式标注）
+    ads = blocks.get('ads') or {}
+    channel_totals = ads.get('channel_totals') or {}
+    if channel_totals.get('partial'):
+        add('ads_channel_scope', '按品类渠道缺「全站推广」',
+            '渠道明细取自商品×渠道事实（不含全站推广），故不计算成交占比', 'info')
+
+    promo_items = blocks.get('promotion_items') or {}
+    if promo_items.get('channels_partial'):
+        present = promo_items.get('channels_groups_present') or []
+        add('promotion_items_channels', '商品×渠道为部分口径',
+            '覆盖 ' + ('、'.join(present) if present else '无') + '；渠道之和 ≠ 商品合计', 'info')
+
+    attribution = blocks.get('campaign_attribution') or {}
+    share = attribution.get('exact_share')
+    if attribution.get('available') and share is not None and share < 0.9999:
+        add('campaign_attribution', '计划归因覆盖部分花费',
+            f"可精确归因的计划花费占比 {share * 100:.1f}%；多商品计划只在计划级展示（不摊）", 'info')
+
+    dimensions = (blocks.get('dimensions') or {}).get('promotion') or {}
+    for key, label in (('channels', '推广渠道拆解'), ('campaigns', '推广计划拆解')):
+        view = dimensions.get(key) or {}
+        if view.get('partial'):
+            add(f'dimension_{key}', f'{label}为部分口径',
+                '按品类口径只覆盖有商品映射的渠道/计划', 'info')
+
+    # ⑥ 顶层缺失输入：出现即说明有块没取到数
+    top_missing = blocks.get('missing_inputs') or []
+    if top_missing:
+        add('missing_inputs', '存在缺失输入',
+            '、'.join(str(item) for item in top_missing[:6])
+            + ('…' if len(top_missing) > 6 else ''), 'warning')
+
+    warning_count = sum(1 for item in degradations if item['severity'] == 'warning')
+    info_count = len(degradations) - warning_count
+    has_data = bool((metrics or {}).get('has_data'))
+
+    # level 只表达「周期覆盖完整性」；usable 才表达「数字能不能直接用」。
+    # ⚠️ 必须分开，否则会掉进「永远是黄的」陷阱：实测连 2026-09（完整月）都因
+    # 「利润恒等式不平 + 市场未对齐」而带 warning —— 那是**结构性**的，不是临时故障。
+    # 若只给一盏永远为黄的灯，读者会直接忽略它，等于没做。
+    level = 'no-data' if not has_data else (
+        'complete' if coverage.get('status') == 'complete' else 'partial')
+    usable = has_data and warning_count == 0
+
+    if not has_data:
+        label, summary = '暂无数据', '本期暂无数据，指标与结论不可用。'
+    elif warning_count:
+        label = f'部分数据（{warning_count} 项影响可信度）'
+        summary = (f'{warning_count} 项影响可信度'
+                   + (f'、{info_count} 项口径边界' if info_count else '')
+                   + '，详见下方清单。')
+    elif info_count:
+        label = f'数据可用（{info_count} 项口径边界）'
+        summary = f'数字可直接使用；另有 {info_count} 项已知口径边界，不影响结论。'
+    else:
+        label, summary = '数据完整', '本期数据完整，各项口径可直接使用。'
+
+    return {
+        'level': level,
+        'usable': usable,
+        'label': label,
+        'summary': summary,
+        'coverage': {
+            'status': coverage.get('status'),
+            'expected_days': coverage.get('expected_days'),
+            'observed_days': coverage.get('observed_days'),
+            'missing_days': coverage.get('missing_days'),
+            'observed_start': coverage.get('observed_start'),
+            'observed_end': coverage.get('observed_end'),
+        },
+        'freshness': {
+            'observed_start': coverage.get('observed_start'),
+            'observed_end': coverage.get('observed_end'),
+            'is_ongoing': bool((period or {}).get('is_ongoing')),
+            'elapsed_days': (period or {}).get('elapsed_days'),
+            'total_days': (period or {}).get('total_days'),
+        },
+        'comparability': comparability,
+        'degradations': degradations,
+        'degradation_count': len(degradations),
+        'warning_count': warning_count,
+        'info_count': info_count,
+    }
 
 
 def _promotion_items_block(conn, period, category_label=None, limit=20):
@@ -911,7 +1500,13 @@ def _promotion_items_block(conn, period, category_label=None, limit=20):
             category_sql = " AND (p.shop_label = ? OR instr(',' || p.shop_label || ',', ',' || ? || ',') > 0)"
             category_params = [category_label, category_label]
 
-        def aggregate(start, end, channels):
+        def aggregate(start, end, channels, grain='product'):
+            """商品级聚合。只允许 grain='product'。
+
+            其他粒度的历史行来自已停用的 v3 采集器（把 campaignId 当 product_id 写入，
+            实测 campaign_month/unit_month 的 product_id 有 0% 能对上 products），
+            不能当商品口径使用，否则会把广告计划 ID 当成商品塞进复盘页。
+            """
             placeholders = ','.join('?' for _ in channels)
             rows = conn.execute(
                 f'''SELECT f.product_id,
@@ -923,20 +1518,59 @@ def _promotion_items_block(conn, period, category_label=None, limit=20):
                            SUM(f.clicks) AS clicks
                     FROM promotion_daily_facts f
                     LEFT JOIN products p ON p.product_id = f.product_id
-                    WHERE f.date BETWEEN ? AND ? AND f.grain = 'product'
+                    WHERE f.date BETWEEN ? AND ? AND f.grain = ?
                       AND f.product_id IS NOT NULL AND f.product_id != ''
                       AND f.channel IN ({placeholders}){category_sql}
                     GROUP BY f.product_id''',
-                [start, end, *channels, *category_params],
+                [start, end, grain, *channels, *category_params],
             ).fetchall()
             return {row['product_id']: dict(row) for row in rows}
 
-        # 总计口径：channel='全部' 的商品级行。
-        totals_map = aggregate(period['start'], period['end'], channels=['全部'])
-        # 渠道口径：具名渠道且带商品映射的商品级行（当前采集大多没有）。
-        channel_maps = {}
+        # 总计口径：channel='全部' 的商品级行（唯一干净的商品级口径，v4 采集）。
+        totals_map = aggregate(period['start'], period['end'], ['全部'])
+        # 渠道口径（历史）：promotion_daily_facts 里带具名渠道的商品级行。实测 grain='product'
+        # 只有 '全部' 与 '全站推广'（全站推广 749 行，止于 2026-07-31，product_id 命中 62.7%）；
+        # 关键词/人群 的具名行都在 campaign/unit 粒度（product_id 是 campaignId，命中 0%），不可用。
+        channel_rows = {}   # (group_name, channel) -> {pid: row}
         for group_name, channels in PROMOTION_CHANNEL_GROUPS:
-            channel_maps[group_name] = aggregate(period['start'], period['end'], channels=list(channels))
+            for channel in channels:
+                rows = aggregate(period['start'], period['end'], [channel])
+                if rows:
+                    channel_rows[(group_name, channel)] = rows
+
+        # 渠道口径（当前权威）：promotion_creative_daily —— v4 采集器逐日抓的创意级事实，
+        # 自带 channel + product_id（实测 28,337 行，product_id 命中 products 99.8%），
+        # 覆盖 关键词推广/人群推广/店铺直达，自 2026-08-20 起。这是「商品×渠道」的正解。
+        creative_rows = {}  # (channel, pid) -> row
+        creative_available = bool(conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='promotion_creative_daily'"
+        ).fetchone())
+        if creative_available:
+            creative_sql = f'''SELECT f.channel AS channel, f.product_id,
+                                      SUM(f.ad_spend) AS ad_spend,
+                                      SUM(f.attributed_payment_amount) AS attributed_payment,
+                                      SUM(f.direct_payment_amount) AS direct_payment,
+                                      SUM(f.cart_adds) AS cart_adds,
+                                      SUM(f.new_buyers) AS new_buyers,
+                                      SUM(f.clicks) AS clicks
+                               FROM promotion_creative_daily f
+                               LEFT JOIN products p ON p.product_id = f.product_id
+                               WHERE f.date BETWEEN ? AND ?
+                                 AND f.product_id IS NOT NULL AND f.product_id != ''
+                                 {category_sql}
+                               GROUP BY f.channel, f.product_id'''
+            for row in conn.execute(
+                creative_sql, [period['start'], period['end'], *category_params]
+            ).fetchall():
+                creative_rows[(row['channel'], row['product_id'])] = dict(row)
+
+        # 渠道口径（补全）：计划→商品归因的 exact（1:1 计划）行。
+        # 这是「商品级全站推广」的唯一来源 —— promotion_creative_daily 实测**不含
+        # 全站推广**（只有 关键词/人群/店铺直达），而 promotion_daily_facts 的
+        # product 粒度具名行只有 '全站推广' 且止于 2026-07-31。2026-08-20 起，
+        # 「货品全站推广」的商品绑定只存在于计划→商品映射里（210/212 个计划是 1:1）。
+        attribution = _campaign_attribution(conn, period, category_label, include_product_rows=True)
+        campaign_rows = (attribution or {}).get('product_rows') or {}
 
         def derived(row):
             spend = row.get('ad_spend')
@@ -967,15 +1601,46 @@ def _promotion_items_block(conn, period, category_label=None, limit=20):
         )[:limit]
         meta = _product_meta(conn, set(top_ids))
         items = []
+        # 注意：这个标记必须跨商品累积，不能在每个商品循环里重置——
+        # 否则只反映「最后一个商品」是否有渠道数据，missing_inputs 会误判。
         has_channel_data = False
+
+        def merge_rows(left, right):
+            merged = dict(left)
+            for key in ('ad_spend', 'attributed_payment', 'direct_payment',
+                        'cart_adds', 'new_buyers', 'clicks'):
+                merged[key] = (left.get(key) or 0) + (right.get(key) or 0)
+            return merged
+
         for pid in top_ids:
             info = meta.get(pid, {})
             channels_data = {}
-            has_channel_data = False
-            for group_name, _ in PROMOTION_CHANNEL_GROUPS:
-                row = channel_maps[group_name].get(pid)
-                if row is not None and (row.get('ad_spend') or 0) > 0:
-                    channels_data[group_name] = derived(row)
+            channel_sources = {}
+            for group_name, channels in PROMOTION_CHANNEL_GROUPS:
+                group_row = None
+                group_source = None
+                for channel in channels:
+                    # 三个来源**二选一**（绝不相加，避免重复计数）：
+                    # ① promotion_creative_daily —— 当前权威商品×渠道来源（创意级，
+                    #    覆盖 关键词/人群/店铺直达，2026-08-20 起）；
+                    # ② 计划→商品归因的 1:1 exact 行 —— 补 creative 没有的渠道，
+                    #    主要是「货品全站推广」（creative 表不含该场景）；
+                    # ③ promotion_daily_facts 的 product 粒度具名行 —— 历史兜底
+                    #    （仅 '全站推广'，止于 2026-07-31）。
+                    row, source = creative_rows.get((channel, pid)), 'creative'
+                    if row is None:
+                        row, source = campaign_rows.get((channel, pid)), 'campaign_exact'
+                    if row is None:
+                        row = channel_rows.get((group_name, channel), {}).get(pid)
+                        source = 'product_grain'
+                    if row is None or not (row.get('ad_spend') or 0):
+                        continue
+                    group_row = row if group_row is None else merge_rows(group_row, row)
+                    # 同一组内多来源混用时，标注最保守的来源，避免让人误以为是单一权威源。
+                    group_source = source if group_source is None else 'mixed'
+                if group_row is not None:
+                    channels_data[group_name] = derived(group_row)
+                    channel_sources[group_name] = group_source
                     has_channel_data = True
             items.append({
                 'product_id': pid,
@@ -983,6 +1648,7 @@ def _promotion_items_block(conn, period, category_label=None, limit=20):
                 'image_url': info.get('image_url') or '',
                 'totals': derived(totals_map[pid]),
                 'channels': channels_data,
+                'channel_sources': channel_sources,
             })
 
         missing_inputs = []
@@ -990,9 +1656,34 @@ def _promotion_items_block(conn, period, category_label=None, limit=20):
             missing_inputs.append('promotion_daily_facts.product')
         elif not has_channel_data:
             missing_inputs.append('promotion_product_channel_scope')
-        return {'available': bool(items), 'items': items,
-                'channel_groups': [name for name, _ in PROMOTION_CHANNEL_GROUPS],
-                'missing_inputs': missing_inputs}
+        # 渠道明细天然是「部分口径」，必须显式标注，别让前端把渠道加总当成 100%：
+        # - 全站推广：2026-08-20 起靠计划→商品归因的 1:1 exact 行补（**只覆盖单商品
+        #   计划**，实测占全站花费 89.3%），多商品计划无商品级明细；
+        # - 关键词/人群：creative 表只覆盖 2026-08-20 起。
+        channel_groups_present = sorted({
+            group for item in items for group in item['channels']
+        })
+        attribution_share = (attribution or {}).get('exact_share')
+        note = '商品×渠道覆盖 ' + ('、'.join(channel_groups_present) if channel_groups_present else '无') + '。'
+        if '全站' in channel_groups_present:
+            note += ('全站推广按「计划只绑 1 个商品」精确归因'
+                     + (f'（覆盖计划花费 {attribution_share * 100:.1f}%）' if attribution_share is not None else '')
+                     + '，多商品计划无商品级明细；')
+        note += '渠道之和不等于商品合计。'
+        return {
+            'available': bool(items), 'items': items,
+            'channel_groups': [name for name, _ in PROMOTION_CHANNEL_GROUPS],
+            'channels_partial': has_channel_data,
+            'channels_groups_present': channel_groups_present,
+            'channels_note': note if has_channel_data else None,
+            'attribution': {
+                'method': 'exact_1to1_campaign',
+                'exact_share': attribution_share,
+                'first_fact_date': (attribution or {}).get('first_fact_date'),
+                'note': (attribution or {}).get('attribution_note'),
+            },
+            'missing_inputs': missing_inputs,
+        }
     except Exception:
         return {'available': False, 'items': [], 'missing_inputs': ['promotion_daily_facts']}
 
@@ -1145,13 +1836,24 @@ def _market_block(conn, period):
         market_signals, keyword_signals = [], []
 
     def aggregate(table, key, fields, where_sql=''):
-        if table == 'sycm_market_rival_shop':
-            cols = ('COUNT(DISTINCT stat_date) AS sample_days, MAX(shop_name) AS shop_name, MAX(shop_url) AS shop_url, MAX(is_tmall) AS is_tmall,'
-                    'SUM(uv) AS uv, SUM(pay_buyer_count) AS pay_buyer_count,'
-                    'SUM(cart_buyer_count) AS cart_buyer_count, SUM(collect_buyer_count) AS collect_buyer_count')
-        else:
-            cols = ('COUNT(DISTINCT stat_date) AS sample_days, MAX(title) AS title, MAX(pic_url) AS pic_url, MAX(detail_url) AS detail_url,'
-                    'SUM(uv) AS uv, SUM(pay_buyer_count) AS pay_buyer_count')
+        """按 key 聚合窗口事实。
+
+        ⚠️ 列名按表**实测存在性**拼装，不硬写。事故：原实现对非
+        `sycm_market_rival_shop` 的表统一 `MAX(detail_url)`，但
+        `sycm_market_item_rank` 根本没有 `detail_url` 列（只有
+        `sycm_market_rival_item` 有）→ `sqlite3.OperationalError`，
+        又被外层 `except` 吞掉 → **competitor_items 长期静默为空**，
+        表现为「竞品商品级未接入」，实际是 SQL 查了不存在的列。
+        """
+        present = {row['name'] for row in conn.execute(f'PRAGMA table_info({table})').fetchall()}
+        parts = ['COUNT(DISTINCT stat_date) AS sample_days']
+        for col in ('shop_name', 'shop_url', 'is_tmall', 'title', 'pic_url', 'detail_url'):
+            if col in present:
+                parts.append(f'MAX({col}) AS {col}')
+        for col in ('uv', 'pay_buyer_count', 'cart_buyer_count', 'collect_buyer_count'):
+            if col in present:
+                parts.append(f'SUM({col}) AS {col}')
+        cols = ', '.join(parts)
         rows = conn.execute(f'SELECT {key}, {cols} FROM {table} WHERE stat_date BETWEEN ? AND ? {where_sql} GROUP BY {key}', fields).fetchall()
         result = {}
         for row in rows:
@@ -1301,6 +2003,81 @@ def _market_block(conn, period):
     if not run and not (market_signals or keyword_signals or rivals or competitor_items):
         return {'available': False, 'run': None, 'categories': [], 'rivals': [], 'competitor_items': [], 'missing_inputs': ['market_source_facts']}
 
+    # ------------------------------------------------------------------
+    # 市场分级（XMind「市场监控-行业」）：8大归类 / 词根需求 / 蓝海机会 /
+    # 趋势节点 / 竞店爆品排名变化。
+    #
+    # ⚠️ 算法**不在此处重写** —— 直接复用市场排行页已投产的
+    #    `services/market_monitor_service`，保证两页口径一致。
+    # ⚠️ 窗口取「复盘周期 ∩ 数据实际覆盖」而不是复盘周期本身：
+    #    市场表只从 2026-09-16 起，若强行按整月算，7 天/基线窗口会落在
+    #    无数据区 → 趋势节点恒空。交集窗口 + 显式回报窗口天数才诚实。
+    # ------------------------------------------------------------------
+    keyword_insights = {'available': False, 'missing_inputs': ['sycm_market_search_rank'],
+                        'categories': [], 'blue_ocean': [],
+                        'trend_nodes': {'rising': [], 'cooling': []}}
+    blue_ocean_supply = {'available': False, 'words': [],
+                         'missing_inputs': ['sycm_market_item_rank']}
+    rival_moves = {'available': False, 'shops': [], 'shop_count': 0,
+                   'missing_inputs': ['sycm_market_item_rank']}
+    trend_items = {'available': False, 'rising': [], 'new_items': [],
+                   'missing_inputs': ['sycm_market_item_rank']}
+    keyword_window = None
+    item_window = None
+    kw_rows = []
+    try:
+        kw_facts = source_dates.get('sycm_market_search_rank') or {}
+        kw_start, kw_end = kw_facts.get('first_date'), kw_facts.get('last_date')
+        if kw_start and kw_end:
+            keyword_window = {'start': kw_start, 'end': kw_end,
+                              'day_count': int(kw_facts.get('sample_days') or 0)}
+            kw_rows = conn.execute(
+                '''SELECT stat_date, keyword, search_heat, pay_rate, click_rate
+                   FROM sycm_market_search_rank WHERE stat_date BETWEEN ? AND ?
+                   ORDER BY stat_date''',
+                (kw_start, kw_end),
+            ).fetchall()
+            if kw_rows:
+                keyword_insights = market_monitor.keyword_insights(
+                    kw_start, kw_end, [tuple(row) for row in kw_rows])
+        item_facts = source_dates.get('sycm_market_item_rank') or {}
+        item_start, item_end = item_facts.get('first_date'), item_facts.get('last_date')
+        if item_start and item_end:
+            item_window = {'start': item_start, 'end': item_end,
+                           'day_count': int(item_facts.get('sample_days') or 0)}
+            item_rows = conn.execute(
+                '''SELECT stat_date, item_id, title, shop_name, rank, is_self, uv, pay_buyer_count
+                   FROM sycm_market_item_rank WHERE stat_date BETWEEN ? AND ?
+                   ORDER BY stat_date, rank''',
+                (item_start, item_end),
+            ).fetchall()
+            if item_rows:
+                rival_moves = market_monitor.rival_item_moves(
+                    item_start, item_end, [tuple(row) for row in item_rows])
+                trend_items = market_monitor.trend_items(
+                    item_start, item_end, [tuple(row) for row in item_rows])
+                # 蓝海完整口径：最新采集日在榜商品 title 命中词根 → 每万搜索覆盖。
+                # 与近似口径（热度×转化）并存：近似看「有没有需求」，完整看「供给挤不挤」。
+                if kw_rows:
+                    titles = conn.execute(
+                        'SELECT title FROM sycm_market_item_rank WHERE stat_date = ?',
+                        (item_end,),
+                    ).fetchall()
+                    blue_ocean_supply = market_monitor.blue_ocean_words(
+                        [tuple(row) for row in kw_rows],
+                        [row['title'] for row in titles])
+    except Exception:
+        # 市场分级是增强项，任何异常都不应拖垮整个复盘上下文。
+        pass
+
+    # 趋势词标注 8 大归类（与关键词洞察同一套口径，供前端直接分组展示）。
+    trend_nodes = keyword_insights.get('trend_nodes') or {}
+    for bucket in ('rising', 'cooling'):
+        for entry in trend_nodes.get(bucket) or []:
+            key, label = market_monitor.classify_keyword(entry.get('keyword'))
+            entry['category_key'] = key
+            entry['category_label'] = label
+
     decision_hints = []
     rising_keywords = [row for row in keyword_signals if row.get('status') == 'demand_up'][:3]
     rising_shops = [row for row in rivals if row.get('status') == 'rising'][:3]
@@ -1316,7 +2093,39 @@ def _market_block(conn, period):
         missing.append('sycm_market_item_rank')
     if not keyword_signals:
         missing.append('sycm_market_search_rank')
+    if not keyword_insights.get('available'):
+        missing.append('market_keyword_insights')
+    if not blue_ocean_supply.get('available'):
+        missing.append('market_blue_ocean_supply')
+    if not rival_moves.get('available'):
+        missing.append('market_rival_item_moves')
     missing.extend(['market_price', 'market_margin', 'market_reviews'])
+
+    # 市场分级总口径（XMind「市场监控-行业」）：窗口与边界集中声明一处，
+    # 避免前端各处自行拼「有效期」文案导致口径分叉。
+    grading_limitations = list(keyword_insights.get('limitations') or [])
+    if blue_ocean_supply.get('available'):
+        # `keyword_insights` 自带的「供给覆盖字段未采集，待补齐每万覆盖」是**近似口径**
+        # 的免责声明。但完整口径（每万搜索覆盖）本次已单独产出 → 保留这句会自相矛盾
+        # （页面上明明有「每万覆盖」列，却提示「待补齐」）。替换为两者关系说明。
+        grading_limitations = [text for text in grading_limitations if '供给覆盖字段未采集' not in text]
+        grading_limitations.insert(0, (
+            '蓝海有两条口径并存：「蓝海度」（热度×转化，用于候选排序）与「每万搜索覆盖」'
+            '（供给分级，见「蓝海市场 · 低供给词根」）—— 后者本次已产出，无需再等采集补齐。'))
+    if keyword_window and (keyword_window['start'] > start or keyword_window['end'] < end):
+        grading_limitations.append(
+            f"市场表仅覆盖 {keyword_window['start']} ~ {keyword_window['end']}"
+            f"（{keyword_window['day_count']} 天），复盘周期 {start} ~ {end} 的其余天数无市场数据。")
+    if not (trend_nodes.get('available')):
+        grading_limitations.append('趋势节点需「近期窗口 + 前置基线」两段数据，当前基线不足，起势/退势不可判。')
+    market_grading = {
+        'keyword_window': keyword_window,
+        'item_window': item_window,
+        'trend_node_threshold': trend_nodes.get('threshold'),
+        'trend_node_available': bool(trend_nodes.get('available')),
+        'blue_ocean_word_scope': blue_ocean_supply.get('word_scope'),
+        'limitations': grading_limitations,
+    }
     return {'available': True, 'run': run, 'run_alignment': run_alignment,
             'comparison_run': dict(previous_run) if previous_run else None,
             'period': {'start': start, 'end': end},
@@ -1325,6 +2134,11 @@ def _market_block(conn, period):
             'competitor_items': competitor_items,
             'market_signals': market_signals,
             'keyword_signals': keyword_signals,
+            'keyword_insights': keyword_insights,
+            'blue_ocean_supply': blue_ocean_supply,
+            'rival_moves': rival_moves,
+            'trend_items': trend_items,
+            'grading': market_grading,
             'source_dates': source_dates,
             'decision_hints': decision_hints,
             'missing_inputs': sorted(set(missing))}
@@ -1488,6 +2302,9 @@ def build_context(period_type, period_key, saved_target=None, category_mode=None
         )
         totals_yoy = _totals_for_range(conn, period['yoy']['start'], period['yoy']['end'], category_label)
 
+        # 基线粒度必须在 _derive 之前取：_derive 只产出指标值，会丢掉 data_grain 标记。
+        prev_grain = totals_prev.get('data_grain')
+        yoy_grain = totals_yoy.get('data_grain')
         current = _derive(totals_cur)
         prev = _derive(totals_prev) if totals_prev['day_count'] else {}
         yoy = _derive(totals_yoy) if totals_yoy['day_count'] else {}
@@ -1519,6 +2336,9 @@ def build_context(period_type, period_key, saved_target=None, category_mode=None
         traffic = _traffic_dimension(conn, period, compare, category_label)
         promotion = _promotion_dimension(conn, period, compare, category_label)
         promotion_items = _promotion_items_block(conn, period, category_label)
+        # 计划 → 商品归因（对齐 XMind「推广计划拆解」+ 补商品级全站推广）。
+        # 与 promotion_items 内的补全同源，这里单独取一份计划级列表给前端渲染。
+        campaign_attribution = _campaign_attribution(conn, period, category_label)
         # 汇总层广告块含直接 ROI / 三渠道合计，需要 conn 查推广事实表，
         # 必须在连接作用域内完成（与 products/promotion_items 同理）。
         ads = _ads_block(conn, current, prev, period, compare, category_label)
@@ -1557,6 +2377,37 @@ def build_context(period_type, period_key, saved_target=None, category_mode=None
     }
     # 对比周期自身没数据时，环比列不能当成 0 变化展示。
     compare = {**compare, 'has_data': bool(totals_prev['day_count'])}
+    # 只有「已完结的月」当前周期才是完整月；进行中的月（如 10 月仅过 3 天）
+    # 与月度兜底基线（整月）量纲不一致，必须拦截变化率。
+    current_full_month = period_type == 'month' and not period['is_ongoing']
+
+    metrics_payload = {
+        'current': current,
+        'prev': prev if prev else None,
+        'yoy': yoy if yoy else None,
+        'items': _metric_items(current, prev, yoy, prev_grain=prev_grain,
+                               yoy_grain=yoy_grain, current_full_month=current_full_month),
+        'has_data': has_data,
+        'coverage': coverage,
+        # 对比基线可比性：前端据此决定是否展示变化率，避免把窗口错配的
+        # 极端同比（如数天 vs 整月 → -98%）当事实。
+        'comparability': {
+            'mom': _comparability(totals_prev, prev_grain, compare['available'], current_full_month),
+            'yoy': _comparability(totals_yoy, yoy_grain, True, current_full_month),
+        },
+        'paid_cpc_source': paid_cpc_source,
+    }
+    # 全页数据状态（P0 #3）：只汇总、不重查。判据全部取自上面已算好的各块，
+    # 避免同一事实在两处各算一遍 → 未来不一致。
+    data_status = _data_status(period, metrics_payload, {
+        'profit_structure': profit_structure_payload,
+        'market': market,
+        'ads': ads,
+        'promotion_items': promotion_items,
+        'campaign_attribution': campaign_attribution,
+        'dimensions': {'promotion': promotion},
+        'missing_inputs': missing_inputs,
+    })
 
     return {
         'period': period,
@@ -1567,15 +2418,8 @@ def build_context(period_type, period_key, saved_target=None, category_mode=None
         },
         'compare': compare,
         'compare_options': recent_periods(period_type, period_key),
-        'metrics': {
-            'current': current,
-            'prev': prev if prev else None,
-            'yoy': yoy if yoy else None,
-            'items': _metric_items(current, prev, yoy),
-            'has_data': has_data,
-            'coverage': coverage,
-            'paid_cpc_source': paid_cpc_source,
-        },
+        'data_status': data_status,
+        'metrics': metrics_payload,
         # 达成率口径 = 净销售额 ÷ 目标（与经营目标表一致）。
         # 早期误用 GSV 作分子，会把含退款的支付金额算进达成率，系统性偏高约 20%。
         'target_path': _target_path(period, target, target_source, current['net_sales'], category_label,
@@ -1585,6 +2429,7 @@ def build_context(period_type, period_key, saved_target=None, category_mode=None
         'ads': ads,
         'breakdown': breakdown,
         'promotion_items': promotion_items,
+        'campaign_attribution': campaign_attribution,
         'dimensions': {
             'traffic': traffic,
             'promotion': promotion,

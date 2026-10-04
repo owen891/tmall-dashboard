@@ -88,8 +88,8 @@ def period_review_templates():
 @period_reviews_bp.route('/api/period-reviews/period-options')
 def period_review_period_options():
     period_type = (request.args.get('period_type') or 'week').strip()
-    if period_type not in ('week', 'month'):
-        return failure('VALIDATION_ERROR', 'period_type must be week or month', status=422)
+    if period_type not in ('day', 'week', 'month'):
+        return failure('VALIDATION_ERROR', 'period_type must be day, week or month', status=422)
     limit = max(1, min(request.args.get('limit', 120, type=int) or 120, 240))
     options = reviews_service.available_periods(period_type, limit=limit)
     availability = 'available' if options else 'no-data'
@@ -133,19 +133,22 @@ def period_review_categories():
 
 @period_reviews_bp.route('/api/period-reviews/product-trend/<product_id>')
 def period_review_product_trend(product_id):
-    """单商品近 N 个周的趋势序列，用于货品榜「字段折线预览」。只读。"""
+    """单商品近 N 个周期的趋势序列（grain=week 周复盘 / month 月复盘联动）。只读。"""
     from services.period_context import _product_trend
     from db import get_db
 
     product_id = str(product_id or '').strip()
     if not product_id or len(product_id) > 64:
         return failure('VALIDATION_ERROR', '商品ID不合法', status=422)
+    grain = request.args.get('grain', 'week')
+    if grain not in ('week', 'month'):
+        return failure('VALIDATION_ERROR', 'grain 只支持 week 或 month', status=422)
     weeks = request.args.get('weeks', 8, type=int)
     weeks = max(1, min(int(weeks or 8), 26))
     category_mode = requested_category_mode()
     category_label = mode_to_label(category_mode) if category_mode else None
     with get_db() as conn:
-        data = _product_trend(conn, product_id, weeks=weeks, category_label=category_label)
+        data = _product_trend(conn, product_id, weeks=weeks, category_label=category_label, grain=grain)
     availability = 'available' if data['available'] else 'no-data'
     missing_inputs = [] if data['available'] else ['daily_data']
     return success(
@@ -154,8 +157,8 @@ def period_review_product_trend(product_id):
         evidence_level=evidence_level_for(availability, missing_inputs=missing_inputs),
         missing_inputs=missing_inputs,
         limitations=limitations_for(availability, missing_inputs=missing_inputs),
-        filters={'category_mode': category_mode or 'all', 'category_label': category_label},
-        evidence=[{'source': 'daily_data', 'product_id': product_id, 'row_count': len(data['weeks'])}],
+        filters={'category_mode': category_mode or 'all', 'category_label': category_label, 'grain': grain},
+        evidence=[{'source': 'daily_data', 'product_id': product_id, 'row_count': len(data['points'])}],
     )
 
 
