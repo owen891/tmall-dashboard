@@ -1250,7 +1250,6 @@
       list.appendChild(row);
     });
     body.append(intro, list);
-    openDialog(trigger);
   }
 
   function openProductDetail(row, trigger) {
