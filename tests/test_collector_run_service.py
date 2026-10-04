@@ -547,6 +547,51 @@ class CollectorRunServiceTests(unittest.TestCase):
         completion = next(item for item in quality if item['rule_key'] == 'retry_completion')
         self.assertEqual(completion['status'], 'failed')
 
+    def test_schema_check_resolves_alert_once_catalog_stabilizes(self):
+        from scripts import collector_schema_check
+        from services.collector_run_service import list_health_alerts
+
+        def run(catalog):
+            with (
+                patch.object(collector_schema_check, 'fetch_catalog', return_value=catalog),
+                patch('sys.argv', ['collector_schema_check.py', '--db-path', self.db_path]),
+            ):
+                return collector_schema_check.main()
+
+        source_a = {'source_key': 'sycm_flow', 'fields': ['a']}
+        source_b = {'source_key': 'sycm_flow', 'fields': ['a', 'b']}
+
+        # 首次建基线不告警；字段变化告警（exit 2）；字段稳定后自动闭环。
+        self.assertEqual(run({'sources': [source_a]}), 0)
+        self.assertEqual(run({'sources': [source_b]}), 2)
+        alerts = list_health_alerts(source_key='sycm_flow', db_path=self.db_path)
+        self.assertEqual([alert['alert_type'] for alert in alerts], ['schema_changed'])
+        self.assertEqual(run({'sources': [source_b]}), 0)
+        self.assertEqual(
+            list_health_alerts(source_key='sycm_flow', db_path=self.db_path), [],
+        )
+
+    def test_schema_check_ignores_disabled_source_drift(self):
+        from scripts import collector_schema_check
+        from services.collector_run_service import list_health_alerts
+
+        def run(catalog):
+            with (
+                patch.object(collector_schema_check, 'fetch_catalog', return_value=catalog),
+                patch('sys.argv', ['collector_schema_check.py', '--db-path', self.db_path]),
+            ):
+                return collector_schema_check.main()
+
+        disabled = {'source_key': 'dts_market', 'enabled': False, 'fields': ['a']}
+        run({'sources': [disabled]})
+        code = run({'sources': [{'source_key': 'dts_market', 'enabled': False,
+                                 'fields': ['a', 'b']}]})
+        # 未启用源的字段漂移既不触发告警，也不把任务判为 degraded。
+        self.assertEqual(code, 0)
+        self.assertEqual(
+            list_health_alerts(source_key='dts_market', db_path=self.db_path), [],
+        )
+
 
 if __name__ == '__main__':
     unittest.main()

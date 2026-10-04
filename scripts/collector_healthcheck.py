@@ -5,6 +5,7 @@ import json
 import os
 import sys
 import urllib.error
+import urllib.parse
 import urllib.request
 from datetime import datetime
 from pathlib import Path
@@ -19,19 +20,32 @@ def persist_alerts(report, db_path=None):
     from services.collector_run_service import record_health_alert, resolve_health_alert
     for source in report.get('data', {}).get('sources', []):
         key = source['source_key']
+        # 未启用的源（enabled=False，如 dts_market）不产生新告警 —— 与
+        # api/collect_api.py 的 unhealthy 判定保持同一语义。注意下面的 resolve
+        # 循环仍会执行，好把历史上可能残留的 open 告警清掉。
+        enabled = source.get('enabled', True)
         conditions = []
-        if source.get('consecutive_failures', 0) >= 3:
+        if enabled and source.get('consecutive_failures', 0) >= 3:
             conditions.append(('consecutive_failure', '连续失败/异常运行达到 3 次', 'critical'))
-        if (source.get('age_days') or 0) > 3:
-            conditions.append(('data_delay', f"最新事实已延迟 {source['age_days']} 天", 'warning'))
-        if source.get('table_error'):
+        # 与 api/collect_api.py 的 unhealthy 判定保持同口径：按各源自身的 fresh_days
+        # 阈值判断，而不是硬编码 3 天（月表 fresh_days=40，否则会天天误报"延迟 31 天"）。
+        if enabled and (source.get('age_days') or 0) > source.get('fresh_days', 3):
+            conditions.append(('data_delay', f"最新事实已延迟 {source['age_days']} 天"
+                                              f"（阈值 {source.get('fresh_days', 3)} 天）", 'warning'))
+        missing = source.get('missing_dates') or []
+        if enabled and missing:
+            shown = ', '.join(missing[:5]) + (' 等' if len(missing) > 5 else '')
+            conditions.append(('data_gap',
+                               f"近 7 天缺失 {len(missing)} 天：{shown}", 'critical'))
+        if enabled and source.get('table_error'):
             conditions.append(('schema_or_table_error', source['table_error'], 'critical'))
         active_types = set()
         for alert_type, message, severity in conditions:
             active_types.add(alert_type)
             record_health_alert(key, alert_type, message, severity=severity,
                                 details=source, db_path=db_path)
-        for alert_type in ('consecutive_failure', 'data_delay', 'schema_or_table_error'):
+        for alert_type in ('consecutive_failure', 'data_delay', 'data_gap',
+                           'schema_or_table_error'):
             if alert_type not in active_types:
                 # Resolve all currently open fingerprints for this source/type.
                 from services.collector_run_service import list_health_alerts
@@ -45,7 +59,16 @@ def fetch_health(base_url):
         f'{base_url.rstrip("/")}/api/collect/health',
         headers={'Accept': 'application/json'},
     )
-    with urllib.request.urlopen(request, timeout=15) as response:
+    # 目标是本机看板服务，显式禁用代理：开发/沙箱环境常设 http_proxy，而
+    # urllib 默认会把代理用在 127.0.0.1 上，导致本地健康检查莫名失败
+    # （表现为 URLError/502，看着像服务没起）。curl 默认跳过 localhost，
+    # Python 不跳——这是两者行为差异的坑。
+    host = urllib.parse.urlsplit(base_url).hostname or ''
+    if host in ('127.0.0.1', 'localhost', '::1'):
+        opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    else:
+        opener = urllib.request.build_opener()
+    with opener.open(request, timeout=15) as response:
         payload = json.loads(response.read().decode('utf-8'))
     if not payload.get('ok'):
         raise RuntimeError(payload.get('message', 'collector health endpoint failed'))

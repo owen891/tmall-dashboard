@@ -297,6 +297,10 @@ for ($i = 0; $i -lt $CollectWaitTimeout; $i += 10) {
 }
 
 # 5b. 聚合店铺日汇总（从 daily_data 补 store_daily_facts）
+#     注意：本步骤位于「等待采集完成」之后，脚本一旦被中断就静默不跑
+#     （2026-10-02 实测 LastTaskResult=0xC000013A），store_daily_facts 会悄悄
+#     落后。因此另有独立计划任务 TmallDashboard-Aggregate-Daily 兜底，两个入口
+#     都带 --skip-if-current：先跑的一方真正聚合，后跑的一方零成本跳过。
 Write-Log "`n[5b] 聚合店铺日汇总..."
 $aggScript = Join-Path $ProjectRoot "scripts\aggregate_store_daily.py"
 $aggregateFailed = $false
@@ -306,7 +310,7 @@ if (Test-Path $aggScript) {
         New-Item -ItemType Directory -Path $backupDir -Force | Out-Null
     }
     $aggBackup = Join-Path $backupDir "aggregate-store-daily-$(Get-Date -Format 'yyyyMMdd-HHmmss').db"
-    $aggOutput = & $PythonPath $aggScript --apply --backup-destination $aggBackup 2>&1
+    $aggOutput = & $PythonPath $aggScript --apply --skip-if-current --backup-destination $aggBackup 2>&1
     foreach ($line in $aggOutput) { Write-Log "  $line" }
     if ($LASTEXITCODE -ne 0) { Write-Log "  ✗ 聚合脚本退出码: $LASTEXITCODE" "ERROR"; $aggregateFailed = $true }
 } else {

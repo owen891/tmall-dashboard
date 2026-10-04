@@ -6,12 +6,18 @@ import os
 import sys
 import urllib.request
 import urllib.error
+import urllib.parse
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from services.collector_run_service import save_schema_snapshot, record_health_alert
+from services.collector_run_service import (
+    save_schema_snapshot,
+    record_health_alert,
+    resolve_health_alert,
+    list_health_alerts,
+)
 
 
 def fetch_catalog(base_url):
@@ -19,7 +25,14 @@ def fetch_catalog(base_url):
         f'{base_url.rstrip("/")}/api/collect/catalog',
         headers={'Accept': 'application/json'},
     )
-    with urllib.request.urlopen(request, timeout=15) as response:
+    # 与 collector_healthcheck.py 一致：目标是本机看板服务时显式禁用代理。
+    # 开发/沙箱环境常设 http_proxy，urllib 会把它用在 127.0.0.1 上。
+    host = urllib.parse.urlsplit(base_url).hostname or ''
+    if host in ('127.0.0.1', 'localhost', '::1'):
+        opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+    else:
+        opener = urllib.request.build_opener()
+    with opener.open(request, timeout=15) as response:
         payload = json.loads(response.read().decode('utf-8'))
     if not payload.get('ok'):
         raise RuntimeError(payload.get('message', 'collector catalog endpoint failed'))
@@ -43,7 +56,11 @@ def main():
                 continue
             result = save_schema_snapshot(key, source, db_path=args.db_path)
             results.append(result)
-            if result['changed']:
+            # 未启用的源（enabled=False，如 dts_market）不参与漂移判定 —— 与
+            # collector_healthcheck.py / api/collect_api.py 的 unhealthy 口径一致。
+            # 快照仍会保存以留痕，下面的 resolve 分支也会清掉历史残留告警。
+            enabled = source.get('enabled', True)
+            if result['changed'] and enabled:
                 changed.append(result)
                 record_health_alert(
                     key, 'schema_changed',
@@ -51,6 +68,15 @@ def main():
                     severity='critical', fingerprint=result['schema_hash'], details=source,
                     db_path=args.db_path,
                 )
+            else:
+                # schema_changed 是「通知型」告警：它描述的是一次已发生的字段目录
+                # 变更，条件本身不会自行消失，所以 collector_healthcheck.py 的故障类
+                # resolve 列表永远不会覆盖它。字段稳定（hash 未变）即代表这次变更已
+                # 被接受，应在此闭环，否则告警会永远挂在 open。
+                for alert in list_health_alerts(source_key=key, db_path=args.db_path):
+                    if alert['alert_type'] == 'schema_changed':
+                        resolve_health_alert(key, 'schema_changed', alert['fingerprint'],
+                                             db_path=args.db_path)
         report = {'ok': not changed, 'changed_count': len(changed), 'sources': results}
         exit_code = 2 if changed else 0
     except (OSError, urllib.error.URLError, ValueError, RuntimeError) as error:

@@ -8,7 +8,7 @@ import subprocess
 import sys
 import tempfile
 import threading
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from flask import Blueprint, current_app, request
 
@@ -282,6 +282,12 @@ DATA_SOURCES = {
         # 周窗口源：一键采集与日度新鲜度判定均按窗口节奏处理，不走日度默认
         'cadence': 'window',
         'fresh_days': 40,
+        # 2026-10-02：尚未纳入任何调度。它依赖独立的挖象浏览器（CDP 9224，
+        # 与采集 Chrome 的 9223 不同）+ 店透视插件 + 外部解析脚本，环境未就绪。
+        # 标记为未启用：health 仍会列出它，但不参与 unhealthy 判定 —— 否则一个
+        # 从没跑过的源会让整体状态永远 degraded，把真告警淹没成噪音。
+        # 环境就绪后改成 True 并加调度即可。
+        'enabled': False,
     },
 }
 
@@ -463,6 +469,10 @@ def get_collect_health():
                 'consecutive_failures': consecutive_failures,
                 'table_error': table_error,
                 'fresh_days': config.get('fresh_days', 3),
+                # 未启用的源（如 dts_market，前置环境未就绪）仍会列出，但不参与
+                # unhealthy 判定 —— 否则一个从没被调度过的源会让整体状态永远是
+                # degraded，把真正的告警淹没成噪音。
+                'enabled': config.get('enabled', True),
             })
             latest_value = latest['latest']
             source_rows[-1]['age_days'] = None
@@ -477,14 +487,36 @@ def get_collect_health():
                         source_rows[-1]['age_days'] = max(0, (datetime.now().date() - parsed).days)
                     except ValueError:
                         source_rows[-1]['age_days'] = None
+            # 近期断档检查：日度源逐日核对最近 7 天（T-1 采集，今天不计为缺失）。
+            # age_days 只能发现"整体滞后"；中间缺一天、但最新日期仍是新的时会被漏掉。
+            source_rows[-1]['missing_dates'] = []
+            if not table_error and config.get('fresh_days', 3) <= 3:
+                try:
+                    present_rows = conn.execute(
+                        f'''SELECT DISTINCT {config["date_col"]} AS d FROM {config["table"]}
+                            WHERE {config["date_col"]} >= date('now', '-8 days')'''
+                    ).fetchall()
+                    present = {str(row['d'])[:10] for row in present_rows}
+                    today = datetime.now().date()
+                    source_rows[-1]['missing_dates'] = [
+                        (today - timedelta(days=offset)).isoformat()
+                        for offset in range(1, 8)
+                        if (today - timedelta(days=offset)).isoformat() not in present
+                    ]
+                except Exception:
+                    source_rows[-1]['missing_dates'] = []
         staging = conn.execute(
             '''SELECT status, COUNT(*) AS count FROM collector_data_staging
                WHERE created_at >= datetime('now', '-7 days') GROUP BY status'''
         ).fetchall()
+    # 只对「已启用」的源判定健康度：未启用的源（enabled=False）缺数据是预期行为，
+    # 不该把整体状态拖成 degraded。
     unhealthy = [row for row in source_rows
-                  if row['table_error'] or not row['last_run'] or row['age_days'] is None
-                  or row['age_days'] > row.get('fresh_days', 3)
-                  or row['last_run']['status'] in {'failed', 'auth_required', 'blocked', 'partial'}]
+                  if row.get('enabled', True) and (
+                      row['table_error'] or not row['last_run'] or row['age_days'] is None
+                      or row['age_days'] > row.get('fresh_days', 3)
+                      or row.get('missing_dates')
+                      or row['last_run']['status'] in {'failed', 'auth_required', 'blocked', 'partial'})]
     return success({
         'sources': source_rows,
         'staging_7d': {row['status']: row['count'] for row in staging},

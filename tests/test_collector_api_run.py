@@ -54,6 +54,26 @@ class CollectorApiRunTests(unittest.TestCase):
         source = response.get_json()['data']['sources'][0]
         self.assertIn('age_days', source)
 
+    def test_disabled_source_is_listed_but_excluded_from_unhealthy(self):
+        """未启用的源（dts_market）仍会列出，但不参与 unhealthy 判定。
+
+        它依赖独立的挖象浏览器（CDP 9224）+ 店透视插件，环境未就绪、从未被调度，
+        所以没有运行记录。若把它算进健康度，整体状态会永远是 degraded，
+        真正的告警就被噪音淹没了。
+        """
+        data = self.client.get('/api/collect/health').get_json()['data']
+        by_key = {source['source_key']: source for source in data['sources']}
+
+        self.assertEqual(data['source_count'], 7)          # 仍然列出，不隐藏
+        self.assertFalse(by_key['dts_market']['enabled'])
+        self.assertTrue(all(source['enabled'] for key, source in by_key.items()
+                            if key != 'dts_market'))
+
+        # 夹具里没有任何采集记录：启用的源都算 unhealthy，未启用的那个不算
+        enabled = [source for source in data['sources'] if source['enabled']]
+        self.assertEqual(data['unhealthy_count'], len(enabled))
+        self.assertEqual(data['status'], 'degraded')
+
     def test_status_uses_durable_run_and_reconciles_stale_state(self):
         from datetime import datetime, timedelta, timezone
         from services.collector_run_service import create_run

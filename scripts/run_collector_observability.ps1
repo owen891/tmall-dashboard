@@ -1,9 +1,17 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param(
-    [string]$ProjectRoot = (Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)),
+    [string]$ProjectRoot,
     [string]$BaseUrl = $(if ($env:TMALL_DASHBOARD_URL) { $env:TMALL_DASHBOARD_URL } else { 'http://127.0.0.1:5000' }),
     [string]$Database = $(if ($env:TMALL_DB_PATH) { $env:TMALL_DB_PATH } else { 'data/dashboard.db' })
 )
+
+# 不要在 param 默认值里求 $MyInvocation.MyCommand.Path —— 通过
+# powershell.exe -File 调用时它在参数绑定阶段为空，会让脚本在第一行就抛
+# ParameterArgumentValidationError（2026-10-02 实测，这也是本脚本此前从未
+# 成功运行过的原因）。$PSCommandPath 在 param 块之后才可靠。
+if (-not $ProjectRoot) {
+    $ProjectRoot = Split-Path -Parent (Split-Path -Parent $PSCommandPath)
+}
 
 $ErrorActionPreference = 'Stop'
 Set-Location -LiteralPath $ProjectRoot
