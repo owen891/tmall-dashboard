@@ -1556,6 +1556,45 @@ class PeriodReviewsTests(unittest.TestCase):
         # 正常商品不在问题清单
         self.assertNotIn('period-options-a', by_id)
 
+    def test_problem_items_ratio_only_product_gets_meta(self):
+        """纯「高费比」来源的问题单品往往不进任何 TOP 榜，必须照样拿到标题/主图。
+
+        回归 2026-10-W1：meta 只查各榜单 ID 集合，高费比小商品在问题清单里
+        裸露商品ID、无主图。
+        """
+        from db import get_db
+
+        with get_db(self.app.config['DATABASE_PATH']) as connection:
+            connection.execute(
+                'INSERT INTO products (product_id, title, image_url) VALUES (?, ?, ?)',
+                ('problem-meta-small', '高费比小商品', 'https://img.example.com/small.jpg'),
+            )
+            rows = [
+                # 11 个大商品占满 GSV/花费/利润 TOP10，把小商品挤出所有榜单
+                (f'big-{index:02d}', '2026-09-22', 10000, 2000, 100)
+                for index in range(11)
+            ]
+            # 小商品：费比 50%（>30% 阈值）、GSV 占比 2000/112000≈1.8%（>1%），
+            # 但不亏损、不下滑、进不了任何 TOP10 → 纯高费比来源
+            rows.append(('problem-meta-small', '2026-09-22', 2000, 1000, 50))
+            connection.executemany(
+                '''INSERT INTO daily_data (product_id, date, payment_amount, ad_spend, operating_profit)
+                   VALUES (?, ?, ?, ?, ?)''',
+                rows,
+            )
+            connection.commit()
+
+        context = self.client.get('/api/period-reviews/week/2026-09-W4/context').get_json()['data']['context']
+        entry = next(
+            (row for row in context['products']['problem_items']
+             if row['product_id'] == 'problem-meta-small'),
+            None,
+        )
+        self.assertIsNotNone(entry)
+        self.assertEqual(entry['problem_sources'], ['高费比'])
+        self.assertEqual(entry['title'], '高费比小商品')
+        self.assertEqual(entry['image_url'], 'https://img.example.com/small.jpg')
+
     def test_linked_summaries_month_reads_weeks_and_week_reads_prev_month(self):
         """P2 周月互汇：月复盘汇入本月各周结论，周复盘读上月月复盘。"""
         # 先存本月两个周复盘 + 上月一个月复盘（subsections 结构）

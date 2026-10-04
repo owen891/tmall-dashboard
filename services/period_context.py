@@ -2994,7 +2994,6 @@ def _products_block(conn, period, category_label=None, compare_range=None):
     ][:10]
 
     ids = set(top_ids + decline_ids + paid_ids + profit_ids + loss_ids + new_top_ids + new_paid_ids)
-    meta = _product_meta(conn, ids)
 
     def with_meta(product_id):
         item = decorate(product_id)
@@ -3021,6 +3020,10 @@ def _products_block(conn, period, category_label=None, compare_range=None):
                 and ad_spend_value / gsv_value > AD_RATIO_PROBLEM_THRESHOLD
                 and total_gsv > 0 and gsv_value / total_gsv > 0.01):
             problem_sources.setdefault(product_id, []).append('高费比')
+    # 高费比来源来自全量商品，往往不进任何 TOP 榜——必须并入 meta 查询，
+    # 否则这些行拿不到标题/主图，页面上裸露商品ID（2026-10-W1 实测）。
+    ids |= set(problem_sources)
+    meta = _product_meta(conn, ids)
     problem_items = []
     for product_id in sorted(problem_sources, key=lambda pid: -abs(float((current.get(pid) or {}).get('gsv') or 0))):
         item = with_meta(product_id)
