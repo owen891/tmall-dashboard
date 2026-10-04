@@ -65,6 +65,62 @@ class SourceResolutionTests(unittest.TestCase):
         self.assertIsNone(fact['order_amount'])
         self.assertEqual(lineage['effective_source_type'], 'paimi_bi_product_day')
 
+    def test_missing_refund_is_derived_from_payment_minus_net_sales(self):
+        """退款字段窗口兜底：BI 近 ~13 天不返回退款，按恒等式=支付−净销 推导占位。
+
+        实测（2026-09）：退款缺失让 09-29/30 等窗口内日期退款长期留空；
+        恒等式逐行 99.4% 成立。真实退款随窗口后重采覆盖此推导值。
+        """
+        from db import get_connection
+        from services.source_resolution_service import record_daily_observation
+
+        connection = get_connection(self.db_path)
+        try:
+            # 缺退款 → 推导 100-78=22
+            record_daily_observation(
+                connection,
+                {'product_id': 'p-refund', 'date': '2026-09-29',
+                 'payment_amount': 100, 'net_sales': 78},
+                source_type='paimi_bi_product_day', source_batch_id='bi-1',
+                source_system='business_advisor', shop_id='default',
+            )
+            # 退款已存在 → 不覆盖
+            record_daily_observation(
+                connection,
+                {'product_id': 'p-refund', 'date': '2026-09-28',
+                 'payment_amount': 100, 'net_sales': 78, 'successful_refund_amount': 30},
+                source_type='paimi_bi_product_day', source_batch_id='bi-1',
+                source_system='business_advisor', shop_id='default',
+            )
+            # 净销>支付（异常行）→ 不推导出负退款
+            record_daily_observation(
+                connection,
+                {'product_id': 'p-refund', 'date': '2026-09-27',
+                 'payment_amount': 50, 'net_sales': 78},
+                source_type='paimi_bi_product_day', source_batch_id='bi-1',
+                source_system='business_advisor', shop_id='default',
+            )
+            # 缺净销 → 无从推导
+            record_daily_observation(
+                connection,
+                {'product_id': 'p-refund', 'date': '2026-09-26', 'payment_amount': 100},
+                source_type='paimi_bi_product_day', source_batch_id='bi-1',
+                source_system='business_advisor', shop_id='default',
+            )
+            facts = {
+                row['date']: row['refund_amount']
+                for row in connection.execute(
+                    "SELECT date, refund_amount FROM daily_data WHERE product_id = 'p-refund'"
+                )
+            }
+        finally:
+            connection.close()
+
+        self.assertAlmostEqual(facts['2026-09-29'], 22.0, places=4)
+        self.assertAlmostEqual(facts['2026-09-28'], 30.0, places=4)
+        self.assertIsNone(facts['2026-09-27'])
+        self.assertIsNone(facts['2026-09-26'])
+
     def test_zero_is_not_treated_as_missing_when_dmp_has_nonzero(self):
         from services.source_resolution_service import SourceResolutionService
 

@@ -277,6 +277,15 @@ def _derive_formula_fields(row):
         derived['payment_unit_price'] = float(payment) / float(buyers)
     if _present(attributed) and _present(spend) and float(spend) != 0:
         derived['ad_roi'] = float(attributed) / float(spend)
+    # 退款兜底：BI overViewPageList 对近 ~13 天的日期不返回退款字段（字段窗口），
+    # 采集到的观测会长期缺退款。净销售额=支付−退款 恒等式逐行实测 99.4% 成立，
+    # 用它补推导值占位；窗口过后真实退款随重采覆盖此值。净销>支付的异常行不推导。
+    refund = derived.get('successful_refund_amount')
+    net = derived.get('net_sales')
+    if not _present(refund) and _present(payment) and _present(net):
+        derived_refund = float(payment) - float(net)
+        if derived_refund >= 0:
+            derived['successful_refund_amount'] = derived_refund
     return derived
 
 
