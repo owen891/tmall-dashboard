@@ -87,6 +87,8 @@ ui-manage-toolbox-check.png
 /tmp_*.py
 /tmp_*.json
 /tmp_*.txt
+# Python tempfile 在受限进程下会回退到仓库根目录的泄漏物（tmp+随机串）
+/tmp*
 
 # 本地构建工作区与运行产物（不入版本库）
 /frontend-build/
