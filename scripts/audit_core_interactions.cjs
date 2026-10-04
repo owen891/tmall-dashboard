@@ -94,6 +94,9 @@ async function runPage(browser, id, path, viewport) {
   const isExpectedGoalNoData = (url, status) => status === 404 && url.includes('/api/goals/');
   page.on('pageerror', (error) => browserErrors.push(`pageerror: ${error.stack || error.message}`));
   page.on('requestfailed', (request) => {
+    // net::ERR_ABORTED 是页面自己的请求收敛（如 products-live 主动取消被取代的旧请求，
+    // AbortError 有专门分支处理），不是页面缺陷；gitcode 是发版轮询的外部依赖。
+    if (request.failure()?.errorText === 'net::ERR_ABORTED') return;
     if (!isExpectedExternalFailure(request.url())) browserErrors.push(`requestfailed: ${request.url()} ${request.failure()?.errorText || ''}`);
   });
   page.on('response', (response) => {

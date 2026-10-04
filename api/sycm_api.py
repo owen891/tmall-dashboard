@@ -133,6 +133,35 @@ def _empty_channel(name, parent, level):
     return channel
 
 
+def _item_flow_no_data(item_id, belong, requested_start, requested_end, message):
+    """范围内无数据回 200 + no-data 信封而非 400。
+
+    前端两个消费方（product-detail-dialog / product-detail-live）都以
+    「channels 为空」渲染空态或回退另一口径；400 会让 domainRequest 直接 throw、
+    且被 audit_core_interactions 记为 browserError（products 页长期基线失败项）。
+    """
+    return success({
+        'item_id': item_id or None,
+        'belong': belong,
+        'stat_date': None,
+        'start_date': None,
+        'end_date': None,
+        'requested_start': requested_start,
+        'requested_end': requested_end,
+        'data_dates': [],
+        'data_days': 0,
+        'is_range': False,
+        'total_uv': 0,
+        'total_pay_amount': 0,
+        'channel_totals': {'uv': 0, 'pv': 0, 'pay_amount': 0, 'pay_buyer_count': 0, 'leaf_channels': 0},
+        'product_totals': None,
+        'derived_parent_count': 0,
+        'hierarchy_source': 'api' if belong == 'all' else 'shop_tree',
+        'levels': [],
+        'channels': [],
+    }, availability='no-data', evidence_level='insufficient', limitations=[message])
+
+
 @sycm_bp.route('/item-flow/summary', methods=['GET'])
 def item_flow_summary():
     """单品流量来源汇总
@@ -169,14 +198,16 @@ def item_flow_summary():
     else:
         latest = get_latest_date('sycm_item_flow_source_daily')
         if not latest:
-            return failure('NO_DATA', '暂无单品流量来源数据')
+            return _item_flow_no_data(item_id, belong, start_arg or date_arg or None,
+                                      end_arg or date_arg or None, '暂无单品流量来源数据')
         bound_start = bound_end = latest
 
     # 日期口径必须跟着 belong 走：全程来源(all)目前只有个别日期有数据，
     # 若这里不过滤 belong，就会出现「渠道侧 1 天、商品侧 10 天」的时间窗错配。
     dates = _repo_item_flow_dates(bound_start, bound_end, belong)
     if not dates:
-        return failure('NO_DATA', '所选范围内暂无单品流量来源数据')
+        return _item_flow_no_data(item_id, belong, bound_start, bound_end,
+                                  '所选范围内暂无单品流量来源数据')
 
     channels = _repo_item_flow_channels(bound_start, bound_end, belong, item_id)
 
