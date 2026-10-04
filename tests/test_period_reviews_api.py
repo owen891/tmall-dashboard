@@ -1262,6 +1262,52 @@ class PeriodReviewsTests(unittest.TestCase):
         self.assertIsInstance(status['degradations'], list)
         self.assertIn(status['level'], ('complete', 'partial', 'no-data'))
 
+    def test_data_status_flags_products_with_sales_but_no_label(self):
+        """在卖但未打品类标签的商品必须进数据状态（BI 接口无标签字段，
+        新品漂移要当期可见，而不是月底对账才发现——2026-09 实测 1,488 款）。"""
+        from db import get_db
+
+        self._seed_category_data()
+        with get_db(self.app.config['DATABASE_PATH']) as connection:
+            connection.execute(
+                'INSERT INTO products (product_id, title, shop_label) VALUES (?, ?, ?)',
+                ('P-UNLABELED', '新品未分类', ''),
+            )
+            connection.execute(
+                '''INSERT INTO daily_data
+                       (product_id, date, payment_amount, net_sales, refund_amount,
+                        ad_spend, ipv, buyers, payment_conversion)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+                ('P-UNLABELED', '2026-09-14', 800, 700, 40, 50, 200, 20, 0.1),
+            )
+            connection.commit()
+
+        payload = self.client.get(
+            '/api/period-reviews/week/2026-09-W3/context?category_mode=all'
+        ).get_json()
+        entry = next(
+            (item for item in payload['data']['context']['data_status']['degradations']
+             if item['key'] == 'unlabeled_products'),
+            None,
+        )
+        self.assertIsNotNone(entry)
+        self.assertEqual(entry['severity'], 'info')
+        self.assertIn('1 款', entry['detail'])
+        self.assertIn('700', entry['detail'])
+        # 删除未分类商品后，该条目不应再出现
+        from db import get_db as _get_db
+        with _get_db(self.app.config['DATABASE_PATH']) as connection:
+            connection.execute("DELETE FROM daily_data WHERE product_id = 'P-UNLABELED'")
+            connection.execute("DELETE FROM products WHERE product_id = 'P-UNLABELED'")
+            connection.commit()
+        payload_after = self.client.get(
+            '/api/period-reviews/week/2026-09-W3/context?category_mode=all'
+        ).get_json()
+        self.assertFalse(
+            any(item['key'] == 'unlabeled_products'
+                for item in payload_after['data']['context']['data_status']['degradations'])
+        )
+
     def test_campaign_attribution_is_exact_only_and_fills_all_site_channel(self):
         """计划→商品归因：只对 1:1 计划精确归因（不摊），并补商品级「全站推广」。
 
@@ -1307,13 +1353,13 @@ class PeriodReviewsTests(unittest.TestCase):
             )
             connection.executemany(
                 '''INSERT INTO promotion_campaign_items
-                   (campaign_id, product_id, campaign_name, product_name, channel)
-                   VALUES (?, ?, ?, ?, ?)''',
+                   (campaign_id, product_id, campaign_name, product_name, image_url, channel)
+                   VALUES (?, ?, ?, ?, ?, ?)''',
                 [
-                    ('C-EXACT', 'A-1', '全站_A1', '标品袜子A', '货品全站推广'),
-                    ('C-OTHER', 'C-1', '全站_C1', '非标袜子女C', '货品全站推广'),
-                    ('C-SHARED', 'A-1', '关键词_多商品', '标品袜子A', '关键词推广'),
-                    ('C-SHARED', 'B-1', '关键词_多商品', '标品袜子B', '关键词推广'),
+                    ('C-EXACT', 'A-1', '全站_A1', '标品袜子A', 'https://img.example.com/a-1.jpg', '货品全站推广'),
+                    ('C-OTHER', 'C-1', '全站_C1', '非标袜子女C', '', '货品全站推广'),
+                    ('C-SHARED', 'A-1', '关键词_多商品', '标品袜子A', '', '关键词推广'),
+                    ('C-SHARED', 'B-1', '关键词_多商品', '标品袜子B', '', '关键词推广'),
                 ],
             )
             connection.commit()
@@ -1339,6 +1385,13 @@ class PeriodReviewsTests(unittest.TestCase):
         self.assertIn('全站', items['A-1']['channels'])
         self.assertAlmostEqual(items['A-1']['channels']['全站']['ad_spend'], 100, places=4)
         self.assertEqual(items['A-1']['channel_sources']['全站'], 'campaign_exact')
+        # 广告单品明细使用推广商品表图片兜底，周/月复盘都必须返回主图。
+        self.assertEqual(items['A-1']['image_url'], 'https://img.example.com/a-1.jpg')
+        month = self.client.get(
+            '/api/period-reviews/month/2026-09/context?category_mode=all'
+        ).get_json()['data']['context']
+        month_items = {item['product_id']: item for item in month['promotion_items']['items']}
+        self.assertEqual(month_items['A-1']['image_url'], 'https://img.example.com/a-1.jpg')
         # ③ 多商品计划不摊到任何商品：B-1 只有 shared 计划的曝光，不得凭空得到花费
         self.assertNotIn('全站', items['B-1']['channels'])
         self.assertEqual(items['B-1']['channels'], {})
@@ -1356,6 +1409,27 @@ class PeriodReviewsTests(unittest.TestCase):
         self.assertTrue(campaigns['partial'])
         # 分母必须与分子同口径：只算通过品类过滤的计划 100/160，而不是全店 200
         self.assertAlmostEqual(sock['campaign_attribution']['exact_share'], 100 / 160, places=4)
+
+        # ④ 渠道拆分（ads.channel_totals）与「推广渠道拆解」（promotion.channels）
+        #    在品类口径下也要有全站行（1:1 精确归因补全），并带完整派生指标。
+        groups = {group['name']: group for group in sock['ads']['channel_totals']['groups']}
+        self.assertIn('全站', groups)
+        self.assertAlmostEqual(groups['全站']['ad_spend'], 100, places=4)
+        # creative 未覆盖的渠道（人群等）不凭空出现；全店口径则含 C-OTHER 的 40。
+        self.assertNotIn('人群', groups)
+        all_groups = {group['name']: group for group in context['ads']['channel_totals']['groups']}
+        self.assertAlmostEqual(all_groups['全站']['ad_spend'], 140, places=4)
+        # 派生指标：直接投产 = 直接成交 ÷ 花费 = 400/100；花费占比分母 = 品类商品级花费 160。
+        self.assertAlmostEqual(groups['全站']['direct_roi'], 4.0, places=4)
+        self.assertAlmostEqual(groups['全站']['spend_share'], 100 / 160, places=4)
+        # 多商品全站计划无明细 → 成交占比分母不全，必须保持 None（partial）。
+        self.assertIsNone(groups['全站']['payment_share'])
+        sock_channels = sock['dimensions']['promotion']['channels']
+        channel_names = [item['name'] for item in sock_channels['items']]
+        self.assertIn('货品全站推广', channel_names)
+        sitewide_row = next(item for item in sock_channels['items'] if item['name'] == '货品全站推广')
+        self.assertAlmostEqual(sitewide_row['ad_spend'], 100, places=4)
+        self.assertAlmostEqual(sitewide_row['spend_share'], 100 / 160, places=4)
 
     def test_v2_legacy_sections_are_migrated_on_read(self):
         # 直接按 v1 周 key 写库（绕过 PUT 迁移），验证读取侧迁移。

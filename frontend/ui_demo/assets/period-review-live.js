@@ -48,7 +48,8 @@
   const urlParams = new URLSearchParams(window.location.search);
   const state = {
     mode: PERIOD_TYPES.includes(urlParams.get('period_type')) ? urlParams.get('period_type') : 'week',
-    selectedPeriodKey: urlParams.get('period_key') || '',
+    // 当 URL 同时给出 start/end 时，以显式日期范围为权威；period_key 仅作展示/历史复盘入口，避免两套口径不一致。
+    selectedPeriodKey: (urlParams.has('start') && urlParams.has('end')) ? '' : (urlParams.get('period_key') || ''),
     periodOptions: { day: [], week: [], month: [] },
     template: [], templates: {}, categories: [], context: null, review: null, matrix: null,
     generatedDraft: null,
@@ -92,12 +93,21 @@
   // ------------------------------------------------------ 对比周期（可自选）
   const COMPARE_KEY = 'dashboard.periodReviewCompare';
   const COMPARE_MODES = ['previous', 'yoy', 'custom', 'none'];
+  let compareChoiceOverride = null;
 
   function readCompareChoice() {
+    if (compareChoiceOverride) return compareChoiceOverride;
+    const urlMode = new URLSearchParams(window.location.search).get('compare');
+    // URL 明确指定对比口径时优先，保证分享/回放出来的页面和原页面同一基线；
+    // 用户在页内再选择时仍会写入 localStorage，后续普通访问沿用最近偏好。
+    if (COMPARE_MODES.includes(urlMode)) {
+      const period = urlMode === 'custom' ? urlParams.get('compare_period') || '' : '';
+      return { mode: urlMode, period, source: 'url' };
+    }
     let stored = null;
     try { stored = JSON.parse(localStorage.getItem(COMPARE_KEY) || 'null'); } catch (_) { stored = null; }
     const mode = stored && COMPARE_MODES.includes(stored.mode) ? stored.mode : 'previous';
-    return { mode, period: (stored && stored.period) || '' };
+    return { mode, period: (stored && stored.period) || '', source: 'stored' };
   }
 
   function storeCompareChoice(choice) {
@@ -113,12 +123,15 @@
   }
 
   function compareQuery() {
-    const { mode, period } = readCompareChoice();
+    const choice = readCompareChoice();
+    const mode = choice.mode;
+    const period = choice.period;
     if (mode === 'custom' && comparePeriodMatchesMode(period)) {
       return `?compare=custom&compare_period=${encodeURIComponent(period)}`;
     }
     // 自定义但周期缺失/类型不符时退回环比，避免发出不合法请求。
-    return `?compare=${mode === 'custom' ? 'previous' : encodeURIComponent(mode)}`;
+    const fallbackMode = mode === 'custom' ? 'previous' : mode;
+    return `?compare=${encodeURIComponent(fallbackMode)}`;
   }
 
   function compareShortLabel() {
@@ -239,6 +252,11 @@
     const url = new URL(window.location.href);
     url.searchParams.set('period_type', state.mode);
     url.searchParams.set('period_key', currentPeriod());
+    const compare = new URLSearchParams(compareQuery());
+    url.searchParams.set('compare', compare.get('compare'));
+    const comparePeriod = compare.get('compare_period');
+    if (comparePeriod) url.searchParams.set('compare_period', comparePeriod);
+    else url.searchParams.delete('compare_period');
     history.replaceState(null, '', url);
   }
 
@@ -780,6 +798,100 @@
       h('div', { class: 'pr-data-status__body' }, ...body));
   }
 
+  // 首屏三句结论：把“数据事实 → 最大问题 → 下一步机会”从长页正文前置，
+  // 让负责人不用先翻到拆因明细才知道本期重点。所有结论都基于已返回字段，缺数据时明确降级。
+  function reviewScopeBar(context) {
+    const period = context?.period || {};
+    const category = context?.category || {};
+    const compare = context?.compare || {};
+    const coverage = context?.metrics?.coverage || {};
+    const freshness = context?.data_status?.freshness || {};
+    const periodTypeLabel = { day: '自然日', week: '周', month: '月' }[state.mode] || state.mode;
+    const periodText = period.label || period.key || '--';
+    const rangeText = period.start && period.end ? `${period.start} ~ ${period.end}` : '日期待定';
+    const compareText = compare.mode === 'none' || compare.available === false
+      ? '不对比'
+      : (compare.label ? `${compare.short_label || '对比'}：${compare.label}` : '对比周期待定');
+    const categoryText = category.label || (category.mode === 'all' ? '全部品类' : category.mode || '全部品类');
+    const observedDays = Number(coverage.observed_days ?? freshness.elapsed_days ?? 0);
+    const expectedDays = Number(coverage.expected_days ?? freshness.total_days ?? 0);
+    const observedEnd = freshness.observed_end || coverage.observed_end;
+    const hasData = context?.metrics?.has_data === true;
+    const coverageText = observedDays > 0 && expectedDays > 0
+      ? `已覆盖 ${observedDays}/${expectedDays} 天${observedEnd ? `，数据至 ${observedEnd}` : ''}`
+      : (hasData && observedEnd
+        ? `数据至 ${observedEnd}`
+        : (expectedDays > 0 && freshness.is_ongoing
+          ? `暂无本期数据，周期已过 ${freshness.elapsed_days || 0}/${expectedDays} 天`
+          : '暂无本期数据'));
+    return h('div', { class: 'pr-command-center__scope', 'aria-label': '复盘口径' },
+      h('span', { class: 'pr-scope-pill', text: `${periodTypeLabel} · ${periodText}` }),
+      h('span', { class: 'pr-scope-pill', text: rangeText }),
+      h('span', { class: 'pr-scope-pill', text: `品类：${categoryText}` }),
+      h('span', { class: 'pr-scope-pill', text: `对比：${compareText}` }),
+      h('span', { class: `pr-scope-pill ${observedDays > 0 && expectedDays > 0 && observedDays < expectedDays ? 'is-partial' : ''}`, text: coverageText }));
+  }
+
+  function reviewInsightCards(context) {
+    const current = context?.metrics?.current || {};
+    const previous = context?.metrics?.prev || {};
+    const has = (value) => value !== null && value !== undefined && Number.isFinite(Number(value));
+    const change = (key) => has(current[key]) && has(previous[key]) && Number(previous[key])
+      ? (Number(current[key]) - Number(previous[key])) / Math.abs(Number(previous[key]))
+      : null;
+    const salesChange = change('net_sales');
+    const profitChange = change('profit');
+    const anomalies = (context?.anomalies || []).filter((item) => item.level === 'danger' || item.level === 'warning');
+    const adAnomaly = anomalies.find((item) => /费比|投放|推广/.test(String(item.label || '')));
+    const products = context?.products || {};
+    const listOf = (...keys) => keys.flatMap((key) => {
+      const value = products[key];
+      return Array.isArray(value) ? value : (Array.isArray(value?.items) ? value.items : []);
+    });
+    const issueProduct = listOf('problem_items', 'decline', 'loss', 'paid', 'new_paid')[0];
+    const ads = context?.ads || {};
+    const directRoi = ads.direct_roi ?? ads.current?.direct_roi;
+    const adRatioDelta = ads.delta?.ad_ratio_delta_pt;
+    const build = (label, title, detail, tone, action) => h('article', { class: `pr-insight-card is-${tone || 'neutral'}` },
+      h('div', { class: 'pr-insight-card__head' }, h('span', { class: 'pr-insight-card__label', text: label }),
+        tone && tone !== 'neutral' ? stateTag(tone === 'danger' ? '需处理' : tone === 'good' ? '机会' : '关注', tone === 'danger' ? 'warning' : tone) : null),
+      h('strong', { class: 'pr-insight-card__title', text: title }),
+      h('p', { class: 'pr-insight-card__detail', text: detail }),
+      action ? h('button', { type: 'button', class: 'pr-insight-card__action', text: action.label, onclick: action.onclick }) : null);
+
+    const conclusion = salesChange === null
+      ? (has(current.net_sales) ? `本期净销售额 ${formatValue(current.net_sales, 'money')}` : '本期核心业绩暂无可用数据')
+      : `净销售额${salesChange >= 0 ? '增长' : '下滑'} ${Math.abs(salesChange * 100).toFixed(1)}%`;
+    const conclusionDetail = profitChange === null
+      ? '利润环比暂不可比，建议先确认成本与利润口径。'
+      : `净利润${profitChange >= 0 ? '增长' : '下滑'} ${Math.abs(profitChange * 100).toFixed(1)}%${has(current.profit) ? `，本期 ${formatValue(current.profit, 'money')}` : ''}。`;
+    const problemTitle = anomalies[0]?.label || (issueProduct ? `优先检查：${issueProduct.title || issueProduct.product_id || '问题商品'}` : '暂未识别高优先级问题');
+    const problemDetail = anomalies[0]?.detail || (issueProduct
+      ? `问题商品${issueProduct.change_rate !== undefined ? `变化 ${formatValue(issueProduct.change_rate, 'percent')}` : ''}，进入货品明细确认流量、转化和投放原因。`
+      : '建议生成初稿并补充人工判断，避免只看指标不落结论。');
+    const adOpportunity = has(directRoi) && Number(directRoi) >= 2;
+    const adProblem = has(directRoi) && Number(directRoi) < 1;
+    const opportunityTitle = adOpportunity ? '投放具备放量机会' : adProblem ? '投放优先降费复核' : '先验证再调整预算';
+    const opportunityDetail = has(directRoi)
+      ? `直接投产 ${formatValue(directRoi, 'decimal')}${has(adRatioDelta) ? `，费比环比 ${adRatioDelta > 0 ? '+' : ''}${Number(adRatioDelta).toFixed(2)}pt` : ''}。`
+      : '推广效率数据不足，先补齐渠道或单品归因后再做预算动作。';
+    // 最大问题的证据来源不同，跳转也应不同：优先广告/货品对应板块；
+    // 只有没有明确对象时才回退到拆因总览。
+    const primaryAnomaly = anomalies[0];
+    const problemIsAd = (primaryAnomaly && adAnomaly === primaryAnomaly)
+      || (!primaryAnomaly && !issueProduct && adProblem);
+    const problemAction = problemIsAd
+      ? { label: '查看广告', onclick: () => scrollToSection('ads') }
+      : (!primaryAnomaly && issueProduct
+        ? { label: '查看货品', onclick: () => scrollToSection('products') }
+        : { label: '查看拆因', onclick: () => scrollToSection('summary') });
+    return h('div', { class: 'pr-command-center__insights', 'aria-label': '本期复盘重点' },
+      build('本期结论', conclusion, conclusionDetail, salesChange !== null && salesChange < 0 ? 'warning' : 'good', { label: '查看指标', onclick: () => scrollToSection('summary') }),
+      build('最大问题', problemTitle, problemDetail, anomalies.length || issueProduct ? 'danger' : 'neutral', problemAction),
+      build('最大机会', opportunityTitle, opportunityDetail, adOpportunity ? 'good' : adProblem ? 'danger' : 'neutral', { label: '查看广告', onclick: () => scrollToSection('ads') }),
+    );
+  }
+
   function renderCommandCenter(context) {
     renderReviewScope(context);
     if (!els.commandCenter) return;
@@ -793,9 +905,11 @@
       h('div', { class: 'pr-command-center__head' },
         h('h3', { text: '复盘结论' }),
         statusNode),
+      reviewScopeBar(context),
       // 三大指标完成率卡（对齐月复盘 XMind「完成情况分析」）：
       // 净销售额 / 净利润 / 净费比，口径与复盘设置目标同源。
       metricCards.renderMetricCards(),
+      reviewInsightCards(context),
       // 紧凑状态条：风险与执行信号一行带过，点击直达对应工作区。
       h('div', { class: 'pr-command-center__strip' },
         h('button', { type: 'button', class: 'pr-strip-item', onclick: () => scrollToSection('summary') },
@@ -1134,17 +1248,32 @@
   function dimensionTable(items, type) {
     if (!items || !items.length) return null;
     const nameLabel = type === 'campaign' ? '计划' : '渠道';
+    // 渠道视图对齐「渠道拆分」的完整指标列；计划视图维持精简列（计划级口径已单独成表）。
+    const channelCols = [
+      ['spend_share', '花费占比', (item) => dimensionPercent(item.spend_share)],
+      ['direct_roi', '直接投产', (item) => formatValue(item.direct_roi, 'decimal')],
+      ['cart_rate', '加购率', (item) => formatValue(item.cart_rate, 'percent')],
+      ['cart_cost', '加购成本', (item) => formatValue(item.cart_cost, 'money')],
+      ['new_cost', '拉新成本', (item) => formatValue(item.new_cost, 'money')],
+      ['new_buyer_share', '新客成交占比', (item) => dimensionPercent(item.new_buyer_share)],
+    ];
+    const extraCols = type === 'channel' ? channelCols : [];
+    const cells = (item, keys) => keys.map(([, , render]) => h('td', { class: 'num', text: render(item) }));
     return h('div', { class: 'pr-breakdown-table-wrap' }, h('table', { class: 'pr-table pr-breakdown-table' },
       h('thead', null, h('tr', null,
         h('th', { text: nameLabel }), h('th', { class: 'num', text: '花费' }),
+        ...extraCols.slice(0, 1).map(([, label]) => h('th', { class: 'num', text: label })),
         h('th', { class: 'num', text: '归因成交' }), h('th', { class: 'num', text: 'ROI' }),
+        ...extraCols.slice(1).map(([, label]) => h('th', { class: 'num', text: label })),
         h('th', { class: 'num', text: '点击率' }), h('th', { class: 'num', text: '成交变化' }),
       )),
       h('tbody', null, ...items.map((item) => h('tr', null,
         h('td', { title: item.name, text: item.name }),
         h('td', { class: 'num', text: formatValue(item.ad_spend, 'money') }),
+        ...cells(item, extraCols.slice(0, 1)),
         h('td', { class: 'num', text: formatValue(item.attributed_payment, 'money') }),
         h('td', { class: 'num', text: formatValue(item.roi, 'decimal') }),
+        ...cells(item, extraCols.slice(1)),
         h('td', { class: 'num', text: dimensionPercent(item.ctr) }),
         h('td', { class: 'num', text: item.payment_change_rate === null || item.payment_change_rate === undefined
           ? '--' : `${item.payment_change_rate > 0 ? '+' : ''}${(item.payment_change_rate * 100).toFixed(1)}%` }),
@@ -1240,7 +1369,12 @@
     const body = items.map((item) => {
       const tr = h('tr', null,
         h('td', { class: 'pr-table__title' },
-          item.image_url ? h('img', { src: item.image_url, alt: '', loading: 'lazy' }) : null,
+          item.image_url ? h('img', {
+            src: item.image_url,
+            alt: '',
+            loading: 'lazy',
+            onerror: (event) => { event.currentTarget.hidden = true; },
+          }) : null,
           h('span', { class: 'pr-table__title-text', title: item.title || item.product_id, text: item.title || item.product_id })),
         cell(item.totals && item.totals.ad_spend, 'money'),
         cell(item.totals && item.totals.ad_ratio, 'percent'),
@@ -2452,7 +2586,31 @@
     if (cmp && ads.delta && ads.delta.ad_spend_change !== undefined) push(`${cmp}花费变化`, `${ads.delta.ad_spend_change > 0 ? '+' : ''}${ads.delta.ad_spend_change}%`);
     if (cmp && ads.delta && ads.delta.direct_roi_delta !== undefined) push(`${cmp}直接投产变化`, `${ads.delta.direct_roi_delta > 0 ? '+' : ''}${ads.delta.direct_roi_delta}`);
     if (cmp && ads.delta && ads.delta.ad_ratio_delta_pt !== undefined) push(`${cmp}费比变化`, `${ads.delta.ad_ratio_delta_pt > 0 ? '+' : ''}${ads.delta.ad_ratio_delta_pt}pt`);
-    const blocks = [materialBlock('广告本期', h('div', { class: 'pr-target' }, ...items))];
+    const directRoi = ads.direct_roi ?? ads.current.direct_roi;
+    const adRatioDelta = ads.delta && ads.delta.ad_ratio_delta_pt;
+    let decisionTone = 'neutral';
+    let decisionTitle = '先验证再调整预算';
+    let decisionDetail = '当前推广效率数据不足，先补齐渠道或单品归因。';
+    if (directRoi !== null && directRoi !== undefined && Number.isFinite(Number(directRoi))) {
+      if (Number(directRoi) < 1) {
+        decisionTone = 'danger';
+        decisionTitle = '建议优先降费 / 收缩低效投放';
+        decisionDetail = `直接投产 ${formatValue(directRoi, 'decimal')}，先检查低效计划与高费比单品；预算调整需结合库存和毛利确认。`;
+      } else if (Number(directRoi) >= 2 && !(Number(adRatioDelta) > 0.03)) {
+        decisionTone = 'good';
+        decisionTitle = '可从高效计划中小步放量';
+        decisionDetail = `直接投产 ${formatValue(directRoi, 'decimal')}，建议优先放量高直接投产计划，观察转化与费比变化。`;
+      } else {
+        decisionTone = 'warning';
+        decisionTitle = '保持投放，先做结构优化';
+        decisionDetail = `直接投产 ${formatValue(directRoi, 'decimal')}${adRatioDelta !== undefined ? `，费比变化 ${Number(adRatioDelta) > 0 ? '+' : ''}${Number(adRatioDelta).toFixed(2)}pt` : ''}，先优化计划结构再扩预算。`;
+      }
+    }
+    const blocks = [
+      materialBlock('广告本期', h('div', { class: 'pr-target' }, ...items)),
+      materialBlock('投放判断', h('div', { class: `pr-ad-decision is-${decisionTone}` },
+        h('strong', { text: decisionTitle }), h('p', { text: decisionDetail }))),
+    ];
     // 三渠道推广成交金额合计（XMind「推广成交金额增加三渠道金额」）。
     const channelTotals = ads.channel_totals;
     const scopeMissing = channelTotals && (channelTotals.missing_inputs || []).includes('promotion_category_scope');
@@ -2462,24 +2620,33 @@
         '渠道数据来自计划粒度，不带商品映射，无法按当前品类过滤；切回「全部品类」可查看全店渠道拆分。'));
     } else if (channelTotals && channelTotals.groups && channelTotals.groups.length) {
       const shareText = (value) => (value === null || value === undefined ? '--' : `${(value * 100).toFixed(1)}%`);
+      // 指标列对齐 XMind「渠道拆解」：花费占比/投产/直接投产/加购/拉新/新客占比。
+      const cols = [
+        ['spend_share', '花费占比', (group) => shareText(group.spend_share)],
+        ['attributed_payment', '推广成交金额', (group) => formatValue(group.attributed_payment, 'money')],
+        ['payment_share', '成交占比', (group) => shareText(group.payment_share)],
+        ['roi', 'ROI', (group) => formatValue(group.roi, 'decimal')],
+        ['direct_roi', '直接投产', (group) => formatValue(group.direct_roi, 'decimal')],
+        ['cart_rate', '加购率', (group) => formatValue(group.cart_rate, 'percent')],
+        ['cart_cost', '加购成本', (group) => formatValue(group.cart_cost, 'money')],
+        ['new_cost', '拉新成本', (group) => formatValue(group.new_cost, 'money')],
+        ['new_buyer_share', '新客成交占比', (group) => shareText(group.new_buyer_share)],
+      ];
       const table = h('div', { class: 'pr-breakdown-table-wrap' }, h('table', { class: 'pr-table pr-breakdown-table' },
         h('thead', null, h('tr', null,
           h('th', { text: '渠道' }),
           h('th', { class: 'num', text: '花费' }),
-          h('th', { class: 'num', text: '推广成交金额' }),
-          h('th', { class: 'num', text: '成交占比' }),
-          h('th', { class: 'num', text: 'ROI' }),
+          ...cols.map(([, label]) => h('th', { class: 'num', text: label })),
         )),
         h('tbody', null, ...channelTotals.groups.map((group) => h('tr', null,
           h('td', { text: group.name }),
           h('td', { class: 'num', text: formatValue(group.ad_spend, 'money') }),
-          h('td', { class: 'num', text: formatValue(group.attributed_payment, 'money') }),
-          h('td', { class: 'num', text: shareText(group.payment_share) }),
-          h('td', { class: 'num', text: formatValue(group.roi, 'decimal') }),
+          ...cols.map(([, , render]) => h('td', { class: 'num', text: render(group) })),
         )))));
-      // 按品类口径只覆盖部分渠道（缺全站推广）→ 成交占比不适用，必须说明，别让「--」被当成 0。
+      // 按品类口径的全站推广只含「计划只绑 1 个商品」的精确归因部分（多商品计划无
+      // 商品级明细）→ 成交占比不适用，必须说明，别让「--」被当成 0。
       const sourceNote = channelPartial
-        ? `按品类口径，覆盖 ${channelTotals.groups.map((g) => g.name).join(' / ')}；全站推广无商品级明细，成交占比不适用（切「全部品类」看全店口径）。`
+        ? `按品类口径，覆盖 ${channelTotals.groups.map((g) => g.name).join(' / ')}；全站推广仅含「计划只绑 1 个商品」的精确归因部分，成交占比不适用（切「全部品类」看全店口径）。`
         : channelTotals.source === 'campaign_month'
           ? '渠道行来自月度汇总（该周期没有日粒度渠道数据）。'
           : `渠道行覆盖 ${channelTotals.sample_days} 天日粒度数据。`;
@@ -2589,12 +2756,21 @@
       }
       case 'products': {
         const products = context.products || {};
+        const compare = context.compare || {};
+        const comparisonAvailable = compare.mode !== 'none' && compare.available !== false;
+        const comparableProblemItems = comparisonAvailable
+          ? (products.problem_items || [])
+          : (products.problem_items || []).filter((row) => {
+            const sources = Array.isArray(row.problem_sources) ? row.problem_sources : [];
+            return sources.some((source) => source !== '下滑榜');
+          });
+        const declineItems = comparisonAvailable ? (products.decline || []) : [];
         const board = productColumns.productBoardPanel;
         const wrap = h('div', { class: 'pr-materials' });
         wrap.append(goodsSummaryPanel(products.summary, context.profit_structure) || materialBlock('货品汇总', null, '本期暂无货品数据。'));
-        wrap.append(problemItemsPanel(products.problem_items));
+        wrap.append(problemItemsPanel(comparableProblemItems));
         wrap.append(board('净销售额 TOP10', '按本期净销售额排序，先识别需要保住的核心商品。', products.top, 'top', '本期没有正向销售商品。'));
-        wrap.append(board('下滑商品 TOP10', '按相对上期销售额变化排序，作为异常诊断入口。', products.decline, 'decline', '缺少可比周期数据。'));
+        wrap.append(board('下滑商品 TOP10', comparisonAvailable ? '按相对对比周期销售额变化排序，作为异常诊断入口。' : '当前未选择对比周期，不展示下滑判断。', declineItems, 'decline', '缺少可比周期数据。'));
         wrap.append(h('details', { class: 'pr-analysis-more' },
           h('summary', { class: 'pr-analysis-more__summary' },
             h('span', { text: '其他货品榜' }),
@@ -2656,8 +2832,16 @@
         const rows = items.slice(0, 20).map((item) => {
           const totals = item.totals || {};
           const name = item.title || item.product_id;
+          const titleCell = h('td', { class: 'pr-table__title', title: name },
+            item.image_url ? h('img', {
+              src: item.image_url,
+              alt: '',
+              loading: 'lazy',
+              onerror: (event) => { event.currentTarget.hidden = true; },
+            }) : null,
+            h('span', { class: 'pr-table__title-text', text: name }));
           const main = h('tr', null,
-            h('td', { class: 'pr-table__title', title: name, text: name }),
+            titleCell,
             ...cols.map(([key, , format]) => h('td', { class: 'num', text: safeMetric(totals[key], format) })),
             hasChannels
               ? h('td', null, item.channels && Object.keys(item.channels).length
@@ -3232,8 +3416,11 @@
 
   async function load() {
     const token = ++loadToken;
-    const periodKey = currentPeriod();
-    if (!periodKey) return;
+    const requestedPeriodKey = currentPeriod();
+    if (!requestedPeriodKey) return;
+    // 加载新的周期前先清掉上一周期上下文，避免异步时序下页面短暂渲染旧周期。
+    state.context = null;
+    state.review = null;
     stateBanner('加载中…', 'loading');
     if (els.save) els.save.disabled = true;
 
@@ -3244,6 +3431,12 @@
         state.selectedPeriodKey = '';
       }
       syncRangeToSelectedPeriod();
+      // 周期选项加载后才能拿到周期的真实起止日期。此处必须重新结算周期键：
+      // 如果 URL 带了一个数据里不存在/未来周期，selectedPeriodKey 会被清空，
+      // 后续周期必须改由顶栏 start/end 推导，不能继续沿用旧 requestedPeriodKey。
+      const periodKey = state.selectedPeriodKey || periodKeyFromRange();
+      if (!periodKey) return;
+      updateReviewUrl();
       state.template = state.templates[state.mode] || [];
 
       const [contextResponse, reviewResponse] = await Promise.all([
@@ -3385,7 +3578,9 @@
     // 自定义对比周期与周期类型绑定，切模式时重置，避免持有非法周期键。
     const choice = readCompareChoice();
     if (choice.mode === 'custom' && !comparePeriodMatchesMode(choice.period)) {
-      storeCompareChoice({ mode: 'previous', period: '' });
+      const fallback = { mode: 'previous', period: '' };
+      compareChoiceOverride = fallback;
+      storeCompareChoice(fallback);
     }
     updateModeUi();
     load();
@@ -3439,14 +3634,16 @@
       const currentKey = state.context && state.context.period && state.context.period.key;
       const fallback = options.find((item) => item.key !== currentKey) || options[0] || {};
       const period = (els.comparePeriod && els.comparePeriod.value) || fallback.key || '';
-      storeCompareChoice({ mode: 'custom', period });
+      compareChoiceOverride = { mode: 'custom', period };
     } else {
-      storeCompareChoice({ mode, period: '' });
+      compareChoiceOverride = { mode, period: '' };
     }
+    storeCompareChoice(compareChoiceOverride);
     load();
   });
   els.comparePeriod?.addEventListener('change', () => {
-    storeCompareChoice({ mode: 'custom', period: els.comparePeriod.value });
+    compareChoiceOverride = { mode: 'custom', period: els.comparePeriod.value };
+    storeCompareChoice(compareChoiceOverride);
     load();
   });
   els.save?.addEventListener('click', save);
@@ -3461,7 +3658,10 @@
   window.addEventListener('tmall:refresh', () => load());
   // 顶栏统一时间范围一变化，复盘周期随之重算
   window.addEventListener('tmall:date-range-change', () => {
-    if (!syncingReviewRange) state.selectedPeriodKey = '';
+    // setReviewRange 触发的事件由调用方继续 load，这里不能再额外启动一次加载，
+    // 否则旧请求/新请求交叉时容易把 period_key 和顶栏日期写成两套口径。
+    if (syncingReviewRange) return;
+    state.selectedPeriodKey = '';
     load();
   });
 

@@ -645,8 +645,9 @@ def _ads_channel_totals(conn, start, end, category_label=None):
       campaign_month 并标注来源）。
     - **按品类**：campaign 行不带商品映射、无法过滤；改从商品×渠道明细
       （`promotion_creative_daily`，带 product_id 可 JOIN products）聚合。它覆盖
-      关键词/人群/其他，**缺 全站推广**（creative 表不含该场景）→ 标 partial，
-      且**不计算成交占比**（分母不全，占比会误导成「全站=0」）。
+      关键词/人群/其他，**缺 全站推广**（creative 表不含该场景）→ 再用计划→商品
+      1:1 精确归因把全站补进来（只补 creative 没有的渠道，相加即重复计数）。
+      多商品全站计划仍无商品级明细 → 仍标 partial，不计算成交占比。
     """
     try:
         table_exists = conn.execute(
@@ -666,10 +667,11 @@ def _ads_channel_totals(conn, start, end, category_label=None):
             ).fetchone()
             if creative_exists:
                 rows = [dict(row) for row in conn.execute(
-                    '''SELECT f.channel AS channel,
+                    f'''SELECT f.channel AS channel,
                               SUM(f.ad_spend) AS ad_spend,
                               SUM(f.attributed_payment_amount) AS attributed_payment,
-                              COUNT(DISTINCT f.date) AS sample_days
+                              COUNT(DISTINCT f.date) AS sample_days,
+                              {CHANNEL_SUM_COLUMNS}
                        FROM promotion_creative_daily f
                        LEFT JOIN products p ON p.product_id = f.product_id
                        WHERE f.date BETWEEN ? AND ?
@@ -677,12 +679,16 @@ def _ads_channel_totals(conn, start, end, category_label=None):
                        GROUP BY f.channel''',
                     [start, end, category_label, category_label],
                 ).fetchall()]
+            # 全站推广补全：品类过滤在归因内完成（exact=唯一商品品类精确判定）。
+            rows.extend(_attribution_channel_rows(conn, start, end, category_label,
+                                                  {row['channel'] for row in rows}))
         else:
             rows = [dict(row) for row in conn.execute(
-                '''SELECT f.channel AS channel,
+                f'''SELECT f.channel AS channel,
                            SUM(f.ad_spend) AS ad_spend,
                            SUM(f.attributed_payment_amount) AS attributed_payment,
-                           COUNT(DISTINCT f.date) AS sample_days
+                           COUNT(DISTINCT f.date) AS sample_days,
+                           {CHANNEL_SUM_COLUMNS}
                     FROM promotion_daily_facts f
                     WHERE f.date BETWEEN ? AND ? AND f.grain = 'campaign'
                     GROUP BY f.channel''',
@@ -693,23 +699,42 @@ def _ads_channel_totals(conn, start, end, category_label=None):
                 if str(end)[:7] != month:
                     return None
                 rows = [dict(row) for row in conn.execute(
-                    '''SELECT channel, SUM(ad_spend) AS ad_spend,
-                              SUM(attributed_payment_amount) AS attributed_payment,
-                              COUNT(*) AS sample_days
-                       FROM promotion_daily_facts
-                       WHERE grain = 'campaign_month' AND substr(date, 1, 7) = ?
-                       GROUP BY channel''',
+                    f'''SELECT f.channel, SUM(f.ad_spend) AS ad_spend,
+                              SUM(f.attributed_payment_amount) AS attributed_payment,
+                              COUNT(*) AS sample_days,
+                              {CHANNEL_SUM_COLUMNS}
+                       FROM promotion_daily_facts f
+                       WHERE f.grain = 'campaign_month' AND substr(f.date, 1, 7) = ?
+                       GROUP BY f.channel''',
                     (month,),
                 ).fetchall()]
                 source = 'campaign_month'
         if not rows:
             return {'groups': [], 'source': source, 'sample_days': 0,
                     'missing_inputs': ['promotion_category_scope' if category_label else 'promotion_channel_scope']}
+        # 花费占比分母：全店 = campaign 渠道总和（覆盖完整）；按品类 = 该品类商品级
+        # 花费合计（grain='product' channel='全部'，与货品榜同源）——渠道分子不含
+        # 多商品全站计划，占比是下界，partial 文案里已说明。
+        total_spend = sum(float(row.get('ad_spend') or 0) for row in rows)
+        if category_label:
+            row = conn.execute(
+                '''SELECT SUM(f.ad_spend) FROM promotion_daily_facts f
+                   LEFT JOIN products p ON p.product_id = f.product_id
+                   WHERE f.date BETWEEN ? AND ? AND f.grain = 'product' AND f.channel = '全部'
+                     AND (p.shop_label = ? OR instr(',' || p.shop_label || ',', ',' || ? || ',') > 0)''',
+                [start, end, category_label, category_label],
+            ).fetchone()
+            if row and row[0]:
+                total_spend = float(row[0])
         by_channel = {row['channel']: dict(row) for row in rows}
         groups = []
         total_payment = sum(float(row.get('attributed_payment') or 0) for row in rows)
+
+        def col(key):
+            return sum(float(by_channel[c].get(key) or 0) for c in channels if c in by_channel)
+
         for group_name, channels in PROMOTION_CHANNEL_GROUPS:
-            spend = sum(float(by_channel[c]['ad_spend'] or 0) for c in channels if c in by_channel)
+            spend = col('ad_spend')
             payment = sum(float(by_channel[c].get('attributed_payment') or 0) for c in channels if c in by_channel)
             if spend <= 0 and payment <= 0:
                 continue
@@ -717,10 +742,20 @@ def _ads_channel_totals(conn, start, end, category_label=None):
                 'name': group_name,
                 'ad_spend': round(spend, 2),
                 'attributed_payment': round(payment, 2),
+                'direct_payment': round(col('direct_payment'), 2),
+                'cart_adds': int(col('cart_adds')),
+                'new_buyers': int(col('new_buyers')),
+                'clicks': int(col('clicks')),
+                'impressions': int(col('impressions')),
+                'payment_buyers': int(col('payment_buyers')),
                 'roi': (round(payment / spend, 4) if spend else None),
-                # 按品类时只覆盖部分渠道（缺全站），占比分母不全 → 不给占比，避免误导。
+                'spend_share': (round(spend / total_spend, 6) if total_spend else None),
+                # 按品类时只覆盖部分渠道（多商品全站计划无明细），成交占比分母不全
+                # → 不给占比，避免误导。
                 'payment_share': (None if partial
                                   else (round(payment / total_payment, 6) if total_payment else None)),
+                **_channel_derived_metrics(spend, payment, col('direct_payment'), col('cart_adds'),
+                                           col('new_buyers'), col('clicks'), col('payment_buyers')),
             })
         sample_days = max((int(row.get('sample_days') or 0) for row in rows), default=0)
         result = {'groups': groups, 'source': source, 'sample_days': sample_days}
@@ -853,28 +888,30 @@ def _promotion_dimension(conn, period, compare, category_label=None):
         def aggregate(span, grain, dimension):
             # 按品类 + 渠道维度：promotion_daily_facts 的渠道行不带商品映射、无法过滤，
             # 改从商品×渠道明细（promotion_creative_daily）聚合，可 JOIN products 过滤。
-            # 它只覆盖 关键词/人群/其他，缺 全站推广（creative 表不含该场景）。
+            # 它只覆盖 关键词/人群/其他，缺 全站推广（creative 表不含该场景）
+            # → 再用计划→商品 1:1 精确归因补（只补 creative 没有的渠道，相加即重复计数）。
             if category_label and dimension == 'channel':
-                if not conn.execute(
+                rows = []
+                if conn.execute(
                     "SELECT 1 FROM sqlite_master WHERE type='table' AND name='promotion_creative_daily'"
                 ).fetchone():
-                    return {}
-                rows = conn.execute(
-                    '''SELECT f.channel AS dimension_key,
-                              COUNT(DISTINCT f.date) AS sample_days,
-                              SUM(f.ad_spend) AS ad_spend,
-                              SUM(f.attributed_payment_amount) AS attributed_payment,
-                              SUM(f.impressions) AS impressions,
-                              SUM(f.clicks) AS clicks,
-                              SUM(f.payment_buyers) AS payment_buyers,
-                              SUM(f.new_buyers) AS new_buyers
-                       FROM promotion_creative_daily f
-                       LEFT JOIN products p ON p.product_id = f.product_id
-                       WHERE f.date BETWEEN ? AND ?
-                         AND (p.shop_label = ? OR instr(',' || p.shop_label || ',', ',' || ? || ',') > 0)
-                       GROUP BY dimension_key ORDER BY ad_spend DESC''',
-                    [span['start'], span['end'], category_label, category_label],
-                ).fetchall()
+                    rows = [dict(row) for row in conn.execute(
+                        f'''SELECT f.channel AS dimension_key,
+                                  COUNT(DISTINCT f.date) AS sample_days,
+                                  SUM(f.ad_spend) AS ad_spend,
+                                  SUM(f.attributed_payment_amount) AS attributed_payment,
+                                  {CHANNEL_SUM_COLUMNS}
+                           FROM promotion_creative_daily f
+                           LEFT JOIN products p ON p.product_id = f.product_id
+                           WHERE f.date BETWEEN ? AND ?
+                             AND (p.shop_label = ? OR instr(',' || p.shop_label || ',', ',' || ? || ',') > 0)
+                           GROUP BY dimension_key ORDER BY ad_spend DESC''',
+                        [span['start'], span['end'], category_label, category_label],
+                    ).fetchall()]
+                covered = {row['dimension_key'] for row in rows}
+                for extra in _attribution_channel_rows(conn, span['start'], span['end'],
+                                                       category_label, covered):
+                    rows.append({**extra, 'dimension_key': extra['channel']})
                 return {row['dimension_key'] or 'unknown': dict(row) for row in rows}
             # 按品类 + 计划维度：campaign 粒度行不带商品映射，无法直接过滤。
             # 改走「计划→商品归因」（promotion_campaign_items × campaign 事实）：
@@ -893,10 +930,12 @@ def _promotion_dimension(conn, period, compare, category_label=None):
                         'sample_days': item.get('sample_days'),
                         'ad_spend': item.get('ad_spend'),
                         'attributed_payment': item.get('attributed_payment'),
+                        'direct_payment': item.get('direct_payment'),
+                        'cart_adds': item.get('cart_adds'),
+                        'new_buyers': item.get('new_buyers'),
+                        'payment_buyers': item.get('payment_buyers'),
                         'impressions': item.get('impressions'),
                         'clicks': item.get('clicks'),
-                        'payment_buyers': None,
-                        'new_buyers': None,
                         'partial': item.get('partial'),
                     }
                 return out
@@ -919,10 +958,7 @@ def _promotion_dimension(conn, period, compare, category_label=None):
                            COUNT(DISTINCT f.date) AS sample_days,
                            SUM(f.ad_spend) AS ad_spend,
                            SUM(f.attributed_payment_amount) AS attributed_payment,
-                           SUM(f.impressions) AS impressions,
-                           SUM(f.clicks) AS clicks,
-                           SUM(f.payment_buyers) AS payment_buyers,
-                           SUM(f.new_buyers) AS new_buyers
+                           {CHANNEL_SUM_COLUMNS}
                     FROM promotion_daily_facts f
                     LEFT JOIN products p ON p.product_id = f.product_id
                     WHERE f.date BETWEEN ? AND ? AND f.grain = ?{category_sql}
@@ -942,6 +978,22 @@ def _promotion_dimension(conn, period, compare, category_label=None):
                         'missing_inputs': ['promotion_category_scope']}
             current = aggregate(period, grain, dimension)
             baseline = aggregate(compare, grain, dimension) if compare.get('available') else {}
+            # 花费占比分母（只给渠道维度）：品类口径 = 该品类商品级花费合计
+            # （grain='product' channel='全部'，与货品榜同源）；全店口径 = 渠道总和
+            # （campaign 粒度覆盖完整）。渠道分子缺多商品全站计划 → 占比是下界。
+            scope_total = None
+            if dimension == 'channel':
+                if category_label:
+                    total_row = conn.execute(
+                        '''SELECT SUM(f.ad_spend) FROM promotion_daily_facts f
+                           LEFT JOIN products p ON p.product_id = f.product_id
+                           WHERE f.date BETWEEN ? AND ? AND f.grain = 'product' AND f.channel = '全部'
+                             AND (p.shop_label = ? OR instr(',' || p.shop_label || ',', ',' || ? || ',') > 0)''',
+                        [period['start'], period['end'], category_label, category_label],
+                    ).fetchone()
+                    scope_total = (float(total_row[0]) if total_row and total_row[0] else None)
+                else:
+                    scope_total = (sum(float(r.get('ad_spend') or 0) for r in current.values()) or None)
             items = []
             for name, row in current.items():
                 old = baseline.get(name, {})
@@ -952,11 +1004,15 @@ def _promotion_dimension(conn, period, compare, category_label=None):
                     'sample_days': int(row.get('sample_days') or 0),
                     'ad_spend': spend,
                     'attributed_payment': payment,
+                    'direct_payment': row.get('direct_payment'),
+                    'cart_adds': row.get('cart_adds'),
+                    'new_buyers': row.get('new_buyers'),
+                    'payment_buyers': row.get('payment_buyers'),
                     'impressions': row.get('impressions'),
                     'clicks': row.get('clicks'),
-                    'payment_buyers': row.get('payment_buyers'),
-                    'new_buyers': row.get('new_buyers'),
                     'roi': (float(payment) / float(spend) if payment is not None and spend not in (None, 0) else None),
+                    'spend_share': (round(float(spend) / scope_total, 6)
+                                    if scope_total and spend is not None else None),
                     'ctr': (float(row['clicks']) / float(row['impressions'])
                             if row.get('clicks') is not None and row.get('impressions') not in (None, 0) else None),
                     'payment_rate': (float(row['payment_buyers']) / float(row['clicks'])
@@ -965,6 +1021,9 @@ def _promotion_dimension(conn, period, compare, category_label=None):
                     'payment_change_rate': _rate_change(payment, old_payment),
                     'previous_roi': (float(old_payment) / float(old_spend)
                                      if old_payment is not None and old_spend not in (None, 0) else None),
+                    **_channel_derived_metrics(spend, payment, row.get('direct_payment'),
+                                               row.get('cart_adds'), row.get('new_buyers'),
+                                               row.get('clicks'), row.get('payment_buyers')),
                 })
             items.sort(key=lambda item: float(item.get('ad_spend') or 0), reverse=True)
             if creative_channel:
@@ -1015,6 +1074,63 @@ PROMOTION_CHANNEL_GROUPS = (
     ('人群', ('人群推广',)),
     ('其他', ('店铺直达', '超级短视频')),
 )
+
+# 渠道行共用 SUM 列（creative / campaign 两条聚合 SQL 都要带齐，派生指标才算得出）。
+CHANNEL_SUM_COLUMNS = (
+    'SUM(COALESCE(f.direct_payment_amount, 0)) AS direct_payment, '
+    'SUM(COALESCE(f.cart_adds, 0)) AS cart_adds, '
+    'SUM(COALESCE(f.new_buyers, 0)) AS new_buyers, '
+    'SUM(COALESCE(f.clicks, 0)) AS clicks, '
+    'SUM(COALESCE(f.impressions, 0)) AS impressions, '
+    'SUM(COALESCE(f.payment_buyers, 0)) AS payment_buyers'
+)
+
+
+def _channel_derived_metrics(spend, payment, direct, carts, new_buyers, clicks, buyers):
+    """渠道聚合行的派生指标（与商品×渠道明细 derived() 同口径）。
+
+    任一分子/分母缺失或为 0 一律返回 None，前端显示 '--'，不补 0。
+    """
+    def div(numerator, denominator):
+        if numerator is None or denominator in (None, 0):
+            return None
+        return float(numerator) / float(denominator)
+
+    return {
+        'direct_roi': (round(div(direct, spend), 4) if div(direct, spend) is not None else None),
+        'cart_rate': (round(div(carts, clicks), 6) if div(carts, clicks) is not None else None),
+        'cart_cost': (round(div(spend, carts), 2) if div(spend, carts) is not None else None),
+        'new_cost': (round(div(spend, new_buyers), 2) if div(spend, new_buyers) is not None else None),
+        'new_buyer_share': (round(div(new_buyers, buyers), 6) if div(new_buyers, buyers) is not None else None),
+    }
+
+
+def _attribution_channel_rows(conn, start, end, category_label, covered):
+    """计划→商品 1:1 精确归因行聚合成「渠道 → 合计」，供品类渠道视图补全站推广。
+
+    promotion_creative_daily 不含全站推广场景，品类口径下全站的唯一商品级来源是
+    计划归因的 exact 行（品类过滤在归因内完成）。`covered` 是已有渠道集合——
+    只补 creative 覆盖不到的渠道，两边相加就是重复计数。
+    """
+    attribution = _campaign_attribution(
+        conn, {'start': start, 'end': end}, category_label, include_product_rows=True,
+    )
+    merged = {}
+    for (channel, _pid), bucket in ((attribution or {}).get('product_rows') or {}).items():
+        if channel in covered:
+            continue
+        if not (bucket.get('ad_spend') or 0) and not (bucket.get('attributed_payment') or 0):
+            continue
+        agg = merged.setdefault(channel, {key: 0.0 for key in (
+            'ad_spend', 'attributed_payment', 'direct_payment',
+            'cart_adds', 'new_buyers', 'clicks', 'impressions', 'payment_buyers',
+        )})
+        for key in agg:
+            agg[key] += float(bucket.get(key) or 0)
+    return [
+        {'channel': channel, 'sample_days': None, **agg}
+        for channel, agg in merged.items()
+    ]
 
 
 def _product_trend(conn, product_id, weeks=8, category_label=None, grain='week'):
@@ -1218,6 +1334,7 @@ def _campaign_attribution(conn, period, category_label=None, limit=20, include_p
                       SUM(direct_payment_amount) AS direct_payment,
                       SUM(cart_adds) AS cart_adds,
                       SUM(new_buyers) AS new_buyers,
+                      SUM(COALESCE(payment_buyers, 0)) AS payment_buyers,
                       SUM(clicks) AS clicks,
                       SUM(impressions) AS impressions,
                       COUNT(DISTINCT date) AS sample_days,
@@ -1273,6 +1390,7 @@ def _campaign_attribution(conn, period, category_label=None, limit=20, include_p
                 'direct_payment': round(float(row['direct_payment'] or 0), 2),
                 'cart_adds': int(row['cart_adds'] or 0),
                 'new_buyers': int(row['new_buyers'] or 0),
+                'payment_buyers': int(row['payment_buyers'] or 0),
                 'clicks': row['clicks'],
                 'impressions': row['impressions'],
                 'sample_days': int(row['sample_days'] or 0),
@@ -1292,13 +1410,14 @@ def _campaign_attribution(conn, period, category_label=None, limit=20, include_p
                 if bucket is None:
                     bucket = {'ad_spend': 0.0, 'attributed_payment': 0.0,
                               'direct_payment': 0.0, 'cart_adds': 0, 'new_buyers': 0,
-                              'clicks': 0, 'impressions': 0}
+                              'payment_buyers': 0, 'clicks': 0, 'impressions': 0}
                     product_rows[key] = bucket
                 bucket['ad_spend'] += spend
                 bucket['attributed_payment'] += float(row['attributed_payment'] or 0)
                 bucket['direct_payment'] += float(row['direct_payment'] or 0)
                 bucket['cart_adds'] += int(row['cart_adds'] or 0)
                 bucket['new_buyers'] += int(row['new_buyers'] or 0)
+                bucket['payment_buyers'] += int(row['payment_buyers'] or 0)
                 bucket['clicks'] += int(row['clicks'] or 0)
                 bucket['impressions'] += int(row['impressions'] or 0)
 
@@ -1344,6 +1463,45 @@ _COMPARABILITY_REASON_TEXT = {
     'baseline_no_data': '对比周期无数据',
     'baseline_grain_mismatch': '基线粒度与本期不匹配（整月兜底基线 vs 非完整月）',
 }
+
+
+def _unlabeled_products_scope(conn, start, end, grain='day'):
+    """统计本期有销售但未打品类标签的商品（数量 + 净销售额）。
+
+    shop_label 是品类拆分的唯一依据，而 BI 接口不带标签字段（tagGroup 恒为
+    '--'，实测 2026-10-04）——采集路径新增的商品在模板重传前恒为空，这部分
+    销售不参与任何品类统计。放这里让漂移当期可见（2026-09 实测 1,488 款 /
+    净销 63,854 未计入品类），而不是月底对账才发现。
+    周复盘查 daily_data；月复盘的历史月份 daily 覆盖不全，改查 monthly_data。
+    返回 None 表示本期没有未分类商品（或查询失败，不阻塞页面）。
+    """
+    try:
+        if grain == 'month':
+            row = conn.execute(
+                '''SELECT COUNT(DISTINCT m.product_id) AS n,
+                          COALESCE(SUM(m.net_sales), 0) AS net
+                   FROM monthly_data m
+                   LEFT JOIN products p ON p.product_id = m.product_id
+                   WHERE m.month = ? AND COALESCE(p.shop_label, '') = ''
+                     AND (m.net_sales > 0 OR m.payment_amount > 0)''',
+                (str(start)[:7],),
+            ).fetchone()
+        else:
+            row = conn.execute(
+                '''SELECT COUNT(DISTINCT d.product_id) AS n,
+                          COALESCE(SUM(d.net_sales), 0) AS net
+                   FROM daily_data d
+                   LEFT JOIN products p ON p.product_id = d.product_id
+                   WHERE d.date BETWEEN ? AND ? AND COALESCE(p.shop_label, '') = ''
+                     AND (d.net_sales > 0 OR d.payment_amount > 0)''',
+                (start, end),
+            ).fetchone()
+        count = int(row['n'] or 0)
+        if count <= 0:
+            return None
+        return {'count': count, 'net_sales': round(float(row['net'] or 0), 2)}
+    except Exception:
+        return None
 
 
 def _data_status(period, metrics, blocks):
@@ -1404,8 +1562,15 @@ def _data_status(period, metrics, blocks):
     ads = blocks.get('ads') or {}
     channel_totals = ads.get('channel_totals') or {}
     if channel_totals.get('partial'):
-        add('ads_channel_scope', '按品类渠道缺「全站推广」',
-            '渠道明细取自商品×渠道事实（不含全站推广），故不计算成交占比', 'info')
+        add('ads_channel_scope', '按品类渠道为部分口径',
+            '全站推广仅含「计划只绑 1 个商品」的精确归因部分，成交占比不计算', 'info')
+
+    # ⑥ 未分类商品（BI 接口无标签字段 → 新品在模板重传前不参与品类拆分）
+    unlabeled = blocks.get('unlabeled_products') or {}
+    if unlabeled.get('count'):
+        add('unlabeled_products', '部分商品未分类',
+            f"{unlabeled['count']} 款在卖商品未打品类标签，净销 ¥{unlabeled['net_sales']:,.0f} "
+            '未计入任何品类拆分（需更新商品模板标签）', 'info')
 
     promo_items = blocks.get('promotion_items') or {}
     if promo_items.get('channels_partial'):
@@ -2361,6 +2526,11 @@ def build_context(period_type, period_key, saved_target=None, category_mode=None
             if compare['available']
             else profit_structure(conn, period['start'], period['end'], category_label)
         )
+        # 未分类商品口径（数据状态消费）：BI 接口无标签字段 → 新品在模板重传前
+        # 不参与品类拆分。必须在 conn 作用域内现查（上面各块都不携带该口径）。
+        unlabeled_products = _unlabeled_products_scope(
+            conn, period['start'], period['end'],
+            grain='month' if period_type == 'month' else 'day')
 
     has_data = bool(totals_cur['day_count'])
     missing_inputs = [] if has_data else ['daily_data']
@@ -2398,7 +2568,7 @@ def build_context(period_type, period_key, saved_target=None, category_mode=None
         'paid_cpc_source': paid_cpc_source,
     }
     # 全页数据状态（P0 #3）：只汇总、不重查。判据全部取自上面已算好的各块，
-    # 避免同一事实在两处各算一遍 → 未来不一致。
+    # 避免同一事实在两处各算一遍 → 未来不一致（未分类商品在 with 块内现查）。
     data_status = _data_status(period, metrics_payload, {
         'profit_structure': profit_structure_payload,
         'market': market,
@@ -2406,6 +2576,7 @@ def build_context(period_type, period_key, saved_target=None, category_mode=None
         'promotion_items': promotion_items,
         'campaign_attribution': campaign_attribution,
         'dimensions': {'promotion': promotion},
+        'unlabeled_products': unlabeled_products,
         'missing_inputs': missing_inputs,
     })
 
