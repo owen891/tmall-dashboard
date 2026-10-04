@@ -275,7 +275,6 @@ def backup_database():
     backup_dir = config['data'].get('backup_folder', 'data/backups/')
     if not os.path.isabs(backup_dir):
         backup_dir = os.path.join(PROJECT_ROOT, backup_dir)
-    max_backups = config['data'].get('max_backups', 30)
 
     os.makedirs(backup_dir, exist_ok=True)
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
@@ -301,9 +300,13 @@ def backup_database():
 
     # 清理旧备份：按数量 + 总容量双重裁剪。
     # 单份备份约 2.5GB，只按数量裁剪（旧配置 30 份）一样能吃掉几十 GB。
-    _keep_newest, _max_total_bytes = retention_settings()
-    prune_backups(backup_dir, keep_newest=max_backups, max_total_bytes=_max_total_bytes,
-                  pattern='dashboard_*.db', protected=[backup_path])
+    # keep 值统一走 retention_settings()（含 C6 的 max(1, ·) 夹取），
+    # 不再从 config 直读，避免 max_backups: 0 时越权删光全部非 protected 备份。
+    # pattern 统一为 '*.db'：同目录内所有备份受同一策略约束（此前
+    # 'dashboard_*.db' 连字符命名的 dashboard-YYYYMMDD-HHMMSS.db 并不匹配）。
+    keep_newest, max_total_bytes = retention_settings()
+    prune_backups(backup_dir, keep_newest=keep_newest, max_total_bytes=max_total_bytes,
+                  pattern='*.db', protected=[backup_path])
 
     print(f"  Backup: {backup_path}")
     return True

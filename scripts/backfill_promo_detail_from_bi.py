@@ -24,12 +24,25 @@ Why this exists
 用法::
 
     python scripts/backfill_promo_detail_from_bi.py                  # dry-run
-    python scripts/backfill_promo_detail_from_bi.py --apply
-    python scripts/backfill_promo_detail_from_bi.py --sources "E:\\派米\\BI销售数据\\26年9月" --apply
+    python scripts/backfill_promo_detail_from_bi.py --apply --backup-destination data/backups/promo-20261004.db
+    python scripts/backfill_promo_detail_from_bi.py --sources "E:\\派米\\BI销售数据\\26年9月" --apply --backup-destination data/backups/promo-20260926.db
+
+备份契约（``--apply``）
+-----------------------
+``--apply`` 必须先成功备份才会写库；备份由 ``scripts.backup_database.backup_database()`` 执行
+（连带函数级的 ``prune_backups``，受 C1–C6 保留策略约束），因此：
+
+- ``--backup-destination`` **指向的文件必须不存在**。它不是一个可以固定复用的路径，
+  每次 ``--apply`` 请换一个带日期/时间的新文件名。
+- 同一路径重复 ``--apply`` 会**明确失败**（``备份目标已存在，请改用新的 --backup-destination``），
+  **不会覆盖既有快照**。这是刻意的数据安全行为，不是 bug：备份是回滚的唯一凭据，
+  静默覆盖等于销毁上一次的快照。
+- 该失败发生在**开始写库之前**，所以不会留下半完成状态（不会出现「已经改了一半」的库）。
 """
 from __future__ import annotations
 
 import argparse
+import json
 import sqlite3
 import sys
 from collections import Counter
@@ -103,7 +116,11 @@ def main() -> int:
     parser.add_argument('--dates', nargs='*', help='Limit to YYYY-MM-DD values.')
     parser.add_argument('--apply', action='store_true', help='Write changes (default is dry-run).')
     parser.add_argument('--backup-destination', type=Path,
-                        help='Required with --apply: SQLite backup path for this run.')
+                        help='Required with --apply: SQLite backup path for this run. '
+                             'The file must NOT already exist: repeating --apply with the same path '
+                             'fails with a clear error before any write and never overwrites an existing '
+                             'snapshot (deliberate data-safety behavior, not a bug) - use a new dated '
+                             'path for every run.')
     args = parser.parse_args()
 
     files: list[Path] = []
@@ -130,19 +147,21 @@ def main() -> int:
     init_db(str(db_path))
 
     backup_path = None
+    backup_report = None
     if args.apply:
         if not args.backup_destination:
             raise SystemExit('--apply 需要同时提供 --backup-destination')
         backup_path = args.backup_destination.resolve()
-        backup_path.parent.mkdir(parents=True, exist_ok=True)
-        source = sqlite3.connect(db_path)
-        target = sqlite3.connect(backup_path)
+        # 委托 scripts.backup_database.backup_database：既产出 sha256/integrity 报告，
+        # 又在函数级执行 prune_backups（C1–C6）。此处原先自行 sqlite3.connect +
+        # source.backup(target)，完全绕过裁剪，是最后一个「备份制造点」。
+        from scripts.backup_database import backup_database
         try:
-            source.backup(target)
-        finally:
-            target.close()
-            source.close()
+            backup_report = backup_database(db_path, backup_path)
+        except FileExistsError:
+            raise SystemExit(f'备份目标已存在，请改用新的 --backup-destination: {backup_path}')
         print(f'已备份数据库到 {backup_path}', flush=True)
+        print('  备份报告: ' + json.dumps(backup_report, ensure_ascii=False, default=str), flush=True)
 
     connection = sqlite3.connect(db_path, timeout=300)
     connection.row_factory = sqlite3.Row
