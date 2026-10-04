@@ -245,7 +245,7 @@ def recent_periods(period_type, period_key, limit=18):
 
 def available_periods(period_type, limit=120):
     """Return selectable review periods covered by the daily facts."""
-    if period_type not in ('week', 'month'):
+    if period_type not in ('day', 'week', 'month'):
         return []
     with get_db() as conn:
         rows = conn.execute(
