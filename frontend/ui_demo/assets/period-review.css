@@ -1,4 +1,4 @@
-/* 周月复盘页面样式（页面级，复用 tokens/组件规范） */
+/* 周期复盘页面样式（页面级，复用 tokens/组件规范） */
 
 [data-page="period-review"] .demo-page {
   display: flex;
@@ -521,6 +521,73 @@
   gap: 8px;
   align-items: center;
 }
+
+/* 首屏口径条：先钉住「看的是哪一期、哪个品类、和谁比」，再读三句结论。 */
+.pr-command-center__scope {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: -4px;
+}
+
+.pr-scope-pill {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  padding: 4px 9px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-full);
+  background: var(--surface-muted);
+  color: var(--text-secondary);
+  font-size: 11px;
+  line-height: 1.5;
+  white-space: nowrap;
+}
+
+.pr-scope-pill.is-partial {
+  border-color: color-mix(in srgb, var(--warning) 35%, var(--border-default));
+  color: var(--warning-text);
+  background: color-mix(in srgb, var(--warning) 8%, var(--surface-muted));
+}
+
+/* 首屏重点：结论、问题、机会三张卡先给判断，再让用户下钻看证据。 */
+.pr-command-center__insights {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.pr-insight-card {
+  min-width: 0;
+  padding: 12px 14px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  background: var(--surface-base);
+  border-left: 3px solid var(--border-strong);
+}
+
+.pr-insight-card.is-good { border-left-color: var(--success, #16a34a); }
+.pr-insight-card.is-warning { border-left-color: var(--warning, #d97706); }
+.pr-insight-card.is-danger { border-left-color: var(--danger, #dc2626); }
+.pr-insight-card__head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.pr-insight-card__label { color: var(--text-muted); font-size: 11px; font-weight: 600; }
+.pr-insight-card__title { display: block; margin-top: 7px; color: var(--text-primary); font-size: 15px; line-height: 1.4; }
+.pr-insight-card__detail { min-height: 36px; margin: 6px 0 8px; color: var(--text-secondary); font-size: 12px; line-height: 1.55; }
+.pr-insight-card__action { padding: 0; border: 0; background: transparent; color: var(--brand-text); font-size: 12px; cursor: pointer; }
+.pr-insight-card__action:hover { text-decoration: underline; }
+
+.pr-ad-decision {
+  padding: 10px 12px;
+  border-left: 3px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface-muted);
+}
+.pr-ad-decision.is-good { border-left-color: var(--success, #16a34a); }
+.pr-ad-decision.is-warning { border-left-color: var(--warning, #d97706); }
+.pr-ad-decision.is-danger { border-left-color: var(--danger, #dc2626); }
+.pr-ad-decision strong { display: block; color: var(--text-primary); font-size: 13px; }
+.pr-ad-decision p { margin: 4px 0 0; color: var(--text-secondary); font-size: 12px; line-height: 1.55; }
 
 /* ------------------------------------------------ 段落三段式（分析/根因/下一步） */
 /* 卡片化 + 左侧品牌描边，对齐 demo 三卡的「编号步骤」阅读节奏；
@@ -2268,6 +2335,10 @@ body[data-page="period-review"] .demo-topbar__filters {
 
   .pr-command-center__data-state {
     align-self: flex-start;
+  }
+
+  .pr-command-center__insights {
+    grid-template-columns: 1fr;
   }
 
   .pr-metric-cards {
