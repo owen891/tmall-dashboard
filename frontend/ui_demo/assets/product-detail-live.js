@@ -1,10 +1,12 @@
 ﻿(function () {
   // `/products/<product_id>` carries the id as the last segment. `/product-detail`
   // is the id-less deep link: its last segment is the route name itself, so it
-  // must not be mistaken for a product id.
+  // must not be mistaken for a product id. 静态文件路径（`/pages/product-detail.html`，
+  // 含桌面端 file:// 场景）带 .html 后缀，同样不是 id —— 否则会去请求
+  // `/api/products/product-detail.html/detail` 并报 404。
   const segments = location.pathname.split('/');
   const lastSegment = segments[segments.length - 1] || '';
-  const id = lastSegment && lastSegment !== 'product-detail' ? decodeURIComponent(lastSegment) : '';
+  const id = lastSegment && lastSegment !== 'product-detail' && !/\.html?$/i.test(lastSegment) ? decodeURIComponent(lastSegment) : '';
   const $ = (selector) => document.querySelector(selector);
   const $$ = (selector) => [...document.querySelectorAll(selector)];
   const setText = (selector, value) => $$(selector).forEach((node) => { node.textContent = value ?? '--'; });

@@ -23,8 +23,9 @@ def test_web_update_checker_is_loaded_by_the_common_shell():
     # shell.js 给动态加载的脚本带 ?v= 穿透 7 天静态缓存，断言表达契约本身
     #（用 new URL(name, assetBase) 加载 version.js / version-check.js），
     # 不要写死「无查询串」的字面量 —— 那样一 bump 缓存串就误报。
-    assert re.search(r"new URL\('version\.js(?:\?[^']*)?', assetBase\)", shell)
-    assert re.search(r"new URL\('version-check\.js(?:\?[^']*)?', assetBase\)", shell)
+    # 引号风格兼容 '…' 与 `…${RUNTIME_ASSET_V}`（shell.js 缓存串统一收敛后的模板字符串写法）。
+    assert re.search(r"new URL\(['\"`]version\.js(?:\?[^'\"`]*)?['\"`], assetBase\)", shell)
+    assert re.search(r"new URL\(['\"`]version-check\.js(?:\?[^'\"`]*)?['\"`], assetBase\)", shell)
     assert "new URL('../api/version?client=web', assetBase)" in checker
     assert '立即刷新' in checker
     assert 'TMALL_WEB_VERSION' in version

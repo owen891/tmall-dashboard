@@ -89,23 +89,26 @@
     return null;
   });
 
-  // table-controls.js / version-check.js 不在任何页面的 HTML 里，只由这里动态加载；
-  // 必须带 ?v= 才能穿透 7 天静态缓存（两个文件都改过，?v= 不 bump 就会一直加载旧版本）。
-  loadOptionalScript('table-controls.js?v=20261001j');
-  loadOptionalScript('ui-components.js');
-  loadScriptOnce(new URL('version.js', assetBase).href)
-    .then(() => loadScriptOnce(new URL('version-check.js?v=20261001j', assetBase).href))
+  // 本文件动态加载的脚本必须带 ?v= 才能穿透 7 天静态缓存，否则改了文件用户也一直拿旧版本。
+  // 改这些文件后同步 bump 这里，并 bump 各页面 HTML 里 shell.js 自己的 ?v=。
+  const RUNTIME_ASSET_V = '20261003a';
+  // table-controls.js / version.js / version-check.js / desktop-integration.js
+  // 不在任何页面的 HTML 里，只由这里动态加载；ui-components.js 两者都有（版本号需保持一致）。
+  loadOptionalScript(`table-controls.js?v=${RUNTIME_ASSET_V}`);
+  loadOptionalScript(`ui-components.js?v=${RUNTIME_ASSET_V}`);
+  loadScriptOnce(new URL(`version.js?v=${RUNTIME_ASSET_V}`, assetBase).href)
+    .then(() => loadScriptOnce(new URL(`version-check.js?v=${RUNTIME_ASSET_V}`, assetBase).href))
     .catch((error) => {
       window.TmallFrontendErrors?.report('runtime_bootstrap_failed', error.message, error.stack || '', 0, 0, error);
       console.error('[tmall] version check unavailable', error);
     });
-  loadOptionalScript('desktop-integration.js');
+  loadOptionalScript(`desktop-integration.js?v=${RUNTIME_ASSET_V}`);
 
   const liveAdapters = { overview: 'overview-live.js', products: 'products-live.js', promotion: 'promotion-live.js', 'keyword-promotion': 'keyword-promotion-live.js', 'market-ranking': 'market-ranking-live.js', 'flow-source': 'flow-source-live.js', 'rival-analysis': 'rival-analysis-live.js' };
   const liveAdapter = liveAdapters[document.body.dataset.page];
   const apiReady = window.DemoApi
     ? Promise.resolve(window.DemoApi)
-    : loadScriptOnce(new URL('api.js', assetBase).href).then(() => window.DemoApi);
+    : loadScriptOnce(new URL(`api.js?v=${RUNTIME_ASSET_V}`, assetBase).href).then(() => window.DemoApi);
   const requestApi = async (path, options) => {
     const api = await apiReady;
     if (!api?.request) throw new Error('API 客户端不可用');
@@ -132,7 +135,7 @@
   window.TmallDataStates = Object.freeze(DATA_STATES.slice());
   if (liveAdapter && !window.DemoApi) {
     apiReady
-      .then(() => loadScriptOnce(new URL(liveAdapter, assetBase).href))
+      .then(() => loadScriptOnce(new URL(`${liveAdapter}?v=${RUNTIME_ASSET_V}`, assetBase).href))
       .catch((error) => {
         window.TmallFrontendErrors?.report('page_bootstrap_failed', error.message, liveAdapter, 0, 0, error);
         console.error(`[tmall] page adapter unavailable: ${liveAdapter}`, error);
@@ -146,7 +149,7 @@
         ['category-dashboard', '品类经营看板', 'pie-chart', 'category-dashboard'],
         ['goals', '经营目标', 'target', 'goals'],
         ['reviews', '经营复盘', 'clipboard-check', 'reviews'],
-        ['period-review', '周月复盘', 'file-text', 'period-review'],
+        ['period-review', '日周月复盘', 'file-text', 'period-review'],
       ],
     },
     {
@@ -198,7 +201,7 @@
     'category-dashboard': ['品类经营看板', '按日、周、月和自定义周期跟踪品类经营表现'],
     'data-collection': ['数据采集', '各数据源采集状态管理与手动触发'],
     reviews: ['经营复盘', '查看待复盘动作与经营周期差异'],
-    'period-review': ['周月复盘', '系统汇总业绩、目标差距、市场与动作素材，人工补结论与卡点'],
+    'period-review': ['日周月复盘', '系统汇总业绩、目标差距、市场与动作素材，人工补结论与卡点'],
     'data-center': ['数据中心', '导入、校验和管理经营数据'],
     settings: ['设置', '维护店铺与业务默认配置'],
     goals: ['经营目标', '按年、季、月、周、日跟踪净销售额目标'],
@@ -306,6 +309,7 @@
   const periodReviewControls = currentPage === 'period-review' ? `
     <div class="demo-period demo-period--review" role="group" aria-label="复盘粒度与对比">
       <div class="pr-mode-tabs" role="tablist" aria-label="复盘周期">
+        <button type="button" data-pr-mode="day" role="tab" aria-selected="false">日复盘</button>
         <button type="button" class="is-active" data-pr-mode="week" role="tab" aria-selected="true">周复盘</button>
         <button type="button" data-pr-mode="month" role="tab" aria-selected="false">月复盘</button>
       </div>
@@ -497,7 +501,7 @@
   // 日期范围状态仓已拆至 runtime/date-range-store.js；本文件只负责装配。
   // 与其他 runtime 模块（date-range-scope 等）一致：由 shell 在初始化时
   // 加载，页面适配器经 window.TmallDateRange 消费。
-  loadScriptOnce(new URL('runtime/date-range-store.js', assetBase).href).then(() => {
+  loadScriptOnce(new URL(`runtime/date-range-store.js?v=${RUNTIME_ASSET_V}`, assetBase).href).then(() => {
     if (!window.TmallRuntime?.createDateRangeStore) throw new Error('date-range-store 模块未导出 createDateRangeStore');
     window.TmallDateRange = window.TmallRuntime.createDateRangeStore({
       header,
@@ -561,10 +565,34 @@
   mobileNavBackdrop.className = 'demo-nav-backdrop';
   mobileNavBackdrop.type = 'button';
   mobileNavBackdrop.setAttribute('aria-label', '关闭导航');
+  // 不参与 Tab 序列：遮罩铺满视口，焦点环画在视口之外＝用户看不见焦点在哪（WCAG 2.4.7）。
+  // 与 TmallUI.detailDrawer 的遮罩一致（那边也是 tabIndex = -1）。键盘关闭走 Esc。
+  mobileNavBackdrop.tabIndex = -1;
   mobileNavBackdrop.hidden = true;
   document.body.appendChild(mobileNavBackdrop);
   let mobileNavReturnFocus = null;
   const isMobileDrawer = () => window.matchMedia('(max-width: 760px)').matches;
+  // 抽屉打开时把「侧栏与遮罩以外的所有 body 子元素」设为 inert —— 遮罩已经把它们盖住了，
+  // 键盘 / 读屏不该还能走到看不见的内容上（WCAG 2.4.3 焦点顺序）。这与 <dialog showModal()>
+  // 的原生行为一致。实测修复前：抽屉里 20 个导航项走完后，焦点会逃逸到遮罩后的日期选择器、
+  // 汉堡按钮、KPI 卡片；只 inert .demo-main 还会漏掉 body 级的 skip-link。
+  // 只撤自己加过的（drawerInerted 记录），避免把别处设的 inert 一起撤掉。
+  // 用「读当前状态重算」而不是在开/关两处各写一遍 —— openToolbox 是直接改 class 的
+  // 另一条路径，漏了会把 inert 永久留在页面上。
+  let drawerInerted = [];
+  const syncPageInert = () => {
+    drawerInerted.forEach((el) => el.removeAttribute('inert'));
+    drawerInerted = [];
+    if (!(isMobileDrawer() && sidebar.classList.contains('is-open'))) return;
+    // 只把抽屉真正盖住的两块设为 inert，**不要**图省事去 inert「除侧栏外的一切」：
+    // body 层级还有 toolbox-dialog（inert 后 showModal() 打不开）和 aria-live 状态区
+    // （inert 后 toast / 播报会被静音），一刀切会误伤。
+    //   .demo-main  = 顶栏 + 主内容（遮罩底下的全部页面内容）
+    //   skip-link   = body 级插入的「跳到主要内容」，不处理会漏出来
+    [document.querySelector('.demo-main'), document.querySelector('[data-skip-link]')].forEach((el) => {
+      if (el && !el.hasAttribute('inert')) { el.setAttribute('inert', ''); drawerInerted.push(el); }
+    });
+  };
   const setSidebarState = (open) => {
     sidebar.classList.toggle('is-open', open);
     const drawerMode = isMobileDrawer();
@@ -573,6 +601,7 @@
     sidebar.setAttribute('aria-hidden', String(hidden));
     mobileNavBackdrop.hidden = !(drawerMode && open);
     mobileNavBackdrop.classList.toggle('is-visible', drawerMode && open);
+    syncPageInert();
   };
   const closeMobileNavigation = (restoreFocus = true) => {
     if (!sidebar.classList.contains('is-open')) return;
@@ -631,10 +660,13 @@
   };
   const openToolbox = (triggerButton) => {
     toolboxReturnFocus = triggerButton || document.activeElement;
+    // 用 setSidebarState(false) 而不是手改 class：它同时会收起遮罩、撤掉外壳 inert。
+    // 原先只 remove('is-open')，从移动端抽屉点「导入数据」后遮罩会留在页面上
+    // （铺满视口且拦截指针事件），整页点不动。
+    setSidebarState(false);
+    mobileNav.setAttribute('aria-expanded', 'false');
     toolbox.showModal();
     document.body.classList.add('demo-scroll-lock');
-    sidebar.classList.remove('is-open');
-    mobileNav.setAttribute('aria-expanded', 'false');
     window.setTimeout(() => (getToolboxFocusables()[0] || toolbox).focus(), 0);
   };
   toolbox.addEventListener('close', () => {

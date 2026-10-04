@@ -127,7 +127,13 @@
   --brand-solid-hover: #4338ca;  /* 白字 7.90:1，hover 再深一档 */
   --danger-solid: #b91c1c;   /* 白字 6.47:1 */
 
-  --focus-ring: color-mix(in srgb, var(--brand) 30%, transparent);
+  /* 焦点环必须是**不透明**的。2026-10-03：原值 color-mix(--brand 30%, transparent)
+     合成到页面底色后只有 ~1.5:1（暗色 42% 也只有 ~2.1:1），远低于 WCAG 1.4.11
+     对焦点指示器要求的 3:1 —— 键盘用户基本看不出焦点在哪（全站 20 页、28 类元素）。
+     直接用 --brand：亮 #6366f1 / 暗 #818cf8，实测 3.7:1 ~ 6.1:1 全达标。
+     不写进暗色块：var(--brand) 按元素上下文惰性解析，暗色自动取 #818cf8。
+     改这里后必须跑 scripts/audit_focus_indicator.cjs（--theme light 与 dark 各一遍）。 */
+  --focus-ring: var(--brand);
   --overlay-backdrop: rgb(15 23 42 / 0.42);
   --chart-brand-fill: rgb(99 102 241 / 0.65);
   --chart-info-fill: rgb(59 130 246 / 0.58);
@@ -233,7 +239,8 @@
   --brand-solid: #4f46e5;    /* 白字 6.29:1（暗色下 --brand 是浅色，压白字只有 2.98:1） */
   --brand-solid-hover: #4338ca;  /* 白字 7.90:1 */
   --danger-solid: #b91c1c;   /* 白字 6.47:1 */
-  --focus-ring: color-mix(in srgb, var(--brand) 42%, transparent);
+  /* --focus-ring 不在暗色块里重定义：它等于 var(--brand)，暗色自动解析成 #818cf8。
+     焦点环对比度：6.13:1 @ surface-page、5.60:1 @ surface-card，均 >= 3:1（WCAG 1.4.11）。 */
   --overlay-backdrop: rgb(0 0 0 / 0.52);
   --chart-brand-fill: rgb(129 140 248 / 0.68);
   --chart-info-fill: rgb(96 165 250 / 0.62);

@@ -1186,16 +1186,18 @@
     header.className = 'lifecycle-detail__header promotion-detail-drawer__header';
     header.innerHTML = '<div class="lifecycle-detail__product"><span class="lifecycle-detail__image promotion-detail-dialog__image" data-promotion-dialog-image aria-hidden="true"><i data-lucide="megaphone"></i></span><div><h2 class="panel__title" data-promotion-dialog-title>推广明细</h2><p class="panel__hint" data-promotion-dialog-subtitle>--</p><div class="lifecycle-detail__id" data-promotion-dialog-id>--</div></div></div>';
     const content = template.content.cloneNode(true);
+    // tablist 必须在 append 之前取：DocumentFragment 一旦被 append，子节点会被移走，
+    // 之后再 querySelector 只会得到 null（曾导致 bindDialog 抛错、页面后续初始化全部中断）。
+    const tablist = content.querySelector('[data-promotion-dialog-tabs]');
     const bodyWrap = document.createElement('div');
     bodyWrap.append(header, content);
     promotionDetailDrawer = window.TmallUI.detailDrawer({ title: '推广明细', size: 'lg' });
     promotionDetailDrawer.body.append(bodyWrap);
-    const tablist = content.querySelector('[data-promotion-dialog-tabs]');
-    tablist.addEventListener('click', (event) => {
+    tablist?.addEventListener('click', (event) => {
       const tab = event.target.closest('[data-promotion-detail-tab]');
       if (tab) selectPromotionDetailTab(tab.dataset.promotionDetailTab);
     });
-    tablist.addEventListener('keydown', (event) => {
+    tablist?.addEventListener('keydown', (event) => {
       const tabs = [...tablist.querySelectorAll('[data-promotion-detail-tab]')];
       const index = tabs.indexOf(event.target.closest('[data-promotion-detail-tab]'));
       if (index < 0 || !['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;

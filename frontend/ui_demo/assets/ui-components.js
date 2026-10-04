@@ -430,6 +430,43 @@
     node.addEventListener('click', (event) => { if (dismissible && event.target === node) handle.close(); });
     return handle;
   };
+  // 点击弹窗遮罩（backdrop）关闭：<dialog> 的遮罩点击事件 target 就是 dialog 本身。
+  // 按下起点在内容里（拖拽选字后松在遮罩上）则不关，避免误关丢输入。
+  // 先派发 cancel 事件，让弹窗既有的取消逻辑（回滚草稿、恢复焦点）接管；
+  // 无人处理时再兜底 close()。dismissible:false 的弹窗会在 cancel 里
+  // preventDefault，因此不会被关掉。
+  const lightDismiss = (dialog) => {
+    if (!dialog || !dialog.open) return false;
+    const notPrevented = dialog.dispatchEvent(new Event('cancel', { cancelable: true }));
+    if (notPrevented && dialog.open) dialog.close();
+    return true;
+  };
+  const enableLightDismiss = (dialog) => {
+    if (!dialog || dialog.dataset.lightDismiss === 'bound') return dialog;
+    dialog.dataset.lightDismiss = 'bound';
+    let pressedInside = false;
+    dialog.addEventListener('pointerdown', (event) => { pressedInside = event.target !== dialog; });
+    dialog.addEventListener('click', (event) => {
+      if (event.target !== dialog || pressedInside) return;
+      lightDismiss(dialog);
+    });
+    return dialog;
+  };
+  // 兜底：文档级事件委托，覆盖未显式绑定 enableLightDismiss 的 <dialog>，
+  // 含运行时动态创建的弹窗（预警规则、动作详情等）。显式绑定过的带标记，这里跳过。
+  // 本文件会被页面 HTML 与 shell.js 各加载一次，用标记保证只绑一次。
+  if (!document.documentElement.hasAttribute('data-light-dismiss-ready')) {
+    document.documentElement.setAttribute('data-light-dismiss-ready', '');
+    let pressTarget = null;
+    document.addEventListener('pointerdown', (event) => { pressTarget = event.target; }, true);
+    document.addEventListener('click', (event) => {
+      const dialog = event.target;
+      if (!(dialog instanceof HTMLDialogElement) || !dialog.open) return;
+      if (dialog.dataset.lightDismiss === 'bound') return;
+      if (pressTarget !== dialog) return;
+      lightDismiss(dialog);
+    });
+  }
   const confirm = ({ title, message = '', description = '', confirmLabel = '确认', cancelLabel = '取消', tone = 'primary' } = {}) => new Promise((resolve) => {
     const cancel = button({ label: cancelLabel });
     const ok = button({ label: confirmLabel, variant: tone === 'danger' ? 'danger' : 'primary' });
@@ -471,6 +508,6 @@
     }
     return issues;
   };
-  const api = { text, create, clear, escape, formatDateTime, format, status, renderDataState, icon, button, badge, emptyState, dataState, metricCard, metricGrid, panel, pageHeader, filterToolbar, table, setState, contextBar, tableToolbar, detailDrawer, stickyActionBar, modal, confirm, fieldSelector, audit };
+  const api = { text, create, clear, escape, formatDateTime, format, status, renderDataState, icon, button, badge, emptyState, dataState, metricCard, metricGrid, panel, pageHeader, filterToolbar, table, setState, contextBar, tableToolbar, detailDrawer, stickyActionBar, modal, confirm, enableLightDismiss, fieldSelector, audit };
   window.TmallUI = Object.freeze(api);
 })();
