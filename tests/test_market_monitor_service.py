@@ -1,7 +1,7 @@
 """市场监控深化计算（market_monitor_service）单元测试。
 
-覆盖 XMind 市场监控缺口的四项能力：8大归类 / 蓝海机会词 / 趋势节点 / 竞店爆品排名变化。
-全部用合成数据驱动，不依赖采集库。
+覆盖 XMind 市场监控缺口的五项能力：8大归类 / 蓝海机会词 / 趋势节点 /
+竞店爆品排名变化 / 商品排行趋势市场。全部用合成数据驱动，不依赖采集库。
 """
 import os
 import sys
@@ -15,8 +15,10 @@ if PROJECT_ROOT not in sys.path:
 from services.market_monitor_service import (
     _classify_keyword,
     blue_ocean_words,
+    classify_keyword,
     keyword_insights,
     rival_item_moves,
+    trend_items,
 )
 
 
@@ -139,7 +141,14 @@ class BlueOceanFullTests(unittest.TestCase):
         self.assertEqual(word['keyword_full'], '压力袜男夏季薄款')
         self.assertEqual(word['cover_count'], 2)
 
-    def test_zero_cover_is_high_potential(self):
+    def test_zero_cover_is_pending_not_blue_ocean(self):
+        """覆盖 0 **不等于**供给稀缺，必须记「待核」而不是「高潜蓝海」。
+
+        事故背景：在榜样本只有最新日 600 款（5 类目 × top120），词根与标题用词
+        不一致时（「脚尖加固」「毛巾袜」标题里基本没人这么写）覆盖也是 0。
+        旧实现把 0 直接判「高潜蓝海」→ 实测 12 个词根里 8 个覆盖为 0、全判高潜蓝海，
+        分级塌成一档，对运营是误导（会去追一个并不存在的蓝海）。
+        """
         rows = [('2026-09-28', '地板袜秋冬季', 200, 0.1, 0.2)]
         result = blue_ocean_words(rows, ['完全无关商品'])
         self.assertTrue(result['available'])
@@ -147,15 +156,34 @@ class BlueOceanFullTests(unittest.TestCase):
         self.assertEqual(word['keyword'], '地板袜')
         self.assertEqual(word['cover_count'], 0)
         self.assertEqual(word['cover_per_10k'], 0.0)
-        self.assertEqual(word['grade'], '高潜蓝海')
+        self.assertEqual(word['grade'], '待核')
+        self.assertIsNotNone(word['note'])
 
-    def test_missing_titles_still_ranks_by_heat(self):
+    def test_missing_titles_ranks_pending_and_reports_counts(self):
+        """完全没有在榜 title 时，所有词根都不可判供给 → 全「待核」，且计数如实回报。"""
         rows = [('2026-09-28', '压力袜', 500, 0.1, 0.2)]
         result = blue_ocean_words(rows, [])
         self.assertTrue(result['available'])
         word = result['words'][0]
         self.assertEqual(word['cover_count'], 0)
-        self.assertEqual(word['grade'], '高潜蓝海')
+        self.assertEqual(word['grade'], '待核')
+        self.assertEqual(result['graded_count'], 0)
+        self.assertEqual(result['pending_count'], 1)
+
+    def test_graded_words_rank_before_pending(self):
+        """已分级词排在「待核」之前 —— 待核不是结论，不该占榜首。"""
+        rows = [
+            ('2026-09-28', '压力袜', 5000, 0.1, 0.2),   # 有覆盖 → 已分级
+            ('2026-09-28', '地板袜', 500, 0.1, 0.2),    # 无覆盖 → 待核
+        ]
+        titles = ['压力袜男', '压力袜女', '压力袜儿童', '压力袜冬季', '压力袜夏季',
+                  '压力袜薄款', '压力袜厚款', '压力袜透气', '压力袜运动', '压力袜防臭',
+                  '压力袜保暖', '压力袜抗菌', '压力袜加长', '压力袜短款', '压力袜礼盒']
+        result = blue_ocean_words(rows, titles)
+        grades = [item['grade'] for item in result['words']]
+        self.assertEqual(grades[0], '供给偏多')
+        self.assertEqual(grades[-1], '待核')
+        self.assertEqual(result['pending_count'], 1)
 
 
 class RivalItemMovesTests(unittest.TestCase):
@@ -196,6 +224,59 @@ class RivalItemMovesTests(unittest.TestCase):
         result = rival_item_moves('2026-09-01', '2026-09-14', [])
         self.assertFalse(result['available'])
         self.assertIn('sycm_market_item_rank', result['missing_inputs'])
+
+
+class TrendItemsTests(unittest.TestCase):
+    """商品排行·趋势市场：与 rival_item_moves 同源（首尾对比），聚合维度换成商品。"""
+
+    def _rows(self):
+        start = date(2026, 9, 1)
+        def day(offset):
+            return (start + timedelta(days=offset)).isoformat()
+        rows = []
+        for offset in range(14):
+            rows.append((day(offset), 'A', '上升商品', '甲店', 10 if offset < 7 else 3, 0, 100, 10))
+            rows.append((day(offset), 'B', '下降商品', '乙店', 3 if offset < 7 else 10, 0, 200, 20))
+        rows.append((day(13), 'C', '新进榜商品', '丙店', 2, 0, 300, 30))
+        for offset in range(14):
+            rows.append((day(offset), 'E', '本店商品', '本店', 1, 1, 999, 999))
+        return sorted(rows, key=lambda item: (item[0], item[4]))
+
+    def test_rising_and_new_exclude_self(self):
+        result = trend_items('2026-09-01', '2026-09-14', self._rows())
+
+        self.assertTrue(result['available'])
+        self.assertEqual(result['rising_total'], 1)
+        self.assertEqual(result['new_total'], 1)
+        rising = result['rising'][0]
+        self.assertEqual(rising['item_id'], 'A')
+        self.assertEqual(rising['first_rank'], 10)
+        self.assertEqual(rising['last_rank'], 3)
+        self.assertEqual(rising['rank_change'], 7)
+        self.assertEqual(result['new_items'][0]['item_id'], 'C')
+        # 下降商品不进上升榜；本店不进趋势市场。
+        self.assertFalse(any(item['item_id'] == 'B' for item in result['rising']))
+        self.assertFalse(any(item['item_id'] == 'E' for item in result['rising']))
+        self.assertEqual(result['window']['day_count'], 14)
+
+    def test_empty_rows_report_missing_inputs(self):
+        result = trend_items('2026-09-01', '2026-09-14', [])
+        self.assertFalse(result['available'])
+        self.assertIn('sycm_market_item_rank', result['missing_inputs'])
+
+
+class ClassifyKeywordTests(unittest.TestCase):
+    """8 大归类口径必须只有一份：月复盘复用 classify_keyword，不能各写一套。"""
+
+    def test_returns_key_and_label(self):
+        self.assertEqual(classify_keyword('纯棉袜子'), ('attribute', '属性'))
+        self.assertEqual(classify_keyword('堆堆袜'), ('style', '风格'))
+        self.assertEqual(classify_keyword('压力袜'), ('function', '功能'))
+        self.assertEqual(classify_keyword('中筒袜'), ('category', '类目'))
+
+    def test_unknown_keyword_falls_back_to_other(self):
+        self.assertEqual(classify_keyword('zzz 无此词'), ('other', '其他'))
+        self.assertEqual(classify_keyword(''), ('other', '其他'))
 
 
 if __name__ == '__main__':

@@ -10,6 +10,8 @@
   判「起势」/「退势」；历史不足 14 天时窗口自动收缩并如实标注天数。
 - 竞店爆品排名变化：生意参谋商品榜（sycm_market_item_rank）窗口首尾对比，
   每店给出 上升/下降/新进榜/退出 榜单与 TOP 变动。
+- 商品排行·趋势市场（`trend_items`）：同一套窗口首尾对比，聚合维度换成商品，
+  给出全市场上升最快与新进榜商品。
 
 全部只读；数据缺失返回空列表与 missing_inputs，不臆造 0。
 """
@@ -86,6 +88,10 @@ KEYWORD_RULES = (
 
 KEYWORD_CATEGORY_LABELS = {key: label for key, label, _ in KEYWORD_RULES} | {'other': '其他'}
 
+# 蓝海分级展示顺序：已分级的在前，「待核」（在榜样本未命中词根）排最后 ——
+# 待核不是结论，不该占榜首。
+GRADE_ORDER = {'高潜蓝海': 0, '中等': 1, '供给偏多': 2, '待核': 3}
+
 
 def _classify_keyword(keyword):
     """按规则词典归类；先品牌后人群……未命中为「其他」。返回 category key。"""
@@ -97,6 +103,15 @@ def _classify_keyword(keyword):
             if term.lower() in text:
                 return key
     return 'other'
+
+
+def classify_keyword(keyword):
+    """公开包装：返回 (key, label)。
+
+    月复盘页要用同一套 8 大归类口径标注趋势词，不能各写一份（会漂移）。
+    """
+    key = _classify_keyword(keyword)
+    return key, KEYWORD_CATEGORY_LABELS.get(key, '其他')
 
 
 def _clean_days(rows):
@@ -120,6 +135,8 @@ def blue_ocean_words(keyword_rows, item_titles):
     - 搜索量 = 词精确匹配的近 7 天日均搜索热度（不累加词根下其他词）；
     - 商品覆盖 = 最新采集日在榜商品 title 含该词的商品数（product_id 去重）；
     - 每万覆盖 = 覆盖数 ÷ (日均热度 / 10000)，<5 高潜蓝海、5-10 中等、>10 供给偏多；
+    - **覆盖 = 0 单列「待核」**：0 不代表供给稀缺（也可能只是词根与标题用词不一致），
+      直接判高潜蓝海会让榜单塌成一档，对运营是误导；
     - 泛词剔除、转化率作辅助维度。
     """
     by_date = _clean_days(keyword_rows)
@@ -162,14 +179,28 @@ def blue_ocean_words(keyword_rows, item_titles):
             continue
         cover = sum(1 for title in item_titles if root in str(title or ''))
         cover_per_10k = (cover / (daily_heat / 10000.0)) if daily_heat else None
+        # ⚠️ cover=0 **不等于**「供给稀缺」。在榜样本只有最新日 600 款（5 类目 × top120），
+        #    当词根与标题用词不一致时（「脚尖加固」「毛巾袜」标题里基本没人这么写）也是 0。
+        #    把 0 直接判「高潜蓝海」会让整张榜单塌成一档 —— 实测 12 词里 8 词覆盖为 0、
+        #    全判高潜蓝海，分级等于失效，且对运营是误导（会去追一个根本不存在的蓝海）。
+        #    故 cover=0 单列「待核」：给出信号，但不给分级结论。
+        if cover == 0:
+            grade = '待核'
+        elif cover_per_10k is not None and cover_per_10k < 5:
+            grade = '高潜蓝海'
+        elif cover_per_10k is not None and cover_per_10k <= 10:
+            grade = '中等'
+        else:
+            grade = '供给偏多'
         words.append({
             'keyword': root,
             'keyword_full': keyword,
             'search_heat': round(daily_heat, 1),
             'cover_count': cover,
             'cover_per_10k': (round(cover_per_10k, 2) if cover_per_10k is not None else None),
-            'grade': ('高潜蓝海' if cover_per_10k is not None and cover_per_10k < 5
-                      else '中等' if cover_per_10k is not None and cover_per_10k <= 10 else '供给偏多'),
+            'grade': grade,
+            'note': ('在榜样本标题未命中该词根，无法判定供给：可能是真蓝海，'
+                     '也可能是词根与标题用词不一致，需人工核。' if cover == 0 else None),
         })
     # 同词根聚合：热度/转化率取代表词（日均口径），每万覆盖同根同值。
     aggregated = {}
@@ -178,8 +209,15 @@ def blue_ocean_words(keyword_rows, item_titles):
         current = aggregated.get(key)
         if current is None or word['search_heat'] > current['search_heat']:
             aggregated[key] = word
-    words = sorted(aggregated.values(),
-                   key=lambda item: (item['cover_per_10k'] is None, item['cover_per_10k'] or 0))[:12]
+    ranked = sorted(aggregated.values(),
+                    key=lambda item: (GRADE_ORDER.get(item['grade'], 9),
+                                      item['cover_per_10k'] if item['cover_per_10k'] is not None else 0))
+    # 已分级的排前（按供给由少到多），「待核」单独保留可见 ——
+    # 若把待核一并截断，遇到「已分级词 ≥12」时它们会整体消失，
+    # 而待核恰恰是需要人工看一眼的那批。
+    graded = [w for w in ranked if w['grade'] != '待核']
+    pending = [w for w in ranked if w['grade'] == '待核']
+    words = graded[:12] + pending[:6]
     # 从近似口径映射该词根代表词的支付转化率，供表格补列（词根本身没有转化率）。
     pay_rate_by_keyword = {}
     for date in dates[-7:]:
@@ -192,6 +230,8 @@ def blue_ocean_words(keyword_rows, item_titles):
     return {
         'available': bool(words),
         'words': words,
+        'graded_count': len(graded),
+        'pending_count': len(pending),
         'word_scope': '细分品类词/功能词根（8大归类中的类目+功能，词根级匹配）',
         'missing_inputs': [] if words else ['sycm_market_item_rank.title'],
     }
@@ -393,4 +433,64 @@ def rival_item_moves(start_date, end_date, rows, movers_limit=8):
         'shop_count': len(shops),
         'shops': shops[:15],
         'missing_inputs': [] if shops else ['sycm_market_item_rank'],
+    }
+
+
+def trend_items(start_date, end_date, rows, limit=10):
+    """商品排行 · 趋势市场（XMind「行业-商品排行-趋势市场」）。
+
+    rows 同 `rival_item_moves`（[(stat_date, item_id, title, shop_name, rank, is_self, uv, pay_buyer_count)]）。
+    与 `rival_item_moves` **同源**（窗口首尾排名对比），差别只在聚合维度：
+    按商品而非按店 —— 所以两个函数必须一起改，别让口径分叉。
+
+    - 上升：末次排名优于首次（rank 数字变小）→ 按改善幅度排序
+    - 新进榜：窗口首日不在榜、末日已在榜
+    - 本店（is_self=1）不纳入「趋势市场」（看的是别人）
+    """
+    by_item = defaultdict(list)
+    all_days = set()
+    for stat_date, item_id, title, shop_name, rank, is_self, uv, pay_buyer_count in rows:
+        all_days.add(str(stat_date))
+        if is_self:
+            continue
+        by_item[str(item_id)].append({
+            'date': str(stat_date), 'rank': rank, 'title': title or '',
+            'shop_name': shop_name or '', 'uv': uv, 'pay_buyer_count': pay_buyer_count,
+        })
+    if not all_days:
+        return {'available': False, 'rising': [], 'new_items': [],
+                'missing_inputs': ['sycm_market_item_rank']}
+    days = sorted(all_days)
+    first_day, last_day = days[0], days[-1]
+    rising, new_items = [], []
+    for item_id, appearances in by_item.items():
+        appearances.sort(key=lambda entry: entry['date'])
+        dates_seen = {entry['date'] for entry in appearances}
+        first, last = appearances[0], appearances[-1]
+        if first_day not in dates_seen and last_day in dates_seen:
+            new_items.append({'item_id': item_id, 'title': last['title'] or item_id,
+                              'shop_name': last['shop_name'], 'rank': last['rank'],
+                              'uv': last['uv'], 'pay_buyer_count': last['pay_buyer_count'],
+                              'date': last['date']})
+            continue
+        if first['rank'] is None or last['rank'] is None:
+            continue
+        change = int(first['rank']) - int(last['rank'])
+        if change > 0:
+            rising.append({'item_id': item_id, 'title': last['title'] or item_id,
+                           'shop_name': last['shop_name'],
+                           'first_rank': first['rank'], 'last_rank': last['rank'],
+                           'rank_change': change,
+                           'uv': last['uv'], 'pay_buyer_count': last['pay_buyer_count']})
+    rising.sort(key=lambda item: item['rank_change'], reverse=True)
+    new_items.sort(key=lambda item: (item['rank'] if item['rank'] is not None else 10 ** 9))
+    return {
+        'available': bool(rising or new_items),
+        'window': {'start': first_day, 'end': last_day, 'day_count': len(days)},
+        'item_count': len(by_item),
+        'rising': rising[:limit],
+        'new_items': new_items[:limit],
+        'rising_total': len(rising),
+        'new_total': len(new_items),
+        'missing_inputs': [] if (rising or new_items) else ['sycm_market_item_rank'],
     }

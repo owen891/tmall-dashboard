@@ -1005,7 +1005,7 @@
       const blueHint = document.querySelector('[data-mr-blue-ocean-hint]');
       if (blueHint) {
         blueHint.textContent = full && full.available
-          ? `按每万搜索覆盖排序；${full.word_scope || ''}；覆盖=最新日在榜商品 title 含词根数，<5 高潜 / 5-10 中等 / >10 供给偏多`
+          ? `按每万搜索覆盖排序；${full.word_scope || ''}；覆盖=最新日在榜商品 title 含词根数，<5 高潜 / 5-10 中等 / >10 供给偏多；覆盖为 0 记「待核」（0 不代表供给稀缺，也可能是词根与标题用词不一致）`
           : '近 7 天日均搜索热度 × 支付转化率，剔除泛词；「每万供给覆盖」需在榜商品数据，缺失时仅按蓝海度排序';
       }
     } else {
