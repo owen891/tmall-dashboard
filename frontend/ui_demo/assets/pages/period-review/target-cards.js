@@ -49,9 +49,15 @@
       return spec.percent ? value / 100 : value;
     }
 
-    function formatTargetValue(value, format) {
+    function isSuspiciousRatioTarget(row) {
+      return row && row.key === 'net_expense_ratio'
+        && row.target !== null && row.target !== undefined
+        && Number(row.target) > 1;
+    }
+
+    function formatTargetValue(value, format, row) {
+      if (isSuspiciousRatioTarget(row)) return '疑似单位异常';
       if (value === null || value === undefined) return '未设置';
-      if (format === 'percent') return `${(Number(value) * 100).toFixed(2)}%`;
       return formatValue(value, format);
     }
 
@@ -97,12 +103,15 @@
       const showProgress = timeProgress !== null && timeProgress !== undefined;
       const progressText = showProgress ? `${(Number(timeProgress) * 100).toFixed(2)}%` : '';
       const body = list.map((row, index) => {
-        const rateText = formatTargetRate(row.achieved_rate);
-        const rateClass = targetRateClass(row.achieved_rate, row.rate_better);
+        const targetNeedsReview = isSuspiciousRatioTarget(row);
+        const rateText = targetNeedsReview ? '待核查' : formatTargetRate(row.achieved_rate);
+        const rateClass = targetNeedsReview ? '' : targetRateClass(row.achieved_rate, row.rate_better);
         const gap = row.gap;
-        const gapText = gap === null || gap === undefined
-          ? '—'
-          : `${gap > 0 ? '+' : ''}${formatTargetValue(gap, row.format)}`;
+        const gapText = targetNeedsReview
+          ? '待核查'
+          : gap === null || gap === undefined
+            ? '—'
+            : `${gap > 0 ? '+' : ''}${formatTargetValue(gap, row.format)}`;
         const labelCell = h('td');
         labelCell.append(row.label);
         // 目标来源标注：目标页按月预置（复盘未手填时生效），提示数据出处。
@@ -111,7 +120,7 @@
         }
         const cells = [
           labelCell,
-          h('td', { class: 'num', text: formatTargetValue(row.target, row.format) }),
+          h('td', { class: 'num', text: formatTargetValue(row.target, row.format, row) }),
           h('td', { class: 'num', text: formatTargetValue(row.actual, row.format) }),
           h('td', { class: `num ${rateClass}`.trim(), text: rateText }),
           h('td', { class: 'num', text: gapText }),

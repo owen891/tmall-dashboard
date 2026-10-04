@@ -39,9 +39,13 @@
       return value === null || value === undefined ? null : Number(value);
     }
 
-    /** 变化率：与后端 _metric_items 同公式 (cur-prev)/|prev|，保留 1 位小数。 */
+    /** 变化率：与后端 _metric_items 同公式 (cur-prev)/|prev|，保留 1 位小数。
+     *  基线不可比（后端 comparability.comparable=false，如周复盘遇到月度兜底基线）
+     *  时返回 null，由调用方展示「不可比」，绝不输出窗口错配的极端百分比。 */
     function metricChange(key, kind) {
       const metrics = (state.context && state.context.metrics) || {};
+      const comparability = metrics.comparability && metrics.comparability[kind];
+      if (comparability && comparability.comparable === false) return null;
       const cur = metrics.current ? metrics.current[key] : null;
       const base = kind === 'mom'
         ? (metrics.prev ? metrics.prev[key] : null)
@@ -76,56 +80,62 @@
       return rate === null || rate === undefined ? '—' : `${(Number(rate) * 100).toFixed(1)}%`;
     }
 
-    function formatTarget(value, format) {
+    function isSuspiciousRatioTarget(row) {
+      return row && row.key === 'net_expense_ratio'
+        && row.target !== null && row.target !== undefined
+        && Number(row.target) > 1;
+    }
+
+    /** 利润是否部分口径（P0 #4）：以后端 profit_structure.identity.ok 为唯一判据。
+     *  恒等式不平＝费用列不全（补采哨兵行），此时利润值不可当准数用。
+     *  实测所有口径下 identity.ok 均为 false，故净利润卡必须常带此标注。 */
+    function profitIsPartial() {
+      const structure = state.context && state.context.profit_structure;
+      return Boolean(structure && structure.available
+        && structure.identity && structure.identity.ok === false);
+    }
+
+    function profitCaliberHint() {
+      const structure = (state.context && state.context.profit_structure) || {};
+      const identity = structure.identity || {};
+      const sentinel = structure.sentinel_rows;
+      const parts = ['利润为部分口径'];
+      if (sentinel) parts.push(`${sentinel} 行利润未回填`);
+      if (identity.gap !== null && identity.gap !== undefined) {
+        parts.push(`恒等残差 ${Number(identity.gap).toLocaleString('zh-CN', { maximumFractionDigits: 0 })}`);
+      }
+      return `${parts.join('：')}，该值仅供参考。详见「利润结构（利润瀑布）」。`;
+    }
+
+    function formatTarget(value, format, row) {
+      if (isSuspiciousRatioTarget(row)) return '疑似单位异常';
       return value === null || value === undefined ? '未设置' : formatValue(value, format);
     }
 
     /** 环比/同比行：净费比是反向指标（越低越好），方向判断走 rate_better='low'。 */
     function changeNode(key, kind, lowerBetter) {
+      const metrics = (state.context && state.context.metrics) || {};
+      const comparability = metrics.comparability && metrics.comparability[kind];
+      const label = kind === 'mom' ? (state.context?.compare?.short_label || '环比') : '同比';
+      // 基线不可比（如 4 天窗口 vs 整月兜底基线）时显式标注「不可比」，
+      // 与 KPI 区 deltaNode 同口径，绝不静默丢弃、也不输出错配的极端百分比。
+      if (comparability && comparability.comparable === false) {
+        return h('span', { class: 'pr-delta pr-delta--na', text: `${label} 不可比` });
+      }
       const change = metricChange(key, kind);
       if (change === null) return null;
       // 4-3：极性统一走 MetricPolarity，目标口径的 rate_better/reverse_rate 作为显式覆盖传入。
       const cls = change === 0
         ? 'pr-delta'
         : `pr-delta ${MetricPolarity.deltaClass(key, change, { lowerBetter })}`;
-      const label = kind === 'mom' ? (state.context?.compare?.short_label || '环比') : '同比';
       return h('span', { class: cls, text: `${label} ${change > 0 ? '+' : ''}${change}%` });
     }
 
-    function insightFor(key) {
-      const metrics = (state.context && state.context.metrics) || {};
-      const yoy = metricChange(key, 'yoy');
-      const visitorYoy = metricChange('visitors', 'yoy');
-      if (key === 'net_sales') {
-        const visitorText = visitorYoy === null ? '流量端变化明显' : `访客同比${visitorYoy > 0 ? '增长' : '下降'} ${Math.abs(visitorYoy).toFixed(1)}%`;
-        return { label: '主要问题', text: `${visitorText}，流量端是首要缺口。` };
-      }
-      if (key === 'profit') {
-        return { label: '经营判断', text: '收入下滑叠加费比上升，本期利润承压，需要优先修复流量与投放效率。' };
-      }
-      if (key === 'ad_spend') {
-        const metrics = (state.context && state.context.metrics) || {};
-        const current = metrics.current || {};
-        const items = [
-          ['付费工具占比', current.paid_ipv && current.visitors ? `${((Number(current.paid_ipv) / Number(current.visitors)) * 100).toFixed(1)}%` : '暂无数据'],
-          ['投产 ROI', current.roi === null || current.roi === undefined ? '暂无数据' : formatValue(current.roi, 'decimal')],
-          ['加购成本', current.cart_cost === null || current.cart_cost === undefined ? '暂无数据' : formatValue(current.cart_cost, 'money')],
-          ['拉新成本', current.new_cost === null || current.new_cost === undefined ? '暂无数据' : formatValue(current.new_cost, 'money')],
-          ['点击成本', current.paid_cpc === null || current.paid_cpc === undefined ? '暂无数据' : formatValue(current.paid_cpc, 'money')],
-        ];
-        return { label: '投放效率', text: items.map(([label, value]) => `${label} ${value}`).join(' · ') };
-      }
-      const targetRow = findTargetRow(key);
-      const target = targetRow && targetRow.target !== null && targetRow.target !== undefined ? Number(targetRow.target) : null;
-      const current = metricValue(key);
-      const targetText = target === null || current === null ? '当前费比需要持续关注' : `当前费比 ${formatValue(current, targetRow.format)} 高于目标 ${formatValue(target, targetRow.format)}`;
-      return { label: '拖累来源', text: `${targetText}，建议优化投放结构与商品分层。` };
-    }
-
-    /**
-     * 渲染三张完成率卡。目标、完成率、环比同比与经营洞察分层展示，保证结论有稳定阅读宽度。
-     * 指标值为 null（周期无数据）时整卡显示空态，不臆造 0。
-     */
+  /**
+   * 渲染四张结构化指标卡。卡片只承载结果、目标、完成率和对比变化，
+   * 经营判断统一放在复盘结论与拆因工作区，避免同一结论出现两次。
+   * 指标值为 null（周期无数据）时整卡显示空态，不臆造 0。
+   */
     function renderMetricCards() {
       const grid = h('div', { class: 'pr-metric-cards' });
       CARD_SPECS.forEach((spec) => {
@@ -134,12 +144,15 @@
         const value = metricValue(spec.targetKey);
         if (value === null) return;
 
-        const rate = targetRow.achieved_rate;
-        const rateState = rateClass(rate, targetRow.rate_better);
+        const targetNeedsReview = isSuspiciousRatioTarget(targetRow);
+        const rate = targetNeedsReview ? null : targetRow.achieved_rate;
+        const rateState = targetNeedsReview ? 'is-warning' : rateClass(rate, targetRow.rate_better);
         // 目标-实际差距：reverse_rate（净费比）的 gap 已是后端口径（目标-实际），直接展示。
-        const gapText = targetRow.gap === null || targetRow.gap === undefined
-          ? '—'
-          : `${targetRow.gap > 0 ? '+' : ''}${formatValue(targetRow.gap, targetRow.format)}`;
+        const gapText = targetNeedsReview
+          ? '待核查'
+          : targetRow.gap === null || targetRow.gap === undefined
+            ? '—'
+            : `${targetRow.gap > 0 ? '+' : ''}${formatValue(targetRow.gap, targetRow.format)}`;
 
         // 环比同比基线去重：对比基线本身是同比时不重复显示同比行（与 deltaNode 同口径）。
         const compareMode = (state.context && state.context.compare && state.context.compare.mode) || 'previous';
@@ -152,8 +165,10 @@
           const yoy = changeNode(spec.targetKey, 'yoy', lowerBetter);
           if (yoy) changes.push(yoy);
         }
+        // 变化率缺失时的兜底：不可比已在 changeNode 内显式成行（「xx 不可比」），
+        // 这里只剩「未开启对比 / 对比周期无数据」两种情形。
+        const fallbackText = compareMode === 'none' ? '未开启对比' : '对比周期无数据';
 
-        const insight = insightFor(spec.targetKey);
         const card = h('div', {
           class: `pr-metric-card ${spec.primary ? 'pr-metric-card--primary' : ''} ${rateState}`.trim(),
         },
@@ -164,22 +179,28 @@
               ? h('span', { class: 'pr-metric-card__status-text', text: RATE_STATE_TEXT[rateState] })
               : null),
           h('span', { class: 'pr-metric-card__label', text: spec.label }),
-          spec.primary ? h('span', { class: 'pr-metric-card__priority', text: '核心结果' }) : null),
+          spec.primary ? h('span', { class: 'pr-metric-card__priority', text: '核心结果' }) : null,
+          // P0 #4：净利润为部分口径时就地标注，不让读者先读脚注才知道不能全信。
+          spec.targetKey === 'profit' && profitIsPartial()
+            ? h('span', { class: 'pr-caliber-badge is-warning', text: '部分口径', title: profitCaliberHint() })
+            : null),
         h('strong', { class: 'pr-metric-card__value', text: formatValue(value, targetRow.format) }),
-        h('small', { class: 'pr-metric-card__target', text: `目标 ${formatTarget(targetRow.target, targetRow.format)} · 差距 ${gapText}` }),
+        h('small', { class: 'pr-metric-card__target', text: `目标 ${formatTarget(targetRow.target, targetRow.format, targetRow)} · 差距 ${gapText}` }),
         h('div', { class: 'pr-metric-card__rate' },
           h('span', { class: 'pr-metric-card__rate-label', text: '完成率' }),
-          h('strong', { text: formatRate(rate) })),
+          h('strong', { text: targetNeedsReview ? '待核查' : formatRate(rate) })),
         changes.length
           ? h('div', { class: 'pr-metric-card__changes' }, ...changes)
           : h('div', { class: 'pr-metric-card__changes' },
-            h('span', { class: 'pr-delta', text: compareMode === 'none' ? '未开启对比' : '对比周期无数据' })),
-        h('div', { class: `pr-metric-card__insight ${spec.targetKey === 'ad_spend' ? 'pr-metric-card__insight--efficiency' : ''}`.trim() },
-          h('strong', { text: insight.label }),
-          h('span', { text: insight.text })),
+            h('span', { class: 'pr-delta', text: fallbackText })),
         );
-        if (rate === null || rate === undefined) {
+        if (targetNeedsReview) {
+          card.append(h('p', { class: 'pr-metric-card__hint', text: '净费比目标疑似按百分数存成小数前值，暂不参与达标判断。' }));
+        } else if (rate === null || rate === undefined) {
           card.append(h('p', { class: 'pr-metric-card__hint', text: '目标未录入，完成率待补录后计算。' }));
+        }
+        if (spec.targetKey === 'profit' && profitIsPartial()) {
+          card.append(h('p', { class: 'pr-metric-card__hint', text: profitCaliberHint() }));
         }
         grid.append(card);
       });

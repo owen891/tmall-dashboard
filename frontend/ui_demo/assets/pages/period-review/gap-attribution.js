@@ -10,17 +10,17 @@
    *  目标缺口进一步拆成「上期遗留」（target − 上期实际）与「本期变化」（上期 − 本期）。
    *
    *  归因线索（只报数字事实）：流量下滑最大的来源、付费三件套（花费/付费成本/净费比）
-   *  变化、下滑货品合计；每条一键跳到拆因分析对应分节。
+   *  变化、下滑货品合计；每条一键跳到对应结论段（拆因明细已并入六段板块数据）。
    *
    *  deps 契约（由 period-review-live.js 提供）：
    *  - h                 DOM 工厂
    *  - state             页面共享状态（context）
    *  - formatValue       金额/数值/百分数格式化
-   *  - activateWorkbench 区块切换
+   *  - scrollToSection   滚动定位到结论段
    */
 
   function createGapAttribution(deps) {
-    const { h, state, formatValue, activateWorkbench } = deps;
+    const { h, state, formatValue, scrollToSection } = deps;
 
     const SOURCE_LABELS = { search: '搜索', recommend: '推荐', paid: '付费', organic: '自然' };
 
@@ -43,12 +43,11 @@
       return (a - b) * 100;
     }
 
+    /** 线索跳转目标：拆因明细已并入六段板块数据，跳到对应结论段。 */
+    const CLUE_SECTION = { traffic: 'category_summary', promotion: 'ads', products: 'goods' };
+
     function jumpTo(section) {
-      activateWorkbench('diagnosis');
-      setTimeout(() => {
-        document.querySelector(`[data-pr-diagnosis-section="${section}"]`)
-          ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      }, 80);
+      scrollToSection(CLUE_SECTION[section] || 'category_summary');
     }
 
     /** 三因子连环替代分解：返回 null 表示任一周期缺少所需事实。 */
@@ -85,14 +84,27 @@
         h('td', { class: 'num', text: factText }));
     }
 
-    /** 归因线索行：事实 + 「去拆因」跳转。 */
-    function clueLine(text, section, anchorLabel) {
+    /** 归因线索行：事实 + 「看明细」跳转到对应结论段。 */
+    function clueLine(text, section, anchorLabel, diagnosisSource) {
+      const source = {
+        clue: text,
+        section,
+        impact: diagnosisSource?.impact ?? null,
+        metric: diagnosisSource?.metric || 'net_sales',
+        problemKey: diagnosisSource?.problemKey || `diagnosis_${section}`,
+        ...(diagnosisSource || {}),
+      };
       return h('li', null,
         h('span', { text: text }),
-        h('button', {
-          type: 'button', class: 'pr-anchor-link', text: `${anchorLabel} →`,
-          onclick: () => jumpTo(section),
-        }));
+        h('span', { class: 'pr-gap__clue-actions' },
+          h('button', {
+            type: 'button', class: 'pr-anchor-link', text: `${anchorLabel} →`,
+            onclick: () => jumpTo(section),
+          }),
+          h('button', {
+            type: 'button', class: 'pr-anchor-link', text: '转为动作',
+            onclick: () => window.periodReviewOpenActionFromDiagnosis?.(source),
+          })));
     }
 
     function buildBody(context) {
@@ -131,15 +143,39 @@
         } else {
           const f = d.facts;
           const fmtPct = (v) => `${(v * 100).toFixed(2)}%`;
+          // P0：显式对账。连环替代法在「净销售额 = 访客 × 转化率 × 客单价」严格成立时
+          // 贡献之和恒等于变化额；一旦口径不同源（如 conversion 与 buyers/visitors 不一致、
+          // 买家数缺失回退），差额就会非 0。绝不能只口头声称「恒等」，必须把差额摆出来。
+          const sumContrib = d.visitors + d.conversion + d.aov;
+          const residual = d.total - sumContrib;
+          const aligned = Math.abs(residual) < 0.5
+            || (Math.abs(d.total) > 1 && Math.abs(residual) / Math.abs(d.total) < 0.005);
           parts.push(h('div', { class: 'pr-gap__decompose' },
-            h('p', { class: 'pr-gap__hint', text: `净销售额环比变化 ${signedMoney(d.total)} 的三因子拆解（连环替代法，加总恒等于变化额）：` }),
+            h('p', { class: 'pr-gap__hint', text: `净销售额环比变化 ${signedMoney(d.total)} 的三因子拆解（连环替代法）：` }),
             h('table', { class: 'pr-table' },
               h('thead', null, h('tr', null,
                 h('th', { text: '因子' }), h('th', { class: 'num', text: '对净销售额的贡献' }), h('th', { class: 'num', text: '上期 → 本期' }))),
               h('tbody', null,
                 factorRow('流量（访客数）', d.visitors, `${formatValue(f.visitors[0], 'number')} → ${formatValue(f.visitors[1], 'number')}`),
                 factorRow('转化率', d.conversion, `${fmtPct(f.conversion[0])} → ${fmtPct(f.conversion[1])}`),
-                factorRow('净销售客单价', d.aov, `${formatValue(f.aov[0], 'money')} → ${formatValue(f.aov[1], 'money')}`))),
+                factorRow('净销售客单价', d.aov, `${formatValue(f.aov[0], 'money')} → ${formatValue(f.aov[1], 'money')}`),
+                h('tr', { class: 'pr-gap__sum' },
+                  h('td', { text: '三因子贡献合计' }),
+                  h('td', { class: 'num', text: signedMoney(sumContrib) }),
+                  h('td', { class: 'num', text: '' })),
+                h('tr', null,
+                  h('td', { text: '净销售额变化额（对账）' }),
+                  h('td', { class: 'num', text: signedMoney(d.total) }),
+                  h('td', { class: 'num', text: '' })),
+                h('tr', null,
+                  h('td', { text: '未解释差额' }),
+                  h('td', {
+                    class: `num ${aligned ? '' : 'pr-delta is-down'}`.trim(),
+                    text: aligned ? '0（已对齐）' : signedMoney(residual),
+                  }),
+                  h('td', { class: 'num', text: '' })))),
+            aligned ? null : h('p', { class: 'pr-gap__hint' },
+              `差额 ${signedMoney(residual)} 来自口径差异（转化率/买家数与净销售额非同源），非计算错误；对账不平的结论请降级使用。`),
           ));
           if (target !== null && num(prev.net_sales) !== null) {
             const legacy = target - num(prev.net_sales);
@@ -161,7 +197,7 @@
       falling.slice(0, 2).forEach((t) => {
         clues.push(clueLine(
           `流量线索：${SOURCE_LABELS[t.key] || t.key}访客 ${formatValue(t.value, 'number')}，环比 ${pct(t.change_rate)}${falling.indexOf(t) === 0 ? '（下滑最大来源）' : ''}`,
-          'traffic', '去拆因 ③ 流量'));
+          'traffic', '看流量明细', { metric: 'visitors', impact: t.change_rate, problemKey: 'traffic_decline' }));
       });
       // 付费：花费 / 付费成本 / 净费比
       const paidParts = [];
@@ -172,7 +208,7 @@
       const ratioPt = ptDelta(cur.net_expense_ratio, prev.net_expense_ratio);
       if (ratioPt !== null) paidParts.push(`净费比 ${ratioPt > 0 ? '+' : ''}${ratioPt.toFixed(2)}pt`);
       if (paidParts.length) {
-        clues.push(clueLine(`付费线索：${paidParts.join('；')}`, 'promotion', '去拆因 ② 推广'));
+        clues.push(clueLine(`付费线索：${paidParts.join('；')}`, 'promotion', '看推广明细', { metric: 'ad_spend', impact: spendDelta ?? ratioPt, problemKey: 'promotion_efficiency' }));
       }
       // 货品：下滑榜合计
       const decline = (context.products?.decline) || [];
@@ -181,7 +217,7 @@
         const top = decline[0];
         clues.push(clueLine(
           `货品线索：下滑商品 ${decline.length} 个合计 ${signedMoney(declineSum)}，最大单笔 ${top.title || top.product_id} ${signedMoney(num(top.delta) || 0)}`,
-          'products', '去拆因 ① 货品'));
+          'products', '看货品明细', { metric: 'payment_amount', impact: declineSum, problemKey: 'product_decline' }));
       }
       if (clues.length) {
         parts.push(h('div', { class: 'pr-gap__clues' },
@@ -191,33 +227,9 @@
       return h('div', { class: 'pr-gap' }, ...parts);
     }
 
-    function renderPanel(context, container) {
-      if (!container) return;
-      const body = buildBody(context);
-      container.hidden = false;
-      // 折叠形态：summary 直接给出三大目标完成率（复盘页最高频的问题「目标完成得怎样」
-      // 不展开就能读），点开才是三因子分解与归因线索。
-      container.replaceChildren(
-        h('details', { class: 'ui-panel pr-gap-panel pr-gap-panel--collapsible' },
-          h('summary', { class: 'pr-gap-panel__summary' },
-            h('span', { class: 'pr-gap-panel__summary-title', text: '目标差距归因（流量 × 转化 × 净销售客单）' }),
-            h('span', { class: 'pr-gap-panel__summary-hint', text: summaryText(context) })),
-          h('div', { class: 'pr-gap-panel__body' }, body)),
-      );
-    }
-
-    /** summary 摘要：三大目标完成率一行带过（口径与 target_path.targets 同源）。 */
-    function summaryText(context) {
-      const rows = (context.target_path && context.target_path.targets) || [];
-      const parts = rows.map((row) => {
-        const rate = row.achieved_rate;
-        if (rate === null || rate === undefined) return `${row.label || row.key} 未设目标`;
-        return `${row.label || row.key} ${(Number(rate) * 100).toFixed(0)}%`;
-      });
-      return parts.length ? parts.join(' · ') : '未设置目标，点开看环比三因子拆解';
-    }
-
-    return { buildBody, renderPanel };
+    // decompose 一并导出：确定性初稿生成器复用同一套三因子算术，避免两处实现漂移。
+    // （renderPanel 已随拆因工作区退役——归因摘要现在由 materialFor 直接嵌进品类汇总段。）
+    return { buildBody, decompose };
   }
 
   global.createGapAttribution = createGapAttribution;

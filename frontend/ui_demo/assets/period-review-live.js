@@ -1,7 +1,7 @@
 (function () {
   'use strict';
 
-  const PERIOD_TYPES = ['week', 'month'];
+  const PERIOD_TYPES = ['day', 'week', 'month'];
   // 兼容旧模板：复盘控件已由 shell 注入顶部筛选栏，移除页面内残留节点。
   document.querySelector('.pr-control-strip')?.remove();
 
@@ -24,19 +24,19 @@
     comparePeriod: reviewControlRoot.querySelector('[data-pr-compare-period]'),
     comparePeriodField: reviewControlRoot.querySelector('[data-pr-compare-period-field]'),
     state: document.querySelector('[data-pr-state]'),
-    contextRange: document.querySelector('[data-pr-context-range]'),
-    contextMeta: document.querySelector('[data-pr-context-meta]'),
     actionSummary: document.querySelector('[data-pr-action-summary]'),
-    overview: document.querySelector('[data-pr-overview]'),
+    draftMeta: document.querySelector('[data-pr-draft-meta]'),
+    generateDraft: document.querySelector('[data-pr-generate-draft]'),
+    sectionNav: document.querySelector('[data-pr-section-nav]'),
     sections: document.querySelector('[data-pr-sections]'),
     commandCenter: document.querySelector('[data-pr-command-center]'),
-    gapAttribution: document.querySelector('[data-pr-gap-attribution]'),
-    productAnalysis: document.querySelector('[data-pr-product-analysis]'),
+    settingsSummary: document.querySelector('[data-pr-settings-summary]'),
+    settingsOpen: document.querySelector('[data-pr-settings-open]'),
+    settingsDialog: document.querySelector('[data-pr-settings-dialog]'),
+    settingsClose: document.querySelector('[data-pr-settings-close]'),
+    settingsCancel: document.querySelector('[data-pr-settings-cancel]'),
+    settingsApply: document.querySelector('[data-pr-settings-apply]'),
     executionAnalysis: document.querySelector('[data-pr-execution-analysis]'),
-    channelAnalysis: document.querySelector('[data-pr-channel-analysis]'),
-    marketAnalysis: document.querySelector('[data-pr-market-analysis]'),
-    trafficAnalysis: document.querySelector('[data-pr-traffic-analysis]'),
-    promotionAnalysis: document.querySelector('[data-pr-promotion-analysis]'),
     matrix: document.querySelector('[data-pr-matrix]'),
     categoryBreakdown: document.querySelector('[data-pr-category-breakdown]'),
     history: document.querySelector('[data-pr-history]'),
@@ -49,8 +49,9 @@
   const state = {
     mode: PERIOD_TYPES.includes(urlParams.get('period_type')) ? urlParams.get('period_type') : 'week',
     selectedPeriodKey: urlParams.get('period_key') || '',
-    periodOptions: { week: [], month: [] },
+    periodOptions: { day: [], week: [], month: [] },
     template: [], templates: {}, categories: [], context: null, review: null, matrix: null,
+    generatedDraft: null,
     matrixError: null, categoryBreakdown: null, categoryError: null, leafBoard: null, leafBoardError: null,
   };
   let syncingReviewRange = false;
@@ -60,6 +61,8 @@
   let actionDialog = null;
   let actionReviewDialog = null;
   let actionDetailDialog = null;
+  let settingsSnapshot = null;
+  let settingsApplied = false;
 
   // 品类口径与全站统一：读写同一个 localStorage key，顶栏「品类模式」下拉与本页选择器互为镜像。
   const CATEGORY_KEY = 'dashboard.categoryMode';
@@ -144,6 +147,11 @@
 
   const pad2 = (value) => String(value).padStart(2, '0');
 
+  // 点击遮罩关闭统一走公共实现（ui-components.js）：先派发 cancel 让弹窗既有的
+  // 取消逻辑接管（如复盘设置回滚草稿），无人处理时再兜底 close()；
+  // 并打上标记，避免文档级委托重复处理。
+  const enableLightDismiss = (dialog) => window.TmallUI?.enableLightDismiss?.(dialog);
+
   const isoDate = (date) => `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`;
 
   function todayIso() {
@@ -200,6 +208,7 @@
   /** 顶栏范围的结束日期落在哪个周 / 月，就用哪个周期。 */
   function periodKeyFromRange() {
     const end = sharedRange().endDate || todayIso();
+    if (state.mode === 'day') return end;
     return state.mode === 'week' ? monthWeekKey(end) : end.slice(0, 7);
   }
 
@@ -213,8 +222,10 @@
     }
     if (!els.rangeHint) return;
     const range = sharedRange();
-    const scope = state.mode === 'week' ? '按结束日期识别所在月内周（周不跨月）' : '按结束日期识别所在自然月';
-    els.rangeHint.textContent = `顶栏时间范围 ${range.startDate} ~ ${range.endDate} · ${scope}；要换周期请在顶栏「统计时间」选择上周 / 上月或自定义。`;
+    const scope = state.mode === 'day'
+      ? '按结束日期识别自然日'
+      : (state.mode === 'week' ? '按结束日期识别所在月内周（周不跨月）' : '按结束日期识别所在自然月');
+    els.rangeHint.textContent = `顶栏时间范围 ${range.startDate} ~ ${range.endDate} · ${scope}；要换周期请在顶栏「统计时间」选择对应日期 / 周期或自定义。`;
   }
 
   async function loadPeriodOptions() {
@@ -318,11 +329,6 @@
     return Number(row.delta) / Number(row.prev_gsv);
   }
 
-  function todayForAction() {
-    const date = new Date();
-    return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`;
-  }
-
   function actionField(label, name, type = 'text', value = '', required = false) {
     const input = h(type === 'textarea' ? 'textarea' : 'input', {
       name, required, placeholder: required ? '必填' : '可选',
@@ -340,10 +346,28 @@
     return h('label', { class: 'pr-action-field' }, h('span', { text: `${label}${required ? ' *' : ''}` }), select);
   }
 
-  function openProductDiagnosis(row, withDelta) {
+  function diagnosisProductOptions() {
+    const products = state.context?.products || {};
+    const buckets = Object.values(products).flatMap((value) => {
+      if (Array.isArray(value)) return value;
+      if (Array.isArray(value?.items)) return value.items;
+      return [];
+    });
+    const seen = new Set();
+    return buckets.reduce((options, item) => {
+      const productId = String(item?.product_id || '').trim();
+      if (!productId || seen.has(productId)) return options;
+      seen.add(productId);
+      options.push([productId, `${item.title || productId} · ${productId}`]);
+      return options;
+    }, []);
+  }
+
+  function openProductDiagnosis(row, withDelta, diagnosisSource = null) {
     if (!actionDialog) {
       actionDialog = h('dialog', { class: 'pr-action-dialog' });
       document.body.append(actionDialog);
+      enableLightDismiss(actionDialog);
     }
     const share = productShare(row);
     const rate = withDelta ? declineRate(row) : null;
@@ -398,8 +422,12 @@
     const systemFacts = diagnosticList('事实证据', row.system_facts || [], '当前没有可展示的事实快照。');
     const unknownFacts = diagnosticList('待补充数据', row.unknowns || [], '当前没有待补充数据。');
     const form = h('form', { class: 'pr-action-form' });
+    const productId = row.product_id || '';
+    const productOptions = diagnosisProductOptions();
     form.append(
-      actionField('动作目的', 'purpose_note', 'textarea', withDelta ? `${row.title || row.product_id} 销售额下滑，需制定恢复动作` : `${row.title || row.product_id} 销售贡献跟进`, true),
+      !productId ? actionSelect('关联商品', 'product_id', '', [['', '请选择真实商品'], ...productOptions], true) : null,
+      !productId ? h('p', { class: 'pr-action-form__hint', text: productOptions.length ? '拆因线索是流量/付费层级事实，请选择要落地的真实商品；系统不会自动虚构商品 ID。' : '当前没有可选商品，暂不能创建商品级动作。' }) : null,
+      actionField('动作目的', 'purpose_note', 'textarea', diagnosisSource?.clue || (withDelta ? `${row.title || row.product_id} 销售额下滑，需制定恢复动作` : `${row.title || row.product_id} 销售贡献跟进`), true),
       actionField('动作类型', 'action_type', 'text', withDelta ? '排查并改善商品表现' : '维护销售表现', true),
       actionField('动作详情', 'action_detail', 'textarea', '', true),
       h('div', { class: 'pr-action-form__grid' },
@@ -410,9 +438,10 @@
         actionField('\u76ee\u6807\u503c', 'target_value', 'number', ''),
         actionField('\u9884\u671f\u53d8\u5316', 'expected_change', 'number', ''),
         actionField('\u9a8c\u6536\u6807\u51c6', 'acceptance_criteria', 'textarea', ''),
-        actionField('计划日期', 'planned_at', 'date', todayForAction(), true),
-        actionField('观察天数', 'observer_window_days', 'number', '7', true),
-        actionField('负责人', 'assigned_to', 'text', '运营人员'),
+        // 计划信息必须由执行人确认，不能用今天/默认负责人伪造已确定的排期。
+        actionField('计划日期', 'planned_at', 'date', '', true),
+        actionField('观察天数', 'observer_window_days', 'number', '', true),
+        actionField('负责人', 'assigned_to', 'text', ''),
       ),
       h('p', { class: 'pr-action-form__status', 'data-pr-action-status': '' }),
       h('div', { class: 'pr-action-dialog__actions' },
@@ -426,7 +455,7 @@
       const data = new FormData(form);
       const payload = {
         capability_key: 'overview.create_action',
-        product_id: row.product_id,
+        product_id: String(data.get('product_id') || row.product_id || '').trim(),
         purpose_type: 'increase_sales',
         purpose_note: String(data.get('purpose_note') || '').trim(),
         action_type: String(data.get('action_type') || '').trim(),
@@ -444,9 +473,10 @@
         source_period_key: state.context?.period?.key || currentPeriod(),
         source_compare_mode: state.context?.compare?.mode || 'previous',
         source_compare_period_key: state.context?.compare?.period_key || null,
-        source_product_id: row.product_id,
-        source_problem_key: (row.anomaly_tags || [])[0] || (withDelta ? 'product_decline' : 'product_top_sales'),
+        ...(String(data.get('product_id') || row.product_id || '').trim() ? { source_product_id: String(data.get('product_id') || row.product_id || '').trim() } : {}),
+        source_problem_key: diagnosisSource?.problemKey || (row.anomaly_tags || [])[0] || (withDelta ? 'product_decline' : 'product_top_sales'),
         source_diagnosis_snapshot: JSON.stringify({
+          ...(diagnosisSource || {}),
           gsv: row.gsv,
           prev_gsv: row.prev_gsv,
           delta: row.delta,
@@ -486,10 +516,27 @@
     if (!actionDialog.open) actionDialog.showModal();
   }
 
+  // 拆因线索复用同一套动作表单：不伪造商品 ID，保留负责人/目标/计划日期等现有校验。
+  function openDiagnosisAction(diagnosisSource) {
+    const source = diagnosisSource || {};
+    openProductDiagnosis({
+      title: '拆因线索动作',
+      product_id: source.product_id || null,
+      gsv: null, prev_gsv: null, delta: null, change_rate: null,
+      anomaly_tags: [], unknowns: [], system_facts: [source.clue || '未命名拆因线索'],
+    }, false, source);
+  }
+  window.periodReviewOpenActionFromDiagnosis = openDiagnosisAction;
+
   function deltaNode(item) {
     const wrap = h('div', { class: 'pr-kpi__delta' });
     const compare = (state.context && state.context.compare) || { mode: 'previous', short_label: '环比' };
-    const build = (label, change) => {
+    const build = (label, change, comparable) => {
+      // 基线不可比（后端 comparability.comparable=false）时显示「不可比」，
+      // 而不是把窗口错配的极端百分比（如 4 天 vs 整月 → -98%）当事实展示。
+      if (comparable === false) {
+        return h('span', { class: 'pr-delta pr-delta--na', text: `${label} 不可比` });
+      }
       if (change === null || change === undefined) return null;
       const good = MetricPolarity.isGood(item.key, change, { lowerBetter: item.lower_better });
       const cls = good === null ? 'pr-delta' : `pr-delta ${good ? 'is-up' : 'is-down'}`;
@@ -497,12 +544,12 @@
     };
     const nodes = [];
     if (compare.mode !== 'none') {
-      const baseline = build(compare.short_label || '环比', item.mom_change);
+      const baseline = build(compare.short_label || '环比', item.mom_change, item.mom_comparable);
       if (baseline) nodes.push(baseline);
     }
     // 对比基线本身就是同比时不再重复一行
     if (compare.mode !== 'yoy') {
-      const yoy = build('同比', item.yoy_change);
+      const yoy = build('同比', item.yoy_change, item.yoy_comparable);
       if (yoy) nodes.push(yoy);
     }
     wrap.append(...nodes);
@@ -513,6 +560,104 @@
       }));
     }
     return wrap;
+  }
+
+  function updateSettingsSummary() {
+    if (!els.settingsSummary) return;
+    const targetInputs = [els.target, els.targetProfit, els.targetAdSpend, els.targetNetExpenseRatio];
+    const targetCount = targetInputs.filter((input) => input && String(input.value).trim() !== '').length;
+    const reviewer = els.reviewer && els.reviewer.value.trim();
+    const status = els.statusSelect && els.statusSelect.value === 'final' ? '已定稿' : '草稿';
+    els.settingsSummary.textContent = `${targetCount}/4 项目标 · ${reviewer || '运营人员'} · ${status}`;
+  }
+
+  function settingsValues() {
+    return {
+      target: els.target ? els.target.value : '',
+      targetProfit: els.targetProfit ? els.targetProfit.value : '',
+      targetAdSpend: els.targetAdSpend ? els.targetAdSpend.value : '',
+      targetNetExpenseRatio: els.targetNetExpenseRatio ? els.targetNetExpenseRatio.value : '',
+      reviewer: els.reviewer ? els.reviewer.value : '',
+      status: els.statusSelect ? els.statusSelect.value : 'draft',
+      targetPath: state.context && state.context.target_path
+        ? JSON.parse(JSON.stringify(state.context.target_path)) : null,
+    };
+  }
+
+  function restoreSettingsValues(values) {
+    if (!values) return;
+    if (els.target) els.target.value = values.target;
+    if (els.targetProfit) els.targetProfit.value = values.targetProfit;
+    if (els.targetAdSpend) els.targetAdSpend.value = values.targetAdSpend;
+    if (els.targetNetExpenseRatio) els.targetNetExpenseRatio.value = values.targetNetExpenseRatio;
+    if (els.reviewer) els.reviewer.value = values.reviewer;
+    if (els.statusSelect) els.statusSelect.value = values.status;
+    if (state.context && values.targetPath) state.context.target_path = values.targetPath;
+    updateSettingsSummary();
+    if (state.context) renderCommandCenter(state.context);
+  }
+
+  function validateSettings() {
+    const ratio = els.targetNetExpenseRatio && String(els.targetNetExpenseRatio.value).trim();
+    if (ratio !== '') {
+      const value = Number(ratio);
+      if (!Number.isFinite(value) || value < 0 || value > 100) {
+        return '净费比目标请按 0–100 的百分数填写，例如 23.70 表示 23.70%。';
+      }
+    }
+    return '';
+  }
+
+  function closeSettingsDialog(restore = false) {
+    if (restore) restoreSettingsValues(settingsSnapshot);
+    settingsSnapshot = null;
+    settingsApplied = false;
+    if (els.settingsDialog?.open) els.settingsDialog.close();
+  }
+
+  function openSettingsDialog() {
+    settingsSnapshot = settingsValues();
+    settingsApplied = false;
+    if (els.settingsDialog && !els.settingsDialog.open) els.settingsDialog.showModal();
+  }
+
+  function applySettingsDialog() {
+    const error = validateSettings();
+    if (error) {
+      stateBanner(error, 'insufficient-data');
+      els.targetNetExpenseRatio?.focus();
+      return;
+    }
+    settingsApplied = true;
+    updateSettingsSummary();
+    if (state.context) {
+      targetCards.refreshTargetCard();
+      renderCommandCenter(state.context);
+    }
+    closeSettingsDialog();
+  }
+
+  function bindSettingsDialog() {
+    // 与页内其它弹窗保持一致：点击遮罩（backdrop）关闭复盘设置。
+    // close 事件里会把未应用的改动回滚，等价于「取消」，不会丢已保存内容。
+    enableLightDismiss(els.settingsDialog);
+    els.settingsOpen?.addEventListener('click', openSettingsDialog);
+    els.settingsClose?.addEventListener('click', () => closeSettingsDialog(true));
+    els.settingsCancel?.addEventListener('click', () => closeSettingsDialog(true));
+    els.settingsApply?.addEventListener('click', applySettingsDialog);
+    els.settingsDialog?.addEventListener('cancel', (event) => {
+      event.preventDefault();
+      closeSettingsDialog(true);
+    });
+    els.settingsDialog?.addEventListener('close', () => {
+      if (!settingsApplied && settingsSnapshot) restoreSettingsValues(settingsSnapshot);
+      settingsSnapshot = null;
+      settingsApplied = false;
+    });
+    [els.target, els.targetProfit, els.targetAdSpend, els.targetNetExpenseRatio, els.reviewer, els.statusSelect]
+      .forEach((input) => input?.addEventListener('input', updateSettingsSummary));
+    els.statusSelect?.addEventListener('change', updateSettingsSummary);
+    updateSettingsSummary();
   }
 
   function stateBanner(text, kind) {
@@ -534,17 +679,12 @@
   // 周期内分解表（月复盘=月内分周，周复盘=期内按日），来自用户月复盘框架：
   // 品类汇总的销售/利润指标要有周维度表格方便对比。
   const BREAKDOWN_COLUMNS = [
-    ['gsv', '销售额', 'money'],
     ['net_sales', '净销售额', 'money'],
     ['profit', '利润', 'money'],
     ['visitors', '访客', 'number'],
     ['conversion', '转化率', 'percent'],
-    ['aov', '客单价', 'money'],
-    ['cart_rate', '加购率', 'percent'],
     ['ad_spend', '推广花费', 'money'],
     ['ad_ratio', '费比', 'percent'],
-    ['roi', 'ROI', 'decimal'],
-    ['paid_cpc', '付费访客成本', 'money'],
   ];
 
   function breakdownTable(breakdown) {
@@ -562,31 +702,6 @@
       h('table', { class: 'pr-table pr-breakdown-table' }, thead, tbody));
   }
 
-  function renderOverview(context) {
-    if (!els.overview) return;
-    const period = context.period;
-    const label = (context.category && context.category.label) || '全部品类';
-    els.overview.hidden = false;
-    const breakdown = context.breakdown;
-    const breakdownTitle = breakdown && breakdown.grain === 'week' ? '月内分周指标' : '期内按日指标';
-    els.overview.replaceChildren(
-      h('div', { class: 'pr-overview__head' },
-        h('h3', { text: '业绩全景' }),
-        h('span', { text: `${period.label} · ${period.start} ~ ${period.end} · 品类：${label}` }),
-      ),
-      renderKpiGrid(context.metrics),
-      // 目标条与目标表不再在业绩全景重复：完成率已在驾驶舱三卡 + 归因折叠
-      // 摘要里给出，目标-实际明细归「复盘设置」面板与导出，全景只留事实指标。
-      breakdown && breakdown.rows && breakdown.rows.length
-        ? h('div', { class: 'pr-overview__breakdown' },
-          h('h4', { text: breakdownTitle }),
-          h('p', { class: 'pr-material__empty', text: breakdown.grain === 'week'
-            ? '按月内分周汇总（W1 从 1 号到第一个周日）；缺失的天不补 0。'
-            : '按天汇总；缺数据的天不显示。' }),
-          breakdownTable(breakdown))
-        : null,
-    );
-  }
 
   function metricValue(metrics, key) {
     const item = (metrics && metrics.items || []).find((entry) => entry.key === key || entry.metric === key);
@@ -612,40 +727,57 @@
     );
   }
 
-  // 复盘范围：首屏给结论的同时，把周期 / 品类 / 对比口径与数据状态集中在一处，
-  // 避免同一组信息在页头、状态条、驾驶舱里反复出现。
+  // 复盘状态只在需要用户处理时提示；周期、品类和对比口径统一由顶栏承载。
   function renderReviewScope(context) {
-    const period = context && context.period;
-    const hasData = Boolean(context && context.metrics && context.metrics.has_data);
     const missing = (context && context.missing_inputs) || [];
-    if (els.contextRange) {
-      if (!period || !period.start) {
-        els.contextRange.textContent = '正在读取时间范围…';
-      } else {
-        // 周期名称本身已带日期范围（如「2026年9月第5周（09-28 ~ 09-30）」）时不再追加，
-        // 避免同一个区间在同一行里出现两次。
-        // label 里的日期是 MM-DD（如「2026年9月第5周（09-28 ~ 09-30）」），
-        // 用它判断区间是否已经写进名称，避免同一行重复两次。
-        els.contextRange.textContent = period.label.includes(period.start.slice(5))
-          ? period.label
-          : `${period.label}（${period.start} ~ ${period.end}）`;
-      }
-    }
-    if (els.contextMeta) {
-      const parts = [state.mode === 'week' ? '周复盘' : '月复盘', `品类 ${categoryLabelOf() || '全部品类'}`];
-      if (context) parts.push(`对比 ${(context.compare && context.compare.label) || '不对比'}`);
-      els.contextMeta.textContent = parts.join(' · ');
-    }
     if (!els.actionSummary) return;
-    if (!context) {
-      els.actionSummary.textContent = '正在读取复盘状态…';
-    } else if (hasData) {
-      els.actionSummary.textContent = '素材已就绪，可在工作区编辑结论后保存。';
-    } else {
-      els.actionSummary.textContent = missing.length
-        ? `本期缺少数据源：${missing.join('、')}，仍可手动填写复盘结论。`
-        : '当前周期缺少可用经营事实，先补齐数据后再形成结论。';
-    }
+    els.actionSummary.textContent = missing.length
+      ? `缺少数据源：${missing.join('、')}`
+      : '';
+  }
+
+  // ---------------------------------------------- 顶部统一「数据状态」（P0 #3）
+  // 原则：**不是一盏灯，而是「一盏灯 + 触发原因清单」**。
+  // 只说「部分数据」读者无法行动——必须能一眼看到哪块降级、为什么、影响什么。
+  // severity 两档：warning=数字不可全信；info=口径有边界（已在各块就地标注）。
+  const DATA_STATUS_SEVERITY_LABEL = { warning: '影响可信度', info: '口径边界' };
+
+  function dataStatusNode(context) {
+    const status = context && context.data_status;
+    if (!status) return null;
+    const degradations = status.degradations || [];
+    const level = status.level || 'partial';
+    const tone = status.usable ? 'good' : (level === 'no-data' ? 'empty' : 'warning');
+    const summary = h('summary', null,
+      h('span', { class: 'pr-data-status__dot', 'aria-hidden': 'true' }),
+      h('span', { class: 'pr-data-status__label', text: status.label || '数据状态' }),
+      degradations.length
+        ? h('span', { class: 'pr-data-status__count', text: '详情 ▾' })
+        : null);
+    const body = [];
+    // 数据区间/进行中说明：读者判断「这份数据到哪一天」的最短路径。
+    const fresh = status.freshness || {};
+    const freshText = fresh.observed_start && fresh.observed_end
+      ? `数据区间 ${fresh.observed_start} ~ ${fresh.observed_end}`
+        + (fresh.is_ongoing
+          ? `（本期进行中，已过 ${fresh.elapsed_days}/${fresh.total_days} 天）`
+          : `（共 ${fresh.total_days} 天）`)
+      : null;
+    if (freshText) body.push(h('p', { class: 'pr-data-status__fresh', text: freshText }));
+    if (status.summary) body.push(h('p', { class: 'pr-data-status__summary', text: status.summary }));
+    // 按 severity 分组，warning 在前——影响可信度的必须先看到。
+    ['warning', 'info'].forEach((severity) => {
+      const group = degradations.filter((item) => item.severity === severity);
+      if (!group.length) return;
+      body.push(h('p', { class: `pr-data-status__group is-${severity}`, text: DATA_STATUS_SEVERITY_LABEL[severity] }));
+      body.push(h('ul', { class: 'pr-data-status__list' }, ...group.map((item) =>
+        h('li', { class: `is-${severity}` },
+          h('strong', { text: item.label }),
+          h('span', { text: `：${item.detail}` })))));
+    });
+    return h('details', { class: `pr-data-status is-${tone}`, open: false },
+      summary,
+      h('div', { class: 'pr-data-status__body' }, ...body));
   }
 
   function renderCommandCenter(context) {
@@ -655,30 +787,23 @@
     const blockedCount = (context.actions_blocked || []).length;
     const plannedCount = (context.actions_planned || []).length;
     els.commandCenter.hidden = false;
-    const hasData = Boolean(context.metrics && context.metrics.has_data);
-    const periodLabel = context.period ? context.period.label : '当前周期';
+    // 顶部数据状态统一条（P0 #3）：取代原先只说「数据已就绪 · 覆盖 2/3 天」的裸文案。
+    const statusNode = dataStatusNode(context);
     els.commandCenter.replaceChildren(
       h('div', { class: 'pr-command-center__head' },
-        h('div', null,
-          h('span', { class: 'pr-command-center__eyebrow', text: '经营驾驶舱' }),
-          h('h3', { text: `${periodLabel}复盘结论` }),
-          h('p', { text: hasData ? '先看结果是否达标，再沿着风险信号定位商品、推广与执行问题。' : '当前周期缺少可用经营事实，先补齐数据后再形成结论。' })),
-        h('span', { class: `pr-command-center__data-state ${hasData ? 'is-ready' : 'is-empty'}`.trim(), text: hasData ? '数据已就绪' : '等待数据' })),
-      h('div', { class: 'pr-command-center__section-label', text: '核心结果' }),
+        h('h3', { text: '复盘结论' }),
+        statusNode),
       // 三大指标完成率卡（对齐月复盘 XMind「完成情况分析」）：
       // 净销售额 / 净利润 / 净费比，口径与复盘设置目标同源。
       metricCards.renderMetricCards(),
-      h('div', { class: 'pr-command-center__section-label', text: '经营信号' }),
       // 紧凑状态条：风险与执行信号一行带过，点击直达对应工作区。
       h('div', { class: 'pr-command-center__strip' },
-        h('button', { type: 'button', class: 'pr-strip-item', onclick: () => activateWorkbench('diagnosis') },
+        h('button', { type: 'button', class: 'pr-strip-item', onclick: () => scrollToSection('summary') },
           stateTag(dangerCount + blockedCount ? '需关注' : '正常', dangerCount + blockedCount ? 'warning' : 'good'),
           h('span', { text: `风险 ${dangerCount + blockedCount}（异常 ${dangerCount} · 阻塞 ${blockedCount}）` })),
         h('button', { type: 'button', class: 'pr-strip-item', onclick: () => activateWorkbench('execution') },
           stateTag(plannedCount ? '进行中' : '空闲', plannedCount ? 'info' : 'good'),
           h('span', { text: `待落地动作 ${plannedCount}` })),
-        h('button', { type: 'button', class: 'pr-strip-item', onclick: () => activateWorkbench('diagnosis') },
-          h('span', { text: '拆因分析 →' })),
       ),
     );
   }
@@ -705,13 +830,46 @@
     ['profit_rate', '利润率', 'percent'],
   ];
 
-  function trendSvg(rows, key, format) {
+  // 点标签用紧凑数值（金额 ≥1万 折算万），精确值走 min/max 轴与悬停 title。
+  function trendLabel(value, format) {
+    if (format === 'percent') return `${(value * 100).toFixed(1)}%`;
+    if (format === 'decimal') return value.toFixed(2);
+    if (format === 'money') {
+      if (Math.abs(value) >= 10000) return `${(value / 10000).toFixed(2)}万`;
+      return Math.round(value).toLocaleString('zh-CN');
+    }
+    return Math.round(value).toLocaleString('zh-CN');
+  }
+
+  // 「2026-09 第3周」→「9月W3」：横轴要能看出是哪个月的第几周，不是匿名 W1~W8。
+  function shortWeekLabel(week) {
+    const match = String(week.label || '').match(/^(\d{4})-(\d{2})\s*第(\d+)周$/);
+    if (match) return `${Number(match[2])}月W${match[3]}`;
+    if (week.start) {
+      const parts = week.start.split('-');
+      return `${Number(parts[1])}月${Number(parts[2])}日`;
+    }
+    return '';
+  }
+
+  // 月度轴标签工厂：同一年显示「4月」，跨年显示「2025-12」避免不同年同月名歧义。
+  function monthAxisLabeler(rows) {
+    const years = new Set(rows.map((row) => String(row.label || row.start || '').slice(0, 4)));
+    const sameYear = years.size === 1;
+    return (row) => {
+      const match = String(row.label || row.start || '').match(/^(\d{4})-(\d{2})/);
+      if (!match) return row.start || '';
+      return sameYear ? `${Number(match[2])}月` : `${match[1]}-${match[2]}`;
+    };
+  }
+
+  function trendSvg(rows, key, format, labelFn = shortWeekLabel) {
     const values = rows.map((row) => (row[key] === null || row[key] === undefined ? null : Number(row[key])));
     const valid = values.filter((value) => value !== null);
     if (valid.length < 2) return h('p', { class: 'pr-material__empty', text: '该指标可用数据点不足，无法画趋势。' });
-    const width = 560;
-    const height = 150;
-    const pad = 28;
+    const width = 640;
+    const height = 170;
+    const pad = 34;
     const min = Math.min(...valid);
     const max = Math.max(...valid);
     const span = (max - min) || 1;
@@ -733,58 +891,75 @@
     svg.append(polyline);
     values.forEach((value, index) => {
       if (value === null) return;
+      const cx = pad + index * stepX;
+      const cy = scaleY(value) + baseline;
       const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-      circle.setAttribute('cx', String(pad + index * stepX));
-      circle.setAttribute('cy', String(scaleY(value) + baseline));
+      circle.setAttribute('cx', String(cx));
+      circle.setAttribute('cy', String(cy));
       circle.setAttribute('r', '3');
       svg.append(circle);
+      // 每个点直接标数值；贴近顶边的点标签放点下方，其余放上方。
+      const label = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+      const below = cy < pad + 6;
+      label.setAttribute('x', String(cx));
+      label.setAttribute('y', String(below ? cy + 16 : cy - 8));
+      label.setAttribute('text-anchor', 'middle');
+      label.setAttribute('class', 'pr-trend-point-label');
+      label.textContent = trendLabel(value, format);
+      svg.append(label);
+      const tip = document.createElementNS('http://www.w3.org/2000/svg', 'title');
+      tip.textContent = `${labelFn(rows[index]) || `#${index + 1}`}（${rows[index].start} ~ ${rows[index].end}）：${formatValue(value, format)}`;
+      circle.append(tip);
     });
-    const wrap = h('div', { class: 'pr-trend-chart' }, svg,
-      h('div', { class: 'pr-trend-axis' },
-        h('span', { text: formatValue(min, format) }),
-        h('span', { text: formatValue(max, format) })));
-    return wrap;
+    // 每个点已自带数值标签，min/max 轴会与之重复且易误读为日期，不再渲染。
+    return h('div', { class: 'pr-trend-chart' }, svg);
   }
 
   async function openProductTrend(row, metricKey) {
     if (metricKey) trendMetricKey = metricKey;
+    // 粒度跟随复盘模式：周复盘看近 8 周（月内分周），月复盘看近 8 个完整月。
+    const grain = state.mode === 'month' ? 'month' : 'week';
     if (!trendDialog) {
       trendDialog = h('dialog', { class: 'pr-action-dialog pr-trend-dialog' });
       document.body.append(trendDialog);
+      enableLightDismiss(trendDialog);
     }
     trendDialog.replaceChildren(
       h('div', { class: 'pr-action-dialog__head' },
         h('div', null,
-          h('span', { class: 'section-kicker', text: '周维度趋势' }),
+          h('span', { class: 'section-kicker', text: grain === 'month' ? '月度趋势' : '周维度趋势' }),
           h('h3', { text: row.title || row.product_id }),
-          h('p', { text: `商品 ID：${row.product_id} · 近 8 周（月内分周口径）` })),
+          h('p', { text: `商品 ID：${row.product_id} · ${grain === 'month' ? '近 8 个完整月（自然月口径）' : '近 8 周（月内分周口径）'}` })),
         h('button', { type: 'button', class: 'pr-dialog-close', 'aria-label': '关闭', onclick: () => trendDialog.close(), text: '×' })),
       h('div', { class: 'pr-diagnostic-block', 'data-pr-trend-loading': '' },
-        h('p', { class: 'pr-material__empty', text: '正在读取周趋势…' })),
+        h('p', { class: 'pr-material__empty', text: '正在读取趋势…' })),
     );
     if (!trendDialog.open) trendDialog.showModal();
 
     let data = null;
     let error = null;
-    if (trendCache && trendCache.productId === row.product_id) {
+    // 缓存键带粒度：周/月复盘切换后不串序列。
+    if (trendCache && trendCache.productId === row.product_id && trendCache.grain === grain) {
       data = trendCache.data;
     } else {
       try {
         const response = await DemoApi.domainRequest(
-          `/api/period-reviews/product-trend/${encodeURIComponent(row.product_id)}?weeks=8`);
+          `/api/period-reviews/product-trend/${encodeURIComponent(row.product_id)}?weeks=8&grain=${grain}`);
         data = response.data;
-        trendCache = { productId: row.product_id, data };
+        trendCache = { productId: row.product_id, grain, data };
       } catch (err) { error = err; }
     }
 
     const loading = trendDialog.querySelector('[data-pr-trend-loading]');
-    const body = error || !data || !data.available || !data.weeks.length
+    const points = data && data.points ? data.points : [];
+    const labelFn = grain === 'month' && points.length ? monthAxisLabeler(points) : shortWeekLabel;
+    const body = error || !data || !data.available || !points.length
       ? h('div', { class: 'pr-diagnostic-block' },
-        h('p', { class: 'pr-material__empty', text: error ? `趋势读取失败：${describeRequestError(error)}` : '该商品近 8 周没有日数据，无法生成趋势。' }))
+        h('p', { class: 'pr-material__empty', text: error ? `趋势读取失败：${describeRequestError(error)}` : '该商品近期没有日数据，无法生成趋势。' }))
       : (() => {
         // 「点击字段指标看折线」：字段 chips 即点即换；无数据点的字段禁用。
         const active = TREND_METRICS.find(([key]) => key === trendMetricKey) || TREND_METRICS[0];
-        const hasPoints = (key) => data.weeks.some((week) => week[key] !== null && week[key] !== undefined);
+        const hasPoints = (key) => points.some((point) => point[key] !== null && point[key] !== undefined);
         const chips = TREND_METRICS.map(([key, label]) => h('button', {
           type: 'button',
           class: `pr-chip pr-trend-chip${key === active[0] ? ' is-active' : ''}`,
@@ -792,15 +967,19 @@
           text: label.replace(/（元）$/, ''),
           onclick: () => { trendMetricKey = key; openProductTrend(row, key); },
         }));
+        const spanText = `${labelFn(points[0])} ~ ${labelFn(points[points.length - 1])}`;
+        const noteText = grain === 'month'
+          ? `统计区间 ${spanText}（自然月口径，取自 BI 月度快照，与生命周期同源）；悬停可见具体月份；当月进行中数据不纳入。`
+          : `统计区间 ${spanText}（月内分周口径）；悬停可见具体日期区间；比率列按周总量重推，与榜单口径一致；本周为进行中数据不纳入。`;
         return h('div', { class: 'pr-diagnostic-block' },
           h('div', { class: 'pr-chip-row pr-trend-chips' }, ...chips),
           h('div', { class: 'pr-trend-metric' },
             h('h4', { text: active[1] }),
-            trendSvg(data.weeks, active[0], active[2]),
+            trendSvg(points, active[0], active[2], labelFn),
             h('div', { class: 'pr-trend-labels' },
-              ...data.weeks.map((week, index) => h('span', { text: `W${index + 1}`, title: `${week.label}（${week.start} ~ ${week.end}）` }))),
+              ...points.map((point, index) => h('span', { text: labelFn(point) || `#${index + 1}`, title: `${point.label}（${point.start} ~ ${point.end}）` }))),
           ),
-          h('p', { class: 'pr-material__empty', text: '横轴 W1→W8 为最近 8 个完整月内周，悬停可见具体周区间；比率列按周总量重推，与榜单口径一致；本周为进行中数据不纳入。' }));
+          h('p', { class: 'pr-material__empty', text: noteText }));
       })();
     if (loading) loading.replaceWith(body);
   }
@@ -855,6 +1034,23 @@
       scroll, null);
   }
 
+  /** 口径降级徽标。放在数据块标题上，避免「数字看着正常、口径藏在脚注里」。
+   *  与 §data_status 的两档 severity 同构：warning=数字不可全信，info=口径有边界。 */
+  function caliberBadge(text, severity) {
+    return h('span', {
+      class: `pr-caliber-badge is-${severity || 'info'}`,
+      text,
+      title: text,
+    });
+  }
+
+  /** 利润是否部分口径：以后端 identity.ok 为唯一判据（恒等式不平＝费用列不全）。
+   *  实测所有口径下都不平（残差来自「利润未回填」的补采哨兵行），故必须常标。 */
+  function profitIsPartial(structure) {
+    return Boolean(structure && structure.available
+      && structure.identity && structure.identity.ok === false);
+  }
+
   /** 利润结构块（利润瀑布，对齐 BI 派米恒等口径）：
    *  净销 → 销售费用/自定义费用/货本/发货/其他 → 利润，横向占比条 + 环比。
    *  费用缺失（补采哨兵）显示「缺失」不按 0；identity note 说明残差来源。
@@ -879,13 +1075,18 @@
     });
     const note = (structure.identity && structure.identity.note) || null;
     const customNote = (structure.caliber && structure.caliber.custom_cost_note) || '';
+    // P0 #4：利润恒等式不平 → 利润是**部分口径**，必须在标题上标出来。
+    // 不标的话，读者会把「利润 -29,377」当成准确值，而它其实含 155 行未回填。
+    const partial = profitIsPartial(structure);
     return materialBlock('利润结构（利润瀑布）',
       h('div', { class: 'pr-profit-structure' },
         h('p', { class: 'pr-profit-structure__net', text: `净销售额 ${formatValue(net, 'money')}${structure.compare ? `（对比期 ${structure.compare.start} ~ ${structure.compare.end}）` : ''}` }),
         ...barRows,
         customCostNote(customNote),
         note ? h('p', { class: 'pr-material__empty', text: note }) : null,
-      ));
+      ),
+      null, null,
+      partial ? [caliberBadge('部分口径', 'warning')] : null);
   }
 
   function customCostNote(text) {
@@ -917,54 +1118,13 @@
         h('span', { class: 'num', text: `销售额 ${formatValue(row.gsv, 'money')}${row.gsv_share === null || row.gsv_share === undefined ? '' : ` · ${(row.gsv_share * 100).toFixed(1)}%`}` }))))
       : null;
     return analysisPanel('货品汇总',
-      '在架=商品库在售总数；动销=本期有正向销售的商品数。类目结构按净销售额占比取 TOP5；产品分层口径与矩阵地图同源（费比≥30% 引流 / 利润>0 且费比<10% / 不推广动销），但粒度=本复盘周期（矩阵页为完整自然月，数字不同属正常）。完整矩阵在「商品 → 货品矩阵地图」。',
+      '先看规模、分层和类目结构；完整矩阵保留在商品专页。',
       h('div', { class: 'pr-materials' },
         materialBlock('货品规模', h('div', { class: 'pr-target' }, ...items)),
-        segmentsBody ? materialBlock('产品分层（按推广角色 · 本复盘周期）', segmentsBody) : null,
-        structureBody ? materialBlock('净销售额结构 TOP5（按类目）', structureBody) : materialBlock('净销售额结构 TOP5（按类目）', null, '本期没有类目可归的数据。'),
+        segmentsBody ? materialBlock('产品分层（本期）', segmentsBody) : null,
+        structureBody ? materialBlock('净销售额结构 TOP5', structureBody) : materialBlock('净销售额结构 TOP5', null, '本期没有类目可归的数据。'),
         profitStructureBlock(profitStructure),
       ), null);
-  }
-
-  function renderProductAnalysis(context) {
-    if (!els.productAnalysis) return;
-    productColumns.rememberContext(context);
-    const products = context.products || {};
-    // 每张榜单一份字段设置工具栏：列开关按榜独立（默认列随榜单定位差异化）。
-    const board = productColumns.productBoardPanel;
-    els.productAnalysis.replaceChildren(
-      goodsSummaryPanel(products.summary, context.profit_structure),
-      problemItemsPanel(products.problem_items),
-      board('净销售额 TOP10', '按本期净销售额排序（净口径与达成率一致），先识别需要保住的核心商品。', products.top, 'top', '本期没有正向销售商品。'),
-      board('下滑商品 TOP10', '按相对上期的销售额变化排序，作为异常诊断入口。', products.decline, 'decline', '缺少可比周期数据。'),
-      board('付费单品 TOP10', '按本期推广花费排序，看钱主要花在哪些商品上（广告-单品维度入口）。', products.paid, 'paid', '本期没有推广花费记录。'),
-      board('盈利 TOP10', '按本期经营利润（支付预估）排序的赚钱商品。', products.profit, 'profit', '本期没有正利润商品。'),
-      board('亏损 TOP10', '按本期经营利润倒序，优先排查亏损原因。', products.loss, 'loss', '本期没有亏损商品。'),
-      board('新品 · 净销售额 TOP10', '最近 60 天上架的商品按净销售额排序（新品定义=周期结束日前 60 天内上架）。', products.new, 'new', '最近 60 天上架的商品暂无销售。'),
-      board('新品 · 付费 TOP10', '最近 60 天上架的商品按推广花费排序。', products.new_paid, 'new_paid', '最近 60 天上架的商品暂无推广花费。'),
-    );
-  }
-
-  /** 流量来源拆解（自家店铺流量诊断）——与市场监控（外部行业/竞对）分节渲染。 */
-  function renderTrafficAnalysis(context) {
-    if (!els.trafficAnalysis) return;
-    const traffic = context.dimensions?.traffic || {};
-    els.trafficAnalysis.replaceChildren(
-      analysisPanel('流量来源拆解', `流量覆盖 ${traffic.sample_days || 0}/${traffic.period_days || '--'} 天`, trafficTable(traffic), '暂无搜索、推荐、付费或自然流量拆解数据。'),
-    );
-  }
-
-  function renderMarketAnalysis(context) {
-    if (!els.marketAnalysis) return;
-    const period = context.period || {};
-    // 行业深链入口（XMind：趋势市场 / 蓝海市场 / 8 大归类 / 词根需求在专页）：
-    // 复盘页只做摘要，深度分析跳市场分析页（带复盘区间日期）。
-    const marketLink = h('p', { class: 'pr-market-links' },
-      h('a', { class: 'pr-anchor-link', href: `/market-ranking?start=${period.start || ''}&end=${period.end || ''}`, text: '行业趋势 / 蓝海市场 →' }),
-      h('a', { class: 'pr-anchor-link', href: `/market-ranking?start=${period.start || ''}&end=${period.end || ''}`, text: '关键词归类 / 词根需求 / 竞店爆品 →' }));
-    els.marketAnalysis.replaceChildren(
-      analysisPanel('市场监控（摘要 + 深链）', '先看可复现事实，再看系统观察；价格、利润和评价结论仍需补证。', h('div', null, marketLink, renderMarket(context.market)), '暂无市场批次。'),
-    );
   }
 
   function dimensionPercent(value) {
@@ -990,6 +1150,43 @@
           ? '--' : `${item.payment_change_rate > 0 ? '+' : ''}${(item.payment_change_rate * 100).toFixed(1)}%` }),
       ))),
     ));
+  }
+
+  // -------------------------------------------- 推广计划 → 商品归因表
+  // 对齐 XMind「推广计划拆解」：计划级花费/成交 + 归因方式。
+  // 归因只做「计划只绑 1 个商品」的精确归因，**不做均摊**（按商品数摊花费=凭空造数），
+  // 多商品计划标「多商品」并只在计划级展示。必须把口径写在明面上。
+  function campaignAttributionTable(attr) {
+    const items = (attr && attr.items) || [];
+    if (!items.length) return null;
+    const share = attr.exact_share;
+    const head = h('tr', null,
+      h('th', { text: '计划' }), h('th', { text: '渠道' }),
+      h('th', { class: 'num', text: '花费' }), h('th', { class: 'num', text: '归因成交' }),
+      h('th', { class: 'num', text: 'ROI' }), h('th', { class: 'num', text: '商品数' }),
+      h('th', { text: '归因' }), h('th', { text: '归因商品' }));
+    const rows = items.map((item) => {
+      const exact = item.attribution === 'exact';
+      return h('tr', null,
+        h('td', { class: 'pr-table__title', title: item.name, text: item.name }),
+        h('td', { text: item.channel || '--' }),
+        h('td', { class: 'num', text: formatValue(item.ad_spend, 'money') }),
+        h('td', { class: 'num', text: formatValue(item.attributed_payment, 'money') }),
+        h('td', { class: 'num', text: formatValue(item.roi, 'decimal') }),
+        h('td', { class: 'num', text: item.product_count == null ? '--' : String(item.product_count) }),
+        h('td', null, h('span', {
+          class: `pr-chip is-${exact ? 'info' : 'warning'}`,
+          text: exact ? '精确' : '多商品',
+        })),
+        h('td', { class: 'pr-table__title', title: item.product_title || '', text: item.product_title || (exact ? '' : '不拆分') }));
+    });
+    const note = (attr.attribution_note || '')
+      + (share == null ? '' : ` 本期可精确归因的计划花费占比 ${(share * 100).toFixed(1)}%。`);
+    return materialBlock('推广计划拆解（计划 → 商品归因）',
+      h('div', { class: 'pr-breakdown-table-wrap' },
+        h('table', { class: 'pr-table pr-breakdown-table' },
+          h('thead', null, head), h('tbody', null, ...rows))),
+      null, note);
   }
 
   function trafficTable(traffic) {
@@ -1061,36 +1258,9 @@
         h('thead', null, h('tr', null, ...head1), h('tr', null, ...head2)),
         h('tbody', null, ...body)));
     const hint = noChannelScope && !groups.length
-      ? '当前推广数据源没有「商品×渠道」粒度（渠道行不带商品映射），因此只展示商品级合计；渠道拆分见上方「推广渠道拆解」。'
+      ? '本期没有「商品×渠道」明细（商品×渠道采集自 2026-08-20 起），因此只展示商品级合计；渠道拆分见上方「推广渠道拆解」。'
       : '按推广花费排序的商品级投放指标；费比 = 花费 ÷ 归因成交，拉新成本 = 花费 ÷ 成交新客。';
     return analysisPanel('广告单品 TOP20 消耗', hint, table, null);
-  }
-
-  function renderChannelAnalysis(context) {
-    if (!els.channelAnalysis) return;
-    const dimensions = context.dimensions || {};
-    const promotion = dimensions.promotion || {};
-    const channelView = promotion.channels || {};
-    const campaignView = promotion.campaigns || {};
-    const quality = [
-      `渠道粒度 ${channelView.grain || '--'}`,
-      `计划粒度 ${campaignView.grain || '--'}`,
-    ].join(' · ');
-    const promotionHint = (view, grainName) => view.missing_inputs?.includes('promotion_category_scope')
-      ? `当前推广数据没有商品映射，无法按所选类目筛选${grainName}，避免混入全店数据。`
-      : `按 ${view.grain || grainName} 粒度聚合；缺少数据时保持为空，不补 0。`;
-    els.channelAnalysis.replaceChildren(
-      analysisPanel('推广渠道拆解', promotionHint(channelView, 'channel'), dimensionTable(channelView.items, 'channel'), '暂无可按当前口径使用的渠道推广数据。'),
-      analysisPanel('推广计划拆解', campaignView.comparison_available === false
-        ? '本期有计划数据，但对比期缺少同粒度数据，暂不展示环比。'
-        : promotionHint(campaignView, 'campaign'), dimensionTable(campaignView.items, 'campaign'), '暂无可按当前口径使用的计划推广数据。'),
-    );
-    if (els.promotionAnalysis) {
-      els.promotionAnalysis.replaceChildren(
-        analysisPanel('推广效率', '本期推广投入与效率变化，数据事实不代替原因判断。', renderAds(context.ads), '暂无推广数据。'),
-        renderPromotionItems(context.promotion_items),
-      );
-    }
   }
 
   // ------------------------------------------------------- 指标矩阵 / 类目拆解
@@ -1357,6 +1527,7 @@
     if (!blockDialog) {
       blockDialog = h('dialog', { class: 'pr-action-dialog' });
       document.body.append(blockDialog);
+      enableLightDismiss(blockDialog);
     }
     const form = h('form', { class: 'pr-action-form' });
     form.append(
@@ -1421,6 +1592,7 @@
     if (!actionReviewDialog) {
       actionReviewDialog = h('dialog', { class: 'pr-action-dialog' });
       document.body.append(actionReviewDialog);
+      enableLightDismiss(actionReviewDialog);
     }
     const form = h('form', { class: 'pr-action-form' });
     const effective = h('select', { name: 'effective', required: true },
@@ -1502,6 +1674,7 @@
     if (!actionDetailDialog) {
       actionDetailDialog = h('dialog', { class: 'pr-action-dialog' });
       document.body.append(actionDetailDialog);
+      enableLightDismiss(actionDetailDialog);
     }
     actionDetailDialog.replaceChildren(
       h('div', { class: 'pr-action-dialog__head' },
@@ -1622,6 +1795,9 @@
       ...(context.actions_blocked || []),
       ...(context.actions_review || []),
     ];
+    // 没有动作时不渲染空日历；动作状态区会提供唯一空态。
+    if (!actions.length) return null;
+
     // 周期内的桶：月=月内周，周=按日（口径与后端 _breakdown_block 一致）。
     let buckets = [];
     if (state.mode === 'month') {
@@ -1640,27 +1816,31 @@
           cur = wEnd + 1;
         }
       }
-      } else {
-        const start = period.start || '';
-        const end = period.end || '';
-        if (start && end) {
-          const s = new Date(`${start}T00:00:00`);
-          const e = new Date(`${end}T00:00:00`);
-          for (let d = new Date(s); d <= e; d.setDate(d.getDate() + 1)) {
-            // 本地日期格式化：toISOString 是 UTC，东八区 0-8 点会算成前一天，动作会落错桶。
-            const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-            buckets.push({ label: String(Number(iso.slice(8, 10))), start: iso, end: iso });
-          }
+    } else {
+      const start = period.start || '';
+      const end = period.end || '';
+      if (start && end) {
+        const s = new Date(`${start}T00:00:00`);
+        const e = new Date(`${end}T00:00:00`);
+        for (let d = new Date(s); d <= e; d.setDate(d.getDate() + 1)) {
+          // 本地日期格式化：toISOString 是 UTC，东八区 0-8 点会算成前一天，动作会落错桶。
+          const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+          buckets.push({ label: String(Number(iso.slice(8, 10))), start: iso, end: iso });
         }
       }
+    }
     if (!buckets.length) return null;
+
     const byBucket = new Map(buckets.map((b) => [b.label, []]));
     actions.forEach((row) => {
       const planned = row.planned_at || row.executed_at || '';
       const bucket = buckets.find((b) => planned >= b.start && planned <= b.end);
       if (bucket) byBucket.get(bucket.label).push(row);
     });
-    const timeline = h('div', { class: 'pr-schedule' }, ...buckets.map((b) => {
+    // 只保留有动作的周期桶，避免空日期重复占用纵向空间。
+    const activeBuckets = buckets.filter((bucket) => (byBucket.get(bucket.label) || []).length);
+    if (!activeBuckets.length) return null;
+    const timeline = h('div', { class: 'pr-schedule' }, ...activeBuckets.map((b) => {
       const items = byBucket.get(b.label) || [];
       const itemNodes = items.slice(0, 6).map((row) => h('li', null,
         h('button', {
@@ -1671,61 +1851,155 @@
           text: `${row.product_title || row.product_id}`,
         }),
         h('small', { text: actionStatusLabel(row.status) })));
-      return h('div', { class: `pr-schedule__bucket ${items.length ? 'has-items' : ''}`.trim() },
+      return h('div', { class: 'pr-schedule__bucket has-items' },
         h('div', { class: 'pr-schedule__bucket-head' },
           h('span', { class: 'pr-schedule__bucket-label', text: state.mode === 'month' ? b.label : `${b.label}号` }),
           h('small', { text: `${b.start.slice(5)} ~ ${b.end.slice(5)}` })),
-        items.length
-          ? h('ul', { class: 'pr-schedule__items' }, ...itemNodes)
-          : h('p', { class: 'pr-schedule__empty', text: '无排期动作' }));
+        h('ul', { class: 'pr-schedule__items' }, ...itemNodes));
     }));
     return analysisPanel(
-      state.mode === 'month' ? '本月任务排期（按周）' : '本周任务排期（按日）',
-      '动作按计划日期落位；点击动作打开执行链路。数据来自动作状态机，不另建任务体系。',
+      state.mode === 'month' ? '本月任务排期（有动作的周）' : '本周任务排期（有动作的日期）',
+      '只显示已有计划日期的动作；点击动作打开执行链路。',
       timeline,
       null,
     );
   }
 
-  function renderExecutionAnalysis(context) {
-    if (!els.executionAnalysis) return;
-    const blocked = context.actions_blocked || [];
-    const planned = context.actions_planned || [];
-    const review = context.actions_review || [];
-    const verify = context.actions_to_verify || [];
-    const done = context.actions_done || [];
-    els.executionAnalysis.replaceChildren(
-      renderScheduleTimeline(context) || null,
-      analysisPanel('\u5df2\u5b8c\u6210\u52a8\u4f5c', '\u53ea\u5c55\u793a\u5df2\u901a\u8fc7\u590d\u76d8\u9a8c\u6536\u7684\u52a8\u4f5c\u3002', renderActionListWithControls(done), '\u672c\u671f\u6682\u65e0\u5df2\u5b8c\u6210\u52a8\u4f5c\u3002'),
-      analysisPanel('\u6267\u884c\u4e2d\u4e0e\u89c2\u5bdf\u4e2d', '\u6309\u73b0\u6709\u72b6\u6001\u673a\u5236\u63a8\u8fdb\u6267\u884c\u3001\u89c2\u5bdf\u548c\u91cd\u7b97\u3002', renderActionListWithControls(planned), '\u5f53\u524d\u6ca1\u6709\u6267\u884c\u4e2d\u52a8\u4f5c\u3002'),
-      analysisPanel('\u672c\u671f\u5f85\u9a8c\u8bc1', '\u6765\u81ea\u4e0a\u4e00\u5468\u6216\u4e0a\u4e00\u6708\u7684\u52a8\u4f5c\uff0c\u5728\u672c\u671f\u56de\u6d41\u7ed3\u679c\u3002', renderActionListWithControls(verify), '\u5f53\u524d\u6682\u65e0\u4e0a\u671f\u5f85\u9a8c\u8bc1\u52a8\u4f5c\u3002'),
-      analysisPanel('\u5f85\u590d\u76d8\u9a8c\u6536', '\u89c2\u5bdf\u7a97\u53e3\u5b8c\u6210\u540e\uff0c\u5728\u8fd9\u91cc\u786e\u8ba4\u6709\u6548\u6027\u5e76\u56de\u6d41\u4e0b\u4e00\u6b65\u3002', renderActionListWithControls(review), '\u5f53\u524d\u6ca1\u6709\u5f85\u590d\u76d8\u52a8\u4f5c\u3002'),
-      analysisPanel('\u963b\u585e\u4e0e\u5f85\u5904\u7406', '\u963b\u585e\u9879\u9700\u5728\u590d\u76d8\u7ed3\u8bba\u4e2d\u8bf4\u660e\u6240\u9700\u8d44\u6e90\u548c\u89e3\u9664\u6761\u4ef6\u3002', renderActionListWithControls(blocked), '\u5f53\u524d\u6ca1\u6709\u963b\u585e\u52a8\u4f5c\u3002'),
-    );
+  function renderExecutionEmpty() {
+    return h('div', { class: 'pr-execution-empty' },
+      h('p', { class: 'pr-execution-empty__title', text: '当前周期还没有动作' }),
+      h('p', { class: 'pr-execution-empty__hint', text: '先在复盘结论的板块数据中确认问题，再生成动作草案并进入执行状态机。' }));
   }
 
-  function activateWorkbench(key) {
+  function renderExecutionAnalysis(context) {
+    if (!els.executionAnalysis) return;
+    const groups = [
+      ['执行中与观察中', '按现有状态机推进执行、观察和重算。', context.actions_planned || [], '当前没有执行中动作。'],
+      ['本期待验证', '来自上一周或上一个月的动作，在本期回流结果。', context.actions_to_verify || [], '当前暂无上期待验证动作。'],
+      ['待复盘验收', '观察窗口完成后，在这里确认有效性并回流下一步。', context.actions_review || [], '当前没有待复盘动作。'],
+      ['阻塞与待处理', '阻塞项需在复盘结论中说明所需资源和解除条件。', context.actions_blocked || [], '当前没有阻塞动作。'],
+      ['已完成动作', '只展示已通过复盘验收的动作。', context.actions_done || [], '本期暂无已完成动作。'],
+    ];
+    const activeGroups = groups.filter(([, , rows]) => rows.length);
+    const timeline = renderScheduleTimeline(context);
+    const panels = activeGroups.length
+      ? activeGroups.map(([title, hint, rows, emptyText]) => analysisPanel(title, hint, renderActionListWithControls(rows), emptyText))
+      : [analysisPanel('动作状态', '确认问题后，动作会在这里跟踪执行、观察和验收。', renderExecutionEmpty(), null)];
+    els.executionAnalysis.replaceChildren(...(timeline ? [timeline, ...panels] : panels));
+  }
+
+  // ------------------------------------------------------ 板块数据抽屉
+  // 六段的「板块数据」全量明细收进右侧抽屉，段落内只留一行入口。
+  // 背景：拆因工作区撤销后明细并入六段，六段证据合计约 7200px，默认展开会把
+  // 写作区推到 12 屏外（docs/PERIOD_REVIEW_REDESIGN_20261002.md 的 P2 数据抽屉）。
+  // 非模态（无遮罩）——左侧写作区仍可读，不做焦点陷阱；Esc / 点外部 / 关闭按钮收起。
+  const drawerEl = document.querySelector('[data-pr-drawer]');
+  let drawerReturnFocus = null;
+  const isDrawerOpen = () => Boolean(drawerEl && drawerEl.classList.contains('is-open'));
+
+  function scrollDrawerTo(sectionKey) {
+    drawerEl?.querySelector(`[data-pr-drawer-section="${sectionKey}"]`)
+      ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  function openDiagnosisDrawer(sectionKey) {
+    if (!drawerEl) return;
+    // 已开时只做锚点定位，避免把 returnFocus 覆盖成抽屉内元素。
+    if (isDrawerOpen()) {
+      if (sectionKey) scrollDrawerTo(sectionKey);
+      return;
+    }
+    drawerReturnFocus = document.activeElement;
+    drawerEl.classList.add('is-open');
+    document.body.classList.add('pr-drawer-open');
+    if (sectionKey) window.setTimeout(() => scrollDrawerTo(sectionKey), 80);
+    drawerEl.querySelector('[data-pr-drawer-close]')?.focus({ preventScroll: true });
+  }
+
+  function closeDiagnosisDrawer() {
+    if (!isDrawerOpen()) return;
+    drawerEl.classList.remove('is-open');
+    document.body.classList.remove('pr-drawer-open');
+    const restore = drawerReturnFocus;
+    drawerReturnFocus = null;
+    if (restore?.isConnected) restore.focus({ preventScroll: true });
+  }
+
+  /** 把六段材料按段渲染进抽屉，顶部生成同序锚点。 */
+  function renderDiagnosisDrawer(context) {
+    const body = drawerEl?.querySelector('[data-pr-drawer-body]');
+    const nav = drawerEl?.querySelector('[data-pr-drawer-nav]');
+    if (!body || !nav) return;
+    const entries = (state.template || []).map((section, index) => {
+      const keys = (section.materials || []).filter((key) => key !== 'metrics' && key !== 'target_path');
+      const blocks = keys.map((key) => materialFor(key, context)).filter(Boolean);
+      if (!blocks.length) return null;
+      const title = section.title || section.key;
+      return {
+        key: section.key,
+        title,
+        index,
+        node: h('section', { class: 'pr-drawer__section', 'data-pr-drawer-section': section.key },
+          h('h3', { class: 'pr-diagnosis__heading', text: title }), ...blocks),
+      };
+    }).filter(Boolean);
+    body.replaceChildren(...entries.map((entry) => entry.node));
+    nav.replaceChildren(...entries.map((entry) => h('button', {
+      type: 'button',
+      class: 'pr-drawer__nav-chip',
+      text: `${entry.index + 1} ${String(entry.title).split('（')[0]}`,
+      onclick: () => scrollDrawerTo(entry.key),
+    })));
+  }
+
+  function bindDiagnosisDrawer() {
+    if (!drawerEl) return;
+    drawerEl.querySelector('[data-pr-drawer-close]')?.addEventListener('click', closeDiagnosisDrawer);
+    // Esc：弹窗（字段设置 / 动作 / 趋势）打开时优先让弹窗处理，不抢关闭。
+    document.addEventListener('keydown', (event) => {
+      if (event.key !== 'Escape' || !isDrawerOpen()) return;
+      if (document.querySelector('dialog[open]')) return;
+      closeDiagnosisDrawer();
+    });
+    // 非模态面板没有遮罩，用 document 点击判断「点到了外面」。
+    // 排除抽屉自身、弹窗内部（字段设置从抽屉里开出来的）、以及触发按钮（它自己开）。
+    document.addEventListener('click', (event) => {
+      if (!isDrawerOpen()) return;
+      const target = event.target;
+      if (!target || typeof target.closest !== 'function') return;
+      if (drawerEl.contains(target)) return;
+      if (target.closest('dialog[open]')) return;
+      if (target.closest('.pr-evidence__open-drawer')) return;
+      closeDiagnosisDrawer();
+    });
+  }
+
+  // 页签已撤：工作区平铺一页，「切换」就是滚动定位到对应区块。
+  function activateWorkbench(key, { focus = false } = {}) {
     // 切走货品区时字段设置对话框失去锚点，先收起。
     productColumns.closeProductFieldPopover();
-    document.querySelectorAll('[data-pr-workbench-tab]').forEach((tab) => tab.classList.toggle('is-active', tab.dataset.prWorkbenchTab === key));
-    document.querySelectorAll('[data-pr-workbench-panel]').forEach((panel) => panel.classList.toggle('is-active', panel.dataset.prWorkbenchPanel === key));
-    // 数据参考区（矩阵 / 类目拆解）若还没拿到数据（首次加载失败、或后端刚重启），
-    // 切到这个页签时就地补拉一次，用户不必整页刷新。
+    const panel = document.querySelector(`[data-pr-workbench-panel="${key}"]`);
+    if (!panel) return;
     if (key === 'reference' && (!state.matrix || !state.categoryBreakdown)) reloadMatrixPanels();
+    panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    void focus;
+  }
+
+  /** 滚动定位到某个结论段（归因线索等从总览直达对应段落）。 */
+  function scrollToSection(sectionKey) {
+    els.sections?.querySelector(`[data-section-key="${sectionKey}"]`)
+      ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
   function renderWorkbench(context, review) {
     renderCommandCenter(context);
-    gapAttribution.renderPanel(context, els.gapAttribution);
-    renderProductAnalysis(context);
     renderExecutionAnalysis(context);
-    renderChannelAnalysis(context);
-    renderTrafficAnalysis(context);
-    renderMarketAnalysis(context);
-    renderMatrix(state.matrix, state.matrixError);
-    renderCategoryBreakdown(state.categoryBreakdown, state.categoryError);
-    renderOverview(context);
+    // 登记 context：字段设置改列后 product-columns 要据此重渲染（refreshProductTables）。
+    // 原先这步在被删掉的 renderProductAnalysis 里，删除后无人调用 → 改列不再生效。
+    productColumns.rememberContext(context);
     renderSections(state.template, context, review);
+    // 抽屉内容与段落同步重建（同一份 context 与列配置），保证「在右侧展开」看到的是最新数据。
+    renderDiagnosisDrawer(context);
   }
 
   function renderKpiGrid(metrics) {
@@ -1760,10 +2034,15 @@
   }
 
   // ------------------------------------------------------------- 素材渲染
-  function materialBlock(title, bodyNode, emptyText) {
-    const block = h('div', { class: 'pr-material' }, h('p', { class: 'pr-material__title', text: title }));
+  // badges：可选，标题右侧的徽标节点（如「部分口径」）。用于在**数据块标题上**
+  // 就地标明口径降级，读者不必先读脚注才知道这个数不能全信。
+  function materialBlock(title, bodyNode, emptyText, hint, badges) {
+    const titleNode = h('p', { class: 'pr-material__title', text: title });
+    (badges || []).filter(Boolean).forEach((badge) => titleNode.append(badge));
+    const block = h('div', { class: 'pr-material' }, titleNode);
     if (bodyNode) block.append(bodyNode);
     else if (emptyText) block.append(h('p', { class: 'pr-material__empty', text: emptyText }));
+    if (hint) block.append(h('p', { class: 'pr-material__hint', text: hint }));
     return block;
   }
 
@@ -1771,7 +2050,12 @@
   // 实现已拆至 pages/period-review/product-columns.js（deps 显式注入）：
   // 列定义 / 列开关 / 字段设置浮层的状态与行为都归该模块。
   const productColumns = window.createProductColumns({
-    h, productShare, declineRate, safeMetric, openProductDiagnosis, openProductTrend, renderProductAnalysis,
+    h, productShare, declineRate, safeMetric, openProductDiagnosis, openProductTrend,
+    // 货品明细已并入六段（materialFor case 'products'），不再有独立货品工作区。
+    // 此前这里直接传 renderProductAnalysis，但该函数已随拆因工作区一起删除，
+    // 未定义引用 → ReferenceError 打断整个 IIFE → 六段全部不渲染（2026-10-03 修）。
+    // 列变更后重渲染六段即可，语义与原「重渲染货品区」等价。
+    renderProductAnalysis: () => { if (state.context) renderSections(state.template, state.context, state.review); },
   });
 
   // 目标卡与「目标 vs 实际」表已拆至 pages/period-review/target-cards.js：
@@ -1788,14 +2072,22 @@
 
   // 目标差距归因已拆至 pages/period-review/gap-attribution.js：
   // 三因子连环替代分解（流量×转化×客单）+ 归因线索，回答「目标为啥没完成」。
-  const gapAttribution = window.createGapAttribution({ h, state, formatValue, activateWorkbench });
+  const gapAttribution = window.createGapAttribution({ h, state, formatValue, scrollToSection });
+
+  // 确定性初稿生成器（pages/period-review/deterministic-draft.js）：
+  // 把 context 数据事实组织成六段正文；三因子算术直接复用 gapAttribution.decompose。
+  const deterministicDraft = window.createDeterministicDraft({
+    formatValue, decompose: gapAttribution.decompose,
+  });
 
   // 目标输入变化时的可见反馈出口：归因摘要里的完成率即时重算。
   // 驾驶舱三卡由外层 renderCommandCenter 整块重建，不在这里重复刷。
-  // 定义在 gapAttribution 之后（闭包引用），target-cards 只在输入事件里调用它。
+  // 目标输入即时联动：target-cards 把输入换算回写 context.target_path，
+  // 归因摘要嵌在品类汇总段板块数据里，重渲染段落即刷新完成率。
   function onTargetsChanged() {
     if (!state.context) return;
-    if (els.gapAttribution) gapAttribution.renderPanel(state.context, els.gapAttribution);
+    renderSections(state.template, state.context, state.review);
+    refreshGeneratedDraft();
   }
 
   // 叶子类目近 3 周对比看板已拆至 pages/period-review/leaf-board.js：
@@ -1858,6 +2150,9 @@
     if (!block.childElementCount) block.append(h('p', { class: 'pr-material__empty', text: '该店本期日数据不足，无法画趋势。' }));
     return block;
   }
+
+  // 蓝海分级 → 标签样式。「待核」是「无法判定」而非结论，用中性色，别当机会色。
+  const BLUE_OCEAN_GRADE_KIND = { '高潜蓝海': 'good', '中等': 'info', '供给偏多': 'warning', '待核': 'info' };
 
   function renderMarket(market) {
     const wrap = h('div', { class: 'pr-materials' });
@@ -2019,6 +2314,125 @@
       const priorityText = Object.entries(priorityCounts).map(([key, value]) => `${key} ${value}项`).join(' · ');
       wrap.append(materialBlock('\u7ade\u54c1\u5dee\u8ddd\u5206\u7ea7', h('p', { class: 'pr-material__empty', text: priorityText })));
     }
+    // ---- XMind「市场监控-行业」：8大归类 / 词根需求 / 趋势节点 / 趋势市场 / 蓝海市场 ----
+    // 口径与「市场排行」页共用同一后端算法（services/market_monitor_service），
+    // 这里只负责呈现，绝不重算 —— 否则两页会漂移出两套结论。
+    const insights = market.keyword_insights || {};
+    if (insights.categories && insights.categories.length) {
+      const tr = h('tr', null,
+        h('th', { text: '归类' }), h('th', { class: 'num', text: '词数' }),
+        h('th', { class: 'num', text: '搜索热度' }), h('th', { class: 'num', text: '热度占比' }),
+        h('th', { text: 'TOP 词根' }));
+      const body = insights.categories.map((row) => h('tr', null,
+        h('td', { text: row.label || '--' }),
+        h('td', { class: 'num', text: String(row.keyword_count ?? '--') }),
+        h('td', { class: 'num', text: formatCompact(row.search_heat) }),
+        h('td', { class: 'num', text: row.heat_share === null || row.heat_share === undefined ? '--' : `${(row.heat_share * 100).toFixed(1)}%` }),
+        h('td', { text: (row.top_keywords || []).map((item) => item.keyword).join('、') || '--' }),
+      ));
+      wrap.append(materialBlock('关键词洞察 · 8 大归类',
+        h('table', { class: 'pr-table' }, h('thead', null, tr), h('tbody', null, ...body)),
+        null,
+        insights.window
+          ? `窗口 ${insights.window.start} ~ ${insights.window.end}（${insights.window.day_count} 天）· 共 ${insights.unique_keyword_count || 0} 个搜索词；按规则词典先命中先归类，未命中记「其他」。`
+          : null));
+    }
+
+    const trendNodes = insights.trend_nodes || {};
+    if ((trendNodes.rising || []).length || (trendNodes.cooling || []).length) {
+      const nodeRows = [];
+      (trendNodes.rising || []).slice(0, 6).forEach((row) => nodeRows.push(['起势', row]));
+      (trendNodes.cooling || []).slice(0, 6).forEach((row) => nodeRows.push(['退势', row]));
+      const tr = h('tr', null, h('th', { text: '方向' }), h('th', { text: '搜索词' }), h('th', { text: '归类' }),
+        h('th', { class: 'num', text: '近 7 天热度' }), h('th', { class: 'num', text: '基线日均' }), h('th', { class: 'num', text: '增速' }));
+      const body = nodeRows.map(([direction, row]) => h('tr', null,
+        h('td', null, stateTag(direction, direction === '起势' ? 'good' : 'warning')),
+        h('td', { text: row.keyword || '--' }),
+        h('td', { text: row.category_label || '--' }),
+        h('td', { class: 'num', text: formatCompact(row.recent_heat) }),
+        h('td', { class: 'num', text: formatCompact(row.baseline_heat) }),
+        h('td', { class: 'num', text: signedPercent(row.growth === null || row.growth === undefined ? null : row.growth * 100) }),
+      ));
+      const threshold = Number(trendNodes.threshold ?? 0.5) * 100;
+      wrap.append(materialBlock('趋势节点分析',
+        h('table', { class: 'pr-table' }, h('thead', null, tr), h('tbody', null, ...body)),
+        null,
+        `近 7 天日均热度 vs 前置基线（至多 23 天），增速 ≥ ${threshold.toFixed(0)}% 判起势 / ≤ -${threshold.toFixed(0)}% 判退势。`));
+    } else if (market.grading && market.grading.trend_node_available === false) {
+      wrap.append(materialBlock('趋势节点分析', null, '当前基线数据不足（市场表覆盖天数不够「近 7 天 + 前置窗口」两段），起势 / 退势不可判。'));
+    }
+
+    const supply = market.blue_ocean_supply || {};
+    if (supply.words && supply.words.length) {
+      const tr = h('tr', null, h('th', { text: '词根' }), h('th', { text: '代表搜索词' }),
+        h('th', { class: 'num', text: '日均热度' }), h('th', { class: 'num', text: '在榜覆盖' }),
+        h('th', { class: 'num', text: '每万覆盖' }), h('th', { text: '分级' }));
+      const body = supply.words.map((row) => h('tr', null,
+        h('td', { text: row.keyword || '--' }),
+        h('td', { text: row.keyword_full || '--' }),
+        h('td', { class: 'num', text: formatCompact(row.search_heat) }),
+        h('td', { class: 'num', text: `${row.cover_count ?? '--'} 品` }),
+        h('td', { class: 'num', text: row.cover_per_10k === null || row.cover_per_10k === undefined ? '--' : String(row.cover_per_10k) }),
+        h('td', null, stateTag(row.grade || '--', BLUE_OCEAN_GRADE_KIND[row.grade] || 'info')),
+      ));
+      const hintParts = [];
+      if (supply.word_scope) hintParts.push(`${supply.word_scope}；`);
+      hintParts.push('每万覆盖 = 在榜覆盖 ÷ (日均热度 / 万)：<5 高潜蓝海、5-10 中等、>10 供给偏多。');
+      if (supply.pending_count) hintParts.push(`覆盖为 0 的 ${supply.pending_count} 个词根记「待核」—— 0 不代表供给稀缺，也可能只是词根与标题用词不一致，需人工核。`);
+      wrap.append(materialBlock('蓝海市场 · 低供给词根',
+        h('table', { class: 'pr-table' }, h('thead', null, tr), h('tbody', null, ...body)),
+        null, hintParts.join('')));
+    }
+
+    const trendItems = market.trend_items || {};
+    if ((trendItems.rising || []).length || (trendItems.new_items || []).length) {
+      const itemRows = [];
+      (trendItems.rising || []).slice(0, 6).forEach((row) => itemRows.push(['上升', row]));
+      (trendItems.new_items || []).slice(0, 6).forEach((row) => itemRows.push(['新进榜', row]));
+      const tr = h('tr', null, h('th', { text: '类型' }), h('th', { text: '商品' }), h('th', { text: '店铺' }),
+        h('th', { class: 'num', text: '排名变化' }), h('th', { class: 'num', text: 'UV' }), h('th', { class: 'num', text: '支付买家' }));
+      const body = itemRows.map(([kind, row]) => h('tr', null,
+        h('td', null, stateTag(kind, kind === '上升' ? 'good' : 'info')),
+        h('td', { text: row.title || row.item_id || '--' }),
+        h('td', { text: row.shop_name || '--' }),
+        h('td', { class: 'num', text: kind === '新进榜' ? `第 ${row.rank ?? '--'} 名` : `${row.first_rank} → ${row.last_rank}` }),
+        h('td', { class: 'num', text: formatCompact(row.uv) }),
+        h('td', { class: 'num', text: formatCompact(row.pay_buyer_count) }),
+      ));
+      const window = trendItems.window || {};
+      wrap.append(materialBlock('商品排行 · 趋势市场',
+        h('table', { class: 'pr-table' }, h('thead', null, tr), h('tbody', null, ...body)),
+        null,
+        `窗口 ${window.start || '--'} ~ ${window.end || '--'}（${window.day_count || 0} 天）首尾排名对比：上升 ${trendItems.rising_total || 0} 个 / 新进榜 ${trendItems.new_total || 0} 个（在榜 ${trendItems.item_count || 0} 个商品）。`));
+    }
+
+    const moves = market.rival_moves || {};
+    if (moves.shops && moves.shops.length) {
+      const tr = h('tr', null, h('th', { text: '竞店' }), h('th', { class: 'num', text: '在榜商品' }),
+        h('th', { class: 'num', text: '上升' }), h('th', { class: 'num', text: '下降' }),
+        h('th', { class: 'num', text: '新进榜' }), h('th', { class: 'num', text: '退出' }),
+        h('th', { text: '变动最大' }));
+      const body = moves.shops.map((row) => h('tr', null,
+        h('td', { text: row.shop_name || '--' }),
+        h('td', { class: 'num', text: String(row.item_count ?? '--') }),
+        h('td', { class: 'num', text: String(row.rising_count ?? '--') }),
+        h('td', { class: 'num', text: String(row.falling_count ?? '--') }),
+        h('td', { class: 'num', text: String(row.new_count ?? '--') }),
+        h('td', { class: 'num', text: String(row.exit_count ?? '--') }),
+        h('td', { text: (row.movers || []).slice(0, 2).map((item) => `${item.title}(${item.rank_change > 0 ? '+' : ''}${item.rank_change})`).join('；') || '--' }),
+      ));
+      wrap.append(materialBlock('竞店爆品排名变化',
+        h('table', { class: 'pr-table' }, h('thead', null, tr), h('tbody', null, ...body)),
+        null,
+        `窗口首尾排名对比；全市场共 ${moves.shop_count || 0} 家在榜，按变动活跃度取前 ${moves.shops.length} 家。`));
+    }
+
+    const grading = market.grading || {};
+    if (grading.limitations && grading.limitations.length) {
+      wrap.append(materialBlock('市场分级口径边界', h('ul', { class: 'pr-actions-list' },
+        ...grading.limitations.map((text) => h('li', null, stateTag('口径', 'info'), h('span', { text: ` ${text}` }))))));
+    }
+
     if (market.missing_inputs && market.missing_inputs.length) {
       wrap.append(materialBlock('数据状态', h('p', { class: 'pr-material__empty', text: `待验证：${market.missing_inputs.join('、')}` })));
     }
@@ -2042,6 +2456,7 @@
     // 三渠道推广成交金额合计（XMind「推广成交金额增加三渠道金额」）。
     const channelTotals = ads.channel_totals;
     const scopeMissing = channelTotals && (channelTotals.missing_inputs || []).includes('promotion_category_scope');
+    const channelPartial = channelTotals && channelTotals.partial;
     if (scopeMissing) {
       blocks.push(materialBlock('推广成交金额 · 渠道拆分', null,
         '渠道数据来自计划粒度，不带商品映射，无法按当前品类过滤；切回「全部品类」可查看全店渠道拆分。'));
@@ -2062,9 +2477,12 @@
           h('td', { class: 'num', text: shareText(group.payment_share) }),
           h('td', { class: 'num', text: formatValue(group.roi, 'decimal') }),
         )))));
-      const sourceNote = channelTotals.source === 'campaign_month'
-        ? '渠道行来自月度汇总（该周期没有日粒度渠道数据）。'
-        : `渠道行覆盖 ${channelTotals.sample_days} 天日粒度数据。`;
+      // 按品类口径只覆盖部分渠道（缺全站推广）→ 成交占比不适用，必须说明，别让「--」被当成 0。
+      const sourceNote = channelPartial
+        ? `按品类口径，覆盖 ${channelTotals.groups.map((g) => g.name).join(' / ')}；全站推广无商品级明细，成交占比不适用（切「全部品类」看全店口径）。`
+        : channelTotals.source === 'campaign_month'
+          ? '渠道行来自月度汇总（该周期没有日粒度渠道数据）。'
+          : `渠道行覆盖 ${channelTotals.sample_days} 天日粒度数据。`;
       blocks.push(materialBlock('推广成交金额 · 渠道拆分', h('div', null, table,
         h('p', { class: 'pr-material__empty', text: sourceNote }))));
     }
@@ -2120,27 +2538,153 @@
     return wrap;
   }
 
+  // 广告单品「渠道×商品」明细子表（有数据时才渲染，无数据整列不出现）。
+  // 渠道明细子表。sources 标明每组数据的来源，便于审计（尤其全站推广靠计划精确归因）：
+  // creative=创意级事实；campaign_exact=计划→商品 1:1 精确归因；product_grain=商品级历史行。
+  const CHANNEL_SOURCE_LABELS = {
+    creative: '创意级',
+    campaign_exact: '计划精确归因',
+    product_grain: '商品级历史',
+    mixed: '混合来源',
+  };
+
+  function channelsTable(channels, sources) {
+    const groups = Object.keys(channels || {});
+    if (!groups.length) return h('span', { class: 'pr-material__empty', text: '无渠道明细' });
+    const cols = [
+      ['ad_spend', '花费', 'money'],
+      ['attributed_payment', '成交', 'money'],
+      ['ad_ratio', '费比', 'percent'],
+      ['roi', '总投产', 'decimal'],
+      ['direct_roi', '直接投产', 'decimal'],
+      ['cart_cost', '加购成本', 'money'],
+      ['new_cost', '拉新成本', 'money'],
+      ['cart_rate', '加购率', 'percent'],
+    ];
+    return h('table', { class: 'pr-table' },
+      h('thead', null, h('tr', null, h('th', { text: '渠道' }),
+        ...cols.map(([, label]) => h('th', { class: 'num', text: label })),
+        h('th', { text: '来源' }))),
+      h('tbody', null, ...groups.map((name) => {
+        const totals = channels[name] || {};
+        const source = (sources || {})[name];
+        return h('tr', null, h('td', { text: name }),
+          ...cols.map(([key, , format]) => h('td', { class: 'num', text: safeMetric(totals[key], format) })),
+          h('td', { text: CHANNEL_SOURCE_LABELS[source] || '--' }));
+      })));
+  }
+
   function materialFor(key, context) {
     switch (key) {
+      // —— 拆因明细并入结论段（板块数据 = 完整明细，不再另设拆因工作区）：
+      // 品类汇总段看目标差距归因 + 流量来源；货品/广告/市场段各嵌完整明细。
+      case 'gap_attribution': {
+        if (!gapAttribution) return null;
+        return materialBlock('目标差距归因（流量 × 转化 × 净销售客单）', gapAttribution.buildBody(context), null);
+      }
+      case 'traffic': {
+        const traffic = context.dimensions?.traffic || {};
+        const covered = `流量覆盖 ${traffic.sample_days || 0}/${traffic.period_days || '--'} 天`;
+        return materialBlock('流量来源拆解', trafficTable(traffic), '暂无流量来源数据。', covered);
+      }
       case 'products': {
+        const products = context.products || {};
+        const board = productColumns.productBoardPanel;
         const wrap = h('div', { class: 'pr-materials' });
-        const top = productColumns.renderProductTable(context.products && context.products.top, false);
-        const decline = productColumns.renderProductTable(context.products && context.products.decline, true);
-        wrap.append(materialBlock('销售额 TOP10', top, '本期没有正向销售商品。'));
-        wrap.append(materialBlock('环比下滑 TOP10', decline, '缺少上期可比数据。'));
+        wrap.append(goodsSummaryPanel(products.summary, context.profit_structure) || materialBlock('货品汇总', null, '本期暂无货品数据。'));
+        wrap.append(problemItemsPanel(products.problem_items));
+        wrap.append(board('净销售额 TOP10', '按本期净销售额排序，先识别需要保住的核心商品。', products.top, 'top', '本期没有正向销售商品。'));
+        wrap.append(board('下滑商品 TOP10', '按相对上期销售额变化排序，作为异常诊断入口。', products.decline, 'decline', '缺少可比周期数据。'));
+        wrap.append(h('details', { class: 'pr-analysis-more' },
+          h('summary', { class: 'pr-analysis-more__summary' },
+            h('span', { text: '其他货品榜' }),
+            h('small', { text: '付费、盈利、亏损、新品' })),
+          h('div', { class: 'pr-analysis-more__body' },
+            board('付费单品 TOP10', '按推广花费排序。', products.paid, 'paid', '本期没有推广花费记录。'),
+            board('盈利 TOP10', '按经营利润排序。', products.profit, 'profit', '本期没有正利润商品。'),
+            board('亏损 TOP10', '按经营利润倒序，优先排查亏损原因。', products.loss, 'loss', '本期没有亏损商品。'),
+            board('新品 · 净销售额 TOP10', '最近 60 天上架商品按净销售额排序。', products.new, 'new', '最近 60 天上架的商品暂无销售。'),
+            board('新品 · 付费 TOP10', '最近 60 天上架商品按推广花费排序。', products.new_paid, 'new_paid', '最近 60 天上架的商品暂无推广花费。'))));
+        return wrap;
+      }
+      case 'promotion_channels': {
+        const dimensions = context.dimensions || {};
+        const promotion = dimensions.promotion || {};
+        const channelView = promotion.channels || {};
+        const campaignView = promotion.campaigns || {};
+        const promotionHint = (view, grainName) => view.partial
+          ? '按品类口径聚合，覆盖有商品映射的渠道（关键词/人群等）；全站推广仅「计划只绑 1 个商品」的计划可精确归因，切「全部品类」可看全店口径。'
+          : view.missing_inputs?.includes('promotion_category_scope')
+            ? `当前推广数据没有商品映射，无法按所选类目筛选${grainName}，避免混入全店数据。`
+            : `按 ${view.grain || grainName} 粒度聚合；缺少数据时保持为空，不补 0。`;
+        const wrap = h('div', { class: 'pr-materials' });
+        wrap.append(materialBlock('推广效率（本期投入与投产变化）', renderAds(context.ads), '暂无推广数据。'));
+        wrap.append(materialBlock('推广渠道拆解',
+          dimensionTable(channelView.items, 'channel'), '暂无可按当前口径使用的渠道推广数据。', promotionHint(channelView, 'channel')));
+        wrap.append(materialBlock('推广计划拆解',
+          dimensionTable(campaignView.items, 'campaign'), '暂无可按当前口径使用的计划推广数据。',
+          campaignView.comparison_available === false
+            ? '本期有计划数据，但对比期缺少同粒度数据，暂不展示环比。'
+            : promotionHint(campaignView, 'campaign')));
+        // 计划 → 商品归因：计划级花费 + 归因方式（精确 / 多商品不拆分）。
+        // 这是商品级「全站推广」的唯一来源（creative 表不含该场景）。
+        const attributionBlock = campaignAttributionTable(context.campaign_attribution);
+        if (attributionBlock) wrap.append(attributionBlock);
         return wrap;
       }
       case 'market':
         return renderMarket(context.market);
-      case 'ads':
-        return renderAds(context.ads);
       case 'promotion_items': {
-        const items = (context.promotion_items && context.promotion_items.items) || [];
-        return materialBlock('广告单品 TOP20 消耗（摘要）', items.length
-          ? h('ul', { class: 'pr-list' }, ...items.slice(0, 10).map((item) => h('li', null,
-            h('strong', { text: `${item.title || item.product_id} · 花费 ${safeMetric(item.totals && item.totals.ad_spend, 'money')}` }),
-            ` · ROI ${safeMetric(item.totals && item.totals.roi, 'decimal')} · 直接投产 ${safeMetric(item.totals && item.totals.direct_roi, 'decimal')} · 拉新成本 ${safeMetric(item.totals && item.totals.new_cost, 'money')}`)))
-          : null, '本期没有商品级推广数据。');
+        const block = context.promotion_items || {};
+        const items = block.items || [];
+        if (!items.length) return materialBlock('广告单品 TOP20 消耗', null, '本期没有商品级推广数据。');
+        // 列对齐 XMind「广告-单品」：花费 / 费比 / 总投产 / 直接投产 / 加购成本 / 拉新成本 / 加购率。
+        const cols = [
+          ['ad_spend', '花费', 'money'],
+          ['ad_ratio', '费比', 'percent'],
+          ['roi', '总投产', 'decimal'],
+          ['direct_roi', '直接投产', 'decimal'],
+          ['cart_cost', '加购成本', 'money'],
+          ['new_cost', '拉新成本', 'money'],
+          ['cart_rate', '加购率', 'percent'],
+        ];
+        const hasChannels = items.some((item) => item.channels && Object.keys(item.channels).length);
+        const head = h('tr', null,
+          h('th', { text: '商品' }),
+          ...cols.map(([, label]) => h('th', { class: 'num', text: label })),
+          hasChannels ? h('th', { text: '渠道' }) : null);
+        const rows = items.slice(0, 20).map((item) => {
+          const totals = item.totals || {};
+          const name = item.title || item.product_id;
+          const main = h('tr', null,
+            h('td', { class: 'pr-table__title', title: name, text: name }),
+            ...cols.map(([key, , format]) => h('td', { class: 'num', text: safeMetric(totals[key], format) })),
+            hasChannels
+              ? h('td', null, item.channels && Object.keys(item.channels).length
+                ? h('button', {
+                  type: 'button', class: 'pr-anchor-link', text: '展开 ↕',
+                  onclick: (event) => {
+                    const detail = event.target.closest('tr').nextElementSibling;
+                    if (detail && detail.classList.contains('pr-promo-item__channels')) {
+                      detail.classList.toggle('is-collapsed');
+                    }
+                  },
+                })
+                : h('span', { text: '--' }))
+              : null);
+          if (!hasChannels) return [main];
+          return [main, h('tr', { class: 'pr-promo-item__channels is-collapsed' },
+            h('td', { colspan: String(cols.length + 2) }, channelsTable(item.channels, item.channel_sources)))];
+        });
+        // 渠道明细是部分口径（全站推广无商品级明细），必须显式提示，别让人把渠道加总当 100%。
+        const hint = block.channels_note
+          || ((block.missing_inputs || []).includes('promotion_product_channel_scope')
+            ? '商品×渠道明细尚未接入，此处暂为商品合计口径。'
+            : null);
+        return materialBlock('广告单品 TOP20 消耗',
+          h('div', { class: 'pr-table-wrap' },
+            h('table', { class: 'pr-table' }, h('thead', null, head), h('tbody', null, ...rows.flat()))),
+          null, hint);
       }
       case 'actions_done':
         return materialBlock('本期已完成动作（来自动作状态机）', renderActionListLegacy(context.actions_done), '本期没有已完成的运营动作。');
@@ -2161,6 +2705,13 @@
             text: `${row.label}：${row.detail}`,
           })))
           : null, '本期未检测到明显异常。');
+      case 'metrics':
+        return materialBlock('本期核心指标', renderKpiGrid(context.metrics || { items: [] }));
+      case 'breakdown':
+        return materialBlock(
+          context.breakdown && context.breakdown.grain === 'week' ? '月内分周指标' : '期内按日指标',
+          breakdownTable(context.breakdown),
+        );
       case 'linked_summaries':
         return renderLinkedSummaries(context.linked_summaries);
       default:
@@ -2211,9 +2762,149 @@
     } catch (_) { /* 忽略 */ }
   }
 
+  // ------------------------------------------------------- 确定性初稿（自动正文）
+  // 缓存键随 周期类型+周期键+对比口径 变化：切周期/切对比后自动重算；
+  // 「重新生成」按钮强制重算。生成结果只填空输入框，绝不覆盖人工内容。
+  function generatedDraftKey() {
+    return `${state.mode}:${currentPeriod()}:${compareQuery()}`;
+  }
+
+  function refreshGeneratedDraft(force = false) {
+    if (!state.context || !deterministicDraft) return null;
+    const key = generatedDraftKey();
+    if (force || !state.generatedDraft || state.generatedDraft.key !== key) {
+      const built = deterministicDraft.buildDraft(state.context);
+      state.generatedDraft = { key, ...built };
+    }
+    return state.generatedDraft;
+  }
+
+  function generatedTextFor(sectionKey, subKey) {
+    const draft = state.generatedDraft;
+    if (!draft || !draft.sections) return '';
+    const entry = draft.sections[sectionKey];
+    if (!entry) return '';
+    return (subKey ? entry[subKey] : entry.text) || '';
+  }
+
+  /** 生成元信息条：时间 / 周期 / 对比口径 / 覆盖率。只展示，不含操作入口。 */
+  /** 初稿元信息：导航行右侧的小字（周期/对比口径在顶栏已有，这里只留时间·口径·覆盖）。 */
+  function renderDraftMeta() {
+    if (!els.draftMeta) return;
+    const draft = state.generatedDraft;
+    if (!draft || !draft.meta) {
+      els.draftMeta.hidden = true;
+      els.draftMeta.replaceChildren();
+      return;
+    }
+    const meta = draft.meta;
+    els.draftMeta.hidden = false;
+    els.draftMeta.replaceChildren(
+      // 悬停可见完整说明；导航行窄，不放长文案。
+      h('span', {
+        class: 'pr-draft-meta__text',
+        title: `初稿生成于 ${meta.generatedAt}；系统只填数据事实，业务原因需人工确认；已填写内容不会被覆盖。`,
+        text: `初稿 ${meta.generatedAt} · ${meta.compareLabel} · 覆盖 ${meta.coverage}`,
+      }),
+    );
+  }
+
+  function regenerateDraft() {
+    if (!state.context) return;
+    refreshGeneratedDraft(true);
+    renderSections(state.template, state.context, state.review);
+    renderDraftMeta();
+    stateBanner('已重新生成初稿；只补空输入框，不覆盖已填写内容。', '');
+  }
+
   function renderSections(template, context, review) {
     if (!els.sections) return;
+    refreshGeneratedDraft();
+    renderDraftMeta();
+    renderSectionNav(template, review);
     els.sections.replaceChildren(...template.map((section, index) => sectionNode(section, index, context, review)));
+    // 自适应高度必须在挂载后量（未挂载时 scrollHeight=0）；字体布局稳定后再补一次。
+    els.sections.querySelectorAll('textarea').forEach(autoGrowTextarea);
+    requestAnimationFrame(() => els.sections.querySelectorAll('textarea').forEach(autoGrowTextarea));
+  }
+
+  // 结论区锚点导航：六段各一枚 chip（短标题 + 完成状态点），吸顶常驻，
+  // 解决六段×(数据+三输入)10 屏长页的定位问题。
+  const CN_NUMERALS = ['①', '②', '③', '④', '⑤', '⑥', '⑦', '⑧'];
+
+  function sectionFillState(section, review) {
+    const saved = (review && review.sections && review.sections[section.key]) || {};
+    const savedSubs = (saved.subsections && typeof saved.subsections === 'object') ? saved.subsections : {};
+    const subs = section.subsections || [];
+    if (!subs.length) {
+      const filled = String(readSectionDraft(section.key) || saved.text || generatedTextFor(section.key, '')).trim().length > 0;
+      return section.required ? (filled ? 'done' : 'missing') : 'done';
+    }
+    let filled = 0;
+    let requiredMissing = 0;
+    subs.forEach((sub) => {
+      const text = String(readSectionDraft(`${section.key}:${sub.key}`)
+        || savedSubs[sub.key]
+        || generatedTextFor(section.key, sub.key) || '');
+      if (text.trim()) filled += 1;
+      else if (sub.required) requiredMissing += 1;
+    });
+    return requiredMissing > 0 ? 'missing' : (filled > 0 ? 'done' : 'empty');
+  }
+
+  function renderSectionNav(template, review) {
+    if (!els.sectionNav) return;
+    if (!template.length) {
+      els.sectionNav.hidden = true;
+      els.sectionNav.replaceChildren();
+      return;
+    }
+    els.sectionNav.hidden = false;
+    const chips = template.map((section, index) => {
+      const stateKind = sectionFillState(section, review);
+      const label = (section.title || section.key).split('（')[0].replace(/^(本周|本月)/, '');
+      return h('button', {
+        type: 'button',
+        class: `pr-section-nav__chip is-${stateKind}`,
+        onclick: () => {
+          const target = els.sections.querySelector(`[data-section-key="${section.key}"]`);
+          target?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        },
+      },
+        h('span', { class: 'pr-section-nav__dot', 'aria-hidden': 'true' }),
+        h('span', { text: `${CN_NUMERALS[index] || index + 1} ${label}` }));
+    });
+    // 支撑工作区锚点（页签撤除后平铺一页，从导航行直达）。
+    const panelChips = [
+      ['execution', '⑦ 计划与动作'],
+      ['reference', '⑧ 数据参考'],
+    ].map(([key, label]) => h('button', {
+      type: 'button',
+      class: 'pr-section-nav__chip',
+      onclick: () => activateWorkbench(key),
+    },
+      h('span', { class: 'pr-section-nav__dot', 'aria-hidden': 'true' }),
+      h('span', { text: label })));
+    // 元信息节点常驻 nav 内（右侧小字），重建 chips 时必须带回去。
+    els.sectionNav.replaceChildren(...chips, ...panelChips);
+    if (els.draftMeta) els.sectionNav.append(els.draftMeta);
+  }
+
+  // 输入框高度随内容生长：内联直编的核心体验——写多长框就多高，不再滚动条内写作。
+  function autoGrowTextarea(textarea) {
+    textarea.style.height = 'auto';
+    textarea.style.height = `${textarea.scrollHeight + 2}px`;
+  }
+
+  // 输入变化后同步导航 chip 的完成状态点（节流到动画帧，避免高频输入重排）。
+  let sectionNavRefreshQueued = false;
+  function refreshSectionNav() {
+    if (sectionNavRefreshQueued || !els.sectionNav) return;
+    sectionNavRefreshQueued = true;
+    requestAnimationFrame(() => {
+      sectionNavRefreshQueued = false;
+      renderSectionNav(state.template, state.review);
+    });
   }
 
   function sectionNode(section, index, context, review) {
@@ -2226,18 +2917,38 @@
         h('h3', { class: 'panel__title pr-section__title' },
           h('span', { class: 'pr-section__index', text: String(index + 1) }),
           h('span', { text: section.title }),
-          section.required ? h('span', { class: 'pr-section__required', text: '必填' }) : null),
+          section.required ? h('span', { class: 'pr-section__required', text: '必填' }) : null,
+          (() => {
+            // 段落完成状态：不用滚动就能看出哪段还没写。
+            const kind = sectionFillState(section, review);
+            const text = kind === 'missing' ? '缺必填' : (kind === 'done' ? '已填写' : '未填写');
+            return h('span', { class: `pr-section__state is-${kind}`, text });
+          })()),
         h('p', { class: 'panel__hint', text: section.hint || '' }),
       ));
 
     const body = h('div', { class: 'ui-panel__body' });
+    // 板块数据（materials）渲染在三段输入之前：先看数，再下结论。
+    // metrics/target_path 不重复渲染——驾驶舱三卡就在同页上方，一块数字看两遍是噪音。
     const materialKeys = (section.materials || []).filter((key) => key !== 'metrics' && key !== 'target_path');
-    // 系统证据节点：三段式段落挂进「根因」子段（写根因时证据就在手边），
-    // 单框段落（day 模板）保持挂在段落顶部。
+    // 系统证据节点：板块数据置顶展示，点数据块标题可收起。
     let evidenceNode = null;
     if (materialKeys.length) {
+      // 默认收起：证据是全量明细（六段合计约 7200px，货品段一段就 3261px），
+      // 默认展开会把写作区推到 12 屏外——正是文档 P4「表格墙」的形态。
+      // 细看走右侧抽屉（「在右侧展开 →」）；想就地看也能展开本段。
       evidenceNode = h('details', { class: 'pr-evidence' },
-        h('summary', { text: `展开系统证据（${materialKeys.length} 个数据块）` }),
+        h('summary', null,
+          h('span', { class: 'pr-evidence__label', text: `板块数据（${materialKeys.length} 个数据块）` }),
+          h('button', {
+            type: 'button',
+            class: 'pr-evidence__open-drawer',
+            text: '在右侧展开 →',
+            onclick: (event) => {
+              event.preventDefault(); // 别顺带把本段 details 也展开/收起
+              openDiagnosisDrawer(section.key);
+            },
+          })),
         h('div', { class: 'pr-evidence__body' }, ...materialKeys.map((key) => materialFor(key, context)).filter(Boolean)),
       );
     } else if ((section.materials || []).some((key) => key === 'metrics' || key === 'target_path')) {
@@ -2254,10 +2965,14 @@
       subDefs.forEach((sub) => {
         const draftKey = `${section.key}:${sub.key}`;
         const draft = readSectionDraft(draftKey);
-        // 老复盘无 subsections 时，analysis 子段回填原 text（只读迁移，不覆盖库）。
+        // 老复盘（无 subsections 结构）时，analysis 子段回填原 text 做只读迁移；
+        // 但其他子段已有内容时不能用 text 兜底——text 是三段拼接串，
+        // analysis 一旦清空就会显示成「根因+下一步」的拼接。
+        const hasSubContent = Object.values(savedSubs).some((entry) => String(entry || '').trim());
         const savedText = savedSubs[sub.key]
-          || (sub.key === 'analysis' ? (saved.text || '') : '');
-        const value = draft || savedText;
+          || (sub.key === 'analysis' && !hasSubContent ? (saved.text || '') : '');
+        // 回填优先级：本地未保存编辑 > 服务端已保存 > 系统生成的初稿。
+        const value = draft || savedText || generatedTextFor(section.key, sub.key);
         if (draft && draft !== savedText) anyDraftRestored = true;
         const textarea = h('textarea', {
           'data-pr-input': section.key,
@@ -2267,9 +2982,11 @@
         });
         textarea.value = value;
         textarea.addEventListener('input', () => {
+          autoGrowTextarea(textarea);
           textarea.classList.toggle('is-missing', Boolean(sub.required) && !textarea.value.trim());
           updateStatusText();
           storeSectionDraft(draftKey, textarea.value);
+          refreshSectionNav();
         });
         if (sub.required && !value.trim()) textarea.classList.add('is-missing');
         const subWrap = h('div', { class: 'pr-subsection' },
@@ -2277,13 +2994,13 @@
             h('span', { text: sub.title }),
             sub.required ? h('em', { text: '必填' }) : null),
           textarea);
-        // 根因子段内嵌系统证据：写根因时证据就在手边，不用折叠区来回对照。
-        if (sub.key === 'root_cause' && evidenceNode) subWrap.append(evidenceNode);
         wrap.append(subWrap);
       });
       if (anyDraftRestored) {
         body.append(h('p', { class: 'pr-toolbar__status pr-draft-note', role: 'status', text: '已恢复未保存的本地草稿；保存复盘后将清除。' }));
       }
+      // 板块数据在三段输入之前：先看数，再写分析/根因/下一步。
+      if (evidenceNode) body.append(evidenceNode);
       body.append(wrap);
     } else {
       // 单框段落（day 模板等）：证据保持挂在段落顶部。
@@ -2293,14 +3010,16 @@
         placeholder: section.placeholder || '',
         rows: 4,
       });
-      // 恢复顺序：已保存内容 > 本地草稿（未保存的编辑在切周期/刷新后不丢）。
+      // 回填优先级：本地未保存编辑 > 服务端已保存 > 系统生成的初稿。
+      // （草稿是用户最新的未保存编辑，必须最优先，否则刷新即丢编辑。）
       const draft = readSectionDraft(section.key);
       const savedText = saved.text || '';
-      textarea.value = draft || savedText;
+      textarea.value = draft || savedText || generatedTextFor(section.key, '');
       if (draft && draft !== savedText) {
         body.append(h('p', { class: 'pr-toolbar__status pr-draft-note', role: 'status', text: '已恢复未保存的本地草稿；保存复盘后将清除。' }));
       }
       textarea.addEventListener('input', () => {
+        autoGrowTextarea(textarea);
         textarea.classList.toggle('is-missing', Boolean(section.required) && !textarea.value.trim());
         updateStatusText();
         storeSectionDraft(section.key, textarea.value);
@@ -2374,7 +3093,7 @@
     const period = currentPeriod();
     els.statusText.textContent = missing.length
       ? `${period} · 还有 ${missing.length} 个必填段落未填写，可先存草稿。`
-      : `${period} · 必填段落已完成，可保存。`;
+      : '';
   }
 
   // ------------------------------------------------------------------ 加载
@@ -2487,6 +3206,24 @@
     renderCategoryBreakdown(state.categoryBreakdown, state.categoryError);
   }
 
+  // 数据参考懒加载：面板滚进可视区才拉矩阵/类目/叶子看板；已加载且未换周期时不重复拉。
+  let referenceObserver = null;
+  function observeReferencePanel() {
+    const panel = document.querySelector('[data-pr-workbench-panel="reference"]');
+    if (!panel || typeof IntersectionObserver === 'undefined') return;
+    if (!referenceObserver) {
+      referenceObserver = new IntersectionObserver((entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting && (!state.matrix || !state.categoryBreakdown)) {
+            reloadMatrixPanels();
+          }
+        });
+      }, { rootMargin: '240px' });
+    }
+    referenceObserver.disconnect();
+    referenceObserver.observe(panel);
+  }
+
   function reloadMatrixPanels() {
     const periodKey = currentPeriod();
     if (!periodKey) return;
@@ -2517,6 +3254,10 @@
 
       state.context = contextResponse.data.context;
       state.review = reviewResponse.data.review || null;
+      state.matrix = null;
+      state.matrixError = null;
+      state.categoryBreakdown = null;
+      state.categoryError = null;
 
       if (!state.selectedPeriodKey) state.selectedPeriodKey = periodKey;
       renderPeriodPicker();
@@ -2524,32 +3265,22 @@
       renderPeriodLabel(state.context.period);
       renderCompareControls(state.context);
       renderWorkbench(state.context, state.review);
-      // 矩阵 / 类目拆解独立拉取：不阻塞上面的渲染，也不会被上面的失败带崩。
-      loadMatrixPanels(periodKey);
+      // 数据参考已平铺进页面：滚到可视区才拉矩阵/类目/叶子看板（懒加载）。
+      observeReferencePanel();
 
       targetCards.fillTargetInputs(state.review);
       if (els.reviewer && state.review && state.review.reviewer) els.reviewer.value = state.review.reviewer;
       if (els.statusSelect && state.review && state.review.status) els.statusSelect.value = state.review.status;
-      // 复盘设置折叠面板：任何目标未录时保持展开（引导补录），全录则收起减噪。
-      const settingsPanel = document.querySelector('[data-pr-settings]');
-      if (settingsPanel) {
-        const anyTargetEmpty = [els.target, els.targetProfit, els.targetAdSpend, els.targetNetExpenseRatio]
-          .some((input) => !input || !String(input.value).trim());
-        settingsPanel.open = anyTargetEmpty;
-      }
+      updateSettingsSummary();
 
       const missing = state.context.metrics.has_data ? [] : state.context.missing_inputs;
-      // 这里只说“同步结果”：周期 / 品类 / 对比口径已由上方「复盘范围」条统一呈现，
-      // 状态条重复同一组信息只会增加首屏噪声。
       stateBanner(
         missing.length
           ? `本期缺少数据源：${missing.join('、')}。仍可手动填写复盘结论。`
-          : '素材已更新。',
+          : '',
         missing.length ? 'no-data' : '',
       );
       renderCategoryNote();
-      const coverageText = coverageNotice(state.context);
-      if (coverageText && els.state) stateBanner(`${els.state.textContent} \u00b7 ${coverageText}`, 'no-data');
       updateStatusText();
     } catch (error) {
       if (token !== loadToken) return;
@@ -2626,11 +3357,12 @@
         type: 'button',
         class: 'pr-history__item',
         onclick: () => {
-          setMode(row.period_type);
-          // 周期由顶栏范围决定，历史复盘只能提示它属于哪个周期，不能反向改写时间范围。
-          if (row.period_key !== periodKeyFromRange()) {
-            stateBanner(`该复盘属于 ${row.period_key}，请在上方顶栏「统计时间」切到对应周期查看。`, 'insufficient-data');
-          }
+          if (!PERIOD_TYPES.includes(row.period_type)) return;
+          // 历史复盘本身携带完整周期键，直接切换模式、周期并加载，不再要求用户回顶栏手动查找。
+          state.mode = row.period_type;
+          state.selectedPeriodKey = row.period_key;
+          updateModeUi();
+          syncRangeToSelectedPeriod();
           load();
         },
       },
@@ -2667,19 +3399,9 @@
     });
   }
 
-  document.querySelectorAll('[data-pr-workbench-tab]').forEach((tab) => {
-    tab.addEventListener('click', () => activateWorkbench(tab.dataset.prWorkbenchTab));
-  });
-
-  // 拆因分析长页（约 13 屏）的分节锚点：点击滚到对应分节，免得手滚找市场监控。
-  document.querySelectorAll('[data-pr-diagnosis-anchor]').forEach((chip) => {
-    chip.addEventListener('click', () => {
-      const heading = document.querySelector(`[data-pr-diagnosis-section="${chip.dataset.prDiagnosisAnchor}"]`);
-      if (heading) heading.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    });
-  });
-
   els.modeButtons.forEach((button) => button.addEventListener('click', () => setMode(button.dataset.prMode)));
+  bindSettingsDialog();
+  bindDiagnosisDrawer();
   els.period?.addEventListener('change', () => {
     const selected = (state.periodOptions[state.mode] || []).find((item) => item.key === els.period.value);
     if (!selected || !window.TmallDateRange?.setReviewRange) return;
@@ -2688,6 +3410,8 @@
     load();
   });
   els.refresh?.addEventListener('click', () => load());
+  // 生成/重新生成初稿：强制重算并重渲染段落，只补空输入框，不覆盖人工内容。
+  els.generateDraft?.addEventListener('click', regenerateDraft);
   // 目标输入即时联动：target-cards 把输入换算回写 context.target_path（会顺带
   // 触发归因摘要刷新），再整块重建驾驶舱让三卡完成率「填了立刻有反应」。
   const refreshTargetPanels = () => {

@@ -15,10 +15,15 @@
    *  - openProductDiagnosis  打开单品诊断弹窗
    *  - openProductTrend      打开周趋势弹窗
    *  - renderProductAnalysis 列变更后重渲染货品区块
+   *  - onColumnsChanged      可选；列变更后额外通知（货品证据表内嵌在六段里，
+   *                          由 live.js 重渲染段落同步列配置）
    */
 
   function createProductColumns(deps) {
-    const { h, productShare, declineRate, safeMetric, openProductDiagnosis, openProductTrend, renderProductAnalysis } = deps;
+    const {
+      h, productShare, declineRate, safeMetric, openProductDiagnosis, openProductTrend,
+      renderProductAnalysis, onColumnsChanged,
+    } = deps;
 
     // ------------------------------------------------- 货品表格（列可配置）
     // 每张榜单一套列开关（来自用户月复盘框架：「每个榜单的字段不一样，
@@ -196,10 +201,56 @@
       };
     }
 
+    // 所有可比较的数值列都支持数据条；商品标识、文本和异常标签不加。
+    // 归一化只发生在当前榜单、当前字段内，不改变原始数值或排序。
+    const DATA_BAR_KINDS = new Set(['money', 'number', 'percent']);
+
+    function isDataBarColumn(col) {
+      return DATA_BAR_KINDS.has(col.kind);
+    }
+
+    function numericProductMetric(row, col) {
+      if (!isDataBarColumn(col)) return null;
+      if (col.key === 'share_of_gsv') {
+        const value = productShare(row);
+        return Number.isFinite(value) ? value : null;
+      }
+      if (col.key === 'change_rate') {
+        const value = declineRate(row);
+        return Number.isFinite(value) ? value : null;
+      }
+      const value = Number(row[col.key]);
+      return Number.isFinite(value) ? value : null;
+    }
+
+    function productDataBarMeta(rows, columns) {
+      const meta = new Map();
+      columns.forEach((col) => {
+        if (!isDataBarColumn(col)) return;
+        const values = rows.map((row) => numericProductMetric(row, col))
+          .filter((value) => value !== null);
+        if (!values.length) return;
+        const max = Math.max(...values.map((value) => Math.abs(value)));
+        if (!(max > 0)) return;
+        meta.set(col.key, {
+          max,
+          // 同列同时存在正负值时以 0 为中心；全正/全负列仍使用完整轨道。
+          centered: values.some((value) => value < 0) && values.some((value) => value > 0),
+        });
+      });
+      return meta;
+    }
+
     function productTitleCell(row) {
       const full = row.title || row.product_id || '';
       return h('td', { class: 'pr-table__title' },
-        row.image_url ? h('img', { src: row.image_url, alt: '', loading: 'lazy' }) : null,
+        row.image_url ? h('img', {
+          src: row.image_url,
+          alt: '',
+          loading: 'lazy',
+          // 图片失效时不留下破图图标，商品名称仍完整可读。
+          onerror: (event) => { event.currentTarget.hidden = true; },
+        }) : null,
         // 标题常常很长，这里单行截断，完整标题挂在 title 上供悬停查看，避免一行占两三行高度。
         h('span', { class: 'pr-table__title-text', title: full, text: full }));
     }
@@ -219,6 +270,7 @@
       if (!rows || !rows.length) return null;
       const board = boardOf(boardKey);
       const columns = productTableColumns(board.key);
+      const barMeta = productDataBarMeta(rows, columns);
       const head = h('tr', null, ...columns.map((col) => h('th', {
         class: PRODUCT_IDENTITY_KINDS.includes(col.kind) || col.kind === 'text' ? '' : 'num',
         ...(PRODUCT_HEAD_WIDTH[col.kind] ? { style: `width:${PRODUCT_HEAD_WIDTH[col.kind]}` } : {}),
@@ -231,9 +283,26 @@
           // 数值指标单元格可点：点哪个字段看哪个字段的近 8 周折线。
           const clickable = TRENDABLE_METRIC_KEYS.has(col.key)
             && row[col.key] !== null && row[col.key] !== undefined;
-          const td = h('td', { class: cell.cls + (clickable ? ' pr-cell-trend' : ''), text: cell.text });
+          const metricValue = numericProductMetric(row, col);
+          const bar = metricValue !== null ? barMeta.get(col.key) : null;
+          let td;
+          if (bar) {
+            const ratio = Math.min(1, Math.abs(metricValue) / bar.max);
+            const left = bar.centered && metricValue < 0 ? 50 - ratio * 50 : (bar.centered ? 50 : 0);
+            const width = ratio * (bar.centered ? 50 : 100);
+            td = h('td', { class: `${cell.cls} pr-table__bar-cell${clickable ? ' pr-cell-trend' : ''}` },
+              h('span', { class: `pr-table__bar-track${bar.centered ? ' is-centered' : ''}`, 'aria-hidden': 'true' },
+                h('span', {
+                  class: `pr-table__bar-fill${metricValue < 0 ? ' is-negative' : ''}`,
+                  style: `left:${left}%;width:${width}%`,
+                })),
+              h('span', { class: 'pr-table__bar-value', text: cell.text }));
+          } else {
+            td = h('td', { class: cell.cls + (clickable ? ' pr-cell-trend' : ''), text: cell.text });
+          }
+          if (bar) td.setAttribute('aria-label', `${col.label}: ${cell.text}`);
           if (clickable) {
-            td.setAttribute('title', '点击查看该指标近 8 周折线');
+            td.setAttribute('title', bar ? `${cell.text}；点击查看该指标近 8 周折线` : '点击查看该指标近 8 周折线');
             td.setAttribute('role', 'button');
             td.setAttribute('tabindex', '0');
             td.addEventListener('click', () => openProductTrend(row, col.key));
@@ -272,6 +341,8 @@
 
     function refreshProductTables() {
       if (lastProductContext) renderProductAnalysis(lastProductContext);
+      // 货品证据表（六段板块数据内）也用同一份列配置，一并同步。
+      if (typeof onColumnsChanged === 'function') onColumnsChanged();
     }
 
     // 主闭包渲染货品区块时登记 context，供列开关变更后重渲染使用。
@@ -283,6 +354,15 @@
       if (fieldDialog) return fieldDialog;
       fieldDialog = h('dialog', { class: 'modal-form ui-field-selector-dialog pr-columns-dialog' });
       document.body.append(fieldDialog);
+      // 点击遮罩自动关闭：backdrop 的点击 target 就是 dialog 本身；
+      // 按下起点在内容里（拖拽排序后松在遮罩上）则不关。
+      let pressedInside = false;
+      fieldDialog.addEventListener('pointerdown', (event) => {
+        pressedInside = event.target !== fieldDialog;
+      });
+      fieldDialog.addEventListener('click', (event) => {
+        if (event.target === fieldDialog && !pressedInside) fieldDialog.close();
+      });
       fieldDialog.addEventListener('close', () => { fieldDialog.close(); });
       return fieldDialog;
     }
@@ -417,11 +497,27 @@
       );
     }
 
+    /** 证据块用：仅按钮的轻量字段设置入口（块标题由外层 material 承载）。 */
+    function fieldSettingsButton(boardKey) {
+      const board = boardOf(boardKey);
+      return h('button', {
+        type: 'button',
+        class: 'ui-button ui-button--ghost ui-button--compact',
+        'aria-haspopup': 'dialog',
+        text: '字段设置',
+        onclick: (event) => {
+          event.stopPropagation();
+          openProductFieldDialog(board.key);
+        },
+      });
+    }
+
     return {
       rememberContext,
       renderProductTable,
       productTableToolbar,
       productBoardPanel,
+      fieldSettingsButton,
       closeProductFieldPopover,
     };
   }

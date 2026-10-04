@@ -43,6 +43,51 @@
   min-width: 190px;
 }
 
+.pr-settings-action {
+  min-width: 0;
+}
+
+.pr-settings-action .lucide {
+  width: 16px;
+  height: 16px;
+  color: var(--brand-text);
+}
+
+.pr-settings-action small {
+  max-width: 220px;
+  overflow: hidden;
+  color: var(--text-muted);
+  font-size: 11px;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pr-settings-dialog {
+  width: min(560px, calc(100vw - 24px));
+}
+
+.pr-settings-dialog__body {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.pr-settings-dialog__body .pr-field input,
+.pr-settings-dialog__body .pr-field select {
+  min-width: 0;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.pr-settings-dialog__body .pr-toolbar__status {
+  grid-column: 1 / -1;
+}
+
+.pr-field__hint {
+  color: var(--text-muted);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
 /* ---------- 工具栏 ---------- */
 .pr-toolbar {
   display: flex;
@@ -123,7 +168,7 @@
 }
 
 /* ------------------------------------------------ 拆因/参考区块的分节标题 */
-/* 拆因分析把货品→推广→市场串成一个递进长页，分节标题承担"读到哪一步"的路标。 */
+/* 货品→推广→市场按复盘叙事串成递进长页，分节标题承担"读到哪一步"的路标。 */
 .pr-diagnosis__heading {
   display: flex;
   align-items: center;
@@ -145,13 +190,41 @@
   margin-top: 0;
 }
 
-/* ------------------------------------------------ 周月互汇条目 */
-.pr-linked-item__head {
+/* 拆因区的低频榜单：默认收起，仍保留字段设置、趋势和诊断入口。 */
+.pr-analysis-more {
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: var(--surface-raised);
+}
+
+.pr-analysis-more__summary {
   display: flex;
   align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 14px;
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  list-style: none;
 }
+
+.pr-analysis-more__summary::-webkit-details-marker { display: none; }
+.pr-analysis-more__summary small { color: var(--text-muted); font-size: 12px; font-weight: 400; }
+.pr-analysis-more[open] .pr-analysis-more__summary { border-bottom: 1px solid var(--border-default); }
+.pr-analysis-more__body { display: flex; flex-direction: column; gap: 12px; padding: 12px; }
+
+.pr-execution-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 8px 0 2px;
+}
+
+.pr-execution-empty__title { margin: 0; color: var(--text-primary); font-size: 14px; font-weight: 600; }
+.pr-execution-empty__hint { margin: 0 0 4px; color: var(--text-secondary); font-size: 12px; line-height: 1.55; }
 
 .pr-linked-item__meta {
   margin-left: auto;
@@ -212,11 +285,6 @@
   margin: 0 0 10px;
 }
 
-/* 市场监控分节：单 panel 通栏呈现，右半栏不再空置（与流量来源分节同修法）。 */
-.pr-analysis-grid[data-pr-market-analysis] {
-  grid-template-columns: 1fr;
-}
-
 /* 商品榜/搜索词两张 6 列监控表并排省一半纵向高度：各自 min-width 620px，
    视口不够两份时自动回退单列堆叠（auto-fit 不会挤成窄表）。
    两表都不在（或只有一张）时 JS 不建该容器，保持通栏堆叠。 */
@@ -240,6 +308,20 @@
   background: var(--surface-muted);
 }
 
+/* ------------------------------------------------ 广告单品渠道明细展开 */
+/* 与竞店行展开同款：is-collapsed 控制显隐（tr[hidden] 在表格布局下不可靠）。 */
+.pr-promo-item__channels.is-collapsed {
+  display: none;
+}
+
+.pr-promo-item__channels td {
+  background: var(--surface-muted);
+}
+
+.pr-table-wrap {
+  overflow-x: auto;
+}
+
 .pr-rival-trend {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
@@ -261,7 +343,12 @@
   height: 60px;
 }
 
-/* ------------------------------------------------ 任务排期时间轴 */
+/* 计划与动作只有一个状态面板时通栏呈现，避免右侧留下空白。 */
+.pr-analysis-grid[data-pr-execution-analysis] {
+  grid-template-columns: 1fr;
+}
+
+/* 动作排期桶：按待执行/执行中/待验收/已完成分列。 */
 .pr-schedule {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
@@ -398,6 +485,12 @@
   min-width: 420px;
 }
 
+/* 对账小计行：把「三因子贡献合计」与「净销售额变化额」区分开，避免被当成普通因子行。 */
+.pr-gap__sum td {
+  border-top: 1px solid var(--border-default);
+  font-weight: 600;
+}
+
 .pr-gap__clue-list {
   display: flex;
   flex-direction: column;
@@ -421,15 +514,6 @@
   font-size: 12px;
 }
 
-/* 驾驶舱分组小标签：完成率卡与执行信号条各一段（参考 demo 的分组节奏）。 */
-.pr-command-center__section-label {
-  margin: 2px 0 -6px;
-  color: var(--text-muted);
-  font-size: 12px;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-}
-
 /* 驾驶舱紧凑状态条：风险/动作信号一行带过。 */
 .pr-command-center__strip {
   display: flex;
@@ -440,24 +524,53 @@
 
 /* ------------------------------------------------ 段落三段式（分析/根因/下一步） */
 /* 卡片化 + 左侧品牌描边，对齐 demo 三卡的「编号步骤」阅读节奏；
-   编号用 CSS 计数器，不依赖 JS 输出。 */
+   编号用 CSS 计数器，不依赖 JS 输出。
+   用户拍板：一律单列（多列挤窄输入框，纵向阅读更顺）。 */
 .pr-subsections {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  grid-template-columns: minmax(0, 1fr);
   gap: 12px;
   counter-reset: pr-sub;
 }
+
+/* 初稿元信息：导航行右侧小字，不再单独占一条。 */
+.pr-draft-meta {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.pr-section-nav {
+  flex-wrap: wrap;
+}
+
+.pr-draft-meta__text {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.pr-draft-meta__hint {
+  color: var(--text-muted);
+}
+
+
+/* 文档式输入：去掉卡片边框墙，改用细分隔线 + 通栏书写区；
+   高度由 JS 随内容自适应（autoGrowTextarea），写多长框就多高。 */
 
 .pr-subsection {
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  padding: 10px 12px;
-  border: 1px solid var(--border-default);
-  border-left: 3px solid var(--brand);
-  border-radius: var(--radius-sm);
-  background: var(--surface-muted);
+  gap: 8px;
+  padding: 14px 0 4px;
+  border: 0;
+  border-top: 1px dashed var(--border-default);
+  border-radius: 0;
+  background: transparent;
 }
 
 .pr-subsection__label {
@@ -497,21 +610,59 @@
 }
 
 .pr-subsection textarea {
-  flex: 1;
-  min-height: 88px;
-  padding: 8px 10px;
+  min-height: 96px;
+  padding: 10px 12px;
   border: 1px solid var(--border-default);
   border-radius: var(--radius-sm);
   background: var(--surface-base);
   color: var(--text-primary);
   font-size: 13px;
-  line-height: 1.6;
-  resize: vertical;
+  line-height: 1.7;
+  resize: none;
+  overflow: hidden;
 }
 
 .pr-subsection textarea:focus {
   outline: none;
   border-color: var(--brand);
+}
+
+/* 段落完成状态徽章：导航 chip 与段落标题共用一套语义色。 */
+.pr-section__state {
+  padding: 1px 8px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-muted);
+  background: var(--surface-muted);
+}
+
+.pr-section__state.is-done {
+  color: var(--success-text);
+  background: var(--success-tint, rgba(22, 163, 74, 0.12));
+}
+
+.pr-section__state.is-missing {
+  color: var(--danger-text);
+  background: var(--danger-tint, rgba(239, 68, 68, 0.12));
+}
+
+/* 板块导航 chips：复用 .pr-anchor-chips 的吸顶布局，补状态点。 */
+.pr-section-nav .pr-section-nav__dot {
+  width: 7px;
+  height: 7px;
+  flex: none;
+  border-radius: 999px;
+  background: var(--border-strong);
+}
+
+.pr-section-nav .is-done .pr-section-nav__dot {
+  background: var(--success, #16a34a);
+}
+
+.pr-section-nav .is-missing .pr-section-nav__dot {
+  background: var(--danger, #ef4444);
 }
 
 .pr-strip-item {
@@ -618,43 +769,46 @@
   border: 1px solid var(--border-default);
 }
 
-/* ---------- 业绩全景 ---------- */
+/* ---------- 业绩全景：只保留按需查看的周期明细 ---------- */
 .pr-overview {
   display: flex;
   flex-direction: column;
   gap: 12px;
 }
 
-.pr-overview__head {
+.pr-overview__details {
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: var(--surface-raised);
+}
+
+.pr-overview__summary {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
   gap: 12px;
-  flex-wrap: wrap;
+  padding: 10px 14px;
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
 }
 
-.pr-overview__head h3 {
-  margin: 0;
-  font-size: 16px;
-  color: var(--text-primary);
-}
-
-.pr-overview__head span {
-  font-size: 12px;
+.pr-overview__summary small {
   color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 400;
 }
 
-/* 周期内分解表（月内分周 / 期内按日） */
+.pr-overview__details[open] .pr-overview__summary {
+  border-bottom: 1px solid var(--border-default);
+}
+
 .pr-overview__breakdown {
   display: flex;
   flex-direction: column;
   gap: 6px;
-}
-
-.pr-overview__breakdown h4 {
-  margin: 4px 0 0;
-  font-size: 13px;
-  color: var(--text-primary);
+  padding: 12px 14px 14px;
 }
 
 /* ------------------------------------------------------- 单品周趋势弹窗 */
@@ -679,6 +833,15 @@
   width: 100%;
   height: auto;
   display: block;
+}
+
+/* 点标签：紧凑数值直接标在数据点旁，精确值走悬停与首尾轴。 */
+.pr-trend-svg .pr-trend-point-label {
+  font-size: 10px;
+  font-weight: 600;
+  fill: currentColor;
+  opacity: 0.82;
+  font-variant-numeric: tabular-nums;
 }
 
 .pr-trend-axis {
@@ -780,6 +943,13 @@
 .pr-delta.is-down {
   color: var(--danger-text);
   font-weight: 600;
+}
+
+/* 基线不可比（窗口错配）时弱化显示，与真实的涨跌区分开，避免被当成经营信号。 */
+.pr-delta--na {
+  color: var(--text-muted);
+  font-weight: 500;
+  opacity: 0.85;
 }
 
 /* 目标差距卡 */
@@ -1002,6 +1172,14 @@
 .pr-chip.is-warning { border-color: var(--border-warning-subtle); color: var(--warning-text); }
 .pr-chip.is-info { border-color: var(--border-info-subtle); color: var(--info-text); }
 
+/* 表格单元格内的归因标记（如「推广计划拆解」的 精确 / 多商品）需更紧凑，
+   否则行高会被撑开，破坏表格纵向节奏。 */
+.pr-table td .pr-chip {
+  font-size: 11px;
+  padding: 1px 6px;
+  white-space: nowrap;
+}
+
 .pr-table {
   width: 100%;
   border-collapse: collapse;
@@ -1027,6 +1205,60 @@
 .pr-table th.num {
   text-align: right;
   font-variant-numeric: tabular-nums;
+}
+
+/* 单品表数据条：条形只做横向比较，前景数值始终保持可读。 */
+.pr-table td.pr-table__bar-cell {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  min-width: 92px;
+}
+
+.pr-table__bar-track {
+  position: absolute;
+  inset: 4px 8px;
+  overflow: hidden;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--surface-muted) 72%, transparent);
+  pointer-events: none;
+}
+
+.pr-table__bar-track.is-centered::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  width: 1px;
+  background: color-mix(in srgb, var(--border-default) 80%, transparent);
+}
+
+.pr-table__bar-fill {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border-radius: inherit;
+  background: color-mix(in srgb, var(--brand) 24%, transparent);
+}
+
+.pr-table__bar-fill.is-negative {
+  background: color-mix(in srgb, var(--danger-text) 24%, transparent);
+}
+
+.pr-table__bar-value {
+  position: relative;
+  z-index: 1;
+  display: block;
+  font-variant-numeric: tabular-nums;
+}
+
+.pr-table td.pr-table__bar-cell.pr-cell-trend:hover .pr-table__bar-fill {
+  background: color-mix(in srgb, var(--brand) 34%, transparent);
+}
+
+.pr-table td.pr-table__bar-cell.pr-cell-trend:hover .pr-table__bar-fill.is-negative {
+  background: color-mix(in srgb, var(--danger-text) 34%, transparent);
 }
 
 .pr-table tr:last-child td { border-bottom: 0; }
@@ -1126,31 +1358,11 @@
   white-space: nowrap;
 }
 
-/* 问题单品清单（8 列宽表）在两列网格里占通栏，不再挤在 431px 窄栏。 */
-[data-pr-product-analysis] > .pr-analysis-panel:first-child {
-  grid-column: 1 / -1;
-}
-
-/* 5-3：「本周货品复盘」的展开证据里有 2 张 7~8 列货品表（实测 963px）。
-   它原本落在 550px 栏里，被 panel__body / subsections / subsection / details / materials
-   五层内边距一路收到 410px，横向溢出 553px。与上面两条同一手法：宽表所在区块占通栏。 */
-[data-pr-sections] > .pr-section[data-section-key="goods"] {
-  grid-column: 1 / -1;
-}
-/* 通栏后 .pr-subsections 的 auto-fit 会自己拆成 4 列（每列 268px），反而更窄；
-   本节内的子节要单列铺满，证据表格才有 ~1050px 可用。 */
-[data-pr-sections] > .pr-section[data-section-key="goods"] .pr-subsections {
-  grid-template-columns: minmax(0, 1fr);
-}
+/* 5-3：货品段的证据有 7~8 列宽表。单列布局下整段天然通栏，
+   宽表交给 .pr-table-scroll 局部横向滚动，不再需要特例规则。 */
 
 /* 数据参考区的矩阵/类目/历史都是宽表，单列通栏。 */
 [data-pr-workbench-panel="reference"] .pr-analysis-grid {
-  grid-template-columns: 1fr;
-}
-
-/* 流量来源分节只有一张 4 列窄表，通栏呈现避免半边空置。
-   （加类名提升特异性，否则被后方 .pr-analysis-grid 的两列规则覆盖。） */
-.pr-analysis-grid[data-pr-traffic-analysis] {
   grid-template-columns: 1fr;
 }
 
@@ -1338,50 +1550,11 @@
   font-size: 12px;
 }
 
-/* ---------- 重做后的复盘工作台 ---------- */
-/* 复盘范围条（ui-context-bar）：周期 / 品类 / 对比口径集中在页头下方一行，
-   与工作区共用 .demo-page 的 16px 纵向节奏，去掉组件默认外边距避免双倍留白。 */
-.pr-context-bar {
-  margin-bottom: 0;
-}
-
-/* 底部固定操作栏（ui-sticky-action-bar）：结论 / 问题 / 工作区之后常驻，
-   刷新素材、导出复盘、保存复盘在任何滚动位置都可触达。 */
-.pr-action-bar {
-  margin-top: 0;
-}
-
-.pr-action-bar .ui-sticky-action-bar__content {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.pr-action-bar .ui-sticky-action-bar__actions .ui-button {
-  white-space: nowrap;
-}
-
-/* 窄屏：组件已将两个条块改为纵向堆叠，这里只补上按钮换行与文案回流。 */
-@media (max-width: 720px) {
-  .pr-action-bar .ui-sticky-action-bar__content {
-    white-space: normal;
-  }
-
-  .pr-action-bar .ui-sticky-action-bar__actions {
-    flex-wrap: wrap;
-  }
-}
-.pr-page-header {
-  align-items: flex-end;
-}
-
-.pr-page-header .section-kicker {
-  display: block;
-  margin-bottom: 4px;
-  font-size: 11px;
-  color: var(--text-muted);
-  letter-spacing: 0;
-  text-transform: uppercase;
+/* 页面标题只承担页面识别，周期和数据状态由范围行承载。 */
+.pr-page-header h1 {
+  margin: 0;
+  font-size: 22px;
+  line-height: 1.2;
 }
 
 .pr-control-strip {
@@ -1543,12 +1716,14 @@ body[data-page="period-review"] .demo-topbar__filters {
   .pr-workbench-tabs button {
     padding-inline: 16px;
   }
-  .pr-toolbar {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    align-items: end;
-    gap: 10px 16px;
+  .pr-settings-dialog__body {
+    grid-template-columns: 1fr;
   }
+
+  .pr-settings-action small {
+    max-width: 150px;
+  }
+
   .pr-toolbar__fields {
     display: grid;
     grid-template-columns: repeat(3, minmax(150px, 1fr));
@@ -1600,14 +1775,13 @@ body[data-page="period-review"] .demo-topbar__filters {
   border-bottom-color: var(--brand);
 }
 
+/* 用户拍板：撤掉工作区页签，四个工作区平铺进同一页流程，
+   定位统一交给吸顶锚点导航（①~⑥ 复盘板块 + ⑦~⑨ 支撑工作区）。 */
 .pr-workbench-panel {
-  display: none;
+  display: flex;
   flex-direction: column;
   gap: 16px;
-}
-
-.pr-workbench-panel.is-active {
-  display: flex;
+  margin-top: 20px;
 }
 
 .pr-command-center {
@@ -1628,27 +1802,10 @@ body[data-page="period-review"] .demo-topbar__filters {
   padding-bottom: 4px;
 }
 
-.pr-command-center__eyebrow {
-  display: block;
-  margin-bottom: 4px;
-  color: var(--brand-text);
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: .04em;
-}
-
 .pr-command-center__head h3 {
-  margin: 0 0 4px;
-  font-size: 20px;
-  color: var(--text-primary);
-}
-
-.pr-command-center__head p {
-  max-width: 820px;
   margin: 0;
-  color: var(--text-secondary);
-  font-size: 13px;
-  line-height: 1.65;
+  font-size: 18px;
+  color: var(--text-primary);
 }
 
 .pr-command-center__data-state {
@@ -1671,6 +1828,111 @@ body[data-page="period-review"] .demo-topbar__filters {
   color: var(--warning-text);
   background: color-mix(in srgb, var(--warning) 6%, var(--surface-raised));
 }
+
+/* ------------------------------------------------- 顶部统一「数据状态」（P0 #3）
+   设计要点：**不是一盏灯，而是「一盏灯 + 触发原因清单」**。
+   展开面板用绝对定位浮在内容之上，避免展开时把驾驶舱顶下去。 */
+.pr-data-status {
+  position: relative;
+  flex: none;
+  font-size: 12px;
+}
+
+.pr-data-status > summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-full);
+  color: var(--text-secondary);
+  background: var(--surface-raised);
+  cursor: pointer;
+  white-space: nowrap;
+  list-style: none;
+}
+
+.pr-data-status > summary::-webkit-details-marker { display: none; }
+
+.pr-data-status__dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+  flex: none;
+}
+
+.pr-data-status.is-good > summary { border-color: var(--border-success-subtle); color: var(--success-text); }
+.pr-data-status.is-warning > summary { border-color: var(--border-warning-subtle); color: var(--warning-text); }
+.pr-data-status.is-empty > summary { border-color: var(--border-danger-subtle); color: var(--danger-text); }
+
+.pr-data-status__count {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+.pr-data-status__body {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  z-index: 30;
+  width: min(620px, 88vw);
+  max-height: 60vh;
+  overflow-y: auto;
+  padding: 12px 14px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg, 10px);
+  background: var(--surface-raised);
+  box-shadow: var(--shadow-lg, 0 12px 32px rgb(0 0 0 / 0.14));
+  text-align: left;
+  white-space: normal;
+}
+
+.pr-data-status__fresh {
+  margin: 0 0 6px;
+  color: var(--text-secondary);
+}
+
+.pr-data-status__summary {
+  margin: 0 0 10px;
+  color: var(--text-muted);
+}
+
+.pr-data-status__group {
+  margin: 10px 0 4px;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+}
+
+.pr-data-status__group.is-warning { color: var(--warning-text); }
+.pr-data-status__group.is-info { color: var(--info-text); }
+
+.pr-data-status__list {
+  margin: 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 5px;
+}
+
+.pr-data-status__list li { color: var(--text-secondary); line-height: 1.5; }
+.pr-data-status__list li strong { color: var(--text-primary); }
+
+/* 口径降级徽标：贴在数据块标题 / 指标卡上，避免「数字看着正常、口径藏在脚注」。 */
+.pr-caliber-badge {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 1px 7px;
+  border-radius: var(--radius-full);
+  font-size: 11px;
+  font-weight: 500;
+  vertical-align: middle;
+  white-space: nowrap;
+  border: 1px solid var(--border-default);
+  color: var(--text-secondary);
+}
+
+.pr-caliber-badge.is-warning { border-color: var(--border-warning-subtle); color: var(--warning-text); }
+.pr-caliber-badge.is-info { border-color: var(--border-info-subtle); color: var(--info-text); }
 
 .pr-command-center__grid {
   display: grid;
@@ -1718,11 +1980,18 @@ body[data-page="period-review"] .demo-topbar__filters {
 
 .pr-metric-card {
   min-width: 0;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 6px;
-  padding: 16px 18px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas:
+    "head head"
+    "value value"
+    "target target"
+    "rate rate"
+    "changes changes"
+    "hint hint";
+  align-items: center;
+  row-gap: 5px;
+  padding: 12px 14px;
   background: var(--surface-base, var(--surface-muted));
   border: 1px solid var(--border-default);
   border-radius: var(--radius-md);
@@ -1730,7 +1999,7 @@ body[data-page="period-review"] .demo-topbar__filters {
 }
 
 .pr-metric-card--primary {
-  padding: 18px;
+  padding: 14px 16px;
   box-shadow: var(--elevation-lg);
 }
 
@@ -1740,6 +2009,7 @@ body[data-page="period-review"] .demo-topbar__filters {
 .pr-metric-card.is-danger { background: color-mix(in srgb, var(--danger) 5%, var(--surface-base)); }
 
 .pr-metric-card__head {
+  grid-area: head;
   display: flex;
   align-items: center;
   gap: 6px;
@@ -1794,23 +2064,31 @@ body[data-page="period-review"] .demo-topbar__filters {
 }
 
 .pr-metric-card__value {
+  grid-area: value;
   color: var(--text-primary);
-  font-size: 30px;
-  line-height: 1.1;
+  font-size: 26px;
+  line-height: 1.05;
   font-variant-numeric: tabular-nums;
   font-family: var(--font-display, inherit);
 }
 
 .pr-metric-card__target {
+  grid-area: target;
+  min-width: 0;
   color: var(--text-muted);
-  font-size: 12px;
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .pr-metric-card__rate {
+  grid-area: rate;
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-  padding: 3px 8px;
+  gap: 4px;
+  min-width: 0;
+  padding: 3px 7px;
   border-radius: var(--radius-full);
   background: var(--surface-muted);
 }
@@ -1830,47 +2108,19 @@ body[data-page="period-review"] .demo-topbar__filters {
 .pr-metric-card.is-danger .pr-metric-card__rate strong { color: var(--danger-text); }
 
 .pr-metric-card__changes {
+  grid-area: changes;
   display: flex;
   flex-wrap: wrap;
-  gap: 4px 12px;
-  font-size: 12px;
-}
-
-.pr-metric-card__insight {
-  display: flex;
-  align-items: flex-start;
-  width: 100%;
-  box-sizing: border-box;
-  gap: 8px;
-  margin-top: 6px;
-  padding-top: 10px;
-  border-top: 1px dashed var(--border-default);
-  color: var(--text-secondary);
-  font-size: 12px;
-  line-height: 1.5;
-}
-
-.pr-metric-card__insight strong {
-  flex: 0 0 auto;
-  color: var(--text-primary);
-  font-weight: 600;
-}
-
-.pr-metric-card__insight span {
+  gap: 3px 8px;
   min-width: 0;
-}
-
-.pr-metric-card__insight--efficiency {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 4px 10px;
+  font-size: 11px;
 }
 
 .pr-metric-card__hint {
-  flex-basis: 100%;
+  grid-area: hint;
   margin: 0;
   color: var(--text-muted);
-  font-size: 12px;
+  font-size: 11px;
 }
 
 .pr-command-center__links {
@@ -1982,19 +2232,7 @@ body[data-page="period-review"] .demo-topbar__filters {
   }
 }
 
-@media (min-width: 961px) {
-  [data-pr-workbench-panel="conclusion"] .pr-sections {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 16px;
-    align-items: start;
-  }
-
-  [data-pr-workbench-panel="conclusion"] .pr-sections > .pr-section:first-child,
-  [data-pr-workbench-panel="conclusion"] .pr-sections > .pr-section:last-child {
-    grid-column: 1 / -1;
-  }
-}
+/* 用户拍板：结论区六个板块一律单列纵向排布，不再按视口拆两列。 */
 
 @media (max-width: 640px) {
   .pr-page-header {
@@ -2032,10 +2270,16 @@ body[data-page="period-review"] .demo-topbar__filters {
     align-self: flex-start;
   }
 
-  .pr-command-center__grid,
-  .pr-analysis-grid,
   .pr-metric-cards {
     grid-template-columns: 1fr;
+  }
+
+  .pr-metric-card {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .pr-metric-card__changes {
+    justify-content: flex-start;
   }
 
   .pr-command-card strong {
@@ -2333,3 +2577,140 @@ body[data-page="period-review"] .demo-topbar__filters {
 }
 .pr-profit-row__fill { height: 100%; border-radius: 4px; }
 .pr-profit-row__value { color: var(--text-primary); white-space: nowrap; }
+
+/* ============================================================ 板块数据抽屉
+   2026-10-03：拆因工作区撤销后明细并入六段，六段证据合计约 7200px，默认展开会把
+   写作区推到 12 屏外（货品段一段就 3261px）。按
+   docs/PERIOD_REVIEW_REDESIGN_20261002.md 的 P2「数据抽屉」收进右侧面板：
+   段落内只留「在右侧展开 →」，细看在这里。
+   非模态（无遮罩）——左侧写作区仍可读可编辑，因此不锁滚动、不做焦点陷阱。
+   visibility 延迟切换：让 transform 过渡跑完，同时隐藏态不可聚焦、不进 Tab 序列。 */
+.pr-drawer {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 40; /* 高于吸顶操作栏(7)与锚点 chips(9)，低于顶栏下拉层 */
+  display: flex;
+  flex-direction: column;
+  width: min(60vw, 1000px);
+  max-width: 100%;
+  background: var(--surface);
+  border-left: 1px solid var(--border-default);
+  box-shadow: -20px 0 48px rgba(15, 23, 42, .16);
+  visibility: hidden;
+  transform: translateX(102%);
+  transition: transform .28s cubic-bezier(.4, 0, .2, 1), visibility 0s .28s;
+}
+
+.pr-drawer.is-open {
+  visibility: visible;
+  transform: translateX(0);
+  transition: transform .28s cubic-bezier(.4, 0, .2, 1), visibility 0s 0s;
+}
+
+.pr-drawer__head {
+  flex: none;
+  padding: 14px 18px 0;
+  border-bottom: 1px solid var(--border-default);
+  background: var(--surface);
+}
+
+.pr-drawer__title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.pr-drawer__title {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.pr-drawer__close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  background: var(--surface-muted);
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.pr-drawer__close:hover { border-color: var(--brand); color: var(--text-primary); }
+.pr-drawer__close svg { width: 16px; height: 16px; }
+
+/* 抽屉内锚点 chips：顶部已固定，不需要再 sticky（默认 .pr-anchor-chips 是吸顶的）。 */
+.pr-drawer__nav {
+  position: static;
+  flex-wrap: wrap;
+  margin: 10px 0 0;
+  padding: 0 0 10px;
+  border-bottom: 0;
+}
+
+.pr-drawer__nav-chip {
+  padding: 4px 12px;
+  border: 1px solid var(--border-default);
+  border-radius: 999px;
+  background: var(--surface-muted);
+  color: var(--text-secondary);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.pr-drawer__nav-chip:hover { border-color: var(--brand); color: var(--text-primary); }
+
+.pr-drawer__body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 4px 18px 40px;
+  overscroll-behavior: contain;
+}
+
+.pr-drawer__section { padding-top: 4px; }
+.pr-drawer__section > .pr-diagnosis__heading:first-child { margin-top: 16px; }
+
+/* 段落内的抽屉入口：摘要行改为 flex，右侧挂「在右侧展开 →」。
+   子选择器特异性与 .pr-evidence summary 相同、但定义在后，故覆盖生效。 */
+.pr-evidence > summary {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.pr-evidence__label { flex: 1; }
+
+.pr-evidence__open-drawer {
+  flex: none;
+  padding: 2px 10px;
+  border: 1px solid var(--border-default);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--brand);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.pr-evidence__open-drawer:hover { border-color: var(--brand); }
+
+/* 新增交互元素的键盘焦点环：沿用全局 --focus-ring 约定（components.css 的 :focus-visible）。
+   这三个按钮不是 .ui-button，不写会没有焦点指示（WCAG 2.4.7）。 */
+.pr-drawer__close:focus-visible,
+.pr-drawer__nav-chip:focus-visible,
+.pr-evidence__open-drawer:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+@media (max-width: 760px) {
+  .pr-drawer { width: 100%; }
+}

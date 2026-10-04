@@ -3,11 +3,11 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>周月复盘 | 天猫数据仪表盘</title>
-  <link rel="stylesheet" href="../assets/tokens.css?v=20261001j">
+  <title>日周月复盘 | 天猫数据仪表盘</title>
+  <link rel="stylesheet" href="../assets/tokens.css?v=20261003a">
   <link rel="stylesheet" href="../assets/shell.css?v=20261001j">
   <link rel="stylesheet" href="../assets/components.css?v=20261001j"><link rel="stylesheet" href="../assets/themes/product-domain.css?v=20261001j"><link rel="stylesheet" href="../assets/themes/promotion-domain.css?v=20261001j"><link rel="stylesheet" href="../assets/themes/overview-domain.css?v=20261001j"><link rel="stylesheet" href="../assets/themes/lifecycle-domain.css?v=20261001j"><link rel="stylesheet" href="../assets/themes/settings-domain.css?v=20261001j">
-  <link rel="stylesheet" href="../assets/period-review.css?v=20261002b">
+  <link rel="stylesheet" href="../assets/period-review.css?v=20261003t">
   <script src="../assets/lucide-custom.min.js?v=20261001j"></script>
 </head>
 <body data-page="period-review">
@@ -18,23 +18,12 @@
       <main class="demo-page">
         <aside data-right-rail hidden aria-label="辅助信息"></aside>
         <div class="ui-page-header pr-page-header">
-          <div>
-            <span class="section-kicker">经营决策工作台</span>
-            <h1>周月复盘</h1>
-            <p>先确认结果和变化，再定位商品、推广与执行问题，最后沉淀可验收的下一步动作。</p>
-          </div>
+          <h1>日周月复盘</h1>
         </div>
-
-        <section class="ui-context-bar pr-context-bar" aria-label="复盘范围">
-          <div class="ui-context-bar__copy">
-            <span class="ui-context-bar__label">复盘范围</span>
-            <strong class="ui-context-bar__value" data-pr-context-range>正在读取时间范围…</strong>
-            <span class="ui-context-bar__meta" data-pr-context-meta>正在读取周期、品类与对比口径…</span>
-          </div>
-        </section>
 
         <section class="pr-control-strip" aria-label="legacy controls" hidden>
           <nav class="pr-mode-tabs" aria-label="复盘周期">
+            <button type="button" data-pr-mode="day">日复盘</button>
             <button type="button" class="is-active" data-pr-mode="week">周复盘</button>
             <button type="button" data-pr-mode="month">月复盘</button>
           </nav>
@@ -50,62 +39,47 @@
           <label class="pr-compact-field" data-pr-compare-period-field hidden><span>对比周期</span><select data-pr-compare-period aria-label="对比周期"></select></label>
         </section>
 
-        <details class="ui-panel pr-toolbar pr-toolbar--collapsible" aria-label="复盘设置" data-pr-settings>
-          <summary class="pr-toolbar__summary">
-            <span class="pr-toolbar__summary-title"><i data-lucide="settings-2"></i>复盘设置</span>
-            <span class="pr-toolbar__summary-hint">目标 / 复盘人 / 定稿状态</span>
-          </summary>
-          <div class="pr-toolbar__fields">
-            <label class="pr-field"><span>销售额目标（可空）</span><input type="number" min="0" step="100" data-pr-target placeholder="未设置"></label>
+        <dialog class="modal-form pr-settings-dialog" data-pr-settings-dialog data-modal-kind="config" aria-labelledby="pr-settings-title">
+          <div class="modal-form__header">
+            <div>
+              <h3 id="pr-settings-title">复盘设置</h3>
+              <p>目标只影响本期复盘口径，保存复盘后才会写入。</p>
+            </div>
+            <button type="button" class="pr-dialog-close" data-pr-settings-close aria-label="关闭">×</button>
+          </div>
+          <div class="modal-form__body pr-settings-dialog__body">
+            <label class="pr-field"><span>净销售额目标（可空）</span><input type="number" min="0" step="100" data-pr-target placeholder="未设置"></label>
             <label class="pr-field"><span>净利润额目标（可空）</span><input type="number" min="0" step="100" data-pr-target-profit placeholder="未设置"></label>
             <label class="pr-field"><span>推广费目标（可空）</span><input type="number" min="0" step="100" data-pr-target-ad-spend placeholder="未设置"></label>
-            <label class="pr-field"><span>净费比目标 %（可空）</span><input type="number" min="0" step="0.01" data-pr-target-net-expense-ratio placeholder="如 23.70"></label>
+            <label class="pr-field"><span>净费比目标（%）（可空）</span><input type="number" min="0" max="100" step="0.01" data-pr-target-net-expense-ratio placeholder="如 23.70"><small class="pr-field__hint">请按百分数填写，例如 23.70 表示 23.70%。</small></label>
             <label class="pr-field"><span>复盘人</span><input type="text" data-pr-reviewer value="运营人员"></label>
             <label class="pr-field"><span>状态</span><select data-pr-status><option value="draft">草稿</option><option value="final">已定稿</option></select></label>
+            <p class="pr-toolbar__status" data-pr-status-text role="status"></p>
+            <p class="pr-toolbar__status" data-pr-category-note role="status"></p>
           </div>
-          <p class="pr-toolbar__status" data-pr-status-text role="status"></p>
-          <p class="pr-toolbar__status" data-pr-category-note role="status"></p>
-        </details>
+          <div class="modal-form__footer">
+            <button type="button" class="ui-button" data-pr-settings-cancel>取消</button>
+            <button type="button" class="ui-button ui-button--primary" data-pr-settings-apply>完成</button>
+          </div>
+        </dialog>
 
         <div class="pr-state" data-pr-state role="status" aria-live="polite"></div>
 
         <section class="pr-command-center" data-pr-command-center hidden aria-label="复盘结论总览"></section>
 
-        <section data-pr-gap-attribution hidden aria-label="目标差距归因"></section>
-
-        <nav class="pr-workbench-tabs" aria-label="复盘工作区">
-          <button type="button" class="is-active" data-pr-workbench-tab="conclusion">复盘结论</button>
-          <button type="button" data-pr-workbench-tab="diagnosis">拆因分析</button>
-          <button type="button" data-pr-workbench-tab="execution">计划与动作</button>
-          <button type="button" data-pr-workbench-tab="reference">数据参考</button>
-        </nav>
-
-        <section class="pr-workbench-panel is-active" data-pr-workbench-panel="conclusion">
-          <section class="ui-panel pr-overview" data-pr-overview hidden aria-label="业绩全景"></section>
+        <!-- 工作区平铺一页（页签已撤）：结论（含拆因明细）→ 动作 → 参考，
+             定位走上方吸顶锚点导航。 -->
+        <section class="pr-workbench-panel" data-pr-workbench-panel="conclusion">
+          <!-- 六段板块内联直编：每段 = 板块数据（默认展开）+ 分析/根因/下一步。
+               导航行 = 板块锚点（带完成状态点）+ 初稿元信息（右侧小字），吸顶常驻。 -->
+          <nav class="pr-anchor-chips pr-section-nav" data-pr-section-nav hidden aria-label="板块导航">
+            <span class="pr-draft-meta" data-pr-draft-meta hidden role="status"></span>
+          </nav>
           <section class="pr-sections" data-pr-sections aria-label="复盘结论"></section>
         </section>
 
-        <!-- 拆因分析：货品 → 推广 → 市场 递进阅读，一次滚动看完，不再三个 tab 来回跳。 -->
-        <section class="pr-workbench-panel" data-pr-workbench-panel="diagnosis">
-          <nav class="pr-anchor-chips" aria-label="拆因分节导航">
-            <button type="button" data-pr-diagnosis-anchor="products">① 货品与异常</button>
-            <button type="button" data-pr-diagnosis-anchor="promotion">② 推广投放</button>
-            <button type="button" data-pr-diagnosis-anchor="traffic">③ 流量来源</button>
-            <button type="button" data-pr-diagnosis-anchor="market">④ 市场监控</button>
-          </nav>
-          <h3 class="pr-diagnosis__heading" data-pr-diagnosis-section="products">① 货品与异常</h3>
-          <section class="pr-analysis-grid" data-pr-product-analysis aria-label="货品与异常"></section>
-          <h3 class="pr-diagnosis__heading" data-pr-diagnosis-section="promotion">② 推广投放</h3>
-          <section class="pr-analysis-grid" data-pr-channel-analysis aria-label="推广分析"></section>
-          <section class="pr-analysis-grid" data-pr-promotion-analysis aria-label="推广效率"></section>
-          <!-- 流量（自家店铺）与市场（外部行业/竞对）是两类诊断，分节不混排。 -->
-          <h3 class="pr-diagnosis__heading" data-pr-diagnosis-section="traffic">③ 流量来源</h3>
-          <section class="pr-analysis-grid" data-pr-traffic-analysis aria-label="流量来源"></section>
-          <h3 class="pr-diagnosis__heading" data-pr-diagnosis-section="market">④ 市场监控</h3>
-          <section class="pr-analysis-grid" data-pr-market-analysis aria-label="市场监控"></section>
-        </section>
-
         <section class="pr-workbench-panel" data-pr-workbench-panel="execution">
+          <h3 class="pr-diagnosis__heading">计划与动作</h3>
           <section class="pr-analysis-grid" data-pr-execution-analysis aria-label="计划与动作"></section>
         </section>
 
@@ -123,8 +97,14 @@
           </section>
         </section>
         <div class="ui-sticky-action-bar pr-action-bar">
-          <div class="ui-sticky-action-bar__content" data-pr-action-summary role="status" aria-live="polite">正在读取复盘状态…</div>
+          <div class="ui-sticky-action-bar__content" data-pr-action-summary role="status" aria-live="polite"></div>
           <div class="ui-sticky-action-bar__actions">
+            <button type="button" class="ui-button pr-settings-action" data-pr-settings-open aria-haspopup="dialog">
+              <i data-lucide="settings-2"></i>
+              <span>复盘设置</span>
+              <small data-pr-settings-summary>目标 / 复盘人 / 定稿状态</small>
+            </button>
+            <button type="button" class="ui-button" data-pr-generate-draft><i data-lucide="sparkles"></i><span>生成初稿</span></button>
             <button type="button" class="ui-button" data-pr-refresh><i data-lucide="refresh-cw"></i><span>刷新素材</span></button>
             <button type="button" class="ui-button" data-pr-export><i data-lucide="download"></i><span>导出复盘</span></button>
             <button type="button" class="ui-button ui-button--primary" data-pr-save><i data-lucide="save"></i><span>保存复盘</span></button>
@@ -133,10 +113,25 @@
       </main>
     </div>
   </div>
+
+  <!-- 板块数据抽屉：六段「板块数据」的全量明细收在这里（非模态右侧滑出，不遮挡写作区）。
+       段落内只留「在右侧展开 →」入口，避免每段前面挂一大坨表格把写作区推到 12 屏外。
+       内容由 period-review-live.js 的 renderDiagnosisDrawer() 渲染。 -->
+  <aside class="pr-drawer" data-pr-drawer role="dialog" aria-modal="false" data-modal-kind="detail" aria-labelledby="pr-drawer-title">
+    <header class="pr-drawer__head">
+      <div class="pr-drawer__title-row">
+        <h2 class="pr-drawer__title" id="pr-drawer-title">板块数据</h2>
+        <button type="button" class="pr-drawer__close" data-pr-drawer-close aria-label="关闭板块数据"><i data-lucide="x" aria-hidden="true"></i></button>
+      </div>
+      <nav class="pr-anchor-chips pr-drawer__nav" data-pr-drawer-nav aria-label="板块数据分节导航"></nav>
+    </header>
+    <div class="pr-drawer__body" data-pr-drawer-body></div>
+  </aside>
+
   <script src="../assets/api.js?v=20261001j"></script>
   <script src="../assets/navigation.js?v=20261001j"></script>
   <script src="../assets/labels.js?v=20261001j"></script>
-  <script src="../assets/shell.js?v=20261001j"></script>
-  <script src="../assets/format.js?v=20261002a"></script><script src="../assets/ui-components.js?v=20261001j"></script><script src="../assets/field-selector.js?v=20261001j"></script><script src="../assets/metric-polarity.js?v=20261001j"></script><script src="../assets/pages/period-review/product-columns.js?v=20261002b"></script><script src="../assets/pages/period-review/target-cards.js?v=20261002a"></script><script src="../assets/pages/period-review/metric-cards.js?v=20261002a"></script><script src="../assets/pages/period-review/gap-attribution.js?v=20261002a"></script><script src="../assets/pages/period-review/review-export.js?v=20261002a"></script><script src="../assets/pages/period-review/leaf-board.js?v=20261002a"></script><script src="../assets/period-review-live.js?v=20261002d"></script>
+  <script src="../assets/shell.js?v=20261003c"></script>
+  <script src="../assets/format.js?v=20261002a"></script><script src="../assets/ui-components.js?v=20261003a"></script><script src="../assets/field-selector.js?v=20261001j"></script><script src="../assets/metric-polarity.js?v=20261001j"></script><script src="../assets/pages/period-review/product-columns.js?v=20261003m"></script><script src="../assets/pages/period-review/target-cards.js?v=20261002b"></script><script src="../assets/pages/period-review/metric-cards.js?v=20261003c"></script><script src="../assets/pages/period-review/gap-attribution.js?v=20261003b"></script><script src="../assets/pages/period-review/deterministic-draft.js?v=20261003b"></script><script src="../assets/pages/period-review/review-export.js?v=20261002a"></script><script src="../assets/pages/period-review/leaf-board.js?v=20261002a"></script><script src="../assets/period-review-live.js?v=20261003za"></script>
 </body>
 </html>

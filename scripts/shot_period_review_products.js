@@ -19,7 +19,7 @@ const BASE = `http://127.0.0.1:${PORT}`;
 const OUT_DIR = path.join(__dirname, '..', 'logs');
 const CHROME = process.env.TMALL_CHROME_PATH || 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
 
-const PANEL = '[data-pr-product-analysis]';
+const PANEL = '[data-section-key="goods"]';
 
 // 表头 + 每行文本 + 标题列是否被压成单行（比较 scrollWidth 与 clientWidth 之外的粗判：行高）
 function dumpTables(page) {
@@ -46,8 +46,10 @@ function dumpTables(page) {
 }
 
 async function openProducts(page) {
+  // 拆因已并入结论段：滚动到货品复盘段（板块数据含货品榜）。
   await page.evaluate(() => {
-    document.querySelector('[data-pr-workbench-tab="products"]')?.click();
+    document.querySelector('[data-section-key="goods"]')
+      ?.scrollIntoView({ behavior: 'instant', block: 'start' });
   });
   await page.waitForTimeout(1200);
 }

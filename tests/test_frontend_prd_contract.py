@@ -30,6 +30,34 @@ class FrontendPrdContractTests(unittest.TestCase):
         self.assertNotIn('data-global-promotion-channel', shell)
         self.assertNotIn('TmallFilters', shell)
 
+    def test_period_review_diagnosis_clues_can_create_traceable_actions(self):
+        clue = self.read('frontend/ui_demo/assets/pages/period-review/gap-attribution.js')
+        live = self.read('frontend/ui_demo/assets/period-review-live.js')
+        self.assertIn('function clueLine(text, section, anchorLabel, diagnosisSource)', clue)
+        self.assertIn('text: ' + repr('转为动作'), clue)
+        self.assertIn('window.periodReviewOpenActionFromDiagnosis?.(source)', clue)
+        self.assertIn('clue: text', clue)
+        self.assertIn('section,', clue)
+        self.assertIn('impact: diagnosisSource?.impact', clue)
+        self.assertIn('metric: diagnosisSource?.metric', clue)
+        self.assertIn('window.periodReviewOpenActionFromDiagnosis = openDiagnosisAction', live)
+        self.assertIn('function openProductDiagnosis(row, withDelta, diagnosisSource = null)', live)
+        self.assertIn('source_period_type: state.mode', live)
+        self.assertIn('source_period_key: state.context?.period?.key || currentPeriod()', live)
+        self.assertIn('source_problem_key: diagnosisSource?.problemKey', live)
+        self.assertIn('source_diagnosis_snapshot: JSON.stringify({', live)
+        self.assertIn("product_id: String(data.get('product_id') || row.product_id || '').trim()", live)
+        self.assertIn("!productId ? actionSelect('关联商品', 'product_id'", live)
+        self.assertIn('不会自动虚构商品 ID', live)
+        self.assertIn('await load();', live)
+        # 计划字段必须由执行人确认：不把今天、7 天或“运营人员��伪装成已确认信息。
+        self.assertIn("actionField('计划日期', 'planned_at', 'date', '', true)", live)
+        self.assertIn("actionField('观察天数', 'observer_window_days', 'number', '', true)", live)
+        self.assertIn("actionField('负责人', 'assigned_to', 'text', '')", live)
+        self.assertNotIn("actionField('计划日期', 'planned_at', 'date', todayForAction(), true)", live)
+        self.assertNotIn("actionField('观察天数', 'observer_window_days', 'number', '7', true)", live)
+        self.assertNotIn("actionField('负责人', 'assigned_to', 'text', '运营人员')", live)
+
     def test_period_review_controls_are_single_row_and_category_switch_persists_compare(self):
         shell = self.read('frontend/ui_demo/assets/shell.js')
         styles = self.read('frontend/ui_demo/assets/period-review.css')
@@ -53,6 +81,68 @@ class FrontendPrdContractTests(unittest.TestCase):
         self.assertIn('overflow-x', styles)
         # shell.js 引用必须带 cache-bust 版本参数（具体版本号不锁定）
         self.assertRegex(page, r'shell\.js\?v=\d{8}')
+
+    def test_period_review_deterministic_draft_fills_empty_sections(self):
+        """确定性初稿：生成器存在、入口在工具栏、回填只补空且不写本地草稿。"""
+        page = self.read('frontend/ui_demo/pages/period-review.html')
+        live = self.read('frontend/ui_demo/assets/period-review-live.js')
+        draft = self.read('frontend/ui_demo/assets/pages/period-review/deterministic-draft.js')
+        gap = self.read('frontend/ui_demo/assets/pages/period-review/gap-attribution.js')
+        # 生成入口按钮 + 元信息条挂载点 + 生成器脚本引用（带版本参数）
+        self.assertIn('data-pr-generate-draft', page)
+        self.assertIn('data-pr-draft-meta', page)
+        self.assertRegex(page, r'deterministic-draft\.js\?v=\d{8}')
+        # 六段板块内联直编（不弹窗）：每段 = 板块数据 + 分析/根因/下一步；
+        # 分日/分周指标只在品类汇总板块数据出现一次（驾驶舱下不再重复渲染 overview）。
+        self.assertIn('data-pr-sections', page)
+        self.assertNotIn('data-pr-sections-dialog', page)
+        self.assertNotIn('data-pr-sections-preview', page)
+        self.assertNotIn('data-pr-overview', page)
+        # 工作区页签已撤：四个工作区平铺一页，导航统一走吸顶锚点 chips
+        self.assertNotIn('data-pr-workbench-tab', page)
+        self.assertIn('data-pr-section-nav', page)
+        self.assertIn('observeReferencePanel', live)
+        self.assertNotIn('sectionsDialog', live)
+        self.assertNotIn('renderSectionsPreview', live)
+        self.assertNotIn('renderOverview', live)
+        # 板块数据置顶且默认展开（用户要求的「数据+分析+根因+下一步」顺序）；
+        # metrics 不重复渲染——驾驶舱三卡就在同页上方。
+        self.assertIn('板块数据', live)
+        self.assertIn("key !== 'metrics' && key !== 'target_path'", live)
+        self.assertIn("case 'breakdown':", live)
+        # 拆因已并入结论段：货品/广告/市场/流量/归因明细 = 六段板块数据本身，
+        # 不再另设拆因工作区（单一渲染点，双渲染即回归）。
+        self.assertIn('case \'gap_attribution\':', live)
+        self.assertIn('case \'traffic\':', live)
+        self.assertIn('case \'promotion_channels\':', live)
+        self.assertNotIn('data-pr-workbench-panel="diagnosis"', page)
+        self.assertNotIn('data-pr-diagnosis-anchor', page)
+        self.assertNotIn('evidenceDigest', live)
+        self.assertIn("['promotion_channels', 'promotion_items']", self.read('services/period_templates.py'))
+        self.assertIn("['metrics', 'target_path', 'gap_attribution', 'traffic', 'breakdown', 'linked_summaries']", self.read('services/period_templates.py'))
+        # 长页导航与状态：吸顶锚点 chips + 段落完成徽章 + 输入框高度自适应
+        self.assertIn('data-pr-section-nav', page)
+        self.assertIn('renderSectionNav', live)
+        self.assertIn('sectionFillState', live)
+        self.assertIn('autoGrowTextarea', live)
+        # live.js 接线：实例化生成器、按周期/对比口径缓存、元信息条渲染、按钮事件
+        self.assertIn('global.createDeterministicDraft = createDeterministicDraft', draft)
+        self.assertIn('createDeterministicDraft', live)
+        self.assertIn('refreshGeneratedDraft', live)
+        self.assertIn('renderDraftMeta', live)
+        self.assertIn('regenerateDraft', live)
+        # 三因子算术复用 gap-attribution 的 decompose，不在文案层复制一套算法
+        self.assertIn('return { buildBody, decompose }', gap)
+        self.assertIn('gapAttribution.decompose', live)
+        # 生成内容只进 textarea，不写 localStorage 草稿（草稿只来自用户输入事件）
+        self.assertNotIn('storeSectionDraft', draft)
+        self.assertNotIn('localStorage.getItem', draft)
+        self.assertNotIn('localStorage.setItem', draft)
+
+    def test_period_review_schedule_css_selector_is_complete(self):
+        """排期网格曾是缺选择器的孤立声明，锁回 .pr-schedule 规则。"""
+        styles = self.read('frontend/ui_demo/assets/period-review.css')
+        self.assertRegex(styles, r'\.pr-schedule\s*\{[^}]*display:\s*grid[^}]*\}')
 
     def test_quick_date_ranges_use_system_today_not_latest_imported_date(self):
         store = self.read('frontend/ui_demo/assets/runtime/date-range-store.js')
