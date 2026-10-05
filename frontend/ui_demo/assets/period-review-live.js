@@ -2059,6 +2059,30 @@
     if (restore?.isConnected) restore.focus({ preventScroll: true });
   }
 
+  // 抽屉放大/还原：满屏宽看多列表格，偏好记入 localStorage，重开抽屉保持上次的档位。
+  const DRAWER_MAXIMIZE_KEY = 'tmall.prDrawerMaximized';
+
+  function applyDrawerMaximize(maximized) {
+    if (!drawerEl) return;
+    drawerEl.classList.toggle('is-maximized', maximized);
+    const button = drawerEl.querySelector('[data-pr-drawer-maximize]');
+    if (button) {
+      const label = maximized ? '还原板块数据宽度' : '放大板块数据';
+      button.setAttribute('aria-label', label);
+      button.setAttribute('title', label);
+    }
+  }
+
+  function setDrawerMaximize(maximized) {
+    applyDrawerMaximize(maximized);
+    try { localStorage.setItem(DRAWER_MAXIMIZE_KEY, maximized ? '1' : '0'); } catch (_) { /* 隐私模式等场景忽略 */ }
+  }
+
+  drawerEl?.querySelector('[data-pr-drawer-maximize]')?.addEventListener('click', () => {
+    setDrawerMaximize(!drawerEl.classList.contains('is-maximized'));
+  });
+  try { applyDrawerMaximize(localStorage.getItem(DRAWER_MAXIMIZE_KEY) === '1'); } catch (_) { /* 同上 */ }
+
   /** 把六段材料按段渲染进抽屉，顶部生成同序锚点。 */
   function renderDiagnosisDrawer(context) {
     const body = drawerEl?.querySelector('[data-pr-drawer-body]');

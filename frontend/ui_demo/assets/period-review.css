@@ -2671,13 +2671,13 @@ body[data-page="period-review"] .demo-topbar__filters {
   box-shadow: -20px 0 48px rgba(15, 23, 42, .16);
   visibility: hidden;
   transform: translateX(102%);
-  transition: transform .28s cubic-bezier(.4, 0, .2, 1), visibility 0s .28s;
+  transition: transform .28s cubic-bezier(.4, 0, .2, 1), width .28s cubic-bezier(.4, 0, .2, 1), visibility 0s .28s;
 }
 
 .pr-drawer.is-open {
   visibility: visible;
   transform: translateX(0);
-  transition: transform .28s cubic-bezier(.4, 0, .2, 1), visibility 0s 0s;
+  transition: transform .28s cubic-bezier(.4, 0, .2, 1), width .28s cubic-bezier(.4, 0, .2, 1), visibility 0s 0s;
 }
 
 .pr-drawer__head {
@@ -2701,7 +2701,13 @@ body[data-page="period-review"] .demo-topbar__filters {
   font-weight: 600;
 }
 
-.pr-drawer__close {
+.pr-drawer__actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.pr-drawer__icon-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -2715,8 +2721,15 @@ body[data-page="period-review"] .demo-topbar__filters {
   cursor: pointer;
 }
 
-.pr-drawer__close:hover { border-color: var(--brand); color: var(--text-primary); }
-.pr-drawer__close svg { width: 16px; height: 16px; }
+.pr-drawer__icon-btn:hover { border-color: var(--brand); color: var(--text-primary); }
+.pr-drawer__icon-btn svg { width: 16px; height: 16px; }
+
+/* 放大态：抽屉盖满全屏宽（表多列时不挤），偏好由 live.js 记入 localStorage。
+   双图标在首次 createIcons 时都渲染好，用类切换显隐，避免二次渲染。 */
+.pr-drawer.is-maximized { width: 100vw; box-shadow: none; }
+.pr-drawer__icon-btn .pr-drawer__icon-min { display: none; }
+.pr-drawer.is-maximized .pr-drawer__icon-max { display: none; }
+.pr-drawer.is-maximized .pr-drawer__icon-min { display: inline-flex; }
 
 /* 抽屉内锚点 chips：顶部已固定，不需要再 sticky（默认 .pr-anchor-chips 是吸顶的）。 */
 .pr-drawer__nav {
@@ -2775,7 +2788,7 @@ body[data-page="period-review"] .demo-topbar__filters {
 
 /* 新增交互元素的键盘焦点环：沿用全局 --focus-ring 约定（components.css 的 :focus-visible）。
    这三个按钮不是 .ui-button，不写会没有焦点指示（WCAG 2.4.7）。 */
-.pr-drawer__close:focus-visible,
+.pr-drawer__icon-btn:focus-visible,
 .pr-drawer__nav-chip:focus-visible,
 .pr-evidence__open-drawer:focus-visible {
   outline: 2px solid var(--focus-ring);
