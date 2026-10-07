@@ -52,7 +52,7 @@ PAGE_DEFINITIONS = (
         'capability_keys': ('reviews.list_actions', 'reviews.review_action', 'reviews.period_compare'),
     },
     {
-        'key': 'period-review', 'label': '周月复盘', 'page_type': 'primary', 'route': '/period-review',
+        'key': 'period-review', 'label': '周期复盘', 'page_type': 'primary', 'route': '/period-review',
         'core_question': '本周/本月业绩差在哪、怎么补，做了什么、接下来做什么',
         'data_domains': ('product_daily', 'goals', 'actions', 'market'),
         'capability_keys': ('period-review.view', 'period-review.briefing', 'period-review.save'),
@@ -121,8 +121,8 @@ PAGE_DEFINITIONS = (
     {
         'key': 'rival-analysis', 'label': '竞品分析', 'page_type': 'primary', 'route': '/rival-analysis',
         'core_question': '竞品在卖什么、怎么卖',
-        'data_domains': ('market',),
-        'capability_keys': ('rival-analysis.view', 'rival-analysis.trend'),
+        'data_domains': ('market', 'dmp_competition', 'dmp_shop'),
+        'capability_keys': ('rival-analysis.view', 'rival-analysis.trend', 'rival-analysis.dmp_competition'),
     },
     {
         'key': 'data-collection', 'label': '数据采集', 'page_type': 'admin', 'route': '/data-collection',
@@ -143,6 +143,16 @@ PAGE_DEFINITIONS = (
         'core_question': '投放创意表现如何',
         'data_domains': (),
         'capability_keys': ('creative-board.view',),
+    },
+    {
+        # 核心单品九维分析：月度复盘沉淀的静态精选页（人工核准内容），
+        # 配色统一走 themes/core-product-domain.css；内容不查库，
+        # data_domains 留空（与 catalog 同理，门禁恒可满足）；
+        # api_endpoints 挂 /api/version 是 catalog 先例：空端点会进 endpoint_missing 阻断 release。
+        'key': 'core-product-analysis', 'label': '核心单品九维分析', 'page_type': 'primary', 'route': '/core-product-analysis',
+        'core_question': '核心单品在九个经营维度上的完整表现与下一步',
+        'data_domains': (),
+        'capability_keys': ('core-product-analysis.view',),
     },
 )
 
@@ -178,11 +188,11 @@ CAPABILITY_DEFINITIONS = (
     # Period reviews are human-entered records and can be viewed and saved
     # without weekly source facts.
     {'key': 'reviews.period_compare', 'page_key': 'reviews', 'label': '查看周期复盘', 'mode': 'analyze', 'support_level': 'supported', 'data_domains': (), 'metric_keys': (), 'api_endpoints': ('GET /api/period-reviews',)},
-    {'key': 'period-review.view', 'page_key': 'period-review', 'label': '查看周月复盘', 'mode': 'observe', 'support_level': 'supported', 'data_domains': (), 'metric_keys': (), 'api_endpoints': ('GET /api/period-reviews/templates', 'GET /api/period-reviews/:period_type/:period_key')},
+    {'key': 'period-review.view', 'page_key': 'period-review', 'label': '查看周期复盘', 'mode': 'observe', 'support_level': 'supported', 'data_domains': (), 'metric_keys': (), 'api_endpoints': ('GET /api/period-reviews/templates', 'GET /api/period-reviews/:period_type/:period_key')},
     # 复盘素材由系统聚合，缺失数据域时降级为「可手动填写」而不是阻断页面。
     {'key': 'period-review.briefing', 'page_key': 'period-review', 'label': '查看复盘素材聚合', 'mode': 'analyze', 'support_level': 'conditional', 'data_domains': ('product_daily', 'goals', 'actions', 'market'), 'metric_keys': ('net_sales', 'ad_roi', 'payment_conversion_rate'), 'api_endpoints': ('GET /api/period-reviews/:period_type/:period_key/context',)},
     # 复盘结论为人工录入记录，不依赖任何周期源事实即可保存。
-    {'key': 'period-review.save', 'page_key': 'period-review', 'label': '保存周月复盘', 'mode': 'mutate', 'support_level': 'supported', 'data_domains': (), 'metric_keys': (), 'api_endpoints': ('PUT /api/period-reviews/:period_type/:period_key',)},
+    {'key': 'period-review.save', 'page_key': 'period-review', 'label': '保存周期复盘', 'mode': 'mutate', 'support_level': 'supported', 'data_domains': (), 'metric_keys': (), 'api_endpoints': ('PUT /api/period-reviews/:period_type/:period_key',)},
     {'key': 'data-center.view_catalog', 'page_key': 'data-center', 'label': '查看数据能力目录', 'mode': 'observe', 'support_level': 'supported', 'data_domains': ('imports',), 'metric_keys': (), 'api_endpoints': ('GET /api/data-capabilities',)},
     {'key': 'data-center.import', 'page_key': 'data-center', 'label': '预览与确认导入', 'mode': 'workflow', 'support_level': 'supported', 'data_domains': ('imports',), 'metric_keys': (), 'api_endpoints': ('POST /api/imports/preview', 'POST /api/imports')},
     {'key': 'data-center.revert', 'page_key': 'data-center', 'label': '撤销导入批次', 'mode': 'workflow', 'support_level': 'conditional', 'data_domains': ('imports',), 'metric_keys': (), 'api_endpoints': ('POST /api/imports/:id/revert',)},
@@ -216,6 +226,7 @@ CAPABILITY_DEFINITIONS = (
     {'key': 'flow-source.item_flow', 'page_key': 'flow-source', 'label': '查看单品流量构成', 'mode': 'analyze', 'support_level': 'conditional', 'data_domains': ('market',), 'metric_keys': (), 'api_endpoints': ('GET /api/sycm/item-flow/summary', 'GET /api/sycm/item-flow/top-items')},
     {'key': 'rival-analysis.view', 'page_key': 'rival-analysis', 'label': '查看竞品分析', 'mode': 'observe', 'support_level': 'conditional', 'data_domains': ('market',), 'metric_keys': (), 'api_endpoints': ('GET /api/sycm/rival-shops/summary',)},
     {'key': 'rival-analysis.trend', 'page_key': 'rival-analysis', 'label': '竞品趋势对比', 'mode': 'analyze', 'support_level': 'conditional', 'data_domains': ('market',), 'metric_keys': (), 'api_endpoints': ('GET /api/sycm/rival-shops/trend', 'GET /api/sycm/rival-items/trend')},
+    {'key': 'rival-analysis.dmp_competition', 'page_key': 'rival-analysis', 'label': '达摩盘竞争视角', 'mode': 'observe', 'support_level': 'supported', 'data_domains': ('dmp_competition', 'dmp_shop'), 'metric_keys': (), 'api_endpoints': ('GET /api/dmp/competition/summary', 'GET /api/dmp/competition/rivals', 'GET /api/dmp/competition/detection', 'GET /api/dmp/competition/ad-strategy', 'GET /api/dmp/shop/summary')},
     {'key': 'data-collection.view', 'page_key': 'data-collection', 'label': '查看采集状态', 'mode': 'observe', 'support_level': 'supported', 'data_domains': ('imports',), 'metric_keys': (), 'api_endpoints': ('GET /api/collect/status',)},
     {'key': 'data-collection.trigger', 'page_key': 'data-collection', 'label': '触发采集任务', 'mode': 'workflow', 'support_level': 'conditional', 'data_domains': ('imports',), 'metric_keys': (), 'api_endpoints': ('POST /api/collect/trigger', 'POST /api/collect/prepare')},
     # The catalog page is a static design-system showcase; `/api/version` is the
@@ -223,6 +234,7 @@ CAPABILITY_DEFINITIONS = (
     # without pretending a business data domain exists.
     {'key': 'catalog.view', 'page_key': 'catalog', 'label': '查看组件目录', 'mode': 'observe', 'support_level': 'supported', 'data_domains': (), 'metric_keys': (), 'api_endpoints': ('GET /api/version',)},
     {'key': 'creative-board.view', 'page_key': 'creative-board', 'label': '查看创意看板', 'mode': 'observe', 'support_level': 'supported', 'data_domains': (), 'metric_keys': (), 'api_endpoints': ('GET /api/creative-board',)},
+    {'key': 'core-product-analysis.view', 'page_key': 'core-product-analysis', 'label': '查看核心单品九维分析', 'mode': 'observe', 'support_level': 'supported', 'data_domains': (), 'metric_keys': (), 'api_endpoints': ('GET /api/version',)},
 )
 
 
@@ -266,6 +278,7 @@ _PAGE_TARGET_FILES = {
     # The catalog renders from ui-components.js only — it has no page adapter.
     'catalog': ('frontend/ui_demo/pages/component-catalog.html', 'frontend/ui_demo/assets/ui-components.js'),
     'creative-board': ('frontend/ui_demo/pages/creative-board.html', 'frontend/ui_demo/assets/creative-board-live.js'),
+    'core-product-analysis': ('frontend/ui_demo/pages/core-product-analysis.html', 'frontend/ui_demo/assets/core-product-analysis-live.js'),
 }
 
 

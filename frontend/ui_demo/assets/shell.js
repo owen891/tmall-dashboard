@@ -104,7 +104,7 @@
     });
   loadOptionalScript(`desktop-integration.js?v=${RUNTIME_ASSET_V}`);
 
-  const liveAdapters = { overview: 'overview-live.js', products: 'products-live.js', promotion: 'promotion-live.js', 'keyword-promotion': 'keyword-promotion-live.js', 'market-ranking': 'market-ranking-live.js', 'flow-source': 'flow-source-live.js', 'rival-analysis': 'rival-analysis-live.js' };
+  const liveAdapters = { 'core-product-analysis': 'core-product-analysis-live.js', overview: 'overview-live.js', products: 'products-live.js', promotion: 'promotion-live.js', 'keyword-promotion': 'keyword-promotion-live.js', 'market-ranking': 'market-ranking-live.js', 'flow-source': 'flow-source-live.js', 'rival-analysis': 'rival-analysis-live.js' };
   const liveAdapter = liveAdapters[document.body.dataset.page];
   const apiReady = window.DemoApi
     ? Promise.resolve(window.DemoApi)
@@ -149,7 +149,7 @@
         ['category-dashboard', '品类经营看板', 'pie-chart', 'category-dashboard'],
         ['goals', '经营目标', 'target', 'goals'],
         ['reviews', '经营复盘', 'clipboard-check', 'reviews'],
-        ['period-review', '日周月复盘', 'file-text', 'period-review'],
+        ['period-review', '周期复盘', 'file-text', 'period-review'],
       ],
     },
     {
@@ -158,6 +158,7 @@
         ['products', '商品运营', 'package', 'products'],
         ['lifecycle', '生命周期', 'refresh-cw', 'lifecycle'],
         ['keyword-promotion', '关键词选品', 'filter', 'keyword-promotion'],
+        ['core-product-analysis', '核心单品九维', 'layers', 'core-product-analysis'],
       ],
     },
     {
@@ -194,6 +195,7 @@
     promotion: ['推广分析', '按投放粒度解释花费、成交与投产效率'],
     'new-products': ['新品推广', '按上架节奏分析新品投放效率与销售联动'],
     'creative-board': ['素材点击率', '按单品沉淀素材历史点击质量'],
+    'core-product-analysis': ['核心单品九维', '月度复盘沉淀：核心单品在九个经营维度的完整分析'],
     'keyword-promotion': ['关键词选品', '按属性标签筛选推广效果好的标品商品'],
     'market-ranking': ['市场分析', '生意参谋市场排行，类目对比与热卖趋势洞察'],
     lifecycle: ['生命周期', '按商品查看跨月经营表现与累计贡献'],
@@ -201,7 +203,7 @@
     'category-dashboard': ['品类经营看板', '按日、周、月和自定义周期跟踪品类经营表现'],
     'data-collection': ['数据采集', '各数据源采集状态管理与手动触发'],
     reviews: ['经营复盘', '查看待复盘动作与经营周期差异'],
-    'period-review': ['日周月复盘', '系统汇总业绩、目标差距、市场与动作素材，人工补结论与卡点'],
+    'period-review': ['周期复盘', '系统汇总业绩、目标差距、市场与动作素材，人工补结论与卡点'],
     'data-center': ['数据中心', '导入、校验和管理经营数据'],
     settings: ['设置', '维护店铺与业务默认配置'],
     goals: ['经营目标', '按年、季、月、周、日跟踪净销售额目标'],

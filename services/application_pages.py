@@ -30,6 +30,7 @@ APPLICATION_PAGES = frozenset({
     'component-catalog',
     'creative-board',
     'period-review',
+    'core-product-analysis',
 })
 
 
