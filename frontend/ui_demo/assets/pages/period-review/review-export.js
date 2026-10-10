@@ -1,7 +1,7 @@
 (function (global) {
   'use strict';
 
-  /** 周月复盘「导出 Markdown」模块。
+  /** 周期复盘「导出 Markdown」模块。
 
    *  定稿复盘一键导出结构化 Markdown，顺序对齐月复盘 XMind 的六大板块：
    *  品类汇总 → 货品 → 广告 → 市场监控 → 总结 → 下期规划。

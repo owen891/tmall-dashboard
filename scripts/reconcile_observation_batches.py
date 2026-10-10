@@ -189,6 +189,10 @@ def run(
 
     connection = sqlite3.connect(database_path, timeout=300)
     connection.row_factory = sqlite3.Row
+    # 2026-10-08：观测行按 (shop_id, product_id, date, source_filename) 分组聚合，
+    # SQLite 默认 temp_store=FILE 会落系统临时目录；Temp 不可写时抛误导性的
+    # "unable to open database file"（实测该聚合必失败）。与 db.get_connection 一致。
+    connection.execute('PRAGMA temp_store=MEMORY')
     try:
         report.update(plan(connection))
         if apply and report['summary']['unique_row_count']:

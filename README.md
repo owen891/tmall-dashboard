@@ -1,12 +1,12 @@
 # 天猫数据仪表盘
 
-[![Release](https://img.shields.io/badge/release-v2.0.0--dev-f08c46)](https://github.com/owen891/tmall-dashboard/releases)
+[![Release](https://img.shields.io/badge/release-v2.0.2--dev-f08c46)](https://github.com/owen891/tmall-dashboard/releases)
 ![Python](https://img.shields.io/badge/Python-3.14-3776ab)
 ![Flask](https://img.shields.io/badge/Flask-SQLite-111111)
 
 面向单店铺运营团队的经营分析与商品运营工作台。系统以 Flask、SQLite 和原生 HTML/CSS/JavaScript 构建，把经营结果、商品表现、推广投放、生命周期、行动复盘和数据治理放在同一套可追溯流程中。
 
-当前本地开发版本：`v2.0.0`。该版本尚未发布 GitHub Release 或桌面安装包；已发布的最后版本仍为 [`v1.0.13`](https://github.com/owen891/tmall-dashboard/releases/tag/v1.0.13)。详细变更见 [更新说明](CHANGELOG.md)。
+当前本地开发版本：`v2.0.2`。该版本尚未发布 GitHub Release 或桌面安装包；已发布的最后版本仍为 [`v1.0.13`](https://github.com/owen891/tmall-dashboard/releases/tag/v1.0.13)。详细变更见 [更新说明](CHANGELOG.md)。
 
 ## 产品界面
 
@@ -46,6 +46,14 @@ py -3 -m pip install -r requirements.txt
 py -3 app.py
 ```
 
+`requirements.txt` 是人工维护的直接依赖清单；需要可复现构建（桌面打包、生产部署）时改用含传递依赖的完整锁定文件：
+
+```powershell
+py -3 -m pip install -r requirements-lock.txt
+```
+
+升级依赖后必须重新导出 `requirements-lock.txt` 并同步 `requirements.txt`，避免两者漂移。
+
 打开 `http://127.0.0.1:5000/`。主工作台包括总览、商品运营、推广分析、生命周期、经营复盘、数据中心和设置。
 
 Web 版会通过 `/api/version` 检查当前发布版本；检测到服务器已发布新版本时，页面顶部会提示刷新，刷新后加载新的前端资源。Web 版的实际升级仍由服务器部署流程完成，浏览器不会直接覆盖服务器文件。
@@ -55,7 +63,7 @@ Web 版会通过 `/api/version` 检查当前发布版本；检测到服务器已
 - **Web 版：** 页面启动、回到前台以及定时检查 `/api/version?client=web`。服务端版本高于页面内置版本时显示“更新说明”和“立即刷新”；刷新只重新加载已部署的 Web 资源，不会修改服务器文件。管理员需要先完成服务器部署，浏览器端只负责发现和加载新版本。
 - **桌面版：** Electron 启动时会检查 GitHub Releases，托盘菜单和设置页也可以手动检查。发现新版本后先询问是否下载，下载完成后再询问是否重启安装；安装前会停止内置 Flask/Waitress 服务，避免数据库或后端文件被占用。开发环境不会触发在线更新。
 - **更新源：** 桌面端优先使用国内 GitCode Release `https://gitcode.com/owen891/tmall-dashboard/releases/latest/download`，失败时回退到 GitHub。Windows 必须同时发布 `latest.yml`、`TmallDashboard-Setup-<version>-x64.exe` 和对应 `.blockmap`；macOS 必须发布合并后的 `latest-mac.yml`、x64/arm64 的 `.dmg`、`.zip` 及对应 `.blockmap`。这些文件由 `desktop-release.yml` 在 Windows 和 macOS runner 上生成后统一上传。
-- **版本约束：** `VERSION`、`desktop/package.json`、`desktop/package-lock.json`、Web 版本资源和更新元数据必须使用同一个三段式版本号；当前本地开发基线为 `VERSION=2.0.0`，未来必须对应 tag `v2.0.0`。只推送匹配的 `v*` tag 才会触发桌面 Release，不能从普通分支手动生成更新元数据。
+- **版本约束：** `VERSION`、`desktop/package.json`、`desktop/package-lock.json`、Web 版本资源和更新元数据必须使用同一个三段式版本号；当前本地开发基线为 `VERSION=2.0.2`，未来必须对应 tag `v2.0.2`。只推送匹配的 `v*` tag 才会触发桌面 Release，不能从普通分支手动生成更新元数据。
 - **macOS 前提：** 当前 workflow 会在 Intel 与 Apple Silicon runner 分别构建并合并更新索引。下载安装包不要求本机先安装开发工具；要让 macOS 自动更新顺利安装，发布环境还应配置有效的 Apple Developer 签名和公证凭据，否则用户仍可从 Release 页面手动下载包，但系统可能拦截未签名应用或自动安装。
 
 ## Windows 桌面版
@@ -85,16 +93,11 @@ git fetch --tags origin
 git checkout --detach origin/main
 git clean -fdx
 (Get-Content VERSION -Raw).Trim()
-git tag v2.0.0
-git push origin v2.0.0
+git tag v2.0.2
+git push origin v2.0.2
 ```
 
-标签必须与根目录 `VERSION` 完全一致（当前本地 `VERSION=2.0.0` 对应未来的 `v2.0.0`）。`desktop-release.yml` 只允许 `push` 的 `v*` 标签进入发布；手动 `workflow_dispatch` 不会发布，避免从非 tag 提交创建 Release。Windows 与 macOS 使用相同的 Python/Node 运行时、锁定依赖和桌面测试，构建完成后由单一串行 job 合并并发布 Release。真实浏览器门禁由 `quality-gate.yml` 执行，不由桌面发布 workflow 重复执行。
-git tag v2.0.0
-git push origin v2.0.0
-```
-
-标签必须与根目录 `VERSION` 完全一致（当前本地 `VERSION=2.0.0` 对应未来的 `v2.0.0`）。`desktop-release.yml` 只允许 `push` 的 `v*` 标签进入发布；手动 `workflow_dispatch` 不会发布，避免从非 tag 提交创建 Release。Windows 与 macOS 使用相同的 Python/Node 运行时、锁定依赖、桌面测试和 Chromium 门禁，构建完成后由单一串行 job 合并并发布 Release。
+标签必须与根目录 `VERSION` 完全一致（当前本地 `VERSION=2.0.2` 对应未来的 `v2.0.2`）。`desktop-release.yml` 只允许 `push` 的 `v*` 标签进入发布；手动 `workflow_dispatch` 不会发布，避免从非 tag 提交创建 Release。Windows 与 macOS 使用相同的 Python/Node 运行时、锁定依赖和桌面测试，构建完成后由单一串行 job 合并并发布 Release。真实浏览器门禁由 `quality-gate.yml` 执行，不由桌面发布 workflow 重复执行。
 
 本地运行真实浏览器门禁前安装仓库依赖和 Chromium：
 
@@ -164,7 +167,8 @@ py -3 scripts/release_audit.py --database data/dashboard.db --strict
 - 生命周期判断需要至少 60 个连续有效日；季节性判断需要 12 个完整自然月，数据不足时明确显示“数据积累中”。
 - 周/月事实及部分依赖旧表的工具接口仍限定单店结构；非 `default` 店铺请求会返回 `UNSUPPORTED_SCOPE`，避免静默串店。
 - `main` 与当前发布分支存在独立提交历史，后续合并应通过显式 Pull Request 审查，不直接覆盖默认分支。
+- **本机沙箱降权（2026-10-10 确认）：** 当前机器对 `.venv\Scripts\python.exe` 所在路径的进程强制降权为 Low Integrity Level，导致该解释器无法在系统 TEMP 目录创建 SQLite/文件（`tempfile.gettempdir()` 会回退到仓库根目录，测试子进程备份步骤曾因此失败）。影响仅限「用 `.venv` 解释器执行且需要在系统 TEMP 写文件」的场景；按 README 用 `py -3 -m unittest` 验证不受影响，相关测试已改用 `sys.executable` 运行被测脚本。若在别的机器复现 `unable to open database file` 类错误，先检查 venv 解释器进程的完整性级别。
 
 ## 发布
 
-当前本地版本为 `v2.0.0`，尚未生成安装包；已发布安装包见 [GitHub Release v1.0.13](https://github.com/owen891/tmall-dashboard/releases/tag/v1.0.13)。
+当前本地版本为 `v2.0.2`，尚未生成安装包；已发布安装包见 [GitHub Release v1.0.13](https://github.com/owen891/tmall-dashboard/releases/tag/v1.0.13)。

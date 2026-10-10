@@ -116,7 +116,7 @@ def success(data, availability='available', status=200, *, capabilities=None,
     }), status
 
 
-def failure(code, message, details=None, status=400, *, availability=None):
+def failure(code, message, details=None, status=400, *, availability=None, request_id=None):
     return jsonify({
         'ok': False,
         'code': code,
@@ -139,5 +139,5 @@ def failure(code, message, details=None, status=400, *, availability=None):
         'evidence': [],
         'assumptions': [],
         'unknowns': [],
-        'requestId': uuid4().hex,
+        'requestId': request_id or uuid4().hex,
     }), status

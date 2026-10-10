@@ -266,6 +266,9 @@
       'aov', 'refund_rate', 'ad_spend', 'ad_ratio', 'operating_profit', 'profit_rate',
     ]);
 
+    // 问题/投放榜直接进入动作闭环；正向榜仍保留“趋势 + 查看诊断”的轻量操作。
+    const ACTION_BOARD_KEYS = new Set(['decline', 'loss', 'paid', 'new_paid']);
+
     function renderProductTable(rows, boardKey) {
       if (!rows || !rows.length) return null;
       const board = boardOf(boardKey);
@@ -324,7 +327,12 @@
           h('button', {
             type: 'button', class: 'ui-button ui-button--ghost ui-button--compact', text: '查看诊断',
             onclick: () => openProductDiagnosis(row, board.withDelta),
-          })),
+          }),
+          ACTION_BOARD_KEYS.has(board.key) ? h('button', {
+            type: 'button', class: 'ui-button ui-button--ghost ui-button--compact', text: '创建动作',
+            title: '打开单品诊断并填写运营动作',
+            onclick: () => openProductDiagnosis(row, board.withDelta),
+          }) : null),
       ));
       return h('div', { class: 'pr-table-scroll' },
         h('table', { class: 'pr-table pr-table--products' }, h('thead', null, head), h('tbody', null, ...body)));

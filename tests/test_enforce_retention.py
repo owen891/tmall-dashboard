@@ -2,7 +2,7 @@ import json
 import sqlite3
 import tempfile
 import unittest
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
 from scripts.enforce_retention import enforce
@@ -171,6 +171,102 @@ class EnforceRetentionTests(unittest.TestCase):
         ).fetchone()[0], 1)
         self.assertEqual(conn.execute(
             'SELECT COUNT(*) FROM archive_catalog').fetchone()[0], 0)
+
+
+class TimestampCutoffTests(unittest.TestCase):
+    """2026-10-08 修复：cutoff 必须是完整时间戳，不能是纯日期。
+
+    缺陷：``_date_cutoff`` 曾返回 ``YYYY-MM-DD``，而判定是 SQL 的
+    ``"<column>" < ?`` **字符串比较**。带时分秒的真实数据形如
+    ``'2026-09-24 01:30:28'``，与纯日期截止值 ``'2026-09-24'`` 比较时被判为
+    **不小于**——因为比较到第 11 个字符时左边是 ``' '``（0x20）、右边已结束，
+    短串更小，故 ``'2026-09-24 01:30:28' < '2026-09-24'`` 为假。
+
+    后果：**截止日当天的全部行永远无法被清理**，且 ``enforce_retention`` 与
+    ``db_quality_check`` 对同一张表给出永久相反的结论——生产库实测前者
+    eligible=0、后者 8316 行超期。
+
+    既有夹具用 ``date.today().isoformat()``（纯日期）落库，因此**碰不到**这个
+    边界；本组测试刻意写入带时分秒的时间戳来锁住修复。
+    """
+
+    def setUp(self):
+        self.temp_dir = tempfile.TemporaryDirectory(prefix='tmall-cutoff-ts-')
+        self.db = Path(self.temp_dir.name) / 'dashboard.db'
+        conn = sqlite3.connect(self.db)
+        conn.executescript(SCHEMA)
+        conn.execute(
+            "INSERT INTO retention_policies "
+            "(policy_key, source_kind, source_table, retention_days, mode, protected) "
+            "VALUES ('staging', 'runtime', 'collector_data_staging', 14, "
+            "'purge_after_archive', 0)")
+        conn.commit()
+        conn.close()
+        self.archive_dir = Path(self.temp_dir.name) / 'archives'
+
+    def tearDown(self):
+        self.temp_dir.cleanup()
+
+    def _staging_row(self, published_at):
+        conn = sqlite3.connect(self.db)
+        try:
+            conn.execute(
+                'INSERT INTO collector_data_staging '
+                '(payload_json, status, created_at, published_at) VALUES (?,?,?,?)',
+                ('{"x":1}', 'published', published_at, published_at))
+            conn.commit()
+        finally:
+            conn.close()
+
+    def _staging_count(self):
+        conn = sqlite3.connect(self.db)
+        try:
+            return conn.execute(
+                'SELECT COUNT(*) FROM collector_data_staging').fetchone()[0]
+        finally:
+            conn.close()
+
+    def test_same_day_but_earlier_clock_time_is_eligible(self):
+        """截止日当天、但时钟早于 cutoff 时刻的行必须可被清理。
+
+        这正是生产库 8316 行的形态：published_at='2026-09-24 01:30:28'，
+        而 cutoff 是当天更晚的时刻。修复前该行永远 eligible=0。
+        """
+        # 略早于 14 天前的同一时刻，确保落在「同一天但更早」的窗口内
+        cutoff_probe = datetime.now() - timedelta(days=14)
+        same_day_earlier = cutoff_probe.replace(
+            hour=0, minute=30, second=28, microsecond=0).strftime('%Y-%m-%d %H:%M:%S')
+        self._staging_row(same_day_earlier)
+
+        report = enforce(self.db, apply_changes=False, archive_dir=self.archive_dir)
+        staging = next(p for p in report['policies']
+                       if p['source_table'] == 'collector_data_staging')
+        self.assertEqual(
+            staging['eligible_count'], 1,
+            'same-day-but-earlier row must be eligible once cutoff carries a time part',
+        )
+        # cutoff 自身必须是完整时间戳，而非纯日期
+        self.assertRegex(staging['cutoff'], r'^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$')
+
+    def test_recent_row_is_not_eligible(self):
+        """未超期的行不得被清理——修复不能变成「删更多」。"""
+        recent = (datetime.now() - timedelta(days=1)).strftime('%Y-%m-%d %H:%M:%S')
+        self._staging_row(recent)
+
+        report = enforce(self.db, apply_changes=False, archive_dir=self.archive_dir)
+        staging = next(p for p in report['policies']
+                       if p['source_table'] == 'collector_data_staging')
+        self.assertEqual(staging['eligible_count'], 0)
+
+    def test_purge_removes_only_the_older_timestamp(self):
+        """apply 后仅清除超期行，未超期行保留。"""
+        old = (datetime.now() - timedelta(days=60)).strftime('%Y-%m-%d %H:%M:%S')
+        recent = (datetime.now() - timedelta(days=1)).strftime('%Y-%m-%d %H:%M:%S')
+        self._staging_row(old)
+        self._staging_row(recent)
+
+        enforce(self.db, apply_changes=True, archive_dir=self.archive_dir)
+        self.assertEqual(self._staging_count(), 1)
 
 
 if __name__ == '__main__':

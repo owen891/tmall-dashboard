@@ -1,5 +1,5 @@
 /**
- * 抓「周月复盘 → 指标矩阵 / 类目拆解」两个页签的截图，并 dump 表头与首行文本。
+ * 抓「周期复盘 → 指标矩阵 / 类目拆解」两个页签的截图，并 dump 表头与首行文本。
  *
  * 运行（工作目录 E:\www\tmall-dashboard）：
  *   NODE_PATH=E:\www\tmall-dashboard\desktop\node_modules node scripts/shot_period_review_matrix.js [port] [category_mode]

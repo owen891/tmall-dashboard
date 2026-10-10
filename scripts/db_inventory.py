@@ -29,11 +29,24 @@ def quote_identifier(identifier: str) -> str:
 
 
 def connect_readonly(database_path: str | os.PathLike[str]) -> sqlite3.Connection:
-    """Open a database without permitting writes."""
+    """Open a database without permitting writes.
+
+    2026-10-08：补 ``PRAGMA temp_store=MEMORY``。SQLite 默认 ``temp_store=FILE``
+    (0)，大 ``GROUP BY`` / ``ORDER BY`` 会把中间结果落到系统临时目录；当 Temp
+    不可写（磁盘满、受限账户、沙箱）时报 **"unable to open database file"**——
+    一个与数据库本身毫无关系的误导性错误。实测 ``promotion_daily_facts`` 按
+    (shop_id, product_id) 聚合即触发，导致 ``backfill_product_identity_map``
+    的只读预览整体失败。
+
+    应用主连接（``db.get_connection``）早已设置该 pragma，此处补齐以保持一致：
+    内存临时表既避免了对系统 Temp 的依赖，也更快。注意 ``SQLITE_TMPDIR``
+    环境变量对本场景**无效**（已实测），必须用 pragma。
+    """
     path = Path(database_path).resolve()
     uri = f"file:{path.as_posix()}?mode=ro"
     connection = sqlite3.connect(uri, uri=True)
     connection.row_factory = sqlite3.Row
+    connection.execute("PRAGMA temp_store=MEMORY")
     return connection
 
 

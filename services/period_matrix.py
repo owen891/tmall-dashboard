@@ -284,7 +284,7 @@ def _build_matrix_row(conn, period_type, period_key, category_mode):
 
 
 def build_metrics_matrix(period_type, period_key, category_mode=None, limit=8):
-    """返回最近 N 个周期的指标矩阵，用于周月复盘的「指标矩阵」表格。
+    """返回最近 N 个周期的指标矩阵，用于周期复盘的「指标矩阵」表格。
 
     每期自动与上一周期环比，保证口径一致。
     """

@@ -194,25 +194,57 @@ if ($needBIPage -or $needOtherPages) {
     foreach ($line in $loginOutput) { Write-Log "  $line" }
     $biLoginFailed = ($LASTEXITCODE -ne 0)
     
-    # 如果BI登录失败，尝试弹出有界面浏览器让用户手动登录
+    # 如果BI登录失败，尝试复用/弹出有界面浏览器让用户手动登录
     if ($biLoginFailed -and $needBIPage) {
         Write-Log "  ⚠ 自动登录失败（可能需要验证码/滑块），切换到有界面模式，请手动完成登录..." "WARN"
         
-        # 关闭当前headless Chrome
-        Get-Process chrome -ErrorAction SilentlyContinue | Where-Object { $_.CommandLine -like "*$ChromeUserDataDir*" } | Stop-Process -Force -ErrorAction SilentlyContinue
-        Start-Sleep -Seconds 2
+        # 不强杀Chrome（避免cookie未落盘丢失）。仅当当前实例不是有界面模式时才重启。
+        # 判断依据：通过CDP查看当前页面是否为BI登录页或工作台。
+        $needVisibleRestart = $false
+        try {
+            $resp = Invoke-WebRequest -Uri "http://127.0.0.1:$ChromeDebugPort/json" -UseBasicParsing -TimeoutSec 3
+            $tabs = $resp.Content | ConvertFrom-Json
+            $pageTabs = @($tabs | Where-Object { $_.type -eq 'page' })
+            if ($pageTabs.Count -eq 0) { $needVisibleRestart = $true }
+        } catch { $needVisibleRestart = $true }
+
+        if ($needVisibleRestart) {
+            Write-Log "  当前无可用页面，重启Chrome为有界面模式..."
+            Get-Process chrome -ErrorAction SilentlyContinue | Where-Object { $_.CommandLine -like "*$ChromeUserDataDir*" } | Stop-Process -Force -ErrorAction SilentlyContinue
+            Start-Sleep -Seconds 2
+        }
         
-        # 用有界面模式重新启动Chrome
-        Write-Log "  启动有界面Chrome，请在弹出的窗口中手动完成登录..."
-        $chromeArgs = @(
-            "--remote-debugging-port=$ChromeDebugPort",
-            "--remote-allow-origins=*",
-            "--user-data-dir=`"$ChromeUserDataDir`"",
-            "--no-first-run",
-            "--no-default-browser-check",
-            "https://primeet.ecbis.cn/login"
-        )
-        Start-Process -FilePath $ChromePath -ArgumentList $chromeArgs -WindowStyle Normal
+        # 用有界面模式启动Chrome（复用已有实例则跳过启动）
+        if ($needVisibleRestart) {
+            Write-Log "  启动有界面Chrome，请在弹出的窗口中手动完成登录..."
+            $chromeArgs = @(
+                "--remote-debugging-port=$ChromeDebugPort",
+                "--remote-allow-origins=*",
+                "--user-data-dir=`"$ChromeUserDataDir`"",
+                "--no-first-run",
+                "--no-default-browser-check",
+                "https://primeet.ecbis.cn/login"
+            )
+            Start-Process -FilePath $ChromePath -ArgumentList $chromeArgs -WindowStyle Normal
+        } else {
+            Write-Log "  复用已运行Chrome，尝试打开BI登录页..."
+            try {
+                $null = & $PythonPath -c @"
+import json, urllib.request
+try:
+    tabs = json.loads(urllib.request.urlopen('http://127.0.0.1:$ChromeDebugPort/json', timeout=5).read())
+    pages = [t for t in tabs if t.get('type') == 'page']
+    if not any('ecbis' in t.get('url','') for t in pages):
+        import websocket
+        ver = json.loads(urllib.request.urlopen('http://127.0.0.1:$ChromeDebugPort/json/version', timeout=5).read())
+        ws = websocket.create_connection(ver['webSocketDebuggerUrl'], suppress_origin=True, timeout=10)
+        ws.send(json.dumps({'id':1,'method':'Target.createTarget','params':{'url':'https://primeet.ecbis.cn/login'}}))
+        ws.close()
+except Exception as e:
+    print('open login failed:', e)
+"@ 2>&1
+            } catch { Write-Log "  打开登录页失败: $_" }
+        }
         
         # 等待用户手动登录（最多等待5分钟）
         Write-Log "  等待手动登录（最多5分钟）..."
@@ -254,6 +286,23 @@ if ($Sources -contains 'wanxiangtai') {
     $wxtLoginScript = Join-Path $ProjectRoot "scripts\auto_login_wanxiangtai.py"
     $wxtOutput = & $PythonPath $wxtLoginScript 2>&1
     foreach ($line in $wxtOutput) { Write-Log "  $line" }
+}
+
+# 3c. 刷新cookie文件（从已登录Chrome导出最新cookie，供文件cookie采集模式使用）
+Write-Log "`n[3c] 刷新cookie文件（文件cookie模式）..."
+$cookieExportScript = Join-Path $ProjectRoot "..\BI采集\export_cookies_v3.py"
+if (-not (Test-Path -LiteralPath $cookieExportScript)) {
+    $cookieExportScript = Join-Path $ProjectRoot "export_cookies_v3.py"
+}
+if (Test-Path -LiteralPath $cookieExportScript) {
+    try {
+        $exportOutput = & $PythonPath $cookieExportScript 2>&1
+        foreach ($line in $exportOutput) { Write-Log "  $line" }
+    } catch {
+        Write-Log "  ⚠ cookie刷新失败: $_" "WARN"
+    }
+} else {
+    Write-Log "  - cookie导出脚本不存在，跳过（采集将回退到CDP模式）" "WARN"
 }
 
 # 4. 触发采集任务

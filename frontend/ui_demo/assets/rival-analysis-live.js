@@ -19,6 +19,7 @@
     shopEntityTrend: null,
     itemEntityTrend: null,
     activeTab: 'shops',
+    dmp: { loaded: false, loading: false, summary: null, rivals: null, ad: null, shop: null },
     sortKey: 'uv',
     sortDir: 'desc',
     filterType: '',
@@ -423,6 +424,161 @@
     container.innerHTML = html;
   }
 
+  // ---- 达摩盘竞争视角（数据源：达摩盘-竞争分析，双窗口快照，与上方单日观察口径不同） ----
+  function dmpBucket(share) {
+    const v = share && share.controlRatio;
+    return v ? String(v) : '--';
+  }
+
+  function renderDmp() {
+    const s = state.dmp;
+    const hint = $('[data-dmp-window]');
+    if (s.summary && s.summary.available) {
+      hint.textContent = `竞争窗口 ${s.summary.end_date} vs ${s.summary.peer_end_date}（达摩盘双窗口快照，T-1/T-2 收口）。`;
+      $('[data-dmp-kpi="monitored"]').textContent = fmtInt(s.summary.monitored_cnt);
+      $('[data-dmp-kpi="day-cost"]').textContent = fmtWan(s.summary.own_day_cost);
+      $('[data-dmp-kpi="detected"]').textContent = fmtInt(s.summary.detected_cnt);
+      $('[data-dmp-kpi="window"]').textContent = `${s.summary.end_date} vs ${s.summary.peer_end_date}`;
+    } else {
+      hint.textContent = '暂无达摩盘竞争分析数据——请在「数据采集」页运行 dmp_competition 源。';
+    }
+    if (s.summary && s.summary.top_detected) {
+      $('[data-dmp-detect-hint]').textContent =
+        `竞对探测最高分：${s.summary.top_detected.name}（竞争分 ${fmtPct1(s.summary.top_detected.score)}）。` +
+        '完整候选列表见 /api/dmp/competition/detection。';
+    }
+
+    const tbody = $('[data-dmp-rivals-body]');
+    if (!tbody) return;
+    if (!s.rivals || !s.rivals.length) {
+      tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:var(--text-secondary);padding:20px">暂无竞对监控数据（需先在达摩盘建立竞对监控）</td></tr>';
+      return;
+    }
+    tbody.innerHTML = s.rivals.map((r, idx) => {
+      const inter = r.intersection_click_uv == null ? '--' : fmtWan(r.intersection_click_uv);
+      const cost = r.day_cost == null ? '--' : fmtWan(r.day_cost);
+      return `<tr>
+        <td class="num">${idx + 1}</td>
+        <td>${escapeHtml(r.competitor_name || '--')}${r.attention_status ? '' : ' <span style="color:var(--text-secondary)">（未关注）</span>'}</td>
+        <td class="num">${inter}</td>
+        <td class="pct">${fmtPct1(r.intersection_rate)}</td>
+        <td class="num">${cost}</td>
+        <td class="pct">${fmtPct1(r.day_cost_rate)}</td>
+        <td class="pct">${escapeHtml(dmpBucket(r.alipay_share))}</td>
+        <td class="pct">${escapeHtml(dmpBucket(r.ipv_share))}</td>
+        <td class="pct">${escapeHtml(dmpBucket(r.cart_share))}</td>
+      </tr>`;
+    }).join('');
+  }
+
+  function renderDmpAd(items) {
+    const box = $('[data-dmp-ad-list]');
+    if (!box) return;
+    if (!items || !items.length) {
+      box.innerHTML = '<div style="text-align:center;color:var(--text-secondary);padding:16px">暂无投放借鉴数据（需先跑 dmp_shop 源取得 TOP 单品）</div>';
+      return;
+    }
+    box.innerHTML = items.map((it) => {
+      const meta = [
+        it.similarity_score != null ? `相似度 ${it.similarity_score}` : '',
+        it.cate_name || '',
+        it.price_scope ? `价格带 ${it.price_scope}` : '',
+        it.wj_amt_scope || '',
+      ].filter(Boolean).join(' · ');
+      const lessons = (it.lessons || []).map((l) => {
+        const ch = (l.channels || []).map(c => `${c.name || ''}${c.rate != null ? Math.round(c.rate * 100) + '%' : ''}`).filter(Boolean).join('/');
+        const crowds = (l.crowds || []).slice(0, 3).map(c => c.replace(/^自定义竞争店铺：/, '竞店:').replace(/^达摩盘平台精选：/, '精选:')).join('、');
+        const kws = (l.keywords || []).slice(0, 5).join('/');
+        const parts = [];
+        if (ch) parts.push(`渠道 ${ch}`);
+        if (l.campaign) parts.push(`计划 ${escapeHtml(l.campaign)}`);
+        if (crowds) parts.push(`圈人 ${escapeHtml(crowds)}`);
+        if (kws) parts.push(`词 ${escapeHtml(kws)}`);
+        if (l.roi || l.click) parts.push(`簇均 ROI ${l.roi || '--'} / 点击 ${l.click || '--'}`);
+        return `<li style="margin:2px 0">${parts.join(' · ')}</li>`;
+      }).join('');
+      return `<div style="border:1px solid var(--border-default);border-radius:var(--radius-sm);padding:10px 12px;margin-bottom:var(--space-3)">
+        <div style="font-weight:600;margin-bottom:4px">${escapeHtml(it.item_title || it.item_id)}</div>
+        <div style="font-size:var(--font-size-meta);color:var(--text-secondary);margin-bottom:6px">${escapeHtml(meta)}</div>
+        <ul style="margin:0;padding-left:18px;font-size:var(--font-size-meta)">${lessons || '<li>无策略簇</li>'}</ul>
+      </div>`;
+    }).join('');
+  }
+
+  // ---- 达摩盘全店洞察：本店 vs 同行同层（近30天窗口，同行 GMV/IPV 仅分档口径） ----
+  function fmtGrowth(v) {
+    if (v == null || isNaN(v)) return '--';
+    return (Number(v) >= 0 ? '+' : '') + (Number(v) * 100).toFixed(1) + '%';
+  }
+
+  function renderDmpShop() {
+    const s = state.dmp.shop;
+    const cards = $('[data-dmp-shop-cards]');
+    if (!cards) return;
+    if (!s || !s.available) {
+      cards.innerHTML = '<div style="width:100%;text-align:center;color:var(--text-secondary);padding:12px">暂无全店洞察数据（请在采集中心运行 dmp_shop 源）</div>';
+      const st = $('[data-dmp-shop-structure]');
+      if (st) st.textContent = '';
+      return;
+    }
+    $('[data-dmp-shop-date]').textContent = s.end_date || '--';
+    $('[data-dmp-shop-period]').textContent = s.period || '30';
+    const own = s.own || {};
+    const peer = s.peer || {};
+    const cell = (label, ownV, peerV) =>
+      `<div style="flex:1;min-width:150px;border:1px solid var(--border-default);border-radius:var(--radius-sm);padding:10px 12px">
+        <div style="font-size:var(--font-size-meta);color:var(--text-secondary)">${label}</div>
+        <div style="font-size:20px;font-family:var(--font-mono)">${ownV}</div>
+        <div style="font-size:var(--font-size-meta);color:var(--text-secondary)">同行同层 ${peerV}</div>
+      </div>`;
+    const struct = (o) => `爆品 ${o.hotCount ?? '--'}品/${fmtPct1(o.hotGmvContriRate)} · 新品 ${o.newCount ?? '--'}/${fmtPct1(o.newGmvContriRate)} · 成长 ${o.potentialCount ?? '--'}/${fmtPct1(o.potentialGmvContriRate)} · 平销 ${o.tailCount ?? '--'}/${fmtPct1(o.tailGmvContriRate)}`;
+    cards.innerHTML = [
+      cell('GMV增速', fmtGrowth(own.gmvGrowthRate), fmtGrowth(peer.gmvGrowthRate)),
+      cell('支付金额', own.gmv != null ? fmtWan(own.gmv) : '--', peer.gmv != null ? fmtWan(peer.gmv) : '平台仅分档'),
+      cell('支付转化率', own.paidCvr != null ? fmtPct1(own.paidCvr) : (own.generalizedPaidCvr || '--'), peer.generalizedPaidCvr || '--'),
+      cell('IPV', own.ipv != null ? fmtWan(own.ipv) : '--', peer.generalizedIpv || '--'),
+      cell('支付买家数', fmtInt(own.alipayCnt), fmtInt(peer.alipayCnt)),
+      cell('在售商品数', fmtInt(own.itemCount), fmtInt(peer.itemCount)),
+    ].join('');
+    const st = $('[data-dmp-shop-structure]');
+    if (st) st.textContent = `货品结构（数量/GMV占比）— 本店: ${struct(own)} ｜ 同行同层: ${struct(peer)}`;
+  }
+
+  async function loadDmp(force) {
+    const dmp = state.dmp;
+    if (dmp.loading || (dmp.loaded && !force)) return;
+    dmp.loading = true;
+    const tbody = $('[data-dmp-rivals-body]');
+    try {
+      const [summaryRes, rivalsRes, adRes, shopRes] = await Promise.all([
+        fetch('/api/dmp/competition/summary'),
+        fetch('/api/dmp/competition/rivals'),
+        fetch('/api/dmp/competition/ad-strategy'),
+        fetch('/api/dmp/shop/summary'),
+      ]);
+      const summary = await summaryRes.json();
+      const rivals = await rivalsRes.json();
+      const ad = await adRes.json();
+      const shop = await shopRes.json();
+      if (summary.ok && summary.data && summary.data.available) dmp.summary = summary.data;
+      else dmp.summary = { available: false };
+      dmp.rivals = (rivals.ok && rivals.data && rivals.data.available) ? rivals.data.rivals : [];
+      dmp.ad = (ad.ok && ad.data && ad.data.available) ? ad.data.items : [];
+      dmp.shop = (shop.ok && shop.data && shop.data.available) ? shop.data : { available: false };
+      dmp.loaded = true;
+      renderDmp();
+      renderDmpAd(dmp.ad);
+      renderDmpShop();
+    } catch (err) {
+      console.error('加载达摩盘竞争数据失败:', err);
+      if (tbody) {
+        tbody.innerHTML = `<tr><td colspan="9" style="text-align:center;color:var(--danger-text);padding:24px">加载失败: ${escapeHtml(err.message)}</td></tr>`;
+      }
+    } finally {
+      dmp.loading = false;
+    }
+  }
+
   // 标签切换
   function initTabs() {
     $$('[data-rival-tab]').forEach(tab => {
@@ -447,9 +603,12 @@
           setTimeout(() => {
             if (state.itemEntityTrend) renderEntityTrend('item', state.itemEntityTrend);
           }, 100);
+        } else if (target === 'dmp') {
+          if (!state.dmp.loaded) loadDmp();
         }
       });
     });
+    $$('[data-dmp-refresh]').forEach(btn => btn.addEventListener('click', () => loadDmp(true)));
     $$('[data-rival-entry]').forEach(entry => {
       entry.addEventListener('click', () => {
         const target = entry.dataset.rivalEntry;

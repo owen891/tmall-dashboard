@@ -1,6 +1,7 @@
 import os
 import sqlite3
 import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -35,8 +36,13 @@ class FixWanxiangtaiAccountRowsTests(unittest.TestCase):
         root = Path(__file__).resolve().parents[1]
         environment = os.environ.copy()
         environment['TMALL_DB_PATH'] = str(self.database)
+        # Use the interpreter running the tests instead of a hard-coded venv
+        # path: on this machine the venv launcher is sandbox-degraded to Low
+        # Integrity Level and cannot create SQLite files under the system TEMP
+        # directory, which made the subprocess backup step fail. The script
+        # under test is interpreter-agnostic.
         return subprocess.run(
-            [str(root / '.venv' / 'Scripts' / 'python.exe'),
+            [sys.executable,
              str(root / 'scripts' / 'fix_wanxiangtai_account_rows.py'),
              *arguments],
             cwd=root,

@@ -11,6 +11,7 @@ from services.classification_service import (
     merged_dictionaries,
     normalize_dictionaries,
 )
+from services.credentials_crypto import decrypt_password, encrypt_password
 from services.field_catalog import get_field_catalog
 
 
@@ -131,7 +132,7 @@ class SettingsService:
         persisted = SettingsRepo.get_all().get('collector_credentials', DEFAULTS['collector_credentials'])
         if not isinstance(persisted, dict): return deepcopy(DEFAULTS['collector_credentials'])
         if 'username' in persisted or 'password' in persisted: persisted = {'bi': persisted}
-        return {key: {'username': str((persisted.get(key) or {}).get('username') or '').strip(), 'password': str((persisted.get(key) or {}).get('password') or '')} for key in ('bi', 'sycm', 'wanxiangtai')}
+        return {key: {'username': str((persisted.get(key) or {}).get('username') or '').strip(), 'password': decrypt_password(str((persisted.get(key) or {}).get('password') or ''))} for key in ('bi', 'sycm', 'wanxiangtai')}
 
     @staticmethod
     def _number(value, label, *, minimum=None, strict=False):
@@ -255,7 +256,7 @@ class SettingsService:
                 if password is None or str(password) == '': password = existing.get(key, {}).get('password', '')
                 password = str(password)
                 if username and not password: raise SettingsValidationError(f'{key}采集账号必须填写密码')
-                normalized[key] = {'username': username, 'password': password}
+                normalized[key] = {'username': username, 'password': encrypt_password(password)}
             values['collector_credentials'] = normalized
         if 'classification_dictionaries' in values:
             try:

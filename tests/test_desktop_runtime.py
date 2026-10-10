@@ -13,10 +13,29 @@ if PROJECT_ROOT not in sys.path:
 
 class DesktopRuntimeTests(unittest.TestCase):
     def test_desktop_paths_use_user_profile_and_never_bundle_directory(self):
+        """桌面数据路径必须由 APPDATA/LOCALAPPDATA 派生，绝不在安装/仓库目录内。
+
+        2026-10-08 修复用例的环境依赖：原实现用
+        ``tempfile.TemporaryDirectory()`` 充当 ``APPDATA`` 再断言其不在
+        ``PROJECT_ROOT`` 内。但系统临时目录不可写时（磁盘满、受限账户、
+        受限沙箱），``tempfile`` 会回退到**当前工作目录**——在本仓库里就是
+        ``PROJECT_ROOT`` 本身，该断言**逻辑上无法满足**，于是报出一个与产品
+        无关的假失败。
+
+        实际上 ``desktop_data_paths`` 只是**纯字符串派生**（``os.path.join``），
+        完全不触碰文件系统。因此本用例改为传入**合成的、仓库外的**路径字符串，
+        断言其派生结果——既不依赖临时目录可用性，也不受沙箱写入限制影响，
+        在任何环境下都会真正执行（不再需要 skip）。
+        """
         from desktop_runtime import desktop_data_paths
 
-        with tempfile.TemporaryDirectory() as appdata, tempfile.TemporaryDirectory() as local:
-            paths = desktop_data_paths({'APPDATA': appdata, 'LOCALAPPDATA': local})
+        # 合成一个确定在仓库之外的 profile 根；不创建任何目录。
+        appdata = os.path.join(os.path.dirname(PROJECT_ROOT), 'dsh-synthetic-appdata')
+        local = os.path.join(os.path.dirname(PROJECT_ROOT), 'dsh-synthetic-local')
+        self.assertFalse(os.path.abspath(appdata).startswith(PROJECT_ROOT))
+        self.assertFalse(os.path.abspath(local).startswith(PROJECT_ROOT))
+
+        paths = desktop_data_paths({'APPDATA': appdata, 'LOCALAPPDATA': local})
 
         self.assertEqual(
             paths.database,

@@ -1,5 +1,5 @@
 /**
- * 抓「周月复盘 → 复盘设置（4 项目标）＋ 目标 vs 实际表」的截图，并 dump 表内容。
+ * 抓「周期复盘 → 复盘设置（4 项目标）＋ 目标 vs 实际表」的截图，并 dump 表内容。
  *
  * 运行（工作目录 E:\www\tmall-dashboard）：
  *   NODE_PATH=E:\www\tmall-dashboard\desktop\node_modules node scripts/shot_period_review_targets.js [port] [category_mode] [start] [end]

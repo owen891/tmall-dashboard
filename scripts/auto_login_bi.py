@@ -14,6 +14,13 @@ import sqlite3
 import subprocess
 from pathlib import Path
 
+# 独立脚本运行时保证能 import 项目内模块（services.credentials_crypto 等）
+_PROJECT_ROOT = Path(__file__).resolve().parents[1]
+if str(_PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(_PROJECT_ROOT))
+
+from services.credentials_crypto import decrypt_password
+
 # ==================== 配置 ====================
 CDP_PORT = int(os.environ.get('TMALL_CDP_PORT', '9223'))
 BI_URL = "https://primeet.ecbis.cn/workTable/workTableHome"
@@ -41,7 +48,7 @@ def load_saved_credentials():
         payload = json.loads(row[0])
         if 'username' in payload or 'password' in payload: payload = {'bi': payload}
         item = payload.get('bi') or {}
-        return str(item.get('username') or '').strip(), str(item.get('password') or '')
+        return str(item.get('username') or '').strip(), decrypt_password(str(item.get('password') or ''))
     except (OSError, sqlite3.Error, ValueError, TypeError):
         return '', ''
 
@@ -58,7 +65,7 @@ def load_platform_credentials(platform):
         if 'username' in payload or 'password' in payload:
             payload = {'bi': payload}
         item = payload.get(platform) or {}
-        return str(item.get('username') or '').strip(), str(item.get('password') or '')
+        return str(item.get('username') or '').strip(), decrypt_password(str(item.get('password') or ''))
     except (OSError, sqlite3.Error, ValueError, TypeError):
         return '', ''
 
@@ -363,14 +370,44 @@ def login_bi(username, password):
         print("  ✗ 未找到BI页面标签页")
         return False
 
-    cdp_navigate(ws_url, BI_LOGIN_URL)
-    time.sleep(5)
+    def _bi_session_alive():
+        """用字段目录接口验证会话，页面壳还在不代表会话没被顶掉。"""
+        alive = cdp_evaluate(
+            ws_url,
+            "(async function(){ try { const r = await fetch("
+            "'https://biprodapi.ecbis.cn/prod/base/getTableCustomView?tableKey=GoodsDataOverViewVo&showScmb=true',"
+            "{credentials: 'include'}); return (await r.json()).code === 0; } catch(e) { return false; } })()",
+            await_promise=True,
+        )
+        return bool(alive)
 
-    # 检查是否已经登录
-    current_url = cdp_evaluate(ws_url, "window.location.href")
-    if current_url and 'login' not in current_url:
-        print("  ✓ BI页面已登录（保持登录状态）")
-        return True
+    def _wait_login_form(seconds=20):
+        for _ in range(seconds):
+            time.sleep(1)
+            state = cdp_evaluate(
+                ws_url,
+                "(function(){ return {url: location.href,"
+                " hasForm: !!Array.from(document.querySelectorAll('input'))"
+                ".find(i => i.placeholder === '请输入账号')}})()",
+            )
+            if isinstance(state, dict) and state.get('hasForm'):
+                return True
+        return False
+
+    cdp_navigate(ws_url, BI_LOGIN_URL)
+
+    if not _wait_login_form():
+        # 表单没出现：要么真已登录，要么跳转还没完成。
+        current_url = cdp_evaluate(ws_url, "window.location.href")
+        if current_url and 'login' not in current_url and _bi_session_alive():
+            print("  ✓ BI页面已登录（保持登录状态）")
+            return True
+        # 会话已失效但页面停在旧地址：回登录页重等表单
+        print("  会话已失效（接口校验不过），重新走登录流程...")
+        cdp_navigate(ws_url, BI_LOGIN_URL)
+        if not _wait_login_form():
+            print("  ✗ 登录表单未出现，放弃自动登录")
+            return False
 
     print("  输入账号密码...")
     js_code = f"""
@@ -408,7 +445,12 @@ def login_bi(username, password):
     result = cdp_evaluate(ws_url, js_code)
     print(f"  {result}")
 
-    time.sleep(8)
+    # 轮询等登录完成（SPA 跳转有延迟，固定 8 秒偶发误判）
+    for _ in range(10):
+        time.sleep(2)
+        current_url = cdp_evaluate(ws_url, "window.location.href")
+        if current_url and 'login' not in current_url:
+            break
 
     # 检查登录结果
     current_url = cdp_evaluate(ws_url, "window.location.href")

@@ -111,6 +111,7 @@
       <div class="rival-tabs" role="tablist" aria-label="竞店竞品分析">
         <button class="rival-tab active" data-rival-tab="shops">竞店分析</button>
         <button class="rival-tab" data-rival-tab="items">竞品分析</button>
+        <button class="rival-tab" data-rival-tab="dmp">达摩盘竞争</button>
       </div>
 
       <!-- 竞店分析 -->
@@ -212,6 +213,62 @@
         </section>
       </div>
 
+      <!-- 达摩盘竞争视角 -->
+      <div data-rival-panel="dmp" style="display:none;">
+        <section class="ui-panel">
+          <div class="panel__header">
+            <div>
+              <h3 class="panel__title">达摩盘竞争视角 <span class="ui-badge ui-badge--info">数据源：达摩盘-竞争分析</span></h3>
+              <p class="panel__hint" data-dmp-window>我方与监控竞对的抢量关系：人群争夺交集、日消耗对比与份额变化（双窗口快照）。</p>
+            </div>
+            <button type="button" class="btn btn--secondary" data-dmp-refresh>刷新</button>
+          </div>
+          <div data-dmp-shop-strip style="margin-bottom:var(--space-4)">
+            <div class="rival-chart-title" style="margin-bottom:var(--space-2)">全店洞察 · 本店 vs 同行同层 <span class="ui-badge ui-badge--info">近<span data-dmp-shop-period>30</span>天 · 截至 <span data-dmp-shop-date>--</span></span></div>
+            <div style="display:flex;gap:var(--space-3);flex-wrap:wrap" data-dmp-shop-cards>
+              <div style="width:100%;text-align:center;color:var(--text-secondary);padding:12px">正在读取全店洞察数据…</div>
+            </div>
+            <div style="font-size:var(--font-size-meta);color:var(--text-secondary);margin-top:var(--space-2)" data-dmp-shop-structure></div>
+          </div>
+          <div class="rival-chart-row" style="display:flex;gap:var(--space-3);flex-wrap:wrap;margin-bottom:var(--space-4)">
+            <div class="ui-panel" style="flex:1;min-width:160px;padding:14px"><div style="font-size:var(--font-size-meta);color:var(--text-secondary)">监控竞对</div><div style="font-size:22px;font-family:var(--font-mono)" data-dmp-kpi="monitored">--</div></div>
+            <div class="ui-panel" style="flex:1;min-width:160px;padding:14px"><div style="font-size:var(--font-size-meta);color:var(--text-secondary)">我方日消耗</div><div style="font-size:22px;font-family:var(--font-mono)" data-dmp-kpi="day-cost">--</div></div>
+            <div class="ui-panel" style="flex:1;min-width:160px;padding:14px"><div style="font-size:var(--font-size-meta);color:var(--text-secondary)">探测候选竞对</div><div style="font-size:22px;font-family:var(--font-mono)" data-dmp-kpi="detected">--</div></div>
+            <div class="ui-panel" style="flex:1;min-width:200px;padding:14px"><div style="font-size:var(--font-size-meta);color:var(--text-secondary)">竞争窗口</div><div style="font-size:14px;font-family:var(--font-mono)" data-dmp-kpi="window">--</div></div>
+          </div>
+          <div class="rival-table-wrap">
+            <table class="rival-table">
+              <thead>
+                <tr>
+                  <th style="width:44px">排名</th>
+                  <th>竞对店铺</th>
+                  <th class="num" title="双方广告触达的重合人群规模">人群争夺交集UV</th>
+                  <th class="pct">交集环比</th>
+                  <th class="num">我方日消耗</th>
+                  <th class="pct">消耗环比</th>
+                  <th class="pct" title="竞对与我方支付买家数的份额变化分档">支付份额变化</th>
+                  <th class="pct">IPV份额变化</th>
+                  <th class="pct">加购份额变化</th>
+                </tr>
+              </thead>
+              <tbody data-dmp-rivals-body>
+                <tr><td colspan="9" style="text-align:center;color:var(--text-secondary);padding:20px">正在读取达摩盘竞争数据…</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p class="panel__hint" style="margin-top:var(--space-3)" data-dmp-detect-hint></p>
+          <details class="rival-trend-fold" style="margin-top:var(--space-4)">
+            <summary class="rival-trend-fold__summary">
+              <span class="rival-trend-fold__title"><i data-lucide="target"></i>竞对同款投放借鉴（TOP单品）</span>
+              <span class="rival-trend-fold__hint">达摩盘按我方 TOP 单品聚类的竞品投放打法：渠道占比、计划、圈人与关键词</span>
+            </summary>
+            <div data-dmp-ad-list style="padding-top:var(--space-3)">
+              <div style="text-align:center;color:var(--text-secondary);padding:16px">正在读取投放借鉴数据…</div>
+            </div>
+          </details>
+        </section>
+      </div>
+
     </main>
   </div>
 </div>
@@ -220,6 +277,6 @@
 <script src="../assets/navigation.js?v=20261001j"></script>
 <script src="../assets/labels.js?v=20261001j"></script>
 <script src="../assets/shell.js?v=20261003c"></script>
-<script src="../assets/runtime/date-range-scope.js?v=20261001j"></script><script src="../assets/format.js?v=20261001j"></script><script src="../assets/ui-components.js?v=20261003a"></script><script src="../assets/rival-analysis-live.js?v=20261001j"></script>
+<script src="../assets/runtime/date-range-scope.js?v=20261001j"></script><script src="../assets/format.js?v=20261001j"></script><script src="../assets/ui-components.js?v=20261003a"></script><script src="../assets/rival-analysis-live.js?v=20261007c"></script>
 </body>
 </html>

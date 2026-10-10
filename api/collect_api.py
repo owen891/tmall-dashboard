@@ -289,6 +289,35 @@ DATA_SOURCES = {
         # 环境就绪后改成 True 并加调度即可。
         'enabled': False,
     },
+    'dmp_shop': {
+        'name': '达摩盘-全店洞察',
+        # 全店洞察按 endDate+period 快照导入 dmp_shop_items，
+        # 最新数据日期取行内 end_date（DMP 数据窗口 T-1/T-2 收口）。
+        'table': 'dmp_shop_items',
+        'date_col': 'end_date',
+        'script': 'collect_dmp_shop.py',
+        'description': '达摩盘货品洞察-全店洞察（本店+同行同层 overview、单品指标含 peerValue）',
+        # 挖象浏览器(CDP 9224) + DMP 人工登录依赖，与 dts_market 同属
+        # 环境不保证的源：走 window 节奏人工触发，一键采集不碰它。
+        'cadence': 'window',
+        'fresh_days': 3,
+        # 未启用：health 会列出但不参与 unhealthy 判定/告警，避免挖象没开时
+        # 整体状态永远 degraded。验证日常跑稳后可改 True。
+        'enabled': False,
+    },
+    'dmp_competition': {
+        'name': '达摩盘-竞争分析',
+        # 竞争快照按 endDate 落 dmp_competitor_monitor / _indicators，
+        # 最新数据日期取行内 end_date（竞争窗口 T-1 收口）。
+        'table': 'dmp_competitor_monitor',
+        'date_col': 'end_date',
+        'script': 'collect_dmp_competition.py',
+        'description': '达摩盘竞争分析（竞对探测、监控列表、每竞对消耗/人群交集/份额分档）',
+        # 与 dmp_shop 同一挖象浏览器+人工登录依赖，window 节奏人工触发
+        'cadence': 'window',
+        'fresh_days': 3,
+        'enabled': False,
+    },
 }
 
 COLLECTOR_CATALOG = {
@@ -299,6 +328,8 @@ COLLECTOR_CATALOG = {
     'sycm_market': {'unit_type': 'category_rank', 'publish_mode': 'staging_atomic', 'fields': ['stat_date', 'cate_id', 'item_id', 'rank']},
     'wanxiangtai': {'unit_type': 'promotion_unit', 'publish_mode': 'staging_atomic', 'fields': ['date', 'channel', 'ad_spend', 'clicks']},
     'dts_market': {'unit_type': 'market_batch', 'publish_mode': 'batch_import', 'fields': ['analysis_date', 'period_start', 'period_end', 'category', 'rank']},
+    'dmp_shop': {'unit_type': 'dmp_shop_batch', 'publish_mode': 'batch_import', 'fields': ['end_date', 'period', 'item_id', 'ind_key', 'value', 'peer_value']},
+    'dmp_competition': {'unit_type': 'dmp_competition_batch', 'publish_mode': 'batch_import', 'fields': ['end_date', 'competitor_name', 'day_cost', 'intersection_click_uv']},
 }
 
 # 采集任务状态
@@ -682,7 +713,9 @@ def trigger_collect():
     COLLECT_TIMEOUT = 900  # 15分钟
     # 店透视是浏览器自动化（三类目串行导出 + 防风控停顿），15 分钟不够；
     # 且重试会再次驱动真实浏览器（可能撞 x5sec 风控），失败留给人工判断。
-    if source_key == 'dts_market':
+    if source_key in ('dts_market', 'dmp_shop', 'dmp_competition'):
+        # 浏览器自动化（CDP 驱动挖象 + 防风控停顿），15 分钟不够；
+        # 且重试会再次驱动真实浏览器（可能撞 x5sec 风控），失败留给人工判断。
         COLLECT_TIMEOUT = 2400  # 40分钟
         MAX_RETRIES = 0
 

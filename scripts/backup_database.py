@@ -61,6 +61,14 @@ def backup_database(source, destination=None):
     # 裁剪，data/backups 因此堆到 7 份 24GB（config 上限 4 份 20GB）。
     # 移到函数级：每次备份后都按 config.yaml 裁剪，刚生成的这份受 protected
     # 保护；轮转失败不影响备份本身的成立。
+    #
+    # 数据安全（2026-10-08 修复）：裁剪范围是 destination 所在目录的 ``*.db``。
+    # 当调用方把 --backup-destination 指到与源库相同的目录时，**源库本身也匹配
+    # ``*.db``**，于是被当成「陈旧备份」删除——实测 aggregate_store_daily 等
+    # 约 30 个脚本都会因此当场删掉生产库
+    # （``before: source exists = True`` → ``after: source exists = False``）。
+    # 源库必须与本次备份一样受保护；protected 占用 keep 配额，源库与本次备份
+    # 同时受保护时二者都留存。
     try:
         try:
             from scripts.backup_retention import prune_backups, retention_settings
@@ -69,7 +77,7 @@ def backup_database(source, destination=None):
         keep_newest, max_total_bytes = retention_settings()
         report['pruned'] = [str(item) for item in prune_backups(
             destination_path.parent, keep_newest=keep_newest,
-            max_total_bytes=max_total_bytes, protected=[destination_path])]
+            max_total_bytes=max_total_bytes, protected=[destination_path, source_path])]
     except Exception as error:
         report['pruned'] = None
         report['prune_warning'] = str(error)

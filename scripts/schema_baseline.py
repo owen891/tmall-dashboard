@@ -107,6 +107,76 @@ RUNTIME_TABLES = {
         "owner": "external collector: sycm_trade_summary",
         "lifecycle": "replace_by_date",
     },
+    # --- DMP 采集器落库（2026-10-08 登记）---
+    # 这批表由外部 DMP 采集器在运行时动态 CREATE，db.py 的迁移脚本里没有建表
+    # 语句，因此长期以「undeclared table」形式出现在 db_quality_check 的
+    # schema_alignment warning 里（95 张实际 vs 83 张声明）。它们被
+    # api/dmp_api.py、api/collect_api.py、services/data_capability_service.py
+    # 读取，属真实在用的运行期表，登记为 runtime 归属以消除该误报。
+    # 注意：登记只影响 schema_baseline 的 ownership/domain 标注，不建表、
+    # 不迁移、不改变任何运行时行为。
+    "dmp_shop_runs": {
+        "domain": "dmp_collector",
+        "owner": "external collector: dmp_shop",
+        "lifecycle": "append_by_run",
+    },
+    "dmp_shop_overview": {
+        "domain": "dmp_collector",
+        "owner": "external collector: dmp_shop",
+        "lifecycle": "replace_by_run_period",
+    },
+    "dmp_shop_items": {
+        "domain": "dmp_collector",
+        "owner": "external collector: dmp_shop",
+        "lifecycle": "replace_by_run_period",
+    },
+    "dmp_shop_item_indicators": {
+        "domain": "dmp_collector",
+        "owner": "external collector: dmp_shop",
+        "lifecycle": "replace_by_run_period",
+    },
+    "dmp_shop_indicator_dict": {
+        "domain": "dmp_collector",
+        "owner": "external collector: dmp_shop",
+        "lifecycle": "replace_by_run",
+    },
+    "dmp_competition_runs": {
+        "domain": "dmp_collector",
+        "owner": "external collector: dmp_competition",
+        "lifecycle": "append_by_run",
+    },
+    "dmp_competitors_detection": {
+        "domain": "dmp_collector",
+        "owner": "external collector: dmp_competition",
+        "lifecycle": "replace_by_run",
+    },
+    "dmp_competitor_monitor": {
+        "domain": "dmp_collector",
+        "owner": "external collector: dmp_competition",
+        "lifecycle": "replace_by_run",
+    },
+    "dmp_competition_indicators": {
+        "domain": "dmp_collector",
+        "owner": "external collector: dmp_competition",
+        "lifecycle": "replace_by_run",
+    },
+    "dmp_competition_ad_strategy": {
+        "domain": "dmp_collector",
+        "owner": "external collector: dmp_competition",
+        "lifecycle": "replace_by_run",
+    },
+    # 一次性导出导入的店铺排行快照（scripts/import_market_oneclick_exports.py）。
+    "market_snapshot_shop_rank": {
+        "domain": "market_snapshot",
+        "owner": "scripts/import_market_oneclick_exports.py",
+        "lifecycle": "append_by_batch",
+    },
+    # SYCM 商品排名日快照（外部采集器）。
+    "sycm_item_rank_daily": {
+        "domain": "source_facts",
+        "owner": "external collector: sycm_item_rank",
+        "lifecycle": "replace_by_date",
+    },
 }
 
 

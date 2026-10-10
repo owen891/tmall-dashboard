@@ -33,8 +33,64 @@ TABLE_SPECS = {
     'bi_product_daily_raw': ('date', 'date', None),
 }
 
+def _column_has_time(conn, table: str, column: str) -> bool:
+    """Return True when ``column`` actually stores timestamps, not pure dates.
+
+    2026-10-08：cutoff 的**格式必须匹配列的存储格式**，否则字符串比较会错一天。
+
+    - 时间戳列（``'2026-09-24 01:30:28'``）：纯日期 cutoff ``'2026-09-24'`` 会让
+      ``'... 01:30:28' < '2026-09-24'`` 判假 ⇒ **截止日当天全部行永不清理**
+      （生产库实测：enforce 报 0、quality_check 报 8316）。
+    - 纯日期列（``'2025-09-01'``）：时间戳 cutoff ``'2026-04-11 22:32:56'`` 会让
+      ``'2026-04-11' < '2026-04-11 22:32:56'`` 判真 ⇒ **边界当天的行被提前一天归档**
+      （``bi_product_daily_raw`` 正是这种列）。
+
+    两种列方向相反，因此不能一刀切。
+
+    探测方式：取 ``MAX(LENGTH(column))`` 而非 ``LIMIT 1`` 单行取样。单行取样对
+    混合格式列会**依赖扫描顺序**（先命中纯日期就误判为纯日期列），结果不确定；
+    取最大值则只要列中出现过时间戳就一定判定为时间戳列，**与行序无关**。
+    时间戳列用时间戳 cutoff 是安全侧选择：对偶发的纯日期行，其 cutoff 当天会被
+    保留而非误删。
+    """
+    try:
+        row = conn.execute(
+            f'SELECT MAX(LENGTH("{column}")) FROM "{table}" '
+            f'WHERE "{column}" IS NOT NULL'
+        ).fetchone()
+    except sqlite3.Error:
+        return False
+    if not row or row[0] is None:
+        return False
+    try:
+        return int(row[0]) > 10
+    except (TypeError, ValueError):
+        return False
+
+
 def _date_cutoff(days: int) -> str:
+    """Retention cutoff for **timestamp** columns (``YYYY-MM-DD HH:MM:SS``).
+
+    见 ``_column_has_time``：时间戳列必须用带时分秒的 cutoff，否则截止日当天
+    的行会被判为「未超期」而永远清理不掉。纯日期列请用 ``_pure_date_cutoff``。
+    """
+    return (datetime.now() - timedelta(days=int(days))).strftime('%Y-%m-%d %H:%M:%S')
+
+
+def _pure_date_cutoff(days: int) -> str:
+    """Retention cutoff for **pure-date** columns (``YYYY-MM-DD``)。
+
+    纯日期列（如 ``bi_product_daily_raw.date``）必须用纯日期 cutoff，否则
+    ``'<date>' < '<date> HH:MM:SS'`` 为真，边界当天的行会被提前归档。
+    """
     return (date.today() - timedelta(days=int(days))).isoformat()
+
+
+def _cutoff_for(conn, table: str, column: str, days: int) -> str:
+    """Pick the cutoff format matching the column's real storage format."""
+    if _column_has_time(conn, table, column):
+        return _date_cutoff(days)
+    return _pure_date_cutoff(days)
 
 
 def _month_cutoff(months: int) -> str:
@@ -128,6 +184,11 @@ def enforce(database, apply_changes=False, archive_dir=None):
     }
     conn = sqlite3.connect(str(db_path))
     conn.row_factory = sqlite3.Row
+    # 2026-10-08：归档导出对整表做 ORDER BY / 大范围筛选，SQLite 默认
+    # temp_store=FILE 会落系统临时目录；Temp 不可写时抛误导性的
+    # "unable to open database file"（实测 monthly_source_payload 归档必失败）。
+    # 与 db.get_connection 保持一致。
+    conn.execute('PRAGMA temp_store=MEMORY')
     try:
         if not _table_exists(conn, 'retention_policies'):
             report['error'] = 'retention_policies table missing; nothing to enforce'
@@ -152,7 +213,8 @@ def enforce(database, apply_changes=False, archive_dir=None):
                 # whole months, so convert with a conservative 30-day month.
                 cutoff = CUTOFF_COLUMN['month'](spec['retention_days'] // 30)
             else:
-                cutoff = CUTOFF_COLUMN[cutoff_kind](spec['retention_days'])
+                # 格式必须匹配列的实际存储格式，否则边界会错一天（见 _column_has_time）。
+                cutoff = _cutoff_for(conn, table, column, spec['retention_days'])
             item['cutoff'] = cutoff
             item['eligible_count'] = eligible_count(conn, table, column, cutoff, extra_where)
             if item['eligible_count'] == 0:

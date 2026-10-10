@@ -27,7 +27,7 @@ class CollectorApiRunTests(unittest.TestCase):
         response = self.client.get('/api/collect/health')
         self.assertEqual(response.status_code, 200)
         data = response.get_json()['data']
-        self.assertEqual(data['source_count'], 7)
+        self.assertEqual(data['source_count'], 9)
         self.assertIn('staging_7d', data)
         self.assertIn('status', data)
         self.assertIn('consecutive_failures', data['sources'][0])
@@ -36,7 +36,7 @@ class CollectorApiRunTests(unittest.TestCase):
         response = self.client.get('/api/collect/catalog')
         self.assertEqual(response.status_code, 200)
         sources = response.get_json()['data']['sources']
-        self.assertEqual(len(sources), 7)
+        self.assertEqual(len(sources), 9)
         sycm = next(item for item in sources if item['source_key'] == 'sycm_flow')
         self.assertEqual(sycm['publish_mode'], 'staging_atomic')
         self.assertIn('channel_name', sycm['fields'])
@@ -55,19 +55,21 @@ class CollectorApiRunTests(unittest.TestCase):
         self.assertIn('age_days', source)
 
     def test_disabled_source_is_listed_but_excluded_from_unhealthy(self):
-        """未启用的源（dts_market）仍会列出，但不参与 unhealthy 判定。
+        """未启用的源（dts_market / dmp_shop）仍会列出，但不参与 unhealthy 判定。
 
-        它依赖独立的挖象浏览器（CDP 9224）+ 店透视插件，环境未就绪、从未被调度，
-        所以没有运行记录。若把它算进健康度，整体状态会永远是 degraded，
-        真正的告警就被噪音淹没了。
+        它们依赖独立的挖象浏览器（CDP 9224）+ 人工登录/插件，环境未就绪、
+        从未被调度，所以没有运行记录。若把它们算进健康度，整体状态会永远是
+        degraded，真正的告警就被噪音淹没了。
         """
         data = self.client.get('/api/collect/health').get_json()['data']
         by_key = {source['source_key']: source for source in data['sources']}
 
-        self.assertEqual(data['source_count'], 7)          # 仍然列出，不隐藏
-        self.assertFalse(by_key['dts_market']['enabled'])
+        self.assertEqual(data['source_count'], 9)          # 仍然列出，不隐藏
+        disabled = {'dts_market', 'dmp_shop', 'dmp_competition'}
+        for key in disabled:
+            self.assertFalse(by_key[key]['enabled'])
         self.assertTrue(all(source['enabled'] for key, source in by_key.items()
-                            if key != 'dts_market'))
+                            if key not in disabled))
 
         # 夹具里没有任何采集记录：启用的源都算 unhealthy，未启用的那个不算
         enabled = [source for source in data['sources'] if source['enabled']]

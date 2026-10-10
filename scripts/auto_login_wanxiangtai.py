@@ -22,6 +22,14 @@ import time
 import subprocess
 import urllib.request
 import websocket
+from pathlib import Path
+
+# 独立脚本运行时保证能 import 项目内模块（services.credentials_crypto 等）
+_PROJECT_ROOT = Path(__file__).resolve().parents[1]
+if str(_PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(_PROJECT_ROOT))
+
+from services.credentials_crypto import decrypt_password
 
 CDP_PORT = int(os.environ.get('TMALL_CDP_PORT', '9223'))
 WXT_URL = 'https://one.alimama.com/'
@@ -40,7 +48,7 @@ if not USERNAME or not PASSWORD:
             if 'username' in _payload or 'password' in _payload: _payload = {'bi': _payload}
             _item = _payload.get('wanxiangtai') or {}
             USERNAME = USERNAME or str(_item.get('username') or '').strip()
-            PASSWORD = PASSWORD or str(_item.get('password') or '')
+            PASSWORD = PASSWORD or decrypt_password(str(_item.get('password') or ''))
     except Exception:
         pass
 

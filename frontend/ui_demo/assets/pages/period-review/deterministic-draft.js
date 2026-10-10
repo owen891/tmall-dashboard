@@ -1,7 +1,7 @@
 (function (global) {
   'use strict';
 
-  /** 周月复盘「确定性初稿」生成器。
+  /** 周期复盘「确定性初稿」生成器。
    *
    *  回答用户诉求：六段复盘的「分析 / 根因 / 下一步规划」不该让用户从零手写——
    *  系统把 context 里可复现的数据事实组织成初稿正文，回填到输入框；用户在其上修改。
@@ -36,9 +36,14 @@
       const n = num(v);
       return n === null ? null : `${(n * 100).toFixed(1)}%`;
     }
-    function signedPercent(v) {
+    function signedRate(v) {
       const n = num(v);
       return n === null ? null : `${n > 0 ? '+' : ''}${(n * 100).toFixed(1)}%`;
+    }
+    function signedPercent(v) {
+      const n = num(v);
+      // 指标 items 与广告花费变化已经是百分数数值（7.4 表示 7.4%）。
+      return n === null ? null : `${n > 0 ? '+' : ''}${n.toFixed(1)}%`;
     }
     function signedMoney(v) {
       const n = num(v);
@@ -77,6 +82,8 @@
       const metrics = context.metrics || {};
       const cur = metrics.current || {};
       const targetPath = context.target_path || {};
+      const compare = context.compare || {};
+      const comparisonAvailable = compare.mode !== 'none' && compare.available !== false;
       const coverage = metrics.coverage || {};
       const analysis = [];
       if (!metrics.has_data) {
@@ -94,11 +101,11 @@
           analysis.push('净销售额缺失，无法判断销售目标达成。');
         }
         const items = metrics.items || [];
-        const mom = items.find((item) => item.key === 'net_sales' && num(item.mom_change) !== null);
-        const yoy = items.find((item) => item.key === 'net_sales' && num(item.yoy_change) !== null);
+        const mom = comparisonAvailable && items.find((item) => item.key === 'net_sales' && num(item.mom_change) !== null);
+        const yoy = comparisonAvailable && items.find((item) => item.key === 'net_sales' && num(item.yoy_change) !== null);
         const compareParts = [];
         if (mom) compareParts.push(`环比 ${signedPercent(mom.mom_change)}`);
-        else if (metrics.prev) compareParts.push('环比无法计算（对比期数据不完整）');
+        else if (comparisonAvailable && metrics.prev) compareParts.push('环比无法计算（对比期数据不完整）');
         if (yoy) compareParts.push(`同比 ${signedPercent(yoy.yoy_change)}`);
         if (compareParts.length) analysis.push(`净销售额${compareParts.join('，')}。`);
         const profit = num(cur.profit);
@@ -126,7 +133,7 @@
       }
 
       const rootCause = [];
-      if (metrics.has_data && metrics.prev && decompose) {
+      if (metrics.has_data && comparisonAvailable && metrics.prev && decompose) {
         const d = decompose(cur, metrics.prev);
         if (d) {
           rootCause.push(
@@ -148,12 +155,12 @@
           rootCause.push('访客/买家/净销售额对比数据不完整，无法做三因子算术拆解。');
         }
       } else if (metrics.has_data) {
-        rootCause.push('缺少可比对比期，无法做环比算术归因。');
+        rootCause.push(comparisonAvailable ? '缺少可比对比期，无法做环比算术归因。' : '当前未选择对比周期，暂不做环比算术归因。');
       } else {
         rootCause.push('无法判断（本期数据缺失）。');
       }
       const nextStep = [];
-      if (metrics.has_data && metrics.prev && decompose) {
+      if (metrics.has_data && comparisonAvailable && metrics.prev && decompose) {
         const d = decompose(cur, metrics.prev);
         if (d) {
           const worst = [
@@ -175,6 +182,14 @@
     // --------------------------------------------------------------------- goods
     function goodsDraft(context) {
       const products = context.products || {};
+      const compare = context.compare || {};
+      const comparisonAvailable = compare.mode !== 'none' && compare.available !== false;
+      const comparableProblemItems = comparisonAvailable
+        ? (products.problem_items || [])
+        : (products.problem_items || []).filter((row) => {
+          const sources = Array.isArray(row.problem_sources) ? row.problem_sources : [];
+          return sources.some((source) => source !== '下滑榜');
+        });
       const summary = products.summary || null;
       const analysis = [];
       const top = (products.top || []).filter((row) => num(row.net_sales) !== null || num(row.gsv) !== null);
@@ -201,7 +216,7 @@
       }
 
       const rootCause = [];
-      const decline = products.decline || [];
+      const decline = comparisonAvailable ? (products.decline || []) : [];
       if (decline.length) {
         const declineSum = decline.reduce((acc, row) => acc + (num(row.delta) || 0), 0);
         const topText = decline.slice(0, 3)
@@ -229,7 +244,7 @@
         const worst = decline[0];
         nextStep.push(`建议对下滑最大的「${worst.title || worst.product_id}」做单品诊断并制定恢复动作；目标值需人工设定。`);
       }
-      const problemCount = (products.problem_items || []).length;
+      const problemCount = comparableProblemItems.length;
       if (problemCount) {
         nextStep.push(`问题单品清单共 ${problemCount} 个（下滑/亏损/高费比跨榜合并），在货品复盘段逐个确认数据事实与业务原因。`);
       }
@@ -271,7 +286,7 @@
           .sort((a, b) => num(a.payment_change_rate) - num(b.payment_change_rate))[0];
         const lines = [];
         if (top) lines.push(`花费最高的渠道是「${top.name}」（${money(top.ad_spend)}，ROI ${top.roi === null || top.roi === undefined ? '无法计算' : decimal(top.roi)}）`);
-        if (worst) lines.push(`成交下滑最大的是「${worst.name}」（${signedPercent(worst.payment_change_rate)}）`);
+        if (worst) lines.push(`成交下滑最大的是「${worst.name}」（${signedRate(worst.payment_change_rate)}）`);
         if (lines.length) rootCause.push(`${lines.join('；')}（数据事实，投放策略原因待人工确认）。`);
       }
       const promoItems = (context.promotion_items && context.promotion_items.items) || [];
@@ -322,8 +337,8 @@
         const down = categories.filter((row) => num(row.buyers_change_rate) < 0)
           .sort((a, b) => num(a.buyers_change_rate) - num(b.buyers_change_rate))[0];
         const parts = [];
-        if (up) parts.push(`${up.category || '未分类'} 买家数 ${signedPercent(up.buyers_change_rate)}`);
-        if (down) parts.push(`${down.category || '未分类'} ${signedPercent(down.buyers_change_rate)}`);
+        if (up) parts.push(`${up.category || '未分类'} 买家数 ${signedRate(up.buyers_change_rate)}`);
+        if (down) parts.push(`${down.category || '未分类'} ${signedRate(down.buyers_change_rate)}`);
         if (parts.length) analysis.push(`类目买家数变化：${parts.join('；')}。`);
       }
       const sourceDates = market.source_dates || {};
@@ -395,6 +410,8 @@
     function nextPlanDraft(context) {
       const metrics = context.metrics || {};
       const targetPath = context.target_path || {};
+      const compare = context.compare || {};
+      const comparisonAvailable = compare.mode !== 'none' && compare.available !== false;
       const analysis = [];
       const main = targetRow(targetPath.targets, 'net_sales');
       if (main && num(main.target) !== null) {
@@ -404,7 +421,7 @@
       }
 
       const rootCause = [];
-      if (metrics.has_data && metrics.prev && decompose) {
+      if (metrics.has_data && comparisonAvailable && metrics.prev && decompose) {
         const d = decompose(metrics.current, metrics.prev);
         if (d) {
           const worst = [

@@ -1,7 +1,7 @@
 (function (global) {
   'use strict';
 
-  /** 周月复盘页「目标卡 + 目标 vs 实际表」模块。
+  /** 周期复盘页「目标卡 + 目标 vs 实际表」模块。
    *
    *  从 period-review-live.js 的单闭包中切出（闭包状态显式化第二步，
    *  沿用 products/column-settings.js 的 deps 显式注入模式）：

@@ -103,5 +103,109 @@ class BackupRetentionEnforcementTests(unittest.TestCase):
         self.assertTrue((self.backup_dir / 'dashboard-new.db').exists())
 
 
+class SourceDatabaseSurvivesPruneTests(unittest.TestCase):
+    """数据安全（2026-10-08）：裁剪绝不允许删除**源数据库**。
+
+    缺陷：``backup_database()`` 备份后对 ``destination.parent`` 执行
+    ``prune_backups(pattern='*.db')``。当调用方把 ``--backup-destination``
+    指到与源库**相同的目录**时，源库本身也匹配 ``*.db`` 且不在 ``protected``
+    中，于是被当成「陈旧备份」删除——``aggregate_store_daily`` /
+    ``backfill_*`` / ``quarantine_*`` 等约 30 个脚本都暴露在该路径上。
+
+    该缺陷长期潜伏的原因是**巧合**：既有测试把备份放在 ``root/backups/``
+    子目录（与源库不同目录），且生产 ``config.yaml`` 的 ``max_backups`` 为 4，
+    使非 protected 保留额度恰好够用。一旦 ``max_backups`` 收紧到 1
+    （``slots = keep - len(protected) = 0``），源库必删——实测
+    ``before: source exists = True`` → ``after: source exists = False``。
+
+    因此本组测试**逐一覆盖 keep_newest 取值**，确保保护与保留策略配置无关，
+    而不是依赖某个特定的 ``max_backups`` 值兜底。
+    """
+
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory(prefix='tmall-backup-src-safe-')
+        self.root = Path(self.temp.name)
+        # 源库与备份目的地**同目录**——这正是触发缺陷的布局。
+        self.source = self.root / 'dashboard.db'
+        connection = sqlite3.connect(self.source)
+        try:
+            connection.execute('CREATE TABLE daily_data (shop_id TEXT, date TEXT)')
+            connection.execute("INSERT INTO daily_data VALUES ('s', '2026-09-20')")
+            connection.commit()
+        finally:
+            connection.close()
+
+    def tearDown(self):
+        self.temp.cleanup()
+
+    def _source_row_count(self):
+        connection = sqlite3.connect(self.source)
+        try:
+            return connection.execute('SELECT COUNT(*) FROM daily_data').fetchone()[0]
+        finally:
+            connection.close()
+
+    def test_source_survives_when_backup_lands_in_same_directory(self):
+        """核心回归：keep_newest=1（slots 归零，最易触发）时源库必须完好。"""
+        from scripts import backup_retention
+        from scripts.backup_database import backup_database
+
+        destination = self.root / 'before-aggregate.db'
+        with mock.patch.object(backup_retention, 'retention_settings', return_value=(1, 1024 ** 3)):
+            report = backup_database(self.source, destination)
+
+        self.assertTrue(report['ok'])
+        # 源库必须仍然存在，且数据可读——修复前这里会被裁剪删掉。
+        self.assertTrue(self.source.exists(), 'source database was pruned away')
+        self.assertEqual(self._source_row_count(), 1)
+        self.assertNotIn(str(self.source), {str(item) for item in (report['pruned'] or [])})
+        # 本次备份同样保留（它也受 protected 保护）。
+        self.assertTrue(destination.exists())
+
+    def test_source_survives_across_retention_settings(self):
+        """保护必须与保留策略配置无关：遍历 keep_newest 取值逐一验证。
+
+        旧实现下 keep_newest>=2 时 slots>0 恰好能保住源库，所以只有
+        keep_newest=1 会暴露问题；这里把 1/2/4 都钉住，防止「靠配置值兜底」。
+        """
+        from scripts import backup_retention
+        from scripts.backup_database import backup_database
+
+        for keep in (1, 2, 4):
+            with self.subTest(keep_newest=keep):
+                destination = self.root / f'before-{keep}.db'
+                with mock.patch.object(
+                    backup_retention, 'retention_settings', return_value=(keep, 1024 ** 3)
+                ):
+                    report = backup_database(self.source, destination)
+                self.assertTrue(report['ok'])
+                self.assertTrue(
+                    self.source.exists(),
+                    f'source database was pruned away with keep_newest={keep}',
+                )
+                self.assertEqual(self._source_row_count(), 1)
+
+    def test_source_survives_when_stale_backups_share_the_directory(self):
+        """同目录已有陈旧备份时，裁剪只应清理它们，不得波及源库。"""
+        from scripts import backup_retention
+        from scripts.backup_database import backup_database
+
+        for index in range(3):
+            stale = self.root / f'dashboard-{index}.db'
+            stale.write_bytes(b'stale' * 16)
+            os.utime(stale, (1_000_000 + index * 100, 1_000_000 + index * 100))
+
+        destination = self.root / 'before-aggregate.db'
+        with mock.patch.object(backup_retention, 'retention_settings', return_value=(1, 1024 ** 3)):
+            report = backup_database(self.source, destination)
+
+        self.assertTrue(report['ok'])
+        self.assertTrue(self.source.exists(), 'source database was pruned away')
+        self.assertEqual(self._source_row_count(), 1)
+        # 陈旧备份被清理（保留额度=1 已被本次备份占用），源库不在其中
+        pruned = {Path(item).name for item in (report['pruned'] or [])}
+        self.assertNotIn('dashboard.db', pruned)
+
+
 if __name__ == '__main__':
     unittest.main()

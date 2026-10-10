@@ -916,7 +916,8 @@
           const identity = element('div', 'product-identity promotion-product-identity');
           const title = element('div', 'product-title');
           const nameText = productTitle(row);
-          const nameNode = element('strong', '', nameText);
+          const displayName = nameText.length > 10 ? `${nameText.slice(0, 10)}…` : nameText;
+          const nameNode = element('strong', '', displayName);
           nameNode.title = nameText;
           title.append(nameNode, element('span', '', productId(row) || '无商品 ID'));
           identity.append(productThumbnail(row), title);

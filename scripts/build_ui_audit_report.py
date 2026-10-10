@@ -22,7 +22,7 @@ PAGES = [
     ('category-dashboard', '/category-dashboard', '品类经营看板'),
     ('goals', '/goals', '经营目标'),
     ('reviews', '/reviews', '经营复盘'),
-    ('period-review', '/period-review', '周月复盘'),
+    ('period-review', '/period-review', '周期复盘'),
     ('products', '/products', '商品运营'),
     ('lifecycle', '/lifecycle', '生命周期'),
     ('keyword-promotion', '/keyword-promotion', '关键词选品'),

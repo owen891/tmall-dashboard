@@ -54,6 +54,16 @@ Thumbs.db
 *.log
 .tmp/
 .test-tmp/
+_tmp/
+
+# 自动登录调试产物（含内部系统 URL，禁止入库）
+login_log*.txt
+*login_log*
+# 一次性 CDP 调试脚本（检查登录态/打开 BI 页面）
+/check_login_state.py
+/open_bi_overview.py
+# 审核临时目录
+.tmp_audit/
 
 # Local agent and visual review artifacts
 .zcode/
@@ -89,11 +99,15 @@ ui-manage-toolbox-check.png
 /tmp_*.txt
 # Python tempfile 在受限进程下会回退到仓库根目录的泄漏物（tmp+随机串）
 /tmp*
+# 根目录一次性调试/探测输出（探针脚本产物，禁止提交）
+/*_out.txt
+/*_out.json
 
 # 本地构建工作区与运行产物（不入版本库）
 /frontend-build/
 /logs/
 /archive/
+/reports/
 /*.png
 
 # 前端运行时下载产物

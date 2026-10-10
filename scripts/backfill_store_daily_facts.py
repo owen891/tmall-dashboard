@@ -44,6 +44,11 @@ def main(argv=None):
     connection = sqlite3.connect(db_path, timeout=300)
     connection.row_factory = sqlite3.Row
     connection.execute('PRAGMA busy_timeout=300000')
+    # 2026-10-08：本脚本按日期做全表聚合，SQLite 默认 temp_store=FILE 会把中间
+    # 结果写到系统临时目录；Temp 不可写（磁盘满/受限账户）时抛误导性的
+    # "unable to open database file"。实测该查询在 Temp 不可写时必失败、
+    # 加此 pragma 后正常返回。与 db.get_connection 保持一致。
+    connection.execute('PRAGMA temp_store=MEMORY')
     try:
         where = ['shop_id = ?']
         params: list[object] = [args.shop_id]

@@ -93,6 +93,45 @@ BI/API/导入文件
 
 原则：运行态表不应和业务事实采用相同的无限保留策略。
 
+### 4.1 达摩盘事实表（dmp_shop_* 与 dmp_competition_*，2026-10-07 新增）
+
+采集器 `E:\www\BI采集\collectors\collect_dmp_shop.py`（采集中心源 `dmp_shop`）与
+`collect_dmp_competition.py`（源 `dmp_competition`，复用前者的浏览器/令牌机件），
+均为挖象浏览器 CDP 9224 页内 fetch，见各自源内注释。
+
+**全店洞察（dmp_shop_*）**：
+
+| 表 | 粒度 | 保留 |
+|---|---|---|
+| `dmp_shop_runs` | 每次采集一行 | 摘要长期保留 |
+| `dmp_shop_overview` | run × period × benchmark(0本店/1同行同层) | 随 run 清理 |
+| `dmp_shop_items` | run × period × 单品（row_json 去 indicators） | 默认 120 天（TMALL_DMP_RETENTION_DAYS） |
+| `dmp_shop_item_indicators` | run × period × 单品 × 指标（value/peer_value/growth_rate/分档） | 同上 |
+| `dmp_shop_indicator_dict` | run × 指标 key 的名称/分组/tips | 同上 |
+
+同行同层数据两个层级都在：overview `benchmark=1`（店铺级，GMV/IPV 只有分档串
+`generalizedIpv` 等）；单品行 `indicators[].peerValue`（数值，覆盖 14 个核心指标）。
+采集器自带保留期清理（先删子表再删 runs）；同一采集中心 batch_id 重跑会先清旧批。
+
+**竞争分析（dmp_competition_*）**：`dmp_competition_runs`（批次，含
+end_date/peer_end_date 双窗口）、`dmp_competitors_detection`（竞对探测快照：
+competitor_name + competitive_score + recall_method + GMV/进店/支付分档）、
+`dmp_competitor_monitor`（监控列表快照；competitor_token 存的是**监控关系数字 ID**，
+即 indicator 接口的 id 参数；列表行内 competitorId 加密串恒为 null，entityInfo 是
+本店参照信息）、`dmp_competition_indicators`（每竞对：day_cost/day_cost_rate、
+intersection_click_uv 人群争夺交集、buy_uv_rate + payload_json 含
+controlRatio/periodControlRatio 份额分档）。三张事实表冗余 end_date 供采集中心
+通用状态查询。保留期默认 365 天（TMALL_DMP_COMP_RETENTION_DAYS）。
+v1.1 已补 `dmp_competition_ad_strategy`（v1.1，2026-10-07）：TOP 单品
+（TMALL_DMP_AD_TOPN，默认 10，按最新 dmp_shop 批次支付金额取）×
+`ad/similarity`（相似画像）+ `ad/strategyLesson`（竞品投放策略簇：渠道占比/
+计划名/圈选人群/购买关键词/簇均ROI）。注意该接口 entityId=**我方商品ID**、
+competitionType=2 商品维度（店铺维度返回空），POST body {"competitionType":2,
+"entityId":...,"period":"30"}；借鉴失败不阻塞监控主批次。
+看板展示：竞店竞品页「达摩盘竞争」Tab（api/dmp_api.py 五端点含
+`/api/dmp/shop/summary` 本店 vs 同行同层概览 +
+rival-analysis-live.js），控比语义=**我方**在共同人群中的占比（>50% 优势）。
+
 ## 5. 业务主数据与运营配置
 
 以下表属于应用业务状态，应长期保留：
@@ -216,3 +255,47 @@ Executed with a verified backup at `data/backups/dashboard-20260923-232137.db`:
   2026-09-18); future purges are handled by `enforce_retention.py`.
 - `collector_checkpoints` mode `compact` is intentionally reported as
   unsupported by the enforcer until a compaction format is defined.
+
+## 9. 外部消费者契约（2026-10-05 起生效）
+
+主库自 2026-10 起是多个外部 SKILL 的唯一数据源（数据中台角色），不再只是本应用的私有存储。
+本节登记外部消费面；**改动下列表/字段前必须先评估并通知下游**。
+
+### 9.1 消费方清单
+
+| 消费方 | 访问方式 | 位置 |
+|---|---|---|
+| 本应用（唯一写者） | 导入/补数脚本 + API | 本仓库 |
+| 月复盘SKILL `ecommerce-monthly-review` | `scripts/master_db.py`（mode=ro + query_only） | `E:\skill-dianshang\月复盘SKILL` |
+| 点击率看板 | `master_db.py`（mode=ro） | `E:\skill-dianshang\点击率看板` |
+| 产品矩阵地图 | 各脚本 mode=ro 直连 | `E:\skill-dianshang\产品矩阵地图` |
+
+### 9.2 被消费的表和字段（稳定面）
+
+| 表.字段 | 消费方 | 用途 | 口径备注 |
+|---|---|---|---|
+| `monthly_data.net_sales` | 全部 | GSV/月度汇总/同比/趋势 | =支付金额−退款；`payment_amount` 是支付毛额，勿当GSV |
+| `monthly_data.ad_spend / visitors / buyers / cart_users / payment_qty` | 月复盘 | 核心指标卡/趋势 | daily_data 访客叫 `ipv`，两表字段名不同 |
+| `monthly_data.gross_profit / operating_profit` | 月复盘 | 利润 | 2026-08 前有值；08-10 由 backfill_monthly_cost_fields 回填 |
+| `daily_data.ipv / buyers / operating_profit / net_sales / ad_spend` | 月复盘 | 当月周度聚合、利润 | operating_profit=BI支付预估口径（2026-08=-2.30万已对账） |
+| `products.product_tags` | 月复盘/矩阵 | 品类筛选（'标品袜子'） | 注意与 `shop_label` 是两个字段，勿混 |
+| `products.image_url / status / list_date / title` | 月复盘 | 主图/在架/新品判断 | status是当前快照，非月末快照 |
+| `promotion_daily_facts.*`（channel/product粒度） | 月复盘/矩阵 | 推广费/渠道对比 | `channel='全部'` 与分渠道行并存会重复计数，取数方须防重 |
+| `promotion_creatives.*` + `promotion_creative_daily.*` | 点击率看板 | 创意CTR分析 | 创意粒度（非素材图片粒度） |
+| `sycm_market_rival_shop / rival_item / search_rank` | 月复盘 | 竞店/竞品/搜索词 | 2026-09-15 起；更早月份下游走冻结归档库 |
+
+### 9.3 变更规则
+
+1. 上表的表名/字段名**重命名或删除**前，必须先改完下游消费方并在各消费方 README 登记变更。
+2. 新增字段/表不破坏契约，但落入 9.2 语义的字段（如新增一个"支付金额"列）要在本文件补口径说明。
+3. 应用升级后，下游 canary 必须重跑：`E:\skill-dianshang\月复盘SKILL\scripts\verify_master_data.py --month <最近完整月>`。
+4. 下游消费一律 mode=ro 只读连接、不复制库文件；**写操作只允许通过本仓库 `scripts/import_*` 与 `scripts/backfill_*`**，禁止外部 SKILL 直写。
+5. 下游发现数据异常（对不上账）先跑 canary 与 `scripts/verify_market_backfill.py`，再怀疑应用导入。
+
+### 9.4 下游旁路数据（不在主库，需知晓）
+
+| 数据 | 位置 | 说明 |
+|---|---|---|
+| 2026-08 及更早市场/竞店/搜索词 | `E:\skill-dianshang\月复盘SKILL\数据库\socks_bi_data.db`（冻结只读） | 等待经 import_market_* 收编 |
+| 素材图片粒度CTR（2026-08/09三商品） | `E:\skill-dianshang\点击率看板\materials.db`（冻结只读） | 主库只有创意粒度 |
+| 派米市场明细（蓝海探测 panel） | 月复盘工作目录 CSV/JSON | 最后一条未收编旁路 |

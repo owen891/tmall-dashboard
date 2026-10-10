@@ -1,6 +1,7 @@
-﻿import gzip
+import gzip
 import hmac
 import json
+from uuid import uuid4
 from urllib.parse import unquote, urlsplit
 from urllib.request import urlopen
 
@@ -22,6 +23,7 @@ from api.promotion_api import promotion_bp
 from api.keyword_promotion_api import keyword_promotion_bp
 from api.wanxiangtai_api import wanxiangtai_bp
 from api.market_ranking_api import market_ranking_bp
+from api.dmp_api import dmp_bp
 from api.period_reviews_api import period_reviews_bp
 from api.product_detail_api import product_detail_bp
 from api.product_overview_api import product_overview_bp
@@ -158,6 +160,7 @@ def create_app(config=None):
     app.register_blueprint(keyword_promotion_bp)
     app.register_blueprint(wanxiangtai_bp)
     app.register_blueprint(market_ranking_bp)
+    app.register_blueprint(dmp_bp)
     app.register_blueprint(period_reviews_bp)
     app.register_blueprint(product_detail_bp)
     app.register_blueprint(product_overview_bp)
@@ -323,8 +326,9 @@ def create_app(config=None):
         # exception stays in server logs; ordinary users only need a stable
         # retryable response and request id.
         from api.api_response import failure
-        app.logger.exception('Unhandled request failure: %s %s', request.method, request.path)
-        return failure('INTERNAL_ERROR', '服务暂时不可用，请稍后重试', status=500)
+        request_id = uuid4().hex
+        app.logger.exception('Unhandled request failure: %s %s [%s]', request.method, request.path, request_id)
+        return failure('INTERNAL_ERROR', '服务暂时不可用，请稍后重试', status=500, request_id=request_id)
 
     @app.route('/')
     def index():

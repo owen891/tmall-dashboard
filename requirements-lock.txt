@@ -1,0 +1,40 @@
+# 完整依赖锁定（含传递依赖），由 .venv 实际安装版本导出。
+#
+# 用途：桌面打包（PyInstaller）与生产部署要求可复现构建时使用本文件；
+#       requirements.txt 仍保留为人工维护的直接依赖清单。
+# 安装：py -3 -m pip install -r requirements-lock.txt
+#
+# 维护约定：升级任何依赖后必须重新导出本文件，并同步 requirements.txt
+#          中对应的直接依赖版本号，避免两者再次漂移。
+# 本文件只包含 requirements.txt 八个直接依赖的传递闭包，
+# 不含开发/采集脚本专用的包（pytest、requests、pillow、ftfy 等）。
+
+# --- 直接依赖（与 requirements.txt 对齐）---
+flask==3.1.0
+waitress==3.0.2
+pandas==3.0.5
+openpyxl==3.1.5
+xlrd==2.0.1
+pyyaml==6.0.3
+python-dateutil==2.9.0.post0
+websocket-client==1.9.2
+cryptography==50.0.2
+
+# --- 传递依赖 ---
+# flask
+blinker==1.9.0
+click==8.4.2
+itsdangerous==2.2.0
+jinja2==3.1.6
+markupsafe==3.0.3
+werkzeug==3.1.8
+# pandas
+numpy==2.5.2
+tzdata==2026.3
+# openpyxl
+et-xmlfile==2.0.0
+# python-dateutil
+six==1.17.0
+# cryptography
+cffi==2.1.1
+pycparser==3.11

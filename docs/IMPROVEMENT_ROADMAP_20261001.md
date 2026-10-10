@@ -145,3 +145,75 @@ P3  config 残留 / 采集双链决策 / 前端收尾      ← 穿插，低优�
 > 本路线的净效果：交付卫生恢复（工作树干净）、`data/` 从 32 GB 回落到 <15 GB、
 > 数据库质量审计从 `error` 转 `ok`、清除误导性死配置。均为低风险、可回滚、
 > 不触碰 schema 契约与血缘/观测层的保守改进。
+
+---
+
+## 7. 执行进度与实测复核（2026-10-08）
+
+对第 3 节各项做了一次**实测复核**（不照抄本文档的历史结论），结果如下。
+
+### 7.1 已完成
+
+| 项 | 实测证据 |
+|---|---|
+| P1 存储治理 | `data/` 实测 **6.50 GB**（目标 <15 GB）；`data/backups/` 仅 **1 份 3.35 GB**（≤4）；`backup_before_aggregate.db` 已不存在 |
+| P2.1 孤儿 action-history | `db_quality_check` 的 `action_history_orphans` = **ok**，全库 `errors: 0` |
+| P2.3 基线复跑 | quality 从 `error` 转 **warning**（`errors: 0`）——原「转 ok」目标未完全达成，见 7.3 |
+| P3.1 `SQLALCHEMY_*` 残留 | `config.py` 已改名为语义准确的 `DATABASE_URL` 并附注释，`TRACK_MODIFICATIONS` 已删 |
+
+### 7.2 本轮新增修复（本次复核中发现）
+
+| 项 | 性质 | 证据 |
+|---|---|---|
+| `backup_database` 删除源库 | **P0 数据丢失**。裁剪 `destination.parent` 的 `*.db` 时，源库与备份同目录即被当「旧备份」删除。`max_backups: 1` 使其从潜伏变必现 | 最小复现：`source exists: True → False`，`pruned=['...dashboard.db']`；修复后 `pruned=[]` 且数据可读 |
+| `enforce_retention` 边界整天不可清 | 中等。cutoff 用纯日期 `YYYY-MM-DD` 做字符串比较，`'2026-09-24 01:30:28' < '2026-09-24'` 为假 ⇒ 截止日当天全部行**永不清理**，与 `db_quality_check` 永久矛盾（0 vs 8316） | 修复后 `collector_data_staging` eligible **0 → 8316**，与 quality_check 一致 |
+| `db_maintenance` 同一 bug（第 3 处实例） | 中等。`_cutoff` 是**另一份独立实现**，同样返回纯日期 ⇒ 只读预览报 0、执行器报 8316，运维据预览误判「无待清理数据」 | 修复后 5 张表预览/执行器 `eligible_count` **全部一致**（8316/0/0/4361/4920） |
+| cutoff **格式与列类型不匹配**（修复 1 引入的回归） | 中等。一刀切改为时间戳 cutoff 后，**纯日期列**（`bi_product_daily_raw.date`）出现反向错位：`'2026-04-11' < '2026-04-11 22:32:56'` 为真 ⇒ **边界当天行被提前一天归档** | 改为按列真实取值探测格式（`_column_has_time` / `_cutoff_for`）：时间戳列给时间戳 cutoff、纯日期列给纯日期 cutoff。5 张表全部格式正确且两工具一致 |
+| 预览器**漏套行过滤** | 中等。`enforce_retention` 对 `collector_data_staging` 带 `status='published'`，`db_maintenance` 无此过滤 ⇒ 未发布的超期行会被预览器多算，数字大于执行器实删数 | 新增 `ROW_FILTERS` 与执行器逐字对齐；插入非 published 超期行的用例可逼出差异（修复前必红） |
+| 预览器**不暴露「策略无执行器」** | 低。`collector_checkpoints` 声明 30 天保留但 mode=`compact` 未实现，预览器仍照常报 `eligible_count` ⇒ 读者误以为「0 行超期 = 已被妥善管理」，实为**悬空策略** | `build_report` 新增 `enforceable` 字段（`mode in {archive, purge_after_archive}`）；测试锁定 compact 必须为 False |
+| 格式探测**依赖行序** | 低（潜在）。`_column_has_time` 原用 ``LIMIT 1`` 单行取样，混合格式列会因先扫到纯日期而误判，结果不确定 | 改用 ``MAX(LENGTH(...))``：只要列中出现过时间戳即判定为时间戳列，与行序无关；空表/异常安全返回 False。测试用「纯日期在前」的混合列锁定 |
+| `test_desktop_paths...` **环境依赖假失败** | 低（测试卫生）。该用例用 `tempfile.TemporaryDirectory()` 充当 APPDATA，再断言其不在 `PROJECT_ROOT` 内；但系统临时目录不可写时 `tempfile` 回退到**当前工作目录**（即仓库本身），断言**逻辑上无法满足**，报出与产品无关的假失败 | `desktop_data_paths` 实为**纯字符串派生**、不触碰文件系统，故改用合成的仓库外路径字符串，去掉临时目录依赖。该用例从「依赖环境 → skip」变为**任何环境都真正执行**；注入「打包进安装目录」缺陷仍能被抓住 |
+| `connect_readonly` 缺 `temp_store=MEMORY` | 中等健壮性。SQLite 默认 `temp_store=FILE`，大 `GROUP BY` 落临时文件；系统 Temp 不可写时报误导性的 `unable to open database file` | 同一查询：默认 FAIL，`PRAGMA temp_store=MEMORY` 后返回 2021 行 |
+| 另 3 个脚本同样缺 `temp_store` | 中等。逐一实测「默认 FILE vs MEMORY」后确认受影响的是 `backfill_store_daily_facts`、`reconcile_observation_batches`、`enforce_retention`（归档导出）——三者的 dry-run 在 Temp 不可写时**必然失败** | 补 pragma 后三者 dry-run 全部 `exit=0`（实测返回 67 / 204957 / 4361 行）。未盲目全改 139 处连接，只改实测受影响的 |
+| `schema_alignment` 12 张表未声明 | 低（元数据）。95 张实际 vs 83 张声明 | 登记到 `RUNTIME_TABLES` 后 warning 消除（4 → 3） |
+
+三项缺陷均补了**回归测试并验证其在修复前会失败**：
+`test_backup_retention_enforcement.SourceDatabaseSurvivesPruneTests`（3 项）、
+`test_enforce_retention.TimestampCutoffTests`（3 项）。
+
+### 7.3 P2.2 结论修正：263 条不是「待回填」问题
+
+原文档假设「跑 `backfill_product_identity_map` 即可解决 263 条未解析推广标识」。
+**实测否定该假设**：
+
+- 精确复现 263 条（口径：`grain='product'` 且 product_id 不在 `products`，且 map 缺失或 `unresolved`）
+- 263 条**全部**是 `identity_status='unresolved'`，对应 **151 个 distinct product_id**
+- 这 151 个 id 在 `products`（10010 行）中**确实不存在**
+- `backfill_product_identity_map` 的 dry-run 产出 2021 行，与现有 `product_identity_map` **2021 行完全一致**；逐字段比对 **0 处**会改变 ⇒ **apply 完全幂等，已跑过，再跑不解决任何问题**
+
+因此 263 条的正确定性是：**这些推广商品确实不在商品目录中**，属既成事实而非待办回填。
+可选处置（需业务拍板，均未执行）：
+1. 接受为「外部投放对象，非本店商品」并在 `db_quality_check` 加白名单（与 P2.1 孤儿行同一处置思路）；
+2. 补齐 `products` 目录后再回填（需业务提供缺失商品主数据）；
+3. 保留 warning 作为持续提示。
+
+### 7.4 仍未闭环
+
+- **staging_retention**：`collector_data_staging` 有 8316 行超期（`mode=purge_after_archive`）。工具已可用（7.2 已修），但 **apply 会删生产数据**，未执行。
+  执行命令：`py -3 scripts/enforce_retention.py --database data/dashboard.db --apply`
+- **provenance_and_orphans**：见 7.3，待业务决策。
+- 两处 `publish_without_published_at`：4 行 `published_at IS NULL`，可一并处置。
+- **`collector_checkpoints` 声明了 30 天保留但从未执行**：`retention_policies` 里 mode 为
+  `compact`，而 `enforce_retention` 明确未实现该模式（模块 docstring 已注明
+  「compact / retain not implemented here」），dry-run 报 `unsupported_mode:compact`。
+  当前 16795 行、最早 2026-09-18，**尚无行超过 30 天**（`older than 30 days = 0`），
+  所以暂未造成体积问题；但策略是「声明了却不生效」的悬空状态。收口需先定义
+  「compact」语义（去重？合并 checkpoint？），属产品决策，本轮未擅自实现。
+
+### 7.5 需用户拍板（沿用第 5 节，更新）
+
+1. **263 条未解析标识**：三选一（见 7.3）。
+2. **8316 行超期 staging**：是否执行 purge（工具已修好，默认 dry-run）。
+3. **`max_backups: 1`**：P0 缺陷已修，但单份 3.35 GB 同目录备份无冗余，建议放宽到 3。
+4. **采集双链**（P3.2）：仍待决策。
+5. **`requirements-lock.txt` 是否入库**：建议入库；若入库，建议补 `pillow`（UI 审计脚本用）。
