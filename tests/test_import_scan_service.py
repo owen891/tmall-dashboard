@@ -398,6 +398,230 @@ class ImportScanServiceTests(unittest.TestCase):
         self.assertEqual(result['imported_count'], 1)
         self.assertEqual(ImportScanService.list_files(job['id'])[0]['status'], 'imported')
 
+    def test_touch_lease_renews_until_and_only_for_the_holder(self):
+        """JOB-01: a run longer than LEASE_SECONDS must be able to hold its lease."""
+        from db import get_db
+        from services.import_scan_service import ImportScanService, LEASE_SECONDS
+
+        job = ImportScanService.create_job({
+            'task_name': 'heartbeat',
+            'folder_path': self.inbox,
+            'source_type': 'product_day',
+            'cron_expr': '* * * * *',
+        })
+        token = ImportScanService._acquire_lease(job['id'])
+        with get_db(self.db_path) as connection:
+            before = connection.execute(
+                'SELECT lease_until FROM import_scan_jobs WHERE id=?', (job['id'],)
+            ).fetchone()['lease_until']
+
+        # Drag the deadline back so a renewal is observable rather than a no-op.
+        expired = (datetime.now(timezone.utc) - timedelta(seconds=LEASE_SECONDS)).replace(
+            microsecond=0
+        ).isoformat()
+        with get_db(self.db_path) as connection:
+            connection.execute(
+                'UPDATE import_scan_jobs SET lease_until=? WHERE id=?', (expired, job['id'])
+            )
+            connection.commit()
+
+        self.assertTrue(ImportScanService._touch_lease(job['id'], token))
+        with get_db(self.db_path) as connection:
+            after = connection.execute(
+                'SELECT lease_until, lease_token FROM import_scan_jobs WHERE id=?', (job['id'],)
+            ).fetchone()
+        self.assertGreater(after['lease_until'], expired)
+        self.assertEqual(after['lease_token'], token)
+
+        # A stale token (the lease was stolen) must not be able to renew.
+        self.assertFalse(ImportScanService._touch_lease(job['id'], 'stolen-token'))
+        with get_db(self.db_path) as connection:
+            unchanged = connection.execute(
+                'SELECT lease_until FROM import_scan_jobs WHERE id=?', (job['id'],)
+            ).fetchone()['lease_until']
+        self.assertEqual(unchanged, after['lease_until'])
+        self.assertGreaterEqual(before, '')  # anchor: the original deadline was readable
+
+    def test_stolen_lease_cannot_claim_or_update_the_same_file(self):
+        """JOB-01: file rows are fenced, otherwise a stolen lease imports twice."""
+        from db import get_db
+        from services.import_scan_service import ImportScanService
+
+        path = os.path.join(self.inbox, 'fenced.xlsx')
+        with open(path, 'wb') as handle:
+            handle.write(workbook_bytes([['2026-08-01', 'p-fenced', 100, 10]]))
+        old = (datetime.now(timezone.utc) - timedelta(minutes=2)).timestamp()
+        os.utime(path, (old, old))
+        job = ImportScanService.create_job({
+            'task_name': 'fenced',
+            'folder_path': self.inbox,
+            'source_type': 'product_day',
+            'cron_expr': '* * * * *',
+        })
+        ImportScanService.run_job_once(job['id'])
+        file_id = ImportScanService.list_files(job['id'])[0]['id']
+
+        # Reset to a claimable state, but hand ownership to a *different* token.
+        with get_db(self.db_path) as connection:
+            connection.execute(
+                """UPDATE import_scan_files
+                   SET status='discovered', batch_id=NULL, preview_id=NULL, lease_token='owner-a'
+                   WHERE id=?""",
+                (file_id,),
+            )
+            connection.commit()
+
+        self.assertFalse(ImportScanService._claim_discovered_file(file_id, 'owner-b'))
+        ImportScanService._update_file(file_id, 'owner-b', status='failed', error_code='SHOULD_NOT_STICK')
+        with get_db(self.db_path) as connection:
+            row = connection.execute(
+                'SELECT status, lease_token, error_code FROM import_scan_files WHERE id=?', (file_id,)
+            ).fetchone()
+        self.assertEqual(row['lease_token'], 'owner-a')
+        self.assertNotEqual(row['status'], 'failed')
+
+        # The real owner can still claim and write.
+        self.assertTrue(ImportScanService._claim_discovered_file(file_id, 'owner-a'))
+        ImportScanService._update_file(file_id, 'owner-a', status='failed', error_code='OWNER_WRITE')
+        with get_db(self.db_path) as connection:
+            row = connection.execute(
+                'SELECT status, error_code FROM import_scan_files WHERE id=?', (file_id,)
+            ).fetchone()
+        self.assertEqual(row['status'], 'failed')
+        self.assertEqual(row['error_code'], 'OWNER_WRITE')
+
+    def test_unowned_and_stale_files_stay_reclaimable_after_fencing(self):
+        """JOB-01: fencing must not strand rows the heartbeat was meant to protect."""
+        from db import get_db
+        from services.import_scan_service import ImportScanService, LEASE_SECONDS
+
+        path = os.path.join(self.inbox, 'unowned.xlsx')
+        with open(path, 'wb') as handle:
+            handle.write(workbook_bytes([['2026-08-01', 'p-unowned', 100, 10]]))
+        old = (datetime.now(timezone.utc) - timedelta(minutes=2)).timestamp()
+        os.utime(path, (old, old))
+        job = ImportScanService.create_job({
+            'task_name': 'unowned',
+            'folder_path': self.inbox,
+            'source_type': 'product_day',
+            'cron_expr': '* * * * *',
+        })
+        ImportScanService.run_job_once(job['id'], force=True)
+        file_id = ImportScanService.list_files(job['id'])[0]['id']
+
+        # A never-owned row (lease_token NULL) is claimable by a token holder.
+        with get_db(self.db_path) as connection:
+            connection.execute(
+                "UPDATE import_scan_files SET status='discovered', batch_id=NULL, lease_token=NULL WHERE id=?",
+                (file_id,),
+            )
+            connection.commit()
+        self.assertTrue(ImportScanService._claim_discovered_file(file_id, 'owner-c'))
+
+        # A crashed holder's row is reclaimable only once it goes stale.
+        fresh = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+        with get_db(self.db_path) as connection:
+            connection.execute(
+                "UPDATE import_scan_files SET status='importing', lease_token='dead-owner', updated_at=? WHERE id=?",
+                (fresh, file_id),
+            )
+            connection.commit()
+        self.assertFalse(ImportScanService._claim_discovered_file(file_id, 'owner-d'))
+
+        # Leave generous headroom: _iso() truncates to whole seconds, so a
+        # boundary-exact timestamp would flake against the freshly sampled now.
+        stale = (datetime.now(timezone.utc) - timedelta(seconds=LEASE_SECONDS * 3)).replace(
+            microsecond=0
+        ).isoformat()
+        with get_db(self.db_path) as connection:
+            connection.execute(
+                "UPDATE import_scan_files SET updated_at=? WHERE id=?", (stale, file_id)
+            )
+            connection.commit()
+        self.assertTrue(ImportScanService._claim_discovered_file(file_id, 'owner-d'))
+
+    def test_lost_lease_stops_the_run_before_further_imports(self):
+        """JOB-01: once the lease is stolen the run must abort, not keep importing."""
+        from services.import_scan_service import (
+            ImportScanConflictError, ImportScanService, LEASE_SECONDS,
+        )
+
+        path = os.path.join(self.inbox, 'abort.xlsx')
+        with open(path, 'wb') as handle:
+            handle.write(workbook_bytes([['2026-08-01', 'p-abort', 100, 10]]))
+        old = (datetime.now(timezone.utc) - timedelta(minutes=2)).timestamp()
+        os.utime(path, (old, old))
+        job = ImportScanService.create_job({
+            'task_name': 'abort',
+            'folder_path': self.inbox,
+            'source_type': 'product_day',
+            'cron_expr': '* * * * *',
+        })
+
+        def steal(job_id, token, shop_id=None):
+            # Simulate a competing runner taking the lease mid-run.
+            return False
+
+        # force=True bypasses the two-phase stability gate: a first sighting has no
+        # previous row, so without it the discovery loop yields no candidate and the
+        # heartbeat would never be exercised.
+        with patch.object(ImportScanService, '_touch_lease', side_effect=steal):
+            with self.assertRaises(ImportScanConflictError) as raised:
+                ImportScanService.run_job_once(job['id'], force=True)
+
+        self.assertEqual(raised.exception.code, 'SCAN_LEASE_LOST')
+        self.assertEqual(ImportScanService.list_files(job['id']), [])
+        self.assertGreater(LEASE_SECONDS, 0)
+
+    def test_release_clears_file_ownership_without_touching_terminal_rows(self):
+        """JOB-01: a finished run must not leave stale *unfinished* file ownership.
+
+        Terminal rows (``imported``/``blocked``/``failed``) deliberately keep the
+        token of the run that produced them: they are never re-claimable -- see
+        ``_upsert_discovered``, which short-circuits on those statuses -- and the
+        token is the only record of which process wrote the evidence.  What must
+        not survive is ownership of a row that is still in flight, because a
+        crashed holder's ``importing`` row would otherwise never be reclaimable.
+        """
+        from db import get_db
+        from services.import_scan_service import ImportScanService
+
+        path = os.path.join(self.inbox, 'release.xlsx')
+        with open(path, 'wb') as handle:
+            handle.write(workbook_bytes([['2026-08-01', 'p-release', 100, 10]]))
+        old = (datetime.now(timezone.utc) - timedelta(minutes=2)).timestamp()
+        os.utime(path, (old, old))
+        job = ImportScanService.create_job({
+            'task_name': 'release',
+            'folder_path': self.inbox,
+            'source_type': 'product_day',
+            'cron_expr': '* * * * *',
+        })
+        ImportScanService.run_job_once(job['id'], force=True)
+        with get_db(self.db_path) as connection:
+            row = connection.execute(
+                'SELECT status, lease_token FROM import_scan_files WHERE job_id=?', (job['id'],)
+            ).fetchone()
+        self.assertEqual(row['status'], 'imported')
+
+        # Release must not strand the rows this run owns: an in-flight file left
+        # behind by the finishing holder has to become reclaimable again, but a
+        # row a successor stole must keep the successor's token.
+        token = ImportScanService._acquire_lease(job['id'])
+        with get_db(self.db_path) as connection:
+            connection.execute(
+                "UPDATE import_scan_files SET status='importing', lease_token=? WHERE id IN "
+                "(SELECT id FROM import_scan_files WHERE job_id=?)",
+                (token, job['id']),
+            )
+            connection.commit()
+        ImportScanService._release_lease(job['id'], token)
+        with get_db(self.db_path) as connection:
+            in_flight = connection.execute(
+                'SELECT lease_token FROM import_scan_files WHERE job_id=?', (job['id'],)
+            ).fetchone()
+        self.assertIsNone(in_flight['lease_token'])
+
     def test_run_due_jobs_returns_failure_evidence_and_continues(self):
         from services.import_scan_service import ImportScanService
 

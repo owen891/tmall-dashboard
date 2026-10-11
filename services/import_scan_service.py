@@ -555,26 +555,90 @@ class ImportScanService:
             return {'id': cursor.lastrowid, 'status': 'discovered', 'source_hash': source_hash}, True
 
     @classmethod
-    def _claim_discovered_file(cls, file_id):
+    def _claim_discovered_file(cls, file_id, token=None):
+        """Take ownership of one discovered file for the current lease holder.
+
+        The job lease protects the job row, but a file row is just as much a
+        shared resource: an expired lease can be stolen (see ``_acquire_lease``)
+        while the previous holder is still mid-import, and without ownership on
+        the file the two holders would import the same bytes twice.  The mask
+        carries both claims in a single conditional UPDATE, and the two status
+        branches deliberately apply the token check differently:
+
+        * ``status='discovered'`` is a row nobody has started on.  It is
+          claimable while ``lease_token`` is NULL, or while it is still ours --
+          ``_upsert_discovered`` can reset a stale row back to 'discovered'
+          without clearing the token, so a holder must be able to re-claim its
+          own row.  A row carrying someone else's live token is *not* claimable
+          here, so a second runner cannot steal work in progress.
+        * ``status='importing'`` is a row some holder has begun.  It is claimable
+          once ``updated_at`` is old enough for ``_is_stale_importing`` to judge
+          that holder dead -- and that branch ignores ``lease_token`` entirely,
+          because a crashed holder never releases its rows; demanding a token
+          match there would strand every file the dead process had in flight.
+          A fresh row is ours-or-nothing, which is the fence.
+
+        So: a live holder can always finish its own work, and a crashed holder's
+        abandoned files are reclaimed by whoever takes the job lease next.
+        """
         now = _iso(_utc_now())
+        stale_before = _iso(_utc_now() - timedelta(seconds=LEASE_SECONDS))
         with get_db() as conn:
             result = conn.execute(
                 '''UPDATE import_scan_files
-                   SET status='importing', updated_at=?
-                   WHERE id=? AND status='discovered' AND batch_id IS NULL''',
-                (now, file_id),
+                   SET status='importing', lease_token=?, updated_at=?
+                   WHERE id=? AND batch_id IS NULL
+                     AND ((status='discovered'
+                           AND (lease_token IS NULL OR lease_token = ?))
+                          OR (status='importing'
+                              AND (updated_at <= ?
+                                   OR lease_token IS NULL
+                                   OR lease_token = ?)))''',
+                (token, now, file_id, token, stale_before, token),
             )
             conn.commit()
             return result.rowcount == 1
 
     @classmethod
-    def _update_file(cls, file_id, **values):
+    def _touch_lease(cls, job_id, token, shop_id=None):
+        """Renew the lease so a long import is not stolen mid-flight.
+
+        Returns True while this holder still owns the job.  ``_acquire_lease``
+        grants no more than ``LEASE_SECONDS``; a folder holding large or many
+        workbooks routinely needs longer, and without a heartbeat the lease
+        expires and a second runner takes over -- which is exactly the duplicate
+        import this token exists to prevent.  A False return means the lease was
+        already stolen; callers must stop before mutating anything else.
+        """
+        shop_id = cls._shop_id(shop_id)
+        now = _utc_now()
+        with get_db() as conn:
+            result = conn.execute(
+                '''UPDATE import_scan_jobs SET lease_until=?, updated_at=?
+                   WHERE id=? AND shop_id=? AND lease_token=? AND enabled=1''',
+                (_iso(now + timedelta(seconds=LEASE_SECONDS)), _iso(now), job_id, shop_id, token),
+            )
+            conn.commit()
+            return result.rowcount == 1
+
+    @classmethod
+    def _update_file(cls, file_id, token=None, **values):
+        """Write file state only while the caller still owns the file row.
+
+        This is the second half of the fence: if the lease expired and a runner
+        took the file over, the former holder's late ``status='imported'`` write
+        would otherwise clobber the new owner's state and hide a live import.
+        """
         if not values:
             return
         values['updated_at'] = _iso(_utc_now())
         assignments = ', '.join(f'{key}=?' for key in values)
         with get_db() as conn:
-            conn.execute(f'UPDATE import_scan_files SET {assignments} WHERE id=?', (*values.values(), file_id))
+            conn.execute(
+                f'UPDATE import_scan_files SET {assignments}'
+                ' WHERE id=? AND (import_scan_files.lease_token IS NULL OR import_scan_files.lease_token = ?)',
+                (*values.values(), file_id, token),
+            )
             conn.commit()
 
     @classmethod
@@ -596,7 +660,7 @@ class ImportScanService:
                 raise ImportScanConflictError('only blocked or failed files can be retried')
             conn.execute(
                 '''UPDATE import_scan_files
-                   SET status='discovered', preview_id=NULL,
+                   SET status='discovered', preview_id=NULL, lease_token=NULL,
                        error_code=NULL, error_message=NULL, imported_at=NULL, updated_at=?
                    WHERE id=? AND job_id=?''',
                 (now, file_id, job_id),
@@ -656,6 +720,15 @@ class ImportScanService:
                 f'UPDATE import_scan_jobs SET {assignments} WHERE id=? AND shop_id=? AND lease_token=?',
                 (*fields.values(), job_id, shop_id, token),
             )
+            # Drop ownership from the files this run claimed, but never touch
+            # files whose row is already terminal: imported/blocked rows keep
+            # their batch/error evidence, and a file re-claimed by a successor
+            # after the lease was stolen now carries that successor's token.
+            conn.execute(
+                """UPDATE import_scan_files SET lease_token=NULL
+                   WHERE job_id=? AND lease_token=? AND status IN ('discovered', 'importing')""",
+                (job_id, token),
+            )
             conn.commit()
 
     @classmethod
@@ -677,11 +750,22 @@ class ImportScanService:
             if not job:
                 raise ImportScanValidationError('scan job not found', 'SCAN_JOB_NOT_FOUND')
             for item in cls._discover(job, force=force):
+                # Heartbeat before touching the next file.  A folder with many or
+                # large workbooks can outlive the initial LEASE_SECONDS grant, and
+                # an expired lease is silently stealable -- exactly the duplicate
+                # import the token exists to prevent.  Renewing per file keeps the
+                # margin bounded by the slowest single import, not by the whole
+                # folder.  A False result means the lease is gone: stop before
+                # mutating anything else so the new owner's run stays coherent.
+                if not cls._touch_lease(job_id, token, shop_id=shop_id):
+                    raise ImportScanConflictError(
+                        '扫描任务租约已被其它进程接管，本次运行提前结束', 'SCAN_LEASE_LOST',
+                    )
                 scan_file, should_process = cls._upsert_discovered(job_id, item)
                 if not should_process:
                     continue
                 file_id = scan_file['id']
-                if not cls._claim_discovered_file(file_id):
+                if not cls._claim_discovered_file(file_id, token):
                     continue
                 counters['discovered_count'] += 1
                 canonical, filename, _, _, _ = item
@@ -692,19 +776,19 @@ class ImportScanService:
                     )
                     if preview.get('required_unmapped') or preview.get('invalid_rows') or preview.get('duplicate_keys'):
                         cls._update_file(
-                            file_id, status='blocked', preview_id=preview.get('id'),
+                            file_id, token, status='blocked', preview_id=preview.get('id'),
                             error_code='QUALITY_BLOCKED', error_message=json.dumps(preview, ensure_ascii=False),
                         )
                         counters['blocked_count'] += 1
                         continue
                     result = import_service.confirm(preview['id'], preview.get('mapping') or {})
-                    cls._update_file(file_id, status='imported', preview_id=preview.get('id'), batch_id=result.get('id'), imported_at=_iso(_utc_now()))
+                    cls._update_file(file_id, token, status='imported', preview_id=preview.get('id'), batch_id=result.get('id'), imported_at=_iso(_utc_now()))
                     counters['imported_count'] += 1
                 except ImportScanConflictError as error:
-                    cls._update_file(file_id, status='failed', error_code=error.code, error_message=str(error))
+                    cls._update_file(file_id, token, status='failed', error_code=error.code, error_message=str(error))
                     counters['failed_count'] += 1
                 except Exception as error:
-                    cls._update_file(file_id, status='failed', error_code='IMPORT_FAILED', error_message=str(error))
+                    cls._update_file(file_id, token, status='failed', error_code='IMPORT_FAILED', error_message=str(error))
                     counters['failed_count'] += 1
             status = 'completed' if not (counters['failed_count'] or counters['blocked_count']) else 'partial'
             finished = _utc_now()

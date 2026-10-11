@@ -498,6 +498,7 @@ def _run_init_migrations(conn):
         batch_id TEXT,
         error_code TEXT,
         error_message TEXT,
+        lease_token TEXT,
         discovered_at TEXT DEFAULT CURRENT_TIMESTAMP,
         imported_at TEXT,
         updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
@@ -1333,6 +1334,16 @@ def _run_init_migrations(conn):
         cursor.execute("ALTER TABLE import_scan_jobs ADD COLUMN shop_id TEXT NOT NULL DEFAULT 'default'")
     cursor.execute('DROP INDEX IF EXISTS idx_import_scan_jobs_shop_due')
     cursor.execute('CREATE INDEX idx_import_scan_jobs_shop_due ON import_scan_jobs(shop_id, enabled, status, next_run)')
+
+    # Migration: fence individual scanned files to the lease holder that claimed
+    # them. The job-level lease_token alone cannot stop a stolen lease from
+    # re-importing the same bytes, because the file rows carry no ownership of
+    # their own. Existing rows keep NULL, which the claim/update guards read as
+    # "unowned" so an upgrade never strands files already in flight.
+    cursor.execute("PRAGMA table_info(import_scan_files)")
+    import_scan_file_columns = {row[1] for row in cursor.fetchall()}
+    if 'lease_token' not in import_scan_file_columns:
+        cursor.execute('ALTER TABLE import_scan_files ADD COLUMN lease_token TEXT')
 
     # Migration: add new health dimension columns if they don't exist
     new_health_cols = [

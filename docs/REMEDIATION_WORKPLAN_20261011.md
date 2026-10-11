@@ -133,3 +133,53 @@ py -3 -m unittest tests.test_shop_scope_api tests.test_import_workflow tests.tes
 4. 我最初照搬报告，把 `category-analysis/compare|matrix|leaf-weekly-board` 断言成必须 422 —— **这是错的**，它们能满足多店隔离，加 fail-closed 会让多店部署不可用。加锁前必须先确认该接口是否真的触达无 `shop_id` 的表。
 
 验证：`py -3 -m unittest tests.test_shop_scope_api` → Ran 17 OK；`py -3 -m unittest tests.test_app_factory` → Ran 28 OK；`py -3 -m unittest discover -s tests -q` → **Ran 938 OK**（较批次 0 的 931 增加 7 个新测试）；`.venv/Scripts/python.exe -m pytest tests/test_ui_system_contract.py` → 44 passed, 1 skipped；`node scripts/validate_ui_demos.cjs` → exit 0；`node scripts/validate_visual_system.cjs` → exit 0。
+
+### 批次 2：任务事务与幂等 —— 进行中
+
+#### JOB-01 扫描租约心跳、文件级 fencing 与幂等 —— 已完成
+
+**复核结论：作业级令牌抢占与 `(job_id, canonical_path, source_hash)` 幂等键在 WIP 中已存在；真实缺口只有三项，均已补齐。**
+
+| 缺口 | 实测证据 | 处置 |
+|---|---|---|
+| 全仓无心跳/续租 | `heartbeat|renew|_touch_lease|extend_lease` 搜索 0 hits；`LEASE_SECONDS = 120` 固定租约，长导入必然过期被抢占 | 新增 `_touch_lease(cls, job_id, token, shop_id=None)`，`run_job_once` 每个文件前续租；返回 False 即抛 `ImportScanConflictError('...', 'SCAN_LEASE_LOST')` |
+| 文件级认领/写回无 fencing | `_claim_discovered_file`、`_update_file` 完全不带令牌 | 两者均加 `token` 参数与令牌谓词；`run_job_once` 把 `token` 传给全部 claim 与 4 处 update |
+| `import_scan_files` 无 `lease_token` 列 | `db_migrations.py:488-506` 建表语句实读确认（原 15 列） | 建表加 `lease_token TEXT,`，并在 `idx_import_scan_jobs_shop_due` 之后按既有 `PRAGMA table_info` + 条件 `ALTER TABLE` 模式补幂等迁移 |
+
+**`_claim_discovered_file` 的谓词是本批次的核心难点，四次迭代才收敛。** 它必须同时满足四种情形，缺一即错：
+
+| 情形 | 要求 | 只满足部分时的真实后果 |
+|---|---|---|
+| A 未拥有的 `discovered` | 可认领 | 首次扫描完全无法导入（曾致 4 个既有测试 `0 != 1`） |
+| B `discovered` + 自有令牌 | 可认领 | `_upsert_discovered` 的 stale 恢复分支把 `importing` 改回 `discovered` 但**不清令牌**，持有者无法重认领自己的行 |
+| C 新鲜 `importing` + 他人令牌 | **必须拒绝** | 租约被抢后重复导入同一份文件（fencing 失效） |
+| D stale `importing` + 他人令牌 | 可认领 | 崩溃进程遗留的行**永久卡死**，谁都无法接管 |
+
+最终形态把令牌条件分别放进两个状态分支，而不是作为顶层 `AND`：
+
+```sql
+WHERE id=? AND batch_id IS NULL
+  AND ((status='discovered'
+        AND (lease_token IS NULL OR lease_token = ?))
+       OR (status='importing'
+           AND (updated_at <= ?
+                OR lease_token IS NULL
+                OR lease_token = ?)))
+```
+
+即 **只有 stale 分支忽略 `lease_token`** —— 声明与实现必须严格一致，此前两版正是因 docstring 声称「stale 分支忽略令牌」而 SQL 并未如此，才反复出错。
+
+**过程中用一次性探针 dump 行状态定位，避免了两处误判**：
+- 曾以为「终态行必须清空 `lease_token`」。探针实测 `imported` 行**保留**令牌，且 `_upsert_discovered:542-543` 对 `{'imported','blocked','failed','importing'}` 短路返回 `False`，永不重认领 —— 残留无害，反而是「由哪个进程写入该证据」的唯一记录。故改测试而非改实现；`retry_file` 的重置语句已含 `lease_token=NULL`，不阻塞任何恢复路径。
+- 探针报 `IMPORT_FAILED: 表格文件没有数据行`，一度以为实现有 bug。实为**探针自带的 `workbook_bytes` 漏写表头行**，首行数据被 `openpyxl` 当作表头。测试文件的 `:12-20` `workbook_bytes` 会先写 `['date','product_id','payment_amount','product_visitors']`；改用正确探针后 `imported_count=1`。
+
+**本批次踩到的测试自身陷阱（已修正）**：
+1. `_discover` 有**两阶段稳定性门**（`:466-483`）：`if not force and now - stat.st_mtime < 60` 与 `if not force and not stable`（`stable` 要求存在 previous 行且 size+mtime 一致）都会走 `_record_unstable`，记 `status='ignored'`、`error_code='FILE_UNSTABLE'`。**首次运行无 previous 行 → 必然不导入任何文件**，循环体根本不执行（心跳也就从未被调用，`SCAN_LEASE_LOST` 自然不抛）。新测试必须 `force=True` 或连跑两次。
+2. `ImportScanConflictError` 的 `str()` **只含中文消息**，不含 `code`；断言必须用 `raised.exception.code`。
+3. `_iso()` 截断到秒，时间戳按**字符串**比较；测试构造 stale 值须留足余量（用 `LEASE_SECONDS * 3` 而非 `+5`），否则秒对齐会 flake。
+4. `_release_lease` 只清 `lease_token = token` 的行 —— **这是正确的**，若清空所有非终态行，就会抹掉租约被抢后**后继者**的所有权，正是 fencing 要防的事。
+
+验证：`py -3 -m unittest tests.test_import_scan_service` → **Ran 23 OK**（原 18 + 新增 5）；`py -3 -m unittest discover -s tests -q` → **Ran 943 OK**；`node scripts/validate_ui_demos.cjs` → exit 0；`node scripts/validate_visual_system.cjs` → exit 0。新增 5 个测试：`test_touch_lease_renews_until_and_only_for_the_holder`、`test_stolen_lease_cannot_claim_or_update_the_same_file`、`test_unowned_and_stale_files_stay_reclaimable_after_fencing`、`test_lost_lease_stops_the_run_before_further_imports`、`test_release_clears_file_ownership_without_touching_terminal_rows`。
+
+**JOB-01 剩余：DATA-01 + TX-01 + CACHE-01 未开始。**
+
