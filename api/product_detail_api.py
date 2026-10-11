@@ -801,7 +801,7 @@ def product_trade_analysis(product_id):
     detail summary, so the page can explain payment, refund and net-sales
     changes without inventing an order-level source that is not available.
     """
-    if (denied := reject_legacy_shop_scope('鍟嗗搧浜ゆ槗鍒嗘瀽')):
+    if (denied := reject_legacy_shop_scope('\u5546\u54c1\u4ea4\u6613\u5206\u6790')):
         return denied
     start = (request.args.get('start') or '').strip()
     end = (request.args.get('end') or '').strip()
@@ -823,7 +823,7 @@ def product_trade_analysis(product_id):
             'SELECT product_id FROM products WHERE product_id = ?', (product_id,)
         ).fetchone()
         if not product:
-            return failure('NOT_FOUND', '鍟嗗搧涓嶅瓨鍦?', status=404)
+            return failure('NOT_FOUND', '\u5546\u54c1\u4e0d\u5b58\u5728', status=404)
         rows = connection.execute(
             f'''SELECT date, payment_amount, refund_amount, payment_qty,
                        buyers, order_amount, order_buyers, presale_amount,

@@ -92,3 +92,44 @@ py -3 -m unittest tests.test_shop_scope_api tests.test_import_workflow tests.tes
 - **报告计数与实测不一致**：一律以实测为准，workplan 已按实测缩范围。报告未过时项（SEC-01/02/04、JOB-01、DATA-01..04、TX-01、AUTH-01、CACHE-01、UX-01、UI-01、GATE-01）保留。
 - **不顺手统一 `expense_ratio` 口径**：`services/category_analysis_service.py:123` 与 `services/metric_definitions.py:15` 的两处定义不一致是历史遗留，diff 中明确标注，不在本轮统一。
 - **前端改 JS/CSS 必须 bump HTML 的 `?v=`**：静态资源缓存 7 天。
+- **不能用 PowerShell 控制台判断编码问题**：中文 Windows 控制台是 GBK 代码页，会把正确的 UTF-8 输出显示成乱码，产生假阳性。判定乱码必须做字节级扫描（`raw.decode('utf-8')` + 特征字符计数），不能看终端输出。
+
+---
+
+## 5. 批次执行记录
+
+### 批次 0：门禁全绿 —— 已提交 `011c81e`
+
+| 项 | 结论 |
+|---|---|
+| GATE-0a | `tests/test_frontend_prd_contract.py:369` 断言从 HEAD 版源码字符串改为 UX-03 刷新回执契约（`const refreshButton = header.querySelector` / `window.TmallRefresh` / `REFRESH_RECEIPT_TIMEOUT_MS` / `waitUntil`），保留反向断言 `assertNotIn('setTimeout(() => event.currentTarget.classList.remove', shell)` |
+| GATE-0b | 2 条 visual-system error 拆成两个独立根因：`shell.css` 4 处 raw box-shadow（`:285`/`:313`/`:345`/`:379`+`:386`）与 `:347` 的 `font-size: 9px`。修法是在 `frontend/ui_demo/assets/tokens.css` 新增 `--focus-shadow` / `--focus-shadow-sm` / `--anchor-ring` / `--tab-underline` / `--font-size-micro: 10px`，组件改为引用 token |
+| GATE-0c | **无需修改**。`scripts/validate_ui_demos.cjs` 已被 WIP 重写为契约/结构断言（`:55-63` 明确注释 `/api/trend?dim=daily` 已不存在；`:185-282` 改查 `frontend/ui_demo/assets/runtime/date-range-store.js` 的 `PRESET_LABELS`/`PRESET_GROUPS` 表与分组归属，不再断言旧位置） |
+
+验证：`py -3 -m unittest discover -s tests -q` → Ran 931 OK；`node scripts/validate_ui_demos.cjs` → exit 0；`node scripts/validate_visual_system.cjs` → exit 0。
+
+### 批次 1：安全边界与数据隔离 —— 已提交（见下）
+
+**复核结论：报告点名的 4 项里 3 项已在 WIP 落地，本批次实际产出是「补回归测试 + 修 2 处真实乱码」，没有新增 guard。**
+
+| 项 | 报告结论 | 实测真相 | 处置 |
+|---|---|---|---|
+| SEC-01 | 类目分析 `shop_id` 未下传 compare/matrix/leaf weekly | **已修好**。`services/category_analysis_service.py:67` `clauses = ['d.shop_id = ?', ...]`、`:68` 参数含 shop_id、`:192` latest date 也带 `WHERE shop_id = ?`；`source_tables` 只有 `daily_data`（`:238`/`:295`）。`services/leaf_weekly_service.py` `source_tables` 是 `['daily_data', 'products']`（`:252`），`:99`/`:141` 都带 `d.shop_id = ?`。`api/category_analysis_api.py:13,38,69` 传 `current_request_shop_id()` | 补「按店过滤」正向测试，**明确断言这两类接口必须返回 200 而不是 422** |
+| SEC-02 | 采集 run/artifact/staging/retry 跨店 IDOR | **已修好**。`api/collect_api.py:982-1081` 的 5 个 route 全部传 `shop_id=current_request_shop_id()` | 复用既有 `test_shop_scope_api` 覆盖 |
+| SEC-03r | innerHTML 注入面 | **已修好**。`analysis-live.js:257/315` 已包 `escapeHtml`；`category-dashboard-live.js` 的 `renderProfit`/`renderProducts`/`renderAnnual` 由本次补齐（`:104`/`:163` 原本已 escape，属漏改）。`operations-center.js:100` 与 `market-ranking-live.js:460` 经逐查为扫描器误报（前者纯字面量，后者 `:461` 已有 `/^https?:\/\//i` 协议白名单） | 新增 2 个 pytest（`tests/test_ui_system_contract.py`），把误报固化为「允许」，避免后人把正确的 `setAttribute` 改成 `innerHTML` |
+| SEC-04 | 商品概览读单店 `monthly_data` 跨店误归属 | **已修好**。`api/product_overview_api.py:22-32` `_reject_named_shop_read()` 对非默认 scope 返回 422 `UNSUPPORTED_SCOPE`，`:55` 在 `rule-results` 调用（该接口 `:86` 用 `INNER JOIN monthly_data`）。`/rules`（`:44`）**故意不加 guard**：它只调 `list_rules()`，而 `services/product_rules_service.py:221` 返回内存表 `PRODUCT_RULES` 的拷贝，不读任何表 | 补「must fail closed」与「metadata 必须 200」两个方向的测试 |
+| AUTH-01 | 非管理员可持久化 import preview BLOB，无配额 | **已修好**。`app.py:240-253` 的 `public_mutations` 已移除 `/api/imports/preview`，只剩 `/api/frontend-errors`，并在 `:244-247` 写明原因 | **原报告无任何测试锁定此项**，本批次新增 2 个测试（403 场景 + admin 通过场景 + 豁免名单断言） |
+
+**本批次新发现并修复的真实缺陷（非报告条目）**：`api/product_detail_api.py` 两处 GBK 往返乱码——
+- `:804` `reject_legacy_shop_scope('鍟嗗搧浜ゆ槗鍒嗘瀽')` → `'\u5546\u54c1\u4ea4\u6613\u5206\u6790'`（商品交易分析）
+- `:826` `failure('NOT_FOUND', '鍟嗗搧涓嶅瓨鍦?')` → `'\u5546\u54c1\u4e0d\u5b58\u5728'`（商品不存在）
+
+文件本身是合法 UTF-8，只有字面量被写坏，普通读写不报错，必须做字符级扫描才能发现。修复后 `api/ services/ repos/` 罕见字符扫描 0 hits，并新增 `test_no_gbk_mojibake_literals_in_scope_sources` 钉住该约束。
+
+**本批次踩到的测试自身陷阱（已修正，记录以免重犯）**：
+1. 路由名写错：叶子周报实际是 `/api/category-analysis/leaf-weekly-board`（`api/category_analysis_api.py:65`），写成 `leaf-weekly` 会得到 404 而非 422。
+2. `success()` 把业务载荷包在 `data` 键下：`/api/product-overview/rules` 的 rules 在 `payload['data']['rules']`，不在顶层。
+3. 鉴权模型是「单身份 + 可选 admin 名单」：`require_admin_write()`（`services/shop_scope_service.py:126-134`）先要求匹配唯一的 `DASHBOARD_USERNAME`/`DASHBOARD_PASSWORD`（否则 401），再看 `DASHBOARD_ADMIN_USERS`（否则 403）。不能用第二组账号测「管理员通过」。
+4. 我最初照搬报告，把 `category-analysis/compare|matrix|leaf-weekly-board` 断言成必须 422 —— **这是错的**，它们能满足多店隔离，加 fail-closed 会让多店部署不可用。加锁前必须先确认该接口是否真的触达无 `shop_id` 的表。
+
+验证：`py -3 -m unittest tests.test_shop_scope_api` → Ran 17 OK；`py -3 -m unittest tests.test_app_factory` → Ran 28 OK；`py -3 -m unittest discover -s tests -q` → **Ran 938 OK**（较批次 0 的 931 增加 7 个新测试）；`.venv/Scripts/python.exe -m pytest tests/test_ui_system_contract.py` → 44 passed, 1 skipped；`node scripts/validate_ui_demos.cjs` → exit 0；`node scripts/validate_visual_system.cjs` → exit 0。

@@ -1,5 +1,7 @@
 (function () {
   const $ = (id) => document.getElementById(id);
+  // 全站唯一转义契约来源：assets/format.js。回退分支只在本文件被单独加载时兜底。
+  const escapeHtml = window.DemoFormat?.escapeHtml ? window.DemoFormat.escapeHtml : (value) => String(value ?? '').replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
   const labels = { net_sales: '净销售额', payment_amount: '支付金额', payment_qty: '支付件数', visitors: '访客数', payment_conversion_rate: '支付转化率', average_order_value: '客单价', ad_spend: '推广花费', operating_profit: '经营利润', profit_rate: '利润率' };
   const money = (v) => v == null ? '--' : `¥${Number(v).toLocaleString('zh-CN', { maximumFractionDigits: 0 })}`;
   const number = (v) => v == null ? '--' : Number(v).toLocaleString('zh-CN', { maximumFractionDigits: 0 });
@@ -99,7 +101,7 @@
       { title: '日均表现', value: blocked ? '不可用' : format(current.daily_average, metric), note: `${current.days || '--'} 天` },
       { title: '利润口径', value: basisText(breakdown.basis), note: missing.length ? `缺少 ${missing.map((key) => costLabels[key] || key).join('、')}` : '成本项完整' }
     ];
-    $('categoryDashboardKpis').innerHTML = cards.map((card) => `<div class="dashboard-kpi"><span>${card.title}</span><strong>${card.value}</strong><small>${card.note}</small></div>`).join('');
+    $('categoryDashboardKpis').innerHTML = cards.map((card) => `<div class="dashboard-kpi"><span>${escapeHtml(card.title)}</span><strong>${escapeHtml(card.value)}</strong><small>${escapeHtml(card.note)}</small></div>`).join('');
   }
 
   function renderInsight(data) {
@@ -149,7 +151,7 @@
       const value = breakdown[key];
       const text = key === 'operating_profit_rate' ? percent(value) : money(value);
       const flagged = missing.includes(key) && value == null;
-      return `<div><span>${name}</span><strong>${flagged ? '未接入' : text}</strong></div>`;
+      return `<div><span>${escapeHtml(name)}</span><strong>${escapeHtml(flagged ? '未接入' : text)}</strong></div>`;
     }).join('');
     const notes = [];
     notes.push(breakdown.basis === 'bi'
@@ -158,11 +160,11 @@
         ? '口径：净销售额 − 净货品成本 − 销售费用 − 自定义费用 − 发货费用 − 其他费用。'
         : '成本项缺失，经营利润不可计算，已停止展示数值。');
     if (missing.length) { notes.push(`缺少成本项：${missing.map((key) => costLabels[key] || key).join('、')}`); }
-    $('categoryDashboardProfit').innerHTML = rows + `<p class="dashboard-profit-note">${notes.join(' ')}</p>`;
+    $('categoryDashboardProfit').innerHTML = rows + `<p class="dashboard-profit-note">${escapeHtml(notes.join(' '))}</p>`;
   }
 
   function renderProducts(node, rows, metric) {
-    $(node).innerHTML = rows?.length ? `<table><thead><tr><th>商品</th><th class="num">当前</th><th class="num">变化</th></tr></thead><tbody>${rows.map((row) => `<tr><td>${row.title || row.product_id || '--'}</td><td class="num">${format(row.current_value, metric)}</td><td class="num">${format(row.change, metric)}</td></tr>`).join('')}</tbody></table>` : '<span>暂无数据</span>';
+    $(node).innerHTML = rows?.length ? `<table><thead><tr><th>商品</th><th class="num">当前</th><th class="num">变化</th></tr></thead><tbody>${rows.map((row) => `<tr><td>${escapeHtml(row.title || row.product_id || '--')}</td><td class="num">${escapeHtml(format(row.current_value, metric))}</td><td class="num">${escapeHtml(format(row.change, metric))}</td></tr>`).join('')}</tbody></table>` : '<span>暂无数据</span>';
   }
 
   function renderAnnual(data) {
@@ -171,7 +173,7 @@
       const item = data.series?.[metric];
       if (!item) return '';
       const years = data.years || [];
-      return `<section class="dashboard-review-block"><header><strong>${labels[metric] || metric}</strong><span>${data.focus_year}年重点复盘</span></header><div class="dashboard-table"><table><thead><tr><th>月份</th>${years.map((year) => `<th class="num">${year}</th>`).join('')}<th class="num">同比</th></tr></thead><tbody>${item.matrix.map((row) => `<tr><th>${row.label}</th>${years.map((year) => `<td class="num">${format(row.values?.[String(year)], metric)}</td>`).join('')}<td class="num">${percent(row.yoy?.rate)}</td></tr>`).join('')}</tbody><tfoot><tr><th>年度累计</th>${years.map((year) => `<td class="num">${format(item.annual?.[String(year)], metric)}</td>`).join('')}<td class="num">--</td></tr></tfoot></table></div></section>`;
+      return `<section class="dashboard-review-block"><header><strong>${escapeHtml(labels[metric] || metric)}</strong><span>${escapeHtml(data.focus_year)}年重点复盘</span></header><div class="dashboard-table"><table><thead><tr><th>月份</th>${years.map((year) => `<th class="num">${escapeHtml(year)}</th>`).join('')}<th class="num">同比</th></tr></thead><tbody>${item.matrix.map((row) => `<tr><th>${escapeHtml(row.label)}</th>${years.map((year) => `<td class="num">${escapeHtml(format(row.values?.[String(year)], metric))}</td>`).join('')}<td class="num">${escapeHtml(percent(row.yoy?.rate))}</td></tr>`).join('')}</tbody><tfoot><tr><th>年度累计</th>${years.map((year) => `<td class="num">${escapeHtml(format(item.annual?.[String(year)], metric))}</td>`).join('')}<td class="num">--</td></tr></tfoot></table></div></section>`;
     }).join('');
   }
 

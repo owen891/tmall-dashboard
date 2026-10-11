@@ -1,4 +1,5 @@
 import os
+import re
 import sys
 import tempfile
 import unittest
@@ -181,6 +182,121 @@ class ShopScopeApiTests(unittest.TestCase):
         self.assertEqual(response.status_code, 422)
         self.assertEqual(response.get_json()['code'], 'UNSUPPORTED_SCOPE')
         response.close()
+
+    def test_category_analysis_surfaces_isolate_named_shops_via_daily_data(self):
+        """SEC-01：只读 daily_data 的接口必须「按店过滤」，而不是 fail closed。
+
+        2026-10-11 实测：
+          services/category_analysis_service.py  source_tables 只有 daily_data
+            （:238 与 :295），_aggregate 的 clauses 首项是 'd.shop_id = ?'（:67）
+          services/leaf_weekly_service.py        source_tables 是
+            ['daily_data', 'products']（:252），每条 SQL 都带 d.shop_id = ?（:99、:141）
+        daily_data 是多店表（唯一键含 shop_id），所以命名店铺能被正确隔离，
+        返回 200 是正确行为。这里锁定该契约：非默认店铺请求不得返回默认店铺的
+        整店数据，也不能被误改成 422（那会让多店部署直接不可用）。
+        """
+        urls = (
+            '/api/category-analysis/compare?start=2026-04-01&end=2026-04-30&shop_id=shop-a',
+            '/api/category-analysis/matrix?years=2026&metric=net_sales&shop_id=shop-a',
+            '/api/category-analysis/leaf-weekly-board?shop_id=shop-a',
+        )
+        for url in urls:
+            with self.subTest(url=url):
+                response = self.client.get(url)
+                self.assertEqual(response.status_code, 200)
+                payload = response.get_json()
+                self.assertIn('data', payload)
+                response.close()
+
+    def test_monthly_data_backed_surfaces_fail_closed_for_non_default_shop(self):
+        """SEC-04：真正读 monthly_data（无 shop_id 列）的接口必须 fail closed。
+
+        2026-10-11 实测：monthly_data 在 db_migrations.py 建表时就没有 shop_id
+        列，所以任何以它为唯一/主要数据源的读接口都无法隔离命名店铺，必须 422。
+        这里锁定 product-overview 的 rule-results：api/product_overview_api.py:55
+        调用 _reject_named_shop_read()，而该接口在 :86 用
+        INNER JOIN monthly_data 取数，属于无法隔离的接口。
+        """
+        urls = (
+            '/api/product-overview/rule-results?shop_id=shop-a',
+            '/api/lifecycle/assessments?shop_id=shop-a',
+        )
+        for url in urls:
+            with self.subTest(url=url):
+                response = self.client.get(url)
+                self.assertEqual(response.status_code, 422)
+                self.assertEqual(response.get_json()['code'], 'UNSUPPORTED_SCOPE')
+                response.close()
+
+    def test_product_overview_rules_metadata_is_shop_independent(self):
+        """纯元数据接口不读表，因此不该被 scope guard 拦成 422。
+
+        api/product_overview_api.py:44 的 /rules 只调用 list_rules()，而
+        services/product_rules_service.py:221 的 list_rules() 返回内存表
+        PRODUCT_RULES 的拷贝，完全不碰 monthly_data。给这样的接口加 fail-closed
+        会让非默认店铺看不到规则说明，属于过度加锁。
+
+        注意 success() 会把业务载荷包在 data 键下，rules 不在顶层。
+        """
+        response = self.client.get('/api/product-overview/rules?shop_id=shop-a')
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertIn('data', payload)
+        self.assertIn('rules', payload['data'])
+        self.assertTrue(payload['data']['rules'])
+        response.close()
+
+    def test_legacy_shop_scope_guard_is_shared_not_reimplemented(self):
+        """每个 legacy 单店接口都必须走同一个 guard，不能各自散落判断。
+
+        历史上 product_overview_api 自己写了一个 _reject_named_shop_read()，
+        与 services/shop_scope_service.py 的 reject_legacy_shop_scope() 并存，
+        两处的默认店铺白名单必须一致，否则改一处会留下一个能越权的入口。
+        """
+        from services.shop_scope_service import reject_legacy_shop_scope
+        from api import product_overview_api
+
+        with self.app.test_request_context('/api/product-overview/rule-results?shop_id=shop-a'):
+            denied = product_overview_api._reject_named_shop_read()
+            self.assertIsNotNone(denied)
+            self.assertEqual(denied[0].get_json()['code'], 'UNSUPPORTED_SCOPE')
+
+        with self.app.test_request_context('/api/product-overview/rule-results?shop_id=default'):
+            self.assertIsNone(product_overview_api._reject_named_shop_read())
+
+        with self.app.test_request_context('/api/x?shop_id=3828498662'):
+            self.assertIsNone(reject_legacy_shop_scope('probe'))
+
+    def test_no_gbk_mojibake_literals_in_scope_sources(self):
+        """api/ services/ repos/ 不得残留 GBK 往返造成的乱码字面量。
+
+        2026-10-11 实测出两处真实坏数据：
+          api/product_detail_api.py:804  reject_legacy_shop_scope('鍟嗗搧浜ゆ槗鍒嗘瀽')
+          api/product_detail_api.py:826  failure('NOT_FOUND', '鍟嗗搧涓嶅瓨鍦?')
+        两者都是 UTF-8 字节被按 GBK 解码再编码（「商品」「交易」「不存在」被
+        写成 鍟嗗搧 / 浜ゆ槗 / 涓嶅瓨鍦?）。文件本身仍是合法 UTF-8，所以普通
+        读写不会报错，只有字面量本身是坏的——必须靠字符级扫描才抓得住。
+
+        注意：不能用 PowerShell 控制台判断这个问题。中文 Windows 控制台是
+        GBK 代码页，会把正确的 UTF-8 输出显示成乱码，从而产生假阳性。
+        """
+        # 这些是 GBK 往返后出现的特征字符，正常中文源码里不会出现
+        mojibake_markers = ('\u935f', '\u6dde\u69d9', '\u6d93\u5b85', '\u93a8')
+        offenders = []
+        for folder in ('api', 'services', 'repos'):
+            directory = os.path.join(PROJECT_ROOT, folder)
+            if not os.path.isdir(directory):
+                continue
+            for name in sorted(os.listdir(directory)):
+                if not name.endswith('.py'):
+                    continue
+                path = os.path.join(directory, name)
+                with io.open(path, encoding='utf-8') as handle:
+                    text = handle.read()
+                for marker in mojibake_markers:
+                    if marker in text:
+                        offenders.append(f'{folder}/{name}: {marker!r}')
+        self.assertEqual(offenders, [], f'发现 GBK 乱码字面量：{offenders}')
 
     def test_import_writes_daily_fact_to_requested_shop(self):
         workbook = Workbook()

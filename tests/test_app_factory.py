@@ -4,6 +4,7 @@ import tempfile
 import unittest
 import sqlite3
 import gzip
+import io
 import json
 import atexit
 import subprocess
@@ -215,6 +216,71 @@ class AppFactoryTests(unittest.TestCase):
         )
         self.assertEqual(response.status_code, 503)
         self.assertEqual(response.get_json()['code'], 'AUTH_CONFIGURATION_REQUIRED')
+
+    def test_import_preview_requires_admin_write_from_external_clients(self):
+        """AUTH-01：/api/imports/preview 不是只读接口，不得豁免 admin 写保护。
+
+        ImportService.preview 会把完整原始文件写进 import_previews（BLOB），
+        services/import_service.py 的 TTL 只有 24 小时且清理仅在后续
+        preview/confirm 时触发，因此没有任何数量或总字节配额。若把该路径放进
+        app.py 的 public_mutations 豁免名单，任何通过 Basic Auth 的认证用户
+        都能靠重复上传持续持久化 BLOB（CPU/内存/磁盘消耗）。
+
+        鉴权模型（services/shop_scope_service.py:126-134 require_admin_write）：
+          1) 外部请求必须先匹配唯一的 DASHBOARD_USERNAME/DASHBOARD_PASSWORD，否则 401；
+          2) 若配置了 DASHBOARD_ADMIN_USERS，身份还必须在名单内，否则 403。
+        所以「认证用户」与「管理员」是两个不同门槛，测试要分别覆盖。
+        """
+        from app import create_app
+
+        # 场景一：认证通过但不在 admin 名单 -> 403（这正是报告里 viewer 的处境）
+        viewer_app = create_app({
+            'TESTING': True,
+            'DASHBOARD_USERNAME': 'viewer',
+            'DASHBOARD_PASSWORD': 'viewer-pass',
+            'DASHBOARD_ADMIN_USERS': ['operator'],
+        })
+        forbidden = viewer_app.test_client().post(
+            '/api/imports/preview',
+            headers={'Authorization': 'Basic dmlld2VyOnZpZXdlci1wYXNz'},
+            environ_overrides={'REMOTE_ADDR': '192.168.10.20'},
+            data={'file': (io.BytesIO(b'date,product_id\n2026-04-01,p1\n'), 'tiny.csv')},
+            content_type='multipart/form-data',
+        )
+        self.assertEqual(forbidden.status_code, 403)
+        self.assertEqual(forbidden.get_json()['code'], 'FORBIDDEN')
+
+        # 场景二：认证与 admin 名单都通过 -> 不因鉴权被拒
+        admin_app = create_app({
+            'TESTING': True,
+            'DASHBOARD_USERNAME': 'operator',
+            'DASHBOARD_PASSWORD': 'operator-pass',
+            'DASHBOARD_ADMIN_USERS': ['operator'],
+        })
+        allowed = admin_app.test_client().post(
+            '/api/imports/preview',
+            headers={'Authorization': 'Basic b3BlcmF0b3I6b3BlcmF0b3ItcGFzcw=='},
+            environ_overrides={'REMOTE_ADDR': '192.168.10.20'},
+            data={'file': (io.BytesIO(b'date,product_id\n2026-04-01,p1\n'), 'tiny.csv')},
+            content_type='multipart/form-data',
+        )
+        self.assertNotIn(allowed.status_code, (401, 403))
+
+    def test_public_mutation_exemptions_are_minimal(self):
+        """public_mutations 豁免名单必须只包含真正不需要 admin 的路径。
+
+        app.py 的 require_admin_for_external_mutations 会对所有外部写请求
+        调 require_admin_write()。每往豁免名单里加一条，就多一个绕过 admin
+        写保护的入口，所以名单本身要被断言钉住，避免后续顺手加回
+        /api/imports/preview（AUTH-01 已移除的那条）。
+        """
+        source = Path(__file__).resolve().parents[1].joinpath('app.py').read_text(encoding='utf-8')
+        marker = 'public_mutations = {'
+        start = source.index(marker)
+        end = source.index('}', start)
+        block = source[start:end]
+        self.assertNotIn('/api/imports/preview', block)
+        self.assertIn('/api/frontend-errors', block)
 
     def test_create_app_returns_configurable_flask_app(self):
         from app import create_app
