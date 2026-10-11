@@ -367,8 +367,14 @@ class FrontendPrdContractTests(unittest.TestCase):
         self.assertIn('aria-label="新增运营动作"', shell)
 
     def test_refresh_handlers_capture_event_targets_before_async_cleanup(self):
+        # UX-03：刷新按钮不再"固定延时后假装成功"，而是等待页面注册的完成回执
+        # （window.TmallRefresh.register / event.detail.waitUntil），超时另有兜底。
+        # 因此断言从旧的 event.currentTarget 源码字符串改为回执契约本身。
         shell = self.read('frontend/ui_demo/assets/shell.js')
-        self.assertGreaterEqual(shell.count('const refreshButton = event.currentTarget;'), 1)
+        self.assertIn('const refreshButton = header.querySelector', shell)
+        self.assertIn('window.TmallRefresh', shell)
+        self.assertIn('REFRESH_RECEIPT_TIMEOUT_MS', shell)
+        self.assertIn('waitUntil', shell)
         self.assertNotIn('setTimeout(() => event.currentTarget.classList.remove', shell)
 
     def test_scan_write_controls_guard_against_duplicate_submissions(self):

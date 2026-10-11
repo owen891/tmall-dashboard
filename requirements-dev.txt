@@ -1,0 +1,11 @@
+# 开发/CI 专用依赖（不随桌面端生产包分发）。
+#
+# 为什么需要单独的 requirements：
+#   requirements.txt 是运行时依赖，desktop-release.yml 的打包步骤也会安装它，
+#   把测试运行器放进去会让 pytest 随生产包分发。
+#
+# 为什么必须有 pytest：
+#   tests/ 下有 4 个纯 pytest 风格文件（无 unittest.TestCase），
+#   `python -m unittest discover` 对它们收集 0 个测试 —— 等于从未执行。
+#   CI 必须显式跑一次 pytest 才能覆盖这些文件。
+pytest==9.0.2

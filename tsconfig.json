@@ -1,0 +1,27 @@
+{
+  "//": "前端类型检查（只检查，不产出）。方案 C 阶段 3：用 JSDoc + checkJs 拿类型安全，不引入构建步骤。",
+  "//scope": "include 是白名单：只有列出的文件会被检查。存量 24,200 行 JS 不做全仓库检查，避免海量报错淹没真实问题。新增标注文件时同步加入本列表，并由 tests/test_ui_system_contract.py 断言「只增不减」。",
+  "compilerOptions": {
+    "allowJs": true,
+    "checkJs": true,
+    "noEmit": true,
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "strict": false,
+    "noImplicitAny": false,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "types": []
+  },
+  "include": [
+    "frontend/ui_demo/assets/globals.d.ts",
+    "frontend/ui_demo/assets/ui-components.js",
+    "frontend/ui_demo/assets/runtime/date-range-store.js",
+    "frontend/ui_demo/assets/runtime/date-range-scope.js",
+    "frontend/ui_demo/assets/runtime/event-scope.js",
+    "frontend/ui_demo/assets/runtime/request-scope.js",
+    "frontend/ui_demo/assets/metric-polarity.js"
+  ]
+}
