@@ -1247,6 +1247,12 @@
   white-space: nowrap;
 }
 
+/* 广告汇总的「合计（账单口径）」行：与上方渠道行/未归因行区隔开，强调这是总账。 */
+.pr-summary-table tr.pr-summary__total td {
+  border-top: 1px solid var(--border-default);
+  font-weight: 600;
+}
+
 .pr-list {
   margin: 0;
   padding-left: 18px;

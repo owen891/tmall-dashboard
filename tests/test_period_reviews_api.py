@@ -919,6 +919,78 @@ class PeriodReviewsTests(unittest.TestCase):
         column_keys = [col['key'] for col in summary['base_columns']]
         self.assertIn('uv_value', column_keys)
         self.assertTrue(set(summary['base_missing']).issubset(set(column_keys)))
+        # 段标题含「利润」，汇总必须自包含利润与费比，不能只靠下方 KPI 网格。
+        self.assertIn('profit', column_keys)
+        self.assertIn('ad_ratio', column_keys)
+
+    def test_summary_ad_channel_spend_reconciles_to_bill_total(self):
+        """广告汇总渠道行只覆盖有计划级明细的推广，账单口径总花费更大；
+        必须回传「未归因」残差，读者才能把渠道行 + 未归因对账到总花费，
+        而不是把渠道加总误当成总推广花费。"""
+        from db import get_db
+
+        with get_db(self.app.config['DATABASE_PATH']) as connection:
+            connection.execute("INSERT INTO products (product_id, title) VALUES ('ads-recon', 'Ads Recon')")
+            # 账单口径总花费（daily_data.ad_spend）= 1000。
+            connection.execute(
+                '''INSERT INTO daily_data
+                   (product_id, date, payment_amount, net_sales, ipv, buyers, ad_spend)
+                   VALUES (?, ?, ?, ?, ?, ?, ?)''',
+                ('ads-recon', '2026-09-14', 5000, 4500, 500, 50, 1000),
+            )
+            # 渠道级明细只有关键词 400（计划级），缺口应为 600。
+            connection.execute(
+                '''INSERT INTO promotion_daily_facts
+                   (date, channel, campaign_id, campaign_name, grain, ad_spend,
+                    attributed_payment_amount, impressions, clicks, payment_buyers)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+                ('2026-09-14', '关键词推广', 'c1', 'KW', 'campaign', 400, 800, 1000, 100, 20),
+            )
+            connection.commit()
+
+        context = self.client.get(
+            '/api/period-reviews/week/2026-09-W3/context'
+        ).get_json()['data']['context']
+        summary = context['summary']
+        self.assertAlmostEqual(summary['ads_total_spend'], 1000, places=2)
+        channel_sum = sum(group['ad_spend'] for group in summary['ads_channels'])
+        self.assertAlmostEqual(channel_sum, 400, places=2)
+        # 未归因 = 1000 − 400，且渠道合计 + 未归因 = 总花费（可对账）。
+        self.assertAlmostEqual(summary['ads_unattributed'], 600, places=2)
+        self.assertAlmostEqual(channel_sum + summary['ads_unattributed'],
+                               summary['ads_total_spend'], places=2)
+
+    def test_summary_channel_conversion_uses_clicks_not_visitors(self):
+        """渠道「点击转化率」分母是广告点击，与基础数据「转化率（访客）」不同源。
+        两者若同名会被横向比较，这里锁住渠道侧的口径（buyers/clicks）。"""
+        from db import get_db
+
+        with get_db(self.app.config['DATABASE_PATH']) as connection:
+            connection.execute("INSERT INTO products (product_id, title) VALUES ('conv-p', 'Conv P')")
+            connection.execute(
+                '''INSERT INTO daily_data
+                   (product_id, date, payment_amount, net_sales, ipv, buyers, ad_spend)
+                   VALUES (?, ?, ?, ?, ?, ?, ?)''',
+                ('conv-p', '2026-09-14', 5000, 4500, 1000, 100, 500),
+            )
+            connection.execute(
+                '''INSERT INTO promotion_daily_facts
+                   (date, channel, campaign_id, campaign_name, grain, ad_spend,
+                    attributed_payment_amount, impressions, clicks, payment_buyers)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+                ('2026-09-14', '关键词推广', 'c1', 'KW', 'campaign', 500, 800, 5000, 200, 40),
+            )
+            connection.commit()
+
+        context = self.client.get(
+            '/api/period-reviews/week/2026-09-W3/context'
+        ).get_json()['data']['context']
+        summary = context['summary']
+        kw = next(g for g in summary['traffic_channels'] if g['name'] == '关键词')
+        # 渠道转化率 = 40/200（点击），不是 40/1000（访客）。
+        self.assertAlmostEqual(kw['conversion'], 40 / 200, places=6)
+        # 基础数据转化率 = 100/1000（访客）——两者确实不同源。
+        self.assertAlmostEqual(summary['base']['conversion'], 100 / 1000, places=6)
 
     def test_summary_block_absent_when_period_has_no_data(self):
         """本期无日数据时返回 None，前端才能走空态，而不是渲染一张全 -- 的表。"""

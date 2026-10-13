@@ -369,6 +369,9 @@ SUMMARY_BASE_COLUMNS = (
     ('gsv', '成交金额', 'money'),
     ('refund_amount', '退款金额', 'money'),
     ('net_sales', '净销售额', 'money'),
+    # 段标题是「销售与利润指标」，利润与费比必须在汇总里可见，否则要往下翻
+    # 到 KPI 网格才看得到，汇总表就不自包含。
+    ('profit', '利润', 'money'),
     ('refund_ratio', '退款率', 'percent'),
     ('visitors', '访客', 'number'),
     ('buyers', '成交买家数', 'number'),
@@ -382,6 +385,8 @@ SUMMARY_BASE_COLUMNS = (
     ('search_visitors', '搜索访客数', 'number'),
     ('search_buyers', '搜索成交买家数', 'number'),
     ('search_conversion', '搜索转化率', 'percent'),
+    ('ad_spend', '推广花费', 'money'),
+    ('ad_ratio', '费比', 'percent'),
 )
 
 
@@ -406,6 +411,8 @@ def _summary_block(conn, period, channel_totals=None, category_label=None):
                 SUM(d.payment_amount) AS gsv,
                 SUM(d.refund_amount) AS refund_amount,
                 SUM(d.net_sales) AS net_sales,
+                SUM(d.operating_profit) AS profit,
+                SUM(d.ad_spend) AS ad_spend,
                 SUM(d.ipv) AS visitors,
                 SUM(d.buyers) AS buyers,
                 SUM(d.new_payment_buyers) AS new_buyers,
@@ -429,10 +436,12 @@ def _summary_block(conn, period, channel_totals=None, category_label=None):
     gsv = row['gsv']
     visitors = row['visitors']
     buyers = row['buyers']
+    ad_spend = row['ad_spend']
     base = {
         'gsv': gsv,
         'refund_amount': row['refund_amount'],
         'net_sales': row['net_sales'],
+        'profit': row['profit'],
         'refund_ratio': div(row['refund_amount'], gsv),
         'visitors': visitors,
         'buyers': buyers,
@@ -446,14 +455,26 @@ def _summary_block(conn, period, channel_totals=None, category_label=None):
         'search_visitors': row['search_visitors'],
         'search_buyers': row['search_buyers'],
         'search_conversion': div(row['search_buyers'], row['search_visitors']),
+        'ad_spend': ad_spend,
+        'ad_ratio': div(ad_spend, gsv),
     }
     # 某列的「可用性」按原始分子判断：分子整列为 NULL（如 BI 快照不提供
     # 新买家数）时，派生比率必然也是 None，不该只报比率缺失而漏掉源列。
     missing = [key for key, _label, _fmt in SUMMARY_BASE_COLUMNS if base.get(key) is None]
 
     groups = (channel_totals or {}).get('groups') or []
+    # 渠道行只覆盖「有计划级明细」的推广（creative 明细 + 单商品全站计划精确
+    # 归因），账单口径总花费（daily_data.ad_spend）通常更大。若不把这个缺口显式
+    # 摆出来，读者会把渠道行加总当成总花费，对不上账却无从解释。
+    channel_spend = sum(float(group.get('ad_spend') or 0) for group in groups)
+    unattributed = None
+    if ad_spend and groups:
+        residual = float(ad_spend) - channel_spend
+        if residual > max(1.0, 0.005 * float(ad_spend)):
+            unattributed = round(residual, 2)
     # 流量汇总：渠道级只有点击量（推广明细不提供 UV），因此列名用「点击量」
-    # 而不是「访客」，不把点击伪装成访客。支付转化率/平均点击花费按同源分子分母现算。
+    # 而不是「访客」，不把点击伪装成访客。转化率分母是点击（非访客），
+    # 与基础数据的「转化率（访客）」不同源，列名与提示都要点明，避免被横向比较。
     traffic_channels = [{
         'name': group.get('name'),
         'clicks': group.get('clicks'),
@@ -471,6 +492,8 @@ def _summary_block(conn, period, channel_totals=None, category_label=None):
                          for key, label, fmt in SUMMARY_BASE_COLUMNS],
         'base_missing': missing,
         'ads_channels': groups,
+        'ads_total_spend': ad_spend,
+        'ads_unattributed': unattributed,
         'traffic_channels': traffic_channels,
         'channel_source': (channel_totals or {}).get('source'),
         'channel_partial': bool((channel_totals or {}).get('partial')),

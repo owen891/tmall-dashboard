@@ -2826,18 +2826,33 @@
         cell(group.direct_roi, 'decimal'),
         cell(group.new_cost, 'money'),
         cell(group.cart_cost, 'money')));
+      // 渠道行只覆盖有计划级明细的推广，账单口径总花费通常更大。不把缺口摆出来，
+      // 读者会把渠道加总当总花费、对不上账又无从解释。
+      if (summary.ads_unattributed) {
+        adsRows.push(h('tr', { class: 'pr-table__row--muted' },
+          h('td', { class: 'pr-table__muted', text: '未归因' }),
+          cell(summary.ads_unattributed, 'money'),
+          h('td', { class: 'num', text: '--' }), h('td', { class: 'num', text: '--' }),
+          h('td', { class: 'num', text: '--' }), h('td', { class: 'num', text: '--' })));
+        adsRows.push(h('tr', { class: 'pr-summary__total' },
+          h('td', { text: '合计（账单口径）' }),
+          cell(summary.ads_total_spend, 'money'),
+          h('td', { class: 'num', text: '--' }), h('td', { class: 'num', text: '--' }),
+          h('td', { class: 'num', text: '--' }), h('td', { class: 'num', text: '--' })));
+      }
       wrap.append(h('div', { class: 'pr-summary__section' },
         h('p', { class: 'pr-summary__title', text: '广告汇总（按渠道）' }),
         summaryTable(adsHead, adsRows)));
     }
 
-    // 3) 流量汇总：按渠道看点击/成交/转化/点击成本。渠道明细不提供 UV，
-    //    列名用「点击量」而非「访客」，不把点击伪装成访客。
+    // 3) 推广渠道汇总：按渠道看点击/成交/点击转化/点击成本。
+    //    渠道明细不提供 UV，列名用「点击量」而非「访客」；转化率分母是广告点击
+    //    而非店铺访客，与基础数据的「转化率」不同源，列名必须区分开。
     const trafficChannels = summary.traffic_channels || [];
     if (trafficChannels.length) {
       const trafficHead = [h('th', { text: '渠道' }),
         h('th', { class: 'num', text: '点击量' }), h('th', { class: 'num', text: '成交买家数' }),
-        h('th', { class: 'num', text: '支付转化率' }), h('th', { class: 'num', text: '平均点击花费' })];
+        h('th', { class: 'num', text: '点击转化率' }), h('th', { class: 'num', text: '平均点击花费' })];
       const trafficRows = trafficChannels.map((group) => h('tr', null,
         h('td', { text: group.name || '--' }),
         cell(group.clicks, 'number'),
@@ -2845,7 +2860,7 @@
         cell(group.conversion, 'percent'),
         cell(group.cpc, 'money')));
       wrap.append(h('div', { class: 'pr-summary__section' },
-        h('p', { class: 'pr-summary__title', text: '流量汇总（按渠道）' }),
+        h('p', { class: 'pr-summary__title', text: '推广渠道汇总' }),
         summaryTable(trafficHead, trafficRows)));
     }
 
@@ -2870,10 +2885,16 @@
         if (missingLabels.length) {
           hints.push(`缺失列：${missingLabels.join('、')}（BI 日快照未提供该字段，非 0）。`);
         }
-        if (summary.channel_partial) {
-          hints.push('渠道汇总按品类口径为部分覆盖（缺全站推广商品级明细），占比不适用。');
+        // 两张表的「转化率」不同源：基础数据分母是店铺访客，渠道表分母是广告点击。
+        hints.push('口径：基础数据「转化率」= 成交买家 ÷ 店铺访客；「推广渠道汇总」的「点击转化率」= 成交买家 ÷ 广告点击，两者不可横向比较。');
+        // 渠道行只覆盖有计划级明细的推广，账单口径总花费通常更大 → 表内以「未归因」补齐。
+        if (summary.ads_unattributed) {
+          hints.push('广告汇总渠道行仅覆盖有计划级明细的推广；「未归因」= 账单口径总花费 − 渠道合计，未按渠道拆分。完整渠道明细见「广告复盘」段。');
         }
-        return materialBlock('本期汇总（基础数据 / 广告汇总 / 流量汇总）',
+        if (summary.channel_partial) {
+          hints.push('按品类口径渠道为部分覆盖：无花费的渠道（如「其他」）不占行，切换「全部品类」可看全店口径。');
+        }
+        return materialBlock('本期汇总（基础数据 / 广告汇总 / 推广渠道汇总）',
           periodSummaryBlock(summary), null, hints.join('　') || null);
       }
       case 'traffic': {
