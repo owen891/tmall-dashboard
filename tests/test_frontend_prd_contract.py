@@ -119,7 +119,7 @@ class FrontendPrdContractTests(unittest.TestCase):
         self.assertNotIn('data-pr-diagnosis-anchor', page)
         self.assertNotIn('evidenceDigest', live)
         self.assertIn("['promotion_channels', 'promotion_items']", self.read('services/period_templates.py'))
-        self.assertIn("['metrics', 'target_path', 'gap_attribution', 'traffic', 'breakdown', 'linked_summaries']", self.read('services/period_templates.py'))
+        self.assertIn("['metrics', 'target_path', 'summary', 'gap_attribution', 'traffic', 'breakdown', 'linked_summaries']", self.read('services/period_templates.py'))
         # 长页导航与状态：吸顶锚点 chips + 段落完成徽章 + 输入框高度自适应
         self.assertIn('data-pr-section-nav', page)
         self.assertIn('renderSectionNav', live)

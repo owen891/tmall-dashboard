@@ -785,6 +785,148 @@ class PeriodReviewsTests(unittest.TestCase):
         self.assertEqual(search_channel['ad_spend'], 100)
         self.assertAlmostEqual(search_channel['roi'], 4)
 
+    def test_traffic_dimension_reports_residual_and_missing_sources(self):
+        """流量来源占比必须能合计到 100%：四来源只覆盖全店访客的一部分，
+        残差行「未归类来源」补齐差额，缺失来源清单解释哪几行为空。
+
+        背景：BI 日快照不给 recommend/paid/organic 赋值（留 NULL），
+        若只列四行、表头写「占比」，读者会误以为四行合计即全量。
+        """
+        from db import get_db
+
+        with get_db(self.app.config['DATABASE_PATH']) as connection:
+            connection.execute("INSERT INTO products (product_id, title) VALUES ('traffic-residual', 'Traffic Residual')")
+            connection.executemany(
+                '''INSERT INTO daily_data
+                   (product_id, date, payment_amount, ipv, buyers,
+                    search_ipv, recommend_ipv, paid_ipv, organic_ipv)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+                [
+                    # 全店访客 1000，仅搜索 400 有值 → 未归类残差 600（60%）。
+                    ('traffic-residual', '2026-09-14', 1000, 1000, 50, 400, None, None, None),
+                    ('traffic-residual', '2026-09-15', 1000, 1000, 50, 600, None, None, None),
+                ],
+            )
+            connection.commit()
+
+        context = self.client.get(
+            '/api/period-reviews/week/2026-09-W3/context'
+        ).get_json()['data']['context']
+        traffic = context['dimensions']['traffic']
+
+        # 缺失来源清单点明是口径缺口，而非当天无流量。
+        self.assertEqual(sorted(traffic['missing_sources']), ['organic', 'paid', 'recommend'])
+        residual = traffic['unclassified']
+        self.assertIsNotNone(residual)
+        self.assertAlmostEqual(residual['value'], 1000)  # (1000-400) + (1000-600)
+        self.assertAlmostEqual(residual['share_of_visitors'], 0.5)
+
+        # 已归类 + 未归类 = 100%，占比列可校验。
+        known = sum((item['share_of_visitors'] or 0) for item in traffic['items'])
+        self.assertAlmostEqual(known + residual['share_of_visitors'], 1.0, places=6)
+
+    def test_traffic_residual_omitted_when_sources_are_complete(self):
+        """四来源齐备且与全店访客恒等时，不造一个 0 值的「未归类来源」行。"""
+        from db import get_db
+
+        with get_db(self.app.config['DATABASE_PATH']) as connection:
+            connection.execute("INSERT INTO products (product_id, title) VALUES ('traffic-complete', 'Traffic Complete')")
+            connection.execute(
+                '''INSERT INTO daily_data
+                   (product_id, date, payment_amount, ipv, buyers,
+                    search_ipv, recommend_ipv, paid_ipv, organic_ipv)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+                ('traffic-complete', '2026-09-14', 1000, 1000, 50, 400, 300, 200, 100),
+            )
+            connection.commit()
+
+        context = self.client.get(
+            '/api/period-reviews/week/2026-09-W3/context'
+        ).get_json()['data']['context']
+        traffic = context['dimensions']['traffic']
+        self.assertEqual(traffic['missing_sources'], [])
+        self.assertIsNone(traffic['unclassified'])
+        known = sum((item['share_of_visitors'] or 0) for item in traffic['items'])
+        self.assertAlmostEqual(known, 1.0, places=6)
+
+    def test_breakdown_exposes_coverage_for_missing_days(self):
+        """缺天跳过不补 0 是对的，但必须回传覆盖元数据，前端才能提示「仅含 N/M 天」。"""
+        from db import get_db
+
+        with get_db(self.app.config['DATABASE_PATH']) as connection:
+            connection.execute("INSERT INTO products (product_id, title) VALUES ('breakdown-gap', 'Breakdown Gap')")
+            connection.executemany(
+                '''INSERT INTO daily_data (product_id, date, payment_amount, net_sales, ipv, buyers)
+                   VALUES (?, ?, ?, ?, ?, ?)''',
+                [
+                    ('breakdown-gap', '2026-09-14', 1000, 900, 100, 10),
+                    # 缺 09-15 与 09-16（周内后两天）。
+                ],
+            )
+            connection.commit()
+
+        context = self.client.get(
+            '/api/period-reviews/week/2026-09-W3/context'
+        ).get_json()['data']['context']
+        breakdown = context['breakdown']
+        self.assertEqual(breakdown['grain'], 'day')
+        self.assertEqual(breakdown['expected_count'], 7)
+        self.assertEqual(breakdown['observed_count'], 1)
+        self.assertEqual([row['label'] for row in breakdown['rows']], ['2026-09-14'])
+        self.assertIn('2026-09-15', breakdown['missing_labels'])
+        self.assertEqual(len(breakdown['missing_labels']), 6)
+
+    def test_summary_block_aggregates_base_and_channels(self):
+        """本期汇总把基础数据一次算全（比率由聚合后分子/分母现算，非逐行平均），
+        并把缺失列显式列出——缺列保持 -- 而不是补 0。"""
+        from db import get_db
+
+        with get_db(self.app.config['DATABASE_PATH']) as connection:
+            connection.execute("INSERT INTO products (product_id, title) VALUES ('summary-p', 'Summary P')")
+            # 显式写 NULL：这两列 schema 默认值是 0，省略不写会变成「真 0」而不是
+            # 缺失（source_resolution 对 BI 快照正是显式置 NULL），必须与生产一致。
+            connection.executemany(
+                '''INSERT INTO daily_data
+                   (product_id, date, payment_amount, refund_amount, net_sales, ipv, buyers,
+                    cart_users, search_ipv, new_payment_buyers, search_payment_buyers)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL)''',
+                [
+                    ('summary-p', '2026-09-14', 1000, 100, 900, 500, 50, 80, 200),
+                    ('summary-p', '2026-09-15', 2000, 200, 1800, 700, 70, 120, 300),
+                ],
+            )
+            connection.commit()
+
+        context = self.client.get(
+            '/api/period-reviews/week/2026-09-W3/context'
+        ).get_json()['data']['context']
+        summary = context['summary']
+        base = summary['base']
+        # 比率必须由「先汇总再算」得出，而不是逐日平均：
+        # 退款率 = (100+200)/(1000+2000) = 10%
+        self.assertAlmostEqual(base['refund_ratio'], 0.1, places=6)
+        # UV价值 = 成交金额/访客 = 3000/1200 = 2.5
+        self.assertAlmostEqual(base['uv_value'], 2.5, places=6)
+        # 加购率 = 加购人数/访客 = 200/1200
+        self.assertAlmostEqual(base['cart_rate'], 200 / 1200, places=6)
+        self.assertEqual(base['visitors'], 1200)
+        self.assertEqual(base['buyers'], 120)
+        # 这两列该 fixture 未写入 → 缺失且不补 0；派生比率同样为 None。
+        self.assertIn('new_buyers', summary['base_missing'])
+        self.assertIsNone(base['new_buyers'])
+        self.assertIsNone(base['new_buyer_share'])
+        # 列清单与缺失清单一致可对账。
+        column_keys = [col['key'] for col in summary['base_columns']]
+        self.assertIn('uv_value', column_keys)
+        self.assertTrue(set(summary['base_missing']).issubset(set(column_keys)))
+
+    def test_summary_block_absent_when_period_has_no_data(self):
+        """本期无日数据时返回 None，前端才能走空态，而不是渲染一张全 -- 的表。"""
+        context = self.client.get(
+            '/api/period-reviews/week/2026-09-W3/context'
+        ).get_json()['data']['context']
+        self.assertIsNone(context['summary'])
+
     def _seed_category_data(self):
         from db import get_db
 

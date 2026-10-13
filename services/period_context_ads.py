@@ -499,6 +499,24 @@ def _traffic_dimension(conn, period, compare, category_label=None):
                                   if value is not None and visitors not in (None, 0) else None),
         })
 
+    # 占比口径修正：share_of_visitors 的分子是单个来源访客、分母是全店访客
+    # （SUM(ipv)），四个来源只是全店访客的一部分。BI 日快照不提供
+    # recommend/paid/organic（source_resolution_service 对 business_advisor
+    # 快照显式置 NULL），若只列四行、表头写「占比」，读者会误以为四行合计 100%。
+    # 因此回传残差行「未归类来源」= 全店访客 − 已归类来源之和，让占比可校验到 100%；
+    # 并回传缺失来源清单，供前端解释这几行为什么是空的。
+    missing_keys = [item['key'] for item in items if item['value'] is None]
+    unclassified = None
+    if visitors not in (None, 0):
+        known = sum(float(item['value']) for item in items if item['value'] is not None)
+        residual = float(visitors) - known
+        # 四来源齐备且与全店访客恒等时残差≈0，不渲染该行（避免造一个 0 行）。
+        if residual > max(1.0, 0.005 * float(visitors)):
+            unclassified = {
+                'value': residual,
+                'share_of_visitors': residual / float(visitors),
+            }
+
     has_source_facts = any(item['value'] not in (None, 0) for item in items)
     return {
         'available': bool(current.get('sample_days')) and has_source_facts,
@@ -506,6 +524,8 @@ def _traffic_dimension(conn, period, compare, category_label=None):
         'compare_sample_days': int(baseline.get('sample_days') or 0),
         'period_days': period.get('total_days'),
         'items': items,
+        'unclassified': unclassified,
+        'missing_sources': missing_keys,
         'totals': {
             'visitors': current.get('visitors'),
             'buyers': current.get('buyers'),

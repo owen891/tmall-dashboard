@@ -37,8 +37,10 @@ from services.period_context_metrics import (
     _totals_for_range,
     _promotion_paid_cpc,
     _breakdown_block,
+    _summary_block,
     METRIC_DEFS,
     BREAKDOWN_METRIC_KEYS,
+    SUMMARY_BASE_COLUMNS,
 )
 from services.period_context_ads import (
     _rate_change,
@@ -144,6 +146,10 @@ def build_context(period_type, period_key, saved_target=None, category_mode=None
         # 必须在连接作用域内完成（与 products/promotion_items 同理）。
         ads = _ads_block(conn, current, prev, period, compare, category_label)
         breakdown = _breakdown_block(conn, period, category_label)
+        # 本期汇总（XMind 基础数据/广告汇总/流量汇总）排在拆解之前：先看整体
+        # 水平再往下钻。广告/流量渠道汇总复用 ads 已算好的 channel_totals，
+        # 不另查一遍 promotion 事实，避免同一事实两处计算产生漂移。
+        summary = _summary_block(conn, period, (ads or {}).get('channel_totals'), category_label)
         actions = _actions_block(conn, period, category_label)
         alerts = _alerts_block(conn)
         anomalies = _anomalies_block(conn, period, current, prev, category_label)
@@ -235,6 +241,7 @@ def build_context(period_type, period_key, saved_target=None, category_mode=None
         'profit_structure': profit_structure_payload,
         'ads': ads,
         'breakdown': breakdown,
+        'summary': summary,
         'promotion_items': promotion_items,
         'campaign_attribution': campaign_attribution,
         'dimensions': {

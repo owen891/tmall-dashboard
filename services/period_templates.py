@@ -49,7 +49,7 @@ def _template(noun):
             'key': 'category_summary',
             'title': f'{noun}品类汇总（销售与利润指标 / 完成情况分析 / 根因）',
             'hint': '先看三大指标（净销售额 / 净利润 / 净费比）完成情况，再拆基础数据（访客、转化、客单、加购率、付费访客成本）定位根因。',
-            'materials': ['metrics', 'target_path', 'gap_attribution', 'traffic', 'breakdown', 'linked_summaries'],
+            'materials': ['metrics', 'target_path', 'summary', 'gap_attribution', 'traffic', 'breakdown', 'linked_summaries'],
             'subsections': SUBSECTION_DEFS['triple'],
             'placeholder': '例：净销售额完成 XX 万（达成率 XX%，环比 X%，同比 X%）；净利润 X 万；净费比 X%。',
             'required': True,

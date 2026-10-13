@@ -1318,21 +1318,36 @@
       null, note);
   }
 
-  function trafficTable(traffic) {
+  function trafficTable(traffic, options) {
     if (!traffic || !traffic.items || !traffic.items.length) return null;
     const labels = { search: '搜索', recommend: '推荐', paid: '付费', organic: '自然' };
-    return h('div', { class: 'pr-breakdown-table-wrap' }, h('table', { class: 'pr-table pr-breakdown-table' },
-      h('thead', null, h('tr', null,
-        h('th', { text: '来源' }), h('th', { class: 'num', text: '访客' }),
-        h('th', { class: 'num', text: '占比' }), h('th', { class: 'num', text: '环比' }),
-      )),
-      h('tbody', null, ...traffic.items.map((item) => h('tr', null,
-        h('td', { text: labels[item.key] || item.key }),
+    // 不对比时「环比」列必然是空的，整列隐藏比留一列 -- 更诚实
+    // （否则读者会以为环比数据坏了，而不是「当前未开启对比」）。
+    const showCompare = !(options && options.compareAvailable === false);
+    const headCells = [h('th', { text: '来源' }), h('th', { class: 'num', text: '访客' }),
+      h('th', { class: 'num', text: '占比' })];
+    if (showCompare) headCells.push(h('th', { class: 'num', text: '环比' }));
+    const rows = traffic.items.map((item) => {
+      const cells = [h('td', { text: labels[item.key] || item.key }),
         h('td', { class: 'num', text: formatCompact(item.value) }),
-        h('td', { class: 'num', text: dimensionPercent(item.share_of_visitors) }),
-        h('td', { class: 'num', text: item.change_rate === null || item.change_rate === undefined
-          ? '--' : `${item.change_rate > 0 ? '+' : ''}${(item.change_rate * 100).toFixed(1)}%` }),
-      ))),
+        h('td', { class: 'num', text: dimensionPercent(item.share_of_visitors) })];
+      if (showCompare) {
+        cells.push(h('td', { class: 'num', text: item.change_rate === null || item.change_rate === undefined
+          ? '--' : `${item.change_rate > 0 ? '+' : ''}${(item.change_rate * 100).toFixed(1)}%` }));
+      }
+      return h('tr', null, ...cells);
+    });
+    // 未归类来源残差行：让「占比」列能合计到 100%，不被误读成四行即全量。
+    if (traffic.unclassified) {
+      const cells = [h('td', { class: 'pr-table__muted', text: '未归类来源' }),
+        h('td', { class: 'num', text: formatCompact(traffic.unclassified.value) }),
+        h('td', { class: 'num', text: dimensionPercent(traffic.unclassified.share_of_visitors) })];
+      if (showCompare) cells.push(h('td', { class: 'num', text: '--' }));
+      rows.push(h('tr', { class: 'pr-table__row--muted' }, ...cells));
+    }
+    return h('div', { class: 'pr-breakdown-table-wrap' }, h('table', { class: 'pr-table pr-breakdown-table' },
+      h('thead', null, h('tr', null, ...headCells)),
+      h('tbody', null, ...rows),
     ));
   }
 
@@ -2765,6 +2780,78 @@
       })));
   }
 
+  // ---------------------------------------------- 本期汇总（基础数据/广告/流量）
+  // XMind「品类汇总」首表：先把整体水平列全，再往下看归因与拆解。
+  // 缺失列一律 -- 且不补 0，由 materialFor 的 hint 说明来源缺口。
+  function summaryTable(headers, rows) {
+    return h('div', { class: 'pr-breakdown-table-wrap' },
+      h('table', { class: 'pr-table pr-breakdown-table pr-summary-table' },
+        h('thead', null, h('tr', null, ...headers)),
+        h('tbody', null, ...rows)));
+  }
+
+  function periodSummaryBlock(summary) {
+    if (!summary) return null;
+    const base = summary.base || {};
+    const columns = summary.base_columns || [];
+    const wrap = h('div', { class: 'pr-summary' });
+    // 密集汇总表用紧凑的 -- 表示缺失（原因由表下 hint 统一说明），
+    // safeMetric 的默认「暂无数据」在这个宽度下会把表格撑爆。
+    const cell = (value, format) => h('td', {
+      class: 'num',
+      text: value === null || value === undefined || Number.isNaN(Number(value)) ? '--' : formatValue(value, format),
+    });
+
+    // 1) 基础数据：本期整体一行（成交/退款/净销售/退款率/访客/买家/转化/客单…）
+    const baseHead = [h('th', { text: '口径' }),
+      ...columns.map((col) => h('th', { class: 'num', text: col.label }))];
+    const baseRow = h('tr', null,
+      h('td', { text: `本期汇总（${summary.sample_days || 0}/${summary.period_days || '--'} 天）` }),
+      ...columns.map((col) => cell(base[col.key], col.format)));
+    wrap.append(h('div', { class: 'pr-summary__section' },
+      h('p', { class: 'pr-summary__title', text: '基础数据' }),
+      summaryTable(baseHead, [baseRow])));
+
+    // 2) 广告汇总：按渠道看花费与投产（与广告段同一份 channel_totals）
+    const adsChannels = summary.ads_channels || [];
+    if (adsChannels.length) {
+      const adsHead = [h('th', { text: '渠道' }),
+        h('th', { class: 'num', text: '广告花费' }), h('th', { class: 'num', text: '总投产' }),
+        h('th', { class: 'num', text: '直接投产' }), h('th', { class: 'num', text: '拉新成本' }),
+        h('th', { class: 'num', text: '加购成本' })];
+      const adsRows = adsChannels.map((group) => h('tr', null,
+        h('td', { text: group.name || '--' }),
+        cell(group.ad_spend, 'money'),
+        cell(group.roi, 'decimal'),
+        cell(group.direct_roi, 'decimal'),
+        cell(group.new_cost, 'money'),
+        cell(group.cart_cost, 'money')));
+      wrap.append(h('div', { class: 'pr-summary__section' },
+        h('p', { class: 'pr-summary__title', text: '广告汇总（按渠道）' }),
+        summaryTable(adsHead, adsRows)));
+    }
+
+    // 3) 流量汇总：按渠道看点击/成交/转化/点击成本。渠道明细不提供 UV，
+    //    列名用「点击量」而非「访客」，不把点击伪装成访客。
+    const trafficChannels = summary.traffic_channels || [];
+    if (trafficChannels.length) {
+      const trafficHead = [h('th', { text: '渠道' }),
+        h('th', { class: 'num', text: '点击量' }), h('th', { class: 'num', text: '成交买家数' }),
+        h('th', { class: 'num', text: '支付转化率' }), h('th', { class: 'num', text: '平均点击花费' })];
+      const trafficRows = trafficChannels.map((group) => h('tr', null,
+        h('td', { text: group.name || '--' }),
+        cell(group.clicks, 'number'),
+        cell(group.buyers, 'number'),
+        cell(group.conversion, 'percent'),
+        cell(group.cpc, 'money')));
+      wrap.append(h('div', { class: 'pr-summary__section' },
+        h('p', { class: 'pr-summary__title', text: '流量汇总（按渠道）' }),
+        summaryTable(trafficHead, trafficRows)));
+    }
+
+    return wrap;
+  }
+
   function materialFor(key, context) {
     switch (key) {
       // —— 拆因明细并入结论段（板块数据 = 完整明细，不再另设拆因工作区）：
@@ -2773,10 +2860,37 @@
         if (!gapAttribution) return null;
         return materialBlock('目标差距归因（流量 × 转化 × 净销售客单）', gapAttribution.buildBody(context), null);
       }
+      case 'summary': {
+        const summary = context.summary;
+        if (!summary) return materialBlock('本期汇总', null, '本期暂无汇总数据。');
+        const missingLabels = (summary.base_columns || [])
+          .filter((col) => (summary.base_missing || []).includes(col.key))
+          .map((col) => col.label);
+        const hints = [];
+        if (missingLabels.length) {
+          hints.push(`缺失列：${missingLabels.join('、')}（BI 日快照未提供该字段，非 0）。`);
+        }
+        if (summary.channel_partial) {
+          hints.push('渠道汇总按品类口径为部分覆盖（缺全站推广商品级明细），占比不适用。');
+        }
+        return materialBlock('本期汇总（基础数据 / 广告汇总 / 流量汇总）',
+          periodSummaryBlock(summary), null, hints.join('　') || null);
+      }
       case 'traffic': {
         const traffic = context.dimensions?.traffic || {};
+        const compare = context.compare || {};
+        const compareAvailable = compare.mode !== 'none' && compare.available !== false;
         const covered = `流量覆盖 ${traffic.sample_days || 0}/${traffic.period_days || '--'} 天`;
-        return materialBlock('流量来源拆解', trafficTable(traffic), '暂无流量来源数据。', covered);
+        // 缺失来源说明：BI 日快照不提供 recommend/paid/organic（其余来源留 NULL），
+        // 只列 -- 不解释，读者会当成采集故障。这里点明是口径缺口，不是当天没流量。
+        const missing = traffic.missing_sources || [];
+        const SOURCE_LABELS = { search: '搜索', recommend: '推荐', paid: '付费', organic: '自然' };
+        const missingText = missing.length
+          ? `缺失来源：${missing.map((key) => SOURCE_LABELS[key] || key).join('、')}（BI 日快照未提供该拆分，非当天无流量）。`
+          : null;
+        const hint = [covered, missingText, traffic.unclassified ? '「未归类来源」= 全店访客 − 已归类来源，占比可合计至 100%。' : null]
+          .filter(Boolean).join('　');
+        return materialBlock('流量来源拆解', trafficTable(traffic, { compareAvailable }), '暂无流量来源数据。', hint);
       }
       case 'products': {
         const products = context.products || {};
@@ -2915,11 +3029,24 @@
           : null, '本期未检测到明显异常。');
       case 'metrics':
         return materialBlock('本期核心指标', renderKpiGrid(context.metrics || { items: [] }));
-      case 'breakdown':
+      case 'breakdown': {
+        const breakdown = context.breakdown || {};
+        const expected = breakdown.expected_count;
+        const observed = breakdown.observed_count;
+        const missing = breakdown.missing_labels || [];
+        // 缺天提示：缺天不补 0 行是对的，但不说明会让读者以为该周期本就只有这几天。
+        // 分周（月复盘）的标签很长，只报数量不逐个列举。
+        const unit = breakdown.grain === 'week' ? '周' : '天';
+        const hint = (expected && observed !== undefined && observed < expected)
+          ? `仅含 ${observed}/${expected} ${unit}${breakdown.grain !== 'week' && missing.length ? `，缺 ${missing.join('、')}` : ''}。`
+          : null;
         return materialBlock(
-          context.breakdown && context.breakdown.grain === 'week' ? '月内分周指标' : '期内按日指标',
-          breakdownTable(context.breakdown),
+          breakdown.grain === 'week' ? '月内分周指标' : '期内按日指标',
+          breakdownTable(breakdown),
+          null,
+          hint,
         );
+      }
       case 'linked_summaries':
         return renderLinkedSummaries(context.linked_summaries);
       default:

@@ -118,7 +118,14 @@
       const hasActual = actual !== null;
 
       if (!hasPrev && target === null) {
-        return h('p', { class: 'pr-material__empty', text: '缺少对比期与目标，无法做差距归因；设置目标或切换到有环比数据的周期。' });
+        // 区分两种空态：用户主动「不对比」时应引导开启对比；
+        // 对比期确实没数据时才提示切换周期。文案指错方向会让用户白折腾。
+        const compare = context.compare || {};
+        const noCompare = compare.mode === 'none';
+        const text = noCompare
+          ? '当前为「不对比」口径，且未设置目标，无法做差距归因；请在上方开启环比/同比对比，或设置本期目标。'
+          : '缺少对比期与目标，无法做差距归因；设置目标或切换到有环比数据的周期。';
+        return h('p', { class: 'pr-material__empty', text });
       }
 
       const parts = [];

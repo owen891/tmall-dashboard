@@ -1210,6 +1210,43 @@
   margin: 0;
 }
 
+/* 板块数据块的口径/覆盖说明（流量覆盖、缺天提示、未归类来源口径等）。
+   与空态同色阶，但常出现在表格下方，留一点上间距与更小的字号。 */
+.pr-material__hint {
+  margin: 6px 0 0;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+
+/* 「未归类来源」残差行：是派生口径而非实测来源，压低对比度避免被当成第五个来源。 */
+.pr-table tr.pr-table__row--muted td {
+  color: var(--text-secondary);
+}
+
+.pr-table td.pr-table__muted {
+  font-style: italic;
+}
+
+/* 本期汇总（基础数据/广告汇总/流量汇总）：三张紧凑子表，先整体后拆解。 */
+.pr-summary__section + .pr-summary__section {
+  margin-top: 12px;
+}
+
+.pr-summary__title {
+  margin: 0 0 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+/* 基础数据列多（16 列），压缩单元格内边距，避免横向滚动条过早出现。 */
+.pr-summary-table th,
+.pr-summary-table td {
+  padding: 6px 8px;
+  white-space: nowrap;
+}
+
 .pr-list {
   margin: 0;
   padding-left: 18px;

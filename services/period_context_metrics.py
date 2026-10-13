@@ -311,12 +311,14 @@ def _breakdown_block(conn, period, category_label=None):
         grain = 'day'
 
     rows = []
+    missing_labels = []
     for span in spans:
         totals = _totals_for_range(
             conn, span['start'], span['end'], category_label,
             allow_monthly_fallback=False,
         )
         if not totals['day_count']:
+            missing_labels.append(span['label'])
             continue
         derived = _derive(totals)
         if derived.get('paid_cpc') is None:
@@ -329,7 +331,15 @@ def _breakdown_block(conn, period, category_label=None):
             'metrics': {key: (round(derived[key], 4) if isinstance(derived.get(key), float) else derived.get(key))
                         for key in BREAKDOWN_METRIC_KEYS},
         })
-    return {'grain': grain, 'rows': rows}
+    # 覆盖说明随行返回：缺天是跳过不补 0（正确），但不告知会让读者以为该周期
+    # 本就只有这几天。与「流量来源拆解」的覆盖提示保持同一口径。
+    return {
+        'grain': grain,
+        'rows': rows,
+        'expected_count': len(spans),
+        'observed_count': len(rows),
+        'missing_labels': missing_labels,
+    }
 
 METRIC_DEFS = [
     ('gsv', '销售额（支付金额）', 'money', False),
@@ -351,3 +361,118 @@ BREAKDOWN_METRIC_KEYS = (
     'gsv', 'net_sales', 'profit', 'visitors', 'conversion', 'aov',
     'cart_rate', 'ad_spend', 'ad_ratio', 'roi', 'paid_cpc',
 )
+
+# 本期汇总「基础数据」列（XMind 品类汇总首表）。顺序即展示顺序。
+# 比率类一律由聚合后的分子/分母现算，不用逐行 AVG —— 逐行平均会被缺列行
+# 拉偏，且与「先汇总再算比率」的既有口径（_derive）不一致。
+SUMMARY_BASE_COLUMNS = (
+    ('gsv', '成交金额', 'money'),
+    ('refund_amount', '退款金额', 'money'),
+    ('net_sales', '净销售额', 'money'),
+    ('refund_ratio', '退款率', 'percent'),
+    ('visitors', '访客', 'number'),
+    ('buyers', '成交买家数', 'number'),
+    ('new_buyers', '新买家数', 'number'),
+    ('new_buyer_share', '新客占比', 'percent'),
+    ('conversion', '转化率', 'percent'),
+    ('aov', '客单价', 'money'),
+    ('uv_value', 'UV价值', 'money'),
+    ('cart_users', '加购人数', 'number'),
+    ('cart_rate', '加购率', 'percent'),
+    ('search_visitors', '搜索访客数', 'number'),
+    ('search_buyers', '搜索成交买家数', 'number'),
+    ('search_conversion', '搜索转化率', 'percent'),
+)
+
+
+def _summary_block(conn, period, channel_totals=None, category_label=None):
+    """本期汇总（XMind「基础数据 / 广告汇总 / 流量汇总」）。
+
+    回答「本期整体什么水平」——把核心基数一次列全，放在板块数据最前面，
+    读者先看汇总再看拆解，不必自己从分日表心算合计。
+
+    数据诚实性：
+    - 缺失字段保持 None（前端显示 --），绝不补 0；同时回传 base_missing 让
+      前端能解释哪几列没数、为什么。
+    - 比率由 SUM 后的分子/分母现算（退款率=退款/成交、UV价值=成交/访客、
+      搜索转化率=搜索成交买家/搜索访客…），与逐日聚合口径一致。
+
+    广告/流量按渠道汇总复用调用方已算好的 channel_totals（同一份
+    promotion 事实，避免两处各查一遍 → 未来不一致）。
+    """
+    from_sql, where_sql, extra = _daily_scope(category_label)
+    row = conn.execute(
+        f'''SELECT
+                SUM(d.payment_amount) AS gsv,
+                SUM(d.refund_amount) AS refund_amount,
+                SUM(d.net_sales) AS net_sales,
+                SUM(d.ipv) AS visitors,
+                SUM(d.buyers) AS buyers,
+                SUM(d.new_payment_buyers) AS new_buyers,
+                SUM(d.cart_users) AS cart_users,
+                SUM(d.search_ipv) AS search_visitors,
+                SUM(d.search_payment_buyers) AS search_buyers,
+                COUNT(DISTINCT d.date) AS sample_days
+            {from_sql} WHERE {where_sql}''',
+        (period['start'], period['end'], *extra),
+    ).fetchone()
+    if not row or not row['sample_days']:
+        return None
+
+    def div(numerator, denominator):
+        try:
+            numerator, denominator = float(numerator), float(denominator)
+        except (TypeError, ValueError):
+            return None
+        return (numerator / denominator) if denominator else None
+
+    gsv = row['gsv']
+    visitors = row['visitors']
+    buyers = row['buyers']
+    base = {
+        'gsv': gsv,
+        'refund_amount': row['refund_amount'],
+        'net_sales': row['net_sales'],
+        'refund_ratio': div(row['refund_amount'], gsv),
+        'visitors': visitors,
+        'buyers': buyers,
+        'new_buyers': row['new_buyers'],
+        'new_buyer_share': div(row['new_buyers'], buyers),
+        'conversion': div(buyers, visitors),
+        'aov': div(gsv, buyers),
+        'uv_value': div(gsv, visitors),
+        'cart_users': row['cart_users'],
+        'cart_rate': div(row['cart_users'], visitors),
+        'search_visitors': row['search_visitors'],
+        'search_buyers': row['search_buyers'],
+        'search_conversion': div(row['search_buyers'], row['search_visitors']),
+    }
+    # 某列的「可用性」按原始分子判断：分子整列为 NULL（如 BI 快照不提供
+    # 新买家数）时，派生比率必然也是 None，不该只报比率缺失而漏掉源列。
+    missing = [key for key, _label, _fmt in SUMMARY_BASE_COLUMNS if base.get(key) is None]
+
+    groups = (channel_totals or {}).get('groups') or []
+    # 流量汇总：渠道级只有点击量（推广明细不提供 UV），因此列名用「点击量」
+    # 而不是「访客」，不把点击伪装成访客。支付转化率/平均点击花费按同源分子分母现算。
+    traffic_channels = [{
+        'name': group.get('name'),
+        'clicks': group.get('clicks'),
+        'buyers': group.get('payment_buyers'),
+        'conversion': div(group.get('payment_buyers'), group.get('clicks')),
+        'cpc': div(group.get('ad_spend'), group.get('clicks')),
+    } for group in groups]
+
+    return {
+        'grain': 'period',
+        'sample_days': int(row['sample_days'] or 0),
+        'period_days': period.get('total_days'),
+        'base': base,
+        'base_columns': [{'key': key, 'label': label, 'format': fmt}
+                         for key, label, fmt in SUMMARY_BASE_COLUMNS],
+        'base_missing': missing,
+        'ads_channels': groups,
+        'traffic_channels': traffic_channels,
+        'channel_source': (channel_totals or {}).get('source'),
+        'channel_partial': bool((channel_totals or {}).get('partial')),
+    }
+
