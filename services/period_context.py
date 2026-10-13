@@ -45,6 +45,7 @@ from services.period_context_metrics import (
 from services.period_context_ads import (
     _rate_change,
     _channel_derived_metrics,
+    _dmp_traffic_dimension,
     _campaign_attribution,
     _attribution_channel_rows,
     _ads_direct_totals,
@@ -137,6 +138,13 @@ def build_context(period_type, period_key, saved_target=None, category_mode=None
                                    {'start': compare['start'], 'end': compare['end']} if compare['available'] else None)
         market = _market_block(conn, {**period, 'prev': compare})
         traffic = _traffic_dimension(conn, period, compare, category_label)
+        # 达摩盘单品快照优先：BI 日快照不提供 recommend/paid/organic，复盘页那三行
+        # 长期为空。达摩盘有商品级访客拆分且可按品类过滤（标品口径所需）。
+        # 窗口口径不匹配（period 天数 ≠ 复盘天数，或快照末日 ≠ 本期末日）时返回
+        # None，退回 daily_data，绝不拿错窗口数据冒充本期。
+        dmp_traffic = _dmp_traffic_dimension(conn, period, compare, category_label)
+        if dmp_traffic and dmp_traffic.get('available'):
+            traffic = dmp_traffic
         promotion = _promotion_dimension(conn, period, compare, category_label)
         promotion_items = _promotion_items_block(conn, period, category_label)
         # 计划 → 商品归因（对齐 XMind「推广计划拆解」+ 补商品级全站推广）。

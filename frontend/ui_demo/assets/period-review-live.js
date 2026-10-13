@@ -1320,7 +1320,9 @@
 
   function trafficTable(traffic, options) {
     if (!traffic || !traffic.items || !traffic.items.length) return null;
-    const labels = { search: '搜索', recommend: '推荐', paid: '付费', organic: '自然' };
+    // organic_other = 其他自然（自然 − 搜索 − 推荐）：达摩盘口径下「自然」包含
+    // 搜索与推荐，四行必须互斥才能合计 100%，故第四行取残差并显式命名。
+    const labels = { search: '搜索', recommend: '推荐', paid: '付费', organic: '自然', organic_other: '其他自然' };
     // 不对比时「环比」列必然是空的，整列隐藏比留一列 -- 更诚实
     // （否则读者会以为环比数据坏了，而不是「当前未开启对比」）。
     const showCompare = !(options && options.compareAvailable === false);
@@ -2901,17 +2903,28 @@
         const traffic = context.dimensions?.traffic || {};
         const compare = context.compare || {};
         const compareAvailable = compare.mode !== 'none' && compare.available !== false;
+        const dmpSource = traffic.source === 'dmp_shop_items';
         const covered = `流量覆盖 ${traffic.sample_days || 0}/${traffic.period_days || '--'} 天`;
-        // 缺失来源说明：BI 日快照不提供 recommend/paid/organic（其余来源留 NULL），
-        // 只列 -- 不解释，读者会当成采集故障。这里点明是口径缺口，不是当天没流量。
-        const missing = traffic.missing_sources || [];
-        const SOURCE_LABELS = { search: '搜索', recommend: '推荐', paid: '付费', organic: '自然' };
-        const missingText = missing.length
-          ? `缺失来源：${missing.map((key) => SOURCE_LABELS[key] || key).join('、')}（BI 日快照未提供该拆分，非当天无流量）。`
-          : null;
-        const hint = [covered, missingText, traffic.unclassified ? '「未归类来源」= 全店访客 − 已归类来源，占比可合计至 100%。' : null]
-          .filter(Boolean).join('　');
-        return materialBlock('流量来源拆解', trafficTable(traffic, { compareAvailable }), '暂无流量来源数据。', hint);
+        const hints = [covered];
+        if (dmpSource) {
+          // 达摩盘口径：商品级、按品类过滤；「自然」含搜索+推荐，故第四行是残差。
+          hints.push(`口径：达摩盘单品访客（商品级，按当前品类过滤，快照末日 ${traffic.snapshot_end_date || '--'}）。`
+            + '「自然」在平台口径下包含搜索与推荐，故第四行「其他自然」= 自然 − 搜索 − 推荐，四行互斥、占比合计 100%。');
+          if (traffic.item_count) hints.push(`覆盖 ${traffic.item_count} 个在库商品。`);
+        } else {
+          // 缺失来源说明：BI 日快照不提供 recommend/paid/organic（其余来源留 NULL），
+          // 只列 -- 不解释，读者会当成采集故障。这里点明是口径缺口，不是当天没流量。
+          const missing = traffic.missing_sources || [];
+          const SOURCE_LABELS = { search: '搜索', recommend: '推荐', paid: '付费', organic: '自然' };
+          if (missing.length) {
+            hints.push(`缺失来源：${missing.map((key) => SOURCE_LABELS[key] || key).join('、')}（BI 日快照未提供该拆分，非当天无流量）。`);
+          }
+          if (traffic.unclassified) {
+            hints.push('「未归类来源」= 全店访客 − 已归类来源，占比可合计至 100%。');
+          }
+        }
+        return materialBlock('流量来源拆解', trafficTable(traffic, { compareAvailable }),
+          '暂无流量来源数据。', hints.filter(Boolean).join('　'));
       }
       case 'products': {
         const products = context.products || {};

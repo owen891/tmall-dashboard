@@ -740,6 +740,99 @@ class PeriodReviewsTests(unittest.TestCase):
                 payload = response.get_json(); response.close()
                 self.assertIn('rows', payload['data'], f'{endpoint}{query}')
 
+    def test_traffic_prefers_dmp_snapshot_when_window_matches(self):
+        """达摩盘单品快照能按品类给出搜索/推荐/付费/其他自然四行访客；
+        窗口精确对齐时优先于 daily_data，四行互斥、占比合计 100%。"""
+        import json as _json
+        from db import get_db
+
+        with get_db(self.app.config['DATABASE_PATH']) as connection:
+            # dmp_shop_items 由采集器 DDL 建表（非迁移），测试库需自建。
+            connection.execute(
+                '''CREATE TABLE IF NOT EXISTS dmp_shop_items (
+                       id INTEGER PRIMARY KEY AUTOINCREMENT,
+                       run_id INTEGER NOT NULL, end_date TEXT NOT NULL, period INTEGER NOT NULL,
+                       item_id TEXT, title TEXT, life_cycle TEXT, listed_days INTEGER,
+                       cate_rank_html TEXT,
+                       row_json TEXT NOT NULL, created_at TEXT DEFAULT CURRENT_TIMESTAMP)'''
+            )
+            connection.executemany(
+                'INSERT INTO products (product_id, title, shop_label) VALUES (?, ?, ?)',
+                [('dmp-in', 'DMP 标品', '标品袜子'), ('dmp-out', 'DMP 非标', '非标袜子女')],
+            )
+            # daily_data 有数据，但 DMP 快照对齐时应当胜出。
+            connection.execute(
+                '''INSERT INTO daily_data (product_id, date, payment_amount, ipv, buyers, search_ipv)
+                   VALUES (?, ?, ?, ?, ?, ?)''',
+                ('dmp-in', '2026-09-14', 1000, 100, 10, 40),
+            )
+            rows = [
+                # 标品：ipv=1000，搜索300 推荐200 付费250 → 其他自然 250
+                ('dmp-in', {'ipv': 1000, 'searchFreeIpv': 300, 'recommendFreeIpv': 200,
+                            'paidIpv': 250, 'freeIpv': 700}),
+                # 非标：不应计入标品口径
+                ('dmp-out', {'ipv': 9999, 'searchFreeIpv': 9999, 'recommendFreeIpv': 0,
+                             'paidIpv': 0, 'freeIpv': 9999}),
+            ]
+            connection.executemany(
+                '''INSERT INTO dmp_shop_items (run_id, end_date, period, item_id, title, row_json)
+                   VALUES (1, ?, 7, ?, ?, ?)''',
+                [('2026-09-20', pid, pid, _json.dumps(payload)) for pid, payload in rows],
+            )
+            connection.commit()
+
+        context = self.client.get(
+            '/api/period-reviews/week/2026-09-W3/context?category_mode=sock'
+        ).get_json()['data']['context']
+        traffic = context['dimensions']['traffic']
+        self.assertEqual(traffic['source'], 'dmp_shop_items')
+        self.assertEqual(traffic['snapshot_end_date'], '2026-09-20')
+        by_key = {item['key']: item for item in traffic['items']}
+        self.assertEqual(by_key['search']['value'], 300)
+        self.assertEqual(by_key['recommend']['value'], 200)
+        self.assertEqual(by_key['paid']['value'], 250)
+        # 其他自然 = 总访客 − 搜索 − 推荐 − 付费（非标商品已按品类排除）。
+        self.assertEqual(by_key['organic_other']['value'], 250)
+        shares = sum(item['share_of_visitors'] for item in traffic['items'])
+        self.assertAlmostEqual(shares, 1.0, places=6)
+
+    def test_traffic_falls_back_when_dmp_window_misaligned(self):
+        """DMP 快照末日与本期末日不一致时必须回退 daily_data——
+        宁可三行为空，也不能拿错位窗口的数据冒充本期。"""
+        import json as _json
+        from db import get_db
+
+        with get_db(self.app.config['DATABASE_PATH']) as connection:
+            connection.execute(
+                '''CREATE TABLE IF NOT EXISTS dmp_shop_items (
+                       id INTEGER PRIMARY KEY AUTOINCREMENT,
+                       run_id INTEGER NOT NULL, end_date TEXT NOT NULL, period INTEGER NOT NULL,
+                       item_id TEXT, title TEXT, life_cycle TEXT, listed_days INTEGER,
+                       cate_rank_html TEXT,
+                       row_json TEXT NOT NULL, created_at TEXT DEFAULT CURRENT_TIMESTAMP)'''
+            )
+            connection.execute("INSERT INTO products (product_id, title) VALUES ('dmp-mis', 'DMP Mis')")
+            connection.execute(
+                '''INSERT INTO daily_data (product_id, date, payment_amount, ipv, buyers, search_ipv)
+                   VALUES (?, ?, ?, ?, ?, ?)''',
+                ('dmp-mis', '2026-09-14', 1000, 100, 10, 40),
+            )
+            # 7 天窗口但 end_date=09-17 ≠ 本周末日 09-20 → 不可用。
+            connection.execute(
+                '''INSERT INTO dmp_shop_items (run_id, end_date, period, item_id, title, row_json)
+                   VALUES (1, ?, 7, ?, ?, ?)''',
+                ('2026-09-17', 'dmp-mis', 'DMP Mis',
+                 _json.dumps({'ipv': 1000, 'searchFreeIpv': 300, 'recommendFreeIpv': 200,
+                              'paidIpv': 250, 'freeIpv': 700})),
+            )
+            connection.commit()
+
+        context = self.client.get(
+            '/api/period-reviews/week/2026-09-W3/context?category_mode=sock'
+        ).get_json()['data']['context']
+        traffic = context['dimensions']['traffic']
+        self.assertEqual(traffic['source'], 'daily_data')
+
     def test_review_context_exposes_traffic_and_promotion_dimensions(self):
         from db import get_db
 

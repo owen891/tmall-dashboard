@@ -535,6 +535,132 @@ def _traffic_dimension(conn, period, compare, category_label=None):
         'source': 'daily_data',
     }
 
+def _dmp_traffic_dimension(conn, period, compare, category_label=None):
+    """达摩盘单品快照的流量来源（商品级，可按品类过滤）。
+
+    为什么用它：BI 日快照不提供 recommend/paid/organic（见 _traffic_dimension
+    注释），复盘页那三行长期为空。达摩盘「货品洞察」的单品快照带商品级访客
+    拆分，且 item_id 可 JOIN products 按品类过滤——正是标品口径所需。
+
+    窗口匹配（关键，不能放松）：达摩盘快照是 period 天滚动窗口，end_date 为
+    窗口末日。只有 period 等于复盘周期天数、且 end_date 落在复盘区间内时口径
+    才对得上；否则返回 None 交 daily_data 兜底，绝不拿错窗口的数据冒充本期。
+
+    行语义：达摩盘 freeIpv(自然) **包含** searchFreeIpv/recommendFreeIpv，
+    paidIpv 与 freeIpv 互斥。四行若直接取 搜索/推荐/付费/自然 会重复计数，
+    故第四行取「其他自然」= 自然 − 搜索 − 推荐，四行才是互斥分区、可合计 100%。
+    """
+    try:
+        if not conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='dmp_shop_items'"
+        ).fetchone():
+            return None
+        days = period.get('total_days')
+        if not days:
+            return None
+
+        def snapshot(span):
+            # 必须精确对齐窗口末日：达摩盘是「period 天滚动窗口、end_date 为末日」，
+            # 只有 period == 复盘天数 且 end_date == 本期末日时，窗口才恰好等于本期。
+            # 放宽到「区间内任意末日」会取到错位窗口（如 7 天窗口落在 10-03~10-09
+            # 却当成 10-05~10-11），宁可返回 None 退回 daily_data。
+            return conn.execute(
+                '''SELECT end_date, period FROM dmp_shop_items
+                   WHERE period = ? AND end_date = ?
+                   LIMIT 1''',
+                (days, span['end']),
+            ).fetchone()
+
+        def aggregate(span):
+            snap = snapshot(span)
+            if not snap:
+                return None
+            extra_sql, extra_params = '', []
+            if category_label:
+                extra_sql = (" AND (p.shop_label = ?"
+                             " OR instr(',' || p.shop_label || ',', ',' || ? || ',') > 0)")
+                extra_params = [category_label, category_label]
+            row = conn.execute(
+                f'''SELECT
+                        SUM(json_extract(i.row_json, '$.ipv')) AS visitors,
+                        SUM(json_extract(i.row_json, '$.searchFreeIpv')) AS search,
+                        SUM(json_extract(i.row_json, '$.recommendFreeIpv')) AS recommend,
+                        SUM(json_extract(i.row_json, '$.paidIpv')) AS paid,
+                        SUM(json_extract(i.row_json, '$.freeIpv')) AS organic,
+                        COUNT(*) AS item_count
+                    FROM dmp_shop_items i
+                    LEFT JOIN products p ON p.product_id = i.item_id
+                    WHERE i.end_date = ? AND i.period = ?{extra_sql}''',
+                [snap['end_date'], snap['period'], *extra_params],
+            ).fetchone()
+            if not row or not row['item_count']:
+                return None
+            result = dict(row)
+            result['end_date'] = snap['end_date']
+            return result
+
+        current = aggregate(period)
+        if not current:
+            return None
+        baseline = aggregate(compare) if compare.get('available') else None
+
+        def other_organic(snapshot_row):
+            """第四行「其他自然」= 总访客 − 搜索 − 推荐 − 付费。
+
+            达摩盘自身 paidIpv+freeIpv 与 ipv 不严格恒等（实测差约 0.9%），
+            若按「自然 − 搜索 − 推荐」取，四行会合计到 100.9%，读者一眼看出
+            占比不平。改用总访客作锚点取残差，四行才是严格互斥分区、恒等 100%；
+            语义上仍等于「其他自然」，只是把达摩盘自身的口径差并进这一行。
+            """
+            if not snapshot_row or snapshot_row.get('visitors') is None:
+                return None
+            return max(0.0, float(snapshot_row['visitors'])
+                       - float(snapshot_row.get('search') or 0)
+                       - float(snapshot_row.get('recommend') or 0)
+                       - float(snapshot_row.get('paid') or 0))
+
+        visitors = current.get('visitors')
+        items = []
+        for key, column in (('search', 'search'), ('recommend', 'recommend'), ('paid', 'paid')):
+            value = current.get(column)
+            previous = (baseline or {}).get(column)
+            items.append({
+                'key': key,
+                'value': value,
+                'previous_value': previous,
+                'change_rate': _rate_change(value, previous),
+                'share_of_visitors': (float(value) / float(visitors)
+                                      if value is not None and visitors not in (None, 0) else None),
+            })
+        other = other_organic(current)
+        other_prev = other_organic(baseline)
+        items.append({
+            'key': 'organic_other',
+            'value': other,
+            'previous_value': other_prev,
+            'change_rate': _rate_change(other, other_prev),
+            'share_of_visitors': (other / float(visitors)
+                                  if other is not None and visitors not in (None, 0) else None),
+        })
+
+        return {
+            'available': True,
+            'sample_days': days,
+            'compare_sample_days': days if baseline else 0,
+            'period_days': days,
+            'items': items,
+            'unclassified': None,
+            'missing_sources': [],
+            'totals': {'visitors': visitors},
+            'missing_inputs': [],
+            'source': 'dmp_shop_items',
+            'snapshot_end_date': current.get('end_date'),
+            'item_count': int(current.get('item_count') or 0),
+        }
+    except Exception:
+        return None
+
+
 def _promotion_dimension(conn, period, compare, category_label=None):
     """Build separate channel and campaign views from their respective grains."""
     try:
