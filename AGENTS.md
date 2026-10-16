@@ -54,15 +54,15 @@ DeepSeek Harness: `dsh plugin --profile web add @roarpeng/graphflow` (or `npx @r
 
 | 文件 | 管什么 | 最后更新 |
 |---|---|---|
-| `.workbuddy-ai/memory/MEMORY.md` | 指标口径、前端约定、验证与高频坑（最常查） | 2026-10-08 |
-| `.workbuddy-ai/memory/PROJECT-NOTES.md` | 数据源、BI 采集链路、断档诊断、告警与补数手法 | 2026-10-03 |
+| `.workbuddy-ai/memory/MEMORY.md` | 指标口径、前端约定、验证与高频坑、治理与安全加固（最常查） | 2026-10-16 |
+| `.workbuddy-ai/memory/PROJECT-NOTES.md` | 数据源、BI 采集链路、断档诊断、告警与补数手法、治理批次补记 | 2026-10-16 |
 | `.workbuddy-ai/memory/YYYY-MM-DD.md` | 当日工作流水（2026-09-22 ~ 2026-10-08，**非每日连续**：有 09-24 / 10-01 / 10-02 / 10-03 / 10-08 等断档） | 逐日 |
 | `.workbuddy/memory/2026-09-2{0,1}.md` | 更早的日流水（09-20、09-21） | — |
 | `DATABASE_ARCHITECTURE.md` | 数据库分层、表关系、迁移策略（301 行） | — |
 | `DESIGN_SYSTEM.md` | 设计系统契约、token、组件目录（1416 行） | — |
 | `docs/` | 方案、评审、运行手册、字段字典（62 份） | — |
 
-**记忆库落后于代码**：最近提交到 2026-10-13（period-review 系列），而 MEMORY.md 停在 10-08、PROJECT-NOTES.md 停在 10-03。读记忆后仍要核对代码与 `git log`，不要假设记忆是最新的。
+**记忆库与代码的同步状态**：`MEMORY.md` / `PROJECT-NOTES.md` 已于 2026-10-16 补齐至 2026-10-13 的提交区间（`PROJECT-NOTES.md` 第 12 节）。工作区仍有约 94 个未提交改动，其中 `tests/test_cache_invalidation.py` 是未跟踪的新测试文件。**读记忆后仍要核对代码与 `git log`。**
 
 ## 2. 存量保护
 
