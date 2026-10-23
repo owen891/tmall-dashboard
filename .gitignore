@@ -118,3 +118,7 @@ pelican-*.html
 
 # redesign XMind 导出图（redesign 方向已终止，本地留档不入库）
 .xmind_extract/
+
+# 私有采集插件目录（2026-10-23 起）：内部是独立 git 仓库，采集实现细节仅私人使用，
+# 绝不进入本公开仓库。防误提交另有 tests/test_private_collectors_not_tracked.py 守卫。
+/collectors/

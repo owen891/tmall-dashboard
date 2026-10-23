@@ -6,7 +6,7 @@
     python scripts/backfill_flow_range.py --start 2026-09-10 --end 2026-09-15 --item-only
 
 说明:
-- 直接以子进程方式调用 E:\\www\\BI采集\\collectors 下的采集器，
+- 直接以子进程方式调用项目内 collectors/ 私有插件目录下的采集器，
   避免依赖 bash 的 sleep/grep（该机器上不可用）。
 - 逐天串行执行，失败不中断，最后汇总每天的成功/失败。
 - 单品流量每天约 5 分钟（200 商品），店铺流量每天约 20 秒。
@@ -18,7 +18,9 @@ import sys
 import time
 from datetime import date, timedelta
 
-COLLECTORS_DIR = r'E:\www\BI采集\collectors'
+COLLECTORS_DIR = os.environ.get(
+    'TMALL_COLLECTORS_DIR',
+    os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'collectors'))
 PROJECT_VENV_PY = r'E:\www\tmall-dashboard\.venv\Scripts\python.exe'
 DB_PATH = r'E:\www\tmall-dashboard\data\dashboard.db'
 

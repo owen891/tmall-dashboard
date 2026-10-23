@@ -29,7 +29,7 @@ from datetime import date, timedelta
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-COLLECTORS_DIR = Path(os.environ.get('TMALL_COLLECTORS_DIR', r'E:\www\BI采集\collectors'))
+COLLECTORS_DIR = Path(os.environ.get('TMALL_COLLECTORS_DIR', str(PROJECT_ROOT / 'collectors')))
 LOG_DIR = PROJECT_ROOT / 'logs'
 LOCK_PATH = LOG_DIR / 'collect.lock'
 LOCK_TTL_SECONDS = 7200  # 与 auto-collect.ps1 的互斥锁同一份文件、同一 TTL
