@@ -42,6 +42,7 @@
  * WCAG 计算核心抽成下面的 WCAG_JS / Node 侧助手，**一处改动三模式同时生效**。
  */
 const path = require('node:path');
+const fs = require('node:fs');
 // 两种加载方式都支持：设了 NODE_PATH 时用 playwright-core（quality-gate 的老用法），
 // 没设时回退到仓库内的 desktop/node_modules —— 不必再记 NODE_PATH=...
 let chromium;
@@ -68,7 +69,8 @@ const MAX_TABS = Number(getArg('--tabs', '45'));
 const PAGES = ['overview', 'products', 'promotion', 'keyword-promotion', 'new-products',
   'market-ranking', 'flow-source', 'rival-analysis', 'lifecycle', 'reviews', 'period-review',
   'data-center', 'analysis', 'category-dashboard', 'component-catalog', 'creative-board',
-  'data-collection', 'goals', 'settings', 'product-detail'];
+  'data-collection', 'goals', 'settings', 'product-detail']
+  .filter((name) => fs.existsSync(path.join(__dirname, '..', 'frontend', 'ui_demo', 'pages', `${name}.html`)));
 
 // ─────────────────────────────────────────────────────────────────────────────
 // WCAG 计算核心（注入页面的字符串，三个模式共用一份）。改这里三处同时生效。

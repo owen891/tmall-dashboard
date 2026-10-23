@@ -7,6 +7,7 @@ cycle — importing `app` from a service would be worse than circular, because
 `python app.py` runs the file as `__main__` and `import app` would build a
 second, unrelated application object.
 """
+from pathlib import Path
 
 
 # Pages served by `/<page>` -> `pages/<page>.html`.
@@ -16,6 +17,7 @@ APPLICATION_PAGES = frozenset({
     'category-dashboard',
     'products',
     'promotion',
+    'promotion-matrix',
     'keyword-promotion',
     'new-products',
     'market-ranking',
@@ -61,3 +63,15 @@ def registry_keys():
     return frozenset(
         REGISTRY_KEY_OVERRIDES.get(page, page) for page in APPLICATION_PAGES
     ) | DEDICATED_ROUTE_PAGES
+
+
+def routable_pages():
+    """Routable pages that actually exist on disk.
+
+    Private-edition deployments carry extra pages (e.g. the collector console);
+    a public checkout simply does not contain those files, so the route and the
+    capability catalog disappear with them. The static set above stays the
+    registry superset; availability is filesystem-driven.
+    """
+    pages_dir = Path(__file__).resolve().parents[1] / 'frontend' / 'ui_demo' / 'pages'
+    return frozenset(page for page in APPLICATION_PAGES if (pages_dir / f'{page}.html').is_file())

@@ -122,3 +122,8 @@ pelican-*.html
 # 私有采集插件目录（2026-10-23 起）：内部是独立 git 仓库，采集实现细节仅私人使用，
 # 绝不进入本公开仓库。防误提交另有 tests/test_private_collectors_not_tracked.py 守卫。
 /collectors/
+
+# 私人版数据采集控制台页面（2026-10-24 起）：本机保留（私人 web 部署自动出现），
+# 公开仓库不携带；后端按文件存在性动态注册路由与能力目录，公开版自动无此页。
+/frontend/ui_demo/pages/data-collection.html
+/frontend/ui_demo/assets/data-collection-live.js

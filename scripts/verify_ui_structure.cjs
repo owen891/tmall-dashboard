@@ -30,7 +30,7 @@ const PAGES = [
   ['data-collection', '/data-collection'], ['settings', '/settings'], ['goals', '/goals'],
   ['flow-source', '/flow-source'], ['rival-analysis', '/rival-analysis'], ['component-catalog', '/component-catalog'],
   ['creative-board', '/creative-board'], ['product-detail', '/product-detail'],
-];
+].filter(([name]) => fs.existsSync(path.join(__dirname, '..', 'frontend', 'ui_demo', 'pages', `${name}.html`)));
 
 // 批次 1-3：这些页面已把 scope 并进页头，不应再有独立的 .ui-context-bar。
 const MERGED_HEADER_PAGES = new Set([

@@ -1,4 +1,5 @@
 from collections import Counter
+from pathlib import Path
 
 from services.application_pages import LEGACY_REDIRECT_PAGES, registry_keys
 from services.data_capability_service import DOMAIN_DEFINITIONS, build_catalog
@@ -513,8 +514,16 @@ def build_page_catalog(db_path=None, *, page=None, domain=None, support_level=No
             continue
         capabilities_by_page.setdefault(resolved['page_key'], []).append(resolved)
     pages = []
+    project_root = Path(__file__).resolve().parents[1]
     for definition in PAGE_DEFINITIONS:
         if page is not None and definition['key'] != page:
+            continue
+        # Private-edition pages (e.g. the collector console) exist only when
+        # their files ship with the deployment; a public checkout does not
+        # carry them, so they drop out of the catalog — and the nav hides
+        # entries that the catalog does not return.
+        target_files = _target_files(definition['key'])
+        if target_files and not (project_root / target_files[0]).is_file():
             continue
         page_capabilities = capabilities_by_page.get(definition['key'], [])
         if domain is not None and not page_capabilities:

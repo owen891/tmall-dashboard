@@ -51,7 +51,7 @@ from api.misc_legacy_api import misc_legacy_bp
 from api.api_response import JsonObjectError
 from config import APP_VERSION, Config, DEFAULT_IMPORT_SCAN_INBOX, _sqlite_url, normalize_import_scan_roots
 from desktop_runtime import resource_root
-from services.application_pages import APPLICATION_PAGES, LEGACY_REDIRECT_PAGES
+from services.application_pages import LEGACY_REDIRECT_PAGES, routable_pages
 from services.shop_scope_service import (
     authorize_request_shop,
     current_request_shop_id,
@@ -341,7 +341,7 @@ def create_app(config=None):
         # against the same source instead of a second hand-maintained list.
         if page in LEGACY_REDIRECT_PAGES:
             return redirect(LEGACY_REDIRECT_PAGES[page])
-        if page not in APPLICATION_PAGES:
+        if page not in routable_pages():
             return jsonify({'error': 'page not found'}), 404
         return send_from_directory(os.path.join(demo_root, 'pages'), f'{page}.html', max_age=0)
 

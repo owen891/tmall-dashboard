@@ -228,6 +228,8 @@ for (const adapter of ['overview-live.js', 'products-live.js', 'promotion-live.j
 // 曾手拼 <div>，已迁移。表格单元格内的 <td colspan> 占位行是表格语义的合法形态，
 // 不在本断言范围（下方有专项防线禁止其逃逸出表格语义）。
 for (const adapter of ['overview-live.js', 'products-live.js', 'promotion-live.js', 'lifecycle-live.js', 'reviews-live.js', 'pages/data-center/import-workflow.js', 'pages/data-center/capability-map.js', 'pages/data-center/page-capabilities.js', 'settings-live.js', 'goals-live.js', 'analysis-live.js', 'data-collection-live.js']) {
+  // 私人版页面（如数据采集控制台）未随公开版分发时跳过其专属断言
+  if (!fs.existsSync(path.join(root, 'assets', adapter))) continue;
   const source = read(path.join(root, 'assets', adapter));
   assert(source.includes('DemoApi.renderDataState('), `assets/${adapter}: must render shared data states`);
 }

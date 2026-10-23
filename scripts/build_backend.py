@@ -47,6 +47,25 @@ def assert_release_version_contract() -> str:
     return version
 
 
+# 桌面安装包是公开分发物：私人版页面（数据采集控制台）只随本机 web 部署，
+# 打包时从内置前端树中剔除。
+PUBLIC_EDITION_EXCLUDES = (
+    'pages/data-collection.html',
+    'assets/data-collection-live.js',
+)
+
+
+def strip_private_edition_pages() -> list:
+    removed = []
+    for frontend_root in DIST_PATH.glob('backend/**/frontend/ui_demo'):
+        for relative in PUBLIC_EDITION_EXCLUDES:
+            target = frontend_root / relative
+            if target.is_file():
+                target.unlink()
+                removed.append(str(target.relative_to(PROJECT_ROOT)))
+    return removed
+
+
 def main() -> int:
     assert_release_version_contract()
     if not SPEC_PATH.is_file():
@@ -62,6 +81,8 @@ def main() -> int:
         raise SystemExit(f'Packaged backend executable was not created: {executable}')
     if platform.system() != 'Windows':
         executable.chmod(executable.stat().st_mode | 0o111)
+    for removed in strip_private_edition_pages():
+        print(f'public edition strip: {removed}')
     print(executable)
     return 0
 

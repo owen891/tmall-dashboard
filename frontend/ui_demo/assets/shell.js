@@ -280,6 +280,16 @@
       </div>
     </div>`;
   sidebar.querySelectorAll('.demo-sidebar__meta-actions > a').forEach((link) => link.remove());
+  // 公开版裁剪：能力目录不返回的页面（页面文件未随部署分发，如私人版的数据采集控制台）
+  // 直接从导航隐藏。接口失败时保持原样——私人版本地部署的文件齐全，天然全量显示。
+  fetch('/api/page-capabilities').then((response) => (response.ok ? response.json() : null)).then((payload) => {
+    const pages = payload && payload.data && Array.isArray(payload.data.pages) ? payload.data.pages : null;
+    if (!pages || !pages.length) return;
+    const available = new Set(pages.map((page) => page.key));
+    sidebar.querySelectorAll('[data-page-link]').forEach((item) => {
+      if (!available.has(item.getAttribute('data-page-link'))) item.hidden = true;
+    });
+  }).catch(() => {});
   sidebar.insertAdjacentHTML('beforeend', `
     <dialog class="demo-version-dialog" data-sidebar-version-dialog aria-labelledby="demoVersionDialogTitle">
       <div class="demo-version-dialog__header">
