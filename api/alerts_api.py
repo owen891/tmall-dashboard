@@ -15,7 +15,11 @@ from api.data_api import DIMENSION_MAP, _validate_period_arg
 
 from db import get_db
 from api.api_response import failure, json_object, success
-from services.alert_rules_service import AlertRuleValidationError, alert_rules_service
+from services.alert_rules_service import (
+    AlertRuleNotFoundError,
+    AlertRuleValidationError,
+    alert_rules_service,
+)
 
 
 alerts_bp = Blueprint('alerts', __name__)
@@ -138,11 +142,24 @@ def create_legacy_alert_rule():
 
 @alerts_bp.route('/api/alert_rules/<int:rule_id>', methods=['DELETE'])
 def delete_alert_rule(rule_id):
-    """删除预警规则"""
-    with get_db() as conn:
-        conn.execute('DELETE FROM alert_rules WHERE id = ?', (rule_id,))
-        conn.commit()
-    return jsonify({'success': True})
+    """删除预警规则（兼容旧版下划线路径，委托到统一规则服务）。
+
+    旧实现直接裸 DELETE 且无条件返回 success：规则不存在也报成功，而且完全
+    绕过审计。与 `/api/alert-rules/<id>` 统一后，删除会写审计，不存在返回 404。
+    """
+    try:
+        payload = json_object(request)
+    except Exception:  # noqa: BLE001 - 旧调用方可能不带 body
+        payload = {}
+    try:
+        alert_rules_service.delete(
+            rule_id,
+            payload.get('actor') or payload.get('operator') or 'admin',
+            payload.get('reason') or '删除预警规则',
+        )
+    except AlertRuleNotFoundError as error:
+        return failure('NOT_FOUND', str(error), status=404)
+    return jsonify({'success': True, 'data': {'deleted': True, 'id': rule_id}})
 
 @alerts_bp.route('/api/alert_checks', methods=['GET'])
 def check_alerts():
@@ -161,6 +178,27 @@ def check_alerts():
     visitors_col = dim_cfg['visitors_col']
 
     with get_db() as conn:
+        columns = {row[1] for row in conn.execute(f'PRAGMA table_info({table})').fetchall()}
+        has_buyers = 'buyers' in columns
+        has_conversion = 'payment_conversion' in columns
+        # 口径对齐 services/metric_definitions.py 的 payment_conversion_rate：
+        # payment_buyers / product_visitors，聚合方式是 sum_then_calculate。
+        # 旧实现直接 AVG(payment_conversion)，把「1 个访客 100% + 99 个访客 0%」
+        # 算成 50%（真实整体转化率 1%），会误触发/漏触发转化率预警。
+        if has_buyers:
+            conversion_expr = (
+                f'CASE WHEN SUM({visitors_col}) > 0 '
+                f'THEN SUM(buyers) * 1.0 / SUM({visitors_col}) ELSE NULL END'
+            )
+        elif has_conversion:
+            # 该粒度没有买家数（weekly_data）：退化为访客加权平均，
+            # 仍比不加权的 AVG(比率) 正确，且不臆造买家数。
+            conversion_expr = (
+                f'CASE WHEN SUM({visitors_col}) > 0 '
+                f'THEN SUM(payment_conversion * {visitors_col}) * 1.0 / SUM({visitors_col}) ELSE NULL END'
+            )
+        else:
+            conversion_expr = 'NULL'
         # 获取当前周期KPI汇总数据
         row = conn.execute(f'''
             SELECT
@@ -168,7 +206,7 @@ def check_alerts():
                 COALESCE(SUM(payment_amount),0) as gmv,
                 COALESCE(SUM(payment_amount),0) - COALESCE(SUM(refund_amount),0) as net_sales,
                 COALESCE(SUM({visitors_col}),0) as visitors,
-                AVG(payment_conversion) as conversion,
+                {conversion_expr} as conversion,
                 CASE WHEN SUM(payment_amount) > 0 THEN SUM(refund_amount) * 1.0 / SUM(payment_amount) ELSE 0 END as refund_rate,
                 CASE WHEN SUM(ad_spend) > 0 THEN SUM(payment_amount) * 1.0 / SUM(ad_spend) ELSE 0 END as roi,
                 COALESCE(SUM(ad_spend),0) as ad_spend

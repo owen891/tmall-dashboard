@@ -248,3 +248,33 @@ body[data-page="goals"] .goals-stage { border-color: var(--border-default); }
     margin-top: 12px;
   }
 }
+
+/* Site refinement B: new-product inputs, traffic and outcomes share one surface. */
+@media (min-width: 960px) {
+  body[data-page="new-products"] .promotion-command { grid-template-columns: minmax(0, 1fr) minmax(220px, .42fr); gap: var(--space-5); padding: var(--space-4); box-shadow: none; }
+  body[data-page="new-products"] .promotion-command__heading { flex-wrap: wrap; gap: var(--space-2); }
+  body[data-page="new-products"] .promotion-command__heading :is(h1, h2) { font-size: var(--font-size-section); line-height: var(--line-height-section); font-weight: 600; letter-spacing: -.02em; }
+  body[data-page="new-products"] .promotion-command__heading p { font-size: var(--font-size-meta); line-height: var(--line-height-secondary); }
+  body[data-page="new-products"] .promotion-funnel { gap: var(--space-6); }
+  body[data-page="new-products"] .promotion-funnel__step { padding: 0; border: 0; border-radius: 0; background: transparent; }
+  body[data-page="new-products"] .promotion-funnel__step:not(:last-child)::after { right: calc(var(--space-4) * -1); }
+  body[data-page="new-products"] .promotion-funnel__value { font-size: var(--font-size-title); line-height: var(--line-height-title); font-weight: 600; letter-spacing: -.02em; white-space: nowrap; }
+  body[data-page="new-products"] .promotion-command__signals { padding-inline-start: var(--space-4); }
+  body[data-page="new-products"] .promotion-command__signals h3 { font-size: var(--font-size-body); line-height: var(--line-height-body); font-weight: 600; }
+}
+
+/* Structure views inside the shared sheet use its body as the vertical scrollport.
+   The legacy lifecycle tabs' header offset belongs to standalone dialogs only. */
+.ui-drawer__body [data-promotion-structure-tabs] {
+  position: sticky;
+  top: 0;
+  margin: 0 0 var(--space-3);
+}
+.ui-drawer__body [data-promotion-structure-body] > * {
+  min-width: 0;
+}
+.ui-drawer__body [data-promotion-structure-body] .ui-table-wrap {
+  min-width: 0;
+  max-width: 100%;
+  max-height: none;
+}

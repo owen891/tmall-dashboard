@@ -52,7 +52,8 @@
   const trendMetricLabels = Object.freeze({
     net_sales: '净销售额', payment_amount: '支付金额', visitors: '商品访客数',
     payment_conversion_rate: '商品支付转化率', ad_spend: '推广花费', ad_roi: '推广 ROI',
-    refund_rate: '退款率', expense_ratio: '费比'
+    refund_rate: '退款率', expense_ratio: '费比',
+    profit: '净利润额', profit_rate: '净利润率'
   });
   let homeTrendModes = ['net_sales', 'payment_amount', 'ad_spend'];
 
@@ -196,7 +197,57 @@
     return { visitors: visitorsSeen ? visitors : null, payment_conversion_rate: visitorsSeen && buyersSeen && visitors > 0 ? buyers / visitors : null };
   }
 
-  function renderKpis(overview, comparison, matrix, targets) {
+  // Legacy compare is monthly_data-only, not an arbitrary date comparison.
+  const finiteMetric = (v) => (typeof v === 'number' || (typeof v === 'string' && v.trim() !== '')) && Number.isFinite(Number(v));
+  function comparableChange(key, overview, comparison, context = {}) {
+    const { response = {}, state = {}, period, comparePeriod, categoryMode } = context;
+    const filters = response.filters || {};
+    const monthEnd = /^\d{4}-\d{2}$/.test(period || '')
+      ? `${period}-${new Date(Number(period.slice(0, 4)), Number(period.slice(5, 7)), 0).getDate()}` : '';
+    // Conversion uses AVG; attributed ROI has a different numerator.
+    const compareKey = { payment_amount: 'gmv', net_sales: 'net_sales', ad_spend: 'ad_spend', visitors: 'visitors', refund_rate: 'refund_rate', expense_ratio: 'expense_ratio' }[key];
+    const change = comparison?.kpi_compare?.[compareKey];
+    const value = overview[key];
+    const unsupportedScope = ['product_id', 'tier', 'lifecycle_stage', 'promotion_channel'].some((name) => filters[name]);
+    // category_mode is explicitly pinned to both requests; legacy does not echo it.
+    if (!compareKey || !categoryMode || unsupportedScope || (overview.data_grain || response.freshness?.data_grain) !== 'monthly'
+        || !['daily_facts_unavailable', undefined, null, ''].includes(overview.fallback_reason)
+        || state.startDate !== `${period}-01` || state.endDate !== monthEnd
+        || filters.start !== state.startDate || filters.end !== state.endDate
+        || overview.start_date !== state.startDate || overview.end_date !== state.endDate
+        || overview.data_cutoff_date !== period
+        || comparison?.availability !== 'available' || comparison.period_b !== period || comparison.period_a !== comparePeriod
+        || comparePeriod !== previousMonth(period, state.compareMode === 'year_over_year' ? 12 : 1)
+        || !['available', 'insufficient-data'].includes(response.availability)
+        || (overview.metric_availability?.[key] && overview.metric_availability[key] !== 'available')
+        || !finiteMetric(value) || !finiteMetric(change?.period_a) || !finiteMetric(change?.period_b)
+        || !finiteMetric(change?.change_pct) || Number(change.period_a) <= 0
+        || Math.abs(Number(value) - Number(change.period_b)) > (['refund_rate', 'expense_ratio'].includes(key) ? 0.00000051 : Math.max(0.005, Math.abs(Number(value)) * 1e-9))) return null;
+    const delta = key === 'refund_rate' ? (Number(change.period_b) - Number(change.period_a)) * 100
+      : (Number(change.period_b) - Number(change.period_a)) / Number(change.period_a) * 100;
+    if (Math.abs(delta - Number(change.change_pct)) > 0.051) return null;
+    return { ...change, label: `${state.compareMode === 'year_over_year' ? '同比' : '环比'} ${comparePeriod} → ${period}（月度）` };
+  }
+
+  function matchesMonthlyTarget(key, overview, context = {}) {
+    const { response = {}, state = {}, period, categoryMode } = context;
+    const end = /^\d{4}-\d{2}$/.test(period || '')
+      ? `${period}-${new Date(Number(period.slice(0, 4)), Number(period.slice(5, 7)), 0).getDate()}` : '';
+    return Boolean(categoryMode) && !['product_id', 'tier', 'lifecycle_stage', 'promotion_channel'].some((name) => response.filters?.[name])
+      && (overview.data_grain || response.freshness?.data_grain) === 'monthly'
+      && ['daily_facts_unavailable', undefined, null, ''].includes(overview.fallback_reason)
+      && state.startDate === `${period}-01` && state.endDate === end
+      && response.filters?.start === state.startDate && response.filters?.end === state.endDate
+      && overview.start_date === state.startDate && overview.end_date === state.endDate
+      && overview.data_cutoff_date === period
+      && ['available', 'insufficient-data'].includes(response.availability)
+      && (!overview.metric_availability?.[key] || overview.metric_availability[key] === 'available')
+      && finiteMetric(overview[key]);
+  }
+  function selectedPeriodLabel(state, period) {
+    return state.startDate ? `所选区间 ${state.startDate} ~ ${state.endDate} · 月度诊断 ${period}` : `月度诊断 ${period}`;
+  }
+  function renderKpis(overview, comparison, matrix, targets, comparisonContext = {}) {
     const fallback = deriveKpiFallback(matrix);
     const progressByKey = {
       payment_amount: targets?.gsv_progress,
@@ -206,6 +257,8 @@
     const metrics = [
       ['payment_amount', moneyWan],
       ['net_sales', moneyWan],
+      ['profit', moneyWan],
+      ['profit_rate', percent],
       ['visitors', numberWan],
       ['ad_spend', moneyWan],
       ['ad_roi', (value) => Number(value || 0).toFixed(2)],
@@ -219,15 +272,15 @@
       const fallbackValue = key === 'visitors' ? fallback.visitors : key === 'payment_conversion_rate' ? fallback.payment_conversion_rate : null;
       const availability = overview.metric_availability?.[key] === 'missing-fields' && fallbackValue != null ? 'available' : overview.metric_availability?.[key];
       const value = key === 'visitors' ? (overview.visitors ?? overview.product_visitors ?? fallback.visitors) : key === 'payment_conversion_rate' ? (overview.payment_conversion_rate ?? fallback.payment_conversion_rate) : key === 'ad_roi' && overview.ad_roi == null
-        ? (Number(overview.ad_spend) > 0 ? Number(overview.payment_amount || 0) / Number(overview.ad_spend) : null)
+        ? (finiteMetric(overview.payment_amount) && finiteMetric(overview.ad_spend) && Number(overview.ad_spend) > 0 ? Number(overview.payment_amount) / Number(overview.ad_spend) : null)
         : overview[key];
-      textAll(`[data-overview-kpi="${key}"]`, value == null ? '--' : formatter(value));
+      textAll(`[data-overview-kpi="${key}"]`, !finiteMetric(value) ? '--' : formatter(value));
       document.querySelectorAll(`[data-overview-kpi="${key}"]`).forEach((node) => {
         const card = node.closest('.overview-v2-kpi');
-        const p = progressByKey[key]; const pct = p == null ? 0 : Math.max(0, Math.min(100, Number(p) || 0)); if (card) card.style.setProperty('--kpi-progress', pct + '%');
+        const p = matchesMonthlyTarget(key, overview, comparisonContext) ? progressByKey[key] : null; const pct = p == null ? 0 : Math.max(0, Math.min(100, Number(p) || 0)); if (card) card.style.setProperty('--kpi-progress', pct + '%');
       });
       const compareKey = { payment_amount: 'gmv', net_sales: 'net_sales', visitors: 'visitors', ad_spend: 'ad_spend', ad_roi: 'roi', refund_rate: 'refund_rate', payment_conversion_rate: 'conversion', expense_ratio: 'expense_ratio' }[key];
-      const change = compareKey && comparison?.kpi_compare?.[compareKey];
+      const change = compareKey && comparableChange(key, overview, comparison, comparisonContext);
       const direction = Number(change?.change_pct || 0);
       const delta = key === 'refund_rate' || key === 'payment_conversion_rate'
         ? Number((Number(change?.period_b || 0) - Number(change?.period_a || 0)) * 100).toFixed(1)
@@ -243,20 +296,20 @@
         node.textContent = availability === 'missing-fields'
           ? '字段缺失，暂不可计算'
           : change?.change_pct == null
-            ? `数据截至 ${overview.data_cutoff_date || '--'}`
-            : `${direction >= 0 ? '↑' : '↓'} ${key === 'refund_rate' || key === 'payment_conversion_rate' ? Math.abs(Number(delta)).toFixed(1) + 'pp' : Math.abs(Number(delta)).toFixed(key === 'ad_roi' ? 2 : 1) + (key === 'ad_roi' ? '' : '%')} 较上期`;
+            ? '暂无同范围比较'
+            : `${direction >= 0 ? '↑' : '↓'} ${key === 'refund_rate' || key === 'payment_conversion_rate' ? Math.abs(Number(delta)).toFixed(1) + 'pp' : Math.abs(Number(delta)).toFixed(key === 'ad_roi' ? 2 : 1) + (key === 'ad_roi' ? '' : '%')} ${change.label}`;
       });
     });
     const netSales = overview.net_sales;
-    text($('[data-overview-summary="net_sales"]'), netSales == null ? '--' : moneyWan(netSales));
+    text($('[data-overview-summary="net_sales"]'), !finiteMetric(netSales) ? '--' : moneyWan(netSales));
     text($('[data-overview-summary-meta="net_sales"]'), overview.data_cutoff_date ? `数据截至 ${overview.data_cutoff_date}` : '等待加载');
     text($('[data-overview-cutoff]'), overview.data_cutoff_date ? `数据截至 ${overview.data_cutoff_date}` : '数据截至 --');
     const freshness = overview.context?.latest_import?.completed_at || overview.data_cutoff_date;
-    text($('[data-overview-summary="freshness"]'), freshness ? (String(freshness).slice(0, 10) === String(overview.data_cutoff_date || '').slice(0, 10) ? '98%' : '已更新') : '--');
+    text($('[data-overview-summary="freshness"]'), freshness ? '已更新' : '--');
     text($('[data-overview-summary-meta="freshness"]'), freshness ? `最近导入 ${String(freshness).slice(0, 16)}` : '最近导入');
-    const delta = comparison?.kpi_compare?.net_sales?.change_pct;
+    const delta = comparableChange('net_sales', overview, comparison, comparisonContext)?.change_pct;
     const deltaNode = $('[data-overview-summary-delta]');
-    text(deltaNode, delta == null ? '较上期 --' : `较上期 ${delta >= 0 ? '+' : ''}${Number(delta).toFixed(1)}%`);
+    text(deltaNode, delta == null ? '暂无同范围比较' : `较上期 ${delta >= 0 ? '+' : ''}${Number(delta).toFixed(1)}%`);
     deltaNode?.classList.toggle('delta--positive', delta != null && delta >= 0);
     deltaNode?.classList.toggle('delta--negative', delta != null && delta < 0);
   }
@@ -264,6 +317,7 @@
     const node = $('[data-overview-quality]');
     if (!node) return;
     const labels = {
+      loading: ['加载中', 'muted'],
       available: ['数据可用', 'success'],
       partial: ['部分可用', 'warning'],
       'insufficient-data': ['数据不足', 'warning'],
@@ -274,10 +328,11 @@
     };
     const [label, tone] = labels[availability] || ['状态未知', 'muted'];
     node.textContent = label;
-    node.dataset.availability = availability || 'calculation-failed';
+    node.dataset.availability = availability || 'unknown';
     node.className = `overview-v2-status ui-badge--${tone}`;
     const missing = details.missing_fields?.length ? `；缺失字段 ${details.missing_fields.join('、')}` : '';
     node.title = `${label}${missing}`;
+    text($('[data-overview-quality-details]'), `${label}${missing}${details.missing_ranges?.length ? '；当前范围存在缺日，见数据详情' : ''}`);
   }
   function renderDecisionFocus() {
     const pending = latestActionTodos.filter((todo) => ['pending_review', 'blocked', 'pending_execution', 'executing'].includes(todo.status));
@@ -320,24 +375,23 @@
 
   function renderContext(overview, response = {}) {
     const context = overview.context || {}; const batch = context.latest_import;
-    const missing_date_ranges = overview.missing_date_ranges || [];
-    const source_batches = overview.source_batches || [];
-    const changes = overview.changes || [];
-    const grain = overview.data_grain || context.data_grain;
-    const grainLabel = grain === 'monthly' ? '月度数据' : '日度事实';
+    const missingRanges = Array.isArray(response.missing_ranges) ? response.missing_ranges : null;
+    const grain = response.freshness?.data_grain || overview.data_grain || context.data_grain;
+    const grainLabel = grain === 'monthly' ? '月度数据' : grain === 'daily' ? '日度事实' : '粒度待核验';
     const contextNode = $('[data-overview-context]');
-    if (batch) {
-      // 界面上只保留可读的日期覆盖信息，导入文件路径收进 tooltip，避免本地路径刷屏
-      text(contextNode, `${grainLabel}覆盖 ${context.start_date || '--'} 至 ${context.end_date || '--'} · 最近导入 ${batch.completed_at ? String(batch.completed_at).slice(0, 16) : '--'}`);
-      if (contextNode) contextNode.title = `最近导入文件：${batch.source_filename || '--'}（${batch.completed_at || '--'}）`;
-    } else {
-      text(contextNode, `当前没有导入的${grainLabel}。`);
-      if (contextNode) contextNode.title = '';
-    }
-    const start = context.start_date;
-    const end = context.end_date;
-    const coverage = start && end ? (grain === 'monthly' ? Math.max(1, (new Date(`${end}-01T00:00:00`).getFullYear() - new Date(`${start}-01T00:00:00`).getFullYear()) * 12 + new Date(`${end}-01T00:00:00`).getMonth() - new Date(`${start}-01T00:00:00`).getMonth() + 1) : Math.max(1, Math.round((new Date(`${end}T00:00:00`) - new Date(`${start}T00:00:00`)) / 86400000) + 1)) : null;
-    text($('[data-overview-coverage]'), coverage ? `覆盖 ${coverage} ${grain === 'monthly' ? '个月' : '天'}` : `覆盖 -- ${grain === 'monthly' ? '个月' : '天'}`);
+    text(contextNode, `历史跨度 ${context.start_date || '--'} 至 ${context.end_date || '--'} · ${grainLabel} · 最近导入 ${batch?.completed_at ? String(batch.completed_at).slice(0, 16) : '--'}`);
+    if (contextNode) contextNode.title = batch ? `最近导入文件：${batch.source_filename || '--'}` : '';
+    // Missing dates do not prove complete fields/products.
+    let coverage = '当前覆盖待核验';
+    if (missingRanges?.length) coverage = grain === 'monthly' ? '月度汇总参考 · 日覆盖待核验' : '当前范围存在缺日';
+    else if (missingRanges && grain === 'daily') coverage = '当前范围未报告缺日 · 完整性待核验';
+    text($('[data-overview-coverage]'), coverage);
+    text($('[data-overview-missing-ranges]'), missingRanges?.length
+      ? `缺失日期：${missingRanges.map((range) => `${range.start || '--'} 至 ${range.end || '--'}`).join('；')}`
+      : missingRanges ? '接口未报告缺日；不代表所有字段、商品均完整。' : '接口未提供当前范围缺日信息。');
+    text($('[data-overview-data-scope]'), grain === 'monthly'
+      ? `当前卡片为月度汇总参考（截至 ${overview.data_cutoff_date || '--'}），不是所选日期的日度实绩。`
+      : `当前卡片：${response.filters?.start || overview.start_date || '--'} 至 ${response.filters?.end || overview.end_date || '--'} · ${grainLabel}`);
     const todos = overview.action_todos || [];
     const rows = todos.length ? todos.map((todo) => {
       const row = document.createElement('div'); row.className = 'status-list__item';
@@ -382,6 +436,8 @@
         expense_ratio: paymentAmount > 0 ? adSpend / paymentAmount : null,
         refund_rate: paymentAmount > 0 ? refund / paymentAmount : null,
         ad_roi: adSpend > 0 ? paymentAmount / adSpend : null,
+        profit: row.profit,
+        profit_rate: row.profit_rate,
       }[mode];
     };
     const modes = homeTrendModes.length ? homeTrendModes : ['net_sales'];
@@ -428,6 +484,7 @@
 
   // goals 年度目标缺失时，首页「目标完成度」回退展示 shop_targets 的月度净销售额进度
   const fallbackTargetSummary = (targets) => {
+    text($('[data-overview-target-scope]'), `${activePeriod || '--'} 月度净销售额目标`);
     const progress = targets?.net_sales_progress;
     textAll('[data-overview-summary="target"]', progress == null ? '--' : `${Number(progress).toFixed(1)}%`);
   };
@@ -458,6 +515,7 @@
       if (!hasAnyGoal) { fallbackTargetSummary(targets); return; }
       targetRoots.forEach((root) => root.replaceChildren(...rows.map((row) => row.cloneNode(true))));
       adaptHomeTargets();
+      text($('[data-overview-target-scope]'), `${year} 年度净销售额目标`);
       const annual = levels.year;
       const annualActual = actual.year;
       textAll('[data-overview-summary="target"]', annual == null ? '--' : `${Number(annual) ? (Number(annualActual || 0) / Number(annual) * 100).toFixed(1) : 0}%`);
@@ -473,7 +531,7 @@
       const cards = [...root.querySelectorAll('.status-list__item')].slice(0, 4).map((source, index) => {
         const row = document.createElement('div'); row.className = 'overview-v2-target';
         const label = source.querySelector('.status-list__label')?.textContent || source.textContent || '--';
-        const homeLabel = { '周': '本周净销售额目标', '月': '本月净销售额目标', '季': '季度净销售额目标', '年': '年度净销售额目标' }[label.charAt(0)] || label;
+        const homeLabel = label; // Retain actual year/month/week key.
         const value = source.querySelector('.status-list__value')?.textContent || '';
         const rate = value.match(/([\d.]+)%/)?.[1] || '--';
         const head = document.createElement('div'); head.className = 'overview-v2-target__head'; head.append(item('span', homeLabel), item('strong', rate === '--' ? '--' : `${rate}%`));
@@ -499,7 +557,7 @@
       window.dispatchEvent(new CustomEvent('tmall:overview-anomalies-ready', { detail: { anomalies: [] } }));
       return;
     }
-    latestAnomalies = Array.isArray(unwrap(data, 'anomalies')) ? unwrap(data, 'anomalies') : [];
+    latestAnomalies = (Array.isArray(unwrap(data, 'anomalies')) ? unwrap(data, 'anomalies') : []).map((anomaly) => ({ ...anomaly, period: activePeriod, prev_period: previousMonth(activePeriod) }));
     latestAnomalyState = 'ready';
     renderDecisionFocus();
     window.dispatchEvent(new CustomEvent('tmall:overview-anomalies-ready', { detail: { anomalies: latestAnomalies } }));
@@ -553,17 +611,28 @@
     const prev = previousMonth(period);
     const comparePeriod = state.compareMode === 'year_over_year' ? previousMonth(period, 12) : prev;
     activePeriod = period;
-    text($('[data-overview-period]'), state.startDate ? `${state.startDate} ~ ${state.endDate} · 月度口径 ${period}` : `月度口径 ${period}`);
+    renderQuality('loading');
+    text($('[data-overview-diagnosis-scope]'), `月度诊断：${period}，比较 ${prev}（不随KPI同比切换）`);
+    text($('[data-overview-target-period]'), `店铺月目标：${period}；分层目标按各自周期展示`);
+    text($('[data-overview-period]'), selectedPeriodLabel(state, period));
     text($('[data-overview-month]'), `${period} / 上期 ${prev}`);
     const range = queryRange(state);
-    const overviewParams = new URLSearchParams({ start: state.startDate, end: state.endDate });
+    let categoryMode = 'sock';
+    try { categoryMode = localStorage.getItem('dashboard.categoryMode') || 'sock'; } catch (_) {}
+    const overviewParams = new URLSearchParams({ start: state.startDate, end: state.endDate, category_mode: categoryMode });
+    const trendDim = ['daily', 'weekly', 'monthly'].includes(state.dim) ? state.dim : 'daily';
+    const trendRange = trendDim === 'monthly'
+      ? (state.startDate && state.endDate
+        ? `&start=${encodeURIComponent(state.startDate.slice(0, 7))}&end=${encodeURIComponent(state.endDate.slice(0, 7))}`
+        : '')
+      : queryRange(state);
     const requests = [
       DemoApi.domainRequest('/api/overview?' + overviewParams.toString()),
-      DemoApi.request(`/api/trend?dim=daily${range}`),
-      DemoApi.request(`/api/target_progress?dim=monthly&period=${encodeURIComponent(period)}`),
+      DemoApi.request(`/api/trend?dim=${trendDim}${trendRange}`),
+      DemoApi.request(`/api/target_progress?dim=monthly&period=${encodeURIComponent(period)}&category_mode=${encodeURIComponent(categoryMode)}`),
       DemoApi.request(`/api/anomalies?dim=monthly&period=${encodeURIComponent(period)}&prev_period=${encodeURIComponent(prev)}`)
         .catch((error) => { console.error(error); return { error: true }; }),
-      DemoApi.request(`/api/compare?dim=monthly&period_a=${encodeURIComponent(comparePeriod)}&period_b=${encodeURIComponent(period)}`),
+      DemoApi.request(`/api/compare?dim=monthly&period_a=${encodeURIComponent(comparePeriod)}&period_b=${encodeURIComponent(period)}&category_mode=${encodeURIComponent(categoryMode)}`),
     ];
     const [overviewResponse, trend, targets, anomalies, comparison] = await Promise.all(requests);
     overviewPayload = overviewResponse;
@@ -572,7 +641,7 @@
     try { matrix = await DemoApi.domainRequest('/api/overview/daily-matrix?' + overviewParams.toString()); } catch (error) { renderMatrixStatus(null, 'error'); setTableStatus($('[data-overview-home-matrix]'), '日度矩阵暂无数据；请导入日度明细后重试', matrixVisibleColumns.length, () => guardedLoad(state)); }
     if (token !== requestToken) return;
     const rows = unwrap(trend, 'data');
-    renderKpis(overviewResponse.data, comparison, matrix.data, targets); renderContext(overviewResponse.data, overviewResponse); renderQuality(overviewResponse.availability, overviewResponse); renderTrend(rows); renderTargets(targets); await loadGoalLayers(state, token, targets); if (token !== requestToken) return; renderAnomalies(anomalies, () => guardedLoad(state)); renderHomeMatrix(matrix.data || {});
+    renderKpis(overviewResponse.data, comparison, matrix.data, targets, { response: overviewResponse, state, period, comparePeriod, categoryMode }); renderContext(overviewResponse.data, overviewResponse); renderQuality(overviewResponse.availability, overviewResponse); renderTrend(rows); renderTargets(targets); await loadGoalLayers(state, token, targets); if (token !== requestToken) return; renderAnomalies(anomalies, () => guardedLoad(state)); renderHomeMatrix(matrix.data || {});
   }
 
   function guardedLoad(detail) {
@@ -581,7 +650,7 @@
   }
   function showError(error, token) {
     if (token && token !== requestToken) return;
-    ['payment_amount', 'net_sales', 'refund_rate', 'expense_ratio'].forEach((key) => textAll(`[data-overview-kpi="${key}"]`, '--'));
+    ['payment_amount', 'net_sales', 'profit', 'profit_rate', 'refund_rate', 'expense_ratio'].forEach((key) => textAll(`[data-overview-kpi="${key}"]`, '--'));
     setStatus('[data-overview-home-targets]', '数据加载失败', 'error', () => guardedLoad());
     setTableStatus($('[data-overview-home-matrix]'), '数据加载失败', matrixVisibleColumns.length);
     renderMatrixStatus(null, 'error');
@@ -751,15 +820,44 @@
   }));
   const trendTrigger = $('[data-overview-trend-trigger]');
   const trendMenu = $('[data-overview-trend-menu]');
-  trendTrigger?.addEventListener('click', () => {
-    const open = trendMenu?.hidden;
-    if (trendMenu) trendMenu.hidden = !open;
-    trendTrigger.setAttribute('aria-expanded', String(Boolean(open)));
-  });
-  document.addEventListener('click', (event) => {
-    if (!trendMenu || trendMenu.hidden || trendMenu.closest('[data-overview-trend-control]')?.contains(event.target)) return;
-    trendMenu.hidden = true;
+  const trendMenuParent = trendMenu?.parentNode;
+  const trendMenuNext = trendMenu?.nextSibling;
+  let trendPopover = null;
+  const restoreTrendMenu = () => {
+    if (trendMenu && trendMenuParent) {
+      // The shared primitive removes its wrapper before onClose. Reattach the
+      // original menu (not cloned HTML), preserving checkbox nodes/listeners.
+      trendMenuParent.insertBefore(trendMenu, trendMenuNext?.parentNode === trendMenuParent ? trendMenuNext : null);
+      trendMenu.hidden = true;
+    }
+    trendPopover = null;
     trendTrigger?.setAttribute('aria-expanded', 'false');
+    // Wait for the outside pointer's default focus action. Recover blank-area
+    // dismissal, but never steal focus from a newly clicked control or menu.
+    requestAnimationFrame(() => {
+      if (!trendPopover && trendTrigger?.isConnected && (document.activeElement === document.body || trendMenu?.contains(document.activeElement))) {
+        trendTrigger.focus({ preventScroll: true });
+      }
+    });
+  };
+  trendTrigger?.addEventListener('click', () => {
+    if (trendPopover) { trendPopover.close(); return; }
+    if (!trendMenu || !window.TmallUI?.popover) return;
+    trendMenu.hidden = false;
+    try {
+      trendPopover = window.TmallUI.popover({
+        anchor: trendTrigger, content: trendMenu,
+        className: 'overview-trend-popover', onClose: restoreTrendMenu,
+      });
+      // PC keyboard entry stays in the menu; existing dismissal restores the trigger.
+      if (window.matchMedia('(min-width: 960px)').matches) {
+        const firstTrendOption = /** @type {HTMLInputElement | null} */ (trendMenu.querySelector('input:not([disabled])'));
+        firstTrendOption?.focus({ preventScroll: true });
+      }
+    } catch (error) {
+      restoreTrendMenu();
+      window.DemoShell?.showToast?.('趋势菜单暂不可用，请刷新页面后重试');
+    }
   });
   document.querySelectorAll('[data-overview-kpi-select]').forEach((card) => {
     const activate = () => selectTrendModes([card.dataset.overviewKpiSelect]);

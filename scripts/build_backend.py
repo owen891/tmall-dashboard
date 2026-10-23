@@ -52,6 +52,9 @@ def assert_release_version_contract() -> str:
 PUBLIC_EDITION_EXCLUDES = (
     'pages/data-collection.html',
     'assets/data-collection-live.js',
+    'pages/core-product-analysis.html',
+    'assets/core-product-analysis-live.js',
+    'assets/themes/core-product-domain.css',
 )
 
 

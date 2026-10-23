@@ -94,7 +94,7 @@
   body[data-page="keyword-promotion"] .ui-table-wrap { max-height: min(62vh, 720px); overflow: auto; }
   body[data-page="keyword-promotion"] .product-table thead th { position: sticky; top: 0; z-index: 1; background: var(--surface-muted); }
   body[data-page="keyword-promotion"] .product-table th { padding-block: 8px; }
-  body[data-page="keyword-promotion"] .product-table td { padding-block: 9px; }
+  body[data-page="keyword-promotion"] .product-table td { padding-block: 4px; }
 }
 
 /* 列设置弹窗 */
@@ -243,3 +243,11 @@
 }
 .kp-pid { font-size: var(--font-size-meta); }
 .kp-error { color: var(--danger-text); }
+
+/* Desktop refinement: filters are a single rail; rating letters retain their semantic colors. */
+@media (min-width: 960px) {
+  body[data-page="keyword-promotion"] .demo-page .product-filters.ui-table-toolbar { padding: var(--space-2) 0 var(--space-3); border: 0; border-radius: 0; background: transparent; }
+  body[data-page="keyword-promotion"] .kp-badge { padding-inline: var(--space-1); border-radius: var(--radius-sm); background: transparent; font-weight: 600; }
+  body[data-page="keyword-promotion"] .kp-tag { background: transparent; }
+  body[data-page="keyword-promotion"] .field-template-bar { padding-bottom: var(--space-3); border-bottom: 1px solid var(--border-default); }
+}

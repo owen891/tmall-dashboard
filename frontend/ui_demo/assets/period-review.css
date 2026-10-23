@@ -1003,12 +1003,12 @@
 }
 
 .pr-delta.is-up {
-  color: var(--success-text);
+  color: var(--trend-up-text);
   font-weight: 600;
 }
 
 .pr-delta.is-down {
-  color: var(--danger-text);
+  color: var(--trend-down-text);
   font-weight: 600;
 }
 
@@ -1409,9 +1409,11 @@
   color: var(--text-muted);
 }
 
-/* 商品标题：单行截断 + 悬停看全文，避免长标题把整行撑成两三行、挤掉数值列 */
+/* 商品标题：单行截断 + 悬停看全文，避免长标题把整行撑成两三行、挤掉数值列。
+   货品榜的文本已在渲染层截到前 8 个字（product-columns.js），这里只兜住极端字宽；
+   问题单品表 / 推广归因表仍按长标题处理，故默认值保持 262px 不变。 */
 .pr-table--products .pr-table__title {
-  max-width: 320px;
+  max-width: 150px;
 }
 
 .pr-table__title-text {
@@ -1421,6 +1423,37 @@
   max-width: 262px;
   overflow: hidden;
   vertical-align: middle;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 货品榜：96px + 图片 32px + 图片右边距 6px + 单元格内边距 16px ≈ 表头声明的 150px。 */
+.pr-table--products .pr-table__title-text {
+  max-width: 96px;
+}
+
+.pr-table--products .pr-table__identity {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr);
+  min-width: 0;
+  gap: 6px;
+}
+
+.pr-table--products .pr-table__identity.ui-product-identity--no-image {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.pr-table--products .pr-table__identity > .product-thumb {
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-sm);
+}
+
+.pr-table--products .ui-product-identity__id {
+  overflow: hidden;
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-meta);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -2299,11 +2332,78 @@ body[data-page="period-review"] .demo-topbar__filters {
   min-width: 620px;
 }
 
+/* 单元格「值 + 变化率次行」：变化率放在值下面而不是右侧，横向列数不变，
+   否则加了同比环比后表格会宽到必须横向滚动，扫视成本反而更高。 */
+.pr-cell-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 1px;
+  line-height: 1.25;
+}
+
+.pr-cell-stack .pr-cell-value {
+  white-space: nowrap;
+}
+
+.pr-cell-deltas {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.pr-cell-delta {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.pr-cell-delta.is-up {
+  color: var(--trend-up-text);
+}
+
+.pr-cell-delta.is-down {
+  color: var(--trend-down-text);
+}
+
+/* 表下口径/图例说明：解释「小字是什么」「哪几列没数」，避免读者自行猜口径。 */
+.pr-table-legend {
+  margin: 6px 2px 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+
 .pr-breakdown-table td:first-child {
   max-width: 240px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* 带缩略图的首列（问题单品 / 广告单品 / 推广归因）：td 上的 text-overflow 会把
+   「图片 + inline-block span」这种原子内联内容**整格**替换成一个 …，商品名整体消失
+   （列宽足够时不溢出所以看不出来，窄视口必现）。改用 flex 让文字拿到剩余宽度，
+   省略号交给 span 自己处理。纯文本首列（计划名等）仍走上面那条。 */
+.pr-breakdown-table td:first-child:has(img) {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  text-overflow: clip;
+}
+
+.pr-breakdown-table td:first-child:has(img) .pr-table__title-text {
+  max-width: none;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+/* gap 已经给了间距，抵消 .pr-table img 的 margin-right，避免双倍。 */
+.pr-breakdown-table td:first-child:has(img) img {
+  flex: 0 0 auto;
+  margin-right: 0;
 }
 
 .pr-evidence {
@@ -2524,8 +2624,8 @@ body[data-page="period-review"] .demo-topbar__filters {
   font-variant-numeric: tabular-nums;
 }
 
-.pr-matrix-cell__delta.is-up { color: var(--success-text); }
-.pr-matrix-cell__delta.is-down { color: var(--danger-text); }
+.pr-matrix-cell__delta.is-up { color: var(--trend-up-text); }
+.pr-matrix-cell__delta.is-down { color: var(--trend-down-text); }
 .pr-matrix-cell__delta.is-neutral { color: var(--text-muted); }
 
 /* 行状态色（与截图一致：整行底色区分） */
@@ -2599,8 +2699,8 @@ body[data-page="period-review"] .demo-topbar__filters {
 .leaf-board__kpi-deltas { margin-top: 6px; font-size: 12px; color: var(--text-muted); display: flex; gap: 10px; flex-wrap: wrap; }
 .leaf-board__kpi-deltas .lb-delta-label { display: inline-flex; gap: 3px; align-items: center; }
 .lb-delta { font-weight: 600; }
-.lb-delta.is-up { color: var(--success-text); }
-.lb-delta.is-down { color: var(--danger-text); }
+.lb-delta.is-up { color: var(--trend-up-text); }
+.lb-delta.is-down { color: var(--trend-down-text); }
 .lb-delta.is-flat { color: var(--text-muted); font-weight: 500; }
 .lb-delta--na { color: var(--text-secondary); font-weight: 400; }
 
@@ -2840,4 +2940,28 @@ body[data-page="period-review"] .demo-topbar__filters {
 
 @media (max-width: 760px) {
   .pr-drawer { width: 100%; }
+}
+
+/* Desktop legacy tab compatibility: no selection underline. */
+@media (min-width: 960px) {
+  .pr-workbench-tabs button.is-active { border-bottom-color: transparent; background: var(--brand-tint); }
+}
+
+/* Desktop refinement: one metric surface; state stays in status text/dots and completion values. */
+@media (min-width: 960px) {
+  body[data-page="period-review"] .pr-mode-tabs { border-color: transparent; }
+  body[data-page="period-review"] .pr-mode-tabs button.is-active { box-shadow: none; }
+  body[data-page="period-review"] .pr-metric-cards { gap: 0; padding-block: var(--space-2); border: 1px solid var(--border-default); border-radius: var(--radius-md); background: var(--surface-base); }
+  body[data-page="period-review"] .pr-metric-card { padding: var(--space-3) var(--space-4); border: 0; border-inline-end: 1px solid var(--border-default); border-radius: 0; background: transparent; box-shadow: none; }
+  body[data-page="period-review"] .pr-metric-card:last-child { border-inline-end: 0; }
+  body[data-page="period-review"] .pr-metric-card__value { font-weight: 600; letter-spacing: -.025em; }
+  body[data-page="period-review"] .pr-command-center__insights { gap: 0; border-top: 1px solid var(--border-default); }
+  body[data-page="period-review"] .pr-insight-card { padding: var(--space-4); border: 0; border-inline-end: 1px solid var(--border-default); border-radius: 0; background: transparent; }
+  body[data-page="period-review"] .pr-insight-card:first-child { padding-inline-start: 0; }
+  body[data-page="period-review"] .pr-insight-card:last-child { border-inline-end: 0; padding-inline-end: 0; }
+  body[data-page="period-review"] .pr-insight-card.is-good .pr-insight-card__label { color: var(--success-text); }
+  body[data-page="period-review"] .pr-insight-card.is-warning .pr-insight-card__label { color: var(--warning-text); }
+  body[data-page="period-review"] .pr-insight-card.is-danger .pr-insight-card__label { color: var(--danger-text); }
+  body[data-page="period-review"] .pr-anchor-chips button { border-color: transparent; background: transparent; }
+  body[data-page="period-review"] .pr-anchor-chips button:hover { background: var(--surface-muted); }
 }

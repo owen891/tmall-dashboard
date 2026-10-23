@@ -2,10 +2,8 @@
 /**
  * 时间选择器浏览器冒烟门禁（零依赖，直接驱动 Chrome DevTools Protocol）。
  *
- * 用法：
- *   node scripts/smoke_date_picker.cjs                          # 默认 http://127.0.0.1:5000
- *   node scripts/smoke_date_picker.cjs http://127.0.0.1:8770    # 指定服务地址
- *   TMALL_CHROME="C:\\path\\chrome.exe" node scripts/smoke_date_picker.cjs
+ * 用法：python scripts/run_quality_gates.py --tier integration
+ * 只接受执行器所有的临时服务、专用浏览器与 profile；无默认生产端口。
  *
  * 为什么需要它：
  *   静态 CSS 门禁（scripts/check_css_syntax.py）只能证明语法合法，**证明不了元素可见可点**。
@@ -25,62 +23,15 @@
  */
 'use strict';
 
-const { spawn } = require('node:child_process');
-const http = require('node:http');
-const fs = require('node:fs');
-const os = require('node:os');
-const path = require('node:path');
-
-const BASE = (process.argv[2] || process.env.TMALL_SMOKE_BASE || 'http://127.0.0.1:5000').replace(/\/$/, '');
+const { launchGateChrome, safeSocketUrl } = require('./gate_browser.cjs');
+const BASE = process.argv[2] || process.env.TMALL_SMOKE_BASE;
 const PAGE = process.env.TMALL_SMOKE_PAGE || '/overview';
-const DEBUG_PORT = Number(process.env.TMALL_CDP_PORT || 9411);
-const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-
-function findChrome() {
-  const candidates = [
-    process.env.TMALL_CHROME,
-    'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
-    'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
-    path.join(os.homedir(), 'AppData', 'Local', 'Google', 'Chrome', 'Application', 'chrome.exe'),
-    '/usr/bin/google-chrome',
-    '/usr/bin/chromium',
-    '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
-  ].filter(Boolean);
-  return candidates.find((candidate) => {
-    try { return fs.statSync(candidate).isFile(); } catch { return false; }
-  }) || null;
-}
-
-function httpGet(pathname) {
-  return new Promise((resolve, reject) => {
-    http.get({ host: '127.0.0.1', port: DEBUG_PORT, path: pathname }, (res) => {
-      let data = '';
-      res.on('data', (chunk) => { data += chunk; });
-      res.on('end', () => resolve(data));
-    }).on('error', reject);
-  });
-}
+const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
 async function main() {
-  const chromePath = findChrome();
-  if (!chromePath) {
-    console.error('[SKIP] 未找到 Chrome，无法运行浏览器冒烟门禁。');
-    console.error('       设置 TMALL_CHROME 环境变量指向 chrome.exe 后重试。');
-    return 0;
-  }
-
-  const profileDir = path.join(os.tmpdir(), `tmall-smoke-picker-${process.pid}`);
-  const chrome = spawn(chromePath, [
-    `--remote-debugging-port=${DEBUG_PORT}`,
-    '--headless=new',
-    '--disable-gpu',
-    '--no-first-run',
-    '--no-default-browser-check',
-    '--window-size=1440,900',
-    `--user-data-dir=${profileDir}`,
-    'about:blank',
-  ], { stdio: 'ignore' });
-
+  const owned = await launchGateChrome(BASE);
+  const httpGet = owned.httpGet;
+  try {
   let socketUrl = null;
   for (let attempt = 0; attempt < 80; attempt += 1) {
     try {
@@ -92,11 +43,11 @@ async function main() {
   }
   if (!socketUrl) {
     console.error('[FAIL] 无法连接 Chrome DevTools Protocol。');
-    chrome.kill();
+    await owned.close();
     return 1;
   }
 
-  const socket = new WebSocket(socketUrl);
+  const socket = new WebSocket(safeSocketUrl(socketUrl, owned.port));
   let messageId = 0;
   const pending = new Map();
   const exceptions = [];
@@ -187,7 +138,23 @@ async function main() {
         // 而"在视口内 / 可命中"这些断言当时仍然全部通过。
         const anchorBtn = document.querySelector('[data-inline-grain="${grain.key}"]');
         const ar = anchorBtn ? anchorBtn.getBoundingClientRect() : null;
-        const anchoredBelow = Boolean(ar) && Math.abs(rect.left - ar.left) <= 24 && rect.top >= ar.bottom - 4;
+        // The shared popover legitimately shifts left at the viewport edge.
+        // Require the visible anchor and the exact clamped overlay position,
+        // not an arbitrary distance from its unclamped left coordinate.
+        const overlayRect = overlay.getBoundingClientRect();
+        const expectedLeft = ar ? Math.min(Math.max(8, ar.left), Math.max(8, document.documentElement.clientWidth - overlayRect.width - 8)) : null;
+        const vw = document.documentElement.clientWidth, vh = document.documentElement.clientHeight;
+        const anchorStyle = anchorBtn ? getComputedStyle(anchorBtn) : null;
+        const finiteBox = (box) => box && ['left','top','right','bottom','width','height'].every((key) => Number.isFinite(box[key]));
+        const inside = (box) => finiteBox(box) && box.width > 0 && box.height > 0 && box.left >= -1 && box.top >= -1 && box.right <= vw + 1 && box.bottom <= vh + 1;
+        const anchoredBelow = finiteBox(ar) && ar.width > 0 && ar.height > 0
+          && ar.right > 0 && ar.bottom > 0 && ar.left < vw && ar.top < vh
+          && anchorStyle.visibility === 'visible' && anchorStyle.display !== 'none' && Number(anchorStyle.opacity) > 0
+          && inside(overlayRect) && inside(rect)
+          && Math.abs(overlayRect.left - expectedLeft) <= 1
+          && overlayRect.top >= ar.bottom - 1 && overlayRect.top <= ar.bottom + 10
+          && rect.left >= overlayRect.left && rect.right <= overlayRect.right
+          && rect.top >= overlayRect.top && rect.bottom <= overlayRect.bottom;
         return {
           title: picker.querySelector('.demo-picker__header strong')?.textContent || '',
           backdropPosition: overlayPosition,
@@ -233,8 +200,10 @@ async function main() {
       const rect = picker.getBoundingClientRect();
       return {
         title: picker.querySelector('.demo-picker__header strong')?.textContent || '',
-        hasStart: Boolean(picker.querySelector('[data-picker-start]')),
-        hasEnd: Boolean(picker.querySelector('[data-picker-end]')),
+        months: picker.querySelectorAll('.demo-picker__month').length,
+        readoutInHeader: Boolean(picker.querySelector('.demo-picker__header .demo-picker__range-readout')),
+        navInMonthHead: picker.querySelectorAll('.demo-picker__month-head-row [data-picker-action]').length,
+        redundantInputs: picker.querySelectorAll('[data-picker-start], [data-picker-end]').length,
         hasApply: Boolean(picker.querySelector('[data-picker-action="custom-apply"]')),
         hasCancel: Boolean(picker.querySelector('[data-picker-action="close"]')),
         inViewport: rect.top >= 0 && rect.top < window.innerHeight,
@@ -244,7 +213,12 @@ async function main() {
       check(false, 'custom: 打开弹窗', custom.error);
     } else {
       check(custom.title === '自定义日期范围', 'custom: 弹窗标题正确', custom.title);
-      check(custom.hasStart && custom.hasEnd, 'custom: 含起止日期输入');
+      check(custom.months === 2, 'custom: 双月并排日历', `月份面板数=${custom.months}`);
+      // 信息密度：同一个区间此前被显示三遍（输入框行 + 独立读数行 + 日历高亮）。
+      // 这两条锁住「去冗余」的决定，防止有人把输入行/独立读数行加回来。
+      check(custom.readoutInHeader, 'custom: 区间读数只在标题行一处');
+      check(custom.redundantInputs === 0, 'custom: 不再有冗余的起止日期输入行', `仍存在 ${custom.redundantInputs} 个输入框`);
+      check(custom.navInMonthHead >= 2, 'custom: 翻页按钮并入月份标题行', `${custom.navInMonthHead} 个`);
       check(custom.hasApply && custom.hasCancel, 'custom: 含应用与取消');
       check(custom.inViewport, 'custom: 弹窗在视口内');
     }
@@ -302,6 +276,84 @@ async function main() {
       );
     }
 
+    // 自定义弹窗是双月并排日历：点两下定区间、悬停预览、点「应用」才落库。
+    // 这一段必须断言"应用之后范围真的变了"，否则「点得动但没生效」的 bug 会再次溜过去。
+    const customOutcome = await evaluate(`(async () => {
+      const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+      const before = window.TmallDateRange.getState();
+      document.querySelector('[data-inline-custom]').click();
+      await sleep(450);
+      const picker = document.querySelector('.demo-picker--custom');
+      if (!picker) return { error: '自定义弹窗未打开' };
+      const months = picker.querySelectorAll('.demo-picker__month');
+      if (months.length !== 2) return { error: '未渲染双月并排日历（月份面板数=' + months.length + '）' };
+      const enabled = Array.from(picker.querySelectorAll('[data-picker-date]:not([disabled])'))
+        .map((btn) => btn.dataset.pickerDate).sort();
+      if (enabled.length < 2) return { error: '可点日期不足（' + enabled.length + ' 个）' };
+      const a = enabled[Math.min(4, enabled.length - 1)];
+      const b = enabled[Math.min(19, enabled.length - 1)];
+      const lo = a <= b ? a : b;
+      const hi = a <= b ? b : a;
+      const cell = (value) => picker.querySelector('[data-picker-date="' + value + '"]');
+      // 闪烁回归门禁：交互期间骨架节点必须原地复用。
+      // 改前每点一下/悬停一格都重写 body.innerHTML，原生 <input type="date"> 连同
+      // 42 个日期格被销毁重建，浏览器重新挂载控件，视觉上就是「点一下闪一下」。
+      const applyProbe = picker.querySelector('[data-picker-action="custom-apply"]');
+      if (!applyProbe) return { error: '缺少应用按钮' };
+      applyProbe.dataset.smokeProbe = 'stable';
+      cell(lo).click();
+      await sleep(150);
+      // 悬停预览：定好起点后扫过终点，读数应当先变，但全局范围此时必须还没动。
+      cell(hi).dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
+      await sleep(150);
+      // 悬停是高频路径：扫过多个格子后节点仍须是同一个，否则就是整块重建。
+      const enabledCells = Array.from(picker.querySelectorAll('[data-picker-date]:not([disabled])'));
+      enabledCells.slice(0, 6).forEach((btn) => btn.dispatchEvent(new MouseEvent('mouseover', { bubbles: true })));
+      await sleep(120);
+      const skeletonReused = picker.querySelector('[data-picker-action="custom-apply"]')?.dataset.smokeProbe === 'stable'
+        && picker.querySelectorAll('.demo-picker__month').length === 2;
+      // 扫完之后把预览重新指回终点，下面读数断言仍按 lo~hi 校验。
+      cell(hi).dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
+      await sleep(120);
+      const preview = picker.querySelector('.demo-picker__range-readout')?.textContent?.trim() || '';
+      const midState = window.TmallDateRange.getState();
+      const leaked = midState.startDate !== before.startDate || midState.endDate !== before.endDate;
+      cell(hi).click();
+      await sleep(150);
+      const applyBtn = picker.querySelector('[data-picker-action="custom-apply"]');
+      if (!applyBtn) return { error: '缺少应用按钮' };
+      applyBtn.click();
+      await sleep(450);
+      const after = window.TmallDateRange.getState();
+      return {
+        before: { startDate: before.startDate, endDate: before.endDate },
+        after: { startDate: after.startDate, endDate: after.endDate },
+        lo, hi, preview, leaked, skeletonReused,
+        stillOpen: Boolean(document.querySelector('.demo-picker--custom')),
+      };
+    })()`);
+    if (customOutcome?.error) {
+      check(false, '自定义: 双月日历选区间后应用生效', customOutcome.error);
+    } else {
+      check(!customOutcome.leaked, '自定义: 点「应用」前不得改动全局范围', `预览期间已变为 ${customOutcome.after.startDate}~${customOutcome.after.endDate}`);
+      check(
+        customOutcome.skeletonReused,
+        '自定义: 悬停/点击原地更新骨架（不重建 DOM，无闪烁）',
+        '交互后开始日期输入框被替换或双月面板数量异常，说明整块重写了 innerHTML',
+      );
+      check(
+        customOutcome.preview.includes(customOutcome.lo) && customOutcome.preview.includes(customOutcome.hi),
+        '自定义: 悬停预览显示待选区间',
+        `读数="${customOutcome.preview}" 期望含 ${customOutcome.lo} 与 ${customOutcome.hi}`,
+      );
+      check(
+        customOutcome.after.startDate === customOutcome.lo && customOutcome.after.endDate === customOutcome.hi,
+        `自定义: 应用后落到所选区间 ${customOutcome.lo}~${customOutcome.hi}`,
+        `实际 ${customOutcome.after.startDate}~${customOutcome.after.endDate}`,
+      );
+      check(!customOutcome.stillOpen, '自定义: 应用后弹窗关闭');
+    }
+
     // 初始状态必须是合法日期，不能是 NaN（空数据源时曾出现 NaN-NaN-NaN）
     const initialValid = await evaluate(`(() => {
       const s = window.TmallDateRange.getState();
@@ -313,7 +365,7 @@ async function main() {
     console.error('[FAIL]', error.message);
   } finally {
     socket.close();
-    chrome.kill();
+    await owned.close();
     await sleep(300);
   }
 
@@ -325,6 +377,7 @@ async function main() {
   }
   console.log('[OK] 时间选择器冒烟门禁通过：弹窗可见可点、高亮唯一、无异常。');
   return 0;
+  } finally { await owned.close(); }
 }
 
 function grainLabel(key) {

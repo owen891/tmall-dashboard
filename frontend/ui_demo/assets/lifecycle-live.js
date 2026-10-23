@@ -193,6 +193,10 @@
     if (Number(entry.continuous_valid_days || 0) > 0) return 2;
     return 3;
   };
+  const replaceTableBody = (target, columns, rows, emptyMessage) => {
+    if (!target || !window.TmallUI?.table?.mount) return;
+    window.TmallUI.table.mount(target, { columns, rows, emptyMessage });
+  };
   function visibleAssessments() {
     const query = $('[data-lifecycle-assessment-search]')?.value.trim().toLowerCase() || '';
     const stage = $('[data-lifecycle-assessment-stage]')?.value || '';
@@ -225,12 +229,6 @@
     evidence.append(primary, secondary);
     return evidence;
   }
-  function appendAssessmentCell(row, content, className = '') {
-    const cell = document.createElement('td');
-    if (className) cell.className = className;
-    if (content instanceof Node) cell.appendChild(content); else cell.textContent = content;
-    row.appendChild(cell);
-  }
   function renderAssessments() {
     const body = $('[data-lifecycle-assessments]');
     if (!body) return;
@@ -238,9 +236,8 @@
     const totalPages = Math.max(1, Math.ceil(records.length / assessmentPageSize));
     assessmentPage = Math.min(assessmentPage, totalPages);
     const pageRows = records.slice((assessmentPage - 1) * assessmentPageSize, assessmentPage * assessmentPageSize);
-    body.replaceChildren();
-    pageRows.forEach((entry) => {
-      const row = document.createElement('tr');
+    const columns = [
+      { key: 'identity', label: '商品', render: (_, entry) => {
       const identity = document.createElement('div');
       identity.className = 'lifecycle-assessment-product';
       const title = document.createElement('strong');
@@ -248,27 +245,54 @@
       title.title = title.textContent;
       const productId = document.createElement('span');
       productId.textContent = `ID ${DemoLabels.clean(entry.product_id, '--')}`;
-      identity.append(title, productId);
-      appendAssessmentCell(row, identity);
-      appendAssessmentCell(row, entry.stage_label || assessmentLabel(entry.stage));
-      appendAssessmentCell(row, DemoLabels.label('confidence', entry.confidence, '低'));
-      appendAssessmentCell(row, entry.seasonal_label || seasonalLabel(entry.seasonal_attribute));
-      appendAssessmentCell(row, assessmentEvidence(entry));
+      const identityRow = document.createElement('div');
+      identityRow.className = 'lifecycle-assessment-product__row';
+      if (entry.image_url) {
+        const image = document.createElement('img');
+        image.src = entry.image_url;
+        image.alt = '';
+        image.loading = 'lazy';
+        image.addEventListener('error', () => image.remove(), { once: true });
+        identityRow.appendChild(image);
+      }
+      const identityMeta = document.createElement('div');
+      identityMeta.className = 'lifecycle-assessment-product__meta';
+      identityMeta.append(title, productId);
+      identityRow.appendChild(identityMeta);
+      identity.appendChild(identityRow);
+        return identity;
+      } },
+      { key: 'stage', label: '阶段', render: (_, entry) => entry.stage_label || assessmentLabel(entry.stage) },
+      { key: 'confidence', label: '置信度', render: (_, entry) => DemoLabels.label('confidence', entry.confidence, '低') },
+      { key: 'seasonal', label: '季节属性', render: (_, entry) => entry.seasonal_label || seasonalLabel(entry.seasonal_attribute) },
+      { key: 'evidence', label: '判断依据', render: (_, entry) => assessmentEvidence(entry) },
+      { key: 'action', label: '操作', render: (_, entry) => {
       const action = document.createElement('button');
       action.type = 'button';
       action.className = 'ui-button ui-button--ghost';
       action.textContent = entry.locked ? '查看调整' : '调整';
-      action.disabled = Object.keys(assessmentPayload.capabilities || {}).length > 0 && !DemoApi.can(assessmentPayload, 'can_edit_stage');
+      // 行级动作看行级能力：capabilities.can_edit_stage 是整批数据的集合级结论，
+      // 「有一行不足 60 天」就会把它置 false，从而把数据充足的行也一起锁死。
+      // 逐行判定在 capabilities.rows[product_id]；后端未下发时退回集合级，
+      // 保持原有保守行为。
+      const rowCaps = assessmentPayload.capabilities?.rows || {};
+      const rowCap = rowCaps[String(entry.product_id)];
+      const hasRowCaps = Object.keys(rowCaps).length > 0;
+      action.disabled = hasRowCaps
+        ? rowCap ? !rowCap.can_edit_stage : true
+        : Object.keys(assessmentPayload.capabilities || {}).length > 0 && !DemoApi.can(assessmentPayload, 'can_edit_stage');
+      if (action.disabled) {
+        // 125 处 disabled 赋值里几乎都不解释原因，用户只看到灰按钮。
+        // 至少给出可用性说明，说明是「数据不足」而不是「系统坏了」。
+        action.title = rowCap && !rowCap.can_edit_stage
+          ? `连续有效数据 ${rowCap.continuous_valid_days ?? 0} 天，不足 60 天，暂不能调整阶段`
+          : '当前数据不足，暂不能调整阶段';
+      }
       action.addEventListener('click', () => openAssessmentEditor(entry));
-      appendAssessmentCell(row, action);
-      body.appendChild(row);
-    });
-    if (!pageRows.length) {
-      const row = body.insertRow();
-      const cell = row.insertCell();
-      cell.colSpan = 6;
-      cell.textContent = assessments.length ? '没有匹配的生命周期评估' : '暂无生命周期评估';
-    }
+        return action;
+      } },
+    ];
+    replaceTableBody(body, columns, pageRows, assessments.length ? '没有匹配的生命周期评估' : '暂无生命周期评估');
     $('[data-lifecycle-assessment-count]').textContent = records.length ? `共 ${count(records.length)} 条，第 ${assessmentPage} / ${totalPages} 页` : '无匹配结果';
     $('[data-lifecycle-assessment-prev]').disabled = assessmentPage <= 1;
     $('[data-lifecycle-assessment-next]').disabled = assessmentPage >= totalPages;
@@ -341,7 +365,7 @@
   }
 
   function tierClass(tier) {
-    return ({ '利润款': 'ui-badge--success', '引流款': 'ui-badge--info', '爆款': 'ui-badge--warning', '形象款': 'ui-badge--purple' })[tier] || 'ui-badge--muted';
+    return ({ '利润款': 'ui-badge--success', '引流款': 'ui-badge--info', '爆款': 'ui-badge--warning', '形象款': 'ui-badge--purple', '潜力款': 'ui-badge--brand', '动销款': 'ui-badge--muted', '零成交': 'ui-badge--danger' })[tier] || 'ui-badge--muted';
   }
 
   function renderCards() {
@@ -368,7 +392,7 @@
       const trend = growth === null ? '无环比' : `${growth >= 0 ? '上升' : '下降'} ${percent(Math.abs(growth))}`;
       // 4-3：环比极性走 MetricPolarity（销售额越高越好；±5% 以内视为持平，沿用原阈值）。
       const trendClass = growth === null ? '' : MetricPolarity.deltaClass('gsv', growth, { deadBand: 0.05 });
-      card.innerHTML = `<span class="lifecycle-card__header">${image}<span><span class="lifecycle-card__title" title="${escapeHtml(record.title || '未命名商品')}">${escapeHtml(record.title || '未命名商品')}</span><span class="lifecycle-card__meta"><span class="ui-badge ${tierClass(record.tier)}">${escapeHtml(DemoLabels.classification('tiers', record.tier, '未分层'))}</span><span class="ui-badge ui-badge--muted">${escapeHtml(DemoLabels.classification('styles', record.style, '未分类'))}</span></span></span></span><span class="lifecycle-card__stats"><span class="lifecycle-card__stat"><strong>${money(sum(rows, 'gsv'))}</strong><span>累计销售额</span></span><span class="lifecycle-card__stat"><strong>${count(rows.length)}</strong><span>活跃月数</span></span><span class="lifecycle-card__stat"><strong class="lifecycle-card__trend ${trendClass === 'is-flat' ? '' : trendClass}">${trend}</strong><span>最近月环比</span></span></span>`;
+      card.innerHTML = `<span class="lifecycle-card__header">${image}<span><span class="lifecycle-card__title" title="${escapeHtml(record.title || '未命名商品')}">${escapeHtml(record.title || '未命名商品')}</span><span class="lifecycle-card__id">${escapeHtml(record.product_id || '--')}</span><span class="lifecycle-card__meta"><span class="ui-badge ${tierClass(record.tier)}">${escapeHtml(DemoLabels.classification('tiers', record.tier, '未分层'))}</span><span class="ui-badge ui-badge--muted">${escapeHtml(DemoLabels.classification('styles', record.style, '未分类'))}</span></span></span></span><span class="lifecycle-card__stats"><span class="lifecycle-card__stat"><strong>${money(sum(rows, 'gsv'))}</strong><span>累计销售额</span></span><span class="lifecycle-card__stat"><strong>${count(rows.length)}</strong><span>活跃月数</span></span><span class="lifecycle-card__stat"><strong class="lifecycle-card__trend ${trendClass === 'is-flat' ? '' : trendClass}">${trend}</strong><span>最近月环比</span></span></span>`;
       if (thumbnailUrl) {
         const image = document.createElement('img');
         image.className = 'product-thumb';
@@ -679,26 +703,20 @@
   }
 
   function renderDetailTable(rows) {
-    const head = $('[data-lifecycle-detail-head]');
-    const body = $('[data-lifecycle-detail-body]');
-    if (!head || !body) return;
+    const container = $('[data-lifecycle-detail-table]');
+    if (!container) return;
     const columns = normalizeLifecycleDetailFields(state.detailFields).map((key) => lifecycleDetailColumnMap.get(key)).filter(Boolean);
-    head.replaceChildren();
-    columns.forEach((column) => {
-      const cell = document.createElement('th');
-      cell.textContent = column.label;
-      if (column.numeric) cell.className = 'num';
-      head.appendChild(cell);
-    });
-    body.replaceChildren();
-    rows.forEach((item) => {
-      const row = body.insertRow();
-      columns.forEach((column) => {
-        const cell = row.insertCell();
-        cell.textContent = column.value(item);
-        if (column.numeric) cell.className = 'num';
-      });
-    });
+    container.replaceChildren(TmallUI.table({
+      columns: columns.map((column) => ({
+        key: column.key,
+        label: column.label,
+        numeric: column.numeric,
+        render: (_value, item) => column.value(item),
+      })),
+      rows,
+      tableClass: 'ui-data-table lifecycle-detail-table',
+      emptyMessage: '暂无月度明细',
+    }));
   }
 
   function renderEfficiencyChart(rows) {

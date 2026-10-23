@@ -696,28 +696,95 @@
   // ------------------------------------------------------- 业绩全景 / 目标
   // 周期内分解表（月复盘=月内分周，周复盘=期内按日），来自用户月复盘框架：
   // 品类汇总的销售/利润指标要有周维度表格方便对比。
+  // 列选择原则：能支撑「这天/这周为什么涨跌」的指标才上表，纯派生冗余项不上，
+  // 否则 10+ 列后横向对比反而看不出差异。客单价/加购率/新客占比/投产是复盘
+  // 判断「量还是价、拉新还是复购、投放效率」的四把尺子，必须保留。
   const BREAKDOWN_COLUMNS = [
     ['net_sales', '净销售额', 'money'],
     ['profit', '利润', 'money'],
     ['visitors', '访客', 'number'],
     ['conversion', '转化率', 'percent'],
+    ['aov', '客单价', 'money'],
+    ['cart_rate', '加购率', 'percent'],
+    ['new_buyer_share', '新客占比', 'percent'],
+    ['roi', '投产', 'decimal'],
     ['ad_spend', '推广花费', 'money'],
     ['ad_ratio', '费比', 'percent'],
   ];
+  // 涨跌配色方向：这些指标「越低越好」，其余越高越好。与后端 METRIC_DEFS 的
+  // lower_better 保持一致（费比/单次付费访客成本/退款类）。
+  const BREAKDOWN_LOWER_BETTER = new Set(['ad_ratio', 'net_expense_ratio', 'paid_cpc', 'refund_ratio', 'refund_amount']);
+
+  // 单元格「值 + 变化率次行」：不加宽列，纵向放一行小字。
+  // 变化率只在基线可比且有变化率时才渲染；基线缺该段数据时整格留白，
+  // 避免出现「-100%」这类伪事实，也避免满屏「不可比」噪声。
+  function metricDeltaSpan(key, delta, lowerBetter) {
+    if (!delta || delta.comparable === false) return null;
+    if (delta.change === null || delta.change === undefined) return null;
+    const good = window.MetricPolarity
+      ? window.MetricPolarity.isGood(key, delta.change, { lowerBetter })
+      : null;
+    const cls = good === null ? 'pr-cell-delta' : `pr-cell-delta ${good ? 'is-up' : 'is-down'}`;
+    const text = `${delta.change > 0 ? '+' : ''}${delta.change}%`;
+    return h('span', { class: cls, text });
+  }
+
+  // 一个单元格可同时带环比与同比两个变化率：单看环比会被周内节奏（周末/大促日）
+  // 误导，单看同比又会掩盖近期动作效果，两个基线并排才有判断力。
+  // delta 是两级结构 {mom: {指标: {...}}, yoy: {指标: {...}}}，两个槽位各自独立，
+  // 缺哪个就只少那一行。
+  function valueWithDelta(value, format, key, delta, lowerBetter) {
+    const main = value === null || value === undefined || Number.isNaN(Number(value))
+      ? '--'
+      : formatValue(value, format);
+    const spans = ['mom', 'yoy']
+      .map((slot) => metricDeltaSpan(key, delta && delta[slot] ? delta[slot][key] : null, lowerBetter))
+      .filter(Boolean);
+    if (!spans.length) return main;
+    return h('div', { class: 'pr-cell-stack' },
+      h('span', { class: 'pr-cell-value', text: main }),
+      h('div', { class: 'pr-cell-deltas' }, ...spans));
+  }
+
+  // 分解表的两个对比槽位标签与 KPI 卡同源（环比可能是「对比」自选周期）。
+  function breakdownDeltaLabels() {
+    const compare = (state.context && state.context.compare) || {};
+    const mom = compare.mode && compare.mode !== 'none'
+      ? (compare.short_label || '环比')
+      : null;
+    const yoy = compare.mode === 'yoy' ? null : '同比';
+    return { mom, yoy };
+  }
 
   function breakdownTable(breakdown) {
     if (!breakdown || !breakdown.rows || !breakdown.rows.length) return null;
-    const thead = h('thead', null, h('tr', null,
-      h('th', { text: breakdown.grain === 'week' ? '周' : '日期' }),
-      ...BREAKDOWN_COLUMNS.map(([key, label]) => h('th', { class: 'num', text: label }))));
-    const tbody = h('tbody', null, ...breakdown.rows.map((row) => h('tr', null,
-      h('td', { text: row.label }),
-      ...BREAKDOWN_COLUMNS.map(([key, , format]) => h('td', {
-        class: 'num',
-        text: safeMetric((row.metrics || {})[key], format),
-      })))));
-    return h('div', { class: 'pr-breakdown-table-wrap' },
-      h('table', { class: 'pr-table pr-breakdown-table' }, thead, tbody));
+    const labels = breakdownDeltaLabels();
+    const hasDelta = breakdown.rows.some((row) => row.delta && Object.keys(row.delta).length);
+    const columns = [
+      { key: 'label', label: breakdown.grain === 'week' ? '周' : '日期' },
+      ...BREAKDOWN_COLUMNS.map(([key, label, format]) => ({
+        key,
+        label,
+        numeric: true,
+        render: (value, row) => valueWithDelta(
+          value, format, key, row && row.delta ? row.delta : null,
+          BREAKDOWN_LOWER_BETTER.has(key)),
+      })),
+    ];
+    const rows = breakdown.rows.map((row) => ({ label: row.label, ...(row.metrics || {}), delta: row.delta }));
+    const table = window.TmallUI.table({
+      tableClass: 'pr-table pr-breakdown-table',
+      columns,
+      rows,
+    });
+    // 同比/环比默认同时给出：单看环比容易被周内节奏（周末/大促日）误导，
+    // 单看同比又会掩盖近期动作效果，两个基线并排才有判断力。
+    if (!hasDelta) return h('div', { class: 'pr-breakdown-table-wrap' }, table);
+    const legend = h('p', {
+      class: 'pr-table-legend',
+      text: `单元格下方小字：上=较${labels.mom || '上期'}、下=较${labels.yoy || '去年同期'}（变化率；基线缺该段数据时留白）。`,
+    });
+    return h('div', { class: 'pr-breakdown-table-wrap' }, table, legend);
   }
 
 
@@ -1116,31 +1183,33 @@
         text: '生成运营动作',
         onclick: () => openProductDiagnosis(row, (row.problem_sources || []).includes('下滑榜')),
       });
-      return h('tr', null,
-        h('td', { class: 'pr-table__title', title: row.title || row.product_id },
-          row.image_url ? h('img', { src: row.image_url, alt: '', loading: 'lazy' }) : null,
-          h('span', { class: 'pr-table__title-text', text: row.title || row.product_id })),
-        h('td', null, h('div', { class: 'pr-chip-row' }, ...sources)),
-        h('td', { class: 'num', text: safeMetric(row.gsv, 'money') }),
-        h('td', { class: 'num', text: share === null ? '--' : `${(share * 100).toFixed(1)}%` }),
-        h('td', { class: 'num', text: safeMetric(row.operating_profit, 'money') }),
-        h('td', { class: 'num', text: safeMetric(row.ad_spend, 'money') }),
-        h('td', { class: 'num', text: row.gsv && row.ad_spend ? safeMetric(row.ad_spend / row.gsv, 'percent') : '--' }),
-        h('td', { class: 'pr-table__action' }, actionBtn),
-      );
+      return {
+        ...row,
+        _sources: sources,
+        _share: share,
+        _action: actionBtn,
+      };
     });
-    const table = h('div', { class: 'pr-breakdown-table-wrap' }, h('table', { class: 'pr-table pr-breakdown-table' },
-      h('thead', null, h('tr', null,
-        h('th', { text: '商品' }),
-        h('th', { text: '问题来源' }),
-        h('th', { class: 'num', text: '销售额' }),
-        h('th', { class: 'num', text: '销售额占比' }),
-        h('th', { class: 'num', text: '经营利润' }),
-        h('th', { class: 'num', text: '推广花费' }),
-        h('th', { class: 'num', text: '费比' }),
-        h('th', { text: '操作' }),
-      )),
-      h('tbody', null, ...rows)));
+    const table = window.TmallUI.table({
+      tableClass: 'pr-table pr-breakdown-table',
+      columns: [
+        { key: 'title', label: '商品', className: 'pr-table__title', render: (value, item) => window.TmallUI.productIdentity({
+          title: value || item.product_id,
+          id: item.product_id,
+          imageUrl: item.image_url,
+          maxTitleChars: 8,
+          className: 'pr-table__identity',
+        }) },
+        { key: '_sources', label: '问题来源', render: (value) => h('div', { class: 'pr-chip-row' }, ...(value || [])) },
+        { key: 'gsv', label: '销售额', numeric: true, render: (value) => safeMetric(value, 'money') },
+        { key: '_share', label: '销售额占比', numeric: true, render: (value) => value === null ? '--' : `${(value * 100).toFixed(1)}%` },
+        { key: 'operating_profit', label: '经营利润', numeric: true, render: (value) => safeMetric(value, 'money') },
+        { key: 'ad_spend', label: '推广花费', numeric: true, render: (value) => safeMetric(value, 'money') },
+        { key: 'ad_ratio', label: '费比', numeric: true, render: (_value, item) => item.gsv && item.ad_spend ? safeMetric(item.ad_spend / item.gsv, 'percent') : '--' },
+        { key: '_action', label: '操作', className: 'pr-table__action', render: (value) => value },
+      ],
+      rows,
+    });
     // 宽表（8 列 + 长标题）包横向滚动，避免在两列网格的窄栏里被挤成竖排。
     const scroll = h('div', { class: 'pr-table-scroll' }, table);
     return analysisPanel('问题单品清单',
@@ -1165,7 +1234,7 @@
       && structure.identity && structure.identity.ok === false);
   }
 
-  /** 利润结构块（利润瀑布，对齐 BI 派米恒等口径）：
+  /** 利润结构块（利润瀑布，对齐 BI 恒等口径）：
    *  净销 → 销售费用/自定义费用/货本/发货/其他 → 利润，横向占比条 + 环比。
    *  费用缺失（补采哨兵）显示「缺失」不按 0；identity note 说明残差来源。
    */
@@ -1218,18 +1287,58 @@
     push('动销率', info.sell_through_rate === null || info.sell_through_rate === undefined ? '不可判断' : `${(info.sell_through_rate * 100).toFixed(2)}%`);
     push('60天新品动销', formatValue(info.new_sold_count, 'number'));
     const categoryStructure = (info.category_structure || []).filter((row) => row.net_sales !== null);
+    // 对齐列头、金额与占比；类目突出末级，完整路径支持键盘展开。
+    const summaryTable = (columns, rows) => h('div', { class: 'pr-table-scroll' }, window.TmallUI.table({
+      tableClass: 'pr-table',
+      columns,
+      rows,
+    }));
+    const numericColumn = (key, label, render) => ({
+      key, label, numeric: true, className: 'pr-table__nowrap', render,
+    });
+    const categoryName = (category) => {
+      const full = category || '未分类';
+      const parts = full.split(/[>＞]/).map((part) => part.trim()).filter(Boolean);
+      const leaf = parts[parts.length - 1] || full;
+      return parts.length > 1
+        ? h('details', null,
+          h('summary', { style: 'cursor:pointer;overflow-wrap:anywhere', text: leaf }),
+          h('p', { class: 'pr-material__hint', style: 'overflow-wrap:anywhere', text: full }))
+        : h('span', { style: 'overflow-wrap:anywhere', text: full });
+    };
     const structureBody = categoryStructure.length
-      ? h('ul', { class: 'pr-linked-list' }, ...categoryStructure.map((row) => h('li', { class: 'pr-linked-item' },
-        h('span', { class: 'pr-table__title-text', title: row.category, text: row.category || '未分类' }),
-        h('span', { class: 'num', text: `${formatValue(row.net_sales, 'money')}${row.share === null || row.share === undefined ? '' : ` · ${(row.share * 100).toFixed(1)}%`}` }))))
+      ? summaryTable([
+        { key: 'category', label: '类目（展开完整路径）', render: (value) => categoryName(value) },
+        numericColumn('net_sales', '净销售额', (value) => formatValue(value, 'money')),
+        numericColumn('share', '占比', dimensionPercent),
+      ], categoryStructure)
       : null;
-    // 产品分层汇总（XMind「产品分层」）：引流/利润/动销，完整矩阵在 products 页。
-    // 提示口径粒度=本复盘周期，避免与矩阵页（完整自然月）数字对不上被误解。
+    // 分层沿用销售额口径；类目沿用净销售额口径，不混用分母。
     const segments = (info.segment_stats || []).filter((row) => row.count);
     const segmentsBody = segments.length
-      ? h('ul', { class: 'pr-linked-list' }, ...segments.map((row) => h('li', { class: 'pr-linked-item' },
-        h('span', { text: `${row.segment} · ${row.count} 款` }),
-        h('span', { class: 'num', text: `销售额 ${formatValue(row.gsv, 'money')}${row.gsv_share === null || row.gsv_share === undefined ? '' : ` · ${(row.gsv_share * 100).toFixed(1)}%`}` }))))
+      ? summaryTable([
+        { key: 'segment', label: '分层' },
+        numericColumn('count', '款数', (value) => formatValue(value, 'number')),
+        numericColumn('gsv', '销售额', (value) => formatValue(value, 'money')),
+        numericColumn('gsv_share', '占比', dimensionPercent),
+      ], segments)
+      : null;
+    const lifecycle = info.lifecycle_distribution;
+    const lifecycleMoney = (value) => value === null || value === undefined ? '--' : formatValue(value, 'money');
+    const lifecycleBody = lifecycle && lifecycle.available
+      ? ((lifecycle.items || []).length ? summaryTable([
+        { key: 'stage_label', label: '当前阶段', render: (value, row) => h('details', null,
+          h('summary', { text: `${value} · 查看 ${row.count} 款` }),
+          h('p', { class: 'pr-material__hint', text: `人工调整 ${row.manual_count} 款 · 已锁定 ${row.locked_count} 款` }),
+          summaryTable([
+            { key: 'title', label: '商品', render: (title, product) => h('span', { text: `${title}（${product.product_id}）` }) },
+            numericColumn('net_sales', '本期净销售额', lifecycleMoney),
+            { key: 'locked', label: '阶段来源', render: (_value, product) => product.locked ? '人工锁定' : product.manual_stage ? '人工调整' : row.stage === 'unassessed' ? '未评估' : '系统评估' },
+          ], row.products || [])) },
+        numericColumn('count', '款数', (value) => formatValue(value, 'number')),
+        numericColumn('net_sales', '本期净销售额', lifecycleMoney),
+        numericColumn('share', '占比', dimensionPercent),
+      ], lifecycle.items) : h('p', { class: 'pr-material__empty', text: '本期暂无可汇总的商品。' }))
       : null;
     return analysisPanel('货品汇总',
       '先看规模、分层和类目结构；完整矩阵保留在商品专页。',
@@ -1237,6 +1346,9 @@
         materialBlock('货品规模', h('div', { class: 'pr-target' }, ...items)),
         segmentsBody ? materialBlock('产品分层（本期）', segmentsBody) : null,
         structureBody ? materialBlock('净销售额结构 TOP5', structureBody) : materialBlock('净销售额结构 TOP5', null, '本期没有类目可归的数据。'),
+        materialBlock('生命周期分布（当前阶段）', lifecycleBody,
+          (lifecycle && lifecycle.error) || '生命周期数据尚未接入或暂不可用。',
+          (lifecycle && lifecycle.note) || '本期净销售额 × 当前生命周期阶段，非历史快照。'),
         profitStructureBlock(profitStructure),
       ), null);
   }
@@ -1258,27 +1370,21 @@
       ['new_buyer_share', '新客成交占比', (item) => dimensionPercent(item.new_buyer_share)],
     ];
     const extraCols = type === 'channel' ? channelCols : [];
-    const cells = (item, keys) => keys.map(([, , render]) => h('td', { class: 'num', text: render(item) }));
-    return h('div', { class: 'pr-breakdown-table-wrap' }, h('table', { class: 'pr-table pr-breakdown-table' },
-      h('thead', null, h('tr', null,
-        h('th', { text: nameLabel }), h('th', { class: 'num', text: '花费' }),
-        ...extraCols.slice(0, 1).map(([, label]) => h('th', { class: 'num', text: label })),
-        h('th', { class: 'num', text: '归因成交' }), h('th', { class: 'num', text: 'ROI' }),
-        ...extraCols.slice(1).map(([, label]) => h('th', { class: 'num', text: label })),
-        h('th', { class: 'num', text: '点击率' }), h('th', { class: 'num', text: '成交变化' }),
-      )),
-      h('tbody', null, ...items.map((item) => h('tr', null,
-        h('td', { title: item.name, text: item.name }),
-        h('td', { class: 'num', text: formatValue(item.ad_spend, 'money') }),
-        ...cells(item, extraCols.slice(0, 1)),
-        h('td', { class: 'num', text: formatValue(item.attributed_payment, 'money') }),
-        h('td', { class: 'num', text: formatValue(item.roi, 'decimal') }),
-        ...cells(item, extraCols.slice(1)),
-        h('td', { class: 'num', text: dimensionPercent(item.ctr) }),
-        h('td', { class: 'num', text: item.payment_change_rate === null || item.payment_change_rate === undefined
-          ? '--' : `${item.payment_change_rate > 0 ? '+' : ''}${(item.payment_change_rate * 100).toFixed(1)}%` }),
-      ))),
-    ));
+    const extraColumn = ([key, label, render]) => ({ key, label, numeric: true, render: (_value, item) => render(item) });
+    return h('div', { class: 'pr-breakdown-table-wrap' }, window.TmallUI.table({
+      tableClass: 'pr-table pr-breakdown-table',
+      columns: [
+        { key: 'name', label: nameLabel, render: (value) => h('span', { title: value, text: value }) },
+        { key: 'ad_spend', label: '花费', numeric: true, render: (value) => formatValue(value, 'money') },
+        ...extraCols.slice(0, 1).map(extraColumn),
+        { key: 'attributed_payment', label: '归因成交', numeric: true, render: (value) => formatValue(value, 'money') },
+        { key: 'roi', label: 'ROI', numeric: true, render: (value) => formatValue(value, 'decimal') },
+        ...extraCols.slice(1).map(extraColumn),
+        { key: 'ctr', label: '点击率', numeric: true, render: dimensionPercent },
+        { key: 'payment_change_rate', label: '成交变化', numeric: true, render: (value) => value == null ? '--' : `${value > 0 ? '+' : ''}${(value * 100).toFixed(1)}%` },
+      ],
+      rows: items,
+    }));
   }
 
   // -------------------------------------------- 推广计划 → 商品归因表
@@ -1289,32 +1395,26 @@
     const items = (attr && attr.items) || [];
     if (!items.length) return null;
     const share = attr.exact_share;
-    const head = h('tr', null,
-      h('th', { text: '计划' }), h('th', { text: '渠道' }),
-      h('th', { class: 'num', text: '花费' }), h('th', { class: 'num', text: '归因成交' }),
-      h('th', { class: 'num', text: 'ROI' }), h('th', { class: 'num', text: '商品数' }),
-      h('th', { text: '归因' }), h('th', { text: '归因商品' }));
-    const rows = items.map((item) => {
-      const exact = item.attribution === 'exact';
-      return h('tr', null,
-        h('td', { class: 'pr-table__title', title: item.name, text: item.name }),
-        h('td', { text: item.channel || '--' }),
-        h('td', { class: 'num', text: formatValue(item.ad_spend, 'money') }),
-        h('td', { class: 'num', text: formatValue(item.attributed_payment, 'money') }),
-        h('td', { class: 'num', text: formatValue(item.roi, 'decimal') }),
-        h('td', { class: 'num', text: item.product_count == null ? '--' : String(item.product_count) }),
-        h('td', null, h('span', {
-          class: `pr-chip is-${exact ? 'info' : 'warning'}`,
-          text: exact ? '精确' : '多商品',
-        })),
-        h('td', { class: 'pr-table__title', title: item.product_title || '', text: item.product_title || (exact ? '' : '不拆分') }));
-    });
     const note = (attr.attribution_note || '')
       + (share == null ? '' : ` 本期可精确归因的计划花费占比 ${(share * 100).toFixed(1)}%。`);
     return materialBlock('推广计划拆解（计划 → 商品归因）',
-      h('div', { class: 'pr-breakdown-table-wrap' },
-        h('table', { class: 'pr-table pr-breakdown-table' },
-          h('thead', null, head), h('tbody', null, ...rows))),
+      h('div', { class: 'pr-breakdown-table-wrap' }, window.TmallUI.table({
+        tableClass: 'pr-table pr-breakdown-table',
+        columns: [
+          { key: 'name', label: '计划', className: 'pr-table__title', render: (value) => h('span', { title: value, text: value }) },
+          { key: 'channel', label: '渠道', render: (value) => value || '--' },
+          { key: 'ad_spend', label: '花费', numeric: true, render: (value) => formatValue(value, 'money') },
+          { key: 'attributed_payment', label: '归因成交', numeric: true, render: (value) => formatValue(value, 'money') },
+          { key: 'roi', label: 'ROI', numeric: true, render: (value) => formatValue(value, 'decimal') },
+          { key: 'product_count', label: '商品数', numeric: true, render: (value) => value == null ? '--' : String(value) },
+          { key: 'attribution', label: '归因', render: (value) => {
+            const exact = value === 'exact';
+            return h('span', { class: `pr-chip is-${exact ? 'info' : 'warning'}`, text: exact ? '精确' : '多商品' });
+          } },
+          { key: 'product_title', label: '归因商品', className: 'pr-table__title', render: (value, item) => h('span', { title: value || '', text: value || (item.attribution === 'exact' ? '' : '不拆分') }) },
+        ],
+        rows: items,
+      })),
       null, note);
   }
 
@@ -1326,31 +1426,29 @@
     // 不对比时「环比」列必然是空的，整列隐藏比留一列 -- 更诚实
     // （否则读者会以为环比数据坏了，而不是「当前未开启对比」）。
     const showCompare = !(options && options.compareAvailable === false);
-    const headCells = [h('th', { text: '来源' }), h('th', { class: 'num', text: '访客' }),
-      h('th', { class: 'num', text: '占比' })];
-    if (showCompare) headCells.push(h('th', { class: 'num', text: '环比' }));
-    const rows = traffic.items.map((item) => {
-      const cells = [h('td', { text: labels[item.key] || item.key }),
-        h('td', { class: 'num', text: formatCompact(item.value) }),
-        h('td', { class: 'num', text: dimensionPercent(item.share_of_visitors) })];
-      if (showCompare) {
-        cells.push(h('td', { class: 'num', text: item.change_rate === null || item.change_rate === undefined
-          ? '--' : `${item.change_rate > 0 ? '+' : ''}${(item.change_rate * 100).toFixed(1)}%` }));
-      }
-      return h('tr', null, ...cells);
-    });
+    const rows = traffic.items.map((item) => ({ ...item, label: labels[item.key] || item.key }));
     // 未归类来源残差行：让「占比」列能合计到 100%，不被误读成四行即全量。
     if (traffic.unclassified) {
-      const cells = [h('td', { class: 'pr-table__muted', text: '未归类来源' }),
-        h('td', { class: 'num', text: formatCompact(traffic.unclassified.value) }),
-        h('td', { class: 'num', text: dimensionPercent(traffic.unclassified.share_of_visitors) })];
-      if (showCompare) cells.push(h('td', { class: 'num', text: '--' }));
-      rows.push(h('tr', { class: 'pr-table__row--muted' }, ...cells));
+      rows.push({
+        label: '未归类来源',
+        value: traffic.unclassified.value,
+        share_of_visitors: traffic.unclassified.share_of_visitors,
+        change_rate: null,
+        isMuted: true,
+      });
     }
-    return h('div', { class: 'pr-breakdown-table-wrap' }, h('table', { class: 'pr-table pr-breakdown-table' },
-      h('thead', null, h('tr', null, ...headCells)),
-      h('tbody', null, ...rows),
-    ));
+    const columns = [
+      { key: 'label', label: '来源', className: 'pr-table__muted', render: (value, row) => row.isMuted ? h('span', { class: 'pr-table__muted', text: value }) : value },
+      { key: 'value', label: '访客', numeric: true, render: formatCompact },
+      { key: 'share_of_visitors', label: '占比', numeric: true, render: dimensionPercent },
+    ];
+    if (showCompare) columns.push({ key: 'change_rate', label: '环比', numeric: true, render: (value, row) => row.isMuted || value == null ? '--' : `${value > 0 ? '+' : ''}${(value * 100).toFixed(1)}%` });
+    return h('div', { class: 'pr-breakdown-table-wrap' }, window.TmallUI.table({
+      tableClass: 'pr-table pr-breakdown-table',
+      rowClassName: (row) => row.isMuted ? 'pr-table__row--muted' : '',
+      columns,
+      rows,
+    }));
   }
 
   // ------------------------------------------------- 广告单品 TOP 消耗表
@@ -1522,8 +1620,7 @@
       maxByColumn[col.key] = Math.max(...rows.map((row) => Math.abs((row.metrics[col.key] || {}).value || 0)), 0.0001);
     });
 
-    const thead = h('thead', null, renderMatrixHeader(columns));
-    const tbody = h('tbody', null, ...rows.map((row) => {
+    const renderRow = (row) => {
       const tr = h('tr', { class: `pr-matrix-row ${matrixStatusClass(row.status)}` });
       tr.append(h('td', { class: 'pr-matrix-cell--period' }, renderPeriodCellLabel(row.label)));
       tr.append(h('td', { class: 'pr-matrix-cell--status' }, h('span', { class: `pr-status-tag ${matrixStatusClass(row.status).replace('is-', '')}` }, matrixStatusLabel(row.status))));
@@ -1531,9 +1628,24 @@
         tr.append(renderMatrixCell(row.metrics[col.key], maxByColumn[col.key], col.key));
       });
       return tr;
-    }));
+    };
     // 17 列宽表包横向滚动：窄栏里不挤压列，溢出交由滚动条。
-    return h('div', { class: 'pr-table-scroll' }, h('table', { class: 'pr-matrix-table' }, thead, tbody));
+    return h('div', { class: 'pr-table-scroll' }, window.TmallUI.table({
+      tableClass: 'pr-matrix-table',
+      columns: [
+        { key: 'label', label: '周期', headerClassName: 'pr-matrix-cell--period' },
+        { key: 'status', label: '状态', headerClassName: 'pr-matrix-cell--status' },
+        ...columns.map((col) => ({
+          key: col.key,
+          label: col.label,
+          numeric: true,
+          headerClassName: 'pr-matrix-cell--metric',
+          renderHeader: () => h('span', { title: col.label, text: col.label }),
+        })),
+      ],
+      rows,
+      renderRow,
+    }));
   }
 
   // 加载失败时的面板：给出具体原因 + 就地重试按钮，
@@ -1591,14 +1703,7 @@
       maxByColumn[col.key] = Math.max(...catRows.map((row) => Math.abs((row.metrics[col.key] || {}).value || 0)), 0.0001);
     });
 
-    const thead = h('thead', null,
-      h('tr', null,
-        h('th', { class: 'pr-matrix-cell--category' }, '所属类目'),
-        h('th', { class: 'pr-matrix-cell--status' }, '状态'),
-        ...columns.map((col) => h('th', { class: 'pr-matrix-cell--metric', title: col.label }, col.label)),
-      ),
-    );
-    const tbody = h('tbody', null, ...catRows.map((row) => {
+    const renderRow = (row) => {
       const tr = h('tr', { class: `pr-matrix-row ${matrixStatusClass(row.status)}` });
       tr.append(h('td', { class: 'pr-matrix-cell--category' }, row.category));
       tr.append(h('td', { class: 'pr-matrix-cell--status' }, h('span', { class: `pr-status-tag ${matrixStatusClass(row.status).replace('is-', '')}` }, matrixStatusLabel(row.status))));
@@ -1606,8 +1711,23 @@
         tr.append(renderMatrixCell(row.metrics[col.key], maxByColumn[col.key], col.key));
       });
       return tr;
+    };
+    const table = h('div', { class: 'pr-table-scroll' }, window.TmallUI.table({
+      tableClass: 'pr-matrix-table',
+      columns: [
+        { key: 'category', label: '所属类目', headerClassName: 'pr-matrix-cell--category' },
+        { key: 'status', label: '状态', headerClassName: 'pr-matrix-cell--status' },
+        ...columns.map((col) => ({
+          key: col.key,
+          label: col.label,
+          numeric: true,
+          headerClassName: 'pr-matrix-cell--metric',
+          renderHeader: () => h('span', { title: col.label, text: col.label }),
+        })),
+      ],
+      rows: catRows,
+      renderRow,
     }));
-    const table = h('div', { class: 'pr-table-scroll' }, h('table', { class: 'pr-matrix-table' }, thead, tbody));
     els.categoryBreakdown.replaceChildren(
       analysisPanel('类目拆解', `${breakdown.period.label} · 按 products.category 聚合；无数据的指标列会自动隐藏。`, table, '暂无类目数据。'),
     );
@@ -2044,7 +2164,17 @@
   // 背景：拆因工作区撤销后明细并入六段，六段证据合计约 7200px，默认展开会把
   // 写作区推到 12 屏外（docs/PERIOD_REVIEW_REDESIGN_20261002.md 的 P2 数据抽屉）。
   // 非模态（无遮罩）——左侧写作区仍可读，不做焦点陷阱；Esc / 点外部 / 关闭按钮收起。
-  const drawerEl = document.querySelector('[data-pr-drawer]');
+  let drawerEl = document.querySelector('[data-pr-drawer]');
+  // Desktop: retain the evidence nodes and controls, but use the native modal
+  // top layer for centered placement, background inertness and keyboard focus.
+  if (drawerEl && window.matchMedia('(min-width: 960px)').matches) {
+    const centered = document.createElement('dialog');
+    [...drawerEl.attributes].forEach((attribute) => centered.setAttribute(attribute.name, attribute.value));
+    centered.setAttribute('aria-modal', 'true');
+    centered.append(...drawerEl.childNodes);
+    drawerEl.replaceWith(centered);
+    drawerEl = centered;
+  }
   let drawerReturnFocus = null;
   const isDrawerOpen = () => Boolean(drawerEl && drawerEl.classList.contains('is-open'));
 
@@ -2062,6 +2192,7 @@
     }
     drawerReturnFocus = document.activeElement;
     drawerEl.classList.add('is-open');
+    if (drawerEl instanceof HTMLDialogElement && !drawerEl.open) drawerEl.showModal();
     document.body.classList.add('pr-drawer-open');
     if (sectionKey) window.setTimeout(() => scrollDrawerTo(sectionKey), 80);
     drawerEl.querySelector('[data-pr-drawer-close]')?.focus({ preventScroll: true });
@@ -2070,6 +2201,7 @@
   function closeDiagnosisDrawer() {
     if (!isDrawerOpen()) return;
     drawerEl.classList.remove('is-open');
+    if (drawerEl instanceof HTMLDialogElement && drawerEl.open) drawerEl.close();
     document.body.classList.remove('pr-drawer-open');
     const restore = drawerReturnFocus;
     drawerReturnFocus = null;
@@ -2129,6 +2261,10 @@
 
   function bindDiagnosisDrawer() {
     if (!drawerEl) return;
+    if (drawerEl instanceof HTMLDialogElement) {
+      drawerEl.addEventListener('cancel', (event) => { event.preventDefault(); closeDiagnosisDrawer(); });
+      drawerEl.addEventListener('close', closeDiagnosisDrawer);
+    }
     drawerEl.querySelector('[data-pr-drawer-close]')?.addEventListener('click', closeDiagnosisDrawer);
     // Esc：弹窗（字段设置 / 动作 / 趋势）打开时优先让弹窗处理，不抢关闭。
     document.addEventListener('keydown', (event) => {
@@ -2331,6 +2467,7 @@
 
   function renderMarket(market) {
     const wrap = h('div', { class: 'pr-materials' });
+    const renderTable = (columns, rows) => window.TmallUI.table({ columns, rows, tableClass: 'pr-table' });
     if (!market || !market.available) {
       wrap.append(materialBlock('市场批次', null, '尚未导入市场分析批次（市场分析页导入后可自动汇总）。'));
       return wrap;
@@ -2358,36 +2495,26 @@
     let hasMonitor = false;
 
     if (market.market_signals && market.market_signals.length) {
-      const tr = h('tr', null,
-        h('th', { text: '类目' }), h('th', { class: 'num', text: '样本天数' }),
-        h('th', { class: 'num', text: '平均UV' }), h('th', { class: 'num', text: '平均支付买家' }),
-        h('th', { class: 'num', text: 'UV变化' }), h('th', { class: 'num', text: '支付买家变化' }));
-      const body = market.market_signals.map((row) => h('tr', null,
-        h('td', { text: row.category || '--' }),
-        h('td', { class: 'num', text: String(row.sample_days ?? '--') }),
-        h('td', { class: 'num', text: formatCompact(row.avg_uv) }),
-        h('td', { class: 'num', text: formatCompact(row.avg_pay_buyer_count) }),
-        h('td', { class: 'num', text: signedPercent(row.avg_uv_change_rate === null || row.avg_uv_change_rate === undefined ? null : row.avg_uv_change_rate * 100) }),
-        h('td', { class: 'num', text: signedPercent(row.avg_pay_buyer_change_rate === null || row.avg_pay_buyer_change_rate === undefined ? null : row.avg_pay_buyer_change_rate * 100) }),
-      ));
-      monitorPair.append(materialBlock('市场事实：商品榜监控', h('table', { class: 'pr-table' }, h('thead', null, tr), h('tbody', null, ...body))));
+      monitorPair.append(materialBlock('市场事实：商品榜监控', renderTable([
+        { key: 'category', label: '类目', render: (value) => value || '--' },
+        { key: 'sample_days', label: '样本天数', numeric: true, render: (value) => String(value ?? '--') },
+        { key: 'avg_uv', label: '平均UV', numeric: true, render: formatCompact },
+        { key: 'avg_pay_buyer_count', label: '平均支付买家', numeric: true, render: formatCompact },
+        { key: 'avg_uv_change_rate', label: 'UV变化', numeric: true, render: (value) => signedPercent(value == null ? null : value * 100) },
+        { key: 'avg_pay_buyer_change_rate', label: '支付买家变化', numeric: true, render: (value) => signedPercent(value == null ? null : value * 100) },
+      ], market.market_signals)));
       hasMonitor = true;
     }
 
     if (market.keyword_signals && market.keyword_signals.length) {
-      const tr = h('tr', null,
-        h('th', { text: '关键词' }), h('th', { class: 'num', text: '平均搜索热度' }),
-        h('th', { class: 'num', text: '支付率' }), h('th', { class: 'num', text: '点击率' }),
-        h('th', { class: 'num', text: '热度变化' }), h('th', { text: '信号' }));
-      const body = market.keyword_signals.slice(0, 12).map((row) => h('tr', null,
-        h('td', { text: row.keyword || '--' }),
-        h('td', { class: 'num', text: formatCompact(row.avg_search_heat) }),
-        h('td', { class: 'num', text: row.avg_pay_rate === null || row.avg_pay_rate === undefined ? '--' : `${(Number(row.avg_pay_rate) * 100).toFixed(2)}%` }),
-        h('td', { class: 'num', text: row.avg_click_rate === null || row.avg_click_rate === undefined ? '--' : `${(Number(row.avg_click_rate) * 100).toFixed(2)}%` }),
-        h('td', { class: 'num', text: signedPercent(row.search_heat_change_rate === null || row.search_heat_change_rate === undefined ? null : row.search_heat_change_rate * 100) }),
-        h('td', null, stateTag(row.status === 'demand_up' ? '需求上升' : row.status === 'demand_down' ? '需求下降' : row.status === 'efficiency_up' ? '支付率改善' : row.status === 'efficiency_down' ? '支付率下降' : '稳定', row.status === 'demand_up' || row.status === 'efficiency_up' ? 'good' : row.status === 'demand_down' || row.status === 'efficiency_down' ? 'warning' : 'info')),
-      ));
-      monitorPair.append(materialBlock('需求信号：搜索词监控', h('table', { class: 'pr-table' }, h('thead', null, tr), h('tbody', null, ...body))));
+      monitorPair.append(materialBlock('需求信号：搜索词监控', renderTable([
+        { key: 'keyword', label: '关键词', render: (value) => value || '--' },
+        { key: 'avg_search_heat', label: '平均搜索热度', numeric: true, render: formatCompact },
+        { key: 'avg_pay_rate', label: '支付率', numeric: true, render: (value) => value == null ? '--' : `${(Number(value) * 100).toFixed(2)}%` },
+        { key: 'avg_click_rate', label: '点击率', numeric: true, render: (value) => value == null ? '--' : `${(Number(value) * 100).toFixed(2)}%` },
+        { key: 'search_heat_change_rate', label: '热度变化', numeric: true, render: (value) => signedPercent(value == null ? null : value * 100) },
+        { key: 'status', label: '信号', render: (value) => stateTag(value === 'demand_up' ? '需求上升' : value === 'demand_down' ? '需求下降' : value === 'efficiency_up' ? '支付率改善' : value === 'efficiency_down' ? '支付率下降' : '稳定', value === 'demand_up' || value === 'efficiency_up' ? 'good' : value === 'demand_down' || value === 'efficiency_down' ? 'warning' : 'info') },
+      ], market.keyword_signals.slice(0, 12))));
       hasMonitor = true;
     }
 
@@ -2403,19 +2530,14 @@
     }
 
     if (market.categories && market.categories.length) {
-      const tr = h('tr', null,
-        h('th', { text: '类目' }), h('th', { class: 'num', text: '买家数' }),
-        h('th', { class: 'num', text: '上升' }), h('th', { class: 'num', text: '下降' }),
-        h('th', { class: 'num', text: '新进' }), h('th', { class: 'num', text: 'TOP10 集中度' }));
-      const body = market.categories.map((row) => h('tr', null,
-        h('td', { text: row.category || '--' }),
-        h('td', { class: 'num', text: formatCompact(row.total_buyers) }),
-        h('td', { class: 'num', text: String(row.trend_up ?? '--') }),
-        h('td', { class: 'num', text: String(row.trend_down ?? '--') }),
-        h('td', { class: 'num', text: String(row.trend_new ?? '--') }),
-        h('td', { class: 'num', text: row.concentration_top10 === null || row.concentration_top10 === undefined ? '--' : `${Number(row.concentration_top10).toFixed(1)}%` }),
-      ));
-      wrap.append(materialBlock('类目趋势', h('table', { class: 'pr-table' }, h('thead', null, tr), h('tbody', null, ...body))));
+      wrap.append(materialBlock('类目趋势', renderTable([
+        { key: 'category', label: '类目', render: (value) => value || '--' },
+        { key: 'total_buyers', label: '买家数', numeric: true, render: formatCompact },
+        { key: 'trend_up', label: '上升', numeric: true, render: (value) => String(value ?? '--') },
+        { key: 'trend_down', label: '下降', numeric: true, render: (value) => String(value ?? '--') },
+        { key: 'trend_new', label: '新进', numeric: true, render: (value) => String(value ?? '--') },
+        { key: 'concentration_top10', label: 'TOP10 集中度', numeric: true, render: (value) => value == null ? '--' : `${Number(value).toFixed(1)}%` },
+      ], market.categories)));
     }
 
     if (market.categories && market.categories.length) {
@@ -2468,17 +2590,15 @@
       wrap.append(materialBlock('竞店动态', h('table', { class: 'pr-table' }, h('thead', null, tr), h('tbody', null, ...body.flat()))));
     }
     if (market.competitor_items && market.competitor_items.length) {
-      const tr = h('tr', null, h('th', { text: '竞品商品' }), h('th', { class: 'num', text: '市场排名' }), h('th', { class: 'num', text: '排名变化' }), h('th', { class: 'num', text: '支付买家' }), h('th', { class: 'num', text: 'UV' }), h('th', { class: 'num', text: '支付买家变化' }), h('th', { text: '状态' }));
-      const body = market.competitor_items.map((row) => h('tr', null,
-        h('td', { text: `${row.priority || (row.comparison_basis ? 'P2' : '待验证')} · ${row.title || row.item_id || '--'}` }),
-        h('td', { class: 'num', text: row.market_rank === null || row.market_rank === undefined ? '--' : `第${row.market_rank}名` }),
-        h('td', { class: 'num', text: row.market_rank_change === null || row.market_rank_change === undefined ? '--' : `${row.market_rank_change > 0 ? '+' : ''}${row.market_rank_change}` }),
-        h('td', { class: 'num', text: formatCompact(row.pay_buyer_count) }),
-        h('td', { class: 'num', text: formatCompact(row.uv) }),
-        h('td', { class: 'num', text: row.pay_buyer_change_rate === null || row.pay_buyer_change_rate === undefined ? '--' : `${row.pay_buyer_change_rate > 0 ? '+' : ''}${(row.pay_buyer_change_rate * 100).toFixed(1)}%` }),
-        h('td', null, stateTag(row.status === 'rising' ? '上升' : row.status === 'falling' ? '下滑' : row.status === 'insufficient_coverage' ? '覆盖不足' : '稳定', row.status === 'rising' ? 'warning' : row.status === 'falling' ? 'good' : 'info')),
-      ));
-      wrap.append(materialBlock('竞品商品对标', h('table', { class: 'pr-table' }, h('thead', null, tr), h('tbody', null, ...body))));
+      wrap.append(materialBlock('竞品商品对标', renderTable([
+        { key: 'title', label: '竞品商品', render: (value, row) => `${row.priority || (row.comparison_basis ? 'P2' : '待验证')} · ${value || row.item_id || '--'}` },
+        { key: 'market_rank', label: '市场排名', numeric: true, render: (value) => value == null ? '--' : `第${value}名` },
+        { key: 'market_rank_change', label: '排名变化', numeric: true, render: (value) => value == null ? '--' : `${value > 0 ? '+' : ''}${value}` },
+        { key: 'pay_buyer_count', label: '支付买家', numeric: true, render: formatCompact },
+        { key: 'uv', label: 'UV', numeric: true, render: formatCompact },
+        { key: 'pay_buyer_change_rate', label: '支付买家变化', numeric: true, render: (value) => value == null ? '--' : `${value > 0 ? '+' : ''}${(value * 100).toFixed(1)}%` },
+        { key: 'status', label: '状态', render: (value) => stateTag(value === 'rising' ? '上升' : value === 'falling' ? '下滑' : value === 'insufficient_coverage' ? '覆盖不足' : '稳定', value === 'rising' ? 'warning' : value === 'falling' ? 'good' : 'info') },
+      ], market.competitor_items)));
     }
     if (market.competitor_items && market.competitor_items.length) {
       const priorityCounts = market.competitor_items.reduce((counts, row) => {
@@ -2494,19 +2614,14 @@
     // 这里只负责呈现，绝不重算 —— 否则两页会漂移出两套结论。
     const insights = market.keyword_insights || {};
     if (insights.categories && insights.categories.length) {
-      const tr = h('tr', null,
-        h('th', { text: '归类' }), h('th', { class: 'num', text: '词数' }),
-        h('th', { class: 'num', text: '搜索热度' }), h('th', { class: 'num', text: '热度占比' }),
-        h('th', { text: 'TOP 词根' }));
-      const body = insights.categories.map((row) => h('tr', null,
-        h('td', { text: row.label || '--' }),
-        h('td', { class: 'num', text: String(row.keyword_count ?? '--') }),
-        h('td', { class: 'num', text: formatCompact(row.search_heat) }),
-        h('td', { class: 'num', text: row.heat_share === null || row.heat_share === undefined ? '--' : `${(row.heat_share * 100).toFixed(1)}%` }),
-        h('td', { text: (row.top_keywords || []).map((item) => item.keyword).join('、') || '--' }),
-      ));
       wrap.append(materialBlock('关键词洞察 · 8 大归类',
-        h('table', { class: 'pr-table' }, h('thead', null, tr), h('tbody', null, ...body)),
+        renderTable([
+          { key: 'label', label: '归类', render: (value) => value || '--' },
+          { key: 'keyword_count', label: '词数', numeric: true, render: (value) => String(value ?? '--') },
+          { key: 'search_heat', label: '搜索热度', numeric: true, render: formatCompact },
+          { key: 'heat_share', label: '热度占比', numeric: true, render: (value) => value == null ? '--' : `${(value * 100).toFixed(1)}%` },
+          { key: 'top_keywords', label: 'TOP 词根', render: (value) => (value || []).map((item) => item.keyword).join('、') || '--' },
+        ], insights.categories),
         null,
         insights.window
           ? `窗口 ${insights.window.start} ~ ${insights.window.end}（${insights.window.day_count} 天）· 共 ${insights.unique_keyword_count || 0} 个搜索词；按规则词典先命中先归类，未命中记「其他」。`
@@ -2518,19 +2633,17 @@
       const nodeRows = [];
       (trendNodes.rising || []).slice(0, 6).forEach((row) => nodeRows.push(['起势', row]));
       (trendNodes.cooling || []).slice(0, 6).forEach((row) => nodeRows.push(['退势', row]));
-      const tr = h('tr', null, h('th', { text: '方向' }), h('th', { text: '搜索词' }), h('th', { text: '归类' }),
-        h('th', { class: 'num', text: '近 7 天热度' }), h('th', { class: 'num', text: '基线日均' }), h('th', { class: 'num', text: '增速' }));
-      const body = nodeRows.map(([direction, row]) => h('tr', null,
-        h('td', null, stateTag(direction, direction === '起势' ? 'good' : 'warning')),
-        h('td', { text: row.keyword || '--' }),
-        h('td', { text: row.category_label || '--' }),
-        h('td', { class: 'num', text: formatCompact(row.recent_heat) }),
-        h('td', { class: 'num', text: formatCompact(row.baseline_heat) }),
-        h('td', { class: 'num', text: signedPercent(row.growth === null || row.growth === undefined ? null : row.growth * 100) }),
-      ));
+      const tableRows = nodeRows.map(([direction, row]) => ({ direction, ...row }));
       const threshold = Number(trendNodes.threshold ?? 0.5) * 100;
       wrap.append(materialBlock('趋势节点分析',
-        h('table', { class: 'pr-table' }, h('thead', null, tr), h('tbody', null, ...body)),
+        renderTable([
+          { key: 'direction', label: '方向', render: (value) => stateTag(value, value === '起势' ? 'good' : 'warning') },
+          { key: 'keyword', label: '搜索词', render: (value) => value || '--' },
+          { key: 'category_label', label: '归类', render: (value) => value || '--' },
+          { key: 'recent_heat', label: '近 7 天热度', numeric: true, render: formatCompact },
+          { key: 'baseline_heat', label: '基线日均', numeric: true, render: formatCompact },
+          { key: 'growth', label: '增速', numeric: true, render: (value) => signedPercent(value == null ? null : value * 100) },
+        ], tableRows),
         null,
         `近 7 天日均热度 vs 前置基线（至多 23 天），增速 ≥ ${threshold.toFixed(0)}% 判起势 / ≤ -${threshold.toFixed(0)}% 判退势。`));
     } else if (market.grading && market.grading.trend_node_available === false) {
@@ -2539,23 +2652,19 @@
 
     const supply = market.blue_ocean_supply || {};
     if (supply.words && supply.words.length) {
-      const tr = h('tr', null, h('th', { text: '词根' }), h('th', { text: '代表搜索词' }),
-        h('th', { class: 'num', text: '日均热度' }), h('th', { class: 'num', text: '在榜覆盖' }),
-        h('th', { class: 'num', text: '每万覆盖' }), h('th', { text: '分级' }));
-      const body = supply.words.map((row) => h('tr', null,
-        h('td', { text: row.keyword || '--' }),
-        h('td', { text: row.keyword_full || '--' }),
-        h('td', { class: 'num', text: formatCompact(row.search_heat) }),
-        h('td', { class: 'num', text: `${row.cover_count ?? '--'} 品` }),
-        h('td', { class: 'num', text: row.cover_per_10k === null || row.cover_per_10k === undefined ? '--' : String(row.cover_per_10k) }),
-        h('td', null, stateTag(row.grade || '--', BLUE_OCEAN_GRADE_KIND[row.grade] || 'info')),
-      ));
       const hintParts = [];
       if (supply.word_scope) hintParts.push(`${supply.word_scope}；`);
       hintParts.push('每万覆盖 = 在榜覆盖 ÷ (日均热度 / 万)：<5 高潜蓝海、5-10 中等、>10 供给偏多。');
       if (supply.pending_count) hintParts.push(`覆盖为 0 的 ${supply.pending_count} 个词根记「待核」—— 0 不代表供给稀缺，也可能只是词根与标题用词不一致，需人工核。`);
       wrap.append(materialBlock('蓝海市场 · 低供给词根',
-        h('table', { class: 'pr-table' }, h('thead', null, tr), h('tbody', null, ...body)),
+        renderTable([
+          { key: 'keyword', label: '词根', render: (value) => value || '--' },
+          { key: 'keyword_full', label: '代表搜索词', render: (value) => value || '--' },
+          { key: 'search_heat', label: '日均热度', numeric: true, render: formatCompact },
+          { key: 'cover_count', label: '在榜覆盖', numeric: true, render: (value) => `${value ?? '--'} 品` },
+          { key: 'cover_per_10k', label: '每万覆盖', numeric: true, render: (value) => value == null ? '--' : String(value) },
+          { key: 'grade', label: '分级', render: (value) => stateTag(value || '--', BLUE_OCEAN_GRADE_KIND[value] || 'info') },
+        ], supply.words),
         null, hintParts.join('')));
     }
 
@@ -2564,40 +2673,33 @@
       const itemRows = [];
       (trendItems.rising || []).slice(0, 6).forEach((row) => itemRows.push(['上升', row]));
       (trendItems.new_items || []).slice(0, 6).forEach((row) => itemRows.push(['新进榜', row]));
-      const tr = h('tr', null, h('th', { text: '类型' }), h('th', { text: '商品' }), h('th', { text: '店铺' }),
-        h('th', { class: 'num', text: '排名变化' }), h('th', { class: 'num', text: 'UV' }), h('th', { class: 'num', text: '支付买家' }));
-      const body = itemRows.map(([kind, row]) => h('tr', null,
-        h('td', null, stateTag(kind, kind === '上升' ? 'good' : 'info')),
-        h('td', { text: row.title || row.item_id || '--' }),
-        h('td', { text: row.shop_name || '--' }),
-        h('td', { class: 'num', text: kind === '新进榜' ? `第 ${row.rank ?? '--'} 名` : `${row.first_rank} → ${row.last_rank}` }),
-        h('td', { class: 'num', text: formatCompact(row.uv) }),
-        h('td', { class: 'num', text: formatCompact(row.pay_buyer_count) }),
-      ));
+      const tableRows = itemRows.map(([kind, row]) => ({ kind, ...row }));
       const window = trendItems.window || {};
       wrap.append(materialBlock('商品排行 · 趋势市场',
-        h('table', { class: 'pr-table' }, h('thead', null, tr), h('tbody', null, ...body)),
+        renderTable([
+          { key: 'kind', label: '类型', render: (value) => stateTag(value, value === '上升' ? 'good' : 'info') },
+          { key: 'title', label: '商品', render: (value, row) => value || row.item_id || '--' },
+          { key: 'shop_name', label: '店铺', render: (value) => value || '--' },
+          { key: 'rank', label: '排名变化', numeric: true, render: (value, row) => row.kind === '新进榜' ? `第 ${value ?? '--'} 名` : `${row.first_rank} → ${row.last_rank}` },
+          { key: 'uv', label: 'UV', numeric: true, render: formatCompact },
+          { key: 'pay_buyer_count', label: '支付买家', numeric: true, render: formatCompact },
+        ], tableRows),
         null,
         `窗口 ${window.start || '--'} ~ ${window.end || '--'}（${window.day_count || 0} 天）首尾排名对比：上升 ${trendItems.rising_total || 0} 个 / 新进榜 ${trendItems.new_total || 0} 个（在榜 ${trendItems.item_count || 0} 个商品）。`));
     }
 
     const moves = market.rival_moves || {};
     if (moves.shops && moves.shops.length) {
-      const tr = h('tr', null, h('th', { text: '竞店' }), h('th', { class: 'num', text: '在榜商品' }),
-        h('th', { class: 'num', text: '上升' }), h('th', { class: 'num', text: '下降' }),
-        h('th', { class: 'num', text: '新进榜' }), h('th', { class: 'num', text: '退出' }),
-        h('th', { text: '变动最大' }));
-      const body = moves.shops.map((row) => h('tr', null,
-        h('td', { text: row.shop_name || '--' }),
-        h('td', { class: 'num', text: String(row.item_count ?? '--') }),
-        h('td', { class: 'num', text: String(row.rising_count ?? '--') }),
-        h('td', { class: 'num', text: String(row.falling_count ?? '--') }),
-        h('td', { class: 'num', text: String(row.new_count ?? '--') }),
-        h('td', { class: 'num', text: String(row.exit_count ?? '--') }),
-        h('td', { text: (row.movers || []).slice(0, 2).map((item) => `${item.title}(${item.rank_change > 0 ? '+' : ''}${item.rank_change})`).join('；') || '--' }),
-      ));
       wrap.append(materialBlock('竞店爆品排名变化',
-        h('table', { class: 'pr-table' }, h('thead', null, tr), h('tbody', null, ...body)),
+        renderTable([
+          { key: 'shop_name', label: '竞店', render: (value) => value || '--' },
+          { key: 'item_count', label: '在榜商品', numeric: true, render: (value) => String(value ?? '--') },
+          { key: 'rising_count', label: '上升', numeric: true, render: (value) => String(value ?? '--') },
+          { key: 'falling_count', label: '下降', numeric: true, render: (value) => String(value ?? '--') },
+          { key: 'new_count', label: '新进榜', numeric: true, render: (value) => String(value ?? '--') },
+          { key: 'exit_count', label: '退出', numeric: true, render: (value) => String(value ?? '--') },
+          { key: 'movers', label: '变动最大', render: (value) => (value || []).slice(0, 2).map((item) => `${item.title}(${item.rank_change > 0 ? '+' : ''}${item.rank_change})`).join('；') || '--' },
+        ], moves.shops),
         null,
         `窗口首尾排名对比；全市场共 ${moves.shop_count || 0} 家在榜，按变动活跃度取前 ${moves.shops.length} 家。`));
     }
@@ -2656,10 +2758,13 @@
     const channelTotals = ads.channel_totals;
     const scopeMissing = channelTotals && (channelTotals.missing_inputs || []).includes('promotion_category_scope');
     const channelPartial = channelTotals && channelTotals.partial;
+    const channelGroups = Array.isArray(channelTotals?.groups)
+      ? channelTotals.groups.filter((group) => group && typeof group === 'object')
+      : [];
     if (scopeMissing) {
       blocks.push(materialBlock('推广成交金额 · 渠道拆分', null,
         '渠道数据来自计划粒度，不带商品映射，无法按当前品类过滤；切回「全部品类」可查看全店渠道拆分。'));
-    } else if (channelTotals && channelTotals.groups && channelTotals.groups.length) {
+    } else if (channelGroups.length) {
       const shareText = (value) => (value === null || value === undefined ? '--' : `${(value * 100).toFixed(1)}%`);
       // 指标列对齐 XMind「渠道拆解」：花费占比/投产/直接投产/加购/拉新/新客占比。
       const cols = [
@@ -2673,21 +2778,25 @@
         ['new_cost', '拉新成本', (group) => formatValue(group.new_cost, 'money')],
         ['new_buyer_share', '新客成交占比', (group) => shareText(group.new_buyer_share)],
       ];
-      const table = h('div', { class: 'pr-breakdown-table-wrap' }, h('table', { class: 'pr-table pr-breakdown-table' },
-        h('thead', null, h('tr', null,
-          h('th', { text: '渠道' }),
-          h('th', { class: 'num', text: '花费' }),
-          ...cols.map(([, label]) => h('th', { class: 'num', text: label })),
-        )),
-        h('tbody', null, ...channelTotals.groups.map((group) => h('tr', null,
-          h('td', { text: group.name }),
-          h('td', { class: 'num', text: formatValue(group.ad_spend, 'money') }),
-          ...cols.map(([, , render]) => h('td', { class: 'num', text: render(group) })),
-        )))));
+      const table = h('div', { class: 'pr-breakdown-table-wrap' }, window.TmallUI.table({
+        tableClass: 'pr-table pr-breakdown-table',
+        columns: [
+          { key: 'name', label: '渠道' },
+          { key: 'ad_spend', label: '花费', numeric: true, render: (value) => formatValue(value, 'money') },
+          // TmallUI.table passes (cellValue, row); these legacy renderers use the row.
+          ...cols.map(([key, label, render]) => ({
+            key,
+            label,
+            numeric: true,
+            render: (_value, group) => group ? render(group) : '--',
+          })),
+        ],
+        rows: channelGroups,
+      }));
       // 按品类口径的全站推广只含「计划只绑 1 个商品」的精确归因部分（多商品计划无
       // 商品级明细）→ 成交占比不适用，必须说明，别让「--」被当成 0。
       const sourceNote = channelPartial
-        ? `按品类口径，覆盖 ${channelTotals.groups.map((g) => g.name).join(' / ')}；全站推广仅含「计划只绑 1 个商品」的精确归因部分，成交占比不适用（切「全部品类」看全店口径）。`
+          ? `按品类口径，覆盖 ${channelGroups.map((g) => g.name).join(' / ')}；全站推广仅含「计划只绑 1 个商品」的精确归因部分，成交占比不适用（切「全部品类」看全店口径）。`
         : channelTotals.source === 'campaign_month'
           ? '渠道行来自月度汇总（该周期没有日粒度渠道数据）。'
           : `渠道行覆盖 ${channelTotals.sample_days} 天日粒度数据。`;
@@ -2769,27 +2878,34 @@
       ['new_cost', '拉新成本', 'money'],
       ['cart_rate', '加购率', 'percent'],
     ];
-    return h('table', { class: 'pr-table' },
-      h('thead', null, h('tr', null, h('th', { text: '渠道' }),
-        ...cols.map(([, label]) => h('th', { class: 'num', text: label })),
-        h('th', { text: '来源' }))),
-      h('tbody', null, ...groups.map((name) => {
+    return window.TmallUI.table({
+      tableClass: 'pr-table',
+      columns: [
+        { key: 'name', label: '渠道' },
+        ...cols.map(([key, label, format]) => ({
+          key,
+          label,
+          numeric: true,
+          render: (value) => safeMetric(value, format),
+        })),
+        { key: 'source', label: '来源' },
+      ],
+      rows: groups.map((name) => {
         const totals = channels[name] || {};
         const source = (sources || {})[name];
-        return h('tr', null, h('td', { text: name }),
-          ...cols.map(([key, , format]) => h('td', { class: 'num', text: safeMetric(totals[key], format) })),
-          h('td', { text: CHANNEL_SOURCE_LABELS[source] || '--' }));
-      })));
+        return { name, ...totals, source: CHANNEL_SOURCE_LABELS[source] || '--' };
+      }),
+    });
   }
 
   // ---------------------------------------------- 本期汇总（基础数据/广告/流量）
   // XMind「品类汇总」首表：先把整体水平列全，再往下看归因与拆解。
   // 缺失列一律 -- 且不补 0，由 materialFor 的 hint 说明来源缺口。
-  function summaryTable(headers, rows) {
-    return h('div', { class: 'pr-breakdown-table-wrap' },
-      h('table', { class: 'pr-table pr-breakdown-table pr-summary-table' },
-        h('thead', null, h('tr', null, ...headers)),
-        h('tbody', null, ...rows)));
+  function summaryTable(columns, rows, rowClassName = '') {
+    return window.TmallUI.table({
+      columns, rows, wrapClass: 'pr-breakdown-table-wrap',
+      tableClass: 'pr-table pr-breakdown-table pr-summary-table', rowClassName,
+    });
   }
 
   function periodSummaryBlock(summary) {
@@ -2799,52 +2915,75 @@
     const wrap = h('div', { class: 'pr-summary' });
     // 密集汇总表用紧凑的 -- 表示缺失（原因由表下 hint 统一说明），
     // safeMetric 的默认「暂无数据」在这个宽度下会把表格撑爆。
-    const cell = (value, format) => h('td', {
-      class: 'num',
-      text: value === null || value === undefined || Number.isNaN(Number(value)) ? '--' : formatValue(value, format),
-    });
+    const cell = (value, format) => value === null || value === undefined || Number.isNaN(Number(value))
+      ? '--'
+      : formatValue(value, format);
 
     // 1) 基础数据：本期整体一行（成交/退款/净销售/退款率/访客/买家/转化/客单…）
-    const baseHead = [h('th', { text: '口径' }),
-      ...columns.map((col) => h('th', { class: 'num', text: col.label }))];
-    const baseRow = h('tr', null,
-      h('td', { text: `本期汇总（${summary.sample_days || 0}/${summary.period_days || '--'} 天）` }),
-      ...columns.map((col) => cell(base[col.key], col.format)));
+    //    同比/环比不再另开表格：在每格值下方加一行小字变化率，宽度不变、扫一眼
+    //    就能看出「这一列是涨还是跌」，不必在两张表之间来回对列。
+    const baseDelta = summary.base_delta || {};
+    const comparability = summary.base_comparability || {};
+    const momLabel = (comparability.mom && comparability.mom.comparable)
+      ? '较上期' : null;
+    const yoyLabel = (comparability.yoy && comparability.yoy.comparable)
+      ? '较去年同期' : null;
+    const baseTableColumns = [{ key: 'scope', label: '口径', rowHeader: true },
+      ...columns.map((col) => ({
+        key: col.key,
+        label: col.label,
+        numeric: true,
+        render: (value, row) => {
+          const main = cell(value, col.format);
+          const deltas = [];
+          [['mom', momLabel], ['yoy', yoyLabel]].forEach(([slot, label]) => {
+            const item = (baseDelta[slot] || {})[col.key];
+            if (!item || item.comparable === false) return;
+            if (item.change === null || item.change === undefined) return;
+            const good = window.MetricPolarity
+              ? window.MetricPolarity.isGood(col.key, item.change)
+              : null;
+            const cls = good === null ? 'pr-cell-delta' : `pr-cell-delta ${good ? 'is-up' : 'is-down'}`;
+            deltas.push(h('span', {
+              class: cls,
+              text: `${label} ${item.change > 0 ? '+' : ''}${item.change}%`,
+            }));
+          });
+          if (!deltas.length) return main;
+          return h('div', { class: 'pr-cell-stack' },
+            h('span', { class: 'pr-cell-value', text: main }),
+            h('div', { class: 'pr-cell-deltas' }, ...deltas));
+        },
+      }))];
+    const baseRow = [{ scope: `本期汇总（${summary.sample_days || 0}/${summary.period_days || '--'} 天）`, ...base }];
     wrap.append(h('div', { class: 'pr-summary__section' },
       h('p', { class: 'pr-summary__title', text: '基础数据' }),
-      summaryTable(baseHead, [baseRow])));
+      summaryTable(baseTableColumns, baseRow),
+      (momLabel || yoyLabel)
+        ? h('p', {
+          class: 'pr-table-legend',
+          text: `每格下方小字为变化率：${[momLabel, yoyLabel].filter(Boolean).join('、')}（基线缺该段数据时留白，不显示 0）。`,
+        })
+        : null));
 
     // 2) 广告汇总：按渠道看花费与投产（与广告段同一份 channel_totals）
     const adsChannels = summary.ads_channels || [];
     if (adsChannels.length) {
-      const adsHead = [h('th', { text: '渠道' }),
-        h('th', { class: 'num', text: '广告花费' }), h('th', { class: 'num', text: '总投产' }),
-        h('th', { class: 'num', text: '直接投产' }), h('th', { class: 'num', text: '拉新成本' }),
-        h('th', { class: 'num', text: '加购成本' })];
-      const adsRows = adsChannels.map((group) => h('tr', null,
-        h('td', { text: group.name || '--' }),
-        cell(group.ad_spend, 'money'),
-        cell(group.roi, 'decimal'),
-        cell(group.direct_roi, 'decimal'),
-        cell(group.new_cost, 'money'),
-        cell(group.cart_cost, 'money')));
+      const adsColumns = [
+        { key: 'name', label: '渠道', rowHeader: true },
+        ...[['ad_spend', '广告花费', 'money'], ['roi', '总投产', 'decimal'], ['direct_roi', '直接投产', 'decimal'], ['new_cost', '拉新成本', 'money'], ['cart_cost', '加购成本', 'money']]
+          .map(([key, label, format]) => ({ key, label, numeric: true, render: (value) => cell(value, format) })),
+      ];
+      const adsRows = adsChannels.map((group) => ({ name: group.name || '--', ...group }));
       // 渠道行只覆盖有计划级明细的推广，账单口径总花费通常更大。不把缺口摆出来，
       // 读者会把渠道加总当总花费、对不上账又无从解释。
       if (summary.ads_unattributed) {
-        adsRows.push(h('tr', { class: 'pr-table__row--muted' },
-          h('td', { class: 'pr-table__muted', text: '未归因' }),
-          cell(summary.ads_unattributed, 'money'),
-          h('td', { class: 'num', text: '--' }), h('td', { class: 'num', text: '--' }),
-          h('td', { class: 'num', text: '--' }), h('td', { class: 'num', text: '--' })));
-        adsRows.push(h('tr', { class: 'pr-summary__total' },
-          h('td', { text: '合计（账单口径）' }),
-          cell(summary.ads_total_spend, 'money'),
-          h('td', { class: 'num', text: '--' }), h('td', { class: 'num', text: '--' }),
-          h('td', { class: 'num', text: '--' }), h('td', { class: 'num', text: '--' })));
+        adsRows.push({ name: '未归因', ad_spend: summary.ads_unattributed, roi: null, direct_roi: null, new_cost: null, cart_cost: null, rowType: 'muted' });
+        adsRows.push({ name: '合计（账单口径）', ad_spend: summary.ads_total_spend, roi: null, direct_roi: null, new_cost: null, cart_cost: null, rowType: 'total' });
       }
       wrap.append(h('div', { class: 'pr-summary__section' },
         h('p', { class: 'pr-summary__title', text: '广告汇总（按渠道）' }),
-        summaryTable(adsHead, adsRows)));
+        summaryTable(adsColumns, adsRows, (row) => row.rowType === 'muted' ? 'pr-table__row--muted' : row.rowType === 'total' ? 'pr-summary__total' : '')));
     }
 
     // 3) 推广渠道汇总：按渠道看点击/成交/点击转化/点击成本。
@@ -2852,18 +2991,15 @@
     //    而非店铺访客，与基础数据的「转化率」不同源，列名必须区分开。
     const trafficChannels = summary.traffic_channels || [];
     if (trafficChannels.length) {
-      const trafficHead = [h('th', { text: '渠道' }),
-        h('th', { class: 'num', text: '点击量' }), h('th', { class: 'num', text: '成交买家数' }),
-        h('th', { class: 'num', text: '点击转化率' }), h('th', { class: 'num', text: '平均点击花费' })];
-      const trafficRows = trafficChannels.map((group) => h('tr', null,
-        h('td', { text: group.name || '--' }),
-        cell(group.clicks, 'number'),
-        cell(group.buyers, 'number'),
-        cell(group.conversion, 'percent'),
-        cell(group.cpc, 'money')));
+      const trafficColumns = [
+        { key: 'name', label: '渠道', rowHeader: true },
+        ...[['clicks', '点击量', 'number'], ['buyers', '成交买家数', 'number'], ['conversion', '点击转化率', 'percent'], ['cpc', '平均点击花费', 'money']]
+          .map(([key, label, format]) => ({ key, label, numeric: true, render: (value) => cell(value, format) })),
+      ];
+      const trafficRows = trafficChannels.map((group) => ({ name: group.name || '--', ...group }));
       wrap.append(h('div', { class: 'pr-summary__section' },
         h('p', { class: 'pr-summary__title', text: '推广渠道汇总' }),
-        summaryTable(trafficHead, trafficRows)));
+        summaryTable(trafficColumns, trafficRows)));
     }
 
     return wrap;
@@ -3074,11 +3210,25 @@
         const hint = (expected && observed !== undefined && observed < expected)
           ? `仅含 ${observed}/${expected} ${unit}${breakdown.grain !== 'week' && missing.length ? `，缺 ${missing.join('、')}` : ''}。`
           : null;
+        // 整列 `--` 必须给原因，否则读者会当成 0 或 bug。这里按「所有行该指标都为 null」
+        // 判定为源端缺列，只报一次，不逐格刷提示。
+        const rows = breakdown.rows || [];
+        const emptyCols = rows.length
+          ? BREAKDOWN_COLUMNS
+            .filter(([key]) => rows.every((row) => {
+              const metrics = row.metrics || {};
+              return metrics[key] === null || metrics[key] === undefined;
+            }))
+            .map(([, label]) => label)
+          : [];
+        const colHint = emptyCols.length
+          ? `缺失列：${emptyCols.join('、')}（BI 日快照未提供该字段，非 0）。`
+          : null;
         return materialBlock(
           breakdown.grain === 'week' ? '月内分周指标' : '期内按日指标',
           breakdownTable(breakdown),
           null,
-          hint,
+          [hint, colHint].filter(Boolean).join(' ') || null,
         );
       }
       case 'linked_summaries':
@@ -3312,7 +3462,7 @@
           h('button', {
             type: 'button',
             class: 'pr-evidence__open-drawer',
-            text: '在右侧展开 →',
+            text: '查看板块数据',
             onclick: (event) => {
               event.preventDefault(); // 别顺带把本段 details 也展开/收起
               openDiagnosisDrawer(section.key);
@@ -3482,7 +3632,7 @@
       // 品类选项拉取失败不应让整页不可用（例如后端仍是旧版本），退回系统品类继续。
       state.categories = [
         { value: 'all', label: '全部品类', enabled: true },
-        { value: 'sock', label: '标品袜子', enabled: true },
+        { value: 'sock', label: '默认品类', enabled: true },
       ];
     }
     if (!state.categories.length) return;
@@ -3493,7 +3643,7 @@
         value: String(item.value), text: String(item.label || item.value),
       })));
     }
-    // 存储的模式若已不可用，退回标品袜子而不是静默变成第一个选项。
+    // 存储的模式若已不可用，退回默认品类而不是静默变成第一个选项。
     const resolved = values.includes(current) ? current
       : (values.includes(CATEGORY_FALLBACK) ? CATEGORY_FALLBACK : values[0] || current);
     if (els.category) els.category.value = resolved;

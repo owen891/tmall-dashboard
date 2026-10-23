@@ -85,7 +85,17 @@ interface TmallUIComponentApi {
   panel: (options?: any) => HTMLElement;
   pageHeader: (options?: any) => HTMLElement;
   filterToolbar: (content?: any, actions?: any) => HTMLElement;
-  table: (options?: any) => HTMLElement;
+  table: ((options?: {
+    caption?: string; columns?: Array<{ key?: string; label?: string; numeric?: boolean; rowHeader?: boolean; scope?: string; className?: string; headerClassName?: string; render?: (value: any, row: any, rowIndex: number, columnIndex: number, footer: boolean) => any; renderHeader?: (column: any, index: number) => any }>;
+    rows?: any[]; footerRows?: any[]; className?: string; tableClass?: string; wrapClass?: string; emptyMessage?: string; rowClassName?: string | ((row: any, rowIndex: number, footer: boolean) => string); renderRow?: (row: any, rowIndex: number) => HTMLTableRowElement; tableControls?: boolean;
+  }) => HTMLElement) & {
+    mount: (target: HTMLTableElement | HTMLTableSectionElement | string, options?: any) => HTMLTableElement | null;
+  };
+  productIdentity: (options?: {
+    title?: string; id?: string; imageUrl?: string; showThumbnail?: boolean; showId?: boolean;
+    maxTitleChars?: number; className?: string; titleClassName?: string;
+    onTitleClick?: (() => void) | null; metaItems?: Element[]; metaText?: string;
+  }) => HTMLElement;
   setState: (root: Element, state: string, details?: any) => void;
   contextBar: (options?: any) => HTMLElement;
   tableToolbar: (options?: any) => HTMLElement;
@@ -107,7 +117,20 @@ interface TmallUIComponentApi {
   audit: (root?: Element | Document) => any[];
 }
 
+// Only the public ECharts members consumed by the shared canvas-theme bridge.
+interface EChartsThemeInstance {
+  on: (event: 'rendered', handler: () => void) => void;
+  isDisposed: () => boolean;
+  getOption: () => any;
+  setOption: (option: any, options?: { silent?: boolean }) => void;
+}
+interface EChartsThemeRuntime {
+  registerPreprocessor?: (preprocessor: (option: any) => void) => void;
+  getInstanceByDom: (node: Element) => EChartsThemeInstance | undefined;
+}
+
 interface Window {
+  echarts?: EChartsThemeRuntime;
   lucide?: LucideRuntime;
   DemoApi?: DemoApiRuntime;
   DemoFieldSelector?: DemoFieldSelectorRuntime;

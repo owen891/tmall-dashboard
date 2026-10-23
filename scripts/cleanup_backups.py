@@ -1,10 +1,8 @@
-"""清理历史数据库备份（默认只打印计划，加 --apply 才真正删除）。
+"""清理已验证的同源备份；默认 dry-run，不删除未知/异源文件。
 
-保留策略：
-- ``data/backups/*.db``：只留最新 2 份（同一批导入前后几分钟的快照，留 2 份足够回滚）
-- ``data/dashboard.db.bak_*``：按文件名白名单保留（每个风险点一份回滚点），其余删除
+【已作废 2026-10-18】旧“最新2份 + .bak文件名白名单”策略会绕过
+SAFE-01 恢复代保护。现在唯一删除入口是 prune_verified_backups。
 """
-
 from __future__ import annotations
 
 import argparse
@@ -15,11 +13,12 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from scripts.backup_retention import prune_backups  # noqa: E402
+from db import get_db_path  # noqa: E402
+from scripts.backup_retention import prune_verified_backups, retention_settings  # noqa: E402
 
 BACKUPS_DIR = ROOT / 'data' / 'backups'
+# Historical identifiers retained for callers; no longer deletion authority.
 KEEP_NEWEST_BACKUPS = 2
-# 每个风险点保留一份回滚快照：成本列迁移前、渠道父级规整前
 KEEP_BAK = (
     'dashboard.db.bak_costcols_20260920_221255',
     'dashboard.db.bak_parents_20260920_214057',
@@ -33,53 +32,33 @@ def gb(size):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--apply', action='store_true')
+    parser.add_argument('--source', type=Path, default=None,
+                        help='Only rotate verified backups belonging to this exact source database')
     args = parser.parse_args()
-
-    # ---- data/backups/*.db ----
-    candidates = [p for p in BACKUPS_DIR.glob('*.db') if p.is_file()]
-    candidates.sort(key=lambda p: p.stat().st_mtime, reverse=True)
-    keep = candidates[:KEEP_NEWEST_BACKUPS]
-    drop = candidates[KEEP_NEWEST_BACKUPS:]
-
-    print('== data/backups/ ==')
-    for path in keep:
-        print('  保留  %7.2fGB  %s' % (gb(path.stat().st_size), path.name))
-    for path in drop:
-        print('  删除  %7.2fGB  %s' % (gb(path.stat().st_size), path.name))
-    print('  小计：保留 %d 份 / 删除 %d 份，释放 %.2fGB' % (
-        len(keep), len(drop), sum(gb(p.stat().st_size) for p in drop)))
-
-    # ---- data/dashboard.db.bak_* ----
+    source = (args.source or Path(get_db_path())).resolve()
+    keep, cap = retention_settings()
+    print(f'源数据库: {source}')
+    print(f'备份目录: {BACKUPS_DIR.resolve()}')
+    print(f'策略: 至少 {max(3, keep)} 个已验证同源代，容量 {gb(cap):.2f}GB；冲突告警不删保护代')
+    print('未验证、异源、源数据库及 .bak_* 文件全部保护；非递归，仅验证 sidecar 成员')
     baks = sorted(p for p in (ROOT / 'data').glob('dashboard.db.bak_*') if p.is_file())
-    keep_bak = [p for p in baks if p.name in KEEP_BAK]
-    drop_bak = [p for p in baks if p.name not in KEEP_BAK]
-
-    print('== data/dashboard.db.bak_* ==')
-    for path in keep_bak:
-        print('  保留  %7.2fGB  %s' % (gb(path.stat().st_size), path.name))
-    for path in drop_bak:
-        print('  删除  %7.2fGB  %s' % (gb(path.stat().st_size), path.name))
-    print('  小计：保留 %d 份 / 删除 %d 份，释放 %.2fGB' % (
-        len(keep_bak), len(drop_bak), sum(gb(p.stat().st_size) for p in drop_bak)))
-
-    total = sum(gb(p.stat().st_size) for p in drop + drop_bak)
-    print('合计可释放 %.2fGB' % total)
+    for path in baks:
+        print(f'  保护未验证旧备份: {path.name}')
     if not args.apply:
-        print('（dry-run，未删除。加 --apply 执行）')
+        # No second, approximate pruning algorithm: exact delete eligibility is
+        # determined by the single verified policy at explicit apply time.
+        print('dry-run: 仅展示策略，不声明未经完整验证的可删除清单；未删除。加 --apply 执行')
         return 0
-
-    planned_bytes = sum(p.stat().st_size for p in drop + drop_bak)
-
-    removed = []
-    removed.extend(prune_backups(BACKUPS_DIR, keep_newest=KEEP_NEWEST_BACKUPS,
-                                 max_total_bytes=1024 ** 4, pattern='*.db'))
-    for path in drop_bak:
-        try:
-            path.unlink()
-            removed.append(path)
-        except OSError as error:
-            print('删除失败 %s: %s' % (path, error))
-    print('实际删除 %d 个文件，释放 %.2fGB' % (len(removed), gb(planned_bytes)))
+    report = {}
+    removed = prune_verified_backups(BACKUPS_DIR, keep_newest=keep,
+                                    max_total_bytes=cap, protected=[source],
+                                    source=source, report=report)
+    for path in removed:
+        print(f'  已删除已验证轮换代: {path.name}')
+    for warning in report.get('warnings', []):
+        print(f'WARNING: {warning}')
+    print(f"实际删除 {len(removed)} 个备份；有效同源代 {report.get('verified_generations', 0)}；"
+          f"目录当前容量 {gb(report.get('total_bytes', 0)):.2f}GB")
     return 0
 
 

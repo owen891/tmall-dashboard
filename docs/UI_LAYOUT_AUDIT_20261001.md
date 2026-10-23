@@ -175,7 +175,7 @@ flow-source  rival-analysis  data-collection  catalog(component-catalog)
 | 形态 | 页面 |
 |---|---|
 | 页面标题用 `<h2>` | overview、category-dashboard、goals、reviews、period-review、products、lifecycle、keyword-promotion、market-ranking、data-center、data-collection、settings、flow-source、rival-analysis、creative-board、reviews、compare、manage（18 个） |
-| 页面标题用 `<h1>` | analysis（`自定义分析`）、category-dashboard（`标品袜子 · 本月经营`）、product-detail（`商品详情`）、period-review-redesign（`月度复盘`） |
+| 页面标题用 `<h1>` | analysis（`自定义分析`）、category-dashboard（`默认品类 · 本月经营`）、product-detail（`商品详情`）、period-review-redesign（`月度复盘`） |
 | **同时有两个标题** | **promotion**：`<h2>推广分析</h2>`（页面头部）+ `<h1 id="promotionCommandTitle">推广经营看板</h1>`（页内）；**new-products**：`<h2>新品推广看板</h2>` + `<h1 id="promotionNewConclusionTitle">新品投放经营看板</h1>` |
 | 页面标题重复 | goals（见 P0-3） |
 

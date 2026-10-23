@@ -1,3 +1,5 @@
+import json
+
 from db import get_db, get_shop_id
 from repos.audit_repo import AuditRepo
 
@@ -13,32 +15,40 @@ class LifecycleRepo:
         return dict(row) if row else None
 
     @staticmethod
-    def product_rows():
+    def product_rows(product_ids=None):
         with get_db() as connection:
-            rows = connection.execute('SELECT product_id, title, list_date FROM products ORDER BY product_id').fetchall()
+            scope = ' WHERE product_id IN (SELECT value FROM json_each(?))' if product_ids is not None else ''
+            params = (json.dumps([str(pid) for pid in product_ids]),) if product_ids is not None else ()
+            rows = connection.execute('SELECT product_id, title, list_date FROM products' + scope + ' ORDER BY product_id', params).fetchall()
         return [dict(row) for row in rows]
 
     @staticmethod
-    def assessment_context():
+    def assessment_context(product_ids=None):
         shop_id = get_shop_id()
+        # 单个 JSON 参数避免 SQLite 变量上限；None 保留原全量入口，[] 明确为空。
+        scope = ' AND product_id IN (SELECT value FROM json_each(?))' if product_ids is not None else ''
+        params = (json.dumps([str(pid) for pid in product_ids]),) if product_ids is not None else ()
+        monthly_scope = scope.replace('AND product_id', 'AND m.product_id')
+        profile_scope = (' WHERE 1=1' + scope) if scope else ''
         with get_db() as connection:
             daily = connection.execute(
-                '''SELECT product_id, date, payment_amount, ipv, buyers, payment_conversion, ad_spend
-                   FROM daily_data WHERE shop_id = ? ORDER BY product_id, date''', (shop_id,)
+                f'''SELECT product_id, date, payment_amount, ipv, buyers, payment_conversion, ad_spend
+                   FROM daily_data WHERE shop_id = ?{scope} ORDER BY product_id, date''', (shop_id, *params)
             ).fetchall()
             monthly = connection.execute(
-                '''SELECT m.product_id, m.month, m.payment_amount,
+                f'''SELECT m.product_id, m.month, m.payment_amount,
                           COUNT(DISTINCT d.date) AS covered_days,
                           CAST(strftime('%d', date(m.month || '-01', '+1 month', '-1 day')) AS INTEGER) AS expected_days
                    FROM monthly_data m
                    LEFT JOIN daily_data d ON d.shop_id = ? AND d.product_id = m.product_id
                                            AND d.date >= m.month || '-01'
                                            AND d.date < date(m.month || '-01', '+1 month')
+                   WHERE 1=1{monthly_scope}
                    GROUP BY m.product_id, m.month, m.payment_amount
                    ORDER BY m.product_id, m.month'''
-                , (shop_id,)).fetchall()
-            profiles = connection.execute('SELECT * FROM lifecycle_profiles').fetchall()
-            history = connection.execute('SELECT * FROM lifecycle_history ORDER BY product_id, id DESC').fetchall()
+                , (shop_id, *params)).fetchall()
+            profiles = connection.execute('SELECT * FROM lifecycle_profiles' + profile_scope, params).fetchall()
+            history = connection.execute('SELECT * FROM lifecycle_history' + profile_scope + ' ORDER BY product_id, id DESC', params).fetchall()
 
         context = {'daily': {}, 'monthly': {}, 'profiles': {}, 'history': {}}
         for row in daily:

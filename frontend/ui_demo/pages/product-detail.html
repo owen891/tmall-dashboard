@@ -3,11 +3,12 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>商品详情 | 天猫数据仪表盘</title>
+  <title>商品详情</title>
   <link rel="stylesheet" href="../assets/tokens.css?v=20261003a">
   <link rel="stylesheet" href="../assets/shell.css?v=20261001j">
   <link rel="stylesheet" href="../assets/components.css?v=20261001j"><link rel="stylesheet" href="../assets/themes/product-domain.css?v=20261001j"><link rel="stylesheet" href="../assets/themes/promotion-domain.css?v=20261001j"><link rel="stylesheet" href="../assets/themes/overview-domain.css?v=20261001j"><link rel="stylesheet" href="../assets/themes/lifecycle-domain.css?v=20261001j"><link rel="stylesheet" href="../assets/themes/settings-domain.css?v=20261001j">
   <script src="../assets/lucide-custom.min.js?v=20261001j"></script>
+  <link rel="stylesheet" href="../assets/themes/macos-content.css?v=20261018-regular-titles">
 </head>
 <body data-page="product-detail">
   <div class="demo-app">
@@ -21,10 +22,14 @@
 
         <header class="product-workbench__header">
           <div class="product-workbench__identity">
-            <div class="product-workbench__eyebrow">单品经营工作台</div>
-            <h1 class="product-workbench__title" data-product-detail-title>商品详情</h1>
-            <p class="product-workbench__meta" data-product-detail-meta>加载中…</p>
-            <p class="product-workbench__status" data-product-detail-status role="status" aria-live="polite">等待加载…</p>
+            <img class="product-workbench__image" data-product-detail-image alt="商品主图" width="96" height="96" decoding="async" hidden>
+            <div class="product-workbench__identity-copy">
+              <div class="product-workbench__eyebrow">单品经营工作台</div>
+              <h1 class="product-workbench__title">商品详情</h1>
+              <p class="product-workbench__title" data-product-detail-title>商品详情</p>
+              <p class="product-workbench__meta" data-product-detail-meta>加载中…</p>
+              <p class="product-workbench__status" data-product-detail-status role="status" aria-live="polite">等待加载…</p>
+            </div>
           </div>
           <div class="product-workbench__actions">
             <a class="ui-button ui-button--ghost" data-product-detail-back href="/products"><i data-lucide="arrow-left"></i><span>返回列表</span></a>
@@ -309,9 +314,9 @@
     [data-product-promotion-campaigns] button{white-space:nowrap}
   </style>
   <script src="../assets/api.js?v=20261001j"></script>
-  <script src="../assets/navigation.js?v=20261001j"></script>
+  <script src="../assets/navigation.js?v=20261011a"></script>
   <script src="../assets/labels.js?v=20261001j"></script>
-  <script src="../assets/shell.js?v=20261003c"></script>
-  <script src="../assets/format.js?v=20261001j"></script><script src="../assets/ui-components.js?v=20261003a"></script><script src="../assets/product-detail-live.js?v=20261003a"></script>
+  <script src="../assets/shell.js?v=20261011a"></script>
+  <script src="../assets/format.js?v=20261011a"></script><script src="../assets/ui-components.js?v=20261003a"></script><script src="../assets/product-detail-live.js?v=20261011a"></script>
 </body>
 </html>

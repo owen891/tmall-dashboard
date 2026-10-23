@@ -30,11 +30,11 @@ class PromotionViewApiTests(unittest.TestCase):
             conn.executescript('''
                 INSERT INTO products (product_id, title, image_url, list_date) VALUES
                     ('p1', '演示凉感四件套', 'https://cdn.example.com/p1.jpg', '2026-03-20'),
-                    ('p2', '演示纯棉袜子', '', '2026-04-05'),
-                    ('p3', '演示旧款基础袜', '', '2025-01-01');
+                    ('p2', '演示纯棉品类', '', '2026-04-05'),
+                    ('p3', '演示旧款基础款', '', '2025-01-01');
                 INSERT INTO monthly_data (product_id, month, guide_visitors, guide_potential)
                 VALUES ('p1', '2026-04', 100, 12);
-                UPDATE products SET shop_label = '标品袜子' WHERE product_id = 'p1';
+                UPDATE products SET shop_label = '默认品类' WHERE product_id = 'p1';
                 -- 商品销售（daily_data）供新品看板联动口径
                 INSERT INTO daily_data (shop_id, product_id, date, payment_amount, refund_amount)
                 VALUES
@@ -185,7 +185,7 @@ class PromotionViewApiTests(unittest.TestCase):
         self.assertEqual(len(data['products']), 1)
         product = data['products'][0]
         self.assertEqual(product['product_id'], 'p1')
-        self.assertEqual(product['shop_label'], '标品袜子')
+        self.assertEqual(product['shop_label'], '默认品类')
         creatives = {row['creative_id']: row for row in product['creatives']}
         self.assertEqual(set(creatives), {'cr1', 'cr2'})
         self.assertAlmostEqual(creatives['cr1']['ad_spend'], 30.0, places=6)
@@ -195,8 +195,8 @@ class PromotionViewApiTests(unittest.TestCase):
 
     def test_creative_board_ignores_time_params_and_filters_category(self):
         all_time = self.client.get('/api/creative-board?start=1900-01-01&end=1900-01-02').get_json()['data']
-        category = self.client.get('/api/creative-board?category=%E6%A0%87%E5%93%81%E8%A2%9C%E5%AD%90').get_json()['data']
-        empty = self.client.get('/api/creative-board?category=%E9%9D%9E%E6%A0%87%E5%93%81%E8%A2%9C%E5%AD%90').get_json()['data']
+        category = self.client.get('/api/creative-board?category=默认品类').get_json()['data']
+        empty = self.client.get('/api/creative-board?category=细分品类A').get_json()['data']
         self.assertEqual(all_time['totals'], category['totals'])
         self.assertEqual([row['product_id'] for row in category['products']], ['p1'])
         self.assertEqual(empty['products'], [])
@@ -256,7 +256,12 @@ class PromotionViewApiTests(unittest.TestCase):
         self.assertEqual(data['campaigns'][0]['campaign_id'], 'product:p2')
         self.assertEqual(data['channel_mix'][0]['channel'], '全部')
         self.assertEqual(data['summary']['cart_adds'], 12)
-        self.assertAlmostEqual(data['summary']['new_customer_cost'], 60.0, places=6)
+        # T04: first fact omitted new_buyers. Known subtotal 2 is not a
+        # complete denominator; retain subtotal but do not fabricate cost 60.
+        self.assertIsNone(data['summary']['new_customer_cost'])
+        self.assertEqual(data['summary']['metric_availability']['new_customer_cost'], 'partial')
+        self.assertEqual(data['summary']['metric_coverage']['new_buyers']['observed_rows'], 1)
+        self.assertEqual(data['summary']['metric_coverage']['new_buyers']['expected_rows'], 2)
 
     def test_new_products_scopes_to_60_day_window_and_excludes_old_items(self):
         """新品看板：60 天内上架商品进榜，旧款排除；含销售联动与全店占比。"""

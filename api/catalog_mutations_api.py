@@ -4,6 +4,7 @@ from api.api_response import failure, json_object, success
 from db import get_db
 from repos.audit_repo import AuditRepo
 from services.shop_scope_service import audit_identity, reject_legacy_shop_scope, require_admin_write
+from services.tier_source import MANUAL_TIER_SOURCE, tier_source_for_write
 
 
 catalog_mutations_bp = Blueprint('catalog_mutations', __name__)
@@ -62,24 +63,29 @@ def update_product_metadata(product_id):
 
     with get_db() as connection:
         row = connection.execute(
-            f'SELECT product_id, {field} FROM products WHERE product_id = ?',
+            f'SELECT product_id, {field}, tier_source FROM products WHERE product_id = ?',
             (product_id,),
         ).fetchone()
         if row is None:
             return failure('NOT_FOUND', '商品不存在', status=404)
         before = row[field]
+        before_source = row['tier_source']
+        next_source = tier_source_for_write(field, before_source)
         connection.execute(
-            f'UPDATE products SET {field} = ?, updated_at = CURRENT_TIMESTAMP WHERE product_id = ?',
-            (value, product_id),
+            f'UPDATE products SET {field} = ?, tier_source = ?, '
+            'updated_at = CURRENT_TIMESTAMP WHERE product_id = ?',
+            (value, next_source, product_id),
         )
         AuditRepo.record(
             'product', product_id, 'update_metadata', operator, reason,
-            {field: before}, {field: value}, connection=connection,
+            {field: before, 'tier_source': before_source},
+            {field: value, 'tier_source': next_source}, connection=connection,
         )
         connection.commit()
 
     return _success(
-        {'product_id': product_id, 'field': field, 'value': value},
+        {'product_id': product_id, 'field': field, 'value': value,
+         'tier_source': MANUAL_TIER_SOURCE if field == 'tier' else before_source},
         source='products', action='update_metadata',
     )
 
@@ -137,19 +143,31 @@ def batch_update_products():
     with get_db() as connection:
         placeholders = ','.join('?' for _ in product_ids)
         rows = connection.execute(
-            f'SELECT product_id, {field} FROM products WHERE product_id IN ({placeholders})',
+            f'SELECT product_id, {field}, tier_source FROM products WHERE product_id IN ({placeholders})',
             product_ids,
         ).fetchall()
+        # 改 tier 才把来源改成 manual；改 style 必须保留每行自己的来源，
+        # 否则一次批量改风格会把全部分层来源抹平，算法之后就再也改不动它们。
         for row in rows:
+            next_source = tier_source_for_write(field, row['tier_source'])
             AuditRepo.record(
                 'product', row['product_id'], 'batch_update', operator, reason,
-                {field: row[field]}, {field: value}, connection=connection,
+                {field: row[field], 'tier_source': row['tier_source']},
+                {field: value, 'tier_source': next_source}, connection=connection,
             )
         if rows:
-            connection.execute(
-                f'UPDATE products SET {field} = ?, updated_at = CURRENT_TIMESTAMP WHERE product_id IN ({placeholders})',
-                [value, *product_ids],
-            )
+            if field == 'tier':
+                connection.execute(
+                    f'UPDATE products SET tier = ?, tier_source = ?, '
+                    f'updated_at = CURRENT_TIMESTAMP WHERE product_id IN ({placeholders})',
+                    [value, MANUAL_TIER_SOURCE, *product_ids],
+                )
+            else:
+                connection.execute(
+                    f'UPDATE products SET {field} = ?, '
+                    f'updated_at = CURRENT_TIMESTAMP WHERE product_id IN ({placeholders})',
+                    [value, *product_ids],
+                )
         connection.commit()
 
     missing = sorted(set(product_ids) - {row['product_id'] for row in rows})

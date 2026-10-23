@@ -397,21 +397,44 @@ body.demo-sidebar-collapsed .demo-sidebar__update { width: 24px; min-width: 24px
 .demo-picker__toolbar strong { font-size: 18px; }
 .demo-picker__button { min-width: 32px; height: 32px; border: 0; border-radius: 6px; background: transparent; color: var(--text-secondary); font-size: 16px; }
 .demo-picker__button:hover { background: var(--surface-muted); color: var(--text-primary); }
-.demo-picker__week, .demo-picker__calendar { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
-.demo-picker__week { margin-bottom: 5px; color: var(--text-tertiary); font-size: 12px; text-align: center; }
-.demo-picker__day, .demo-picker__calendar > span { min-height: 38px; border: 0; border-radius: 7px; background: transparent; text-align: center; }
-.demo-picker__day { color: var(--text-primary); cursor: pointer; }
-.demo-picker__day:hover:not(:disabled), .demo-picker__day.is-in-range { background: var(--brand-tint); color: var(--brand-text); }
-.demo-picker__day.is-active { background: var(--brand-solid); color: var(--text-on-brand); font-weight: 700; }
+.demo-picker__week { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; margin-bottom: 5px; color: var(--text-tertiary); font-size: 12px; text-align: center; }
+/* 日历格去掉列间距：区间铺底要连成一条不间断的带子，否则中间被 4px 缝隙切碎。 */
+.demo-picker__calendar { display: grid; grid-template-columns: repeat(7, 1fr); gap: 0; }
+.demo-picker__day, .demo-picker__calendar > span { min-height: 38px; border: 0; border-radius: 0; background: transparent; text-align: center; }
+.demo-picker__day { display: grid; place-items: center; color: var(--text-primary); cursor: pointer; }
+.demo-picker__day-num { display: grid; place-items: center; width: 32px; height: 32px; border-radius: var(--radius-full); }
+.demo-picker__day:hover:not(:disabled) .demo-picker__day-num { background: var(--brand-tint); color: var(--brand-text); }
+.demo-picker__day.is-in-range { background: var(--brand-tint); }
+.demo-picker__day.is-in-range .demo-picker__day-num { color: var(--brand-text); }
+.demo-picker__day.is-start { border-top-left-radius: var(--radius-full); border-bottom-left-radius: var(--radius-full); }
+.demo-picker__day.is-end { border-top-right-radius: var(--radius-full); border-bottom-right-radius: var(--radius-full); }
+.demo-picker__day.is-selected .demo-picker__day-num { background: var(--brand-solid); color: var(--text-on-brand); font-weight: 700; }
+.demo-picker__day.is-anchor .demo-picker__day-num { box-shadow: var(--anchor-ring); }
 .demo-picker__day:disabled { color: var(--text-tertiary); opacity: .35; cursor: not-allowed; }
+/* 相邻月补齐的日期灰显：既让跨月区间带连续铺过去，也保持与本月日期的层次区分。 */
+.demo-picker__day--outside .demo-picker__day-num { color: var(--text-tertiary); }
 .demo-picker__grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
 .demo-picker__tile { min-height: 48px; border: 1px solid transparent; border-radius: 8px; background: transparent; color: var(--text-primary); font-size: 14px; }
 .demo-picker__tile:hover { background: var(--brand-tint); color: var(--brand-text); }
 .demo-picker__tile.is-active { background: var(--brand-solid); color: var(--text-on-brand); font-weight: 700; }
-.demo-picker__custom-fields { display: grid; grid-template-columns: 1fr auto 1fr; align-items: end; gap: 8px; }
-.demo-picker__custom-fields label { display: grid; gap: 6px; color: var(--text-secondary); font-size: 12px; }
-.demo-picker__custom-fields input { width: 100%; height: 36px; padding: 0 8px; border: 1px solid var(--border-default); border-radius: 6px; background: var(--surface-base); }
-.demo-picker__hint { margin: 12px 0; color: var(--text-tertiary); font-size: 12px; }
+/* 自定义弹窗走参考稿的宽版两列表单；其余粒度保持紧凑单月网格，
+   因为粒度弹窗必须紧贴被点击按钮，加宽会让贴边的「年」按钮被视口夹紧。 */
+.demo-picker--custom { width: min(680px, calc(100vw - 24px)); }
+.demo-picker--custom .demo-picker__body { padding: var(--space-5) var(--space-6) var(--space-4); }
+.demo-picker--custom .demo-picker__header { padding: var(--space-4) var(--space-6); }
+.demo-picker--custom .demo-picker__header strong { font-size: var(--font-size-section); }
+.demo-picker--custom .demo-picker__hint { margin: var(--space-3) 0 var(--space-4); }
+/* 双月并排区间日历：两列等宽，中间留出月间距，跨月区间带不会被挤在一起看不出边界。 */
+.demo-picker__dual { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-5); }
+.demo-picker__month { display: grid; gap: var(--space-2); }
+/* 翻页按钮并进月份标题行：一行同时说清「这是哪个月」和「怎么翻」，省掉改前那一整行导航。 */
+.demo-picker__month-head-row { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: var(--space-2); }
+.demo-picker__month-head { color: var(--text-primary); font-size: var(--font-size-body); font-weight: 600; text-align: center; }
+/* 区间读数放弹窗标题行：正文里不再重复占行。 */
+.demo-picker--custom .demo-picker__range-readout { flex: 1; text-align: right; padding-right: var(--space-3); }
+.demo-picker__range-readout { color: var(--text-secondary); font-size: var(--font-size-secondary); font-variant-numeric: tabular-nums; }
+.demo-picker__month .demo-picker__week { margin-bottom: 0; }
+.demo-picker--custom .demo-picker__actions .demo-picker__button { height: var(--control-height); min-width: 72px; padding-inline: var(--space-5); border-radius: var(--radius-sm); font-size: var(--font-size-body); }
 .demo-picker__actions { display: flex; justify-content: flex-end; gap: 8px; padding-top: 12px; border-top: 1px solid var(--border-default); }
 .demo-picker__actions .demo-picker__button { padding-inline: 14px; border: 1px solid var(--border-default); }
 .demo-picker__actions .is-primary { border-color: var(--brand-solid); background: var(--brand-solid); color: var(--text-on-brand); }
@@ -597,4 +620,144 @@ body[data-page="period-review"] .pr-period-review-label {
 }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; }
+}
+
+/* U03: overview-only reflow; preserve presets and custom-date control. */
+body[data-page="overview"] .demo-topbar { flex-wrap:wrap; }
+body[data-page="overview"] .demo-topbar__filters { flex:1 1 640px; flex-wrap:wrap; overflow:visible; }
+body[data-page="overview"] .demo-topbar__filters > .demo-period { flex:1 1 420px; max-width:100%; flex-wrap:wrap; overflow:visible; }
+body[data-page="overview"] .demo-period__inline { min-width:0; max-width:100%; flex-wrap:wrap; white-space:normal; }
+body[data-page="overview"] .demo-period__inline-range { overflow-wrap:anywhere; }
+body[data-page="overview"] .demo-topbar__tools { flex-shrink:0; }
+body[data-page="overview"] .demo-overview-action { width:auto; padding-inline:var(--space-3); }
+body[data-page="overview"] .demo-overview-action span { display:inline; }
+@media (max-width:760px) {
+  body[data-page="overview"] .demo-topbar__filters { flex-basis:100%; }
+  body[data-page="overview"] .demo-topbar__filters > .demo-period { flex-basis:100%; }
+  body[data-page="overview"] .demo-topbar { position:relative; }
+}
+
+/* 日期快捷入口在窄屏换行，不能依赖隐藏 legacy 控件或水平裁剪。 */
+.demo-period__inline { flex-wrap: wrap; min-width: 0; max-width: 100%; white-space: normal; }
+.demo-period__inline-range { overflow-wrap: anywhere; }
+@media (max-width: 900px) {
+  .demo-topbar__filters { flex-wrap: wrap; overflow: visible; }
+  .demo-topbar__filters > .demo-period { min-width: 0; max-width: 100%; overflow: visible; }
+}
+
+/* Desktop macOS refinement: quiet selection, compact native-style navigation. */
+@media (min-width: 960px) {
+  body { --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif; --font-display: var(--font-sans); }
+  body:not(.demo-sidebar-collapsed) .demo-sidebar { width: 224px; }
+  body:not(.demo-sidebar-collapsed) .demo-main { margin-left: 224px; }
+  .demo-sidebar { background: var(--surface-muted); }
+  .demo-nav { padding: var(--space-3) var(--space-2); }
+  .demo-nav__section, .demo-nav__group { gap: 0; }
+  .demo-nav__section + .demo-nav__section { margin-top: var(--space-4); }
+  .demo-nav__label { padding-bottom: var(--space-1); font-weight: 600; letter-spacing: 0; }
+  .demo-nav__item { min-height: var(--control-height-sm); padding-block: var(--space-1); gap: var(--space-2); border-radius: var(--radius-sm); font-size: var(--font-size-secondary); }
+  .demo-nav__item:hover { transform: none; background: var(--surface-base); }
+  .demo-nav__item[aria-current="page"], .demo-nav__item[aria-current="page"]:hover { border-left: 0; padding-left: var(--space-3); background: var(--brand-tint); color: var(--brand-text); }
+  body.demo-sidebar-collapsed .demo-nav__item[aria-current="page"] { padding-left: var(--space-2); }
+  body.demo-sidebar-collapsed .demo-nav__item[aria-current="page"]::before { content: none; }
+  .demo-nav__item .lucide { width: var(--icon-control); height: var(--icon-control); stroke-width: 1.5; }
+  .demo-brand { padding-inline: var(--space-4); }
+  .demo-brand__name { font-size: var(--font-size-secondary); font-weight: 600; }
+  .demo-brand__mark { width: var(--control-height-sm); height: var(--control-height-sm); flex-basis: var(--control-height-sm); border-radius: var(--radius-sm); }
+  .demo-period__inline button.is-active, .demo-period__inline-custom.is-active { box-shadow: none; background: var(--brand-tint); }
+  .demo-topbar .ui-button, .demo-topbar .demo-sidebar-toggle { min-height: var(--control-height-sm); border-radius: var(--radius-sm); box-shadow: none; }
+  .demo-sidebar-toggle:hover { transform: none; }
+}
+
+/* PC date picker restraint: same controls, dates and overlay behavior; quieter chrome. */
+@media (min-width: 960px) {
+  html body .demo-topbar .demo-period__inline-label { font-size: var(--font-size-meta); }
+  html body .demo-topbar .demo-period__inline-range { font-weight: 500; font-variant-numeric: tabular-nums; }
+  html body .demo-topbar .demo-period__inline button { border-radius: var(--radius-sm); font-weight: 400; }
+  html body .demo-topbar .demo-period__inline button.is-active { font-weight: 500; box-shadow: none; background: var(--brand-tint); }
+  html body .demo-picker { border-radius: var(--radius-md); box-shadow: var(--elevation-md); }
+  html body .demo-picker .demo-picker__header { padding: var(--space-3) var(--space-4); }
+  html body .demo-picker .demo-picker__header strong { font-size: var(--font-size-body); font-weight: 600; }
+  html body .demo-picker .demo-picker__body { padding: var(--space-3) var(--space-4) var(--space-4); }
+  html body .demo-picker .demo-picker__toolbar { margin-bottom: var(--space-2); }
+  html body .demo-picker .demo-picker__toolbar strong { font-size: var(--font-size-body); font-weight: 500; }
+  html body .demo-picker .demo-picker__button { border-radius: var(--radius-sm); }
+  html body .demo-picker .demo-picker__tile { border-radius: var(--radius-sm); font-size: var(--font-size-secondary); }
+  html body .demo-picker .demo-picker__day.is-selected .demo-picker__day-num { background: var(--brand-solid); color: var(--text-on-brand); font-weight: 600; }
+  html body .demo-picker .demo-picker__tile:hover { background: var(--surface-muted); color: var(--text-primary); }
+  html body .demo-picker .demo-picker__tile.is-active { background: var(--brand-tint); color: var(--brand-text); font-weight: 600; }
+  html body .demo-picker .demo-picker__hint { margin-block: var(--space-2); font-size: var(--font-size-meta); }
+  html body .demo-picker .demo-picker__actions { gap: var(--space-2); padding-top: var(--space-3); }
+  html body .demo-picker .demo-picker__actions .demo-picker__button { min-height: var(--control-height-sm); height: var(--control-height-sm); font-size: var(--font-size-secondary); }
+  html body .demo-picker .demo-picker__actions [data-picker-action="close"] { border-color: transparent; background: transparent; }
+  html body .demo-picker :is(.demo-picker__tile, .demo-picker__button, .demo-picker__close):focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+}
+
+/* PC shared refinement 2026-10-18: allow chrome to reflow, never clip its actions. */
+@media (min-width: 960px) {
+  body[data-page]:not([data-page="overview"]) .demo-topbar { flex-wrap: wrap; gap: var(--space-2) var(--space-4); }
+  body[data-page]:not([data-page="overview"]) .demo-topbar__filters { flex: 1 1 640px; flex-wrap: wrap; }
+  body[data-page]:not([data-page="overview"]) .demo-topbar__filters > .demo-period { flex: 1 1 420px; max-width: 100%; flex-wrap: wrap; }
+  body[data-page]:not([data-page="overview"]) .demo-topbar__tools { flex-shrink: 0; }
+  /* Order preserves the DOM/tab sequence: collapse, filters, then utility tools. */
+  @media (max-width: 1199px) {
+    body[data-page]:not([data-page="overview"]) .demo-topbar { padding-inline: var(--space-5); }
+    body[data-page]:not([data-page="overview"]) .demo-topbar__filters { flex-basis: 420px; }
+    body[data-page]:not([data-page="overview"]) .demo-topbar__filters > .demo-period { flex-basis: 100%; }
+    body[data-page]:not([data-page="overview"]) .demo-topbar__tools { margin-left: auto; }
+  }
+}
+
+/* PC typography: system UI, not a marketing display face; palette is unchanged. */
+@media (min-width: 960px) {
+  body[data-page] { --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif; --font-display: var(--font-sans); font-family: var(--font-sans); }
+}
+
+/* One-line shared date rail: keep every control reachable without moving utility actions. */
+body[data-page]:not([data-page="period-review"]) .demo-topbar__filters > .demo-period {
+  flex: 1 1 0;
+  min-width: 0;
+  flex-wrap: nowrap;
+  overflow: visible;
+}
+body[data-page]:not([data-page="period-review"]) .demo-period__inline {
+  flex: 1 1 0;
+  min-width: 0;
+  max-width: 100%;
+  flex-wrap: nowrap;
+  gap: var(--space-1);
+  padding-block: var(--space-1);
+  white-space: nowrap;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+  scrollbar-width: thin;
+  scroll-padding-inline: var(--space-2);
+}
+body[data-page]:not([data-page="period-review"]) .demo-period__inline > * { flex: 0 0 auto; }
+body[data-page]:not([data-page="period-review"]) .demo-period__inline-range { white-space: nowrap; overflow-wrap: normal; }
+body[data-page]:not([data-page="period-review"]) .demo-period__inline button { padding-inline: var(--space-2); }
+@media (min-width: 960px) {
+  body[data-page]:not([data-page="period-review"]) .demo-topbar { display: flex; flex-wrap: nowrap; padding-inline: var(--space-5); }
+  body[data-page]:not([data-page="period-review"]) .demo-topbar__filters { display: flex; flex: 1 1 0; flex-wrap: nowrap; overflow: visible; }
+  body[data-page]:not([data-page="period-review"]) .demo-topbar__tools { flex: 0 0 auto; }
+}
+
+/* Compact header controls; keep full accessible labels and native keyboard focus. */
+@media (min-width: 960px) {
+  body[data-page] .demo-topbar .demo-category__select {
+    width: calc(var(--space-6) * 5);
+    min-width: 0;
+    height: var(--control-height-sm);
+    min-height: var(--control-height-sm);
+    padding-block: 0;
+  }
+  body[data-page="overview"] .demo-topbar .demo-overview-action {
+    width: auto;
+    height: var(--control-height-sm);
+    min-height: var(--control-height-sm);
+    padding: 0 var(--space-2);
+    gap: var(--space-1);
+  }
+  body[data-page="overview"] .demo-topbar .demo-overview-action .lucide { width: var(--icon-inline); height: var(--icon-inline); }
 }

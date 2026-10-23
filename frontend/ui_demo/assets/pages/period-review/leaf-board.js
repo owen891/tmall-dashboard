@@ -122,21 +122,7 @@
             h('div', { class: barClass, style: 'width:' + barWidth })),
           h('span', { class: 'leaf-board__bar-value', text: '¥' + fmtWan(c.value) }));
       }));
-      const headRow = h('tr', null,
-        h('th', { class: 'leaf-board__th leaf-board__th--leaf' }, '叶子类目'),
-        h('th', { class: 'leaf-board__th' }, '标品在售链接数'),
-        h('th', { class: 'leaf-board__th' }, '净销售额'),
-        h('th', { class: 'leaf-board__th' }, '退款率'),
-        h('th', { class: 'leaf-board__th' }, '访客数'),
-        h('th', { class: 'leaf-board__th' }, '转化率'),
-        h('th', { class: 'leaf-board__th' }, '客单价'),
-        h('th', { class: 'leaf-board__th' }, '加购率'),
-        h('th', { class: 'leaf-board__th' }, '推广花费'),
-        h('th', { class: 'leaf-board__th' }, '费比'),
-        h('th', { class: 'leaf-board__th' }, '利润额'),
-        h('th', { class: 'leaf-board__th' }, '利润率'));
-
-      const bodyRows = rows.map((row) => {
+      const tableRows = rows.map((row) => {
         const wk = row.weeks || {};
         const w = wk.w0 || {};
         const baselineWeek = baselineKey ? wk[baselineKey] || {} : {};
@@ -155,22 +141,41 @@
         // 占比类指标用百分点
         const ratioCell = (field) => lbCell(
           fmtPct(w[field]), ppBadge(ppChange(w[field], baselineWeek[field]), field), compareLabel);
-        return h('tr', { class: 'leaf-board__row' },
-          h('td', { class: 'leaf-board__td leaf-board__td--leaf' }, row.leaf),
-          lbCell(fmtNum(row.links_on_sale), null, null),
-          cell('net_sales'),
-          cell('refund_rate', (v) => fmtPct(v)),
-          cell('ipv', (v) => fmtNum(v)),
-          cell('cvr', (v) => fmtPct(v)),
-          cell('aov', (v) => v != null ? `¥${Number(v).toFixed(1)}` : '--'),
-          cell('cart_rate', (v) => fmtPct(v)),
-          cell('ad_spend'),
-          ratioCell('ad_ratio'),
-          cell('profit'),
-          ratioCell('profit_rate'));
+        return {
+          leaf: row.leaf,
+          links_on_sale: lbCell(fmtNum(row.links_on_sale), null, null),
+          net_sales: cell('net_sales'),
+          refund_rate: cell('refund_rate', (v) => fmtPct(v)),
+          ipv: cell('ipv', (v) => fmtNum(v)),
+          cvr: cell('cvr', (v) => fmtPct(v)),
+          aov: cell('aov', (v) => v != null ? `¥${Number(v).toFixed(1)}` : '--'),
+          cart_rate: cell('cart_rate', (v) => fmtPct(v)),
+          ad_spend: cell('ad_spend'),
+          ad_ratio: ratioCell('ad_ratio'),
+          profit: cell('profit'),
+          profit_rate: ratioCell('profit_rate'),
+        };
       });
 
-      const table = h('table', { class: 'leaf-board__table' }, h('thead', null, headRow), h('tbody', null, ...bodyRows));
+      const table = global.TmallUI.table({
+        tableClass: 'leaf-board__table',
+        rowClassName: 'leaf-board__row',
+        columns: [
+          { key: 'leaf', label: '叶子类目', rowHeader: true, headerClassName: 'leaf-board__th leaf-board__th--leaf', className: 'leaf-board__td leaf-board__td--leaf' },
+          { key: 'links_on_sale', label: '标品在售链接数', numeric: true, headerClassName: 'leaf-board__th' },
+          { key: 'net_sales', label: '净销售额', numeric: true, headerClassName: 'leaf-board__th' },
+          { key: 'refund_rate', label: '退款率', numeric: true, headerClassName: 'leaf-board__th' },
+          { key: 'ipv', label: '访客数', numeric: true, headerClassName: 'leaf-board__th' },
+          { key: 'cvr', label: '转化率', numeric: true, headerClassName: 'leaf-board__th' },
+          { key: 'aov', label: '客单价', numeric: true, headerClassName: 'leaf-board__th' },
+          { key: 'cart_rate', label: '加购率', numeric: true, headerClassName: 'leaf-board__th' },
+          { key: 'ad_spend', label: '推广花费', numeric: true, headerClassName: 'leaf-board__th' },
+          { key: 'ad_ratio', label: '费比', numeric: true, headerClassName: 'leaf-board__th' },
+          { key: 'profit', label: '利润额', numeric: true, headerClassName: 'leaf-board__th' },
+          { key: 'profit_rate', label: '利润率', numeric: true, headerClassName: 'leaf-board__th' },
+        ],
+        rows: tableRows,
+      });
 
       const hint = h('p', { class: 'panel__hint leaf-board__hint' },
         `口径：周=周一至周日；本周=${(weeks.w0 || {}).start}~${(weeks.w0 || {}).end}（实际覆盖 ${(data.data_quality || {}).w0_covered_days || '?'} 天）；${baselineKey ? `${compareLabel}基线=${(weeks[baselineKey] || {}).label || '--'}；` : '当前未应用类目周对比；'}比例指标由聚合后分子/分母计算；净销售额/推广/利润绝对值<¥100 的类目行已隐藏。`);
@@ -181,7 +186,7 @@
             h('div', null, h('h3', { class: 'panel__title', text: '叶子类目近 3 周对比看板' }),
               h('p', { class: 'panel__hint', text: compare.mode === 'custom'
                 ? '类目周看板暂不支持自定义基线，变化值已隐藏；主复盘指标仍按所选自定义周期计算。'
-                : `仅统计标品袜子；变化值按当前选择的${compareLabel || '不对比'}口径展示；在售链接数为当前在售快照。` }))),
+                : `仅统计默认品类；变化值按当前选择的${compareLabel || '不对比'}口径展示；在售链接数为当前在售快照。` }))),
           h('div', { class: 'ui-panel__body' },
             kpiRow, bars, table, hint)));
     }

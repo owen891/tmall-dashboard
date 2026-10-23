@@ -78,7 +78,7 @@
     button?.removeAttribute('hidden')
     if (button) button.querySelector('span')?.replaceChildren(document.createTextNode('检查升级'))
     if (window.TMALL_WEB_VERSION && version) version.textContent = window.TMALL_WEB_VERSION
-    fetch(new URL('../api/version?client=web', new URL('.', document.currentScript?.src || window.location.href)))
+    fetch(new URL('/api/version?client=web', window.location.origin))
       .then(response => response.ok ? response.json() : null)
       .then(payload => { if (payload?.data?.version && version) version.textContent = payload.data.version })
       .catch(() => {})

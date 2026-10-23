@@ -32,9 +32,9 @@ class CategoryAnalysisApiContractTests(unittest.TestCase):
             db.executemany(
                 "INSERT INTO products (product_id, title, status, shop_label) VALUES (?, ?, ?, ?)",
                 [
-                    ("sock-a", "Sock A", "active", "标品袜子"),
-                    ("sock-b", "Sock B", "active", "标品袜子,畅销商品"),
-                    ("other-a", "Other A", "active", "内裤"),
+                    ("sock-a", "Sock A", "active", "默认品类"),
+                    ("sock-b", "Sock B", "active", "默认品类,畅销商品"),
+                    ("other-a", "Other A", "active", "其他品类"),
                 ],
             )
             # Daily facts cover arbitrary ranges, partial periods, and cross-year
@@ -182,11 +182,11 @@ class CategoryAnalysisApiContractTests(unittest.TestCase):
                 """INSERT INTO products (product_id, title, category, status, shop_label)
                    VALUES (?, ?, ?, ?, ?)""",
                 [
-                    ("leaf-active-a", "Active A", "中筒袜", "active", "标品袜子"),
-                    ("leaf-active-b", "Active B", "中筒袜", "active", "标品袜子,畅销商品"),
-                    ("leaf-no-data", "No Data", "长筒袜", "active", "标品袜子"),
-                    ("leaf-inactive", "Inactive", "中筒袜", "inactive", "标品袜子"),
-                    ("leaf-other", "Other", "中筒袜", "active", "内裤"),
+                    ("leaf-active-a", "Active A", "款型甲", "active", "默认品类"),
+                    ("leaf-active-b", "Active B", "款型甲", "active", "默认品类,畅销商品"),
+                    ("leaf-no-data", "No Data", "款型乙", "active", "默认品类"),
+                    ("leaf-inactive", "Inactive", "款型甲", "inactive", "默认品类"),
+                    ("leaf-other", "Other", "款型甲", "active", "其他品类"),
                 ],
             )
             db.execute(
@@ -200,10 +200,10 @@ class CategoryAnalysisApiContractTests(unittest.TestCase):
         )
         self.assertEqual(response.status_code, 200)
         data = response.get_json()["data"]
-        row = next(item for item in data["rows"] if item["leaf"] == "中筒袜")
+        row = next(item for item in data["rows"] if item["leaf"] == "款型甲")
         self.assertEqual(row["links_on_sale"], 2)
         self.assertNotIn("links_total", row["weeks"]["w0"])
-        empty_week_row = next(item for item in data["rows"] if item["leaf"] == "长筒袜")
+        empty_week_row = next(item for item in data["rows"] if item["leaf"] == "款型乙")
         self.assertEqual(empty_week_row["links_on_sale"], 1)
         self.assertIsNone(empty_week_row["weeks"]["w0"])
 
@@ -257,34 +257,36 @@ class CategoryCostContractTests(unittest.TestCase):
         with get_db(self.database_path) as db:
             db.executemany(
                 "INSERT INTO products (product_id, title, status, shop_label) VALUES (?, ?, ?, ?)",
-                [("cost-bi", "Cost BI", "active", "标品袜子"),
-                 ("cost-derived", "Cost Derived", "active", "标品袜子"),
-                 ("cost-none", "Cost None", "active", "标品袜子")],
+                [("cost-bi", "Cost BI", "active", "默认品类"),
+                 ("cost-derived", "Cost Derived", "active", "默认品类"),
+                 ("cost-none", "Cost None", "active", "默认品类")],
             )
             # 三个商品刻意分在三天，便于按日隔离断言。
+            # shop_id 缺省即本测试应用的请求 scope（TESTING → 'default'）：
+            # daily_data 是带 shop_id 的多店表，写入其他店铺的行不会被本 scope 读到。
             # cost-bi：成本齐全 + BI 利润列存在（460），且与公式推导值(450)不同，
             #          用来证明 BI 列优先。
             db.execute(
                 """INSERT INTO daily_data
-                   (shop_id, product_id, date, payment_amount, net_sales, ipv, buyers, ad_spend,
+                   (product_id, date, payment_amount, net_sales, ipv, buyers, ad_spend,
                     product_cost, sales_cost, custom_cost, logistics_cost, other_cost,
                     operating_profit, profit_rate)
-                   VALUES ('3828498662', 'cost-bi', '2026-08-10', 1200, 1000, 100, 10, 200,
+                   VALUES ('cost-bi', '2026-08-10', 1200, 1000, 100, 10, 200,
                            300, 150, 50, 40, 10, 460, 0.46)"""
             )
             # cost-derived：成本齐全但没有 BI 利润列，应由公式推导出 450。
             db.execute(
                 """INSERT INTO daily_data
-                   (shop_id, product_id, date, payment_amount, net_sales, ipv, buyers, ad_spend,
+                   (product_id, date, payment_amount, net_sales, ipv, buyers, ad_spend,
                     product_cost, sales_cost, custom_cost, logistics_cost, other_cost)
-                   VALUES ('3828498662', 'cost-derived', '2026-08-11', 1200, 1000, 100, 10, 200,
+                   VALUES ('cost-derived', '2026-08-11', 1200, 1000, 100, 10, 200,
                            300, 150, 50, 40, 10)"""
             )
             # cost-none：完全没有成本数据。
             db.execute(
                 """INSERT INTO daily_data
-                   (shop_id, product_id, date, payment_amount, net_sales, ipv, buyers, ad_spend)
-                   VALUES ('3828498662', 'cost-none', '2026-08-12', 1200, 1000, 100, 10, 200)"""
+                   (product_id, date, payment_amount, net_sales, ipv, buyers, ad_spend)
+                   VALUES ('cost-none', '2026-08-12', 1200, 1000, 100, 10, 200)"""
             )
             db.commit()
 

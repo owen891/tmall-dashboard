@@ -144,7 +144,8 @@ LEGACY_SINGLE_SHOP_PATHS = {
 def reject_legacy_shop_scope(domain):
     """Reject resources whose legacy tables cannot isolate named shops."""
     shop_id = current_request_shop_id()
-    if not shop_id or shop_id in ('default', '3828498662'):
+    from db import legacy_shop_id
+    if not shop_id or shop_id in ('default', legacy_shop_id()):
         return None
     return failure(
         'UNSUPPORTED_SCOPE',

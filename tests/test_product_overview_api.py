@@ -18,7 +18,7 @@ class ProductOverviewApiTests(unittest.TestCase):
         with get_db(self.db) as conn:
             conn.executemany(
                 'INSERT INTO products (product_id, title, status, shop_label) VALUES (?, ?, ?, ?)',
-                [('risk-product', '高风险商品', 'active', '标品袜子'), ('healthy-product', '健康商品', 'active', '标品袜子')],
+                [('risk-product', '高风险商品', 'active', '默认品类'), ('healthy-product', '健康商品', 'active', '默认品类')],
             )
             conn.executemany(
                 '''INSERT INTO monthly_data
@@ -52,7 +52,7 @@ class ProductOverviewApiTests(unittest.TestCase):
         self.assertEqual(rules['high_aov']['matched_product_ids'], ['healthy-product'])
         self.assertEqual(rules['high_paid_high_refund']['period'], '2026-04')
         self.assertEqual(payload['evidence'][0]['source'], 'monthly_data')
-        self.assertEqual(payload['data']['scope']['shop_label'], '标品袜子')
+        self.assertEqual(payload['data']['scope']['shop_label'], '默认品类')
         self.assertEqual(rules['high_paid_high_refund']['version'], '2026.09')
         self.assertEqual(rules['high_paid_high_refund']['rule_type'], 'diagnosis')
         self.assertEqual(rules['high_paid_high_refund']['conditions'][0]['field'], 'expense_ratio')

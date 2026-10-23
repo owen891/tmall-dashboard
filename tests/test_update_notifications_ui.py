@@ -20,13 +20,11 @@ def test_web_update_checker_is_loaded_by_the_common_shell():
     checker = (PROJECT_ROOT / 'frontend' / 'ui_demo' / 'assets' / 'version-check.js').read_text(encoding='utf-8')
     version = (PROJECT_ROOT / 'frontend' / 'ui_demo' / 'assets' / 'version.js').read_text(encoding='utf-8')
 
-    # shell.js 给动态加载的脚本带 ?v= 穿透 7 天静态缓存，断言表达契约本身
-    #（用 new URL(name, assetBase) 加载 version.js / version-check.js），
-    # 不要写死「无查询串」的字面量 —— 那样一 bump 缓存串就误报。
-    # 引号风格兼容 '…' 与 `…${RUNTIME_ASSET_V}`（shell.js 缓存串统一收敛后的模板字符串写法）。
+    # Lazy scripts resolve against shell's pinned immutable release directory.
+    # Version API calls must instead resolve at the origin's /api endpoint.
     assert re.search(r"new URL\(['\"`]version\.js(?:\?[^'\"`]*)?['\"`], assetBase\)", shell)
     assert re.search(r"new URL\(['\"`]version-check\.js(?:\?[^'\"`]*)?['\"`], assetBase\)", shell)
-    assert "new URL('../api/version?client=web', assetBase)" in checker
+    assert "new URL('/api/version?client=web', apiBase)" in checker
     assert '立即刷新' in checker
     assert 'TMALL_WEB_VERSION' in version
 
@@ -74,3 +72,20 @@ def test_table_controls_coalesce_viewport_work():
     assert 'scheduleViewportSync' in controls
     assert "requestAnimationFrame(() =>" in controls
     assert "passive: true" in controls
+
+
+def test_web_update_checker_notices_a_republished_ui_release():
+    """Republishing the UI keeps the product version but swaps the release id.
+
+    Without this signal an already-open tab stays on the previous immutable
+    assets forever, because its HTML still points at the old release directory.
+    """
+    checker = (PROJECT_ROOT / 'frontend' / 'ui_demo' / 'assets' / 'version-check.js').read_text(encoding='utf-8')
+
+    assert 'ui_release' in checker
+    assert 'tmall-release' in checker
+    assert 'checkUiRelease' in checker
+    assert '界面资源已更新' in checker
+    # The page compares itself against the stamped release, so a stale tab is
+    # caught on its very first check instead of only after a prior visit.
+    assert "document.querySelector('meta[name=\"tmall-release\"]')" in checker

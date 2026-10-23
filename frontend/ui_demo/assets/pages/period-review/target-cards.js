@@ -102,7 +102,7 @@
       // 不去逐行重复同一个数。
       const showProgress = timeProgress !== null && timeProgress !== undefined;
       const progressText = showProgress ? `${(Number(timeProgress) * 100).toFixed(2)}%` : '';
-      const body = list.map((row, index) => {
+      const renderRow = (row, index) => {
         const targetNeedsReview = isSuspiciousRatioTarget(row);
         const rateText = targetNeedsReview ? '待核查' : formatTargetRate(row.achieved_rate);
         const rateClass = targetNeedsReview ? '' : targetRateClass(row.achieved_rate, row.rate_better);
@@ -133,21 +133,22 @@
           }));
         }
         return h('tr', { 'data-pr-target-row': row.key }, ...cells);
-      });
-      const headCells = [
-        h('th', { text: '指标' }),
-        h('th', { class: 'num', text: '目标' }),
-        h('th', { class: 'num', text: '实际' }),
-        h('th', { class: 'num', text: '达成率' }),
-        h('th', { class: 'num', text: '差距（目标-实际）' }),
-      ];
-      if (showProgress) headCells.push(h('th', { class: 'num', text: '时间进度' }));
+      };
       return h('div', { class: 'pr-target-table' },
         h('p', { class: 'pr-target-table__title', text: '目标 vs 实际' }),
-        h('table', { class: 'pr-target-table__grid' },
-          h('thead', null, h('tr', null, ...headCells)),
-          h('tbody', null, ...body),
-        ),
+        window.TmallUI.table({
+          tableClass: 'pr-target-table__grid',
+          columns: [
+            { key: 'label', label: '指标' },
+            { key: 'target', label: '目标', numeric: true },
+            { key: 'actual', label: '实际', numeric: true },
+            { key: 'achieved_rate', label: '达成率', numeric: true },
+            { key: 'gap', label: '差距（目标-实际）', numeric: true },
+            ...(showProgress ? [{ key: 'time_progress', label: '时间进度', numeric: true }] : []),
+          ],
+          rows: list,
+          renderRow,
+        }),
       );
     }
 

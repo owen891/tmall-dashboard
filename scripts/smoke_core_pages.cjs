@@ -1,6 +1,8 @@
-const { chromium } = require(require.resolve('playwright', { paths: [require('path').join(__dirname, '..', 'desktop')] }));
+const { gateChromium, assertBase } = require('./gate_browser.cjs');
+const chromium = gateChromium();
 
 const base = process.env.TMALL_SMOKE_BASE || 'http://127.0.0.1:8770';
+assertBase(base);
 // Product workbench route contract: /products/<product_id>; shared dialog compatibility selector: .product-detail-dialog.
 const pages = [
   ['overview', '/'],

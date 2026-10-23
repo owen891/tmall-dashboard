@@ -22,6 +22,33 @@ def _filters():
     return filters
 
 
+def _source_disclosures(source_batches):
+    source_types = {
+        part.strip()
+        for batch in source_batches
+        for part in str(batch.get('source_type') or '').split(',')
+        if part.strip()
+    }
+    is_bi = bool(source_types) and all(
+        source_type.startswith('paimi_bi_') for source_type in source_types
+    )
+    if not is_bi:
+        return {
+            'status': 'unknown',
+            'upstream_atomic': None,
+            'precision': None,
+            'known_subtotals_not_complete_totals': None,
+            'acquisition_method': None,
+        }
+    return {
+        'status': 'declared',
+        'upstream_atomic': False,
+        'precision': 'source_literal_only_not_cent_exact',
+        'known_subtotals_not_complete_totals': True,
+        'acquisition_method': 'bi_workbook_import',
+    }
+
+
 def _date_argument(name):
     raw_value = request.args.get(name)
     if not raw_value:
@@ -65,6 +92,13 @@ def get_overview():
     else:
         missing_ranges = matrix.get('missing_date_ranges', [])
     source_batches = matrix.get('source_batches', []) or ([latest_import] if latest_import else [])
+    if data_grain == 'monthly':
+        evidence_source = 'monthly_data'
+    elif any(row.get('data_source') == 'store_daily_facts' for row in matrix.get('rows', [])):
+        evidence_source = 'store_daily_facts'
+    else:
+        evidence_source = 'daily_data'
+    result['data']['source_disclosures'] = _source_disclosures(source_batches)
     evidence_level = evidence_level_for(
         result['availability'], missing_inputs=missing_inputs, missing_ranges=missing_ranges,
     )
@@ -88,7 +122,7 @@ def get_overview():
         limitations=limitations_for(result['availability'], missing_inputs=missing_inputs, missing_ranges=missing_ranges),
         freshness={'start': start_date, 'end': result['data'].get('data_cutoff_date'), 'data_grain': data_grain},
         evidence=[{
-            'source': 'monthly_data' if data_grain == 'monthly' else 'store_daily_facts',
+            'source': evidence_source,
             'row_count': result['data'].get('fact_count') or len(matrix.get('rows', [])),
             'start': start_date,
             'end': result['data'].get('data_cutoff_date'),

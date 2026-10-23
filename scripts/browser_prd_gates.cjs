@@ -1,6 +1,8 @@
-const { chromium } = require(require.resolve('playwright', { paths: [require('path').join(__dirname, '..', 'desktop')] }));
+const { gateChromium, assertBase } = require('./gate_browser.cjs');
+const chromium = gateChromium();
 
 const base = process.env.TMALL_SMOKE_BASE || 'http://127.0.0.1:8770';
+assertBase(base);
 const states = ['no-data', 'insufficient-data', 'missing-fields', 'calculation-failed', 'source-unavailable', 'partial'];
 const capabilityContract = ['can_drilldown', 'can_edit_stage'];
 const flowModalSelector = '[data-modal-kind="flow"]';
@@ -224,35 +226,108 @@ const flowImpactLabel = '影响';
   const formatDate = (date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
   const startOfWeek = new Date(anchorDate);
   startOfWeek.setDate(startOfWeek.getDate() - ((startOfWeek.getDay() + 6) % 7));
-  await page.locator('[data-date-preset]').selectOption('custom');
-  await page.locator('[data-calendar-date]:not([disabled])').first().click();
-  await page.locator('[data-date-preset]').selectOption('this_week');
-  if (await page.locator('[data-period-popover]').isVisible()) throw new Error('week preset did not close a half-selected custom range');
-  const weekRange = await page.locator('[data-date-trigger]').innerText();
-  if (weekRange !== `${formatDate(startOfWeek)} ~ ${anchorValue}`) throw new Error(`this-week range is incorrect: ${weekRange}`);
+  // All actions use the live visible controls. Never force/evaluate-click a
+  // hidden legacy element; state, visible readout, URL and real HTTP must agree.
+  const dateSnapshot = (target) => target.evaluate(() => ({state: window.TmallDateRange.getState(), url: location.href, changes: window.__dateContractChanges || 0}));
+  const installDateCounter = (target) => target.evaluate(() => {
+    window.__dateContractChanges = 0;
+    window.addEventListener('tmall:date-range-change', () => { window.__dateContractChanges += 1; });
+  });
+  await installDateCounter(page);
+  const visibleRangeText = (start, end) => {
+    const [sy, sm, sd] = start.split('-').map(Number);
+    const [ey, em, ed] = end.split('-').map(Number);
+    const first = `${sy}年${sm}月${sd}日`;
+    return start === end ? first : `${first}-${sy === ey ? '' : `${ey}年`}${em}月${ed}日`;
+  };
+  const expectRange = async (target, start, end) => {
+    const observed = await dateSnapshot(target);
+    const url = new URL(observed.url);
+    const visible = target.locator('[data-period-range]');
+    if (!await visible.isVisible() || await visible.innerText() !== visibleRangeText(start, end)
+      || observed.state.startDate !== start || observed.state.endDate !== end
+      || url.searchParams.get('start') !== start || url.searchParams.get('end') !== end) {
+      throw new Error(`date state/readout/URL disagree: ${JSON.stringify(observed)} expected ${start}/${end}`);
+    }
+  };
+  const expectNoCommit = async (target, before, label) => {
+    const after = await dateSnapshot(target);
+    if (JSON.stringify(after) !== JSON.stringify(before)) throw new Error(`${label} committed: ${JSON.stringify(after)}`);
+  };
+  const selectPreset = async (target, key, start, end) => {
+    const button = target.locator(`[data-inline-preset="${key}"]`);
+    if (!await button.isVisible()) throw new Error(`natural preset not visible: ${key}`);
+    const response = target.waitForResponse((r) => {
+      const url = new URL(r.url());
+      return url.pathname === '/api/products' && url.searchParams.get('dim') === 'daily'
+        && url.searchParams.get('start') === start && url.searchParams.get('end') === end;
+    }, { timeout: 10000 });
+    await button.click();
+    const actualResponse = await response;
+    if (!actualResponse.ok()) throw new Error(`natural preset HTTP ${actualResponse.status()}: ${key}`);
+    await expectRange(target, start, end);
+    if (await target.getByRole('dialog', { name: '自定义日期范围', exact: true }).count()) throw new Error('preset did not discard custom picker');
+  };
+  const openHalfDraft = async (target) => {
+    const before = await dateSnapshot(target);
+    await target.locator('[data-inline-custom]').click();
+    const dialog = target.getByRole('dialog', { name: '自定义日期范围', exact: true });
+    await dialog.locator('[data-picker-date]:not([disabled])').first().click();
+    await expectNoCommit(target, before, 'first custom day');
+    return {before, dialog};
+  };
+  await openHalfDraft(page);
+  await selectPreset(page, 'this_week', formatDate(startOfWeek), anchorValue);
   const lastWeekEnd = new Date(startOfWeek);
   lastWeekEnd.setDate(lastWeekEnd.getDate() - 1);
   const lastWeekStart = new Date(lastWeekEnd);
   lastWeekStart.setDate(lastWeekStart.getDate() - 6);
-  await page.locator('[data-date-preset]').selectOption('last_week');
-  const lastWeekRange = await page.locator('[data-date-trigger]').innerText();
-  if (lastWeekRange !== `${formatDate(lastWeekStart)} ~ ${formatDate(lastWeekEnd)}`) throw new Error(`last-week range is incorrect: ${lastWeekRange}`);
-  await page.locator('[data-date-preset]').selectOption('custom');
-  await page.locator('[data-calendar-date]:not([disabled])').first().click();
-  if (!await page.locator('[data-period-popover]').isVisible() || !(await page.locator('[data-calendar-help]').innerText()).includes('请选择结束日期')) {
-    throw new Error('stale custom date draft overrode the selected week preset');
-  }
-  await page.locator('[data-date-preset]').selectOption('this_month');
-  const monthRange = await page.locator('[data-date-trigger]').innerText();
-  if (monthRange !== `${anchorValue.slice(0, 8)}01 ~ ${anchorValue}`) throw new Error(`this-month range is incorrect: ${monthRange}`);
+  await selectPreset(page, 'last_week', formatDate(lastWeekStart), formatDate(lastWeekEnd));
+  await page.locator('[data-inline-custom]').click();
+  const reopened = page.getByRole('dialog', { name: '自定义日期范围', exact: true });
+  if (await reopened.locator('.demo-picker__range-readout').innerText() !== `${formatDate(lastWeekStart)} ~ ${formatDate(lastWeekEnd)}`) throw new Error('stale custom draft survived preset');
+  const beforeCancel = await dateSnapshot(page);
+  await reopened.locator('[data-picker-date]:not([disabled])').first().click();
+  await reopened.getByRole('button', {name:'取消',exact:true}).click();
+  await expectNoCommit(page, beforeCancel, 'cancel');
+  const escapeDraft = await openHalfDraft(page);
+  await page.keyboard.press('Escape');
+  if (await escapeDraft.dialog.count()) throw new Error('Escape did not close custom picker');
+  await expectNoCommit(page, escapeDraft.before, 'Escape');
+  await openHalfDraft(page);
+  await selectPreset(page, 'this_month', `${anchorValue.slice(0, 8)}01`, anchorValue);
   const lastMonthStart = new Date(anchorYear, anchorMonth - 2, 1);
   const lastMonthEnd = new Date(anchorYear, anchorMonth - 1, 0);
-  await page.locator('[data-date-preset]').selectOption('last_month');
-  const lastMonthRange = await page.locator('[data-date-trigger]').innerText();
-  if (lastMonthRange !== `${formatDate(lastMonthStart)} ~ ${formatDate(lastMonthEnd)}`) throw new Error(`last-month range is incorrect: ${lastMonthRange}`);
+  await selectPreset(page, 'last_month', formatDate(lastMonthStart), formatDate(lastMonthEnd));
+  const applyDraft = await openHalfDraft(page);
+  const customDate = await applyDraft.dialog.locator('[data-picker-date]:not([disabled])').first().getAttribute('data-picker-date');
+  const customResponse = page.waitForResponse((r) => {
+    const url = new URL(r.url());
+    return url.pathname === '/api/products' && url.searchParams.get('start') === customDate && url.searchParams.get('end') === customDate;
+  }, {timeout:10000});
+  await applyDraft.dialog.locator('[data-picker-action="custom-apply"]').click();
+  if (!(await customResponse).ok()) throw new Error('custom range request failed');
+  await expectRange(page, customDate, customDate);
+  if ((await dateSnapshot(page)).changes !== applyDraft.before.changes + 1) throw new Error('apply did not emit exactly one date-range change');
+
   const mobilePage = await browser.newPage({ viewport: { width: 390, height: 844 } });
   await mobilePage.goto(`${base}/products`, { waitUntil: 'domcontentloaded', timeout: 10000 });
   await mobilePage.waitForSelector('[data-products-mobile-summary] article', { state: 'visible', timeout: 5000 });
+  await installDateCounter(mobilePage);
+  const mobileNatural = [
+    ['this_week', formatDate(startOfWeek), anchorValue],
+    ['last_week', formatDate(lastWeekStart), formatDate(lastWeekEnd)],
+    ['this_month', `${anchorValue.slice(0, 8)}01`, anchorValue],
+    ['last_month', formatDate(lastMonthStart), formatDate(lastMonthEnd)],
+  ];
+  for (const [key, start, end] of mobileNatural) {
+    const box = await mobilePage.locator(`[data-inline-preset="${key}"]`).boundingBox();
+    if (!box || box.x < 0 || box.x + box.width > 391 || box.width < 20 || box.height < 24) throw new Error(`mobile preset clipped: ${key} ${JSON.stringify(box)}`);
+    await selectPreset(mobilePage, key, start, end);
+  }
+  const mobileDraft = await openHalfDraft(mobilePage);
+  await mobileDraft.dialog.getByRole('button', {name:'取消',exact:true}).click();
+  await expectNoCommit(mobilePage, mobileDraft.before, 'mobile cancel');
   await mobilePage.locator('[data-products-columns-open]').click();
   const mobileLayout = await mobilePage.locator('[data-products-columns-dialog]').evaluate((dialog) => {
     const dialogRect = dialog.getBoundingClientRect();

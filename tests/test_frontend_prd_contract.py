@@ -2,6 +2,7 @@ import ast
 import pathlib
 import re
 import unittest
+import subprocess
 
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
@@ -149,6 +150,14 @@ class FrontendPrdContractTests(unittest.TestCase):
         # 行为断言：日期锚点取系统当天（写法允许变），且不从导入数据反推锚点。
         self.assertRegex(store, r'anchorDate\s*=\s*new Date\(')
         self.assertNotIn('anchorDate = parseDate(latest)', store)
+        self.assertRegex(store, r'const anchorDate\s*=\s*new Date\(')
+        shell = self.read('frontend/ui_demo/assets/shell.js')
+        for preset in ('this_week', 'last_week', 'this_month', 'last_month'):
+            self.assertIn(f'data-inline-preset="{preset}"', shell)
+
+    def test_date_runtime_delayed_api_and_real_handlers(self):
+        result = subprocess.run(['node', str(ROOT / 'tests/frontend/date_range_contract_runtime.cjs'), str(ROOT)], capture_output=True, text=True, encoding='utf-8', timeout=30)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
     def test_overview_uses_server_side_matrix_export(self):
         overview = self.read('frontend/ui_demo/assets/overview-live.js')
@@ -176,6 +185,16 @@ class FrontendPrdContractTests(unittest.TestCase):
         self.assertIn('item.status === selected', reviews)
         self.assertNotIn("'?limit=500&status=pending_review'", reviews)
 
+    def assert_overview_runtime_cases(self, *case_names):
+        """Run production JS functions against envelope/scope fixtures, not literal labels only."""
+        result = subprocess.run(
+            ['node', str(ROOT / 'scripts' / 'test_overview_ux_runtime.cjs'), '--root', str(ROOT)],
+            capture_output=True, text=True, encoding='utf-8', timeout=30,
+        )
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        for name in case_names:
+            self.assertIn(f'PASS {name}', result.stdout)
+
     def test_overview_renders_all_seven_core_kpis_and_matrix_context(self):
         page = self.read('frontend/ui_demo/pages/overview.html')
         adapter = self.read('frontend/ui_demo/assets/overview-live.js')
@@ -183,16 +202,35 @@ class FrontendPrdContractTests(unittest.TestCase):
                     'expense_ratio', 'average_order_value', 'returning_buyer_ratio'):
             self.assertIn(f'data-overview-kpi="{key}"', page)
             self.assertIn(f"['{key}',", adapter)
-        self.assertIn('missing_date_ranges', adapter)
-        self.assertIn('source_batches', adapter)
-        self.assertIn('changes', adapter)
+        # 【已作废】2026-10-17：以下三个旧断言只锁定未使用的局部变量，
+        # 被响应 envelope 缺日行为和实际矩阵来源展示契约替代；不删来源追溯能力。
+        # self.assertIn('missing_date_ranges', adapter)
+        # self.assertIn('source_batches', adapter)
+        # self.assertIn('changes', adapter)
+        self.assertIn('response.missing_ranges', adapter)
+        self.assertIn('data-overview-missing-ranges', page)
+        self.assertIn("key: 'source_batch_id'", adapter)
+        self.assertIn("key: 'data_source'", adapter)
+        self.assert_overview_runtime_cases(
+            'envelope missing_ranges wins over stale nested field',
+            'absent coverage contract stays unknown',
+            'matrix provenance retains filename and data source',
+        )
 
     def test_overview_uses_generic_monthly_data_label(self):
         page = self.read('frontend/ui_demo/pages/overview.html')
         adapter = self.read('frontend/ui_demo/assets/overview-live.js')
         self.assertIn('按月度数据对比净销售额、支付金额和推广花费实际值', page)
-        self.assertIn('当前导入为月度数据；补充日度导出后可按天查看', page)
-        self.assertIn("grain === 'monthly' ? '月度数据' : '日度事实'", adapter)
+        # 【已作废】2026-10-17：真实数据可为 daily/monthly/unknown，不能无条件声明月度。
+        # self.assertIn('当前导入为月度数据；补充日度导出后可按天查看', page)
+        # self.assertIn("grain === 'monthly' ? '月度数据' : '日度事实'", adapter)
+        self.assertIn('有日度明细时按天查看', page)
+        self.assert_overview_runtime_cases(
+            'monthly context is explicitly a monthly reference',
+            'daily context is not mislabeled as monthly',
+            'unknown context grain stays unconfirmed',
+            'subtitle separates selected dates from monthly diagnosis',
+        )
         self.assertIn('当前未导入日度明细；月度数据已用于上方指标和趋势', adapter)
         self.assertNotIn('派米', page)
         self.assertNotIn('派米', adapter)

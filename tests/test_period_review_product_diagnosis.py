@@ -56,7 +56,7 @@ class PeriodReviewProductDiagnosisTests(unittest.TestCase):
 
     def test_product_diagnosis_contains_metrics_anomaly_tags_and_unknowns(self):
         self._insert_products([
-            ('diag-a', '诊断商品 A', 'a.jpg', '爆款', '标品袜子'),
+            ('diag-a', '诊断商品 A', 'a.jpg', '爆款', '默认品类'),
         ])
         self._insert_daily([
             ('diag-a', '2026-09-14', 300, 30, 270, 100, 10, 20),
@@ -102,8 +102,8 @@ class PeriodReviewProductDiagnosisTests(unittest.TestCase):
 
     def test_decline_sorting_follows_previous_and_custom_comparison_periods(self):
         self._insert_products([
-            ('sort-a', '排序商品 A', '', '', '标品袜子'),
-            ('sort-b', '排序商品 B', '', '', '标品袜子'),
+            ('sort-a', '排序商品 A', '', '', '默认品类'),
+            ('sort-b', '排序商品 B', '', '', '默认品类'),
         ])
         self._insert_daily([
             ('sort-a', '2026-09-14', 100, 0, 90, 100, 10, 10),
@@ -139,8 +139,8 @@ class PeriodReviewProductDiagnosisTests(unittest.TestCase):
 
     def test_missing_metrics_and_missing_baseline_remain_none_and_are_explained(self):
         self._insert_products([
-            ('missing-a', '缺失指标商品', '', '', '标品袜子'),
-            ('missing-b', '缺失对比商品', '', '', '标品袜子'),
+            ('missing-a', '缺失指标商品', '', '', '默认品类'),
+            ('missing-b', '缺失对比商品', '', '', '默认品类'),
         ])
         self._insert_daily([
             ('missing-a', '2026-09-14', 120, None, None, None, None, None),
@@ -176,8 +176,8 @@ class PeriodReviewProductDiagnosisTests(unittest.TestCase):
 
     def test_category_filter_applies_to_top_decline_and_share_metrics(self):
         self._insert_products([
-            ('scope-sock', '标品商品', '', '', '标品袜子'),
-            ('scope-multi', '多标签商品', '', '', '标品袜子,平销商品'),
+            ('scope-sock', '标品商品', '', '', '默认品类'),
+            ('scope-multi', '多标签商品', '', '', '默认品类,平销商品'),
             ('scope-other', '其他商品', '', '', '内裤'),
         ])
         self._insert_daily([
@@ -190,7 +190,7 @@ class PeriodReviewProductDiagnosisTests(unittest.TestCase):
         ])
 
         filtered = self._context('category_mode=sock&compare=previous')
-        self.assertEqual(filtered['category']['label'], '标品袜子')
+        self.assertEqual(filtered['category']['label'], '默认品类')
         self.assertTrue(filtered['category']['filtered'])
         self.assertEqual(
             [item['product_id'] for item in filtered['products']['top']],

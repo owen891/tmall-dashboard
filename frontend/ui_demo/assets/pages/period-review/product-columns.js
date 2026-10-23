@@ -162,8 +162,9 @@
     function productTableColumns(boardKey) {
       const board = boardOf(boardKey);
       const enabled = readProductColumns(board.key);
-      const columns = boardColumns(board.key).filter((col) => col.fixed || enabled.has(col.key));
-      // 商品ID / 商品不能全关，否则整行只剩数字，无法定位到具体商品。
+      // 商品ID 并入标题列副行；旧的列配置仍可读取，但不再重复占一列。
+      const columns = boardColumns(board.key).filter((col) => col.kind !== 'id' && (col.fixed || enabled.has(col.key)));
+      // 商品列不能全关，否则整行只剩数字，无法定位到具体商品。
       if (!columns.some((col) => PRODUCT_IDENTITY_KINDS.includes(col.kind))) {
         columns.unshift(PRODUCT_COLUMNS.find((col) => col.kind === 'title'));
       }
@@ -241,23 +242,21 @@
       return meta;
     }
 
-    function productTitleCell(row) {
-      const full = row.title || row.product_id || '';
-      return h('td', { class: 'pr-table__title' },
-        row.image_url ? h('img', {
-          src: row.image_url,
-          alt: '',
-          loading: 'lazy',
-          // 图片失效时不留下破图图标，商品名称仍完整可读。
-          onerror: (event) => { event.currentTarget.hidden = true; },
-        }) : null,
-        // 标题常常很长，这里单行截断，完整标题挂在 title 上供悬停查看，避免一行占两三行高度。
-        h('span', { class: 'pr-table__title-text', title: full, text: full }));
+    function productTitleCell(row, showProductId) {
+      return h('td', { class: 'pr-table__title' }, TmallUI.productIdentity({
+        title: row.title || row.product_id,
+        id: row.product_id,
+        imageUrl: row.image_url,
+        showId: showProductId,
+        maxTitleChars: 8,
+        className: 'pr-table__identity',
+        titleClassName: 'pr-table__title-text',
+      }));
     }
 
-    // 商品ID / 商品两列宽度写死，富余宽度让给数值列：
-    // 否则 table-layout: auto 会把多出来的空间按内容长度比例分给标题，标题列永远最宽。
-    const PRODUCT_HEAD_WIDTH = { id: '132px', title: '260px' };
+    // 商品身份列宽度写死，富余宽度让给数值列：否则 table-layout: auto 会把多出来的空间按内容长度比例分给标题列。
+    // 商品列按「图 32px + 标题 + ID 副行 + 内边距」收窄，避免长标题挤压数值列。
+    const PRODUCT_HEAD_WIDTH = { id: '132px', title: '150px' };
 
     // 可点看周折线的指标列（XMind「点击字段指标 → 周维度折线预览」）：
     // 键与后端 _product_trend 周序列字段一一对应；prev_/share/anomaly 等派生列不在此列。
@@ -272,16 +271,12 @@
     function renderProductTable(rows, boardKey) {
       if (!rows || !rows.length) return null;
       const board = boardOf(boardKey);
+      const enabledColumns = readProductColumns(board.key);
       const columns = productTableColumns(board.key);
       const barMeta = productDataBarMeta(rows, columns);
-      const head = h('tr', null, ...columns.map((col) => h('th', {
-        class: PRODUCT_IDENTITY_KINDS.includes(col.kind) || col.kind === 'text' ? '' : 'num',
-        ...(PRODUCT_HEAD_WIDTH[col.kind] ? { style: `width:${PRODUCT_HEAD_WIDTH[col.kind]}` } : {}),
-        text: board.withDelta ? col.label : (col.labelTop || col.label),
-      })));
-      const body = rows.map((row) => h('tr', null,
+      const renderRow = (row) => h('tr', null,
         ...columns.map((col) => {
-          if (col.kind === 'title') return productTitleCell(row);
+          if (col.kind === 'title') return productTitleCell(row, enabledColumns.has('product_id'));
           const cell = productCellValue(row, col, board.withDelta);
           // 数值指标单元格可点：点哪个字段看哪个字段的近 8 周折线。
           const clickable = TRENDABLE_METRIC_KEYS.has(col.key)
@@ -318,24 +313,46 @@
           }
           return td;
         }),
-        h('td', { class: 'pr-table__action' },
-          h('button', {
-            type: 'button', class: 'ui-button ui-button--ghost ui-button--compact', text: '趋势',
-            title: '近 8 周指标折线，弹窗内可切换字段',
-            onclick: () => openProductTrend(row),
-          }),
-          h('button', {
-            type: 'button', class: 'ui-button ui-button--ghost ui-button--compact', text: '查看诊断',
-            onclick: () => openProductDiagnosis(row, board.withDelta),
-          }),
-          ACTION_BOARD_KEYS.has(board.key) ? h('button', {
-            type: 'button', class: 'ui-button ui-button--ghost ui-button--compact', text: '创建动作',
-            title: '打开单品诊断并填写运营动作',
-            onclick: () => openProductDiagnosis(row, board.withDelta),
-          }) : null),
-      ));
+      );
       return h('div', { class: 'pr-table-scroll' },
-        h('table', { class: 'pr-table pr-table--products' }, h('thead', null, head), h('tbody', null, ...body)));
+        window.TmallUI.table({
+          tableClass: 'pr-table pr-table--products',
+          columns: [
+            ...columns.map((col) => ({
+              key: col.key,
+              label: board.withDelta ? col.label : (col.labelTop || col.label),
+              numeric: !(PRODUCT_IDENTITY_KINDS.includes(col.kind) || col.kind === 'text'),
+              headerClassName: PRODUCT_HEAD_WIDTH[col.kind] ? `pr-table__head--${col.kind}` : '',
+              renderHeader: () => {
+                const label = board.withDelta ? col.label : (col.labelTop || col.label);
+                return PRODUCT_HEAD_WIDTH[col.kind]
+                  ? h('span', { style: `display:block;width:${PRODUCT_HEAD_WIDTH[col.kind]}`, text: label })
+                  : label;
+              },
+            })),
+            { key: '_actions', label: '操作', headerClassName: 'pr-table__head--actions' },
+          ],
+          rows,
+          renderRow: (row) => {
+            const tr = renderRow(row);
+            tr.append(h('td', { class: 'pr-table__action' },
+              h('button', {
+                type: 'button', class: 'ui-button ui-button--ghost ui-button--compact', text: '趋势',
+                title: '近 8 周指标折线，弹窗内可切换字段',
+                onclick: () => openProductTrend(row),
+              }),
+              h('button', {
+                type: 'button', class: 'ui-button ui-button--ghost ui-button--compact', text: '查看诊断',
+                onclick: () => openProductDiagnosis(row, board.withDelta),
+              }),
+              ACTION_BOARD_KEYS.has(board.key) ? h('button', {
+                type: 'button', class: 'ui-button ui-button--ghost ui-button--compact', text: '创建动作',
+                title: '打开单品诊断并填写运营动作',
+                onclick: () => openProductDiagnosis(row, board.withDelta),
+              }) : null));
+            return tr;
+          },
+        }));
     }
 
     // ------------------------------------------------ 货品表格字段设置（公共组件）
@@ -489,7 +506,7 @@
       return h('div', { class: 'pr-table-toolbar' },
         h('div', { class: 'pr-table-toolbar__meta' },
           h('span', { text: board.label }),
-          h('small', { text: '列可勾选与排序；标题过长会截断，悬停可看全文。' })),
+          h('small', { text: '列可勾选与排序；商品名只显示前 8 个字，悬停可看全文。' })),
         button);
     }
 

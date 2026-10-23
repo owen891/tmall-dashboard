@@ -3,13 +3,15 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>推广分析 | 天猫数据仪表盘</title>
+  <title>推广分析</title>
   <link rel="stylesheet" href="../assets/tokens.css?v=20261003a">
   <link rel="stylesheet" href="../assets/shell.css?v=20261001j">
-  <link rel="stylesheet" href="../assets/components.css?v=20261001j"><link rel="stylesheet" href="../assets/themes/product-domain.css?v=20261001j"><link rel="stylesheet" href="../assets/themes/promotion-domain.css?v=20261001j"><link rel="stylesheet" href="../assets/themes/overview-domain.css?v=20261001j"><link rel="stylesheet" href="../assets/themes/lifecycle-domain.css?v=20261001j"><link rel="stylesheet" href="../assets/themes/settings-domain.css?v=20261001j">
+  <link rel="stylesheet" href="../assets/components.css?v=20261001j"><link rel="stylesheet" href="../assets/themes/product-domain.css?v=20261018-product-identity"><link rel="stylesheet" href="../assets/themes/promotion-domain.css?v=20261001j"><link rel="stylesheet" href="../assets/themes/overview-domain.css?v=20261001j"><link rel="stylesheet" href="../assets/themes/lifecycle-domain.css?v=20261001j"><link rel="stylesheet" href="../assets/themes/settings-domain.css?v=20261001j">
   <link rel="stylesheet" href="../assets/promotion-views.css?v=20261001j">
   <script src="../assets/lucide-custom.min.js?v=20261001j"></script>
     <script src="../assets/echarts-custom.min.js?v=20261001j"></script>
+  <link rel="stylesheet" href="../assets/themes/macos-content.css?v=20261018-regular-titles">
+  <link rel="stylesheet" href="../assets/themes/promotion-workspace.css?v=20261018-value-state">
 </head>
 <body data-page="promotion">
   <div class="demo-app">
@@ -20,7 +22,7 @@
         <div class="ui-page-header">
           <div>
             <h1>推广分析</h1>
-            <p>总览看渠道效率，计划看投放方式，商品看经营结构；素材点击质量已拆到独立历史看板。</p>
+            <p>总览、计划与商品，按经营层级查看投放效果。</p>
           </div>
           <div class="demo-page__actions">
             <a class="ui-button" href="/creative-board"><i data-lucide="image"></i>素材点击率看板</a>
@@ -28,12 +30,17 @@
           </div>
         </div>
 
-        <section class="ui-context-bar promotion-context-bar" aria-label="推广数据范围">
+        <section class="ui-context-bar promotion-context-bar promotion-workspace-context" aria-label="推广数据范围">
           <div class="ui-context-bar__copy">
             <span class="ui-context-bar__label">推广数据范围</span>
             <strong class="ui-context-bar__value" data-promotion-range>正在读取数据范围…</strong>
             <span class="ui-context-bar__meta" data-promotion-range-meta>店铺维度 · 含渠道 / 计划 / 商品三粒度</span>
           </div>
+        <div class="promotion-source-strip" role="status" aria-label="推广数据来源说明">
+          <span class="promotion-source-strip__item promotion-source-strip__item--real" data-promotion-source-base>已接入：渠道 + 计划 + 商品</span>
+          <span class="promotion-source-strip__item promotion-source-strip__item--real">素材历史看板已独立</span>
+          <span class="promotion-source-strip__note" data-promotion-source-note>渠道指标来自计划报表按场景归因；商品行不带渠道归属，不参与渠道对比。</span>
+        </div>
         </section>
 
         <div class="segmented promotion-view-tabs" role="group" aria-label="推广分析视图" data-promotion-view-tabs>
@@ -44,43 +51,46 @@
                   </div>
 
         <div data-promotion-view-panel="overview" role="region" aria-label="推广总览">
-        <div class="promotion-source-strip" role="status" aria-label="推广数据来源说明">
-          <span class="promotion-source-strip__item promotion-source-strip__item--real" data-promotion-source-base>已接入：渠道 + 计划 + 商品</span>
-          <span class="promotion-source-strip__item promotion-source-strip__item--real">素材历史看板已独立</span>
-          <span class="promotion-source-strip__note" data-promotion-source-note>渠道指标来自计划报表按场景归因；商品行不带渠道归属，不参与渠道对比。</span>
-        </div>
+
+
+        <section class="ui-metric-grid" aria-label="推广核心指标">
+          <article class="ui-metric-card promotion-kpi-card--process"><div class="metric-card__label">推广花费<span class="promotion-metric-state" data-promotion-kpi-status="spend" hidden></span></div><div class="metric-card__value" data-promotion-kpi="spend">--</div><div class="metric-card__meta"><i data-lucide="wallet-cards"></i><span data-promotion-kpi-note>按商品记录汇总</span></div></article>
+          <article class="ui-metric-card promotion-kpi-card--result"><div class="metric-card__label">推广成交<span class="promotion-metric-state" data-promotion-kpi-status="gmv" hidden></span></div><div class="metric-card__value" data-promotion-kpi="gmv">--</div><div class="metric-card__meta"><i data-lucide="shopping-bag"></i>商品当期推广成交</div></article>
+          <article class="ui-metric-card promotion-kpi-card--result"><div class="metric-card__label">推广 ROI<span class="promotion-metric-state" data-promotion-kpi-status="roi" hidden></span></div><div class="metric-card__value" data-promotion-kpi="roi">--</div><div class="metric-card__meta"><i data-lucide="target"></i>推广成交 / 推广花费</div></article>
+          <article class="ui-metric-card promotion-kpi-card--result"><div class="metric-card__label">费比<span class="promotion-metric-state" data-promotion-kpi-status="expense_ratio" hidden></span></div><div class="metric-card__value" data-promotion-kpi="expense_ratio">--</div></article>
+          <article class="ui-metric-card promotion-kpi-card--process"><div class="metric-card__label">点击率<span class="promotion-metric-state" data-promotion-kpi-status="ctr" hidden></span></div><div class="metric-card__value" data-promotion-kpi="ctr">--</div><div class="metric-card__meta"><span>商品支付转化率</span> <span data-promotion-kpi="cvr">--</span><span class="promotion-metric-state" data-promotion-kpi-status="cvr" hidden></span></div></article>
+          <article class="ui-metric-card promotion-kpi-card--process"><div class="metric-card__label">直接付费成交<span class="promotion-metric-state" data-promotion-kpi-status="direct" hidden></span></div><div class="metric-card__value" data-promotion-kpi="direct">--</div><div class="metric-card__meta"><span>间接付费成交</span> <span data-promotion-kpi="indirect">--</span><span class="promotion-metric-state" data-promotion-kpi-status="indirect" hidden></span></div></article>
+          <article class="ui-metric-card promotion-kpi-card--process"><div class="metric-card__label">投放商品</div><div class="metric-card__value" data-promotion-kpi="products">--</div><div class="metric-card__meta"><i data-lucide="package"></i>推广花费大于 0 的商品</div></article>
+        </section>
+
+        <details class="promotion-quality" data-promotion-quality hidden>
+          <summary><span>数据完整度</span><span data-promotion-quality-summary></span><span class="promotion-quality__action">查看依据</span></summary>
+          <div class="promotion-quality__body" data-promotion-quality-body></div>
+        </details>
 
         <article class="promotion-decision-card" aria-labelledby="promotionCommandTitle"><section class="promotion-command" aria-label="推广经营结论">
           <div>
             <div class="promotion-command__heading">
-              <div><h2 id="promotionCommandTitle">推广经营看板</h2><p>围绕商品经营看投入、流量和推广成交，计划与商品分别核算。</p></div>
+              <div><h2 id="promotionCommandTitle">经营诊断</h2><p>投入 → 流量 → 成交；计划与商品分别核算。</p></div>
               <span class="promotion-command__status" data-promotion-health-badge data-tone="success"><i data-lucide="circle-check" aria-hidden="true"></i><span>加载中…</span></span>
             </div>
             <div class="promotion-funnel" aria-label="推广经营链路">
-              <div class="promotion-funnel__step"><span class="promotion-funnel__label"><i data-lucide="wallet-cards"></i>投入</span><strong class="promotion-funnel__value" data-promotion-funnel="spend">--</strong><span class="promotion-funnel__meta">推广花费</span></div>
-              <div class="promotion-funnel__step"><span class="promotion-funnel__label"><i data-lucide="mouse-pointer-click"></i>流量</span><strong class="promotion-funnel__value" data-promotion-funnel="clicks">--</strong><span class="promotion-funnel__meta" data-promotion-funnel-meta="clicks">点击量 / 展现量</span></div>
-              <div class="promotion-funnel__step"><span class="promotion-funnel__label"><i data-lucide="shopping-bag"></i>推广成交</span><strong class="promotion-funnel__value" data-promotion-funnel="gmv">--</strong><span class="promotion-funnel__meta" data-promotion-funnel-meta="gmv">推广成交 · 推广 ROI --</span></div>
+              <div class="promotion-funnel__step"><span class="promotion-funnel__label"><i data-lucide="wallet-cards"></i>投入</span><strong class="promotion-funnel__value" data-promotion-funnel="spend">--</strong><span class="promotion-metric-state" data-promotion-funnel-status="spend" hidden></span><span class="promotion-funnel__meta">推广花费</span></div>
+              <div class="promotion-funnel__step"><span class="promotion-funnel__label"><i data-lucide="mouse-pointer-click"></i>流量</span><strong class="promotion-funnel__value" data-promotion-funnel="clicks">--</strong><span class="promotion-metric-state" data-promotion-funnel-status="clicks" hidden></span><span class="promotion-funnel__meta" data-promotion-funnel-meta="clicks">点击量 / 展现量</span></div>
+              <div class="promotion-funnel__step"><span class="promotion-funnel__label"><i data-lucide="shopping-bag"></i>推广成交</span><strong class="promotion-funnel__value" data-promotion-funnel="gmv">--</strong><span class="promotion-metric-state" data-promotion-funnel-status="gmv" hidden></span><span class="promotion-funnel__meta" data-promotion-funnel-meta="gmv">推广成交 · 推广 ROI --</span></div>
             </div>
             <div class="promotion-command__insight"><i data-lucide="lightbulb"></i><div><strong data-promotion-insight-title>正在读取本期经营判断</strong><span data-promotion-insight-copy>判断将根据真实商品和计划数据动态生成；演示分项不会影响总盘。</span></div></div>
           </div>
           <aside class="promotion-command__signals" aria-label="推广经营信号">
             <h3>本期信号</h3>
-            <div class="promotion-signal"><span>整体投产</span><strong data-promotion-signal="roi" data-tone="success">--</strong></div>
-            <div class="promotion-signal"><span>商品支付转化率</span><strong data-promotion-signal="cvr">--</strong></div>
-            <div class="promotion-signal"><span>付费成交占比</span><strong data-promotion-signal="paid_share">--</strong></div>
+            <div class="promotion-signal"><span>整体投产</span><strong data-promotion-signal="roi" data-tone="success">--</strong><span class="promotion-metric-state" data-promotion-signal-status="roi" hidden></span></div>
+            <div class="promotion-signal"><span>商品支付转化率</span><strong data-promotion-signal="cvr">--</strong><span class="promotion-metric-state" data-promotion-signal-status="cvr" hidden></span></div>
+            <div class="promotion-signal"><span>付费成交占比</span><strong data-promotion-signal="paid_share">--</strong><span class="promotion-metric-state" data-promotion-signal-status="paid_share" hidden></span></div>
             <div class="promotion-signal"><span>触发预警</span><strong data-promotion-signal="alerts" data-tone="success">--</strong></div>
           </aside>
         </section>
         </article>
-        <section class="ui-metric-grid" aria-label="推广核心指标">
-          <article class="ui-metric-card promotion-kpi-card--process"><div class="metric-card__label">推广花费</div><div class="metric-card__value" data-promotion-kpi="spend">--</div><div class="metric-card__meta"><i data-lucide="wallet-cards"></i><span data-promotion-kpi-note>按商品记录汇总</span></div></article>
-          <article class="ui-metric-card promotion-kpi-card--result"><div class="metric-card__label">推广成交</div><div class="metric-card__value" data-promotion-kpi="gmv">--</div><div class="metric-card__meta"><i data-lucide="shopping-bag"></i>商品当期推广成交</div></article>
-          <article class="ui-metric-card promotion-kpi-card--result"><div class="metric-card__label">推广 ROI</div><div class="metric-card__value" data-promotion-kpi="roi">--</div><div class="metric-card__meta"><i data-lucide="target"></i>推广成交 / 推广花费</div></article>
-          <article class="ui-metric-card promotion-kpi-card--result"><div class="metric-card__label">费比</div><div class="metric-card__value" data-promotion-kpi="expense_ratio">--</div></article>
-          <article class="ui-metric-card promotion-kpi-card--process"><div class="metric-card__label">点击率 / 商品支付转化率</div><div class="metric-card__value" data-promotion-kpi="ctr">--</div><div class="metric-card__meta"><span data-promotion-kpi="cvr">--</span></div></article>
-          <article class="ui-metric-card promotion-kpi-card--process"><div class="metric-card__label">直接 / 间接付费成交</div><div class="metric-card__value" data-promotion-kpi="direct">--</div><div class="metric-card__meta"><span data-promotion-kpi="indirect">--</span></div></article>
-          <article class="ui-metric-card promotion-kpi-card--process"><div class="metric-card__label">投放商品</div><div class="metric-card__value" data-promotion-kpi="products">--</div><div class="metric-card__meta"><i data-lucide="package"></i>推广花费大于 0 的商品</div></article>
-        </section>
+
 
         <section class="ui-panel" aria-label="渠道效率对比" data-promotion-channel-cards-section>
           <div class="panel__header"><div><h3 class="panel__title">渠道效率对比</h3><p class="panel__hint" data-promotion-channel-cards-hint>各推广渠道的花费、ROI 与行为成本；ROI 高于 3 绿色、1.5-3 黄色、低于 1.5 红色。</p></div><span class="ui-badge ui-badge--info" data-promotion-channel-cards-count>--</span></div>
@@ -101,12 +111,7 @@
 
         <section class="ui-panel" aria-label="投放方式效果对比" data-promotion-plan-types-section>
           <div class="panel__header"><div><h3 class="panel__title">投放方式效果对比</h3><p class="panel__hint">从计划名自动解析投放方式（控点击 / 控成本 / 控投产 / 最大化等）后聚合。</p></div><span class="ui-badge ui-badge--info" data-promotion-plan-types-count>--</span></div>
-          <div class="ui-table-wrap">
-            <table class="ui-data-table" data-promotion-plan-types-table>
-              <thead><tr><th>投放方式</th><th>计划数</th><th>推广花费</th><th>推广成交</th><th>总 ROI</th><th>点击率</th><th>转化率</th><th>加购成本</th></tr></thead>
-              <tbody data-promotion-plan-types-body><tr><td>加载中…</td></tr></tbody>
-            </table>
-          </div>
+          <div data-promotion-plan-types-root><div class="ui-empty-state"><span>加载中…</span></div></div>
           <p class="promotion-channel-cards__footnote" data-promotion-plan-types-note></p>
         </section>
 
@@ -184,12 +189,7 @@
                 <button class="ui-button" type="button" data-promotion-manage-fields><i data-lucide="columns-3"></i>字段设置</button>
               </div>
             </div>
-            <div class="ui-table-wrap">
-              <table class="ui-data-table" id="promotionTable" data-promotion-drill>
-                <thead data-promotion-head></thead>
-                <tbody data-promotion-body><tr><td>加载中…</td></tr></tbody>
-              </table>
-            </div>
+            <div id="promotionTable" data-promotion-table-root data-promotion-drill><div class="ui-empty-state"><span>加载中…</span></div></div>
           </article>
         </section>
         </div>
@@ -261,16 +261,16 @@
 
 
   <script src="../assets/api.js?v=20261001j"></script>
-  <script src="../assets/navigation.js?v=20261001j"></script>
+  <script src="../assets/navigation.js?v=20261011a"></script>
   <script src="../assets/charts.js?v=20261001j"></script>
-  <script src="../assets/shell.js?v=20261003c"></script>
-  <script src="../assets/ui-components.js?v=20261003a"></script>
+  <script src="../assets/shell.js?v=20261011a"></script>
+  <script src="../assets/ui-components.js?v=20261018-product-identity"></script>
   <script src="../assets/field-selector.js?v=20261001j"></script>
   <script src="../assets/field-template-manager.js?v=20261001j"></script>
   <script src="../assets/promotion-field-definitions.js?v=20261001j"></script>
   <script src="../assets/alert-rules.js?v=20261001j"></script>
   <script src="../assets/product-detail-dialog.js?v=20261001j"></script>
-  <script src="../assets/format.js?v=20261001j"></script><script src="../assets/promotion-live.js?v=20261003a"></script>
+  <script src="../assets/format.js?v=20261011a"></script><script src="../assets/promotion-live.js?v=20261018-value-state"></script>
   <script src="../assets/promotion-views-live.js?v=20261001j"></script>
 </body>
 </html>

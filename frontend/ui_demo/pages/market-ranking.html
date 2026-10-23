@@ -3,11 +3,11 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>市场分析 - 天猫数据仪表盘</title>
+<title>市场分析</title>
 <link rel="stylesheet" href="../assets/tokens.css?v=20261003a">
 <link rel="stylesheet" href="../assets/shell.css?v=20261001j">
 <link rel="stylesheet" href="../assets/components.css?v=20261001j"><link rel="stylesheet" href="../assets/themes/product-domain.css?v=20261001j"><link rel="stylesheet" href="../assets/themes/promotion-domain.css?v=20261001j"><link rel="stylesheet" href="../assets/themes/overview-domain.css?v=20261001j"><link rel="stylesheet" href="../assets/themes/lifecycle-domain.css?v=20261001j"><link rel="stylesheet" href="../assets/themes/settings-domain.css?v=20261001j">
-<link rel="stylesheet" href="../assets/market-ranking.css?v=20261001j">
+<link rel="stylesheet" href="../assets/market-ranking.css?v=20261022a">
 <script src="../assets/echarts-custom.min.js?v=20261001j"></script>
 <style>
 .market-chart-row { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-4); margin-bottom: var(--space-4); }
@@ -59,6 +59,7 @@
 body[data-page="market-ranking"] .market-command-grid--single { grid-template-columns: minmax(0, 1fr); }
 body[data-page="market-ranking"] .market-entry-grid--block { margin-top: 0; padding: var(--space-4); }
 </style>
+  <link rel="stylesheet" href="../assets/themes/macos-content.css?v=20261018-regular-titles">
 </head>
 <body data-page="market-ranking">
 <div class="demo-app">
@@ -113,7 +114,7 @@ body[data-page="market-ranking"] .market-entry-grid--block { margin-top: 0; padd
           <article class="ui-metric-card">
             <div class="metric-card__label">分析类目</div>
             <div class="metric-card__value" data-mr-cat-count>--</div>
-            <div class="metric-card__meta">中筒袜 / 长筒袜</div>
+            <div class="metric-card__meta">按采集配置的类目</div>
           </article>
           <article class="ui-metric-card">
             <div class="metric-card__label">在榜商品</div>
@@ -371,7 +372,7 @@ body[data-page="market-ranking"] .market-entry-grid--block { margin-top: 0; padd
         <div class="panel__header">
           <div>
             <h3 class="panel__title">重叠店铺</h3>
-            <p class="panel__hint">同时在中筒袜和长筒袜类目在榜的店铺</p>
+            <p class="panel__hint">同时在多个分析类目在榜的店铺</p>
           </div>
         </div>
         <div class="market-overlap-list" data-mr-overlap-list>
@@ -482,11 +483,11 @@ body[data-page="market-ranking"] .market-entry-grid--block { margin-top: 0; padd
 
 <script src="../assets/lucide-custom.min.js?v=20261001j"></script>
 <script src="../assets/api.js?v=20261001j"></script>
-<script src="../assets/navigation.js?v=20261001j"></script>
+<script src="../assets/navigation.js?v=20261011a"></script>
 <script src="../assets/labels.js?v=20261001j"></script>
-<script src="../assets/shell.js?v=20261003c"></script>
-<script src="../assets/format.js?v=20261001j"></script><script src="../assets/ui-components.js?v=20261003a"></script>
-<script src="../assets/market-ranking-live.js?v=20261003a"></script>
+<script src="../assets/shell.js?v=20261011a"></script>
+<script src="../assets/format.js?v=20261011a"></script><script src="../assets/ui-components.js?v=20261003a"></script>
+<script src="../assets/market-ranking-live.js?v=20261022a"></script>
 </body>
 </html>
 

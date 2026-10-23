@@ -60,6 +60,40 @@ class LifecycleApiTests(unittest.TestCase):
         self.assertTrue(payload['capabilities']['can_lock_stage'])
         self.assertEqual(payload['data'][0]['data_cutoff_date'], '2026-03-01')
 
+    def test_row_capabilities_are_per_product_not_collection_wide(self):
+        """一行数据不足不得连带锁死数据充足的那一行。
+
+        回归：capabilities.can_edit_stage 用集合级 all(continuous_valid_days >= 60)
+        计算，只要有一行不足 60 天就整体为 false，前端 lifecycle-live.js 又拿它
+        逐行判定 disabled，于是数据充足的商品也点不动「调整」按钮。
+        """
+        with self.get_db(self.path) as connection:
+            connection.execute("INSERT INTO products (product_id, title) VALUES ('life-b', '数据充足商品')")
+            start = date(2026, 1, 1)
+            for offset in range(60):
+                connection.execute(
+                    """INSERT INTO daily_data (
+                        product_id, date, payment_amount, ipv, buyers, ad_spend
+                    ) VALUES ('life-b', ?, 100, 100, 10, 10)""",
+                    ((start + timedelta(days=offset)).isoformat(),),
+                )
+            connection.commit()
+
+        response = self.client.get('/api/lifecycle/assessments')
+        payload = response.get_json()
+        response.close()
+
+        rows = payload['capabilities']['rows']
+        self.assertIn('life-a', rows)
+        self.assertIn('life-b', rows)
+
+        # life-a 无日数据：行级不可编辑
+        self.assertFalse(rows['life-a']['can_edit_stage'])
+        # life-b 满 60 天：行级必须可编辑，即使集合级因 life-a 而整体为 false
+        self.assertTrue(rows['life-b']['can_edit_stage'])
+        self.assertFalse(payload['capabilities']['can_edit_stage'],
+                         '集合级仍应反映「整批未全部达标」，两者语义不同')
+
     def test_assessment_list_uses_bulk_data_instead_of_per_product_queries(self):
         from repos.lifecycle_repo import LifecycleRepo
         with patch.object(LifecycleRepo, 'daily_rows', side_effect=AssertionError('per-product query used')):

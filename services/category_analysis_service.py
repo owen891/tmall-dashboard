@@ -5,7 +5,7 @@ from calendar import monthrange
 from datetime import date, timedelta
 from typing import Any
 
-from db import get_db
+from db import get_db, get_shop_id
 from services.category_mode_service import mode_to_label
 
 BASE_METRICS = {
@@ -60,10 +60,12 @@ def _parse_period(value: str, name: str) -> date:
         raise ValueError(f'invalid {name}') from exc
 
 
-def _aggregate(conn, start: date, end: date, category_mode: str | None):
+def _aggregate(conn, start: date, end: date, category_mode: str | None, shop_id: str):
     label = mode_to_label(category_mode)
-    clauses = ['d.date >= ?', 'd.date <= ?']
-    params: list[Any] = [start.isoformat(), end.isoformat()]
+    # daily_data 是多店表（唯一键含 shop_id），漏掉店铺条件就会把其他店铺的
+    # 经营数据聚合进当前请求的店铺口径里。店铺条件必须显式且不可省略。
+    clauses = ['d.shop_id = ?', 'd.date >= ?', 'd.date <= ?']
+    params: list[Any] = [shop_id, start.isoformat(), end.isoformat()]
     if label:
         clauses.append("(p.shop_label = ? OR instr(',' || p.shop_label || ',', ',' || ? || ',') > 0)")
         params.extend([label, label])
@@ -173,18 +175,22 @@ def _contributors(rows, previous_rows, metric, top_n):
 
 
 def analyze(*, start: date, end: date, compare_start: date | None, compare_end: date | None,
-            grain: str, category_mode: str | None, metric: str, top_n: int = 20):
+            grain: str, category_mode: str | None, metric: str, top_n: int = 20,
+            shop_id: str | None = None):
     if grain not in {'day', 'week', 'month'}: raise ValueError('grain must be day, week, or month')
     if metric not in BASE_METRICS and metric not in DERIVED: raise ValueError('unsupported metric')
+    shop_id = str(shop_id or get_shop_id())
     with get_db() as conn:
-        rows, label, columns = _aggregate(conn, start, end, category_mode)
+        rows, label, columns = _aggregate(conn, start, end, category_mode, shop_id)
         current, seen, profit_basis = _summarize(rows)
         previous = prev_seen = None
         previous_rows = []
         if compare_start and compare_end:
-            previous_rows, _, _ = _aggregate(conn, compare_start, compare_end, category_mode)
+            previous_rows, _, _ = _aggregate(conn, compare_start, compare_end, category_mode, shop_id)
             previous, prev_seen, _ = _summarize(previous_rows)
-        latest = conn.execute('SELECT MAX(date) AS latest FROM daily_data').fetchone()
+        latest = conn.execute(
+            'SELECT MAX(date) AS latest FROM daily_data WHERE shop_id = ?', (shop_id,)
+        ).fetchone()
     coverage_end = min(end, date.fromisoformat(latest['latest'])) if latest and latest['latest'] else None
 
     def build_trend(source_rows, range_start, range_end):
@@ -237,17 +243,18 @@ def analyze(*, start: date, end: date, compare_start: date | None, compare_end: 
 
 
 def analyze_matrix(*, years: list[int], category_mode: str | None, metric: str = 'net_sales',
-                   metrics: list[str] | None = None):
+                   metrics: list[str] | None = None, shop_id: str | None = None):
     """Return a calendar-month matrix for multi-year category management."""
     if not years or len(years) > 5 or any(year < 2000 or year > 2100 for year in years):
         raise ValueError('years must contain one to five valid years')
     selected_metrics = list(dict.fromkeys(metrics or [metric]))
     if not selected_metrics or any(item not in BASE_METRICS and item not in DERIVED for item in selected_metrics):
         raise ValueError('unsupported metric')
+    shop_id = str(shop_id or get_shop_id())
     years = sorted(set(years))
     start, end = date(years[0], 1, 1), date(years[-1], 12, 31)
     with get_db() as conn:
-        rows, label, _ = _aggregate(conn, start, end, category_mode)
+        rows, label, _ = _aggregate(conn, start, end, category_mode, shop_id)
     def build_metric(metric_name):
         values = {year: {} for year in years}
         for year in years:

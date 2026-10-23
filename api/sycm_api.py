@@ -28,6 +28,8 @@ from repos.sycm_repo import (
     rival_shop_day_summary as _repo_rival_shop_day_summary,
     rival_items_day_list as _repo_rival_items_day_list,
     market_item_rank_rows as _repo_market_item_rank_rows,
+    market_item_rank_result as _repo_market_item_rank_result,
+    NativeMarketReadError as _NativeMarketReadError,
     market_search_rank_rows as _repo_market_search_rank_rows,
     market_category_list as _repo_market_category_list,
     market_item_sample_daily as _repo_market_item_sample_daily,
@@ -407,15 +409,40 @@ def rival_item_entities():
 
 # ==================== 市场排行（生意参谋新数据） ====================
 
+def _market_rank_response(*, categories_only=False):
+    """Use the app-bound authorized shop; client source options never select an owner."""
+    from db import get_shop_id
+    import sqlite3
+    try:
+        limit = 300 if categories_only else int(request.args.get('limit',50))
+        payload = _repo_market_item_rank_result(
+            request.args.get('date') or None, request.args.get('cate_id',''),request.args.get('cate_name',''),limit,
+            shop_id=str(get_shop_id()),source=request.args.get('source','auto'),rank_type=request.args.get('rank_type','交易总量'))
+    except _NativeMarketReadError as error:
+        if str(error)=='native_reader_not_installed':
+            return failure('ENVIRONMENT_ERROR','插件日报读取组件尚未配套部署',status=503)
+        return failure('QUALITY_GATE_FAILED','插件日报来源或完整性校验未通过，未回退到其他来源',status=409)
+    except PermissionError:
+        return failure('UNSUPPORTED_SCOPE','历史市场数字表不支持所请求的店铺范围',status=422)
+    except (ValueError,TypeError):
+        return failure('VALIDATION_ERROR','日期、页数、来源或榜单筛选参数无效',status=422)
+    except sqlite3.Error:
+        return failure('ENVIRONMENT_ERROR','市场日报读取暂不可用',status=503)
+    available = bool(payload['items'])
+    pending = payload['pending_native_partitions']
+    if categories_only:
+        payload = {key:value for key,value in payload.items() if key!='items'}
+    return success(payload,availability='available' if available else 'partial' if pending else 'no-data',
+        capabilities=payload['capabilities'],filters={
+            'shop_id':payload['shop_id'],'source':payload['requested_source'],'rank_type':payload['rank_type'],
+            'cate_id':request.args.get('cate_id',''),'cate_name':request.args.get('cate_name','')},
+        source_batches=payload['native_partitions'],evidence_level='partial' if available or pending else 'insufficient',
+        limitations=payload['limitations'],freshness={'period':payload['stat_date'],'source_mode':payload['source_mode']})
+
+
 @sycm_bp.route('/market/item-rank', methods=['GET'])
 def market_item_rank():
-    """商品排行榜"""
-    stat_date = request.args.get('date') or get_latest_date('sycm_market_item_rank')
-    cate_id = request.args.get('cate_id', '')
-    cate_name = request.args.get('cate_name', '')
-    limit = int(request.args.get('limit', 50))
-    items = _repo_market_item_rank_rows(stat_date, cate_id, cate_name, limit)
-    return success({'stat_date': stat_date, 'items': items})
+    return _market_rank_response()
 
 
 @sycm_bp.route('/market/search-rank', methods=['GET'])
@@ -483,11 +510,7 @@ def market_rival_item_moves():
 
 @sycm_bp.route('/market/categories', methods=['GET'])
 def market_categories():
-    """市场类目列表"""
-    stat_date = request.args.get('date') or get_latest_date('sycm_market_item_rank')
-    if not stat_date:
-        return failure('NO_DATA', '暂无市场数据')
-    return success({'stat_date': stat_date, 'categories': _repo_market_category_list(stat_date)})
+    return _market_rank_response(categories_only=True)
 
 
 @sycm_bp.route('/market/trend', methods=['GET'])

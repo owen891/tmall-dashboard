@@ -108,6 +108,12 @@ PAGE_DEFINITIONS = (
         'capability_keys': ('new-products.view', 'new-products.product_detail'),
     },
     {
+        'key': 'promotion-matrix', 'label': '推广矩阵', 'page_type': 'primary', 'route': '/promotion-matrix',
+        'core_question': '新老品在各渠道的投放效率如何、哪些单品该放大或优化',
+        'data_domains': ('promotion_daily', 'product_daily', 'product_master'),
+        'capability_keys': ('promotion-matrix.view',),
+    },
+    {
         'key': 'market-ranking', 'label': '市场排行', 'page_type': 'primary', 'route': '/market-ranking',
         'core_question': '市场大盘与竞品处于什么位置',
         'data_domains': ('market',),
@@ -221,6 +227,7 @@ CAPABILITY_DEFINITIONS = (
     {'key': 'keyword-promotion.export', 'page_key': 'keyword-promotion', 'label': '导出关键词结果', 'mode': 'export', 'support_level': 'conditional', 'data_domains': ('promotion_daily',), 'metric_keys': (), 'api_endpoints': ('GET /api/keyword-promotion/products',)},
     {'key': 'new-products.view', 'page_key': 'new-products', 'label': '查看新品投放', 'mode': 'observe', 'support_level': 'supported', 'data_domains': ('promotion_daily',), 'metric_keys': ('ad_roi',), 'api_endpoints': ('GET /api/promotion/new-products',)},
     {'key': 'new-products.product_detail', 'page_key': 'new-products', 'label': '下钻单品投放', 'mode': 'analyze', 'support_level': 'conditional', 'data_domains': ('product_daily',), 'metric_keys': ('net_sales',), 'api_endpoints': ('GET /api/promotion/product-detail',)},
+    {'key': 'promotion-matrix.view', 'page_key': 'promotion-matrix', 'label': '查看推广矩阵', 'mode': 'observe', 'support_level': 'supported', 'data_domains': ('promotion_daily', 'product_daily', 'product_master'), 'metric_keys': ('ad_roi', 'expense_ratio'), 'api_endpoints': ('GET /api/promotion/matrix',)},
     {'key': 'market-ranking.view', 'page_key': 'market-ranking', 'label': '查看市场排行', 'mode': 'observe', 'support_level': 'conditional', 'data_domains': ('market',), 'metric_keys': (), 'api_endpoints': ('GET /api/market-ranking/summary',)},
     {'key': 'market-ranking.drilldown', 'page_key': 'market-ranking', 'label': '市场排行下钻', 'mode': 'analyze', 'support_level': 'conditional', 'data_domains': ('market',), 'metric_keys': (), 'api_endpoints': ('GET /api/market-ranking/products', 'GET /api/sycm/market/item-rank')},
     {'key': 'flow-source.view', 'page_key': 'flow-source', 'label': '查看流量来源', 'mode': 'observe', 'support_level': 'conditional', 'data_domains': ('market',), 'metric_keys': (), 'api_endpoints': ('GET /api/sycm/flow-source/summary',)},
@@ -272,6 +279,7 @@ _PAGE_TARGET_FILES = {
     'analysis': ('frontend/ui_demo/pages/analysis.html', 'frontend/ui_demo/assets/analysis-live.js'),
     'keyword-promotion': ('frontend/ui_demo/pages/keyword-promotion.html', 'frontend/ui_demo/assets/keyword-promotion-live.js'),
     'new-products': ('frontend/ui_demo/pages/new-products.html', 'frontend/ui_demo/assets/new-products-live.js'),
+    'promotion-matrix': ('frontend/ui_demo/pages/promotion-matrix.html', 'frontend/ui_demo/assets/promotion-matrix-live.js'),
     'market-ranking': ('frontend/ui_demo/pages/market-ranking.html', 'frontend/ui_demo/assets/market-ranking-live.js'),
     'flow-source': ('frontend/ui_demo/pages/flow-source.html', 'frontend/ui_demo/assets/flow-source-live.js'),
     'rival-analysis': ('frontend/ui_demo/pages/rival-analysis.html', 'frontend/ui_demo/assets/rival-analysis-live.js'),

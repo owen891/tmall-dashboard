@@ -9,68 +9,119 @@
   const storageKey = 'tmall-products-field-view';
   const columnsStorageKey = 'tmall-products-visible-columns';
   const columnsPreferenceStorageKey = 'tmall-products-field-preference-v1';
+  // 列定义约定：`hidden: true` 表示该列在当前数据链路下**长期 100% 空值**，
+  // 定义保留（供口径追溯与恢复）但不出现在列表、字段选择器与导出模板中。
+  // 2026-10-22 全库实测后标记，理由见各组注释；数据链路补齐后删掉 hidden 即可恢复。
   const columnGroups = [
+    // 【2026-10-22 用户决定】基础信息只保留「分层」(tier)。
+    // 用户原话：「基础信息可以不用写，目前就只有款式的分层，可以先只保留这个」——
+    // 即不建商品档案录入功能，其余基础信息字段一律先隐藏。
+    // 其中 style/product_type/product_time_node/product_growth_stage/scene/manager/remark
+    // 在 products 表 10144/10144 行全为空串；status/category/list_date/product_tags
+    // 虽有值，但按用户要求也一并隐藏。恢复方式：删掉 hidden 标记并加回模板。
     { label: '基础信息', columns: [
-      { key: 'tier', label: '分层' }, { key: 'style', label: '风格' }, { key: 'product_type', label: '标品属性' },
-      { key: 'product_time_node', label: '款期' }, { key: 'product_growth_stage', label: '成长阶段' }, { key: 'status', label: '状态' },
-      { key: 'category', label: '类目' }, { key: 'list_date', label: '上架日期' },
-      { key: 'scene', label: '场景' }, { key: 'product_tags', label: '款式属性' }, { key: 'manager', label: '负责人' }, { key: 'remark', label: '备注' }
+      { key: 'tier', label: '分层' }, { key: 'style', label: '风格', hidden: true }, { key: 'product_type', label: '标品属性', hidden: true },
+      { key: 'product_time_node', label: '款期', hidden: true }, { key: 'product_growth_stage', label: '成长阶段', hidden: true }, { key: 'status', label: '状态', hidden: true },
+      { key: 'category', label: '类目', hidden: true }, { key: 'list_date', label: '上架日期', hidden: true },
+      { key: 'scene', label: '场景', hidden: true }, { key: 'product_tags', label: '款式属性', hidden: true }, { key: 'manager', label: '负责人', hidden: true }, { key: 'remark', label: '备注', hidden: true }
     ] },
+    // 【2026-10-22 标记 hidden】下列流量列在 daily_data/monthly_data 中非零行数为 0，
+    // 唯一有真实值的源是达摩盘（dmp_shop_item_indicators.ind_key='ipv' 等），
+    // 但达摩盘单品只覆盖 1581/10144 个商品（15.6%），整屏切换会让 84% 的商品访客变空，
+    // 且与生意参谋访客口径不一致（同商品同窗口 ipv 21440 vs 访客 9478），
+    // 因此暂不混排：paid_ipv(付费访客) / organic_ipv(自然访客) /
+    // recommend_ipv(推荐访客) / click_rate(商品点击率，仅关键词/市场维度有值)。
+    // 若要切达摩盘口径，应做成整屏口径开关，不能与生意参谋列混排。
     { label: '流量与转化', columns: [
-      { key: 'visitors', label: '商品访客数', format: 'number' }, { key: 'conversion', label: '商品支付转化率', format: 'percent' },
+      { key: 'visitors', label: '商品访客数', format: 'number' }, { key: 'conversion', label: '支付转化率(按人数)', format: 'percent' },
       { key: 'search_ratio', label: '搜索占比', format: 'percent' }, { key: 'search_conversion', label: '搜索转化率', format: 'percent' },
       { key: 'search_visitors', label: '搜索访客', format: 'number' }, { key: 'page_views', label: '浏览量', format: 'number' },
       { key: 'uv_value', label: '访客价值', format: 'money' }, { key: 'cart_rate', label: '加购率', format: 'percent' },
       { key: 'fav_rate', label: '收藏率', format: 'percent' }, { key: 'bounce_rate', label: '跳出率', format: 'percent' },
-      { key: 'avg_stay_duration', label: '平均停留时长', format: 'decimal' }, { key: 'paid_ipv', label: '付费访客', format: 'number' },
-      { key: 'organic_ipv', label: '自然访客', format: 'number' }, { key: 'search_ipv', label: '搜索访客数', format: 'number' },
-      { key: 'recommend_ipv', label: '推荐访客', format: 'number' }, { key: 'cart_users', label: '加购人数', format: 'number' },
-      { key: 'fav_users', label: '收藏人数', format: 'number' }, { key: 'click_rate', label: '商品点击率', format: 'percent' }
+      { key: 'avg_stay_duration', label: '平均停留时长', format: 'decimal' }, { key: 'paid_ipv', label: '付费访客', format: 'number', hidden: true },
+      { key: 'organic_ipv', label: '自然访客', format: 'number', hidden: true }, { key: 'search_ipv', label: '搜索访客数', format: 'number' },
+      { key: 'recommend_ipv', label: '推荐访客', format: 'number', hidden: true }, { key: 'cart_users', label: '加购人数', format: 'number' },
+      { key: 'fav_users', label: '收藏人数', format: 'number' }, { key: 'click_rate', label: '商品点击率', format: 'percent', hidden: true }
     ] },
+    // 【2026-10-24 口径进字段名】对齐边界 BI：指标名自带口径后缀，
+    // 用户看列名即知口径，不用问人（refund_rate 是金额口径、conversion 按人数）。
     { label: '交易与退款', columns: [
-      { key: 'payment_amount', label: '支付金额', format: 'money' }, { key: 'payment_count', label: '支付件数', format: 'number' },
-      { key: 'buyers', label: '支付买家数', format: 'number' }, { key: 'avg_order_value', label: '客单价', format: 'money' },
-      { key: 'net_sales', label: '净销售额', format: 'money' }, { key: 'refund_amount', label: '退款金额', format: 'money' },
-      { key: 'refund_rate', label: '退款率', format: 'percent' }, { key: 'trend_change', label: '销售趋势变化', format: 'percent' },
+      { key: 'payment_amount', label: '支付金额(支付)', format: 'money' }, { key: 'payment_count', label: '支付件数(支付)', format: 'number' },
+      { key: 'buyers', label: '支付人数(支付)', format: 'number' }, { key: 'avg_order_value', label: '客单价(按支付)', format: 'money' },
+      { key: 'net_sales', label: '净销售额(支付)', format: 'money' }, { key: 'refund_amount', label: '退款金额', format: 'money' },
+      { key: 'refund_rate', label: '退款率(按金额)', format: 'percent' }, { key: 'trend_change', label: '支付金额环比', format: 'percent' },
       { key: 'cart_qty', label: '加购件数', format: 'number' }, { key: 'score', label: '综合评分', format: 'decimal' },
       { key: 'new_buyers', label: '新买家数', format: 'number' }, { key: 'new_buyer_ratio', label: '新买家占比', format: 'percent' },
       { key: 'repurchase_users', label: '复购人数', format: 'number' }, { key: 'repurchase_rate', label: '复购率', format: 'percent' },
-      { key: 'cross_sell_qty', label: '连带件数', format: 'number' }, { key: 'cross_sell_categories', label: '连带类目数', format: 'number' },
-      { key: 'cross_sell_rate', label: '连带率', format: 'percent' }, { key: 'guide_visits', label: '引导访问', format: 'number' },
+      { key: 'cross_sell_qty', label: '连带件数', format: 'number' }, { key: 'cross_sell_categories', label: '连带类目数', format: 'number', hidden: true },
+      { key: 'cross_sell_rate', label: '连带率', format: 'percent' },
       { key: 'guide_visitors', label: '引导访客', format: 'number' }, { key: 'guide_potential', label: '引导潜客', format: 'number' },
       { key: 'guide_potential_ratio', label: '引导潜客占比', format: 'percent' }
     ] },
-    { label: '推广与付费', columns: [
-      { key: 'ad_spend', label: '推广花费', format: 'money' }, { key: 'expense_ratio', label: '费比', format: 'percent' }, { key: 'roi', label: '推广 ROI', format: 'decimal' },
-      { key: 'paid_ratio', label: '付费占比', format: 'percent' }, { key: 'keyword_spend', label: '关键词花费', format: 'money' },
-      { key: 'keyword_roi', label: '关键词 ROI', format: 'decimal' }, { key: 'crowd_spend', label: '人群花费', format: 'money' },
-      { key: 'crowd_roi', label: '人群 ROI', format: 'decimal' }, { key: 'impressions', label: '展现量', format: 'number' },
-      { key: 'ctr', label: '点击率', format: 'percent' }, { key: 'overall_roi', label: '整体 ROI', format: 'decimal' },
-      { key: 'refund_paid_ratio', label: '退款付费占比', format: 'percent' }, { key: 'keyword_sales', label: '关键词成交额', format: 'money' },
-      { key: 'keyword_visitors', label: '关键词访客', format: 'number' }, { key: 'keyword_ppc', label: '关键词点击单价', format: 'money' },
-      { key: 'crowd_sales', label: '人群成交额', format: 'money' }, { key: 'crowd_visitors', label: '人群访客', format: 'number' },
-      { key: 'crowd_ppc', label: '人群点击单价', format: 'money' }, { key: 'site_spend', label: '站外花费', format: 'money' },
-      { key: 'site_sales', label: '站外成交额', format: 'money' }, { key: 'site_roi', label: '站外 ROI', format: 'decimal' },
-      { key: 'site_visitors', label: '站外访客', format: 'number' }, { key: 'site_ppc', label: '站外点击单价', format: 'money' },
-      { key: 'clicks', label: '点击量', format: 'number' }, { key: 'cost', label: '点击花费', format: 'money' },
-      { key: 'cpc', label: '平均点击花费', format: 'money' }, { key: 'cpm', label: '千次展现花费', format: 'money' },
-      { key: 'direct_gmv', label: '直接成交额', format: 'money' }, { key: 'indirect_gmv', label: '间接成交额', format: 'money' },
-      { key: 'total_gmv', label: '总成交额', format: 'money' }, { key: 'total_orders', label: '总订单数', format: 'number' },
-      { key: 'direct_orders', label: '直接订单数', format: 'number' }, { key: 'indirect_orders', label: '间接订单数', format: 'number' },
-      { key: 'click_conversion', label: '点击转化率', format: 'percent' }, { key: 'presale_roi', label: '预售 ROI', format: 'decimal' },
-      { key: 'total_cost', label: '总花费', format: 'money' }, { key: 'cart_adds', label: '加购次数', format: 'number' },
-      { key: 'direct_cart_adds', label: '直接加购', format: 'number' }, { key: 'indirect_cart_adds', label: '间接加购', format: 'number' },
-      { key: 'favs', label: '收藏次数', format: 'number' }, { key: 'store_favs', label: '店铺收藏', format: 'number' },
-      { key: 'store_fav_cost', label: '店铺收藏成本', format: 'money' }, { key: 'total_fav_cart', label: '收藏加购总数', format: 'number' },
-      { key: 'total_fav_cart_cost', label: '收藏加购成本', format: 'money' }, { key: 'item_fav_cart', label: '商品收藏加购', format: 'number' },
-      { key: 'item_fav_cart_cost', label: '商品收藏加购成本', format: 'money' }, { key: 'total_favs', label: '总收藏数', format: 'number' },
-      { key: 'item_fav_cost', label: '商品收藏成本', format: 'money' }, { key: 'item_fav_rate', label: '商品收藏率', format: 'percent' },
-      { key: 'cart_cost', label: '加购成本', format: 'money' }, { key: 'industry_ctr', label: '行业点击率', format: 'percent' }
+    // 【2026-10-24 新增】利润三列：daily/monthly 有源（daily_data 73 列实测近期全非空），
+    // weekly 无源显示 --。operating_profit 用利润色块（红盈绿亏）渲染，见 table-render.js。
+    { label: '利润与成本', columns: [
+      { key: 'operating_profit', label: '利润(支付预估)', format: 'profit' },
+      { key: 'profit_rate', label: '利润率(支付预估)', format: 'percent' },
+      { key: 'product_cost', label: '货品成本(支付)', format: 'money' }
     ] },
+    // 【2026-10-22 标记 hidden】下列推广列全部来自 paid_detail（付费明细），
+    // 该表实测 0 行且无启用中的采集器（collect_api.py 中 dmp_shop 等均为 disabled），
+    // 因此长期整列显示 --。口径保留备查：
+    //   付费占比 paid_ratio / 关键词花费 keyword_spend / 关键词 ROI keyword_roi /
+    //   人群花费 crowd_spend / 人群 ROI crowd_roi / 整体 ROI overall_roi /
+    //   退款付费占比 refund_paid_ratio / 关键词成交额 keyword_sales /
+    //   关键词访客 keyword_visitors / 关键词点击单价 keyword_ppc /
+    //   人群成交额 crowd_sales / 人群访客 crowd_visitors / 人群点击单价 crowd_ppc /
+    //   站外花费 site_spend / 站外成交额 site_sales / 站外 ROI site_roi /
+    //   站外访客 site_visitors / 站外点击单价 site_ppc / 点击花费 cost /
+    //   间接成交额 indirect_gmv / 总订单数 total_orders / 直接订单数 direct_orders /
+    //   间接订单数 indirect_orders / 预售 ROI presale_roi / 总花费 total_cost /
+    //   直接加购 direct_cart_adds / 间接加购 indirect_cart_adds / 收藏次数 favs /
+    //   店铺收藏 store_favs / 店铺收藏成本 store_fav_cost / 收藏加购总数 total_fav_cart /
+    //   收藏加购成本 total_fav_cart_cost / 商品收藏加购 item_fav_cart /
+    //   商品收藏加购成本 item_fav_cart_cost / 总收藏数 total_favs /
+    //   商品收藏成本 item_fav_cost / 商品收藏率 item_fav_rate / 行业点击率 industry_ctr
+    // 说明：关键词/人群/站外三组在 keyword_promotion_products 中有真值，但该表只有
+    // 一个固定的 30 天快照窗口（20260908~20261007），无法对齐任意查询区间，
+    // 故不接入；待采集链路产出日粒度数据后再去掉 hidden。
+    { label: '推广与付费', columns: [
+      { key: 'ad_spend', label: '推广花费(账单)', format: 'money' }, { key: 'expense_ratio', label: '推广费比(按净销售额)', format: 'percent' }, { key: 'roi', label: '推广 ROI', format: 'decimal' },
+      { key: 'paid_ratio', label: '付费占比', format: 'percent', hidden: true }, { key: 'keyword_spend', label: '关键词花费', format: 'money', hidden: true },
+      { key: 'keyword_roi', label: '关键词 ROI', format: 'decimal', hidden: true }, { key: 'crowd_spend', label: '人群花费', format: 'money', hidden: true },
+      { key: 'crowd_roi', label: '人群 ROI', format: 'decimal', hidden: true }, { key: 'impressions', label: '展现量', format: 'number' },
+      { key: 'ctr', label: '点击率', format: 'percent' }, { key: 'overall_roi', label: '整体 ROI', format: 'decimal', hidden: true },
+      { key: 'refund_paid_ratio', label: '退款付费占比', format: 'percent', hidden: true }, { key: 'keyword_sales', label: '关键词成交额', format: 'money', hidden: true },
+      { key: 'keyword_visitors', label: '关键词访客', format: 'number', hidden: true }, { key: 'keyword_ppc', label: '关键词点击单价', format: 'money', hidden: true },
+      { key: 'crowd_sales', label: '人群成交额', format: 'money', hidden: true }, { key: 'crowd_visitors', label: '人群访客', format: 'number', hidden: true },
+      { key: 'crowd_ppc', label: '人群点击单价', format: 'money', hidden: true }, { key: 'site_spend', label: '站外花费', format: 'money', hidden: true },
+      { key: 'site_sales', label: '站外成交额', format: 'money', hidden: true }, { key: 'site_roi', label: '站外 ROI', format: 'decimal', hidden: true },
+      { key: 'site_visitors', label: '站外访客', format: 'number', hidden: true }, { key: 'site_ppc', label: '站外点击单价', format: 'money', hidden: true },
+      { key: 'clicks', label: '点击量', format: 'number' }, { key: 'cost', label: '点击花费', format: 'money', hidden: true },
+      { key: 'cpc', label: '平均点击花费', format: 'money' }, { key: 'cpm', label: '千次展现花费', format: 'money' },
+      { key: 'direct_gmv', label: '直接成交额', format: 'money' }, { key: 'indirect_gmv', label: '间接成交额', format: 'money', hidden: true },
+      { key: 'total_gmv', label: '总成交额', format: 'money' }, { key: 'total_orders', label: '总订单数', format: 'number', hidden: true },
+      { key: 'direct_orders', label: '直接订单数', format: 'number', hidden: true }, { key: 'indirect_orders', label: '间接订单数', format: 'number', hidden: true },
+      { key: 'click_conversion', label: '点击转化率', format: 'percent' }, { key: 'presale_roi', label: '预售 ROI', format: 'decimal', hidden: true },
+      { key: 'total_cost', label: '总花费', format: 'money', hidden: true }, { key: 'cart_adds', label: '加购次数', format: 'number' },
+      { key: 'direct_cart_adds', label: '直接加购', format: 'number', hidden: true }, { key: 'indirect_cart_adds', label: '间接加购', format: 'number', hidden: true },
+      { key: 'favs', label: '收藏次数', format: 'number', hidden: true }, { key: 'store_favs', label: '店铺收藏', format: 'number', hidden: true },
+      { key: 'store_fav_cost', label: '店铺收藏成本', format: 'money', hidden: true }, { key: 'total_fav_cart', label: '收藏加购总数', format: 'number', hidden: true },
+      { key: 'total_fav_cart_cost', label: '收藏加购成本', format: 'money', hidden: true }, { key: 'item_fav_cart', label: '商品收藏加购', format: 'number', hidden: true },
+      { key: 'item_fav_cart_cost', label: '商品收藏加购成本', format: 'money', hidden: true }, { key: 'total_favs', label: '总收藏数', format: 'number', hidden: true },
+      { key: 'item_fav_cost', label: '商品收藏成本', format: 'money', hidden: true }, { key: 'item_fav_rate', label: '商品收藏率', format: 'percent', hidden: true },
+      { key: 'cart_cost', label: '加购成本', format: 'money' }, { key: 'industry_ctr', label: '行业搜索点击率', format: 'percent' }
+    ] },
+    // 【2026-10-22 标记 hidden】生命周期与协作组三列全部无源：
+    //   lifecycle_stage —— lifecycle_profiles 表 0 行，永远为空；
+    //   seasonality     —— products 表无此列，且无任何数据源；
+    //   has_pending_action —— 待办链路未接入，接口按待办表计算后恒为 0
+    //                        （实测 200 行全部为 0，即整列「否」，无信息量）。
+    // 待生命周期档案与待办链路接入后去掉 hidden。
     { label: '生命周期与协作', columns: [
-      { key: 'lifecycle_stage', label: '生命周期阶段' },
-      { key: 'seasonality', label: '季节属性' },
-      { key: 'has_pending_action', label: '待办动作' }
+      { key: 'lifecycle_stage', label: '生命周期阶段', hidden: true },
+      { key: 'seasonality', label: '季节属性', hidden: true },
+      { key: 'has_pending_action', label: '待办动作', hidden: true }
     ] }
   ];
   columnGroups[1].columns.push(
@@ -82,7 +133,12 @@
   const columns = [];
   const columnsByKey = new Map();
   function rebuildColumns() {
-    const uniqueColumns = [...new Map(columnGroups.flatMap((group) => group.columns).map((column) => [column.key, column])).values()];
+    // hidden 列只保留定义、不参与渲染：不进 columns / columnsByKey，
+    // 因此表格、字段选择器、导出模板都看不到它们（口径追溯仍可从源码读到）。
+    const visible = columnGroups
+      .flatMap((group) => group.columns)
+      .filter((column) => column && !column.hidden);
+    const uniqueColumns = [...new Map(visible.map((column) => [column.key, column])).values()];
     columns.splice(0, columns.length, ...uniqueColumns);
     columnsByKey.clear();
     columns.forEach((column) => columnsByKey.set(column.key, column));
@@ -133,8 +189,13 @@
     starredOnly: false,
     view: 'operate',
     // 默认列 = operate 模板首版字面量；列设置模块创建后由 init 流程校正
-    visibleColumns: ['tier', 'style', 'product_type', 'product_time_node', 'status', 'payment_amount', 'net_sales', 'conversion', 'refund_rate', 'ad_spend', 'roi', 'paid_ipv', 'organic_ipv', 'search_ipv', 'recommend_ipv', 'repurchase_rate'],
+    // 【已作废 2026-10-22】默认可见列同步移除无源列（style/product_type/product_time_node/
+    // paid_ipv/organic_ipv/recommend_ipv），避免列设置里出现已下线的键。
+    visibleColumns: ['tier', 'payment_amount', 'net_sales', 'conversion', 'refund_rate', 'operating_profit', 'ad_spend', 'roi', 'search_ipv', 'repurchase_rate'],
     serverDefaultView: null,
+    summary: null,
+    summaryScope: 'all',
+    rangeFilters: {},
     searchTimer: null,
     facets: { tiers: [], styles: [], statuses: [], product_types: [], product_time_nodes: [], product_growth_stages: [] },
     settings: null,
@@ -191,6 +252,7 @@
   const restoreUrlState = () => {
     const restored = productsQuery?.readUrl?.() || {};
     state.urlFilters = restored.filters || {};
+    state.rangeFilters = restored.ranges || {};
     if (restored.page) state.page = restored.page;
     if (restored.pageSize) state.pageSize = restored.pageSize;
     state.starredOnly = Boolean(restored.starredOnly);
@@ -203,6 +265,7 @@
     if (productsQuery?.syncUrl) {
       history.replaceState(null, '', productsQuery.syncUrl(url, {
         filters: current,
+        ranges: state.rangeFilters,
         page: state.page,
         pageSize: state.pageSize,
         starredOnly: state.starredOnly,
@@ -215,6 +278,13 @@
     filterKeys.forEach((key) => {
       if (current[key]) url.searchParams.set(key, current[key]);
       else url.searchParams.delete(key);
+    });
+    Object.entries(state.rangeFilters).forEach(([fieldName, bounds]) => {
+      if (!bounds) return;
+      if (bounds.min !== undefined && bounds.min !== '') url.searchParams.set(`min_${fieldName}`, String(bounds.min));
+      else url.searchParams.delete(`min_${fieldName}`);
+      if (bounds.max !== undefined && bounds.max !== '') url.searchParams.set(`max_${fieldName}`, String(bounds.max));
+      else url.searchParams.delete(`max_${fieldName}`);
     });
     url.searchParams.set('page', String(state.page));
     url.searchParams.set('page_size', String(state.pageSize));
@@ -340,6 +410,7 @@
       const dimension = state.periodDimension;
       return productsQuery.buildApiUrl({
         range: currentRange(),
+        ranges: state.rangeFilters,
         page: state.page,
         pageSize: state.pageSize,
         filters: filters(),
@@ -362,6 +433,11 @@
     const current = filters();
     filterKeys.forEach((key) => {
       if (current[key]) params.set(key, current[key]);
+    });
+    Object.entries(state.rangeFilters).forEach(([fieldName, bounds]) => {
+      if (!bounds) return;
+      if (bounds.min !== undefined && bounds.min !== '') params.set(`min_${fieldName}`, String(bounds.min));
+      if (bounds.max !== undefined && bounds.max !== '') params.set(`max_${fieldName}`, String(bounds.max));
     });
     return `/api/products?${params.toString()}`;
   }
@@ -440,6 +516,8 @@
       if (token !== state.token || (request && !request.isCurrent())) return;
       state.rows = asArray(payload, 'rows');
       state.total = Number(payload?.total || state.rows.length);
+      state.summary = payload?.summary || null;
+      state.summaryScope = 'all';
       if (state.displayMode === 'timeline') await tableRender?.loadTimelineRows(false);
       state.facets = payload?.facets || { tiers: [], styles: [], statuses: [] };
       state.selected.clear();
@@ -482,6 +560,7 @@
       if (token !== state.token || (request && !request.isCurrent())) return;
       state.rows = [];
       state.total = 0;
+      state.summary = null;
       state.availability = 'calculation-failed';
       state.evidence = [];
       tableRender?.updateKpis([]);
@@ -688,6 +767,7 @@
     const sourceRule = state.rules.find((rule) => rule.key === state.ruleKey);
     window.ProductDetailDialog?.open({ productId: id,
       title: item?.title || id,
+      imageUrl: item?.image_url || '',
       workbenchUrl: buildProductDetailUrl(item),
       sourceRule: sourceRule ? { key: sourceRule.key, name: sourceRule.name, period: sourceRule.period } : null,
       trigger: trigger || document.activeElement,
@@ -751,6 +831,39 @@
   tableRender?.updateTimelineControls();
   state.ruleKey = state.urlFilters?.rule_key || new URL(window.location.href).searchParams.get('rule_key') || '';
   bindFilters();
+  // 表头四合一筛选（table-controls.js 浮层）→ 服务端 min_/max_ 与排序
+  eventScope?.on(window, 'tmall:table-range-filter', (event) => {
+    const { field, min, max } = event.detail || {};
+    if (!field) return;
+    const next = { ...state.rangeFilters };
+    const bounds = {};
+    if (min !== '' && min !== undefined && Number.isFinite(Number(min))) bounds.min = Number(min);
+    if (max !== '' && max !== undefined && Number.isFinite(Number(max))) bounds.max = Number(max);
+    if (Object.keys(bounds).length) next[field] = bounds;
+    else delete next[field];
+    state.rangeFilters = next;
+    state.page = 1;
+    syncUrlState();
+    load();
+  });
+  eventScope?.on(window, 'tmall:table-header-sort', (event) => {
+    const { field, order } = event.detail || {};
+    if (!field) return;
+    const sortSelect = $('[data-products-sort]');
+    if (sortSelect) {
+      if (![...sortSelect.options].some((option) => option.value === field)) {
+        const option = document.createElement('option');
+        option.value = field;
+        option.textContent = columnsByKey.get(field)?.label || field;
+        sortSelect.appendChild(option);
+      }
+      sortSelect.value = field;
+    }
+    const orderSelect = $('[data-products-order]');
+    if (orderSelect) orderSelect.value = order === 'asc' ? 'asc' : 'desc';
+    // 复用工具栏 select 的既有监听路径：只 dispatch 一次触发 load
+    (sortSelect || orderSelect)?.dispatchEvent(new Event('change', { bubbles: true }));
+  });
   $('[data-products-batch-field]').addEventListener('change', () => batchOps?.fillBatchOptions());
   batchOps?.fillBatchOptions();
   columnSettings.bindColumnSettings();

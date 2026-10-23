@@ -3,12 +3,14 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>商品运营 | 天猫数据仪表盘</title>
-  <link rel="stylesheet" href="../assets/tokens.css?v=20261003a">
+  <title>商品运营</title>
+  <link rel="stylesheet" href="../assets/tokens.css?v=20261024-profit-summary">
   <link rel="stylesheet" href="../assets/shell.css?v=20261001j">
-  <link rel="stylesheet" href="../assets/components.css?v=20261001j"><link rel="stylesheet" href="../assets/themes/product-domain.css?v=20261001j"><link rel="stylesheet" href="../assets/themes/promotion-domain.css?v=20261001j"><link rel="stylesheet" href="../assets/themes/overview-domain.css?v=20261001j"><link rel="stylesheet" href="../assets/themes/lifecycle-domain.css?v=20261001j"><link rel="stylesheet" href="../assets/themes/settings-domain.css?v=20261001j">
+  <link rel="stylesheet" href="../assets/components.css?v=20261024-profit-summary"><link rel="stylesheet" href="../assets/themes/product-domain.css?v=20261018-product-identity"><link rel="stylesheet" href="../assets/themes/promotion-domain.css?v=20261001j"><link rel="stylesheet" href="../assets/themes/overview-domain.css?v=20261001j"><link rel="stylesheet" href="../assets/themes/lifecycle-domain.css?v=20261001j"><link rel="stylesheet" href="../assets/themes/settings-domain.css?v=20261001j">
   <script src="../assets/lucide-custom.min.js?v=20261001j"></script>
   <script src="../assets/echarts-custom.min.js?v=20261001j"></script>
+  <link rel="stylesheet" href="../assets/themes/macos-content.css?v=20261024-profit-summary">
+  <link rel="stylesheet" href="../assets/themes/products-workspace.css?v=20261018-footer">
 </head>
 <body data-page="products">
   <div class="demo-app">
@@ -21,6 +23,25 @@
             <h1>商品运营</h1>
             <p>数据库商品经营表现</p>
           </div>
+          <nav class="products-workspace-nav" aria-label="商品页区域">
+            <a href="#products-list">商品列表</a>
+            <a href="#products-analysis">经营分析</a>
+          </nav>
+        </div>
+
+        <section class="ui-metric-grid">
+          <article class="ui-metric-card"><div class="metric-card__label ui-metric-card__label">数据库商品总数</div><div class="metric-card__value ui-metric-card__value" data-products-kpi="total">--</div></article>
+          <article class="ui-metric-card"><div class="metric-card__label ui-metric-card__label">当前页销售额</div><div class="metric-card__value ui-metric-card__value" data-products-kpi="sales">--</div></article>
+          <article class="ui-metric-card"><div class="metric-card__label ui-metric-card__label">当前页推广花费</div><div class="metric-card__value ui-metric-card__value" data-products-kpi="spend">--</div></article>
+          <article class="ui-metric-card"><div class="metric-card__label ui-metric-card__label">当前页 ROI</div><div class="metric-card__value ui-metric-card__value" data-products-kpi="roi">--</div></article>
+        </section>
+
+        <section class="ui-panel products-workspace" id="products-list" aria-labelledby="productsListTitle">
+          <div class="panel__header product-list__header">
+            <div>
+              <h3 class="panel__title" id="productsListTitle">商品列表</h3>
+              <p class="panel__hint" data-products-status role="status" aria-live="polite">等待加载…</p>
+            </div>
           <div class="demo-page__actions product-page-controls">
             <div class="product-field-controls">
               <div class="product-control-group product-control-group--fields">
@@ -36,98 +57,16 @@
               <button class="ui-button" type="button" data-products-columns-open><i data-lucide="settings-2"></i>列设置</button>
             </div>
           </div>
-        </div>
-
-        <section class="ui-metric-grid">
-          <article class="ui-metric-card"><div class="metric-card__label ui-metric-card__label">数据库商品总数</div><div class="metric-card__value ui-metric-card__value" data-products-kpi="total">--</div></article>
-          <article class="ui-metric-card"><div class="metric-card__label ui-metric-card__label">当前页销售额</div><div class="metric-card__value ui-metric-card__value" data-products-kpi="sales">--</div></article>
-          <article class="ui-metric-card"><div class="metric-card__label ui-metric-card__label">当前页推广花费</div><div class="metric-card__value ui-metric-card__value" data-products-kpi="spend">--</div></article>
-          <article class="ui-metric-card"><div class="metric-card__label ui-metric-card__label">当前页 ROI</div><div class="metric-card__value ui-metric-card__value" data-products-kpi="roi">--</div></article>
-        </section>
-
-        <section class="product-rule-board" data-product-rule-board aria-labelledby="productRuleBoardTitle">
-          <div class="product-rule-board__header">
-            <div>
-              <h3 id="productRuleBoardTitle">经营分群</h3>
-              <p class="panel__hint" data-product-rule-status>按当前周期经营事实识别需要关注的商品集合</p>
-            </div>
-            <div class="product-rule-board__actions">
-              <button class="ui-button ui-button--ghost" type="button" data-product-rule-toggle aria-expanded="false">展开分群详情</button>
-              <button class="ui-button ui-button--ghost" type="button" data-product-rule-clear hidden>清除分群</button>
-            </div>
-          </div>
-          <div class="product-rule-board__summary" data-product-rule-summary></div>
-          <div class="product-rule-board__groups" data-product-rule-groups>
-            <div class="product-rule-board__loading">加载经营分群…</div>
-          </div>
-        </section>
-
-        <section class="ui-panel" data-product-matrix-board aria-labelledby="productMatrixTitle">
-          <div class="panel__header">
-            <div>
-              <h3 class="panel__title" id="productMatrixTitle">货品矩阵地图</h3>
-              <p class="panel__hint" data-matrix-status>引流款（费比≥30% 付费主投）/ 利润款（费比&lt;10% 扫流）/ 动销款（不推广），亏损与角色正交</p>
-            </div>
-            <div class="panel__tools">
-              <button class="ui-button ui-button--ghost" type="button" data-matrix-apply-tier>分层写回 tier</button>
-            </div>
-          </div>
-          <div class="product-matrix-grid" style="display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr);gap:var(--space-4)">
-            <div class="market-chart-box" style="min-width:0">
-              <div class="market-chart-title">推广强度 × 引流能力（气泡=净销售额）</div>
-              <div data-matrix-scatter style="min-height:320px">加载中…</div>
-            </div>
-            <div class="market-chart-box" style="min-width:0">
-              <div class="market-chart-title">分层统计</div>
-              <div data-matrix-stats>加载中…</div>
-            </div>
-          </div>
-          <div class="market-chart-box" style="margin-top:var(--space-4)">
-            <div class="market-chart-title">利润结构（利润瀑布 · BI 恒等口径）</div>
-            <div data-profit-structure>加载中…</div>
-          </div>
-        </section>
-
-        <section class="ui-panel">
-          <div class="panel__header product-list__header">
-            <div>
-              <h3 class="panel__title">商品列表</h3>
-              <p class="panel__hint" data-products-status role="status" aria-live="polite">等待加载…</p>
-            </div>
           </div>
 
           <div class="product-filter-stack">
-            <div class="product-filter-stack__heading">
+            <div class="product-filter-stack__heading sr-only">
               <div>
                 <span class="product-filter-stack__eyebrow">数据范围</span>
                 <strong>筛选与排序</strong>
               </div>
             </div>
             <div class="ui-filter-toolbar ui-table-toolbar product-filters" data-products-filter-toolbar>
-            <div class="product-view-switch" role="group" aria-label="商品呈现方式">
-              <div class="product-control-group product-control-group--display">
-                <span class="product-control-label">展示</span>
-                <div class="segmented product-mode-switch" role="group" aria-label="商品展示模式">
-                  <button type="button" data-products-mode="list" aria-pressed="true"><i data-lucide="list"></i>普通列表</button>
-                  <button type="button" data-products-mode="timeline" aria-pressed="false"><i data-lucide="rows-3"></i>周期视图</button>
-                </div>
-              </div>
-              <div class="product-control-group product-control-group--period">
-                <span class="product-control-label">周期</span>
-                <div class="segmented product-period-switch" role="group" aria-label="商品数据周期">
-                  <button type="button" data-products-period="daily" aria-pressed="true">日</button>
-                  <button type="button" data-products-period="weekly" aria-pressed="false">周</button>
-                  <button type="button" data-products-period="monthly" aria-pressed="false">月</button>
-                </div>
-                <div class="product-timeline-tools" data-products-timeline-tools hidden>
-                  <div class="segmented product-timeline-limit-switch" role="group" aria-label="周期视图显示周期数量">
-                    <button type="button" data-products-timeline-limit="3" aria-pressed="true">3 期</button>
-                    <button type="button" data-products-timeline-limit="6" aria-pressed="false">6 期</button>
-                    <button type="button" data-products-timeline-limit="12" aria-pressed="false">12 期</button>
-                  </div>
-                </div>
-              </div>
-            </div>
             <div class="product-filters__main">
               <label class="product-filters__search">
                 <span class="sr-only">搜索商品</span>
@@ -154,10 +93,36 @@
                 <select class="select" data-products-order aria-label="排序方向"><option value="desc">降序</option><option value="asc">升序</option></select>
               </div>
             </div>
+            <div class="product-filters__secondary">
+            <div class="product-view-switch" role="group" aria-label="商品呈现方式">
+              <div class="product-control-group product-control-group--display">
+                <span class="product-control-label">展示</span>
+                <div class="segmented product-mode-switch" role="group" aria-label="商品展示模式">
+                  <button type="button" data-products-mode="list" aria-pressed="true"><i data-lucide="list"></i>普通列表</button>
+                  <button type="button" data-products-mode="timeline" aria-pressed="false"><i data-lucide="rows-3"></i>周期视图</button>
+                </div>
+              </div>
+              <div class="product-control-group product-control-group--period">
+                <span class="product-control-label">周期</span>
+                <div class="segmented product-period-switch" role="group" aria-label="商品数据周期">
+                  <button type="button" data-products-period="daily" aria-pressed="true">日</button>
+                  <button type="button" data-products-period="weekly" aria-pressed="false">周</button>
+                  <button type="button" data-products-period="monthly" aria-pressed="false">月</button>
+                </div>
+                <div class="product-timeline-tools" data-products-timeline-tools hidden>
+                  <div class="segmented product-timeline-limit-switch" role="group" aria-label="周期视图显示周期数量">
+                    <button type="button" data-products-timeline-limit="3" aria-pressed="true">3 期</button>
+                    <button type="button" data-products-timeline-limit="6" aria-pressed="false">6 期</button>
+                    <button type="button" data-products-timeline-limit="12" aria-pressed="false">12 期</button>
+                  </div>
+                </div>
+              </div>
+            </div>
             <div class="product-filters__actions">
               <button class="ui-button" type="button" data-products-more-filters-toggle aria-controls="products-more-filters" aria-expanded="false"><i data-lucide="sliders-horizontal"></i><span>更多筛选</span></button>
               <button class="ui-button" type="button" data-capability-key="products.catalog_edit" data-products-starred aria-pressed="false"><i data-lucide="star"></i><span>当前页收藏</span></button>
               <button class="ui-button" type="button" data-capability-key="products.list" data-products-reset><i data-lucide="rotate-ccw"></i><span>重置</span></button>
+            </div>
             </div>
             <div id="products-more-filters" class="product-filters__advanced" data-products-more-filters hidden>
               <select class="select" data-products-style aria-label="筛选风格"><option value="">全部风格</option></select>
@@ -208,6 +173,51 @@
             </div>
           </div>
         </section>
+
+        <section class="product-rule-board" id="products-analysis" data-product-rule-board aria-labelledby="productRuleBoardTitle">
+          <div class="product-rule-board__header">
+            <div>
+              <h3 id="productRuleBoardTitle">综合指标 · 经营分群</h3>
+              <p class="panel__hint" data-product-rule-status>口径即规则：点击卡片筛选商品列表，规则口径印在卡上</p>
+            </div>
+            <div class="product-rule-board__actions">
+              <button class="ui-button ui-button--ghost" type="button" data-product-rule-toggle aria-expanded="false">展开更多</button>
+              <button class="ui-button ui-button--ghost" type="button" data-product-rule-clear hidden>清除筛选</button>
+            </div>
+          </div>
+          <div class="product-rule-board__summary" data-product-rule-summary hidden></div>
+          <div class="product-rule-board__groups" data-product-rule-groups>
+            <div class="product-rule-board__loading">加载经营分群…</div>
+          </div>
+        </section>
+
+        <section class="ui-panel" data-product-matrix-board aria-labelledby="productMatrixTitle">
+          <div class="panel__header">
+            <div>
+              <h3 class="panel__title" id="productMatrixTitle">货品矩阵地图</h3>
+              <p class="panel__hint" data-matrix-status>引流款（费比≥30% 付费主投）/ 利润款（费比&lt;10% 扫流）/ 动销款（不推广），亏损与角色正交</p>
+            </div>
+            <div class="panel__tools">
+              <button class="ui-button ui-button--ghost" type="button" data-matrix-apply-tier>分层写回 tier</button>
+            </div>
+          </div>
+          <div class="product-matrix-grid" style="display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr);gap:var(--space-4)">
+            <div class="market-chart-box" style="min-width:0">
+              <div class="market-chart-title">推广强度 × 引流能力（气泡=净销售额）</div>
+              <div data-matrix-scatter style="min-height:320px">加载中…</div>
+            </div>
+            <div class="market-chart-box" style="min-width:0">
+              <div class="market-chart-title">分层统计</div>
+              <div data-matrix-stats>加载中…</div>
+            </div>
+          </div>
+          <div class="market-chart-box" style="margin-top:var(--space-4)">
+            <div class="market-chart-title">利润结构（利润瀑布 · BI 恒等口径）</div>
+            <div data-profit-structure>加载中…</div>
+          </div>
+        </section>
+
+
   </main>
     </div>
   </div>
@@ -268,11 +278,11 @@
   </dialog>
 
   <script src="../assets/api.js?v=20261001j"></script>
-  <script src="../assets/navigation.js?v=20261001j"></script>
+  <script src="../assets/navigation.js?v=20261011a"></script>
   <script src="../assets/labels.js?v=20261001j"></script>
   <script src="../assets/charts.js?v=20261001j"></script>
-  <script src="../assets/shell.js?v=20261003c"></script>
-  <script src="../assets/ui-components.js?v=20261003a"></script>
+  <script src="../assets/shell.js?v=20261011a"></script>
+  <script src="../assets/ui-components.js?v=20261018-product-identity"></script>
   <script src="../assets/field-selector.js?v=20261001j"></script><script src="../assets/metric-polarity.js?v=20261001j"></script>
   <script src="../assets/field-template-manager.js?v=20261001j"></script>
   <script src="../assets/promotion-field-definitions.js?v=20261001j"></script>
@@ -282,9 +292,9 @@
   <script src="../assets/pages/products/column-settings.js?v=20261001j"></script>
   <script src="../assets/pages/products/rule-board.js?v=20261001j"></script>
   <script src="../assets/pages/products/matrix-board.js?v=20261002c"></script>
-  <script src="../assets/pages/products/table-render.js?v=20261001j"></script>
+  <script src="../assets/pages/products/table-render.js?v=20261024-profit-summary"></script>
   <script src="../assets/pages/products/batch-ops.js?v=20261001j"></script>
   <script src="../assets/product-detail-dialog.js?v=20261001j"></script>
-  <script src="../assets/format.js?v=20261002a"></script><script src="../assets/products-live.js?v=20261002c"></script>
+  <script src="../assets/format.js?v=20261011a"></script><script src="../assets/products-live.js?v=20261024-profit-summary"></script>
 </body>
 </html>

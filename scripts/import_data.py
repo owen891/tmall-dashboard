@@ -13,7 +13,7 @@ import yaml
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from db import get_connection, get_db_path, init_db
-from scripts.backup_retention import prune_backups, retention_settings
+from scripts.backup_database import backup_database as verified_backup_database
 from scripts.utils import clean_percentage, clean_number, clean_int, clean_month, parse_date_range, is_valid_row, classify_action
 from services.source_resolution_service import record_daily_observation
 from services.import_service import import_service
@@ -280,33 +280,11 @@ def backup_database():
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
     backup_path = os.path.join(backup_dir, f'dashboard_{timestamp}.db')
 
-    source_conn = sqlite3.connect(db_path)
-    backup_conn = sqlite3.connect(backup_path)
-    try:
-        source_conn.backup(backup_conn)
-    finally:
-        backup_conn.close()
-        source_conn.close()
-
-    # 校验备份
-    test_conn = sqlite3.connect(backup_path)
-    result = test_conn.execute("PRAGMA integrity_check").fetchone()[0]
-    test_conn.close()
-
-    if result != 'ok':
-        os.remove(backup_path)
-        print(f"  WARNING: Backup failed integrity check, removed {backup_path}")
-        return False
-
-    # 清理旧备份：按数量 + 总容量双重裁剪。
-    # 单份备份约 2.5GB，只按数量裁剪（旧配置 30 份）一样能吃掉几十 GB。
-    # keep 值统一走 retention_settings()（含 C6 的 max(1, ·) 夹取），
-    # 不再从 config 直读，避免 max_backups: 0 时越权删光全部非 protected 备份。
-    # pattern 统一为 '*.db'：同目录内所有备份受同一策略约束（此前
-    # 'dashboard_*.db' 连字符命名的 dashboard-YYYYMMDD-HHMMSS.db 并不匹配）。
-    keep_newest, max_total_bytes = retention_settings()
-    prune_backups(backup_dir, keep_newest=keep_newest, max_total_bytes=max_total_bytes,
-                  pattern='*.db', protected=[backup_path])
+    report = verified_backup_database(db_path, backup_path)
+    if not report.get('ok'):
+        raise RuntimeError('导入前备份验证失败')
+    if report.get('prune_warning'):
+        print(f"  WARNING: {report['prune_warning']}", file=sys.stderr)
 
     print(f"  Backup: {backup_path}")
     return True
@@ -320,6 +298,8 @@ def _legacy_import_excel_file_entry(filepath):
 def _legacy_import_excel_file(filepath):
     """通过Web上传导入Excel文件，返回导入结果摘要"""
     init_db()
+    if not backup_database():
+        raise RuntimeError('导入前备份验证失败')
     conn = get_connection()
     total_rows = 0
     results = []
@@ -360,12 +340,6 @@ def _legacy_import_excel_file(filepath):
 
         conn.commit()
         log_import(os.path.basename(filepath), 'success', total_rows)
-
-        # 自动备份
-        try:
-            backup_database()
-        except Exception as e:
-            results.append({'sheet': '_backup', 'status': 'warning', 'reason': str(e)})
 
         # 回算运营动作效果
         try:
@@ -435,6 +409,8 @@ def import_single_file(filepath):
     print(f"{'='*60}")
 
     init_db()
+    if not backup_database():
+        raise RuntimeError('导入前备份验证失败')
     conn = get_connection()
     total_rows = 0
 
@@ -484,12 +460,6 @@ def import_single_file(filepath):
         conn.commit()
         log_import(filename, 'success', total_rows)
         print(f"Total: {total_rows} rows imported from {filename}")
-
-        # 自动备份
-        try:
-            backup_database()
-        except Exception as e:
-            print(f"  WARNING: Backup failed: {e}")
 
         # 回算运营动作效果
         try:

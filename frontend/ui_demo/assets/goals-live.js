@@ -32,6 +32,10 @@
   };
   const renderDataState = (state, details = {}) => DemoApi.renderDataState(status, state, details);
   const setTableMessage = (body, colspan, message) => { body.replaceChildren(); const row = body.insertRow(); const cell = row.insertCell(); cell.colSpan = colspan; cell.textContent = message; };
+  const setPreviewMessage = (message) => previewBody.replaceChildren(TmallUI.table({
+    columns: [{ key: 'message', label: '状态' }], rows: [],
+    tableClass: 'goals-allocation-table', emptyMessage: message,
+  }));
   const canEdit = () => {
     if (!pageCapabilitiesReady) return true;
     return DemoApi.canPage('goals', current ? 'goals.adjust' : 'goals.bootstrap');
@@ -63,13 +67,15 @@
     const basis = data.allocation_basis || '等待年度目标';
     previewBasis.textContent = basis;
     previewBasis.className = `ui-badge ${basis === '去年同期销售占比' ? 'ui-badge--success' : 'ui-badge--muted'}`;
-    previewBody.replaceChildren(...(data.months || []).map((month) => {
-      const row = document.createElement('tr');
-      [month.period_key, money(month.prior_year_net_sales), month.allocation_ratio == null ? '--' : `${(month.allocation_ratio * 100).toFixed(2)}%`, money(month.suggested_target)]
-        .forEach((value, index) => { const cell = row.insertCell(); cell.textContent = value; if (index > 0) cell.className = 'num'; });
-      return row;
+    previewBody.replaceChildren(TmallUI.table({
+      columns: [
+        { key: 'period_key', label: '月份', rowHeader: true },
+        { key: 'prior_year_net_sales', label: '去年同期净销售额', numeric: true, render: (value) => money(value) },
+        { key: 'allocation_ratio', label: '销售占比', numeric: true, render: (value) => value == null ? '--' : `${(value * 100).toFixed(2)}%` },
+        { key: 'suggested_target', label: '建议目标', numeric: true, render: (value) => money(value) },
+      ],
+      rows: data.months || [], tableClass: 'goals-allocation-table', emptyMessage: '没有可用于预览的月份',
     }));
-    if (!data.months?.length) setTableMessage(previewBody, 4, '没有可用于预览的月份');
   }
 
   async function loadPreview() {
@@ -78,11 +84,11 @@
     if (!Number.isFinite(annualTarget) || annualTarget < 0 || !Number.isInteger(year)) {
       previewBasis.textContent = '等待年度目标';
       previewBasis.className = 'ui-badge ui-badge--muted';
-      setTableMessage(previewBody, 4, '输入年度总目标后显示分配预览');
+      setPreviewMessage('输入年度总目标后显示分配预览');
       return;
     }
     const token = ++previewToken;
-    setTableMessage(previewBody, 4, '正在计算分配预览');
+    setPreviewMessage('正在计算分配预览');
     try {
       const response = await DemoApi.domainRequest(`/api/goals/${year}/allocation-preview?annual_target=${encodeURIComponent(annualTarget)}`);
       if (token !== previewToken) return;
@@ -91,7 +97,7 @@
       if (token !== previewToken) return;
       previewBasis.textContent = '预览失败';
       previewBasis.className = 'ui-badge ui-badge--danger';
-      setTableMessage(previewBody, 4, error.message || '分配预览失败');
+      setPreviewMessage(error.message || '分配预览失败');
     }
   }
 

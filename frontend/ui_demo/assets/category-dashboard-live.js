@@ -69,7 +69,7 @@
     $('dashboardAnnualView').style.display = annual ? 'block' : 'none';
     const categoryLabel = document.querySelector('[data-category-mode]')?.selectedOptions?.[0]?.textContent || '全部品类';
     const periodLabel = annual ? '年度复盘' : mode === 'week' ? '本周经营' : mode === 'custom' ? '自定义周期' : '本月经营';
-    $('dashboardTitle').textContent = `${categoryLabel} · ${periodLabel}`;
+    $('dashboardTitle').textContent = '品类经营看板';
     const context = $('categoryDashboardContext');
     if (context) context.textContent = `${categoryLabel} · ${periodLabel}`;
   }
@@ -118,6 +118,23 @@
     $('dashboardInsight').textContent = down ? `${direction}，主要拖累商品：${down}。` : `${direction}。请结合增长贡献和下滑拖累定位商品动作。`;
   }
 
+  // Canvas labels do not inherit CSS colors; resolve the existing theme tokens.
+  function syncTrendTheme() {
+    if (!trendChart) return;
+    const styles = getComputedStyle(document.documentElement);
+    const token = (name) => styles.getPropertyValue(name).trim();
+    const textColor = token('--text-secondary');
+    const borderColor = token('--border-default');
+    const fontFamily = token('--font-sans');
+    trendChart.setOption({
+      textStyle: { color: textColor, fontFamily },
+      legend: { textStyle: { color: textColor, fontFamily } },
+      xAxis: { axisLabel: { color: textColor }, axisLine: { lineStyle: { color: borderColor } } },
+      yAxis: { axisLabel: { color: textColor }, splitLine: { lineStyle: { color: borderColor } } },
+      tooltip: { backgroundColor: token('--surface-base'), borderColor, textStyle: { color: token('--text-primary'), fontFamily } }
+    });
+  }
+
   function renderTrend(data) {
     const node = $('categoryDashboardTrend');
     $('dashboardTrendMeta').textContent = `${data.current_period?.start || ''} 至 ${data.current_period?.end || ''} · ${labels[data.metric] || data.metric}`;
@@ -140,6 +157,7 @@
       yAxis: { type: 'value' },
       series
     });
+    syncTrendTheme();
   }
 
   function renderProfit(data) {
@@ -164,7 +182,17 @@
   }
 
   function renderProducts(node, rows, metric) {
-    $(node).innerHTML = rows?.length ? `<table><thead><tr><th>商品</th><th class="num">当前</th><th class="num">变化</th></tr></thead><tbody>${rows.map((row) => `<tr><td>${escapeHtml(row.title || row.product_id || '--')}</td><td class="num">${escapeHtml(format(row.current_value, metric))}</td><td class="num">${escapeHtml(format(row.change, metric))}</td></tr>`).join('')}</tbody></table>` : '<span>暂无数据</span>';
+    const container = $(node);
+    if (!rows?.length) { container.replaceChildren(document.createElement('span')); container.firstChild.textContent = '暂无数据'; return; }
+    container.replaceChildren(TmallUI.table({
+      caption: '商品贡献榜',
+      columns: [
+        { key: 'product', label: '商品', render: (_value, row) => row.title || row.product_id || '--' },
+        { key: 'current_value', label: '当前', numeric: true, render: (value) => format(value, metric) },
+        { key: 'change', label: '变化', numeric: true, render: (value) => format(value, metric) },
+      ],
+      rows,
+    }));
   }
 
   function renderAnnual(data) {
@@ -173,7 +201,23 @@
       const item = data.series?.[metric];
       if (!item) return '';
       const years = data.years || [];
-      return `<section class="dashboard-review-block"><header><strong>${escapeHtml(labels[metric] || metric)}</strong><span>${escapeHtml(data.focus_year)}年重点复盘</span></header><div class="dashboard-table"><table><thead><tr><th>月份</th>${years.map((year) => `<th class="num">${escapeHtml(year)}</th>`).join('')}<th class="num">同比</th></tr></thead><tbody>${item.matrix.map((row) => `<tr><th>${escapeHtml(row.label)}</th>${years.map((year) => `<td class="num">${escapeHtml(format(row.values?.[String(year)], metric))}</td>`).join('')}<td class="num">${escapeHtml(percent(row.yoy?.rate))}</td></tr>`).join('')}</tbody><tfoot><tr><th>年度累计</th>${years.map((year) => `<td class="num">${escapeHtml(format(item.annual?.[String(year)], metric))}</td>`).join('')}<td class="num">--</td></tr></tfoot></table></div></section>`;
+      const section = document.createElement('section');
+      section.className = 'dashboard-review-block';
+      const heading = document.createElement('header');
+      const title = document.createElement('strong');
+      title.textContent = labels[metric] || metric;
+      const focus = document.createElement('span');
+      focus.textContent = `${data.focus_year}年重点复盘`;
+      heading.append(title, focus);
+      const columns = [
+        { key: 'label', label: '月份', rowHeader: true },
+        ...years.map((year) => ({ key: String(year), label: String(year), numeric: true, render: (value) => format(value, metric) })),
+        { key: 'yoy', label: '同比', numeric: true, render: (value) => percent(value) },
+      ];
+      const rows = item.matrix.map((row) => ({ label: row.label, ...row.values, yoy: row.yoy?.rate }));
+      const footer = [{ label: '年度累计', ...item.annual, yoy: null }];
+      section.append(heading, TmallUI.table({ columns, rows, footerRows: footer, wrapClass: 'dashboard-table' }));
+      return section.outerHTML;
     }).join('');
   }
 
@@ -230,6 +274,7 @@
     document.querySelector('[data-category-mode]')?.addEventListener('change', load);
     $('categoryDashboardRefresh').addEventListener('click', load);
     window.addEventListener('resize', () => { if (trendChart) { trendChart.resize(); } });
+    new MutationObserver(syncTrendTheme).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
     setMode('month');
     load();
   }

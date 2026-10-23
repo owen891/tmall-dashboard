@@ -54,7 +54,7 @@ DeepSeek Harness: `dsh plugin --profile web add @roarpeng/graphflow` (or `npx @r
 
 | 文件 | 管什么 | 最后更新 |
 |---|---|---|
-| `.workbuddy-ai/memory/MEMORY.md` | 指标口径、前端约定、验证与高频坑、治理与安全加固（最常查） | 2026-10-16 |
+| `.workbuddy-ai/memory/MEMORY.md` | 指标口径、前端约定、验证与高频坑、治理与安全加固（最常查） | 2026-10-23 |
 | `.workbuddy-ai/memory/PROJECT-NOTES.md` | 数据源、BI 采集链路、断档诊断、告警与补数手法、治理批次补记 | 2026-10-16 |
 | `.workbuddy-ai/memory/YYYY-MM-DD.md` | 当日工作流水（2026-09-22 ~ 2026-10-08，**非每日连续**：有 09-24 / 10-01 / 10-02 / 10-03 / 10-08 等断档） | 逐日 |
 | `.workbuddy/memory/2026-09-2{0,1}.md` | 更早的日流水（09-20、09-21） | — |

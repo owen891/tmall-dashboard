@@ -593,6 +593,167 @@ def market_external_filter(alias='r'):
     return f"{alias}.is_self = 0 AND NOT EXISTS (SELECT 1 FROM products p WHERE p.product_id = {alias}.item_id)"
 
 
+class NativeMarketReadError(ValueError):
+    """A native source exists but cannot safely satisfy this request."""
+
+
+def _market_native_catalog(conn, shop_id):
+    import json
+    import re
+    present = {row[0] for row in conn.execute(
+        "SELECT name FROM main.sqlite_master WHERE type='table' AND name IN ('import_batches','collector_data_staging')")}
+    if 'import_batches' not in present:
+        return [], None
+    batches = conn.execute(
+        'SELECT id,shop_id,source_hash,status,total_rows,valid_rows,invalid_rows,quality_summary '
+        'FROM main.import_batches WHERE source_type=? AND shop_id=?',
+        ('sycm_browser_plugin_daily',shop_id)).fetchall()
+    if not batches:
+        return [], None
+    if 'collector_data_staging' not in present:
+        raise NativeMarketReadError('native_stage_schema_missing')
+    try:
+        from scripts.import_market_oneclick_exports import read_native_daily, _native_hash
+    except ImportError as error:
+        raise NativeMarketReadError('native_reader_not_installed') from error
+    catalog = []
+    try:
+        for batch in batches:
+            envelope = json.loads(batch[7])
+            context, receipt = envelope['context'], envelope['receipt']
+            if (context['shop_id'] != shop_id or receipt['shop_id'] != shop_id or
+                    context['dataset'] != 'item_rank' or context['rank_type'] != '交易总量' or
+                    date.fromisoformat(context['date']).isoformat() != context['date'] or
+                    not isinstance(context['category_id'],str) or not context['category_id'].isdigit() or
+                    not isinstance(context['category_name'],str) or not context['category_name'] or
+                    any(receipt[key] != value for key,value in context.items()) or
+                    not re.fullmatch(r'[A-Za-z0-9_-]{1,96}',receipt['run_id']) or
+                    batch[0] != 'plugin:'+receipt['run_id']+':'+_native_hash(envelope)[:32] or
+                    batch[2] != envelope['source_hash'] or batch[2] != receipt['xlsx_sha256'] or
+                    type(envelope['rows']) is not int or envelope['rows'] <= 0 or
+                    tuple(batch[4:7]) != (envelope['rows'],envelope['rows'],0) or
+                    type(envelope['complete']) is not bool or batch[3] not in ('staged','completed') or
+                    (batch[3]=='completed' and not envelope['complete'])):
+                raise ValueError('native_batch_identity_invalid')
+            actual_count = conn.execute('SELECT count(*) FROM main.collector_data_staging WHERE batch_id=?',
+                                        (batch[0],)).fetchone()[0]
+            if actual_count != envelope['rows']:
+                raise ValueError('native_batch_row_count_invalid')
+            catalog.append(dict(batch_id=batch[0],context=context,status=batch[3],rows=envelope['rows'],
+                                complete=envelope['complete'],source_hash=batch[2]))
+    except (ValueError,TypeError,KeyError) as error:
+        raise NativeMarketReadError('native_catalog_inconsistent') from error
+    return catalog, read_native_daily
+
+
+def market_item_rank_result(stat_date=None, cate_id='', cate_name='', limit=50, *, shop_id, source='auto', rank_type='交易总量'):
+    """Range-aware daily rank read; legacy compatibility is explicit, never a precision claim.
+
+    `shop_id` must come from the authenticated app scope. There is no automatic
+    native default/legacy-shop alias. Legacy numeric tables are single-shop only.
+    All DB reads share one snapshot; published native categories override only
+    their own date/category partition. Partial staging never enters the result.
+    """
+    import math
+    import sqlite3
+    if source not in ('auto','native','legacy') or rank_type != '交易总量':
+        raise ValueError('unsupported_market_source_or_rank_type')
+    if (not isinstance(shop_id,str) or not shop_id or type(limit) is not int or not 1 <= limit <= 300 or
+            not isinstance(cate_id,str) or not isinstance(cate_name,str)):
+        raise ValueError('invalid_market_filter')
+    if stat_date is not None and date.fromisoformat(stat_date).isoformat() != stat_date:
+        raise ValueError('invalid_market_date')
+    from db import legacy_shop_id
+    legacy_allowed = shop_id in ('default', legacy_shop_id())
+    if source=='legacy' and not legacy_allowed:
+        raise PermissionError('legacy_market_not_shop_scoped')
+    conn = get_connection()
+    try:
+        conn.execute('BEGIN')
+        catalog, reader = _market_native_catalog(conn,shop_id) if source!='legacy' else ([],None)
+        legacy_present = bool(conn.execute(
+            "SELECT 1 FROM main.sqlite_master WHERE type='table' AND name='sycm_market_item_rank'").fetchone())
+        scope_catalog = [item for item in catalog if (not cate_id or item['context']['category_id']==cate_id)
+                         and (not cate_name or item['context']['category_name']==cate_name)]
+        complete_catalog = [item for item in scope_catalog if item['status']=='completed']
+        if stat_date is None:
+            choices = [item['context']['date'] for item in complete_catalog]
+            if source!='native' and legacy_allowed and legacy_present:
+                where,params = [],[]
+                if cate_id:where.append('cate_id=?');params.append(cate_id)
+                if cate_name:where.append('cate_name=?');params.append(cate_name)
+                latest = conn.execute('SELECT MAX(stat_date) FROM main.sycm_market_item_rank'+
+                    (' WHERE '+' AND '.join(where) if where else ''),params).fetchone()[0]
+                if latest:choices.append(latest)
+            stat_date = max(choices) if choices else None
+        selected = [item for item in complete_catalog if item['context']['date']==stat_date]
+        native_items, native_partitions = [],[]
+        for item in selected:
+            try:
+                view = reader(conn,stat_date,item['context']['category_id'],shop_id=shop_id,rank_type=rank_type)
+            except (ValueError,OSError,KeyError,TypeError,sqlite3.Error) as error:
+                raise NativeMarketReadError('native_partition_failed_validation') from error
+            if not view.get('available') or view.get('batch_id')!=item['batch_id'] or len(view['items'])!=item['rows']:
+                raise NativeMarketReadError('native_partition_not_complete')
+            for row in view['items']:
+                native_items.append(dict(row,source_type='sycm_browser_plugin_daily',source_batch_id=item['batch_id'],
+                                         metric_precision='source_range_or_scalar'))
+            native_partitions.append(dict(cate_id=item['context']['category_id'],cate_name=item['context']['category_name'],
+                stat_date=stat_date,batch_id=item['batch_id'],row_count=item['rows'],coverage='complete_partition',
+                source_type='sycm_browser_plugin_daily',source_hash=item['source_hash']))
+        # A name mismatch must not resurrect legacy rows for a native-owned ID.
+        owned_ids = {item['context']['category_id'] for item in catalog
+                     if item['status']=='completed' and item['context']['date']==stat_date
+                     and (not cate_id or item['context']['category_id']==cate_id)}
+        legacy_items = []
+        if source!='native' and legacy_allowed and legacy_present and stat_date:
+            where,params = ['stat_date=?'],[stat_date]
+            if cate_id:where.append('cate_id=?');params.append(cate_id)
+            if cate_name:where.append('cate_name=?');params.append(cate_name)
+            cursor = conn.execute('SELECT cate_id,cate_name,item_id,title,pic_url,shop_name,shop_id,uv,pay_buyer_count,'
+                'core_keyword,rank,is_self FROM main.sycm_market_item_rank WHERE '+' AND '.join(where)+
+                ' ORDER BY uv DESC',params)
+            columns = [column[0] for column in cursor.description]
+            for values in cursor.fetchall():
+                row = dict(zip(columns,values))
+                if str(row['cate_id']) in owned_ids:continue
+                row['is_self'] = None if row['is_self'] is None else bool(row['is_self'])
+                for metric in ('uv','pay_buyer_count'):
+                    if row[metric] is not None and not math.isfinite(row[metric]):row[metric]=None
+                row.update(stat_date=stat_date,source_type='legacy_daily_numeric',source_batch_id=None,
+                           metric_precision='legacy_unverified',pay_rate=None)
+                legacy_items.append(row)
+        items = native_items+legacy_items
+        if native_items:items.sort(key=lambda row:(str(row['cate_id']),row['rank'] if row['rank'] is not None else 10**9,str(row['item_id'])))
+        categories = []
+        for category in sorted({str(row['cate_id']) for row in items}):
+            rows = [row for row in items if str(row['cate_id'])==category]
+            native = next((part for part in native_partitions if part['cate_id']==category),None)
+            values = [row['uv'] for row in rows if row['uv'] is not None]
+            categories.append(dict(cate_id=category,cate_name=native['cate_name'] if native else rows[0]['cate_name'],
+                item_count=len(rows),avg_uv=None if native else (sum(values)/len(values) if values else None),
+                source_type='sycm_browser_plugin_daily' if native else 'legacy_daily_numeric',
+                metric_precision='source_range_or_scalar' if native else 'legacy_unverified'))
+        pending = [item for item in scope_catalog if item['status']=='staged' and
+                   (stat_date is None or item['context']['date']==stat_date)]
+        limitations = []
+        if native_items:limitations.append('插件区间保留原文与上下界；非精确值不计算支付转化率，不补零。')
+        if legacy_items:limitations.append('历史数字表保留既有值和访客降序口径，原采集精度及完整性未由本接口追认。')
+        if pending:limitations.append('存在尚未发布的插件分区；暂存样本未计入返回结果。')
+        if not legacy_allowed:limitations.append('历史数字表无命名店铺隔离字段，未回退到默认店铺数据。')
+        source_mode = 'mixed' if native_items and legacy_items else 'native' if native_items else 'legacy' if legacy_items else 'none'
+        return dict(stat_date=stat_date,items=items[:limit],categories=categories,total_rows=len(items),
+                    response_truncated=len(items)>limit,source_mode=source_mode,
+                    native_partitions=native_partitions,pending_native_partitions=len(pending),
+                    shop_id=shop_id,requested_source=source,rank_type=rank_type,
+                    coverage='partition_evidence_only',limitations=limitations,
+                    capabilities=dict(native_range_values=bool(native_items),exact_conversion=False,
+                                      legacy_numeric=legacy_allowed and legacy_present))
+    finally:
+        conn.rollback()
+        conn.close()
+
+
 def market_item_rank_rows(stat_date, cate_id='', cate_name='', limit=50):
     query = '''
         SELECT cate_id, cate_name, item_id, title, pic_url, shop_name, shop_id,
@@ -725,7 +886,8 @@ def market_item_rank_window_rows(start_date, end_date):
     conn = get_connection()
     try:
         return conn.execute(
-            '''SELECT stat_date, item_id, title, shop_name, rank, is_self, uv, pay_buyer_count
+            '''SELECT stat_date, item_id, title, shop_name, rank, is_self, uv, pay_buyer_count,
+                      pic_url
                FROM sycm_market_item_rank
                WHERE stat_date BETWEEN ? AND ? ORDER BY stat_date, rank''',
             (start_date, end_date)).fetchall()

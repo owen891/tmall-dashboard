@@ -18,6 +18,8 @@ from flask import current_app, has_app_context, has_request_context, request
 from db import get_db, get_shop_id
 from repos.audit_repo import AuditRepo
 from services.import_service import import_service
+from services.import_scan_lease import LeaseKeeper, ScanClaim, ScanLeaseLost
+from utils.cache import bump_mutation_generation
 
 
 SUPPORTED_SUFFIXES = {'.xlsx', '.xls', '.csv', '.zip'}
@@ -505,10 +507,15 @@ class ImportScanService:
             conn.commit()
 
     @classmethod
-    def _upsert_discovered(cls, job_id, item):
+    def _upsert_discovered(cls, job_id, item, token=None):
         canonical, filename, size, mtime_ns, source_hash = item
         now = _iso(_utc_now())
         with get_db() as conn:
+            conn.execute('BEGIN IMMEDIATE')
+            job = conn.execute('SELECT lease_token, lease_until, enabled FROM import_scan_jobs WHERE id=?', (job_id,)).fetchone()
+            live = bool(job and job['enabled'] and job['lease_token'] and job['lease_until'] and job['lease_until'] > _iso(_utc_now()))
+            if token is not None and (not live or job['lease_token'] != token):
+                raise ScanLeaseLost('SCAN_LEASE_LOST: discovery owner expired or changed')
             existing = conn.execute(
                 '''SELECT * FROM import_scan_files WHERE job_id=? AND canonical_path=? AND source_hash=?''',
                 (job_id, canonical, source_hash),
@@ -531,14 +538,16 @@ class ImportScanService:
             if existing:
                 if existing['batch_id']:
                     return dict(existing), False
-                if _is_stale_importing(existing):
+                active_owner = live and existing['lease_token'] == job['lease_token']
+                orphan = existing['lease_token'] and not active_owner
+                if not active_owner and (orphan or _is_stale_importing(existing)) and existing['status'] in {'discovered', 'importing'}:
                     conn.execute(
-                        '''UPDATE import_scan_files SET status='discovered', error_code=NULL,
+                        '''UPDATE import_scan_files SET status='discovered', lease_token=NULL, error_code=NULL,
                            error_message=NULL, updated_at=? WHERE id=?''',
                         (now, existing['id']),
                     )
                     conn.commit()
-                    return {**dict(existing), 'status': 'discovered', 'updated_at': now}, True
+                    return {**dict(existing), 'status': 'discovered', 'lease_token': None, 'updated_at': now}, True
                 if existing['status'] in {'imported', 'blocked', 'failed', 'importing'}:
                     return dict(existing), False
                 conn.execute('UPDATE import_scan_files SET updated_at=? WHERE id=?', (now, existing['id']))
@@ -556,45 +565,29 @@ class ImportScanService:
 
     @classmethod
     def _claim_discovered_file(cls, file_id, token=None):
-        """Take ownership of one discovered file for the current lease holder.
+        """Claim only as the live job owner; reclaim an abandoned prior token.
 
-        The job lease protects the job row, but a file row is just as much a
-        shared resource: an expired lease can be stolen (see ``_acquire_lease``)
-        while the previous holder is still mid-import, and without ownership on
-        the file the two holders would import the same bytes twice.  The mask
-        carries both claims in a single conditional UPDATE, and the two status
-        branches deliberately apply the token check differently:
-
-        * ``status='discovered'`` is a row nobody has started on.  It is
-          claimable while ``lease_token`` is NULL, or while it is still ours --
-          ``_upsert_discovered`` can reset a stale row back to 'discovered'
-          without clearing the token, so a holder must be able to re-claim its
-          own row.  A row carrying someone else's live token is *not* claimable
-          here, so a second runner cannot steal work in progress.
-        * ``status='importing'`` is a row some holder has begun.  It is claimable
-          once ``updated_at`` is old enough for ``_is_stale_importing`` to judge
-          that holder dead -- and that branch ignores ``lease_token`` entirely,
-          because a crashed holder never releases its rows; demanding a token
-          match there would strand every file the dead process had in flight.
-          A fresh row is ours-or-nothing, which is the fence.
-
-        So: a live holder can always finish its own work, and a crashed holder's
-        abandoned files are reclaimed by whoever takes the job lease next.
+        A file timestamp alone never overrides the active job's token. Legacy
+        unowned importing rows retain their stability wait until stale.
         """
-        now = _iso(_utc_now())
-        stale_before = _iso(_utc_now() - timedelta(seconds=LEASE_SECONDS))
         with get_db() as conn:
+            conn.execute('BEGIN IMMEDIATE')
+            now = _iso(_utc_now())
+            stale_before = _iso(_utc_now() - timedelta(seconds=LEASE_SECONDS))
             result = conn.execute(
                 '''UPDATE import_scan_files
                    SET status='importing', lease_token=?, updated_at=?
                    WHERE id=? AND batch_id IS NULL
+                     AND EXISTS (SELECT 1 FROM import_scan_jobs j
+                         WHERE j.id=import_scan_files.job_id AND j.lease_token=?
+                           AND j.enabled=1 AND j.lease_until>?)
                      AND ((status='discovered'
                            AND (lease_token IS NULL OR lease_token = ?))
                           OR (status='importing'
                               AND (updated_at <= ?
                                    OR lease_token IS NULL
                                    OR lease_token = ?)))''',
-                (token, now, file_id, token, stale_before, token),
+                (token, now, file_id, token, now, token, stale_before, token),
             )
             conn.commit()
             return result.rowcount == 1
@@ -611,15 +604,28 @@ class ImportScanService:
         already stolen; callers must stop before mutating anything else.
         """
         shop_id = cls._shop_id(shop_id)
-        now = _utc_now()
         with get_db() as conn:
+            conn.execute('PRAGMA busy_timeout=1000')
+            conn.execute('BEGIN IMMEDIATE')
+            now = _utc_now()  # sample after lock acquisition, never before waiting
             result = conn.execute(
                 '''UPDATE import_scan_jobs SET lease_until=?, updated_at=?
-                   WHERE id=? AND shop_id=? AND lease_token=? AND enabled=1''',
-                (_iso(now + timedelta(seconds=LEASE_SECONDS)), _iso(now), job_id, shop_id, token),
+                   WHERE id=? AND shop_id=? AND lease_token=? AND enabled=1 AND lease_until>?''',
+                (_iso(now + timedelta(seconds=LEASE_SECONDS)), _iso(now), job_id, shop_id, token, _iso(now)),
             )
             conn.commit()
             return result.rowcount == 1
+
+    @staticmethod
+    def _assert_job_lease(connection, job_id, token, shop_id):
+        """Authoritative check under the caller's writer transaction; no revival."""
+        row = connection.execute(
+            'SELECT lease_token, lease_until, enabled FROM import_scan_jobs WHERE id=? AND shop_id=?',
+            (job_id, shop_id),
+        ).fetchone()
+        if (not row or not row['enabled'] or row['lease_token'] != token
+                or not row['lease_until'] or row['lease_until'] <= _iso(_utc_now())):
+            raise ScanLeaseLost('SCAN_LEASE_LOST: job expired or changed owner before run completion')
 
     @classmethod
     def _update_file(cls, file_id, token=None, **values):
@@ -634,10 +640,13 @@ class ImportScanService:
         values['updated_at'] = _iso(_utc_now())
         assignments = ', '.join(f'{key}=?' for key in values)
         with get_db() as conn:
+            conn.execute('BEGIN IMMEDIATE')
             conn.execute(
                 f'UPDATE import_scan_files SET {assignments}'
-                ' WHERE id=? AND (import_scan_files.lease_token IS NULL OR import_scan_files.lease_token = ?)',
-                (*values.values(), file_id, token),
+                ' WHERE id=? AND batch_id IS NULL AND import_scan_files.lease_token = ?'
+                ' AND EXISTS (SELECT 1 FROM import_scan_jobs j WHERE j.id=import_scan_files.job_id'
+                ' AND j.lease_token=? AND j.enabled=1 AND j.lease_until>?)',
+                (*values.values(), file_id, token, token, _iso(_utc_now())),
             )
             conn.commit()
 
@@ -684,10 +693,11 @@ class ImportScanService:
     @classmethod
     def _acquire_lease(cls, job_id):
         shop_id = cls._shop_id()
-        now = _utc_now()
         token = uuid4().hex
-        until = _iso(now + timedelta(seconds=LEASE_SECONDS))
         with get_db() as conn:
+            conn.execute('BEGIN IMMEDIATE')
+            now = _utc_now()
+            until = _iso(now + timedelta(seconds=LEASE_SECONDS))
             exists = conn.execute('SELECT id FROM import_scan_jobs WHERE id=? AND shop_id=?', (job_id, shop_id)).fetchone()
             if exists is None:
                 raise ImportScanValidationError('scan job not found', 'SCAN_JOB_NOT_FOUND')
@@ -695,7 +705,7 @@ class ImportScanService:
                 '''UPDATE import_scan_jobs SET lease_token=?, lease_until=?, updated_at=?
                    , status='running'
                    WHERE id=? AND shop_id=? AND enabled=1 AND status IN ('active', 'running')
-                   AND (lease_until IS NULL OR lease_until < ?)''',
+                   AND (lease_until IS NULL OR lease_until <= ?)''',
                 (token, until, _iso(now), job_id, shop_id, _iso(now)),
             )
             conn.commit()
@@ -745,27 +755,32 @@ class ImportScanService:
                 (run_id, job_id, _iso(started)),
             )
             conn.commit()
+        app = current_app._get_current_object()
+        def renew():
+            with app.app_context():
+                return cls._touch_lease(job_id, token, shop_id=shop_id)
+        keeper = LeaseKeeper(renew, max(1, LEASE_SECONDS / 3)).start()
         try:
             job = cls.get_job(job_id, shop_id)
             if not job:
                 raise ImportScanValidationError('scan job not found', 'SCAN_JOB_NOT_FOUND')
-            for item in cls._discover(job, force=force):
-                # Heartbeat before touching the next file.  A folder with many or
-                # large workbooks can outlive the initial LEASE_SECONDS grant, and
-                # an expired lease is silently stealable -- exactly the duplicate
-                # import the token exists to prevent.  Renewing per file keeps the
-                # margin bounded by the slowest single import, not by the whole
-                # folder.  A False result means the lease is gone: stop before
-                # mutating anything else so the new owner's run stays coherent.
-                if not cls._touch_lease(job_id, token, shop_id=shop_id):
-                    raise ImportScanConflictError(
-                        '扫描任务租约已被其它进程接管，本次运行提前结束', 'SCAN_LEASE_LOST',
-                    )
-                scan_file, should_process = cls._upsert_discovered(job_id, item)
+            items = cls._discover(job, force=force)
+            keeper.pulse()  # also fence an empty discovery after a slow directory walk
+            for item in items:
+                # Serialize this checkpoint with the background heartbeat;
+                # the business transaction supplies the authoritative final fence.
+                keeper.pulse()
+                scan_file, should_process = cls._upsert_discovered(job_id, item, token)
                 if not should_process:
                     continue
                 file_id = scan_file['id']
                 if not cls._claim_discovered_file(file_id, token):
+                    # A terminal/non-claimable file can legitimately be skipped,
+                    # but a lost job is an aborted run, never completed-with-zero.
+                    with keeper.lock, get_db() as conn:
+                        conn.execute('BEGIN IMMEDIATE')
+                        keeper.check()
+                        cls._assert_job_lease(conn, job_id, token, shop_id)
                     continue
                 counters['discovered_count'] += 1
                 canonical, filename, _, _, _ = item
@@ -774,6 +789,7 @@ class ImportScanService:
                     preview = import_service.preview(
                         filename, content, job['source_type'], job.get('mapping_template') or None,
                     )
+                    keeper.check()
                     if preview.get('required_unmapped') or preview.get('invalid_rows') or preview.get('duplicate_keys'):
                         cls._update_file(
                             file_id, token, status='blocked', preview_id=preview.get('id'),
@@ -781,9 +797,13 @@ class ImportScanService:
                         )
                         counters['blocked_count'] += 1
                         continue
-                    result = import_service.confirm(preview['id'], preview.get('mapping') or {})
-                    cls._update_file(file_id, token, status='imported', preview_id=preview.get('id'), batch_id=result.get('id'), imported_at=_iso(_utc_now()))
+                    claim = ScanClaim(job_id, file_id, token, str(shop_id), item[4], preview['id'],
+                                      keeper, lambda: _utc_now(), LEASE_SECONDS)
+                    import_service.confirm(preview['id'], preview.get('mapping') or {}, scan_claim=claim)
                     counters['imported_count'] += 1
+                except ScanLeaseLost:
+                    # Do not turn an abandoned file into failed: successor resumes it.
+                    raise
                 except ImportScanConflictError as error:
                     cls._update_file(file_id, token, status='failed', error_code=error.code, error_message=str(error))
                     counters['failed_count'] += 1
@@ -792,25 +812,36 @@ class ImportScanService:
                     counters['failed_count'] += 1
             status = 'completed' if not (counters['failed_count'] or counters['blocked_count']) else 'partial'
             finished = _utc_now()
-            with get_db() as conn:
+            with keeper.lock, get_db() as conn:
+                conn.execute('BEGIN IMMEDIATE')
+                keeper.check()
+                cls._assert_job_lease(conn, job_id, token, shop_id)
                 conn.execute(
                     '''UPDATE import_scan_runs SET completed_at=?, status=?, discovered_count=?, imported_count=?, blocked_count=?, failed_count=? WHERE id=?''',
                     (_iso(finished), status, counters['discovered_count'], counters['imported_count'], counters['blocked_count'], counters['failed_count'], run_id),
                 )
                 after_run = dict(conn.execute('SELECT * FROM import_scan_runs WHERE id=?', (run_id,)).fetchone())
                 AuditRepo.record('import_scan_run', run_id, 'run', operator, reason, {'job_id': job_id, 'status': 'running'}, after_run, connection=conn)
+                # 扫描进程是独立进程，Web 进程的 cache.clear() 不会被触发；
+                # 自增库内 generation 让 Web 侧缓存在下一次请求就失效（CACHE-01）。
+                bump_mutation_generation(conn)
+                cls._assert_job_lease(conn, job_id, token, shop_id)
                 conn.commit()
             next_run = _next_cron_run(job['cron_expr'], finished)
+            keeper.close()
             cls._release_lease(
                 job_id, token, shop_id=shop_id, last_run=_iso(finished), next_run=_iso(next_run), last_error=None,
             )
             return {'id': run_id, 'job_id': job_id, 'status': status, **counters}
         except Exception as error:
+            keeper.close()
             finished = _utc_now()
             with get_db() as conn:
                 conn.execute(
-                    '''UPDATE import_scan_runs SET completed_at=?, status='failed', error_message=? WHERE id=?''',
-                    (_iso(finished), str(error), run_id),
+                    '''UPDATE import_scan_runs SET completed_at=?, status='failed', error_message=?,
+                       discovered_count=?, imported_count=?, blocked_count=?, failed_count=? WHERE id=?''',
+                    (_iso(finished), str(error), counters['discovered_count'], counters['imported_count'],
+                     counters['blocked_count'], counters['failed_count'], run_id),
                 )
                 after_run = dict(conn.execute('SELECT * FROM import_scan_runs WHERE id=?', (run_id,)).fetchone())
                 AuditRepo.record('import_scan_run', run_id, 'run_failed', operator, reason, {'job_id': job_id, 'status': 'running'}, after_run, connection=conn)
@@ -824,7 +855,11 @@ class ImportScanService:
                 if isinstance(error, ImportScanValidationError):
                     release_fields.update({'status': 'error', 'enabled': 0})
             cls._release_lease(job_id, token, shop_id=shop_id, **release_fields)
+            if isinstance(error, ScanLeaseLost):
+                raise ImportScanConflictError(str(error), 'SCAN_LEASE_LOST') from error
             raise
+        finally:
+            keeper.close()
 
     @classmethod
     def run_due_jobs(cls, now=None, shop_id=None):
@@ -832,8 +867,8 @@ class ImportScanService:
         current = now or _utc_now()
         with get_db() as conn:
             rows = conn.execute(
-                "SELECT id FROM import_scan_jobs WHERE shop_id=? AND enabled=1 AND status='active' AND (next_run IS NULL OR next_run <= ?)",
-                (shop_id, _iso(current)),
+                "SELECT id FROM import_scan_jobs WHERE shop_id=? AND enabled=1 AND (status='active' OR (status='running' AND (lease_until IS NULL OR lease_until<=?))) AND (next_run IS NULL OR next_run <= ?)",
+                (shop_id, _iso(current), _iso(current)),
             ).fetchall()
         results = []
         for row in rows:

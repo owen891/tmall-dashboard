@@ -44,7 +44,22 @@ class MetricsRepo:
                 (shop_id, start_date, end_date),
             ).fetchone()
             if store_row['fact_count'] and not filters:
-                return {**dict(store_row), 'data_grain': 'daily'}
+                # store_daily_facts 只存流量/成交/花费，不含成本与利润；净利润额
+                # 从同日同店的 daily_data.operating_profit 汇总（两源在相同日期
+                # 区间的 payment_amount 已核对一致，见 2026-10-23 记忆）。
+                # EXISTS 把利润窗口对齐到 store_daily_facts 的实际覆盖日期：
+                # daily_data 可能比 store 事实多出最近 1-2 天，若直接按日期区间
+                # 求和，分子会比净销售额多算几天，净利润率被高估。
+                profit_row = connection.execute(
+                    '''SELECT SUM(d.operating_profit) AS operating_profit
+                       FROM daily_data d
+                       WHERE d.shop_id = ? AND d.date BETWEEN ? AND ?
+                         AND EXISTS (SELECT 1 FROM store_daily_facts f
+                                     WHERE f.shop_id = d.shop_id AND f.date = d.date)''',
+                    (shop_id, start_date, end_date),
+                ).fetchone()
+                return {**dict(store_row), 'operating_profit': profit_row['operating_profit'],
+                        'data_grain': 'daily'}
             clauses, filter_params = MetricsRepo._product_filter_sql(filters)
             where = ' AND '.join(['d.shop_id = ?', 'd.date BETWEEN ? AND ?', *clauses])
             # 访客/买家按来源 observation 门控：仅当来源真实上报过该字段才计入，
@@ -77,6 +92,7 @@ class MetricsRepo:
                    SELECT SUM(payment_amount) AS payment_amount,
                           SUM(refund_amount) AS successful_refund_amount,
                           SUM(ad_spend) AS ad_spend,
+                          SUM(operating_profit) AS operating_profit,
                           SUM(CASE WHEN observation_source_system = 'promotion_tool'
                                         OR observation_fields LIKE '%\"product_visitors\": true%'
                                    THEN ipv END) AS product_visitors,
@@ -129,6 +145,7 @@ class MetricsRepo:
                 '''SELECT SUM(m.payment_amount) AS payment_amount,
                           SUM(m.refund_amount) AS successful_refund_amount,
                           SUM(m.ad_spend) AS ad_spend,
+                          SUM(m.operating_profit) AS operating_profit,
                           SUM(m.visitors) AS product_visitors,
                           SUM(m.buyers) AS payment_buyers,
                           SUM(m.repurchase_users) AS returning_payment_buyers,

@@ -20,15 +20,19 @@ if str(_PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(_PROJECT_ROOT))
 
 from services.credentials_crypto import decrypt_password
+from scripts.browser_runtime import resolve_browser, require_browser_identity, BrowserConfigurationError
+from scripts.collector_preflight import open_json, probe_session
+from scripts.runtime_paths import loopback_proxy_env
 
 # ==================== 配置 ====================
 CDP_PORT = int(os.environ.get('TMALL_CDP_PORT', '9223'))
-BI_URL = "https://primeet.ecbis.cn/workTable/workTableHome"
-BI_LOGIN_URL = "https://primeet.ecbis.cn/login"
+BI_HOST = os.environ.get('TMALL_BI_HOST', '')
+BI_URL = f'https://{BI_HOST}/workTable/workTableHome'
+BI_LOGIN_URL = f'https://{BI_HOST}/login'
 # collect_overview_daily.py / collect_overview_full.py 取数时要求浏览器里已打开
 # URL 含 productOverview 的标签页，否则直接抛「未找到 productOverview 页面标签」。
 # 登录脚本必须把这个页面准备好，日常自动采集才不会空跑。
-BI_OVERVIEW_URL = "https://primeet.ecbis.cn/workTable/productOverview"
+BI_OVERVIEW_URL = f'https://{BI_HOST}/workTable/productOverview'
 SYCM_URL = "https://sycm.taobao.com/"
 WANXIANGTAI_URL = "https://one.alimama.com/"
 
@@ -72,34 +76,15 @@ def load_platform_credentials(platform):
 
 def get_browser_ws():
     """获取browser级别的WebSocket URL"""
-    with urllib.request.urlopen(f"http://127.0.0.1:{CDP_PORT}/json/version") as resp:
-        version = json.loads(resp.read().decode())
-        return version['webSocketDebuggerUrl']
+    version = open_json(f"http://127.0.0.1:{CDP_PORT}/json/version")
+    return version['webSocketDebuggerUrl']
 
 
 def ensure_browser():
-    """Reuse the collector browser, or start an isolated background instance."""
-    try:
-        with urllib.request.urlopen(f'http://127.0.0.1:{CDP_PORT}/json/version', timeout=2):
-            return
-    except OSError:
-        pass
-    chrome = os.environ.get('TMALL_CHROME_PATH', r'C:\Program Files\Google\Chrome\Application\chrome.exe')
-    profile = os.environ.get('TMALL_CHROME_PROFILE') or str(
-        Path(os.environ['LOCALAPPDATA']) / 'TmallDashboard/CollectorChrome')
-    args = [chrome, f'--remote-debugging-port={CDP_PORT}',
-            f'--remote-allow-origins=http://localhost:{CDP_PORT},http://127.0.0.1:{CDP_PORT}',
-            f'--user-data-dir={profile}', '--no-first-run', '--no-default-browser-check']
-    if os.environ.get('TMALL_CHROME_HEADLESS', '1') == '1':
-        args += ['--headless=new', '--window-size=1440,1000']
-    subprocess.Popen(args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    for _ in range(30):
-        try:
-            with urllib.request.urlopen(f'http://127.0.0.1:{CDP_PORT}/json/version', timeout=1):
-                return
-        except OSError:
-            time.sleep(1)
-    raise RuntimeError('采集专用 Chrome 启动超时，请检查独立用户目录是否被占用')
+    """Check the selected existing browser; preparation never starts/restarts it."""
+    config = resolve_browser(_PROJECT_ROOT)
+    require_browser_identity(config)
+    open_json(f"http://{config['host']}:{config['port']}/json/version")
 
 
 def create_target(browser_ws, url):
@@ -120,8 +105,7 @@ def create_target(browser_ws, url):
 
 def get_page_ws(url_contains):
     """根据URL关键字查找页面的WebSocket URL"""
-    with urllib.request.urlopen(f"http://127.0.0.1:{CDP_PORT}/json") as resp:
-        tabs = json.loads(resp.read().decode())
+    tabs = open_json(f"http://127.0.0.1:{CDP_PORT}/json")
     for tab in tabs:
         if tab.get('type') == 'page' and url_contains in tab.get('url', ''):
             return tab['webSocketDebuggerUrl']
@@ -156,7 +140,13 @@ def sycm_session_valid():
     只看页面是否存在会误判：SSO 完成后 sycm 标签常驻在
     /custom/login.htm，页面在并不代表 cookie 有效；失效时接口返回
     {"code":5810,"msg":"You must login system first."}。
+
+    探测 URL 的 token 参数来自环境变量 TMALL_SYCM_TOKEN（2026-10-23 起
+    不再硬编码在公开仓库）；未设置时返回 None 表示未知，调用方按失效处理。
     """
+    if not os.environ.get('TMALL_SYCM_TOKEN'):
+        print('SYCM_PROBE_TOKEN_MISSING: 未设置 TMALL_SYCM_TOKEN，无法验证生意参谋会话')
+        return None
     cookie_str = get_taobao_cookies()
     if not cookie_str:
         return False
@@ -164,7 +154,7 @@ def sycm_session_valid():
         'https://sycm.taobao.com/flow/new/monitor/item/tops/rank.json'
         '?dateRange={d}%7C{d}&dateType=day&pageSize=1&page=1'
         '&order=desc&orderBy=uv&device=2&indexCode=uv'
-        '&_={ts}&token=df5be3e45'
+        '&_={ts}&token=' + os.environ['TMALL_SYCM_TOKEN']
     ).format(d=time.strftime('%Y-%m-%d', time.localtime(time.time() - 86400)),
               ts=int(time.time() * 1000))
     req = urllib.request.Request(probe, headers={
@@ -314,58 +304,16 @@ def login_taobao_tab(username, password):
         need_manual = True
 
     if need_manual:
-        wait_seconds = int(os.environ.get('TMALL_SLIDER_WAIT_SECONDS', '600'))
-        
-        # 检查是否headless模式
-        try:
-            version_info = json.loads(urllib.request.urlopen(f'http://127.0.0.1:{CDP_PORT}/json/version', timeout=3).read())
-            is_headless = 'HeadlessChrome' in version_info.get('User-Agent', '')
-        except:
-            is_headless = False
-
-        print('\n' + '='*60)
-        print('⚠️  生意参谋登录需要人工操作（验证码/滑块）')
-        if is_headless:
-            print('⚠️  当前Chrome为无头模式，正在自动切换为有头窗口...')
-            subprocess.run(['taskkill', '/F', '/IM', 'chrome.exe', '/FI', f'COMMANDLINE eq *--remote-debugging-port={CDP_PORT}*'], 
-                         capture_output=True, shell=True)
-            time.sleep(3)
-            chrome_path = os.environ.get('TMALL_CHROME_PATH', r'C:\Program Files\Google\Chrome\Application\chrome.exe')
-            profile = os.environ.get('TMALL_CHROME_PROFILE') or str(
-                Path(os.environ['LOCALAPPDATA']) / 'TmallDashboard/CollectorChrome')
-            subprocess.Popen([
-                chrome_path, f'--remote-debugging-port={CDP_PORT}',
-                f'--remote-allow-origins=http://localhost:{CDP_PORT},http://127.0.0.1:{CDP_PORT}',
-                f'--user-data-dir={profile}', '--no-first-run', '--no-default-browser-check',
-                'https://sycm.taobao.com/'
-            ])
-            time.sleep(5)
-            print('✅ 已弹出Chrome窗口，请在浏览器中完成生意参谋登录')
-        else:
-            print('请在Chrome窗口中完成生意参谋登录')
-        print(f'[等待] 最多等待 {wait_seconds} 秒，每10秒检测一次登录状态...')
-        print('='*60 + '\n')
-
-        for i in range(wait_seconds // 10):
-            time.sleep(10)
-            if sycm_session_valid():
-                elapsed = (i+1) * 10
-                print(f'\n✅ [登录] 生意参谋登录成功！（耗时 {elapsed} 秒）')
-                return True
-            if (i+1) % 3 == 0:
-                remaining = wait_seconds - (i+1)*10
-                print(f'  仍在等待生意参谋登录... 剩余 {remaining} 秒')
-        
-        print('\n❌ [超时] 等待生意参谋人工登录超时')
+        print('MANUAL_LOGIN_REQUIRED: captcha/interactive login; selected browser is not killed or restarted')
         return False
-    
+
     return False
 
 
 def login_bi(username, password):
     """自动登录BI页面"""
     print("  导航到BI登录页...")
-    ws_url = get_page_ws("primeet.ecbis.cn")
+    ws_url = get_page_ws(BI_HOST)
     if not ws_url:
         print("  ✗ 未找到BI页面标签页")
         return False
@@ -467,6 +415,7 @@ def login_bi(username, password):
 
 
 def main():
+    global CDP_PORT
     parser = argparse.ArgumentParser(description='自动登录BI页面并打开采集所需页面')
     parser.add_argument('--bi-username', default=DEFAULT_BI_USERNAME, help='BI页面账号')
     parser.add_argument('--bi-password', default=DEFAULT_BI_PASSWORD, help='BI页面密码（建议使用 BI_PASSWORD 环境变量）')
@@ -474,6 +423,31 @@ def main():
     parser.add_argument('--sources', default='', help='仅准备指定的数据源，逗号分隔')
     args = parser.parse_args()
     sources = set(args.sources.split(',')) if args.sources else {'bi_daily', 'sycm_flow', 'wanxiangtai'}
+    try:
+        browser = resolve_browser(_PROJECT_ROOT)
+        require_browser_identity(browser)
+    except BrowserConfigurationError as exc:
+        print(str(exc))
+        return 21
+    CDP_PORT = browser['port']
+    os.environ.update(loopback_proxy_env())
+    os.environ['TMALL_CDP_PORT'] = str(CDP_PORT)
+    if browser['reuse_only']:
+        # Reuse limits browser lifecycle, not explicit collection later. Here we
+        # only verify sessions/pages; credentials, navigation and login are untouched.
+        for source in sorted(sources):
+            try:
+                valid = probe_session(source, f'http://127.0.0.1:{CDP_PORT}')
+            except Exception:
+                valid = None
+            if valid is not True:
+                print(f'MANUAL_LOGIN_REQUIRED: {source} session not verified; use the selected browser')
+                return 22
+        if 'bi_daily' in sources and not get_page_ws('productOverview'):
+            print('MANUAL_LOGIN_REQUIRED: open the BI product overview in the selected browser')
+            return 22
+        print('BROWSER_REUSE_READY: verified session and required pages; no login/navigation performed')
+        return 0
     needs_bi = 'bi_daily' in sources and not args.skip_bi_login
     saved_username, saved_password = load_saved_credentials()
     if not args.bi_username:
@@ -508,7 +482,7 @@ def main():
         time.sleep(5)
 
     # BI页面仅在需要登录时打开；其他采集源不应依赖BI账号
-    if needs_bi and not get_page_ws('primeet.ecbis.cn'):
+    if needs_bi and not get_page_ws(BI_HOST):
         print("  打开BI页面...")
         create_target(browser_ws, BI_URL)
         time.sleep(3)
@@ -532,7 +506,7 @@ def main():
     print("\n[4/4] 自动登录BI页面...")
     login_success = True
     if needs_bi:
-        bi_ws = get_page_ws('primeet.ecbis.cn')
+        bi_ws = get_page_ws(BI_HOST)
         current_url = cdp_evaluate(bi_ws, 'window.location.href') if bi_ws else ''
         if not current_url or 'login' in current_url:
             if not args.bi_username or not args.bi_password:
@@ -552,7 +526,7 @@ def main():
         # 页面常在 /custom/login.htm（SSO 外壳），页面存在 ≠ 会话有效；
         # 必须真实调一次接口确认，否则会带着过期 cookie 空跑且静默"成功"。
         sycm_ok = sycm_session_valid()
-        print(f"  生意参谋会话: {'有效' if sycm_ok else '已失效'}")
+        print(f"  生意参谋会话: {'有效' if sycm_ok else ('未知' if sycm_ok is None else '已失效')}")
         if not sycm_ws or not sycm_ok:
             sycm_user, sycm_password = load_platform_credentials('sycm')
             if not sycm_user or not sycm_password:
@@ -573,6 +547,18 @@ def main():
         wxt_ok = login_wxt() == 0
         login_success = wxt_ok and login_success
 
+    # Legacy explicit-login mode also needs authoritative proof. A URL change
+    # after a form submit is not a session-validity signal.
+    if login_success:
+        for source in sorted(sources):
+            try:
+                verified = probe_session(source, f'http://127.0.0.1:{CDP_PORT}') is True
+            except Exception:
+                verified = False
+            if not verified:
+                print(f'MANUAL_LOGIN_REQUIRED: {source} session not verified')
+                login_success = False
+
     print("\n" + "=" * 60)
     if login_success:
         print("  ✓ 页面准备完成，可以开始采集")
@@ -581,7 +567,7 @@ def main():
     else:
         print("  ⚠ 页面登录准备失败，请手动检查")
         print("=" * 60)
-        return 1
+        return 22
 
 
 if __name__ == "__main__":

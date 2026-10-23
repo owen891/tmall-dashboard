@@ -15,53 +15,20 @@
  *   5. 点外部关闭；Esc 关闭；同一时刻只有一个浮层
  *   6. 空间不足时自动翻转，不会溢出视口
  *
- * 用法：node scripts/smoke_popover.cjs [baseUrl]
+ * 用法：python scripts/run_quality_gates.py --tier integration
+ * 只接受执行器所有的临时服务、专用浏览器与 profile。
  */
 'use strict';
 
-const { spawn } = require('node:child_process');
-const http = require('node:http');
-const fs = require('node:fs');
-const os = require('node:os');
-const path = require('node:path');
-
-const BASE = (process.argv[2] || process.env.TMALL_SMOKE_BASE || 'http://127.0.0.1:5000').replace(/\/$/, '');
+const { launchGateChrome, safeSocketUrl } = require('./gate_browser.cjs');
+const BASE = process.argv[2] || process.env.TMALL_SMOKE_BASE;
 const PAGE = process.env.TMALL_SMOKE_PAGE || '/component-catalog';
-const DEBUG_PORT = Number(process.env.TMALL_CDP_PORT || 9412);
-const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-
-function findChrome() {
-  const candidates = [
-    process.env.TMALL_CHROME,
-    'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
-    'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
-    path.join(os.homedir(), 'AppData', 'Local', 'Google', 'Chrome', 'Application', 'chrome.exe'),
-    '/usr/bin/google-chrome', '/usr/bin/chromium',
-    '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
-  ].filter(Boolean);
-  return candidates.find((candidate) => { try { return fs.statSync(candidate).isFile(); } catch { return false; } }) || null;
-}
-
-function httpGet(pathname) {
-  return new Promise((resolve, reject) => {
-    http.get({ host: '127.0.0.1', port: DEBUG_PORT, path: pathname }, (res) => {
-      let data = ''; res.on('data', (c) => { data += c; }); res.on('end', () => resolve(data));
-    }).on('error', reject);
-  });
-}
+const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
 async function main() {
-  const chromePath = findChrome();
-  if (!chromePath) {
-    console.error('[SKIP] 未找到 Chrome，跳过浮层原语门禁（设置 TMALL_CHROME 后重试）。');
-    return 0;
-  }
-  const chrome = spawn(chromePath, [
-    `--remote-debugging-port=${DEBUG_PORT}`, '--headless=new', '--disable-gpu',
-    '--no-first-run', '--no-default-browser-check', '--window-size=1440,900',
-    `--user-data-dir=${path.join(os.tmpdir(), `tmall-smoke-popover-${process.pid}`)}`, 'about:blank',
-  ], { stdio: 'ignore' });
-
+  const owned = await launchGateChrome(BASE);
+  const httpGet = owned.httpGet;
+  try {
   let socketUrl = null;
   for (let i = 0; i < 80; i += 1) {
     try {
@@ -71,9 +38,9 @@ async function main() {
     } catch { /* retry */ }
     await sleep(250);
   }
-  if (!socketUrl) { console.error('[FAIL] 无法连接 DevTools'); chrome.kill(); return 1; }
+  if (!socketUrl) { console.error('[FAIL] 无法连接 DevTools'); await owned.close(); return 1; }
 
-  const socket = new WebSocket(socketUrl);
+  const socket = new WebSocket(safeSocketUrl(socketUrl, owned.port));
   let messageId = 0;
   const pending = new Map();
   const exceptions = [];
@@ -216,7 +183,7 @@ async function main() {
     failures.push(`运行异常: ${error.message}`);
     console.error('[FAIL]', error.message);
   } finally {
-    socket.close(); chrome.kill(); await sleep(300);
+    socket.close(); await owned.close(); await sleep(300);
   }
 
   console.log('');
@@ -227,6 +194,7 @@ async function main() {
   }
   console.log('[OK] 浮层原语门禁通过：定位正确、视口约束、自动翻转、关闭语义、单例。');
   return 0;
+  } finally { await owned.close(); }
 }
 
 main().then((code) => process.exit(code)).catch((error) => { console.error('[FAIL]', error); process.exit(1); });

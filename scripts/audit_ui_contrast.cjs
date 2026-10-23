@@ -45,17 +45,14 @@ const path = require('node:path');
 const fs = require('node:fs');
 // 两种加载方式都支持：设了 NODE_PATH 时用 playwright-core（quality-gate 的老用法），
 // 没设时回退到仓库内的 desktop/node_modules —— 不必再记 NODE_PATH=...
-let chromium;
-try {
-  ({ chromium } = require('playwright-core'));
-} catch (e) {
-  ({ chromium } = require(path.join(__dirname, '..', 'desktop', 'node_modules', 'playwright')));
-}
+const { gateChromium, assertBase } = require('./gate_browser.cjs');
+const chromium = gateChromium();
 
 const args = process.argv.slice(2);
 const getArg = (n, d) => { const i = args.indexOf(n); return i >= 0 && args[i + 1] ? args[i + 1] : d; };
 const BASE = process.env.BASE || process.env.TMALL_SMOKE_BASE
   || args.find((a) => a.startsWith('http')) || 'http://127.0.0.1:5000';
+assertBase(BASE);
 const THEME = getArg('--theme', 'light');
 const THEMES = THEME === 'both' ? ['light', 'dark'] : [THEME];
 const VIEWPORT = getArg('--viewport', 'desktop');
@@ -64,6 +61,21 @@ const VIEWPORTS = VIEWPORT === 'both'
   : [{ name: VIEWPORT, width: VIEWPORT === 'mobile' ? 375 : 1440, height: VIEWPORT === 'mobile' ? 812 : 900 }];
 const STATES_MODE = args.includes('--states');
 const FOCUS_MODE = args.includes('--focus');
+
+// Execution failures are not contrast findings, but still invalidate the audit.
+const ACTION_TIMEOUT = 5000;
+const auditErrors = { static: 0, states: 0, focus: 0 };
+function auditError(mode, location, error) {
+  auditErrors[mode] += 1;
+  process.exitCode = 1;
+  console.log('[AUDIT_ERROR] ' + mode + ' ' + JSON.stringify(location) + ' ' + String(error && error.message || error));
+}
+async function closeOwned(resource, mode, location) {
+  if (!resource) return;
+  try { await resource.close(); }
+  catch (error) { auditError(mode, { ...location, action: 'close' }, error); }
+}
+
 const MAX_TABS = Number(getArg('--tabs', '45'));
 
 const PAGES = ['overview', 'products', 'promotion', 'keyword-promotion', 'new-products',
@@ -291,38 +303,48 @@ const STATE_PROBES = [
 // ───────────────────────── 模式 1：文本静态对比度 ─────────────────────────
 (async () => {
   if (STATES_MODE || FOCUS_MODE) return;
-  const browser = await chromium.launch({ executablePath: process.env.PW_CHROMIUM || undefined, args: ['--no-sandbox'] });
+  let browser;
+  try {
+  browser = await chromium.launch({ headless: true });
   let grandFail = 0;
 
   for (const vp of VIEWPORTS) {
     for (const theme of THEMES) {
       console.log(`\n################ 主题 ${theme} / 视口 ${vp.name} ${vp.width}×${vp.height} ################`);
       const ctx = await browser.newContext({ viewport: { width: vp.width, height: vp.height } });
+      const agg = new Map();
+      let fail = 0, disabledN = 0, total = 0;
+      try {
+      ctx.setDefaultTimeout(ACTION_TIMEOUT);
       // 页面主题来自 localStorage['tmall-demo-theme']（shell.js:213-221），newContext 不设它就永远是浅色
       await ctx.addInitScript((t) => {
         try { window.localStorage.setItem('tmall-demo-theme', t); } catch (e) {}
       }, theme);
 
-      const agg = new Map();
-      let fail = 0, disabledN = 0, total = 0;
+
       for (const name of PAGES) {
-        const page = await ctx.newPage();
+        let page;
+        let action = 'new-page';
         let rows = [];
         try {
+          page = await ctx.newPage();
+          page.setDefaultTimeout(ACTION_TIMEOUT);
+          action = 'goto';
           await page.goto(`${BASE}/pages/${name}.html`, { waitUntil: 'domcontentloaded', timeout: 25000 });
           await page.waitForTimeout(1700);
+          action = 'evaluate';
           const actual = await page.evaluate(() => document.documentElement.dataset.theme);
           if (actual !== theme) console.log(`${name} ⚠️ 主题未生效（实际 ${actual}）`);
           rows = await page.evaluate(SCRIPT);
-        } catch (e) { console.log(`${name} ERROR ${String(e.message).slice(0, 90)}`); }
-        await page.close();
+        } catch (error) { auditError('static', { theme, viewport: vp.name, page: name, action }, error); }
+        finally { await closeOwned(page, 'static', { theme, page: name, resource: 'page' }); }
         const bad = rows.filter((r) => !r.disabled);
         total += rows.length; fail += bad.length; disabledN += rows.length - bad.length;
         if (rows.length) console.log(`${name.padEnd(18)} 未过 AA ${String(rows.length).padStart(3)}（其中禁用态 ${rows.length - bad.length}）`);
         bad.slice(0, 6).forEach((r) => console.log(`    - ${r.path}  ${r.fs}px ${r.ratio}:1(需${r.need}) ${r.color} on ${r.bg}  "${r.txt}"`));
         bad.forEach((r) => { const k = `${r.path} | ${r.fs}px | ${r.ratio}:1 | ${r.color}`; agg.set(k, (agg.get(k) || 0) + 1); });
       }
-      await ctx.close();
+      } finally { await closeOwned(ctx, 'static', { theme, viewport: vp.name, resource: 'context' }); }
       grandFail += fail;
       console.log(`\n[${theme}/${vp.name}] 合计未过 AA ${total}（禁用态 ${disabledN}，需修 ${fail}）`);
       if (agg.size) {
@@ -332,32 +354,47 @@ const STATE_PROBES = [
     }
   }
 
-  await browser.close();
+
   console.log(`\n===== 全部组合合计需修 ${grandFail} =====`);
   if (grandFail > 0) process.exitCode = 1;
+  } catch (error) { auditError('static', { action: 'mode-setup-or-summary' }, error); }
+  finally {
+    await closeOwned(browser, 'static', { resource: 'browser' });
+    console.log('[AUDIT_EXECUTION] static errors=' + auditErrors.static);
+  }
 })();
 
 // ───────────────────────── 模式 2：交互态文本对比度 ─────────────────────────
 (async () => {
   if (!STATES_MODE) return;
-  const browser = await chromium.launch({ executablePath: process.env.PW_CHROMIUM || undefined, args: ['--no-sandbox'] });
+  let browser;
+  try {
+  browser = await chromium.launch({ headless: true });
   let grandFail = 0;
   for (const theme of THEMES) {
     console.log(`\n################ 交互态 ${theme}（桌面 1440×900） ################`);
     const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
-    await ctx.addInitScript((t) => { try { window.localStorage.setItem('tmall-demo-theme', t); } catch (e) {} }, theme);
-    await ctx.addInitScript(STATE_SCAN);
     const agg = new Map();
     let checked = 0, fail = 0;
+    try {
+    ctx.setDefaultTimeout(ACTION_TIMEOUT);
+    await ctx.addInitScript((t) => { try { window.localStorage.setItem('tmall-demo-theme', t); } catch (e) {} }, theme);
+    await ctx.addInitScript(STATE_SCAN);
+
     for (const name of PAGES) {
-      const page = await ctx.newPage();
+      let page;
+      let action = 'new-page';
       try {
+        page = await ctx.newPage();
+        page.setDefaultTimeout(ACTION_TIMEOUT);
+        action = 'goto';
         await page.goto(`${BASE}/pages/${name}.html`, { waitUntil: 'domcontentloaded', timeout: 25000 });
         await page.waitForTimeout(1500);
         for (const [scope, selector, states] of STATE_PROBES) {
           if (scope !== '*' && scope !== name) continue;
           const firstSel = selector.split(',')[0].trim();
           for (const state of states) {
+            action = selector + ' @' + state;
             let handle = null;
             const count = await page.locator(selector).count();
             for (let i = 0; i < Math.min(count, 15); i++) {
@@ -367,16 +404,16 @@ const STATE_PROBES = [
             if (!handle) continue;
             let rows = [];
             if (state === 'hover') {
-              await handle.hover();
+              await handle.hover({ timeout: ACTION_TIMEOUT });
               await page.waitForTimeout(120);
               rows = await handle.evaluate((el) => window.__tmallStateScan(el));
             } else if (state === 'focus') {
-              await handle.focus().catch(() => {});
+              await handle.focus({ timeout: ACTION_TIMEOUT });
               await page.waitForTimeout(80);
               rows = await handle.evaluate((el) => window.__tmallStateScan(el));
               await page.evaluate(() => { const a = document.activeElement; if (a && a.blur) a.blur(); });
             } else if (state === 'active') {
-              await handle.click();
+              await handle.click({ timeout: ACTION_TIMEOUT });
               await page.waitForTimeout(350);
               rows = await page.evaluate((sel) => {
                 const el = document.querySelector(sel + '.is-active') || document.querySelector(sel + '.active');
@@ -390,13 +427,13 @@ const STATE_PROBES = [
               bad.slice(0, 4).forEach((r) => console.log(`  ✗ ${name} ${firstSel} @${state}  ${r.path} ${r.fs}px ${r.ratio}:1(需${r.need}) ${r.color} on ${r.bg} "${r.txt}"`));
               bad.forEach((r) => { const k = `[${theme}] ${r.path} | ${r.fs}px | ${r.ratio}:1 | @${state}`; agg.set(k, (agg.get(k) || 0) + 1); });
             }
-            await page.mouse.move(3, 3).catch(() => {});
+            await page.mouse.move(3, 3);
           }
         }
-      } catch (e) { console.log(`${name} ERROR ${String(e.message).slice(0, 90)}`); }
-      await page.close();
+      } catch (error) { auditError('states', { theme, viewport: 'desktop', page: name, action }, error); }
+      finally { await closeOwned(page, 'states', { theme, page: name, resource: 'page' }); }
     }
-    await ctx.close();
+    } finally { await closeOwned(ctx, 'states', { theme, viewport: 'desktop', resource: 'context' }); }
     grandFail += fail;
     console.log(`\n[${theme}] 交互态探针组合 ${checked}，需修 ${fail}`);
     if (agg.size) {
@@ -404,15 +441,22 @@ const STATE_PROBES = [
       [...agg.entries()].sort((a, b) => b[1] - a[1]).forEach(([k, v]) => console.log(`  ${String(v).padStart(4)}  ${k}`));
     }
   }
-  await browser.close();
+
   console.log(`\n===== 交互态合计需修 ${grandFail} =====`);
   if (grandFail > 0) process.exitCode = 1;
+  } catch (error) { auditError('states', { action: 'mode-setup-or-summary' }, error); }
+  finally {
+    await closeOwned(browser, 'states', { resource: 'browser' });
+    console.log('[AUDIT_EXECUTION] states errors=' + auditErrors.states);
+  }
 })();
 
 // ───────────────────────── 模式 3：键盘焦点指示器 ─────────────────────────
 (async () => {
   if (!FOCUS_MODE) return;
-  const browser = await chromium.launch({ headless: true });
+  let browser;
+  try {
+  browser = await chromium.launch({ headless: true });
   let grandFail = 0;
 
   // 视口 × 主题 组合。用扁平列表而不是嵌套循环，避免给整个块再缩进一层。
@@ -421,6 +465,8 @@ const STATE_PROBES = [
 
   for (const { vp, theme } of combos) {
     const ctx = await browser.newContext({ viewport: { width: vp.width, height: vp.height } });
+    try {
+    ctx.setDefaultTimeout(ACTION_TIMEOUT);
     await ctx.addInitScript((t) => { try { window.localStorage.setItem('tmall-demo-theme', t); } catch (e) {} }, theme);
 
     console.log(`\n######## 焦点指示器审计  主题=${theme} / 视口 ${vp.name} ${vp.width}×${vp.height}  每页最多 ${MAX_TABS} 次 Tab ########\n`);
@@ -431,18 +477,23 @@ const STATE_PROBES = [
     let checked = 0, internalFocus = 0, uaAuto = 0;
 
     for (const name of PAGES) {
-      const page = await ctx.newPage();
+      let page;
+      let action = 'new-page';
       const seen = new Set();
       try {
+        page = await ctx.newPage();
+        page.setDefaultTimeout(ACTION_TIMEOUT);
+        action = 'goto';
         await page.goto(`${BASE}/pages/${name}.html`, { waitUntil: 'domcontentloaded', timeout: 25000 });
         await page.waitForTimeout(2200);
         // 先动一下鼠标把输入模态切到指针；Tab 本身属键盘态，:focus-visible 照常命中。
         // 用 move 而不是 click：移动不激活任何元素，移动端不会误点到吸底操作栏 / 汉堡按钮。
-        await page.mouse.move(vp.width - 12, vp.height - 12).catch(() => {});
+        await page.mouse.move(vp.width - 12, vp.height - 12);
 
         for (let i = 0; i < MAX_TABS; i++) {
+          action = 'Tab/evaluate #' + i;
           await page.keyboard.press('Tab');
-          const info = await page.evaluate(FOCUS_SCAN).catch(() => null);
+          const info = await page.evaluate(FOCUS_SCAN);
           if (!info) continue;
           if (!info.focusMatch) { internalFocus += 1; continue; }
           const sig = `${info.tag}${info.cls ? '.' + info.cls : ''}|${info.outlineWidth}px ${info.outlineStyle} ${info.outlineColor}|${info.outlineOffset}|${info.boxShadow.slice(0, 40)}`;
@@ -490,10 +541,8 @@ const STATE_PROBES = [
           e.worst = Math.min(e.worst, r);
           e.pages.add(name);
         }
-      } catch (e) {
-        console.log(`${name} ERROR ${String(e.message).slice(0, 80)}`);
-      }
-      await page.close();
+      } catch (error) { auditError('focus', { theme, viewport: vp.name, page: name, action }, error); }
+      finally { await closeOwned(page, 'focus', { theme, page: name, resource: 'page' }); }
     }
 
     console.log(`共检查 ${checked} 个去重后的焦点态（另有 ${internalFocus} 次落在控件内部子字段的瞬时态、${uaAuto} 次为浏览器自绘 auto 环，均已跳过）\n`);
@@ -521,12 +570,18 @@ const STATE_PROBES = [
       console.log('');
     }
 
-    await ctx.close();
+
     const bad = agg.size + noIndicator.size + unparsed.size;
     grandFail += bad;
     console.log(`==== 需修 ${bad} 类（缺指示器 ${noIndicator.size} + 对比度不足 ${agg.size} + 未解析 ${unparsed.size}） ====`);
+    } finally { await closeOwned(ctx, 'focus', { theme, viewport: vp.name, resource: 'context' }); }
   }
 
-  await browser.close();
+
   if (grandFail > 0) process.exitCode = 1;
+  } catch (error) { auditError('focus', { action: 'mode-setup-or-summary' }, error); }
+  finally {
+    await closeOwned(browser, 'focus', { resource: 'browser' });
+    console.log('[AUDIT_EXECUTION] focus errors=' + auditErrors.focus);
+  }
 })();

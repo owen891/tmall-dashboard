@@ -37,7 +37,7 @@
   body[data-page="rival-analysis"] .ui-panel .panel__header { margin-bottom: var(--space-3); }
   body[data-page="rival-analysis"] .rival-table-wrap { max-height: min(52vh, 560px); overflow: auto; }
   body[data-page="rival-analysis"] .rival-table th { position: sticky; top: 0; z-index: 1; padding-block: 8px; background: var(--surface-muted); border-bottom: 1px solid var(--border-default); }
-  body[data-page="rival-analysis"] .rival-table td { padding-block: 9px; }
+  body[data-page="rival-analysis"] .rival-table td { padding-block: 4px; }
   body[data-page="rival-analysis"] .rival-item-card { padding-block: var(--space-3); }
   body[data-page="rival-analysis"] .rival-command-grid { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(320px, .65fr); gap: var(--space-3); margin-bottom: var(--space-3); }
   body[data-page="rival-analysis"] .rival-command-panel { min-height: 188px; padding: var(--space-4); }
@@ -64,3 +64,14 @@
 .rival-trend-fold__title { display: inline-flex; align-items: center; gap: var(--space-2); }
 .rival-trend-fold__title .lucide { width: 16px; height: 16px; }
 .rival-trend-fold > .ui-panel { margin-top: 0; border-top-left-radius: 0; border-top-right-radius: 0; }
+
+/* Desktop refinement: private tabs and conclusion rows, without changing lazy panels or disclosure. */
+@media (min-width: 960px) {
+  body[data-page="rival-analysis"] .rival-tabs { border-color: transparent; }
+  body[data-page="rival-analysis"] .rival-tab.active { background: var(--surface-base); color: var(--brand-text); font-weight: 600; }
+  body[data-page="rival-analysis"] .rival-command-list { gap: 0; }
+  body[data-page="rival-analysis"] .rival-command-item { padding: var(--space-3) 0; border: 0; border-bottom: 1px solid var(--border-default); border-radius: 0; background: transparent; }
+  body[data-page="rival-analysis"] .rival-command-item:last-child { padding-bottom: 0; border-bottom: 0; }
+  body[data-page="rival-analysis"] .rival-entry-card { border-color: transparent; }
+  body[data-page="rival-analysis"] .rival-entry-card.is-active { border-color: var(--border-default); background: var(--brand-tint); }
+}

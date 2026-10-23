@@ -14,8 +14,12 @@ problem_items 的 30% 阈值同源，勿与净费比混）：
 
 from datetime import date, timedelta
 
-# tier 写回来源标记：非此来源的既有值（人工或其他系统）不覆盖。
-TIER_SOURCE_TAG = 'matrix-auto'
+from db import get_shop_id
+from services.tier_source import TIER_SOURCE_MATRIX as TIER_SOURCE_TAG
+from services.tier_source import is_tier_locked
+
+# tier 写回来源标记：非算法来源的既有值（人工或其他系统）不覆盖。
+# 常量定义统一放在 services/tier_source.py，避免两套算法各自维护一份标记集合。
 # 写回仅针对算法可判定的标签；「未分层」不写（留空保持可推断态）。
 TIER_WRITABLE_LABELS = ('引流款', '利润款', '动销款')
 
@@ -23,11 +27,16 @@ HIGH_EXPENSE_RATIO = 0.30   # 引流款费比下限（XMind：费比控制在 30
 LOW_EXPENSE_RATIO = 0.10    # 利润款费比上限（XMind：低价扫流费比 10% 内）
 
 
-def resolve_period(conn, period=None):
+def resolve_period(conn, period=None, shop_id=None):
     """缺省取 daily_data 最近有数据的完整月（当天在该月内则取上个月）。"""
     if period:
         return str(period)[:7]
-    row = conn.execute("SELECT MAX(date) AS latest FROM daily_data").fetchone()
+    shop_id = str(shop_id or get_shop_id())
+    # 「最近有数据的月份」必须限定店铺：多店表里另一家店铺的最新日期
+    # 会把本店默认周期整体带偏（甚至指向本店完全没有数据的月份）。
+    row = conn.execute(
+        'SELECT MAX(date) AS latest FROM daily_data WHERE shop_id = ?', (shop_id,)
+    ).fetchone()
     latest = str(row['latest'])[:7] if row and row['latest'] else None
     if not latest:
         return None
@@ -66,22 +75,23 @@ def _classify(row):
     return '未分层', ad_ratio
 
 
-def product_matrix(conn, period=None, category_label=None, compare_month=None):
+def product_matrix(conn, period=None, category_label=None, compare_month=None, shop_id=None):
     """按周期聚合单品并自动分层；返回散点 + 分层统计 + 类目汇总。
 
     只取「本期有动销或有花费」的商品（其余归未取样子集，不进散点）；
     compare_month 用于利润/费比环比（缺省为上一个自然月，可关）。
     """
-    month_key = resolve_period(conn, period)
+    shop_id = str(shop_id or get_shop_id())
+    month_key = resolve_period(conn, period, shop_id)
     if not month_key:
         return {'available': False, 'missing_inputs': ['daily_data'], 'month': None}
     start, end = _period_range(month_key)
 
-    scope_sql = ''
-    scope_params = []
+    scope_sql = ' AND d.shop_id = ?'
+    scope_params = [shop_id]
     if category_label:
-        scope_sql = " AND (p.shop_label = ? OR instr(',' || p.shop_label || ',', ',' || ? || ',') > 0)"
-        scope_params = [category_label, category_label]
+        scope_sql += " AND (p.shop_label = ? OR instr(',' || p.shop_label || ',', ',' || ? || ',') > 0)"
+        scope_params.extend([category_label, category_label])
 
     # tier_source 列可能尚未补齐（writeback 才 ALTER），读取侧按有无该列分支。
     has_tier_source = 'tier_source' in {row[1] for row in conn.execute('PRAGMA table_info(products)').fetchall()}
@@ -193,8 +203,13 @@ def product_matrix(conn, period=None, category_label=None, compare_month=None):
 def apply_tier_writeback(conn, matrix, operator='matrix'):
     """把算法分层写回 products.tier（用户拍板：写回）。
 
-    覆盖规则：tier 为空、或 tier_source='matrix'（算法自填）的行才更新；
-    tier_source 非空且非 matrix（人工锁定）的行绝不覆盖。
+    覆盖规则：tier 为空、或 tier_source 在算法标记集合内（算法自填）的行才更新；
+    有档位但来源不是算法标记（含来源为空）的行绝不覆盖。
+
+    2026-10-22 修正：原判定是 ``if current_source and current_source != TAG``，
+    当 ``tier_source`` 为空时直接放行，与 ``scripts/sync_five_dim_tier.is_locked``
+    （空来源 → 锁定）语义相反。同一个空值两个算法一边保护一边覆盖，
+    取决于谁先跑。现统一走 ``services.tier_source.is_tier_locked``。
     products.tier_source 列不存在时自动补列（ALTER TABLE ADD COLUMN）。
     """
     if not matrix.get('available'):
@@ -215,7 +230,7 @@ def apply_tier_writeback(conn, matrix, operator='matrix'):
         if row is None:
             continue
         current_tier, current_source = row['tier'] or '', row['tier_source'] or ''
-        if current_source and current_source != TIER_SOURCE_TAG:
+        if is_tier_locked(current_tier, current_source):
             skipped_locked += 1
             continue
         if current_tier == label and current_source == TIER_SOURCE_TAG:

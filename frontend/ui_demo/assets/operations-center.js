@@ -117,8 +117,8 @@
     const title = document.createElement('strong'); title.textContent = anomaly.label || anomaly.metric || '指标异常';
     const source = document.createElement('span'); source.className = 'ui-badge ui-badge--warning'; source.textContent = '异常提醒'; head.append(title, source);
     const change = Number(anomaly.change || 0);
-    const meta = document.createElement('span'); meta.className = 'operations-center__item-meta'; meta.textContent = `较上期 ${change > 0 ? '+' : ''}${change.toFixed(1)}% · 需要关注`;
-    const detail = document.createElement('p'); detail.textContent = `当前值 ${Number(anomaly.current || 0).toLocaleString('zh-CN')}，建议进入经营复盘确认原因。`;
+    const meta = document.createElement('span'); meta.className = 'operations-center__item-meta'; meta.textContent = `月度诊断：${anomaly.period || '未指定'}，比较 ${anomaly.prev_period || '未指定'} · ${change > 0 ? '+' : ''}${change.toFixed(1)}% · 需要关注`;
+    const detail = document.createElement('p'); detail.textContent = `月度值 ${Number(anomaly.current || 0).toLocaleString('zh-CN')}，建议进入经营复盘确认原因。`;
     copy.append(head, meta, detail); item.append(marker, copy);
     const status = document.createElement('span'); status.className = `ui-badge ui-badge--${severe ? 'danger' : 'warning'}`; status.textContent = severe ? '高风险' : '需关注'; item.appendChild(status);
     return item;
@@ -246,15 +246,22 @@
       const payload = await DemoApi.domainRequest(`/api/actions/calendar?start=${range.start}&end=${range.end}`);
       if (token !== calendarToken) return;
       state.sourceErrors = [...new Set(state.sourceErrors.filter((source) => source !== 'calendar'))];
+      // 数据不足 != 来源故障。/api/actions/calendar 只会回 available / no-data，
+      // 但接口契约允许 insufficient-data / source-unavailable / partial / missing-fields。
+      // 之前这里写的是 `!== 'no-data'`，把「本店铺这些数据都还没导入」也算成了
+      // 「提醒来源暂不可用」——用系统故障的措辞描述数据状态，与 README 的数据伦理承诺
+      // （缺数据要如实说「无数据/数据不足」，不能含糊成故障）冲突。
+      // 只有真正的来源故障才计入 sourceErrors，其余走「暂无数据」分支。
+      const SOURCE_FAILURE = new Set(['source-unavailable', 'calculation-failed']);
       if (payload.availability !== 'available') {
-        if (payload.availability !== 'no-data') state.sourceErrors = [...new Set([...state.sourceErrors, 'calendar'])];
-        if (payload.availability === 'no-data') {
+        if (SOURCE_FAILURE.has(payload.availability)) {
+          state.sourceErrors = [...new Set([...state.sourceErrors, 'calendar'])];
+          clearCalendar('计划日历暂不可用', loadCalendar);
+        } else {
           state.calendarActions = [];
           state.selectedDate = '';
           $('[data-operations-calendar-status]').textContent = '当前月份暂无计划动作';
           renderCalendar();
-        } else {
-          clearCalendar('计划日历暂不可用', loadCalendar);
         }
         return;
       }

@@ -37,7 +37,16 @@ def get_db_path():
     return os.path.join(PROJECT_ROOT, 'data', 'dashboard.db')
 
 
-def get_shop_id(default='3828498662'):
+# 命名店铺标识是部署私有配置：公开代码不带具体店铺号，运行环境经
+# TMALL_LEGACY_SHOP_ID 注入（本机部署已配置，见运维手册）。
+def legacy_shop_id():
+    """部署私有的命名店铺号（运行时读环境，公开代码不带具体值）。"""
+    return os.environ.get('TMALL_LEGACY_SHOP_ID', '')
+
+
+def get_shop_id(default=None):
+    """Return the canonical request or server shop scope."""
+    default = default or legacy_shop_id() or 'default'
     """Return the canonical request or server shop scope."""
     if has_app_context():
         scoped = getattr(g, 'shop_id', None)
@@ -52,7 +61,7 @@ def get_shop_id(default='3828498662'):
 def require_default_shop_scope():
     """Fail closed while all current product tables remain single-shop."""
     shop_id = get_shop_id()
-    if shop_id not in ('default', '3828498662'):
+    if shop_id not in ('default', legacy_shop_id()):
         raise PermissionError(f'当前产品仅支持 default 店铺 scope，不允许访问 {shop_id}')
     return shop_id
 
@@ -87,7 +96,7 @@ def get_db(db_path=None):
     finally:
         conn.close()
 
-# 服务启动时可能正好撞上批量导入（如派米 BI 每日导入）长时间持有的写锁——
+# 服务启动时可能正好撞上批量导入（如 BI 每日导入）长时间持有的写锁——
 # 那条路径是「一次 BEGIN IMMEDIATE 提交整批文件」，持锁可达数分钟。
 # 只靠 get_connection 的 30s busy_timeout 不够，init_db 会直接抛
 # "database is locked" 让服务起不来（2026-09-20 22:28 就是这么挂的）。

@@ -3,12 +3,14 @@ from flask import Blueprint, request
 from api.api_response import failure, success
 from services.category_analysis_service import analyze, analyze_matrix
 from services.leaf_weekly_service import summarize_week
+from services.shop_scope_service import current_request_shop_id
 
 category_analysis_bp = Blueprint('category_analysis', __name__)
 
 @category_analysis_bp.get('/api/category-analysis/compare')
 def compare_category_analysis():
     try:
+        shop_id = current_request_shop_id()
         compare_mode = request.args.get('compare_mode', 'custom')
         if compare_mode not in {'yoy', 'previous', 'custom', 'none'}:
             raise ValueError('compare_mode must be yoy, previous, custom, or none')
@@ -23,7 +25,7 @@ def compare_category_analysis():
         compare_end = date.fromisoformat(ce) if ce else None
         if (compare_start is None) != (compare_end is None) or (compare_start and compare_start > compare_end): raise ValueError('invalid compare period')
         top_n = max(1, min(int(request.args.get('top_n', 20)), 100))
-        data = analyze(start=start, end=end, compare_start=compare_start, compare_end=compare_end, grain=request.args.get('grain', 'month'), category_mode=request.args.get('category_mode'), metric=request.args.get('metric', 'payment_amount'), top_n=top_n)
+        data = analyze(start=start, end=end, compare_start=compare_start, compare_end=compare_end, grain=request.args.get('grain', 'month'), category_mode=request.args.get('category_mode'), metric=request.args.get('metric', 'payment_amount'), top_n=top_n, shop_id=shop_id)
         availability = data['data_quality']['availability']
         return success(data, availability=availability, evidence_level='insufficient' if availability == 'no-data' else 'partial' if data['data_quality']['missing_fields'] else 'full', filters=dict(request.args), missing_fields=data['data_quality']['missing_fields'])
     except (TypeError, ValueError) as exc:
@@ -33,6 +35,7 @@ def compare_category_analysis():
 @category_analysis_bp.get('/api/category-analysis/matrix')
 def category_analysis_matrix():
     try:
+        shop_id = current_request_shop_id()
         raw_years = request.args.get('years', '')
         years = [int(value.strip()) for value in raw_years.split(',') if value.strip()]
         if not years:
@@ -45,6 +48,7 @@ def category_analysis_matrix():
             category_mode=request.args.get('category_mode'),
             metric=request.args.get('metric', 'net_sales'),
             metrics=metrics or None,
+            shop_id=shop_id,
         )
         availability = data['data_quality']['availability']
         return success(
@@ -62,7 +66,7 @@ def category_analysis_matrix():
 def leaf_weekly_board():
     """叶子类目近 3 周 + 去年同期对比看板。"""
     try:
-        data = summarize_week(category_mode='sock')
+        data = summarize_week(category_mode='sock', shop_id=current_request_shop_id())
         return success(data, availability='available', evidence_level='full')
     except Exception as exc:  # noqa: BLE001
         return failure('INTERNAL_ERROR', str(exc), status=500)

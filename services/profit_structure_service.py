@@ -1,4 +1,4 @@
-"""利润结构拆解（利润瀑布）——对齐 BI 派米口径，恒等公式已实测验证。
+"""利润结构拆解（利润瀑布）——对齐 BI 口径，恒等公式已实测验证。
 
 口径（与 `E:/www/BI采集/collectors/collect_overview_daily.py` FIELD_MAP 注释一致）：
     利润(支付预估) = 净销售额(支付) − 销售费用(sales_cost) − 自定义费用(custom_cost)
@@ -17,6 +17,8 @@
 
 from datetime import date, timedelta
 
+from db import get_shop_id
+
 # 利润公式的费用桶（顺序即瀑布展示顺序；平台费是账单口径参考桶，不参与公式）。
 FORMULA_BUCKETS = (
     ('sales_cost', '销售费用'),
@@ -34,13 +36,15 @@ REFERENCE_BUCKETS = (
 SENTINEL_PROFIT_ZERO = 0.0
 
 
-def _aggregate(conn, start, end, category_label=None):
+def _aggregate(conn, start, end, category_label=None, shop_id=None):
     """聚合窗口内费用列；SUM 天然跳过 NULL，各桶单独判缺失行数。"""
-    scope_sql = ''
-    scope_params = []
+    shop_id = str(shop_id or get_shop_id())
+    # daily_data 是多店表：漏掉店铺条件会把其他店铺的费用并进本店利润结构。
+    scope_sql = ' AND d.shop_id = ?'
+    scope_params = [shop_id]
     if category_label:
-        scope_sql = " AND (p.shop_label = ? OR instr(',' || p.shop_label || ',', ',' || ? || ',') > 0)"
-        scope_params = [category_label, category_label]
+        scope_sql += " AND (p.shop_label = ? OR instr(',' || p.shop_label || ',', ',' || ? || ',') > 0)"
+        scope_params.extend([category_label, category_label])
     row = conn.execute(
         f'''SELECT COALESCE(SUM(d.payment_amount), 0) AS gsv,
                    COALESCE(SUM(d.net_sales), 0) AS net_sales,
@@ -80,7 +84,8 @@ def _prev_month_range(start, end):
         return None, None
 
 
-def profit_structure(conn, start, end, category_label=None, compare_start=None, compare_end=None):
+def profit_structure(conn, start, end, category_label=None, compare_start=None, compare_end=None,
+                     shop_id=None):
     """窗口利润结构：6 桶费用 + 利润 + 恒等校验 + 对比期环比。
 
     identity_ok：净销−Σ费用 与 SUM(operating_profit) 的差 ≤ 净销 0.5%（补采
@@ -88,7 +93,8 @@ def profit_structure(conn, start, end, category_label=None, compare_start=None, 
     """
     if not start or not end:
         return {'available': False, 'missing_inputs': ['daily_data']}
-    current = _aggregate(conn, start, end, category_label)
+    shop_id = str(shop_id or get_shop_id())
+    current = _aggregate(conn, start, end, category_label, shop_id)
     if not current.get('row_count'):
         return {'available': False, 'missing_inputs': ['daily_data']}
 
@@ -144,7 +150,7 @@ def profit_structure(conn, start, end, category_label=None, compare_start=None, 
     prev_rows = []
     prev = {}
     if compare_start and compare_end:
-        prev = _aggregate(conn, compare_start, compare_end, category_label)
+        prev = _aggregate(conn, compare_start, compare_end, category_label, shop_id)
         prev_net = float(prev.get('net_sales') or 0)
         prev_rows = [
             {
@@ -193,10 +199,11 @@ def profit_structure(conn, start, end, category_label=None, compare_start=None, 
     }
 
 
-def build_structure(conn, start, end, category_label=None, compare_auto=True):
+def build_structure(conn, start, end, category_label=None, compare_auto=True, shop_id=None):
     """端点入口：自动生成等长前置对比期。"""
     if compare_auto:
         compare_start, compare_end = _prev_month_range(start, end)
     else:
         compare_start = compare_end = None
-    return profit_structure(conn, start, end, category_label, compare_start, compare_end)
+    return profit_structure(conn, start, end, category_label, compare_start, compare_end,
+                            shop_id=shop_id)

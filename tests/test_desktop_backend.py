@@ -68,6 +68,8 @@ class DesktopBackendTests(unittest.TestCase):
 
     def test_real_backend_serves_health_and_overview_on_loopback(self):
         port = free_port()
+        # Local test requests must not follow operator-wide outbound proxy settings.
+        opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
         with tempfile.TemporaryDirectory() as roaming, tempfile.TemporaryDirectory() as local:
             environment = os.environ.copy()
             environment.update({
@@ -98,7 +100,7 @@ class DesktopBackendTests(unittest.TestCase):
                         output = process.stdout.read() if process.stdout else ''
                         self.fail(f'desktop backend exited early: {output}')
                     try:
-                        with urllib.request.urlopen(f'http://127.0.0.1:{port}/healthz', timeout=1) as response:
+                        with opener.open(f'http://127.0.0.1:{port}/healthz', timeout=1) as response:
                             health = json.loads(response.read().decode('utf-8'))
                         break
                     except OSError:
@@ -106,7 +108,7 @@ class DesktopBackendTests(unittest.TestCase):
 
                 self.assertIsNotNone(health, 'desktop backend did not become ready')
                 self.assertTrue(health['ok'])
-                with urllib.request.urlopen(f'http://127.0.0.1:{port}/', timeout=3) as response:
+                with opener.open(f'http://127.0.0.1:{port}/', timeout=3) as response:
                     page = response.read()
                 self.assertIn('天猫'.encode('utf-8'), page)
                 self.assertTrue(os.path.exists(os.path.join(roaming, 'TmallDashboard', 'data', 'dashboard.db')))

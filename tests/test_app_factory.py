@@ -23,6 +23,121 @@ atexit.register(_TEST_DATA_DIR.cleanup)
 
 
 class AppFactoryTests(unittest.TestCase):
+    def test_packaged_read_only_resources_use_persistent_database_directory(self):
+        import app as application
+        from desktop_runtime import desktop_data_paths, desktop_environment
+        from utils.static_release import read_current, publish_release, activate_release
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            bundle = root / 'bundle'
+            source = bundle / 'frontend/ui_demo'
+            (source / 'assets').mkdir(parents=True)
+            (source / 'pages').mkdir()
+            (source / 'pages/overview.html').write_text('<head><script src="../assets/a.js"></script></head>')
+            (source / 'assets/a.js').write_text('A')
+            paths = desktop_data_paths({'APPDATA': str(root / 'roaming'), 'LOCALAPPDATA': str(root / 'local')})
+            environment = dict(os.environ, **desktop_environment(paths, {}))
+            environment.pop('TMALL_ASSET_RELEASE_ROOT', None)
+            real_mkdir = Path.mkdir
+            rejected = []
+
+            def read_only_bundle(path, *args, **kwargs):
+                if path.is_relative_to(bundle):
+                    rejected.append(str(path))
+                    raise PermissionError('fixture: read-only installed resources')
+                return real_mkdir(path, *args, **kwargs)
+
+            store = Path(paths.database).parent / 'frontend-releases'
+            with patch.dict(os.environ, environment, clear=True), patch.object(application, 'project_root', str(bundle)), patch.object(application, 'demo_root', str(source)), patch.object(Path, 'mkdir', read_only_bundle):
+                app = application.create_app({'TESTING': True})
+                with app.test_client() as client, client.get('/') as response:
+                    self.assertEqual(response.status_code, 200)
+                    first = read_current(store)
+                    self.assertIn(first, response.get_data(as_text=True))
+                # Restart must use the persistent pointer, not republish changed
+                # package bytes. A normal publish/rollback still controls it.
+                (source / 'assets/a.js').write_text('B')
+                app = application.create_app({'TESTING': True})
+                with app.test_client() as client, client.get('/') as response:
+                    self.assertIn(first, response.get_data(as_text=True))
+                second = publish_release(source, store)
+                with app.test_client() as client, client.get('/') as response:
+                    self.assertIn(second, response.get_data(as_text=True))
+                activate_release(store, first)
+                with app.test_client() as client, client.get('/') as response:
+                    self.assertIn(first, response.get_data(as_text=True))
+                # Explicit override remains stronger than the DB-sibling default.
+                override = root / 'override'
+                app = application.create_app({'TESTING': True, 'ASSET_RELEASE_ROOT': str(override)})
+                with app.test_client() as client, client.get('/') as response:
+                    self.assertEqual(response.status_code, 200)
+                    self.assertEqual(read_current(override), second)
+            self.assertEqual(rejected, [])
+            self.assertFalse((bundle / 'data').exists())
+
+    def test_static_release_tabs_publication_and_rollback(self):
+        """Real Flask routes, temporary DB/source/store, no browser or sockets."""
+        import re
+        import app as app_module
+        from utils.static_release import build_release, activate_release, read_current
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source, store = root / 'source', root / 'releases'
+            (source / 'pages').mkdir(parents=True)
+            (source / 'assets/runtime').mkdir(parents=True)
+            html = '<!doctype html><html><head><link href="../assets/theme.css?v=1" rel="stylesheet"><script src="../assets/shell.js?v=1"></script></head><body>A</body></html>'
+            for name in ('overview.html', 'promotion.html', 'product-detail.html'):
+                (source / 'pages' / name).write_text(html, encoding='utf-8')
+            for name, content in [('shell.js', 'SHELL_A'), ('runtime/lazy.js', 'LAZY_A'), ('theme.css', 'A{}')]:
+                (source / 'assets' / name).write_text(content)
+            with patch.object(app_module, 'demo_root', str(source)):
+                app = app_module.create_app({'TESTING': True, 'DATABASE_PATH': str(root / 'db.sqlite'), 'ASSET_RELEASE_ROOT': str(store)})
+                with app.test_client() as client:
+                    with client.get('/') as response:
+                        self.assertEqual(response.status_code, 200)
+                        first_html = response.get_data(as_text=True)
+                        self.assertIn('no-store', response.headers['Cache-Control'])
+                    first = read_current(store)
+                    prefix = '/assets/releases/' + first + '/'
+                    self.assertIn(prefix + 'shell.js', first_html)
+                    self.assertNotIn('?v=1', first_html)
+                    self.assertLess(first_html.index('data-tmall-release-guard'), first_html.index('src="'))
+                    with client.get(prefix + 'runtime/lazy.js') as response:
+                        self.assertEqual(response.data, b'LAZY_A')
+                        self.assertIn('immutable', response.headers['Cache-Control'])
+                        etag = response.headers['ETag']
+                    with client.get(prefix + 'runtime/lazy.js', headers={'If-None-Match': etag}) as response:
+                        self.assertEqual(response.status_code, 304)
+                        self.assertIn('immutable', response.headers['Cache-Control'])
+                    (source / 'assets/runtime/lazy.js').write_text('LAZY_B')
+                    second = build_release(source, store)
+                    # Publication has not committed: HTML still selects A.
+                    with client.get('/') as response:
+                        self.assertEqual(response.get_data(as_text=True), first_html)
+                    activate_release(store, second)
+                    with client.get('/') as response:
+                        self.assertIn('/assets/releases/' + second + '/', response.get_data(as_text=True))
+                    # Old tab's first ever delayed request after activation stays A.
+                    with client.get(prefix + 'runtime/lazy.js') as response:
+                        self.assertEqual(response.data, b'LAZY_A')
+                    with client.get('/assets/releases/' + second + '/runtime/lazy.js') as response:
+                        self.assertEqual(response.data, b'LAZY_B')
+                    activate_release(store, first)
+                    with client.get('/') as response:
+                        self.assertEqual(response.get_data(as_text=True), first_html)
+                    for route in ('/promotion', '/products/p', '/product-detail', '/pages/overview.html'):
+                        with client.get(route) as response:
+                            self.assertEqual(response.status_code, 200)
+                            self.assertIn('no-store', response.headers['Cache-Control'])
+                            self.assertIn(prefix, response.get_data(as_text=True))
+                    (store / 'releases' / first / 'assets/runtime/lazy.js').unlink()
+                    for route in (prefix + 'runtime/lazy.js', '/assets/releases/' + '0' * 64 + '/shell.js'):
+                        with client.get(route) as response:
+                            self.assertEqual(response.status_code, 410)
+                            self.assertEqual(response.get_json()['error']['code'], 'UPDATE_REQUIRED')
+                            self.assertIn('no-store', response.headers['Cache-Control'])
+                            self.assertNotIn('immutable', response.headers['Cache-Control'])
+
     def test_importing_app_factory_does_not_initialize_database(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             database_path = os.path.join(temp_dir, 'lazy.db')
@@ -327,6 +442,9 @@ class AppFactoryTests(unittest.TestCase):
             response = client.get('/api/version')
             self.assertEqual(response.status_code, 200)
             self.assertEqual(response.get_json()['data']['version'], VERSION)
+            # The active UI release id must be exposed even when it is unknown,
+            # so the client can always distinguish "same UI" from "no signal".
+            self.assertIn('ui_release', response.get_json()['data'])
             self.assertIn('no-store', response.headers.get('Cache-Control', ''))
 
     def test_factory_serves_the_streamlined_frontend_pages(self):
@@ -427,3 +545,29 @@ class AppFactoryTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main(verbosity=2)
+
+
+def test_latest_release_http_errors_close_response_and_preserve_best_effort():
+    import app as application
+    import io
+    from urllib.error import HTTPError, URLError
+    from unittest.mock import patch
+    for status in (400, 403, 429, 500):
+        stream = io.BytesIO(b'not a release')
+        error = HTTPError('https://fixture.invalid/releases/latest', status, 'failed', {}, stream)
+        try:
+            with patch.dict(application._release_cache, {'checked_at': 0.0, 'payload': None}),                  patch.object(application, 'urlopen', side_effect=error) as transport:
+                assert application._latest_release() is None
+                assert stream.closed, status
+                assert application._latest_release() is None
+                assert transport.call_count == 1
+        finally:
+            error.close()
+    for error in (URLError('offline'), ValueError('invalid')):
+        with patch.dict(application._release_cache, {'checked_at': 0.0, 'payload': None}),              patch.object(application, 'urlopen', side_effect=error):
+            assert application._latest_release() is None
+    for content, expected in ((b'{bad', None), (b'{"tag_name":"v-test","html_url":"https://fixture.invalid/v"}', {'tag_name':'v-test','html_url':'https://fixture.invalid/v'})):
+        stream = io.BytesIO(content)
+        with patch.dict(application._release_cache, {'checked_at': 0.0, 'payload': None}),              patch.object(application, 'urlopen', return_value=stream):
+            assert application._latest_release() == expected
+            assert stream.closed

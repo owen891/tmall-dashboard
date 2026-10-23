@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 """Products Legacy API - 商品和推广相关接口（旧版）
 
 从 data_api.py 拆分出来的独立模块，包含：
@@ -9,6 +9,7 @@ from datetime import datetime
 
 import io
 import json
+import re
 from api.data_api import DIMENSION_MAP, _reject_legacy_shop_scope, _validate_period_arg, calc_score, cached_api, get_prev_period
 
 import pandas as pd
@@ -19,6 +20,15 @@ from api.api_response import evidence_level_for, failure, json_object, limitatio
 from services.category_mode_service import category_filters_from_request
 from services.shop_scope_service import reject_legacy_shop_scope
 from services.product_rules_service import condition_for_dimension, get_rule
+from services.dmp_item_metrics_enrichment import enrich_rows, snapshot_metadata
+from services.promotion_item_metrics_enrichment import (
+    enrich_rows as promotion_enrich_rows,
+    source_metadata as promotion_source_metadata,
+)
+from services.lead_item_metrics_enrichment import (
+    enrich_rows as lead_enrich_rows,
+    source_metadata as lead_source_metadata,
+)
 
 
 products_legacy_bp = Blueprint('products_legacy', __name__)
@@ -112,84 +122,111 @@ def get_products():
                     if fallback_period:
                         period = fallback_period
 
+        # 2026-10-19 零值审计结论（data/dashboard.db 全表扫描，见 tests/test_products_null_semantics.py）：
+        # 下列列在源表里从来没有出现过非零值——monthly_data 80192 行、daily_data 153618 行
+        # 全是 0 或 NULL，paid_detail 是 0 行。这说明采集链路没把这些字段落库，
+        # 而不是业务上真的为 0。对它们不再 COALESCE(..., 0)，让 NULL 直通；
+        # 前端 products-live.js:156-161 的 money/number/percent/decimal 会把 NULL 渲染成 `--`。
+        # 只对“从未有过非零值”的列这样做。ad_spend / ad_roi / visitors / uv_value /
+        # payment_qty / cart_qty / fav_users / cart_users / search_visitors / search_ratio /
+        # search_conversion / search_ipv(daily) 等确有数据的列保持 COALESCE，因为它们的 0 是真值。
+        #
+        # 第二层：这些列在 SQLite 建表时带 `DEFAULT 0`（见 db_migrations.py 的
+        # new_monthly_cols / new_daily_cols），导入链路根本没写它们时落库就是 0 而不是 NULL。
+        # 所以光去掉 COALESCE 还不够，必须用 NULLIF(x, 0) 把这种“没采到的 0”还原成 NULL。
+        # 依据仍是同一次全表扫描：这些列 nz=0，历史数据里不存在真正的非零值。
+        # ⚠️ 等采集链路真的开始回填这些字段后，应把 NULLIF 去掉，否则真实的 0 也会被显示成 `--`。
         # monthly_data 独有的列（daily/weekly表不存在）
-        _monthly_ad_cols = '''COALESCE(d.overall_roi, 0) as overall_roi,
-                   COALESCE(d.paid_ratio, 0) as paid_ratio,
-                   COALESCE(d.refund_paid_ratio, 0) as refund_paid_ratio,
-                   COALESCE(d.keyword_spend, 0) as keyword_spend,
-                   COALESCE(d.keyword_sales, 0) as keyword_sales,
-                   COALESCE(d.keyword_roi, 0) as keyword_roi,
-                   COALESCE(d.keyword_visitors, 0) as keyword_visitors,
-                   COALESCE(d.keyword_ppc, 0) as keyword_ppc,
-                   COALESCE(d.crowd_spend, 0) as crowd_spend,
-                   COALESCE(d.crowd_sales, 0) as crowd_sales,
-                   COALESCE(d.crowd_roi, 0) as crowd_roi,
-                   COALESCE(d.crowd_visitors, 0) as crowd_visitors,
-                   COALESCE(d.crowd_ppc, 0) as crowd_ppc,
-                   COALESCE(d.site_spend, 0) as site_spend,
-                   COALESCE(d.site_sales, 0) as site_sales,
-                   COALESCE(d.site_roi, 0) as site_roi,
-                   COALESCE(d.site_visitors, 0) as site_visitors,
-                   COALESCE(d.site_ppc, 0) as site_ppc,'''
+        _monthly_ad_cols = '''NULLIF(d.overall_roi, 0) as overall_roi,
+                   NULLIF(d.paid_ratio, 0) as paid_ratio,
+                   NULLIF(d.refund_paid_ratio, 0) as refund_paid_ratio,
+                   NULLIF(d.keyword_spend, 0) as keyword_spend,
+                   NULLIF(d.keyword_sales, 0) as keyword_sales,
+                   NULLIF(d.keyword_roi, 0) as keyword_roi,
+                   NULLIF(d.keyword_visitors, 0) as keyword_visitors,
+                   NULLIF(d.keyword_ppc, 0) as keyword_ppc,
+                   NULLIF(d.crowd_spend, 0) as crowd_spend,
+                   NULLIF(d.crowd_sales, 0) as crowd_sales,
+                   NULLIF(d.crowd_roi, 0) as crowd_roi,
+                   NULLIF(d.crowd_visitors, 0) as crowd_visitors,
+                   NULLIF(d.crowd_ppc, 0) as crowd_ppc,
+                   NULLIF(d.site_spend, 0) as site_spend,
+                   NULLIF(d.site_sales, 0) as site_sales,
+                   NULLIF(d.site_roi, 0) as site_roi,
+                   NULLIF(d.site_visitors, 0) as site_visitors,
+                   NULLIF(d.site_ppc, 0) as site_ppc,'''
 
-        _monthly_traffic_cols = '''COALESCE(d.paid_ipv, 0) as paid_ipv,
-                   COALESCE(d.organic_ipv, 0) as organic_ipv,
-                   COALESCE(d.search_ipv, 0) as search_ipv,
-                   COALESCE(d.recommend_ipv, 0) as recommend_ipv,'''
+        _monthly_traffic_cols = '''NULLIF(d.paid_ipv, 0) as paid_ipv,
+                   NULLIF(d.organic_ipv, 0) as organic_ipv,
+                   NULLIF(d.search_ipv, 0) as search_ipv,
+                   NULLIF(d.recommend_ipv, 0) as recommend_ipv,'''
 
-        _monthly_extra_cols = '''COALESCE(d.industry_ctr, 0) as industry_ctr,
-                   COALESCE(d.cross_sell_qty, 0) as cross_sell_qty,
-                   COALESCE(d.cross_sell_categories, 0) as cross_sell_categories,
-                   COALESCE(d.repurchase_users, 0) as repurchase_users,
-                   COALESCE(d.guide_visits, 0) as guide_visits,
-                   COALESCE(d.guide_visitors, 0) as guide_visitors,
-                   COALESCE(d.guide_potential, 0) as guide_potential,
-                   COALESCE(d.guide_potential_ratio, 0) as guide_potential_ratio,
-                   COALESCE(d.new_buyers, 0) as new_buyers,
-                   COALESCE(d.new_buyer_ratio, 0) as new_buyer_ratio,'''
+        _monthly_extra_cols = '''NULLIF(d.industry_ctr, 0) as industry_ctr,
+                   NULLIF(d.cross_sell_qty, 0) as cross_sell_qty,
+                   NULLIF(d.cross_sell_categories, 0) as cross_sell_categories,
+                   NULLIF(d.repurchase_users, 0) as repurchase_users,
+                   NULLIF(d.guide_visits, 0) as guide_visits,
+                   NULLIF(d.guide_visitors, 0) as guide_visitors,
+                   NULLIF(d.guide_potential, 0) as guide_potential,
+                   NULLIF(d.guide_potential_ratio, 0) as guide_potential_ratio,
+                   NULLIF(d.new_buyers, 0) as new_buyers,
+                   NULLIF(d.new_buyer_ratio, 0) as new_buyer_ratio,'''
 
-        _zero_ad = ',\n               '.join([f'0 as {c}' for c in ['overall_roi','paid_ratio','refund_paid_ratio','keyword_spend','keyword_sales','keyword_roi','keyword_visitors','keyword_ppc','crowd_spend','crowd_sales','crowd_roi','crowd_visitors','crowd_ppc','site_spend','site_sales','site_roi','site_visitors','site_ppc']]) + ','
-        _zero_traffic = ',\n               '.join([f'0 as {c}' for c in ['paid_ipv','organic_ipv','search_ipv','recommend_ipv']]) + ','
-        _zero_extra = ',\n               '.join([f'0 as {c}' for c in ['industry_ctr','cross_sell_categories','guide_visits','guide_visitors','guide_potential','guide_potential_ratio','new_buyers','new_buyer_ratio']]) + ','
+        # weekly 维度没有这些源列，只能给 NULL 字面量；给 0 会让前端把“不可得”画成真实 0。
+        _zero_ad = ',\n               '.join([f'NULL as {c}' for c in ['overall_roi','paid_ratio','refund_paid_ratio','keyword_spend','keyword_sales','keyword_roi','keyword_visitors','keyword_ppc','crowd_spend','crowd_sales','crowd_roi','crowd_visitors','crowd_ppc','site_spend','site_sales','site_roi','site_visitors','site_ppc']]) + ','
+        _zero_traffic = ',\n               '.join([f'NULL as {c}' for c in ['paid_ipv','organic_ipv','search_ipv','recommend_ipv']]) + ','
+        _zero_extra = ',\n               '.join([f'NULL as {c}' for c in ['industry_ctr','cross_sell_categories','guide_visits','guide_visitors','guide_potential','guide_potential_ratio','new_buyers','new_buyer_ratio']]) + ','
 
         monthly_only_cols = _monthly_ad_cols if dimension == 'monthly' else _zero_ad
         # Daily BI facts carry the traffic split columns only when the source
         # actually provides them. Keep NULL for unavailable paid/organic/
         # recommendation traffic instead of manufacturing a real-looking 0.
         if dimension == 'daily':
-            monthly_traffic_cols = '''d.paid_ipv as paid_ipv,
-                   d.organic_ipv as organic_ipv,
+            monthly_traffic_cols = '''NULLIF(d.paid_ipv, 0) as paid_ipv,
+                   NULLIF(d.organic_ipv, 0) as organic_ipv,
                    COALESCE(d.search_ipv, 0) as search_ipv,
-                   d.recommend_ipv as recommend_ipv,'''
+                   NULLIF(d.recommend_ipv, 0) as recommend_ipv,'''
         else:
             monthly_traffic_cols = _monthly_traffic_cols if dimension == 'monthly' else _zero_traffic
 
-        payment_count_expr = 'COALESCE(d.payment_qty, 0)' if dimension in {'monthly', 'daily'} else '0'
-        uv_value_expr = 'COALESCE(d.uv_value, 0)' if dimension in {'monthly', 'daily'} else '0'
+        payment_count_expr = 'COALESCE(d.payment_qty, 0)' if dimension in {'monthly', 'daily'} else 'NULL'
+        uv_value_expr = 'COALESCE(d.uv_value, 0)' if dimension in {'monthly', 'daily'} else 'NULL'
         search_visitors_expr = (
             'COALESCE(d.search_visitors, 0)' if dimension == 'monthly'
-            else ('COALESCE(d.search_ipv, 0)' if dimension == 'daily' else '0')
+            else ('COALESCE(d.search_ipv, 0)' if dimension == 'daily' else 'NULL')
         )
         search_ratio_expr = (
             'COALESCE(d.search_ratio, 0)' if dimension == 'monthly'
-            else ("CASE WHEN COALESCE(d.ipv, 0) > 0 THEN COALESCE(d.search_ipv, 0) * 1.0 / d.ipv ELSE NULL END" if dimension == 'daily' else '0')
+            else ("CASE WHEN COALESCE(d.ipv, 0) > 0 THEN COALESCE(d.search_ipv, 0) * 1.0 / d.ipv ELSE NULL END" if dimension == 'daily' else 'NULL')
         )
-        search_conversion_expr = 'COALESCE(d.search_conversion, 0)' if dimension in {'monthly', 'daily'} else '0'
-        cart_qty_expr = 'COALESCE(d.cart_qty, 0)' if dimension in {'monthly', 'daily'} else '0'
-        fav_users_expr = 'COALESCE(d.fav_users, 0)' if dimension in {'monthly', 'daily'} else '0'
-        cart_users_expr = 'COALESCE(d.cart_users, 0)' if dimension in {'monthly', 'daily'} else '0'
+        search_conversion_expr = 'COALESCE(d.search_conversion, 0)' if dimension in {'monthly', 'daily'} else 'NULL'
+        cart_qty_expr = 'COALESCE(d.cart_qty, 0)' if dimension in {'monthly', 'daily'} else 'NULL'
+        fav_users_expr = 'COALESCE(d.fav_users, 0)' if dimension in {'monthly', 'daily'} else 'NULL'
+        cart_users_expr = 'COALESCE(d.cart_users, 0)' if dimension in {'monthly', 'daily'} else 'NULL'
         monthly_extra_cols = _monthly_extra_cols if dimension == 'monthly' else _zero_extra
-        dmp_cols = '''COALESCE(d.repurchase_users, 0) as repurchase_users,
-                   COALESCE(d.presale_amount, 0) as presale_amount,
-                   COALESCE(d.presale_qty, 0) as presale_qty,
-                   COALESCE(d.search_click_rate, 0) as search_click_rate,
-                   COALESCE(d.cross_sell_qty, 0) as cross_sell_qty,
-                   COALESCE(d.category_width, 0) as category_width,'''
-        dmp_zero_cols = '''0 as presale_amount, 0 as presale_qty,
-                   0 as search_click_rate, 0 as category_width,'''
+        dmp_cols = '''NULLIF(d.repurchase_users, 0) as repurchase_users,
+                   NULLIF(d.presale_amount, 0) as presale_amount,
+                   NULLIF(d.presale_qty, 0) as presale_qty,
+                   NULLIF(d.search_click_rate, 0) as search_click_rate,
+                   NULLIF(d.cross_sell_qty, 0) as cross_sell_qty,
+                   NULLIF(d.category_width, 0) as category_width,
+                   NULL as industry_ctr,'''
+        dmp_zero_cols = '''NULL as presale_amount, NULL as presale_qty,
+                   NULL as search_click_rate, NULL as category_width,'''
         dmp_metric_cols = dmp_cols if dimension in {'daily', 'weekly'} else dmp_zero_cols
-        repurchase_cross_cols = "COALESCE(d.repurchase_rate, 0) as repurchase_rate,\n               COALESCE(d.cross_sell_rate, 0) as cross_sell_rate," if dimension in {'monthly', 'daily', 'weekly'} else "0 as repurchase_rate,\n               0 as cross_sell_rate,"
-        click_score_cols = "COALESCE(d.click_rate, 0) as click_rate,\n               COALESCE(d.score, 0) as score," if dimension == 'monthly' else "0 as click_rate,\n               0 as score,"
+        repurchase_cross_cols = "NULLIF(d.repurchase_rate, 0) as repurchase_rate,\n               NULLIF(d.cross_sell_rate, 0) as cross_sell_rate," if dimension in {'monthly', 'daily', 'weekly'} else "NULL as repurchase_rate,\n               NULL as cross_sell_rate,"
+        click_score_cols = "NULLIF(d.click_rate, 0) as click_rate,\n               NULLIF(d.score, 0) as score," if dimension == 'monthly' else "NULL as click_rate,\n               NULL as score,"
+        # 利润三列：daily/monthly 直取源列（2026-10-24 实测 operating_profit 近期全非空，
+        # 且利润为 0 是真值——盈亏平衡，不做 NULLIF 也不 COALESCE 成 0，无事实行保持 NULL→前端 `--`）。
+        # profit_rate 必须"先聚合再相除"：daily 区间分支的 d.net_sales/d.operating_profit 已是区间 SUM。
+        # weekly_data 无利润列，给 NULL 字面量（weekly 分支的其余 NULL 列同因）。
+        if dimension == 'weekly':
+            profit_cols = 'NULL as operating_profit,\n                   NULL as product_cost,\n                   NULL as profit_rate,'
+        else:
+            _net_base = 'COALESCE(NULLIF(d.net_sales, 0), d.payment_amount - d.refund_amount, 0)'
+            profit_cols = f'''d.operating_profit as operating_profit,
+                   d.product_cost as product_cost,
+                   CASE WHEN {_net_base} > 0 THEN d.operating_profit * 1.0 / {_net_base} ELSE NULL END as profit_rate,'''
         # Imported BI-only fields remain in a JSON payload so source schema changes do not
         # require adding hundreds of SQLite columns. The catalog controls which are exposed.
         bi_payload_select = ', bsp.payload_json AS bi_payload_json' if dimension == 'monthly' else ''
@@ -240,6 +277,8 @@ def get_products():
                        current.cross_sell_qty,
                        current.cross_sell_rate,
                        current.category_width,
+                       current.operating_profit,
+                       current.product_cost,
                        CASE WHEN previous.payment_amount != 0
                             THEN (current.payment_amount - previous.payment_amount) * 1.0 / previous.payment_amount
                             ELSE NULL END AS trend_change
@@ -277,13 +316,20 @@ def get_products():
                            AVG(search_click_rate) AS search_click_rate,
                            SUM(cross_sell_qty) AS cross_sell_qty,
                            AVG(cross_sell_rate) AS cross_sell_rate,
-                           AVG(category_width) AS category_width
+                           AVG(category_width) AS category_width,
+                           SUM(operating_profit) AS operating_profit,
+                           SUM(product_cost) AS product_cost
                      FROM daily_data
                      WHERE shop_id = ? AND date BETWEEN ? AND ?
                     GROUP BY product_id
                 ) current
                 LEFT JOIN (
-                    SELECT product_id, SUM(payment_amount) AS payment_amount
+                    SELECT product_id,
+                           SUM(payment_amount) AS payment_amount,
+                           SUM(refund_amount) AS refund_amount,
+                           SUM(net_sales) AS net_sales,
+                           SUM(ad_spend) AS ad_spend,
+                           SUM(operating_profit) AS operating_profit
                      FROM daily_data
                      WHERE shop_id = ? AND date BETWEEN date(?, '-' || CAST((julianday(?) - julianday(?) + 1) AS INTEGER) || ' days') AND date(?, '-1 day')
                     GROUP BY product_id
@@ -363,11 +409,12 @@ def get_products():
                    COALESCE(d.refund_amount, 0) as refund_amount,
                    COALESCE(d.payment_conversion, 0) as conversion,
                    COALESCE(d.ad_spend, 0) as ad_spend,
-                   COALESCE(d.ad_roi, 0) as roi,
+                   d.ad_roi as roi,
                    COALESCE(d.{('visitors' if dimension=='monthly' else 'ipv')}, 0) as visitors,
                     {payment_count_expr} as payment_count,
-                   CASE WHEN COALESCE(d.payment_amount, 0) > 0 THEN COALESCE(d.refund_amount, 0) * 1.0 / d.payment_amount ELSE 0 END as refund_rate,
-                   {('COALESCE(d.page_views, 0)' if dimension=='monthly' else ('COALESCE(d.pv, 0)' if dimension=='daily' else '0'))} as page_views,
+                   -- 分母为 0 时比率无定义，返回 NULL（前端渲染 `--`），不再伪造成 0%
+                   CASE WHEN COALESCE(d.payment_amount, 0) > 0 THEN COALESCE(d.refund_amount, 0) * 1.0 / d.payment_amount ELSE NULL END as refund_rate,
+                   {('COALESCE(d.page_views, 0)' if dimension=='monthly' else ('COALESCE(d.pv, 0)' if dimension=='daily' else 'NULL'))} as page_views,
                     {uv_value_expr} as uv_value,
                     {search_visitors_expr} as search_visitors,
                     {search_ratio_expr} as search_ratio,
@@ -378,7 +425,7 @@ def get_products():
                    COALESCE(d.avg_stay_duration, 0) as avg_stay_duration,
                    {monthly_only_cols}
                    {repurchase_cross_cols}
-                   {('COALESCE(d.buyers, 0)' if dimension!='weekly' else '0')} as buyers,
+                   {('COALESCE(d.buyers, 0)' if dimension!='weekly' else 'NULL')} as buyers,
                    COALESCE(d.avg_order_value, 0) as avg_order_value,
                     {cart_qty_expr} as cart_qty,
                     {fav_users_expr} as fav_users,
@@ -386,40 +433,41 @@ def get_products():
                    COALESCE(NULLIF(d.net_sales, 0), d.payment_amount - d.refund_amount, 0) as net_sales,
                    CASE WHEN COALESCE(NULLIF(d.net_sales, 0), d.payment_amount - d.refund_amount, 0) > 0
                         THEN COALESCE(d.ad_spend, 0) * 1.0 / COALESCE(NULLIF(d.net_sales, 0), d.payment_amount - d.refund_amount, 0) ELSE NULL END as expense_ratio,
+                   {profit_cols}
                    {('d.trend_change' if dimension == 'daily' and start and end else 'NULL')} as trend_change,
                    {monthly_traffic_cols}
                    {dmp_metric_cols}
                     {cart_users_expr} as cart_users,
                    {monthly_extra_cols}
-                   COALESCE(pd_latest.impressions, 0) as impressions,
-                   COALESCE(pd_latest.clicks, 0) as clicks,
-                   COALESCE(pd_latest.cost, 0) as cost,
-                   COALESCE(pd_latest.ctr, 0) as ctr,
-                   COALESCE(pd_latest.cpc, 0) as cpc,
-                   COALESCE(pd_latest.cpm, 0) as cpm,
-                   COALESCE(pd_latest.direct_gmv, 0) as direct_gmv,
-                   COALESCE(pd_latest.indirect_gmv, 0) as indirect_gmv,
-                   COALESCE(pd_latest.total_gmv, 0) as total_gmv,
-                   COALESCE(pd_latest.total_orders, 0) as total_orders,
-                   COALESCE(pd_latest.direct_orders, 0) as direct_orders,
-                   COALESCE(pd_latest.indirect_orders, 0) as indirect_orders,
-                   COALESCE(pd_latest.click_conversion, 0) as click_conversion,
-                   COALESCE(pd_latest.presale_roi, 0) as presale_roi,
-                   COALESCE(pd_latest.total_cost, 0) as total_cost,
-                   COALESCE(pd_latest.cart_adds, 0) as cart_adds,
-                   COALESCE(pd_latest.direct_cart_adds, 0) as direct_cart_adds,
-                   COALESCE(pd_latest.indirect_cart_adds, 0) as indirect_cart_adds,
-                   COALESCE(pd_latest.favs, 0) as favs,
-                   COALESCE(pd_latest.store_favs, 0) as store_favs,
-                   COALESCE(pd_latest.store_fav_cost, 0) as store_fav_cost,
-                   COALESCE(pd_latest.total_fav_cart, 0) as total_fav_cart,
-                   COALESCE(pd_latest.total_fav_cart_cost, 0) as total_fav_cart_cost,
-                   COALESCE(pd_latest.item_fav_cart, 0) as item_fav_cart,
-                   COALESCE(pd_latest.item_fav_cart_cost, 0) as item_fav_cart_cost,
-                   COALESCE(pd_latest.total_favs, 0) as total_favs,
-                   COALESCE(pd_latest.item_fav_cost, 0) as item_fav_cost,
-                   COALESCE(pd_latest.item_fav_rate, 0) as item_fav_rate,
-                   COALESCE(pd_latest.cart_cost, 0) as cart_cost
+                   pd_latest.impressions as impressions,
+                   pd_latest.clicks as clicks,
+                   pd_latest.cost as cost,
+                   pd_latest.ctr as ctr,
+                   pd_latest.cpc as cpc,
+                   pd_latest.cpm as cpm,
+                   pd_latest.direct_gmv as direct_gmv,
+                   pd_latest.indirect_gmv as indirect_gmv,
+                   pd_latest.total_gmv as total_gmv,
+                   pd_latest.total_orders as total_orders,
+                   pd_latest.direct_orders as direct_orders,
+                   pd_latest.indirect_orders as indirect_orders,
+                   pd_latest.click_conversion as click_conversion,
+                   pd_latest.presale_roi as presale_roi,
+                   pd_latest.total_cost as total_cost,
+                   pd_latest.cart_adds as cart_adds,
+                   pd_latest.direct_cart_adds as direct_cart_adds,
+                   pd_latest.indirect_cart_adds as indirect_cart_adds,
+                   pd_latest.favs as favs,
+                   pd_latest.store_favs as store_favs,
+                   pd_latest.store_fav_cost as store_fav_cost,
+                   pd_latest.total_fav_cart as total_fav_cart,
+                   pd_latest.total_fav_cart_cost as total_fav_cart_cost,
+                   pd_latest.item_fav_cart as item_fav_cart,
+                   pd_latest.item_fav_cart_cost as item_fav_cart_cost,
+                   pd_latest.total_favs as total_favs,
+                   pd_latest.item_fav_cost as item_fav_cost,
+                   pd_latest.item_fav_rate as item_fav_rate,
+                   pd_latest.cart_cost as cart_cost
                    {bi_payload_select}
             FROM products p
             {legacy_lifecycle_join}
@@ -430,8 +478,7 @@ def get_products():
         '''
         params.extend(where_params)
 
-        sort_whitelist = [
-            'payment_amount','payment_count','refund_amount','refund_rate','conversion',
+        sort_whitelist = [            'payment_amount','payment_count','refund_amount','refund_rate','conversion',
             'ad_spend','roi','visitors','title','tier','style','scene',
             'page_views','uv_value','search_visitors','search_ratio','search_conversion',
             'cart_rate','fav_rate','bounce_rate','avg_stay_duration',
@@ -455,16 +502,106 @@ def get_products():
             'item_fav_cart','item_fav_cart_cost','total_favs','item_fav_cost',
             'item_fav_rate','cart_cost','manager',
             'expense_ratio','trend_change','lifecycle_stage','seasonality','has_pending_action',
+            'operating_profit','product_cost','profit_rate',
         ]
         sort_col = sort_by if sort_by in sort_whitelist else 'payment_amount'
-        # product_id exists on both products and the daily/monthly relation.
-        # Qualify it so the public sort option cannot produce an ambiguous SQL error.
-        sort_expression = 'p.product_id' if sort_col == 'product_id' else sort_col
-        query += f' ORDER BY {sort_expression} {"DESC" if order=="desc" else "ASC"} LIMIT ? OFFSET ?'
-        params.append(limit)
-        params.append(offset)
+        # 区间筛选（min_<field>/max_<field>）：只接受白名单内的**外层别名**，数值解析失败静默忽略。
+        # 白名单即主 SELECT 的输出别名，包一层子查询后天然不可注入（字段名走白名单，值走参数绑定）。
+        # 区间作用于聚合后的行级值（例如退款率是“先聚合再相除”的结果），与列显示口径一致。
+        _RANGE_FIELDS = {
+            'payment_amount', 'refund_amount', 'net_sales', 'ad_spend',
+            'operating_profit', 'product_cost',
+            'refund_rate', 'expense_ratio', 'profit_rate', 'conversion',
+            'visitors', 'payment_count', 'buyers', 'search_visitors',
+            'search_ratio', 'cart_users', 'cart_rate', 'uv_value', 'roi',
+        }
+        range_clauses = []
+        range_params = []
+        for arg_key, arg_value in request.args.items(multi=False):
+            match = re.fullmatch(r'(min|max)_([a-z_]+)', arg_key)
+            if not match:
+                continue
+            field = match.group(2)
+            if field not in _RANGE_FIELDS:
+                continue
+            try:
+                bound = float(arg_value)
+            except (TypeError, ValueError):
+                continue
+            op = '>=' if match.group(1) == 'min' else '<='
+            range_clauses.append(f'filtered.{field} {op} ?')
+            range_params.append(bound)
+        range_sql = ' AND '.join(range_clauses)
+        base_params = list(params)
 
-        rows = [dict(r) for r in conn.execute(query, params).fetchall()]
+        # 汇总行（BI 的「汇总：全部」档）：按当前全部筛选条件（含区间、不含分页）服务端聚合。
+        # 不抄 BI「切换全部/当前页数值不变」的缺陷——全部档必须来自独立聚合查询。
+        summary_query = f'''SELECT COUNT(*) AS rows_count,
+               COALESCE(SUM(payment_amount), 0) AS payment_amount,
+               COALESCE(SUM(refund_amount), 0) AS refund_amount,
+               COALESCE(SUM(net_sales), 0) AS net_sales,
+               COALESCE(SUM(ad_spend), 0) AS ad_spend,
+               SUM(operating_profit) AS operating_profit,
+               SUM(product_cost) AS product_cost,
+               COALESCE(SUM(buyers), 0) AS buyers,
+               COALESCE(SUM(visitors), 0) AS visitors
+            FROM ({query}) filtered'''
+        summary_exec = base_params + range_params
+        if range_sql:
+            summary_query += f' WHERE {range_sql}'
+        summary_row = conn.execute(summary_query, summary_exec).fetchone()
+        _summary = dict(summary_row) if summary_row else {}
+
+        if range_sql:
+            count_query = f'SELECT COUNT(*) AS total FROM ({query}) filtered WHERE {range_sql}'
+            count_params = base_params + range_params
+            # 包裹后外层没有 p. 前缀，全部按别名排序（白名单里都是主 SELECT 别名）
+            page_query = (
+                f'SELECT * FROM ({query}) filtered WHERE {range_sql} '
+                f'ORDER BY {sort_col} {"DESC" if order=="desc" else "ASC"} LIMIT ? OFFSET ?'
+            )
+            page_params = base_params + range_params + [limit, offset]
+        else:
+            count_query = f'''SELECT COUNT(*) as total FROM products p
+                {legacy_lifecycle_join}
+                {'JOIN' if require_period_facts else 'LEFT JOIN'} {data_relation} d ON {join_clause}
+                {bi_payload_join}
+                {legacy_paid_join}
+                WHERE {where_sql}'''
+            count_params = base_params
+            # product_id exists on both products and the daily/monthly relation.
+            # Qualify it so the public sort option cannot produce an ambiguous SQL error.
+            sort_expression = 'p.product_id' if sort_col == 'product_id' else sort_col
+            page_query = query + f' ORDER BY {sort_expression} {"DESC" if order=="desc" else "ASC"} LIMIT ? OFFSET ?'
+            page_params = base_params + [limit, offset]
+
+        rows = [dict(r) for r in conn.execute(page_query, page_params).fetchall()]
+
+        # 达摩盘单品指标回填：daily_data 里这几列从未采到过非零值（search_click_rate /
+        # category_width / repurchase_* / cross_sell_* / presale_*），唯一真实源是
+        # dmp_shop_item_indicators。这里只补当前页为 NULL 的字段，且只在窗口天数与
+        # 快照 period 对齐时生效；快照窗口会通过 source_batches/limitations 披露。
+        dmp_enrichment = None
+        if dimension == 'daily' and rows and start and end:
+            dmp_enrichment = enrich_rows(conn, rows, start, end)
+
+        # 万相台推广事实回填：「推广与付费」分组里展现量/点击量/点击率/点击单价/
+        # 千次展现花费/直接与归因成交/加购次数/加购成本/新买家/点击转化率这些列
+        # 在 SQL 里取自 paid_detail，而 paid_detail 实测是 0 行（从未采集）。
+        # 真实数据在 promotion_daily_facts（grain='product' + channel='全部'）。
+        # 同样只填当前页为 NULL 的字段。
+        promotion_enrichment = None
+        if dimension == 'daily' and rows and start and end:
+            promotion_enrichment = promotion_enrich_rows(conn, rows, start, end)
+
+        # 万相台潜客回填：guide_visitors / guide_potential / guide_potential_ratio 在
+        # monthly_data 里从未写过非零值（nz=0），真实源是 promotion_lead_daily
+        # （万相台 item_promotion 报表，商品×日粒度）。口径：占比 = 潜客数 ÷ 入店访客数。
+        # 该表是滚动窗口，这里取与请求区间的交集，并通过 source_batches/limitations 披露。
+        lead_enrichment = None
+        if dimension == 'daily' and rows and start and end:
+            lead_enrichment = lead_enrich_rows(conn, rows, start, end)
+
         if dimension == 'monthly' and rows:
             # Resolve only catalogued fields. Missing source values stay absent/None rather
             # than being synthesized as zero, while existing legacy metrics retain compatibility.
@@ -482,14 +619,7 @@ def get_products():
                     for field_key, source_column in field_map.items():
                         row[field_key] = payload.get(source_column)
 
-        # 获取总数（用于服务端分页）- 与主查询使用完全相同的WHERE条件
-        count_query = f'''SELECT COUNT(*) as total FROM products p
-            {legacy_lifecycle_join}
-            {'JOIN' if require_period_facts else 'LEFT JOIN'} {data_relation} d ON {join_clause}
-            {bi_payload_join}
-            {legacy_paid_join}
-            WHERE {where_sql}'''
-        count_params = list(params[:-2])
+        # 总数已在上方（含区间筛选语义一致）计算
         total_row = conn.execute(count_query, count_params).fetchone()
         total_count = total_row['total'] if total_row else 0
 
@@ -522,7 +652,10 @@ def get_products():
                                COALESCE({visitors_col}, 0) as visitors,
                                COALESCE(payment_conversion, 0) as payment_conversion,
                                CASE WHEN COALESCE(payment_amount, 0) > 0 THEN COALESCE(refund_amount, 0) * 1.0 / payment_amount ELSE 0 END as refund_rate,
-                               COALESCE(uv_value, 0) as uv_value
+                               COALESCE(uv_value, 0) as uv_value,
+                               COALESCE(operating_profit, 0) as operating_profit,
+                               COALESCE(ad_spend, 0) as ad_spend,
+                               COALESCE(NULLIF(net_sales, 0), payment_amount - refund_amount, 0) as net_sales
                         FROM {table}
                         WHERE {date_col} = ? AND product_id IN ({placeholders})
                     ''', [prev_period] + product_ids).fetchall()
@@ -531,31 +664,160 @@ def get_products():
                     for row in rows:
                         prev_data = prev_map.get(row['product_id'], {})
                         changes = {}
-                        for metric in ['payment_amount', 'visitors', 'payment_conversion', 'refund_rate', 'uv_value']:
+                        for metric in ['payment_amount', 'visitors', 'payment_conversion', 'refund_rate', 'uv_value', 'operating_profit']:
                             curr_val = row.get(metric, 0) or 0
                             prev_val = prev_data.get(metric, 0) or 0
                             if prev_val > 0:
                                 changes[metric] = round((curr_val - prev_val) / prev_val * 100, 1)
                             else:
                                 changes[metric] = None
+                        # 费比与利润率是"先聚合再相除"的派生口径，环比要对比两侧各自的比率
+                        prev_net = prev_data.get('net_sales') or 0
+                        prev_expense = (prev_data.get('ad_spend') or 0) / prev_net if prev_net > 0 else None
+                        for metric, prev_rate in (('expense_ratio', prev_expense), ('profit_rate', (prev_data.get('operating_profit') or 0) / prev_net if prev_net > 0 else None)):
+                            curr_rate = row.get(metric)
+                            if curr_rate is not None and prev_rate:
+                                changes[metric] = round((curr_rate - prev_rate) / prev_rate * 100, 1)
+                            else:
+                                changes[metric] = None
                         row['changes'] = changes
             else:
                 for row in rows:
-                    row['changes'] = {m: None for m in ['payment_amount', 'visitors', 'payment_conversion', 'refund_rate', 'uv_value']}
+                    row['changes'] = {m: None for m in ['payment_amount', 'visitors', 'payment_conversion', 'refund_rate', 'uv_value', 'operating_profit', 'expense_ratio', 'profit_rate']}
         else:
             for row in rows:
                     row['changes'] = {}
 
-    result = {'rows': rows, 'total': total_count, 'limit': limit, 'offset': offset, 'facets': facets, 'period': period or None, 'requested_period': requested_period or None}
+        # daily 维度环比：上一等长窗口（与 SQL 里 trend_change 的窗口口径一致）。
+        # 单日视图（start==end，页面默认）也补前一日对比；率类指标两侧各自"先聚合再相除"。
+        if dimension == 'daily' and rows:
+            eff_start = start or period
+            eff_end = end or period
+            if eff_start and eff_end:
+                try:
+                    start_day = datetime.strptime(eff_start, '%Y-%m-%d')
+                    end_day = datetime.strptime(eff_end, '%Y-%m-%d')
+                except (TypeError, ValueError):
+                    start_day = end_day = None
+                if start_day and end_day and end_day >= start_day:
+                    span_days = (end_day - start_day).days + 1
+                    prev_end_day = start_day - timedelta(days=1)
+                    prev_start_day = prev_end_day - timedelta(days=span_days - 1)
+                    product_ids = [r['product_id'] for r in rows]
+                    if product_ids:
+                        placeholders = ','.join(['?'] * len(product_ids))
+                        prev_rows = conn.execute(f'''
+                            SELECT product_id,
+                                   COALESCE(SUM(payment_amount), 0) AS payment_amount,
+                                   COALESCE(SUM(refund_amount), 0) AS refund_amount,
+                                   COALESCE(SUM(net_sales), 0) AS net_sales,
+                                   COALESCE(SUM(ad_spend), 0) AS ad_spend,
+                                   SUM(operating_profit) AS operating_profit
+                            FROM daily_data
+                            WHERE shop_id = ? AND date BETWEEN ? AND ?
+                              AND product_id IN ({placeholders})
+                            GROUP BY product_id
+                        ''', [shop_id, prev_start_day.strftime('%Y-%m-%d'), prev_end_day.strftime('%Y-%m-%d')] + product_ids).fetchall()
+                        prev_map = {r['product_id']: dict(r) for r in prev_rows}
+
+                        def _ratio(num, den):
+                            return (num / den) if (num is not None and den and den > 0) else None
+
+                        for row in rows:
+                            prev_data = prev_map.get(row['product_id'], {})
+                            prev_net = prev_data.get('net_sales') or 0
+                            prev = {
+                                'payment_amount': prev_data.get('payment_amount') or 0,
+                                'refund_rate': _ratio(prev_data.get('refund_amount'), prev_data.get('payment_amount')),
+                                'expense_ratio': _ratio(prev_data.get('ad_spend'), prev_net),
+                                'operating_profit': prev_data.get('operating_profit'),
+                                'profit_rate': _ratio(prev_data.get('operating_profit'), prev_net),
+                            }
+                            curr_net = row.get('net_sales') or 0
+                            curr = {
+                                'payment_amount': row.get('payment_amount') or 0,
+                                'refund_rate': row.get('refund_rate'),
+                                'expense_ratio': row.get('expense_ratio'),
+                                'operating_profit': row.get('operating_profit'),
+                                'profit_rate': row.get('profit_rate') if row.get('profit_rate') is not None else _ratio(row.get('operating_profit'), curr_net),
+                            }
+                            changes = {}
+                            for metric in prev:
+                                c_val, p_val = curr.get(metric), prev.get(metric)
+                                changes[metric] = round((c_val - p_val) / p_val * 100, 1) if (c_val is not None and p_val not in (None, 0)) else None
+                            row['changes'] = changes
+
+    def _safe_ratio(num, den):
+        return (num / den) if (num is not None and den and den > 0) else None
+
+    _s_pay = _summary.get('payment_amount') or 0
+    _s_net = _summary.get('net_sales') or 0
+    _s_op = _summary.get('operating_profit')
+    summary = {
+        'rows_count': _summary.get('rows_count') or 0,
+        'payment_amount': _s_pay,
+        'net_sales': _s_net,
+        'refund_amount': _summary.get('refund_amount') or 0,
+        'refund_rate': _safe_ratio(_summary.get('refund_amount') or 0, _s_pay),
+        'ad_spend': _summary.get('ad_spend') or 0,
+        'expense_ratio': _safe_ratio(_summary.get('ad_spend') or 0, _s_net),
+        'operating_profit': _s_op,
+        'profit_rate': _safe_ratio(_s_op, _s_net),
+        'buyers': _summary.get('buyers') or 0,
+        'visitors': _summary.get('visitors') or 0,
+        'conversion': _safe_ratio(_summary.get('buyers') or 0, _summary.get('visitors') or 0),
+    }
+
+    result = {'rows': rows, 'total': total_count, 'limit': limit, 'offset': offset, 'facets': facets, 'summary': summary, 'period': period or None, 'requested_period': requested_period or None}
     observed_rows = sum(int(row.get('has_data') or 0) for row in rows)
     availability = 'no-data' if not rows else 'available' if observed_rows == len(rows) else 'partial'
     missing_inputs = [] if observed_rows == len(rows) else ['product_daily']
+
+    # 达摩盘快照披露：让调用方知道哪几列不是来自本期日粒度事实表。
+    dmp_snapshot = snapshot_metadata((dmp_enrichment or {}).get('snapshot'))
+    source_batches = None
+    if dmp_snapshot:
+        source_batches = [dmp_snapshot]
+    response_limitations = limitations_for(availability, missing_inputs=missing_inputs)
+    if dmp_snapshot:
+        window = f"{dmp_snapshot['snapshot_start_date']}~{dmp_snapshot['snapshot_end_date']}"
+        note = f"达摩盘单品指标（{'/'.join(dmp_snapshot['fields'])}）取自 {dmp_snapshot['period_days']} 天窗口 {window}"
+        if not dmp_snapshot['exact_window']:
+            note += f"，与请求区间相差 {dmp_snapshot['aligned_days']} 天"
+        response_limitations = list(response_limitations) + [note]
+
+    # 万相台推广事实披露：这些列不来自 paid_detail（该表 0 行），而是
+    # promotion_daily_facts 的 grain='product' + channel='全部' 聚合。
+    if promotion_enrichment and promotion_enrichment.get('applied'):
+        promotion_meta = promotion_source_metadata(promotion_enrichment.get('matched_items') or 0)
+        source_batches = list(source_batches or []) + [promotion_meta]
+        response_limitations = list(response_limitations) + [
+            "推广转化指标（展现/点击/点击率/点击单价/千次展现花费/直接与归因成交/加购次数/"
+            "加购成本/新买家/点击转化率）取自万相台 promotion_daily_facts 商品粒度汇总；"
+            "归因成交不含间接成交，与账单口径花费不同源，二者不可相减"
+        ]
+
+    # 万相台潜客披露：占比 = 潜客数 ÷ 入店访客数，且单品口径不可相加。
+    if lead_enrichment and lead_enrichment.get('applied'):
+        lead_meta = lead_source_metadata(lead_enrichment)
+        source_batches = list(source_batches or []) + [lead_meta]
+        window_note = f"{lead_meta['covered_start']}~{lead_meta['covered_end']}"
+        note = (f"引导潜客指标（引导访客/引导潜客/引导潜客占比）取自万相台 "
+                f"promotion_lead_daily 商品日粒度汇总，覆盖 {window_note} 共 "
+                f"{lead_meta['covered_days']} 天")
+        if not lead_meta['full_window']:
+            note += (f"（请求 {lead_meta['requested_days']} 天，该表仅覆盖 "
+                     f"{lead_meta['table_start']}~{lead_meta['table_end']}）")
+        note += "；占比 = 潜客数 ÷ 入店访客数；单品口径不可相加，同一用户逛多个商品会重复计数"
+        response_limitations = list(response_limitations) + [note]
+
     return success(
         result,
         availability=availability,
         evidence_level=evidence_level_for(availability, missing_inputs=missing_inputs),
         missing_inputs=missing_inputs,
-        limitations=limitations_for(availability, missing_inputs=missing_inputs),
+        source_batches=source_batches,
+        limitations=response_limitations,
         freshness={'period': period or None, 'start': start or None, 'end': end or None},
         evidence=[{'source': 'products', 'row_count': len(rows), 'observed_fact_rows': observed_rows, 'total': total_count}],
     )

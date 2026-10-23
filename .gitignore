@@ -65,6 +65,25 @@ login_log*.txt
 # 审核临时目录
 .tmp_audit/
 
+# 采集会话凭据（生意参谋/万相台 cookie 导出，等同账号密码，绝对禁止入库）
+# scratch/ 下的 sycm_cookie_header.txt、sycm_cookies.json 是真实会话令牌，
+# 2026-10-11 复核时它们处于「未跟踪且未被忽略」状态——一次 git add -A 就会提交。
+# 除忽略整个 scratch/ 外，这里再按文件名做一道纵深防御（脚本可能导出到别处）。
+*cookie*.txt
+*cookie*.json
+*_cookies.json
+sycm_cookie*
+cdp_cookie*
+
+# 私有采集插件目录（2026-10-23 起）：内部是独立 git 仓库，采集实现细节仅私人使用，
+# 绝不进入本公开仓库。防误提交另有 tests/test_private_collectors_not_tracked.py 守卫。
+/collectors/
+
+# 私人版数据采集控制台页面（2026-10-24 起）：本机保留（私人 web 部署自动出现），
+# 公开仓库不携带；后端按文件存在性动态注册路由与能力目录，公开版自动无此页。
+/frontend/ui_demo/pages/data-collection.html
+/frontend/ui_demo/assets/data-collection-live.js
+
 # Local agent and visual review artifacts
 .zcode/
 .tmp-*
@@ -84,12 +103,16 @@ ui-manage-toolbox-check.png
 /*.json
 /*.csv
 /*.xlsx
+# 例外：根目录 tsconfig.json 是前端类型检查配置（方案 C 阶段 3），不是生成物。
+# 上面的 /*.json 是"根目录 JSON 都是探针产物"的良性规则，但它连配置文件一起吞了：
+# CI 的 `tsc -p tsconfig.json --noEmit` 在全新 clone 上会因缺文件直接失败。
+!/tsconfig.json
 /screenshots/
 /exports/
 /imports/
 /artifacts/
 
-# 本地业务数据与派米导入审计（仅本机使用，禁止提交）
+# 本地业务数据与导入审计（仅本机使用，禁止提交）
 /data/**/*.json
 /data/demo/
 /frontend/ui_demo/assets/product-thumbs/*
@@ -113,17 +136,48 @@ ui-manage-toolbox-check.png
 # 前端运行时下载产物
 /frontend/ui_demo/assets/downloads/
 
+# 本地一次性工作区与工具产物（2026-10-11 补：此前漏忽略，git add -A 会把它们一起提交）
+# scratch/ 19 个文件（含采集 cookie 与 CDP 探测脚本，已被上面的凭据规则覆盖）
+# date-picker-demo/ 时间选择器重构演示（143 KB）
+# graphflow-out/ + .graphflow/ + .graphflow-cache/ GraphFlow 图谱产物，合计约 13 MB
+# .claude/ .trae/ 本地 agent 工具目录（与已忽略的 .zcode/ .superpowers/ 同类）
+/scratch/
+/date-picker-demo/
+/graphflow-out/
+/.graphflow/
+/.graphflow-cache/
+/.claude/
+/.trae/
+
 # Stray tool-generated HTML artifacts (not part of the application)
 pelican-*.html
 
 # redesign XMind 导出图（redesign 方向已终止，本地留档不入库）
 .xmind_extract/
 
-# 私有采集插件目录（2026-10-23 起）：内部是独立 git 仓库，采集实现细节仅私人使用，
-# 绝不进入本公开仓库。防误提交另有 tests/test_private_collectors_not_tracked.py 守卫。
-/collectors/
-
-# 私人版数据采集控制台页面（2026-10-24 起）：本机保留（私人 web 部署自动出现），
-# 公开仓库不携带；后端按文件存在性动态注册路由与能力目录，公开版自动无此页。
-/frontend/ui_demo/pages/data-collection.html
-/frontend/ui_demo/assets/data-collection-live.js
+# 私人版九维分析页与市场排行运营脚本（2026-10-24 起同采集页策略：本机保留、公开版不含）
+/frontend/ui_demo/pages/core-product-analysis.html
+/frontend/ui_demo/assets/core-product-analysis-live.js
+/frontend/ui_demo/assets/themes/core-product-domain.css
+/scripts/build_core_product_analysis_page.py
+/scripts/import_market_ranking.py
+/scripts/refresh_market_ranking.py
+/scripts/analyze_liankuwa_opportunity.py
+/tests/test_import_market_ranking.py
+/docs/XMIND_CAPABILITY_MATRIX_20261003.md
+/docs/archive/
+/scripts/probe_bi_menu.py
+/scripts/probe_bi_overview_url.py
+/scripts/archive/fix_product_tags_from_bi.py
+/scripts/archive/fix_socks_untagged_20261006.py
+/scripts/backfill_monthly_profit_from_daily.py
+/scripts/backfill_promo_detail_from_bi.py
+/scripts/import_paimi_bi_daily.py
+/scripts/import_paimi_bi_overview.py
+/scripts/import_paimi_monthly.py
+/scripts/inspect_paimi_bi_overview.py
+/tests/test_backfill_promo_backup_contract.py
+/tests/test_paimi_bi_daily_import.py
+/tests/test_paimi_bi_fields.py
+/scripts/enrich_products_from_standard_reference.py
+/tests/test_standard_reference_sync.py

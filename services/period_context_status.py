@@ -10,7 +10,7 @@ import calendar
 import logging
 from datetime import date, datetime, timedelta
 
-from db import get_db
+from db import get_db, get_shop_id
 from services.category_mode_service import mode_to_label
 from services import category_analysis_service as category_service
 # 市场分级算法（8大归类 / 词根需求 / 蓝海机会 / 趋势节点 / 竞店爆品）已投产于市场排行页，
@@ -37,11 +37,18 @@ def _unlabeled_products_scope(conn, start, end, grain='day'):
     '--'，实测 2026-10-04）——采集路径新增的商品在模板重传前恒为空，这部分
     销售不参与任何品类统计。放这里让漂移当期可见（2026-09 实测 1,488 款 /
     净销 63,854 未计入品类），而不是月底对账才发现。
-    周复盘查 daily_data；月复盘的历史月份 daily 覆盖不全，改查 monthly_data。
+    周复盘查 daily_data；月复盘的历史月份 daily 覆盖不全，改查 monthly_data
+    （单店旧表，只有 default 部署可用，非 default scope 直接返回 None）。
     返回 None 表示本期没有未分类商品（或查询失败，不阻塞页面）。
     """
     try:
+        scope = str(get_shop_id())
         if grain == 'month':
+            # monthly_data 没有 shop_id 列：只有单店 default 部署能保证它属于
+            # 当前店铺，多店 scope 下宁可不显示，也不能把别家销售算进来。
+            from db import legacy_shop_id
+            if scope not in ('default', legacy_shop_id()):
+                return None
             row = conn.execute(
                 '''SELECT COUNT(DISTINCT m.product_id) AS n,
                           COALESCE(SUM(m.net_sales), 0) AS net
@@ -57,9 +64,10 @@ def _unlabeled_products_scope(conn, start, end, grain='day'):
                           COALESCE(SUM(d.net_sales), 0) AS net
                    FROM daily_data d
                    LEFT JOIN products p ON p.product_id = d.product_id
-                   WHERE d.date BETWEEN ? AND ? AND COALESCE(p.shop_label, '') = ''
+                   WHERE d.date BETWEEN ? AND ? AND d.shop_id = ?
+                     AND COALESCE(p.shop_label, '') = ''
                      AND (d.net_sales > 0 OR d.payment_amount > 0)''',
-                (start, end),
+                (start, end, scope),
             ).fetchone()
         count = int(row['n'] or 0)
         if count <= 0:
@@ -769,7 +777,8 @@ def _market_block(conn, period):
             item_window = {'start': item_start, 'end': item_end,
                            'day_count': int(item_facts.get('sample_days') or 0)}
             item_rows = conn.execute(
-                '''SELECT stat_date, item_id, title, shop_name, rank, is_self, uv, pay_buyer_count
+                '''SELECT stat_date, item_id, title, shop_name, rank, is_self, uv, pay_buyer_count,
+                          pic_url
                    FROM sycm_market_item_rank WHERE stat_date BETWEEN ? AND ?
                    ORDER BY stat_date, rank''',
                 (item_start, item_end),
@@ -991,6 +1000,51 @@ def _anomalies_block(conn, period, current, prev, category_label=None):
         })
 
     return items
+
+def _lifecycle_distribution(current):
+    """本期有记录的商品 × 当前生命周期；不是历史阶段快照。"""
+    from services.lifecycle_service import lifecycle_service
+    note = '本期净销售额 × 当前生命周期阶段（非历史快照）；范围为本期有经营记录的商品。阶段沿用生命周期模块，保留人工调整与锁定；净销售额缺失或合计非正时不计算占比。'
+    if not current:
+        return {'available': True, 'basis': 'current', 'note': note, 'items': []}
+    try:
+        assessments = {str(row['product_id']): row
+                       for row in lifecycle_service.list_for_products(current)}
+    except Exception:
+        _log.exception('周期复盘生命周期读取失败')
+        return {'available': False, 'basis': 'current', 'note': note,
+                'error': '生命周期数据暂不可用，请稍后刷新。', 'items': []}
+    groups = {}
+    net_values = [row.get('net_sales') for row in current.values()]
+    total = sum(float(value) for value in net_values) if all(value is not None for value in net_values) else None
+    for product_id, row in current.items():
+        assessment = assessments.get(str(product_id), {})
+        stage = assessment.get('stage') or 'unassessed'
+        group = groups.setdefault(stage, {
+            'stage': stage, 'stage_label': assessment.get('stage_label') or '未评估',
+            'count': 0, 'net_sales': 0.0, 'missing_count': 0,
+            'manual_count': 0, 'locked_count': 0, 'products': [],
+        })
+        value = row.get('net_sales')
+        group['count'] += 1
+        group['missing_count'] += int(value is None)
+        group['net_sales'] += float(value or 0)
+        group['manual_count'] += int(bool(assessment.get('manual_stage')))
+        group['locked_count'] += int(bool(assessment.get('locked')))
+        group['products'].append({
+            'product_id': str(product_id), 'title': assessment.get('title') or str(product_id),
+            'net_sales': value, 'manual_stage': assessment.get('manual_stage'),
+            'locked': bool(assessment.get('locked')),
+        })
+    items = []
+    for group in groups.values():
+        value = None if group['missing_count'] else group['net_sales']
+        group['net_sales'] = round(value, 2) if value is not None else None
+        group['share'] = value / total if value is not None and total is not None and total > 0 else None
+        items.append(group)
+    return {'available': True, 'basis': 'current', 'note': note,
+            'items': sorted(items, key=lambda row: -(row['net_sales'] or 0))}
+
 
 def _products_block(conn, period, category_label=None, compare_range=None):
     from_sql, where_sql, extra = _daily_scope(category_label)
@@ -1302,9 +1356,9 @@ def _products_block(conn, period, category_label=None, compare_range=None):
             f'''SELECT COALESCE(NULLIF(p.category, ''), '未分类') AS category,
                        SUM(d.net_sales) AS net_sales
                 FROM daily_data d JOIN products p ON p.product_id = d.product_id
-                WHERE d.date BETWEEN ? AND ?{structure_scope_sql}
+                WHERE d.date BETWEEN ? AND ? AND d.shop_id = ?{structure_scope_sql}
                 GROUP BY category ORDER BY net_sales DESC''',
-            (period['start'], period['end'], *structure_scope_params),
+            (period['start'], period['end'], str(get_shop_id()), *structure_scope_params),
         ).fetchall()
     except Exception:
         structure_rows = []
@@ -1364,6 +1418,7 @@ def _products_block(conn, period, category_label=None, compare_range=None):
             'new_sold_count': new_sold_count,
             'category_structure': category_structure,
             'segment_stats': segment_stats,
+            'lifecycle_distribution': _lifecycle_distribution(current),
         },
     }
 

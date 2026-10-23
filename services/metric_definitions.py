@@ -9,6 +9,8 @@ def _ratio(numerator, denominator):
 
 METRIC_DEFINITIONS = OrderedDict([
     ('net_sales', ('payment_amount', 'successful_refund_amount')),
+    ('profit', ('operating_profit',)),
+    ('profit_rate', ('operating_profit', 'net_sales')),
     ('refund_rate', ('successful_refund_amount', 'payment_amount')),
     ('payment_conversion_rate', ('payment_buyers', 'product_visitors')),
     ('average_order_value', ('payment_amount', 'payment_buyers')),
@@ -23,6 +25,18 @@ METRIC_METADATA = OrderedDict([
         'label': '\u51c0\u9500\u552e\u989d',
         'formula': 'payment_amount - successful_refund_amount',
         'unit': 'currency',
+        'aggregation': 'sum_then_calculate',
+    }),
+    ('profit', {
+        'label': '\u51c0\u5229\u6da6\u989d',
+        'formula': 'operating_profit',
+        'unit': 'currency',
+        'aggregation': 'sum',
+    }),
+    ('profit_rate', {
+        'label': '\u51c0\u5229\u6da6\u7387',
+        'formula': 'operating_profit / net_sales',
+        'unit': 'ratio',
         'aggregation': 'sum_then_calculate',
     }),
     ('refund_rate', {
@@ -78,6 +92,10 @@ def metric_metadata():
 def _calculate(name, values):
     if name == 'net_sales':
         return round(float(values['payment_amount']) - float(values['successful_refund_amount']), 6)
+    if name == 'profit':
+        return round(float(values['operating_profit']), 6)
+    if name == 'profit_rate':
+        return _ratio(values['operating_profit'], values['net_sales'])
     if name == 'refund_rate':
         return _ratio(values['successful_refund_amount'], values['payment_amount'])
     if name == 'payment_conversion_rate':

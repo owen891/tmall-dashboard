@@ -1,6 +1,6 @@
 ﻿# ============================================================
 # 完整RPA自动化采集脚本
-# 功能：启动Chrome -> 自动登录BI -> 打开所有页面 -> 触发采集 -> 等待完成 -> 输出结果
+# 功能：运行环境前置检查 -> 核验并复用选定浏览器 -> 会话检查 -> 触发采集 -> 等待完成
 # 用法:
 #   .\auto-collect.ps1                    # 采集全部
 #   .\auto-collect.ps1 -Sources bi_daily,bi_monthly  # 只采集BI
@@ -9,7 +9,10 @@
 # ============================================================
 
 param(
-    [string[]]$Sources = @('bi_daily', 'bi_monthly', 'sycm_flow', 'sycm_item_flow', 'sycm_market', 'wanxiangtai')
+    [string[]]$Sources = @('bi_daily', 'bi_monthly', 'sycm_flow', 'sycm_item_flow', 'sycm_market', 'wanxiangtai'),
+    # Explicit dependency injection for offline orchestration tests/embedded hosts.
+    # No environment variable or deployment record can silently enable this seam.
+    [scriptblock]$LocalRequest
 )
 
 $ErrorActionPreference = "Continue"
@@ -24,16 +27,96 @@ $OutputEncoding = [System.Text.UTF8Encoding]::new($false)
 [Console]::OutputEncoding = $OutputEncoding
 
 # ==================== 配置 ====================
-$ChromePath = "C:\Program Files\Google\Chrome\Application\chrome.exe"
-$ChromeDebugPort = if ($env:TMALL_CDP_PORT) { [int]$env:TMALL_CDP_PORT } else { 9223 }
-$ChromeUserDataDir = "$env:LOCALAPPDATA\TmallDashboard\CollectorChrome"
 $ChromeHeadless = if ($env:TMALL_CHROME_HEADLESS) { $env:TMALL_CHROME_HEADLESS -eq '1' } else { $false }  # 默认有界面模式，方便手动处理验证码
-$DashboardUrl = "http://127.0.0.1:5000"
+$DashboardUrl = if ($env:TMALL_DASHBOARD_URL) { $env:TMALL_DASHBOARD_URL.TrimEnd('/') } else { 'http://127.0.0.1:5000' }
 $ProjectRoot = if ($env:TMALL_PROJECT_ROOT) { $env:TMALL_PROJECT_ROOT } else { Split-Path -Parent $PSScriptRoot }
-$PythonPath = if ($env:TMALL_COLLECT_PYTHON) { $env:TMALL_COLLECT_PYTHON } else { Join-Path $ProjectRoot '.venv\Scripts\python.exe' }
+. (Join-Path $PSScriptRoot 'resolve_runtime.ps1')
+try { $PythonPath = Resolve-CollectorPython -ProjectRoot $ProjectRoot }
+catch { Write-Error "RUNTIME_CONFIG_INVALID: $($_.Exception.Message)"; exit 20 }
+if (@($Sources | Where-Object { $_ -ne 'bi_monthly' }).Count -gt 0) {
+    try { $browser = Resolve-CollectorBrowser -ProjectRoot $ProjectRoot -PythonPath $PythonPath }
+    catch { Write-Error "BROWSER_CONFIG_INVALID: $($_.Exception.Message)"; exit 21 }
+} else {
+    # Local monthly aggregation does not require a browser/configured profile.
+    $browser = @{ reuse_only = $true; port = 9223 }
+}
+$ChromePath = $browser.executable
+$ChromeDebugPort = $browser.port
+$ChromeUserDataDir = $browser.user_data_dir
+$env:TMALL_CDP_PORT = [string]$ChromeDebugPort
+
+# Process-local only: remote proxies and system settings are left untouched.
+$proxyBypass = @($env:NO_PROXY -split ','; $env:no_proxy -split ','; 'localhost'; '127.0.0.1'; '::1') | Where-Object { $_ } | Select-Object -Unique
+$env:NO_PROXY = $proxyBypass -join ','
+$env:no_proxy = $env:NO_PROXY
 $LogDir = if ($env:TMALL_LOG_DIR) { $env:TMALL_LOG_DIR } else { Join-Path $ProjectRoot 'logs' }
 
-if (-not (Test-Path -LiteralPath $PythonPath)) { throw "采集 Python 不存在: $PythonPath" }
+
+
+if (-not (Test-Path $LogDir)) {
+    New-Item -ItemType Directory -Path $LogDir -Force -ErrorAction Stop | Out-Null
+}
+
+$logFile = Join-Path $LogDir "auto-collect-$(Get-Date -Format 'yyyyMMdd-HHmmss').log"
+
+function Write-Log {
+    param([string]$Message, [string]$Level = "INFO")
+    $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+    $line = "[$timestamp] [$Level] $Message"
+    Write-Host $line
+    Add-Content -Path $logFile -Value $line -Encoding UTF8
+}
+
+# Windows PowerShell 5.1 has no -NoProxy switch. Bypass on this request only,
+# never by disabling the machine/user/default proxy (remote services still use it).
+function Invoke-LoopbackWebRequest {
+    param([string]$Uri, [string]$Method = 'GET', [string]$Body,
+          [string]$ContentType, [switch]$UseBasicParsing, [int]$TimeoutSec = 5)
+    $parsed = [Uri]$Uri
+    if (-not $parsed.IsLoopback -or $parsed.Scheme -notin @('http', 'https')) {
+        throw 'LOCAL_ENDPOINT_REQUIRED'
+    }
+    if ($LocalRequest) {
+        return & $LocalRequest $Uri $Method $Body
+    }
+    $request = [System.Net.HttpWebRequest]::Create($parsed)
+    $request.Proxy = $null
+    $request.AllowAutoRedirect = $false
+    $request.Timeout = $TimeoutSec * 1000
+    $request.ReadWriteTimeout = $TimeoutSec * 1000
+    $request.Method = $Method
+    if ($ContentType) { $request.ContentType = $ContentType }
+    if ($Body) {
+        $bytes = [System.Text.Encoding]::UTF8.GetBytes($Body)
+        $request.ContentLength = $bytes.Length
+        $stream = $request.GetRequestStream()
+        try { $stream.Write($bytes, 0, $bytes.Length) } finally { $stream.Dispose() }
+    }
+    $response = $request.GetResponse()
+    try {
+        if ([int]$response.StatusCode -ne 200) { throw 'LOCAL_ENDPOINT_NOT_OK' }
+        $reader = [System.IO.StreamReader]::new($response.GetResponseStream(), [System.Text.Encoding]::UTF8)
+        try { return @{ StatusCode = [int]$response.StatusCode; Content = $reader.ReadToEnd() } }
+        finally { $reader.Dispose() }
+    } finally { $response.Dispose() }
+}
+
+function Invoke-CollectorPreflight {
+    param([string]$Phase)
+    $probe = Join-Path $ProjectRoot 'scripts/collector_preflight.py'
+    $output = & $PythonPath $probe --root $ProjectRoot --sources ($Sources -join ',') --phase $Phase
+    $code = $LASTEXITCODE
+    foreach ($line in $output) { Write-Log "PREFLIGHT $line" }
+    try { $report = ($output -join "`n") | ConvertFrom-Json -ErrorAction Stop }
+    catch { Write-Log 'PREFLIGHT_PROTOCOL_INVALID' 'ERROR'; return $false }
+    if ($code -ne 0 -or $report.ok -ne $true -or $report.phase -ne $Phase -or
+        ($Phase -eq 'ready' -and $report.collection_ready -ne $true)) {
+        Write-Log "PREFLIGHT_BLOCKED phase=$Phase exit=$code" 'ERROR'
+        return $false
+    }
+    return $true
+}
+if (-not (Invoke-CollectorPreflight 'runtime')) { exit 20 }
 
 # ==================== 采集互斥锁（改进路线 2026-10-01 P3.2） ====================
 # 两条采集链（计划任务链 run_daily_collect.ps1 / RPA 链 auto-collect.ps1）共用同一
@@ -60,9 +143,23 @@ function Release-CollectLock {
 }
 if (Test-CollectLockBusy) {
     Write-Output "SKIP: 另一条采集链正在运行（锁：$CollectLockPath）。本次退出，避免双链并发。"
+    # 修复前这里直接 exit 0，与「全部来源采全」在计划任务里完全无法区分。
+    # 留一份 outcome='skipped' 的结果凭据，健康检查/人工排障可据此判断。
+    try {
+        . (Join-Path $PSScriptRoot 'collect_result.ps1')
+        $skipResult = New-CollectRunResult -Sources $Sources -Chain 'auto_collect'
+        Add-CollectSourceResult -Result $skipResult -Source 'chain' -Outcome 'skipped' `
+            -Reason 'collect_lock_busy' -Detail $CollectLockPath
+        Set-CollectRunOutcome -Result $skipResult
+        $skipPath = Join-Path $LogDir ("auto-collect-skip-{0}.json" -f (Get-Date -Format 'yyyyMMdd-HHmmss'))
+        Write-CollectRunResult -Result $skipResult -Path $skipPath | Out-Null
+        Write-Output "SKIP 结果已记录: $skipPath"
+    } catch {
+        Write-Output "WARN: 无法写入 SKIP 结果文件: $($_.Exception.Message)"
+    }
     exit 0
 }
-('{"pid": ' + $PID + ', "started_at": "' + (Get-Date -Format o) + '"}') | Set-Content -LiteralPath $CollectLockPath -Encoding UTF8
+('{"pid": ' + $PID + ', "started_at": "' + (Get-Date -Format o) + '"}') | Set-Content -LiteralPath $CollectLockPath -Encoding UTF8 -ErrorAction Stop
 # ==================== 互斥锁已获取 ====================
 
 
@@ -71,6 +168,12 @@ $ChromeStartTimeout = 30
 $CollectWaitTimeout = if ($env:TMALL_COLLECT_WAIT_TIMEOUT) { [int]$env:TMALL_COLLECT_WAIT_TIMEOUT } else { 1200 }
 $CloseChromeAfterCollect = $false
 
+$needBIPage = $Sources -contains 'bi_daily'
+$needOtherPages = $Sources | Where-Object { $_ -like 'sycm_*' -or $_ -eq 'wanxiangtai' }
+$needsBrowser = $needBIPage -or $needOtherPages
+
+$BIUsername = ''; $BIPassword = ''
+if ($needBIPage -and -not $browser.reuse_only) {
 $BIUsername = $env:BI_USERNAME
 $BIPassword = $env:BI_PASSWORD
 $CredentialFile = if ($env:TMALL_CREDENTIAL_FILE) { $env:TMALL_CREDENTIAL_FILE } else { 'E:\桌面\AI\BI.txt' }
@@ -92,6 +195,8 @@ if ($Sources | Where-Object { $_ -like 'bi_*' }) {
     # auto_login_bi.py also reads credentials saved in the dashboard settings.
 }
 
+}
+
 $sourceNames = @{
     'bi_daily' = 'BI商品日度'
     'bi_monthly' = 'BI商品月度'
@@ -101,22 +206,6 @@ $sourceNames = @{
     'wanxiangtai' = '万相台推广'
 }
 
-$needBIPage = $Sources | Where-Object { $_ -like 'bi_*' }
-$needOtherPages = $Sources | Where-Object { $_ -like 'sycm_*' -or $_ -eq 'wanxiangtai' }
-
-if (-not (Test-Path $LogDir)) {
-    New-Item -ItemType Directory -Path $LogDir -Force | Out-Null
-}
-
-$logFile = Join-Path $LogDir "auto-collect-$(Get-Date -Format 'yyyyMMdd-HHmmss').log"
-
-function Write-Log {
-    param([string]$Message, [string]$Level = "INFO")
-    $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
-    $line = "[$timestamp] [$Level] $Message"
-    Write-Host $line
-    Add-Content -Path $logFile -Value $line -Encoding UTF8
-}
 
 Write-Log "========================================"
 Write-Log "  RPA 自动化采集开始"
@@ -128,7 +217,7 @@ Write-Log "========================================"
 Write-Log "`n[1/6] 检查看板服务状态..."
 function Test-Dashboard {
     try {
-        $null = Invoke-WebRequest -Uri "$DashboardUrl/api/health" -UseBasicParsing -TimeoutSec 5
+        $null = Invoke-LoopbackWebRequest -Uri "$DashboardUrl/healthz" -UseBasicParsing -TimeoutSec 5
         return $true
     } catch { return $false }
 }
@@ -136,7 +225,7 @@ if (Test-Dashboard) {
     Write-Log "  ✓ 看板服务运行正常"
 } else {
     Write-Log "  看板服务未启动，尝试自动拉起..."
-    $dashboardScript = Join-Path $ProjectRoot 'app.py'
+    $dashboardScript = Join-Path $ProjectRoot 'scripts/start_dev_server.py'
     Start-Process -FilePath $PythonPath -ArgumentList "`"$dashboardScript`"" `
         -WorkingDirectory $ProjectRoot -WindowStyle Hidden
     $dashboardReady = $false
@@ -151,129 +240,47 @@ if (Test-Dashboard) {
     }
 }
 
-# 2. 启动Chrome调试模式
-Write-Log "`n[2/6] 检查并启动Chrome调试模式..."
+if ($needsBrowser) {
+# 2. 只复用身份已核验的浏览器，不启动或切换用户浏览器。
+Write-Log "`n[2/6] 检查已选择的采集浏览器..."
 function Test-ChromeDebug {
     try {
-        $resp = Invoke-WebRequest -Uri "http://127.0.0.1:$ChromeDebugPort/json/version" -UseBasicParsing -TimeoutSec 2
+        $resp = Invoke-LoopbackWebRequest -Uri "http://127.0.0.1:$ChromeDebugPort/json/version" -UseBasicParsing -TimeoutSec 2
         return ($resp.StatusCode -eq 200)
     } catch { return $false }
 }
 
-if (Test-ChromeDebug) {
-    Write-Log "  ✓ Chrome调试模式已在运行"
-} else {
-    Write-Log "  启动Chrome调试模式..."
-    $chromeArgs = @(
-        "--remote-debugging-port=$ChromeDebugPort",
-        "--remote-allow-origins=*",
-        "--user-data-dir=`"$ChromeUserDataDir`"",
-        "--no-first-run",
-        "--no-default-browser-check"
-    )
-    if ($ChromeHeadless) { $chromeArgs += '--headless=new'; $chromeArgs += '--disable-gpu' }
-    Start-Process -FilePath $ChromePath -ArgumentList $chromeArgs -WindowStyle Hidden
-
-    for ($i = 0; $i -lt $ChromeStartTimeout; $i++) {
-        Start-Sleep -Seconds 1
-        if (Test-ChromeDebug) { Write-Log "  ✓ Chrome启动成功（$($i+1)秒）"; break }
-    }
+try { $null = Resolve-CollectorBrowser -ProjectRoot $ProjectRoot -PythonPath $PythonPath -Action identity }
+catch { Write-Log "BROWSER_IDENTITY_BLOCKED: $($_.Exception.Message)" 'ERROR'; Release-CollectLock; exit 21 }
+if (-not (Test-ChromeDebug)) {
+    Write-Log 'BROWSER_NOT_READY: open the configured browser manually; no automatic start/restart/fallback.' 'ERROR'
+    Release-CollectLock
+    exit 21
+}
 }
 
-# 3. 自动登录 & 打开页面
-Write-Log "`n[3/6] 自动登录BI页面并打开采集页面..."
+if (-not (Invoke-CollectorPreflight 'transport')) { Release-CollectLock; exit 21 }
+
+# 3. reuse_only 模式只读验证会话/页面；不会自动登录或新开标签。
+Write-Log "`n[3/6] 检查采集会话与页面..."
 if ($needBIPage -or $needOtherPages) {
     $autoLoginScript = Join-Path $ProjectRoot "scripts\auto_login_bi.py"
-    $loginArgs = @($autoLoginScript)
+    $loginArgs = @($autoLoginScript, '--sources', ($Sources -join ','))
     if (-not $needBIPage) { $loginArgs += '--skip-bi-login' }
     if ($BIUsername) { $env:BI_USERNAME = $BIUsername }
     if ($BIPassword) { $env:BI_PASSWORD = $BIPassword }
     
-    # 第一次尝试：headless模式自动登录
+    # Shared preparation script honors the selected browser's reuse_only policy.
     $loginOutput = & $PythonPath @loginArgs 2>&1
     foreach ($line in $loginOutput) { Write-Log "  $line" }
     $biLoginFailed = ($LASTEXITCODE -ne 0)
     
-    # 如果BI登录失败，尝试复用/弹出有界面浏览器让用户手动登录
-    if ($biLoginFailed -and $needBIPage) {
-        Write-Log "  ⚠ 自动登录失败（可能需要验证码/滑块），切换到有界面模式，请手动完成登录..." "WARN"
-        
-        # 不强杀Chrome（避免cookie未落盘丢失）。仅当当前实例不是有界面模式时才重启。
-        # 判断依据：通过CDP查看当前页面是否为BI登录页或工作台。
-        $needVisibleRestart = $false
-        try {
-            $resp = Invoke-WebRequest -Uri "http://127.0.0.1:$ChromeDebugPort/json" -UseBasicParsing -TimeoutSec 3
-            $tabs = $resp.Content | ConvertFrom-Json
-            $pageTabs = @($tabs | Where-Object { $_.type -eq 'page' })
-            if ($pageTabs.Count -eq 0) { $needVisibleRestart = $true }
-        } catch { $needVisibleRestart = $true }
-
-        if ($needVisibleRestart) {
-            Write-Log "  当前无可用页面，重启Chrome为有界面模式..."
-            Get-Process chrome -ErrorAction SilentlyContinue | Where-Object { $_.CommandLine -like "*$ChromeUserDataDir*" } | Stop-Process -Force -ErrorAction SilentlyContinue
-            Start-Sleep -Seconds 2
-        }
-        
-        # 用有界面模式启动Chrome（复用已有实例则跳过启动）
-        if ($needVisibleRestart) {
-            Write-Log "  启动有界面Chrome，请在弹出的窗口中手动完成登录..."
-            $chromeArgs = @(
-                "--remote-debugging-port=$ChromeDebugPort",
-                "--remote-allow-origins=*",
-                "--user-data-dir=`"$ChromeUserDataDir`"",
-                "--no-first-run",
-                "--no-default-browser-check",
-                "https://primeet.ecbis.cn/login"
-            )
-            Start-Process -FilePath $ChromePath -ArgumentList $chromeArgs -WindowStyle Normal
-        } else {
-            Write-Log "  复用已运行Chrome，尝试打开BI登录页..."
-            try {
-                $null = & $PythonPath -c @"
-import json, urllib.request
-try:
-    tabs = json.loads(urllib.request.urlopen('http://127.0.0.1:$ChromeDebugPort/json', timeout=5).read())
-    pages = [t for t in tabs if t.get('type') == 'page']
-    if not any('ecbis' in t.get('url','') for t in pages):
-        import websocket
-        ver = json.loads(urllib.request.urlopen('http://127.0.0.1:$ChromeDebugPort/json/version', timeout=5).read())
-        ws = websocket.create_connection(ver['webSocketDebuggerUrl'], suppress_origin=True, timeout=10)
-        ws.send(json.dumps({'id':1,'method':'Target.createTarget','params':{'url':'https://primeet.ecbis.cn/login'}}))
-        ws.close()
-except Exception as e:
-    print('open login failed:', e)
-"@ 2>&1
-            } catch { Write-Log "  打开登录页失败: $_" }
-        }
-        
-        # 等待用户手动登录（最多等待5分钟）
-        Write-Log "  等待手动登录（最多5分钟）..."
-        $manualLoginOK = $false
-        for ($i = 0; $i -lt 300; $i++) {
-            Start-Sleep -Seconds 1
-            try {
-                $resp = Invoke-WebRequest -Uri "http://127.0.0.1:$ChromeDebugPort/json" -UseBasicParsing -TimeoutSec 2
-                $tabs = $resp.Content | ConvertFrom-Json
-                $biTab = $tabs | Where-Object { $_.url -like "*primeet.ecbis.cn*" -and $_.url -notlike "*login*" } | Select-Object -First 1
-                if ($biTab) {
-                    $manualLoginOK = $true
-                    Write-Log "  ✓ 检测到BI登录成功！"
-                    break
-                }
-            } catch { }
-        }
-        
-        if (-not $manualLoginOK) {
-            Write-Log "  ⚠ 等待5分钟仍未检测到登录成功，跳过BI相关任务" "WARN"
-            $Sources = @($Sources | Where-Object { $_ -notlike 'bi_*' })
-            $needBIPage = $false
-        }
-    } elseif ($biLoginFailed) {
-        Write-Log "  ⚠ BI页面登录失败，将跳过BI相关采集任务，继续执行其他采集" "WARN"
-        $Sources = @($Sources | Where-Object { $_ -notlike 'bi_*' })
-        $needBIPage = $false
+    if ($biLoginFailed) {
+        Write-Log 'MANUAL_LOGIN_REQUIRED: complete login/captcha in the configured browser; no browser restart or new login tab.' 'ERROR'
+        Release-CollectLock
+        exit 22
     }
-    
+
     Write-Log "  等待页面加载..."
     Start-Sleep -Seconds 5
 } else {
@@ -288,38 +295,74 @@ if ($Sources -contains 'wanxiangtai') {
     foreach ($line in $wxtOutput) { Write-Log "  $line" }
 }
 
+if (-not (Invoke-CollectorPreflight 'ready')) { Release-CollectLock; exit 22 }
+
+if ($needsBrowser) {
 # 3c. 刷新cookie文件（从已登录Chrome导出最新cookie，供文件cookie采集模式使用）
 Write-Log "`n[3c] 刷新cookie文件（文件cookie模式）..."
-$cookieExportScript = Join-Path $ProjectRoot "..\BI采集\export_cookies_v3.py"
+# 2026-10-23 起 cookie 导出脚本随采集插件移入项目内私有目录；外部 BI采集 目录作回退（独立采集工具）。
+$cookieExportScript = Join-Path $ProjectRoot "collectors\export_cookies_v3.py"
 if (-not (Test-Path -LiteralPath $cookieExportScript)) {
-    $cookieExportScript = Join-Path $ProjectRoot "export_cookies_v3.py"
+    $cookieExportScript = Join-Path $ProjectRoot "..\BI采集\export_cookies_v3.py"
 }
 if (Test-Path -LiteralPath $cookieExportScript) {
     try {
         $exportOutput = & $PythonPath $cookieExportScript 2>&1
+        $exportCode = $LASTEXITCODE
         foreach ($line in $exportOutput) { Write-Log "  $line" }
+        if ($exportCode -ne 0) {
+            Write-Log "COOKIE_EXPORT_FAILED exit=$exportCode" 'ERROR'
+            Release-CollectLock
+            exit 23
+        }
     } catch {
-        Write-Log "  ⚠ cookie刷新失败: $_" "WARN"
+        Write-Log "COOKIE_EXPORT_FAILED: $_" 'ERROR'
+        Release-CollectLock
+        exit 23
     }
 } else {
     Write-Log "  - cookie导出脚本不存在，跳过（采集将回退到CDP模式）" "WARN"
 }
 
+}
+
 # 4. 触发采集任务
 Write-Log "`n[4/6] 触发采集任务..."
 $triggered = @()
+# 串行模式：触发一个源并等待其完成后再触发下一个。
+# 原因：2026-10-09/10-10/10-13 三个生意参谋源并行采集时同时写 dashboard.db，
+# 触发 SQLite 文件锁冲突（unable to open database file），导致数据采到但全部落库失败。
 foreach ($source in $Sources) {
     $name = $sourceNames[$source]
     try {
         $body = @{source = $source} | ConvertTo-Json
-        $resp = Invoke-WebRequest -Uri "$DashboardUrl/api/collect/trigger" -Method POST -Body $body -ContentType "application/json" -UseBasicParsing -TimeoutSec 60
+        $resp = Invoke-LoopbackWebRequest -Uri "$DashboardUrl/api/collect/trigger" -Method POST -Body $body -ContentType "application/json" -UseBasicParsing -TimeoutSec 60
         $data = $resp.Content | ConvertFrom-Json
         if ($data.ok) { Write-Log "  ✓ 已触发: $name"; $triggered += $source }
-        else { Write-Log "  ✗ 触发失败: $name - $($data.message)" "WARN" }
+        else { Write-Log "  ✗ 触发失败: $name - $($data.message)" "WARN"; continue }
     } catch {
         Write-Log "  ✗ 触发异常: $name - $($_.Exception.Message)" "WARN"
+        continue
     }
-    Start-Sleep -Seconds 2
+    # 等待当前源完成（避免与下一源并发写库）
+    $sourceDone = $false
+    for ($i = 0; $i -lt $CollectWaitTimeout; $i += 10) {
+        Start-Sleep -Seconds 10
+        $status = $null
+        try {
+            $resp = Invoke-LoopbackWebRequest -Uri "$DashboardUrl/api/collect/log/$source" -UseBasicParsing -TimeoutSec 5
+            $status = ($resp.Content | ConvertFrom-Json).data.status
+        } catch {}
+        if ($null -eq $status) { continue }
+        if ($status -in @('queued', 'running')) {
+            Write-Log "    $name 采集进行中（已等待 $($i+10)秒）"
+        } else {
+            Write-Log "    $name 采集结束：$status"
+            $sourceDone = $true
+            break
+        }
+    }
+    if (-not $sourceDone) { Write-Log "  ✗ $name 等待超时（${CollectWaitTimeout}秒），继续下一个" "WARN" }
 }
 
 if ($triggered.Count -eq 0) { Write-Log "  ✗ 没有触发任何任务" "ERROR"; Release-CollectLock; exit 1 }
@@ -332,7 +375,7 @@ for ($i = 0; $i -lt $CollectWaitTimeout; $i += 10) {
     $running = 0; $completed = 0; $partial = 0; $failed = 0; $unknown = 0
     foreach ($source in $triggered) {
         try {
-            $resp = Invoke-WebRequest -Uri "$DashboardUrl/api/collect/log/$source" -UseBasicParsing -TimeoutSec 5
+            $resp = Invoke-LoopbackWebRequest -Uri "$DashboardUrl/api/collect/log/$source" -UseBasicParsing -TimeoutSec 5
             $status = ($resp.Content | ConvertFrom-Json).data.status
             if ($status -in @('queued', 'running')) { $running++ }
             elseif ($status -eq 'completed') { $completed++ }
@@ -370,22 +413,80 @@ if (Test-Path $aggScript) {
 
 # 6. 输出最终状态
 Write-Log "`n[6/6] 最终状态:"
-$successCount = 0; $failCount = 0
+$successCount = 0; $failCount = 0; $skippedCount = 0
+# 运行结果契约：outcome 与 exit code 分离（见 scripts\collect_result.ps1）。
+. (Join-Path $PSScriptRoot 'collect_result.ps1')
+$runResult = New-CollectRunResult -Sources $Sources -Chain 'auto_collect'
+
+# 请求了但没能触发的来源：修复前它们只是不出现在 $triggered 里，
+# 既不计数也不报错，结果文件看不出少采了。
+foreach ($source in $Sources) {
+    if ($triggered -notcontains $source) {
+        Write-Log "  ✗ $($sourceNames[$source]) : 未触发"
+        Add-CollectSourceResult -Result $runResult -Source $source `
+            -Outcome 'failed' -ExitCode 1 -Reason 'not_triggered'
+    }
+}
+
 foreach ($source in $triggered) {
     $name = $sourceNames[$source]
     try {
-        $resp = Invoke-WebRequest -Uri "$DashboardUrl/api/collect/log/$source" -UseBasicParsing -TimeoutSec 5
+        $resp = Invoke-LoopbackWebRequest -Uri "$DashboardUrl/api/collect/log/$source" -UseBasicParsing -TimeoutSec 5
         $data = $resp.Content | ConvertFrom-Json
-        if ($data.data.status -eq 'completed') { Write-Log "  ✓ $name : 成功"; $successCount++ }
-        elseif ($data.data.status -eq 'partial') { Write-Log "  ⚠ $name : 部分成功 - $($data.data.error)"; $failCount++ }
-        elseif ($data.data.status -in @('failed', 'auth_required', 'blocked', 'cancelled', 'timed_out')) { Write-Log "  ✗ $name : $($data.data.status) - $($data.data.error)"; $failCount++ }
-        else { Write-Log "  ✗ $name : 未完成（$($data.data.status)）"; $failCount++ }
-    } catch { Write-Log "  ✗ $name : 无法查询"; $failCount++ }
+        if ($data.data.status -eq 'completed') {
+            Write-Log "  ✓ $name : 成功"; $successCount++
+            Add-CollectSourceResult -Result $runResult -Source $source -Outcome 'succeeded'
+        }
+        elseif ($data.data.status -eq 'partial') {
+            Write-Log "  ⚠ $name : 部分成功 - $($data.data.error)"; $failCount++
+            Add-CollectSourceResult -Result $runResult -Source $source `
+                -Outcome 'partial' -Reason 'partial_coverage' -Detail ([string]$data.data.error)
+        }
+        elseif ($data.data.status -eq 'skipped') {
+            Write-Log "  ⚠ $name : 跳过（租约被占）"; $skippedCount++
+            Add-CollectSourceResult -Result $runResult -Source $source `
+                -Outcome 'skipped' -Reason 'lease_held_by_other_chain'
+        }
+        elseif ($data.data.status -in @('failed', 'auth_required', 'blocked', 'cancelled', 'timed_out')) {
+            Write-Log "  ✗ $name : $($data.data.status) - $($data.data.error)"; $failCount++
+            $outcome = if ($data.data.status -in @('auth_required', 'blocked')) { 'blocked' } else { 'failed' }
+            Add-CollectSourceResult -Result $runResult -Source $source `
+                -Outcome $outcome -Reason ([string]$data.data.status) -Detail ([string]$data.data.error)
+        }
+        else {
+            Write-Log "  ✗ $name : 未完成（$($data.data.status)）"; $failCount++
+            Add-CollectSourceResult -Result $runResult -Source $source `
+                -Outcome 'failed' -Reason 'incomplete' -Detail ([string]$data.data.status)
+        }
+    } catch {
+        Write-Log "  ✗ $name : 无法查询"; $failCount++
+        Add-CollectSourceResult -Result $runResult -Source $source `
+            -Outcome 'failed' -Reason 'status_unavailable' -Detail $_.Exception.Message
+    }
+}
+
+if ($aggregateFailed) {
+    Add-CollectSourceResult -Result $runResult -Source 'aggregate' `
+        -Outcome 'failed' -ExitCode 1 -Reason 'aggregate_failed'
 }
 
 Write-Log "========================================"
-Write-Log "  成功: $successCount, 失败: $failCount"
+Write-Log "  成功: $successCount, 失败: $failCount, 跳过: $skippedCount"
+Set-CollectRunOutcome -Result $runResult
+Write-Log "  运行结论: $($runResult['outcome'])（$($runResult['reason'])）"
 Write-Log "========================================"
 
+# 计划任务/健康检查按这份结果文件判断实际覆盖，而不是只看进程退出码。
+try {
+    $resultPath = Join-Path $LogDir ("auto-collect-result-{0}.json" -f (Get-Date -Format 'yyyyMMdd-HHmmss'))
+    Write-CollectRunResult -Result $runResult -Path $resultPath | Out-Null
+    Write-Log "  结果文件: $resultPath"
+} catch {
+    Write-Log "  结果文件写入失败: $($_.Exception.Message)" "WARN"
+}
+
 Release-CollectLock
-if ($failCount -gt 0 -or $aggregateFailed) { exit 1 } else { exit 0 }
+if ($failCount -gt 0 -or $aggregateFailed) {
+    exit (Get-CollectRunExitCode -Result $runResult)
+}
+exit 0

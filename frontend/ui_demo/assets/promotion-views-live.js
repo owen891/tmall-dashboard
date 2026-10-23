@@ -1,24 +1,29 @@
 // 推广分析视图扩展：总览（渠道效率 / 投放方式）、计划看板、商品结构抽屉。
 // 数据来自推广域 API 的计划/创意维度报表（万相台无界），商品行不带渠道归属。
 (function () {
+  const promotionMetrics = window.TmallPromotionMetrics;
   const $ = (selector, root = document) => root.querySelector(selector);
   const $$ = (selector, root = document) => Array.from(root.querySelectorAll(selector));
   const money = (value) => {
+    if (value === null || value === undefined || value === '') return '--';
     const num = Number(value);
     if (!Number.isFinite(num)) return '--';
     return `¥${num.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   };
   const moneyCompact = (value) => {
+    if (value === null || value === undefined || value === '') return '--';
     const num = Number(value);
     if (!Number.isFinite(num)) return '--';
     return `¥${num.toLocaleString('zh-CN', { maximumFractionDigits: 0 })}`;
   };
   const percent = (value) => {
+    if (value === null || value === undefined || value === '') return '--';
     const num = Number(value);
     if (!Number.isFinite(num) || num === null) return '--';
     return `${(num * 100).toFixed(2)}%`;
   };
   const ratio = (value) => {
+    if (value === null || value === undefined || value === '') return '--';
     const num = Number(value);
     if (!Number.isFinite(num) || num === null) return '--';
     return num.toFixed(2);
@@ -26,6 +31,29 @@
   const esc = (value) => String(value ?? '').replace(/[&<>"']/g, (ch) => ({
     '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
   }[ch]));
+  const metric = (row, key, kind) => {
+    const status = row.metric_availability?.[key];
+    const title = promotionMetrics.compactTitle(row, key, kind);
+    const label = promotionMetrics.statusLabel(row, key);
+    const value = promotionMetrics.valueText(row, key, kind);
+    return `<span class="promotion-metric${status ? ` promotion-metric--${esc(status)}` : ''}"${title ? ` title="${esc(title)}"` : ''}>${esc(value)}${label ? `<span class="promotion-metric__status">${esc(label)}</span>` : ''}</span>`;
+  };
+  const metricElement = (row, key, kind) => {
+    const status = row.metric_availability?.[key];
+    const node = document.createElement('span');
+    node.className = 'promotion-metric';
+    if (status) node.classList.add(`promotion-metric--${String(status).replace(/[^\w-]/g, '')}`);
+    node.title = promotionMetrics.compactTitle(row, key, kind) || '';
+    node.append(document.createTextNode(promotionMetrics.valueText(row, key, kind)));
+    const label = promotionMetrics.statusLabel(row, key);
+    if (label) {
+      const statusNode = document.createElement('span');
+      statusNode.className = 'promotion-metric__status';
+      statusNode.textContent = label;
+      node.append(statusNode);
+    }
+    return node;
+  };
 
   const storedView = sessionStorage.getItem('promotion.view');
   const state = {
@@ -36,6 +64,31 @@
     structureProduct: null,
     charts: [],
   };
+
+  const chartInstances = new Set();
+  function syncChartTheme(instance) {
+    if (!instance) return;
+    if (instance.isDisposed?.()) { chartInstances.delete(instance); return; }
+    const styles = getComputedStyle(document.documentElement);
+    const textColor = styles.getPropertyValue('--text-secondary').trim() || '#64748b';
+    const primaryColor = styles.getPropertyValue('--text-primary').trim() || '#111827';
+    const borderColor = styles.getPropertyValue('--border-default').trim() || '#d1d5db';
+    const option = (instance.getOption ? instance.getOption() : {}) || {};
+    const axes = (value) => (Array.isArray(value) ? value : value ? [value] : []).map((axis) => ({
+      ...axis,
+      nameTextStyle: { ...(axis.nameTextStyle || {}), color: textColor },
+      axisLabel: { ...(axis.axisLabel || {}), color: textColor },
+      axisLine: { ...(axis.axisLine || {}), lineStyle: { ...(axis.axisLine?.lineStyle || {}), color: borderColor } },
+      splitLine: { ...(axis.splitLine || {}), lineStyle: { ...(axis.splitLine?.lineStyle || {}), color: borderColor } },
+    }));
+    const themed = { textStyle: { color: textColor }, tooltip: { backgroundColor: styles.getPropertyValue('--surface-base').trim(), borderColor, textStyle: { color: primaryColor } } };
+    if (option.legend) themed.legend = (Array.isArray(option.legend) ? option.legend : [option.legend]).map((legend) => ({ ...legend, textStyle: { ...(legend.textStyle || {}), color: textColor } }));
+    if (option.xAxis) themed.xAxis = axes(option.xAxis);
+    if (option.yAxis) themed.yAxis = axes(option.yAxis);
+    try { instance.setOption(themed); } catch (_) { chartInstances.delete(instance); }
+  }
+  function registerChart(instance) { if (instance) { chartInstances.add(instance); syncChartTheme(instance); } return instance; }
+  new MutationObserver(() => chartInstances.forEach(syncChartTheme)).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
 
   function range() {
     const rangeState = window.TmallDateRange?.getState?.() || {};
@@ -51,7 +104,7 @@
     if (!canvas || !window.echarts) return null;
     let instance = window.echarts.getInstanceByDom(canvas);
     if (!instance) instance = window.echarts.init(canvas);
-    return instance;
+    return registerChart(instance);
   }
 
   function disposeCharts() {
@@ -111,11 +164,12 @@
       if (state.view === 'plans' && state.campaignRows.length) {
         event.preventDefault();
         exportCsv(`推广计划_${start}_${end}.csv`,
-          ['计划ID', '计划名', '投放方式', '渠道', '推广花费', '推广成交', '总ROI', '点击率', '转化率', '加购次数', '加购成本', '拉新买家数', '拉新成本'],
+          ['计划ID', '计划名', '投放方式', '渠道', '推广花费', '推广成交', '总ROI', '点击率', '转化率', '加购次数', '加购成本', '拉新买家数', '拉新成本', '直接付费成交', '间接付费成交'],
           state.campaignRows.map((row) => [
             row.campaign_id, row.campaign_name, row.plan_type, row.channel,
-            row.ad_spend, row.attributed_payment_amount, row.roi, row.ctr, row.cvr,
-            row.cart_adds, row.cart_cost, row.new_buyers, row.new_customer_cost,
+            promotionMetrics.exportValue(row, 'ad_spend'), promotionMetrics.exportValue(row, 'attributed_payment_amount'), promotionMetrics.exportValue(row, 'roi'), promotionMetrics.exportValue(row, 'ctr'), promotionMetrics.exportValue(row, 'cvr'),
+            promotionMetrics.exportValue(row, 'cart_adds'), promotionMetrics.exportValue(row, 'cart_cost'), promotionMetrics.exportValue(row, 'new_buyers'), promotionMetrics.exportValue(row, 'new_customer_cost'),
+            promotionMetrics.exportValue(row, 'direct_payment_amount'), promotionMetrics.exportValue(row, 'indirect_payment_amount'),
           ]));
       }
     });
@@ -146,7 +200,7 @@
   function renderChannelCards() {
     const wrap = $('[data-promotion-channel-cards]');
     if (!wrap) return;
-    const rows = state.channelRows.filter((row) => Number(row.ad_spend || 0) > 0);
+    const rows = state.channelRows; // Fact presence, not positive spend, determines card presence.
     const countBadge = $('[data-promotion-channel-cards-count]');
     if (countBadge) countBadge.textContent = `${rows.length} 个渠道`;
     if (!rows.length) {
@@ -161,21 +215,21 @@
       const newBuyers = Number(row.new_buyers || 0);
       return `
         <article class="promotion-channel-card" data-tone="${roiTone(row.roi)}">
-          <div class="promotion-channel-card__name"><span>${esc(row.channel || '未标注')}</span><span class="promotion-channel-card__roi">${ratio(row.roi)}</span></div>
+          <div class="promotion-channel-card__name"><span>${esc(row.channel || '未标注')}</span><span class="promotion-channel-card__roi">${metric(row, 'roi', 'ratio')}</span></div>
           <div class="promotion-channel-card__metrics">
-            <span>花费 <b>${moneyCompact(spend)}</b></span>
-            <span>直接ROI <b>${ratio(row.direct_roi)}</b></span>
-            <span>点击率 <b>${percent(row.ctr)}</b></span>
-            <span>转化率 <b>${percent(row.cvr)}</b></span>
-            <span>加购率 <b>${percent(row.cart_rate)}</b></span>
-            <span>加购成本 <b>${cartAdd ? money(row.cart_cost) : '--'}</b></span>
-            <span>拉新成本 <b>${newBuyers ? money(row.new_customer_cost) : '--'}</b></span>
-            <span>拉新占比 <b>${percent(row.new_buyer_ratio)}</b></span>
+            <div class="promotion-channel-card__metric"><span class="promotion-channel-card__label">花费</span><span class="promotion-channel-card__value">${metric(row, 'ad_spend', 'money')}</span></div>
+            <div class="promotion-channel-card__metric"><span class="promotion-channel-card__label">直接 ROI</span><span class="promotion-channel-card__value">${metric(row, 'direct_roi', 'ratio')}</span></div>
+            <div class="promotion-channel-card__metric"><span class="promotion-channel-card__label">点击率</span><span class="promotion-channel-card__value">${metric(row, 'ctr', 'percent')}</span></div>
+            <div class="promotion-channel-card__metric"><span class="promotion-channel-card__label">转化率</span><span class="promotion-channel-card__value">${metric(row, 'cvr', 'percent')}</span></div>
+            <div class="promotion-channel-card__metric"><span class="promotion-channel-card__label">加购率</span><span class="promotion-channel-card__value">${metric(row, 'cart_rate', 'percent')}</span></div>
+            <div class="promotion-channel-card__metric"><span class="promotion-channel-card__label">加购成本</span><span class="promotion-channel-card__value">${metric(row, 'cart_cost', 'money')}</span></div>
+            <div class="promotion-channel-card__metric"><span class="promotion-channel-card__label">拉新成本</span><span class="promotion-channel-card__value">${metric(row, 'new_customer_cost', 'money')}</span></div>
+            <div class="promotion-channel-card__metric"><span class="promotion-channel-card__label">拉新占比</span><span class="promotion-channel-card__value">${metric(row, 'new_buyer_ratio', 'percent')}</span></div>
           </div>
         </article>`;
     }).join('');
-    const withCart = rows.filter((row) => Number(row.cart_adds || 0) > 0);
-    const withNew = rows.filter((row) => Number(row.new_buyers || 0) > 0);
+    const withCart = rows.filter((row) => row.cart_cost != null && row.metric_availability?.cart_cost !== 'partial');
+    const withNew = rows.filter((row) => row.new_customer_cost != null && row.metric_availability?.new_customer_cost !== 'partial');
     const notes = [];
     if (withCart.length) {
       const best = withCart.reduce((a, b) => (Number(a.cart_cost || 0) <= Number(b.cart_cost || 0) ? a : b));
@@ -194,7 +248,7 @@
     const scatter = chart('#promotionChannelScatter');
     if (scatter) {
       state.charts.push(scatter);
-      const points = rows.map((row) => ({
+      const points = rows.filter((row) => row.cart_cost != null && row.roi != null).map((row) => ({
         name: row.channel,
         value: [Number(row.cart_cost || 0), Number(row.roi || 0), Number(row.ad_spend || 0)],
       }));
@@ -233,13 +287,22 @@
   }
 
   function renderPlanTypes() {
-    const body = $('[data-promotion-plan-types-body]');
-    if (!body) return;
+    const root = $('[data-promotion-plan-types-root]');
+    if (!root) return;
     const rows = state.planTypeRows;
     const countBadge = $('[data-promotion-plan-types-count]');
     if (countBadge) countBadge.textContent = `${rows.length} 类`;
     if (!rows.length) {
-      body.innerHTML = '<tr><td colspan="8">当前范围没有计划数据</td></tr>';
+      const table = window.TmallUI.table({
+        caption: '投放方式效果对比',
+        tableClass: 'promotion-plan-types-table',
+        columns: [{ key: 'message', label: '状态' }],
+        rows: [],
+        emptyMessage: '当前范围没有计划数据',
+      });
+      table.querySelector('table')?.setAttribute('data-promotion-plan-types-table', '');
+      table.querySelector('tbody')?.setAttribute('data-promotion-plan-types-body', '');
+      root.replaceChildren(table);
       const note = $('[data-promotion-plan-types-note]');
       if (note) note.textContent = '';
       return;
@@ -250,17 +313,30 @@
     const withCtr = labeled.filter((row) => row.ctr != null);
     const bestRoi = withRoi.length ? withRoi.reduce((a, b) => (a.roi >= b.roi ? a : b)) : null;
     const bestCtr = withCtr.length ? withCtr.reduce((a, b) => (a.ctr >= b.ctr ? a : b)) : null;
-    body.innerHTML = rows.map((row) => `
-      <tr>
-        <td><span class="plan-type-badge plan-type-badge--${esc(row.plan_type)}">${esc(row.plan_type)}</span>${bestRoi && row === bestRoi ? ' <span class="ui-badge ui-badge--success">ROI 最高</span>' : ''}${bestCtr && row === bestCtr ? ' <span class="ui-badge ui-badge--info">CTR 最高</span>' : ''}</td>
-        <td>${row.plan_count}</td>
-        <td>${money(row.ad_spend)}</td>
-        <td>${money(row.attributed_payment_amount)}</td>
-        <td>${ratio(row.roi)}</td>
-        <td>${percent(row.ctr)}</td>
-        <td>${percent(row.cvr)}</td>
-        <td>${row.cart_cost != null ? money(row.cart_cost) : '--'}</td>
-      </tr>`).join('');
+    const table = window.TmallUI.table({
+      caption: '投放方式效果对比',
+      tableClass: 'promotion-plan-types-table',
+      columns: [
+        { key: 'plan_type', label: '投放方式', render: (value, row) => {
+          const wrap = document.createElement('div');
+          const badge = document.createElement('span');
+          badge.className = `plan-type-badge plan-type-badge--${String(value || '').replace(/[^\w-]/g, '')}`;
+          badge.textContent = value || '未标注';
+          wrap.appendChild(badge);
+          if (bestRoi && row === bestRoi) wrap.appendChild(window.TmallUI.badge('ROI 最高', 'success'));
+          if (bestCtr && row === bestCtr) wrap.appendChild(window.TmallUI.badge('CTR 最高', 'info'));
+          return wrap;
+        } },
+        { key: 'plan_count', label: '计划数', numeric: true },
+        ...[['ad_spend', '推广花费', 'money'], ['attributed_payment_amount', '推广成交', 'money'], ['roi', '总 ROI', 'ratio'], ['ctr', '点击率', 'percent'], ['cvr', '转化率', 'percent'], ['cart_cost', '加购成本', 'money']]
+          .map(([key, label, kind]) => ({ key, label, numeric: true, render: (_value, row) => metricElement(row, key, kind) })),
+      ],
+      rows,
+      emptyMessage: '当前范围没有计划数据',
+    });
+    table.querySelector('table')?.setAttribute('data-promotion-plan-types-table', '');
+    table.querySelector('tbody')?.setAttribute('data-promotion-plan-types-body', '');
+    root.replaceChildren(table);
     const note = $('[data-promotion-plan-types-note]');
     if (note) note.textContent = bestRoi ? `「${bestRoi.plan_type}」总 ROI 最高（${ratio(bestRoi.roi)}）` : '';
   }
@@ -333,13 +409,13 @@
       <tr class="promotion-campaign-row" data-campaign-id="${esc(row.campaign_id || '')}">
         <td class="t-clamp" title="${esc(row.campaign_name || row.campaign_id || '')}"><button type="button" class="promotion-campaign-toggle" aria-expanded="false" aria-controls="promotion-campaign-detail-${index}" data-campaign-toggle><strong>${esc(row.campaign_name || `计划 ${row.campaign_id || ''}`)}</strong> ${row.plan_type ? `<span class="plan-type-badge plan-type-badge--${esc(row.plan_type)}">${esc(row.plan_type)}</span>` : ''}</button></td>
         <td>${esc(row.channel || '--')}</td>
-        <td>${money(row.ad_spend)}</td>
-        <td>${money(row.attributed_payment_amount)}</td>
-        <td>${ratio(row.roi)}</td>
-        <td>${percent(row.ctr)}</td>
-        <td>${percent(row.cvr)}</td>
-        <td>${row.cart_cost != null ? money(row.cart_cost) : '--'}</td>
-        <td>${row.new_customer_cost != null ? money(row.new_customer_cost) : '--'}</td>
+        <td>${metric(row, 'ad_spend', 'money')}</td>
+        <td>${metric(row, 'attributed_payment_amount', 'money')}</td>
+        <td>${metric(row, 'roi', 'ratio')}</td>
+        <td>${metric(row, 'ctr', 'percent')}</td>
+        <td>${metric(row, 'cvr', 'percent')}</td>
+        <td>${metric(row, 'cart_cost', 'money')}</td>
+        <td>${metric(row, 'new_customer_cost', 'money')}</td>
       </tr>`).join('');
     $$('tr.promotion-campaign-row', body).forEach((row) => {
       const toggle = $('[data-campaign-toggle]', row);
@@ -374,7 +450,7 @@
           ${product.image_url ? `<img src="${esc(product.image_url)}" alt="" loading="lazy">` : ''}
           <div class="promotion-campaign-product__meta">
             <div class="promotion-campaign-product__name">${esc(product.title || product.product_name || product.product_id)}</div>
-            <div class="promotion-campaign-product__sub">素材 ${product.creative_count || 0} 个</div>
+            <div class="promotion-campaign-product__sub">${esc(product.product_id || '--')} · 素材 ${product.creative_count || 0} 个</div>
           </div>
         </div>`).join('')}</div>` : '该计划没有关联商品映射'}</td>`;
     } catch (error) {
@@ -394,6 +470,12 @@
       title: '商品推广结构',
       description: '查看渠道结构、计划与素材表现',
       size: 'lg',
+      onClose: () => {
+        state.structureRequest = (state.structureRequest || 0) + 1;
+        state.creativeRequest = (state.creativeRequest || 0) + 1;
+        const chartNode = structureDrawer.body.querySelector('#promotionStructureMix');
+        if (chartNode) window.echarts?.getInstanceByDom(chartNode)?.dispose();
+      },
     });
     structureDrawer.body.append(template.content.cloneNode(true));
     const tabs = $$('[data-promotion-structure-tab]', structureDrawer.node);
@@ -404,8 +486,8 @@
       });
     });
     // 在引擎渲染的商品表"明细"按钮旁追加"结构"入口（不改引擎渲染逻辑）
-    const tableBody = $('#promotionTable tbody');
-    if (!tableBody) return;
+    const tableRoot = $('#promotionTable');
+    if (!tableRoot) return;
     const addStructureButtons = () => {
       $$('#promotionTable tbody button[data-promotion-drill]').forEach((button) => {
         const productId = button.dataset.promotionDrill;
@@ -423,7 +505,7 @@
         button.after(structureButton);
       });
     };
-    new MutationObserver(addStructureButtons).observe(tableBody, { childList: true, subtree: true });
+    new MutationObserver(addStructureButtons).observe(tableRoot, { childList: true, subtree: true });
     addStructureButtons();
   }
 
@@ -445,10 +527,17 @@
     if (!body || !state.structureProduct) return;
     const { start, end } = range();
     const productId = state.structureProduct;
+    const requestId = state.structureRequest = (state.structureRequest || 0) + 1;
+    state.creativeRequest = (state.creativeRequest || 0) + 1;
+    const isCurrent = () => requestId === state.structureRequest && state.structureProduct === productId && !structureDrawer.node.hidden;
+    const previousChart = body.querySelector('#promotionStructureMix');
+    if (previousChart) window.echarts?.getInstanceByDom(previousChart)?.dispose();
+    structureDrawer.body.scrollTop = 0;
     if (tab === 'mix') {
       body.innerHTML = '<div class="chart-box chart-box--tall"><div id="promotionStructureMix" class="chart-canvas"></div></div>';
       try {
         const response = await DemoApi.domainRequest(`/api/promotion/product-detail?${new URLSearchParams({ start, end, product_id: productId })}`);
+        if (!isCurrent()) return;
         const mix = Array.isArray(response.data?.channel_mix) ? response.data.channel_mix : [];
         const instance = chart('#promotionStructureMix');
         if (!mix.length) {
@@ -465,28 +554,19 @@
         });
         body.insertAdjacentHTML('beforeend', `<p class="promotion-channel-cards__footnote">左：各渠道花费占比；右：各渠道成交占比。${esc((response.limitations || []).join(' '))}</p>`);
       } catch (error) {
+        if (!isCurrent()) return;
         body.innerHTML = `<div class="ui-empty-state"><span>${esc(error.message || '结构数据加载失败')}</span></div>`;
       }
     }
     if (tab === 'campaigns') {
-      body.innerHTML = '<div class="ui-table-wrap"><table class="ui-data-table"><thead><tr><th>计划</th><th>渠道</th><th>花费</th><th>ROI</th><th>加购成本</th></tr></thead><tbody><tr><td>加载中…</td></tr></tbody></table></div>';
+      body.replaceChildren(renderCampaignDetailTable([], '加载中…'));
       try {
         const response = await DemoApi.domainRequest(`/api/promotion/product-detail?${new URLSearchParams({ start, end, product_id: productId })}`);
+        if (!isCurrent()) return;
         const campaigns = Array.isArray(response.data?.campaigns) ? response.data.campaigns : [];
-        const tbody = $('tbody', body);
-        if (!campaigns.length) {
-          tbody.innerHTML = '<tr><td>该商品暂无计划数据</td></tr>';
-          return;
-        }
-        tbody.innerHTML = campaigns.map((row) => `
-          <tr>
-            <td>${esc(row.campaign_name || row.campaign_id)} ${row.plan_type ? `<span class="plan-type-badge plan-type-badge--${esc(row.plan_type)}">${esc(row.plan_type)}</span>` : ''}</td>
-            <td>${esc(row.channel || '--')}</td>
-            <td>${money(row.ad_spend)}</td>
-            <td>${ratio(row.roi)}</td>
-            <td>${row.cart_cost != null ? money(row.cart_cost) : '--'}</td>
-          </tr>`).join('');
+        body.replaceChildren(renderCampaignDetailTable(campaigns, '该商品暂无计划数据'));
       } catch (error) {
+        if (!isCurrent()) return;
         body.innerHTML = `<div class="ui-empty-state"><span>${esc(error.message || '计划数据加载失败')}</span></div>`;
       }
     }
@@ -495,6 +575,31 @@
       structureDrawer?.close();
       window.location.href = `/creative-board?product_id=${encodeURIComponent(state.structureProduct || '')}`;
     }
+  }
+
+  function renderCampaignDetailTable(rows, emptyMessage) {
+    return window.TmallUI.table({
+      tableClass: 'promotion-campaign-table',
+      columns: [
+        { key: 'campaign_name', label: '计划', render: (value, row) => {
+          const cell = document.createElement('span');
+          cell.append(document.createTextNode(String(value || row.campaign_id || '--')));
+          if (row.plan_type) {
+            const badge = document.createElement('span');
+            badge.className = `plan-type-badge plan-type-badge--${String(row.plan_type).replace(/[^\w-]/g, '')}`;
+            badge.textContent = String(row.plan_type);
+            cell.append(' ', badge);
+          }
+          return cell;
+        } },
+        { key: 'channel', label: '渠道', render: value => value || '--' },
+        { key: 'ad_spend', label: '花费', numeric: true, render: (value, row) => metricElement(row, 'ad_spend', 'money') },
+        { key: 'roi', label: 'ROI', numeric: true, render: (value, row) => metricElement(row, 'roi', 'ratio') },
+        { key: 'cart_cost', label: '加购成本', numeric: true, render: (value, row) => metricElement(row, 'cart_cost', 'money') },
+      ],
+      rows,
+      emptyMessage,
+    });
   }
 
   // ── 启动 ───────────────────────────────────────────────────────────────

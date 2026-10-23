@@ -6,6 +6,24 @@
 
   const API_BASE = '/api/sycm';
 
+  const chartInstances = new Set();
+  function syncChartTheme(chart) {
+    if (!chart) return;
+    const styles = getComputedStyle(document.documentElement);
+    const textColor = styles.getPropertyValue('--text-secondary').trim() || '#64748b';
+    const primaryColor = styles.getPropertyValue('--text-primary').trim() || '#111827';
+    const borderColor = styles.getPropertyValue('--border-default').trim() || '#d1d5db';
+    chart.setOption({
+      textStyle: { color: textColor },
+      legend: { textStyle: { color: textColor } },
+      xAxis: { axisLabel: { color: textColor }, axisLine: { lineStyle: { color: borderColor } } },
+      yAxis: { axisLabel: { color: textColor }, axisLine: { lineStyle: { color: borderColor } }, splitLine: { lineStyle: { color: borderColor } } },
+      tooltip: { backgroundColor: styles.getPropertyValue('--surface-base').trim(), borderColor, textStyle: { color: primaryColor } },
+    });
+  }
+  function registerChart(chart) { if (chart) { chartInstances.add(chart); syncChartTheme(chart); } return chart; }
+  new MutationObserver(() => chartInstances.forEach(syncChartTheme)).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+
   const state = {
     summary: null,
     allChannels: [],
@@ -156,6 +174,7 @@
       }],
       color: ['#3b82f6', '#ef4444', '#22c55e', '#f59e0b', '#8b5cf6', '#06b6d4', '#ec4899', '#84cc16', '#f97316', '#14b8a6'],
     });
+    registerChart(chart);
   }
 
   // 渲染柱状图（一级渠道TOP10）
@@ -176,6 +195,7 @@
         barWidth: '50%',
       }],
     });
+    registerChart(chart);
   }
 
   // Render the two tables that the current page exposes.
@@ -198,56 +218,62 @@
       parentFilter.addEventListener('change', renderTreeTable);
     }
 
-    if (!level1.length) {
-      if (level1Body) level1Body.innerHTML = '<tr><td colspan="11" style="text-align:center;color:var(--text-secondary);padding:24px">暂无数据</td></tr>';
-      if (level2Body) level2Body.innerHTML = '<tr><td colspan="10" style="text-align:center;color:var(--text-secondary);padding:24px">暂无数据</td></tr>';
-      return;
-    }
-
-    const renderLevel1Row = (node) => {
-      const uvPct = totalUv > 0 ? (node.uv / totalUv) : 0;
-      const avgPrice = node.pay_buyer_count > 0 ? node.pay_amount / node.pay_buyer_count : 0;
-
-      return `<tr>
-        <td>
-          <div class="channel-cell">
-            <span class="channel-name">${escapeHtml(node.channel_name)}</span>
-          </div>
-        </td>
-        <td>${getChannelBadge(node.channel_name)}</td>
-        <td class="num">${fmtInt(node.uv)}</td>
-        <td class="pct">${fmtPct1(uvPct)}</td>
-        <td class="num">¥${fmtMoney(node.pay_amount)}</td>
-        <td class="num">${fmtInt(node.pay_buyer_count)}</td>
-        <td class="pct">${fmtPct2(node.pay_rate)}</td>
-        <td class="num">¥${avgPrice.toFixed(0)}</td>
-        <td class="num">¥${(node.uv_value || 0).toFixed(2)}</td>
-        <td class="num">${fmtInt(node.cart_buyer_count)}</td>
-        <td class="num">${fmtInt(node.new_uv)}</td>
-      </tr>`;
+    const replaceTableBody = (body, columns, rows, emptyMessage) => {
+      if (!body || !window.TmallUI?.table?.mount) return;
+      window.TmallUI.table.mount(body, { columns, rows, emptyMessage });
     };
 
-    const renderLevel2Row = (node) => {
-      const uvPct = totalUv > 0 ? (node.uv / totalUv) : 0;
-      const avgPrice = node.pay_buyer_count > 0 ? node.pay_amount / node.pay_buyer_count : 0;
-      return `<tr>
-        <td><span class="channel-name">${escapeHtml(node.channel_name)}</span></td>
-        <td>${escapeHtml(node.parent_channel || '--')}</td>
-        <td class="num">${fmtInt(node.uv)}</td>
-        <td class="pct">${fmtPct1(uvPct)}</td>
-        <td class="num">¥${fmtMoney(node.pay_amount)}</td>
-        <td class="num">${fmtInt(node.pay_buyer_count)}</td>
-        <td class="pct">${fmtPct2(node.pay_rate)}</td>
-        <td class="num">¥${(node.uv_value || 0).toFixed(2)}</td>
-        <td class="num">${fmtInt(node.cart_buyer_count)}</td>
-        <td class="num">${fmtInt(node.new_uv)}</td>
-      </tr>`;
-    };
+    const level1Columns = [
+      { key: 'channel_name', label: '渠道名称', render: (value) => {
+        const cell = document.createElement('div');
+        cell.className = 'channel-cell';
+        const name = document.createElement('span');
+        name.className = 'channel-name';
+        name.textContent = value || '--';
+        cell.append(name);
+        return cell;
+      } },
+      { key: 'channel_name', label: '类型', render: getChannelBadge },
+      { key: 'uv', label: '访客数', numeric: true, render: fmtInt },
+      { key: 'uv_pct', label: '访客占比', numeric: true, className: 'pct', render: fmtPct1 },
+      { key: 'pay_amount', label: '支付金额', numeric: true, render: (value) => `¥${fmtMoney(value)}` },
+      { key: 'pay_buyer_count', label: '支付买家', numeric: true, render: fmtInt },
+      { key: 'pay_rate', label: '支付转化率', numeric: true, className: 'pct', render: fmtPct2 },
+      { key: 'avg_price', label: '客单价', numeric: true, render: (value) => `¥${Number(value || 0).toFixed(0)}` },
+      { key: 'uv_value', label: 'UV价值', numeric: true, render: (value) => `¥${Number(value || 0).toFixed(2)}` },
+      { key: 'cart_buyer_count', label: '加购人数', numeric: true, render: fmtInt },
+      { key: 'new_uv', label: '新访客', numeric: true, render: fmtInt },
+    ];
+    const level2Columns = [
+      { key: 'channel_name', label: '子渠道', render: (value) => {
+        const cell = document.createElement('span');
+        cell.className = 'channel-name';
+        cell.textContent = value || '--';
+        return cell;
+      } },
+      { key: 'parent_channel', label: '所属渠道' },
+      { key: 'uv', label: '访客数', numeric: true, render: fmtInt },
+      { key: 'uv_pct', label: '访客占比', numeric: true, className: 'pct', render: fmtPct1 },
+      { key: 'pay_amount', label: '支付金额', numeric: true, render: (value) => `¥${fmtMoney(value)}` },
+      { key: 'pay_buyer_count', label: '支付买家', numeric: true, render: fmtInt },
+      { key: 'pay_rate', label: '支付转化率', numeric: true, className: 'pct', render: fmtPct2 },
+      { key: 'uv_value', label: 'UV价值', numeric: true, render: (value) => `¥${Number(value || 0).toFixed(2)}` },
+      { key: 'cart_buyer_count', label: '加购人数', numeric: true, render: fmtInt },
+      { key: 'new_uv', label: '新访客', numeric: true, render: fmtInt },
+    ];
 
-    if (level1Body) level1Body.innerHTML = level1.map(renderLevel1Row).join('');
-    if (level2Body) level2Body.innerHTML = level2.length
-      ? level2.map(renderLevel2Row).join('')
-      : '<tr><td colspan="10" style="text-align:center;color:var(--text-secondary);padding:24px">暂无子渠道数据</td></tr>';
+    const level1Rows = level1.map((node) => ({
+      ...node,
+      uv_pct: totalUv > 0 ? (node.uv / totalUv) : 0,
+      avg_price: node.pay_buyer_count > 0 ? node.pay_amount / node.pay_buyer_count : 0,
+    }));
+    const level2Rows = level2.map((node) => ({
+      ...node,
+      uv_pct: totalUv > 0 ? (node.uv / totalUv) : 0,
+    }));
+    replaceTableBody(level1Body, level1Columns, level1Rows, '暂无数据');
+    replaceTableBody(level2Body, level2Columns, level2Rows, level1.length ? '暂无子渠道数据' : '暂无数据');
+    return;
   }
 
   // 渲染统计

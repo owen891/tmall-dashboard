@@ -9,6 +9,10 @@ import time
 import urllib.error
 import urllib.request
 
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if ROOT not in sys.path:
+    sys.path.insert(0, ROOT)
+
 
 def _request(url, headers=None):
     request = urllib.request.Request(url, headers=headers or {})
@@ -16,7 +20,38 @@ def _request(url, headers=None):
         with urllib.request.urlopen(request, timeout=5) as response:
             return response.status, dict(response.headers), response.read()
     except urllib.error.HTTPError as error:
-        return error.code, dict(error.headers), error.read()
+        with error:
+            return error.code, dict(error.headers), error.read()
+
+
+def _check_service(base_url, username, password):
+    proxy_headers = {'X-Forwarded-For': '192.168.10.20'}
+    credentials = base64.b64encode(f'{username}:{password}'.encode('utf-8')).decode('ascii')
+    authenticated_headers = {**proxy_headers, 'Authorization': f'Basic {credentials}'}
+    unauth_status, _, _ = _request(f'{base_url}/healthz', proxy_headers)
+    health_status, health_headers, health_body = _request(f'{base_url}/healthz', authenticated_headers)
+    page_status, page_headers, page_body = _request(f'{base_url}/products', authenticated_headers)
+    report = {
+        'ok': (
+            unauth_status == 401
+            and health_status == 200
+            and page_status == 200
+            and b'"database":"ok"' in health_body
+            and b'<!doctype html>' in page_body.lower()
+            and health_headers.get('X-Content-Type-Options') == 'nosniff'
+            and page_headers.get('X-Frame-Options') == 'SAMEORIGIN'
+        ),
+        'unauthenticated_health_status': unauth_status,
+        'authenticated_health_status': health_status,
+        'products_status': page_status,
+        'security_headers': {
+            'health_x_content_type_options': health_headers.get('X-Content-Type-Options'),
+            'products_x_frame_options': page_headers.get('X-Frame-Options'),
+        },
+    }
+    if not report['ok']:
+        raise RuntimeError(report)
+    return report
 
 
 def run_smoke(*, port=8790, username=None, password=None, database_path=None):
@@ -27,6 +62,15 @@ def run_smoke(*, port=8790, username=None, password=None, database_path=None):
     environment['DASHBOARD_PASSWORD'] = password
     if database_path:
         environment['TMALL_DB_PATH'] = os.path.abspath(database_path)
+    if environment.get('TMALL_GATE_ROOT'):
+        from pathlib import Path
+        from scripts.run_quality_gates import owned_service
+        environment['TMALL_GATE_SERVER_MODE'] = 'production'
+        environment['TMALL_GATE_PORT'] = str(port)
+        log_directory = Path(environment['TMALL_GATE_ROOT']) / 'production-logs'
+        log_directory.mkdir(exist_ok=True)
+        with owned_service(environment, log_directory) as (base, _record):
+            return _check_service(base, username, password)
     # Waitress strips proxy headers unless the immediate proxy is explicitly
     # trusted. Keep this aligned with the production launch command so the
     # application cannot mistake a forwarded external request for loopback.
@@ -65,30 +109,7 @@ def run_smoke(*, port=8790, username=None, password=None, database_path=None):
         else:
             raise RuntimeError(f'Waitress did not become ready: {last_error}')
 
-        unauth_status, _, _ = _request(f'{base_url}/healthz', proxy_headers)
-        health_status, health_headers, health_body = _request(f'{base_url}/healthz', authenticated_headers)
-        page_status, page_headers, page_body = _request(f'{base_url}/products', authenticated_headers)
-        report = {
-            'ok': (
-                unauth_status == 401
-                and health_status == 200
-                and page_status == 200
-                and b'"database":"ok"' in health_body
-                and b'<!doctype html>' in page_body.lower()
-                and health_headers.get('X-Content-Type-Options') == 'nosniff'
-                and page_headers.get('X-Frame-Options') == 'SAMEORIGIN'
-            ),
-            'unauthenticated_health_status': unauth_status,
-            'authenticated_health_status': health_status,
-            'products_status': page_status,
-            'security_headers': {
-                'health_x_content_type_options': health_headers.get('X-Content-Type-Options'),
-                'products_x_frame_options': page_headers.get('X-Frame-Options'),
-            },
-        }
-        if not report['ok']:
-            raise RuntimeError(report)
-        return report
+        return _check_service(base_url, username, password)
     finally:
         process.terminate()
         try:
@@ -96,6 +117,9 @@ def run_smoke(*, port=8790, username=None, password=None, database_path=None):
         except subprocess.TimeoutExpired:
             process.kill()
             process.wait(timeout=5)
+        finally:
+            if process.stdout:
+                process.stdout.close()
 
 
 def main():

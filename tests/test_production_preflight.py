@@ -68,7 +68,12 @@ class ProductionPreflightTests(unittest.TestCase):
                 self.assertEqual(hashlib.sha256(handle.read()).hexdigest(), source_hash)
         self.assertEqual(report['source_sha256'], source_hash)
         self.assertTrue(report['ok'])
-        self.assertEqual(report['copy_sha256_before'], source_hash)
+        # SQLite backup rewrites header metadata; main-file SHA equality is not
+        # a recovery invariant, especially when committed rows live in WAL.
+        self.assertEqual(len(report['copy_sha256_before']), 64)
+        self.assertTrue(report['content_matches_before'])
+        self.assertTrue(report['content_matches_after'])
+        self.assertIn('daily_data', report['manifest']['tables'])
         self.assertEqual(report['integrity_before'], 'ok')
         self.assertEqual(report['integrity_after'], 'ok')
         self.assertGreater(report['tables_after'], 0)

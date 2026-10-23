@@ -145,7 +145,14 @@ class CollectorApiRunTests(unittest.TestCase):
     def test_trigger_exposes_run_id_for_existing_script(self):
         import api.collect_api as collect_api
 
-        with patch.object(collect_api, 'check_collect_env', return_value='test environment blocked'):
+        # Explicit source/browser fixtures; never depend on the external sibling
+        # collectors directory or a real CDP listener in an isolated worktree.
+        script = os.path.join(self.temp_dir.name, collect_api.DATA_SOURCES['bi_daily']['script'])
+        with open(script, 'w', encoding='utf-8') as handle:
+            handle.write('# fixture: environment failure blocks execution\n')
+        with patch.object(collect_api, 'COLLECTORS_DIR', self.temp_dir.name), \
+                patch.object(collect_api, '_browser_for_sources', return_value=None), \
+                patch.object(collect_api, 'check_collect_env', return_value='test environment blocked'):
             response = self.client.post('/api/collect/trigger', json={'source': 'bi_daily'})
         body = response.get_json()
         self.assertEqual(response.status_code, 400)
@@ -261,6 +268,9 @@ class CollectorApiRunTests(unittest.TestCase):
         child = create_run('sycm_item_flow', 'default', db_path=db_path,
                            mode='retry', requested_by=f'retry:{parent}')
         upsert_checkpoint(child, 'product', 'bad', db_path=db_path, status='succeeded')
+        from services.collector_run_service import update_run, record_quality_result
+        update_run(child, status='succeeded', db_path=db_path)
+        record_quality_result(child, 'retry_publication', status='passed', db_path=db_path)
         response = self.client.get(f'/api/collect/runs/{parent}/retry-diff/{child}')
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.get_json()['data']['completion_rate'], 1.0)
@@ -283,6 +293,76 @@ class CollectorApiRunTests(unittest.TestCase):
         self.assertEqual(response.get_json()['data']['quality']['status'], 'passed')
         self.assertEqual(response.get_json()['data']['rows'][0]['status'], 'published')
         self.assertNotIn('payload_json', response.get_json()['data']['rows'][0])
+
+
+    def test_foreign_shop_cannot_read_run_detail(self):
+        from services.collector_run_service import create_run, upsert_checkpoint
+        db_path = self.app.config['DATABASE_PATH']
+        run_id = create_run('sycm_item_flow', 'shop-a', db_path=db_path)
+        upsert_checkpoint(run_id, 'product', '1001', db_path=db_path, status='succeeded')
+
+        own = self.client.get(f'/api/collect/runs/{run_id}?shop_id=shop-a')
+        self.assertEqual(own.status_code, 200)
+        self.assertEqual(own.get_json()['data']['run']['id'], run_id)
+
+        response = self.client.get(f'/api/collect/runs/{run_id}?shop_id=shop-b')
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(response.get_json()['code'], 'RUN_NOT_FOUND')
+
+    def test_foreign_shop_cannot_replay_artifact(self):
+        from services.collector_run_service import create_run, persist_artifact, list_artifacts
+        db_path = self.app.config['DATABASE_PATH']
+        run_id = create_run('bi_daily', 'shop-a', db_path=db_path)
+        persist_artifact(run_id, 'process_output', 'shop-a secret', db_path=db_path)
+        artifact_id = list_artifacts(run_id, db_path=db_path)[0]['id']
+
+        own = self.client.get(
+            f'/api/collect/runs/{run_id}/artifacts/{artifact_id}?include_content=1&shop_id=shop-a'
+        )
+        self.assertEqual(own.status_code, 200)
+        self.assertEqual(own.get_json()['data']['content'], 'shop-a secret')
+
+        response = self.client.get(
+            f'/api/collect/runs/{run_id}/artifacts/{artifact_id}?include_content=1&shop_id=shop-b'
+        )
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(response.get_json()['code'], 'ARTIFACT_NOT_FOUND')
+
+    def test_foreign_shop_cannot_read_staging(self):
+        from db import get_db
+        from services.collector_run_service import create_run
+        db_path = self.app.config['DATABASE_PATH']
+        run_id = create_run('bi_daily', 'shop-a', db_path=db_path)
+        with get_db(db_path) as conn:
+            conn.execute(
+                '''INSERT INTO collector_data_staging
+                   (source_key, batch_id, unit_type, unit_key, payload_json, status)
+                   VALUES (?, ?, ?, ?, ?, ?)''',
+                ('bi_daily', run_id, 'product', 'p1', '{"x":1}', 'published'),
+            )
+            conn.commit()
+
+        own = self.client.get(f'/api/collect/runs/{run_id}/staging?shop_id=shop-a')
+        self.assertEqual(own.status_code, 200)
+        self.assertEqual(own.get_json()['data']['row_count'], 1)
+
+        response = self.client.get(f'/api/collect/runs/{run_id}/staging?shop_id=shop-b')
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(response.get_json()['code'], 'RUN_NOT_FOUND')
+
+    def test_foreign_shop_cannot_retry_run(self):
+        from services.collector_run_service import create_run, upsert_checkpoint
+        db_path = self.app.config['DATABASE_PATH']
+        run_id = create_run('sycm_item_flow', 'shop-a', db_path=db_path)
+        upsert_checkpoint(run_id, 'product', 'bad', db_path=db_path, status='failed')
+
+        own = self.client.post(f'/api/collect/runs/{run_id}/retry?shop_id=shop-a', json={})
+        self.assertEqual(own.status_code, 200)
+        self.assertEqual(own.get_json()['data']['unit_count'], 1)
+
+        response = self.client.post(f'/api/collect/runs/{run_id}/retry?shop_id=shop-b', json={})
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(response.get_json()['code'], 'RUN_NOT_FOUND')
 
 
 if __name__ == '__main__':

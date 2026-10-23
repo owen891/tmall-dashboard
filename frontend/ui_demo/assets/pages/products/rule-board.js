@@ -69,6 +69,103 @@
       refreshWithFilter();
     }
 
+    // 策略卡（对齐边界 BI 综合指标卡，2026-10-24 重构）：
+    // 常显栅格 + 卡片自带口径说明 + 整卡可点筛选 + 「+ 新建卡」占位 + 展开更多。
+    // 首张「全部有效商品」承担 BI「全部」卡职责：点击=清除分群筛选。
+    const COLLAPSED_CARD_LIMIT = 5;
+
+    function rulePeriodLabel(rule) {
+      const period = String(rule.period || '');
+      const month = period.match(/^\d{4}-(\d{2})$/);
+      return month ? `${Number(month[1])}月` : period || '--';
+    }
+
+    function ruleConditionSummary(rule) {
+      const conditions = Array.isArray(rule.conditions) ? rule.conditions : [];
+      if (!conditions.length) return rule.description || '无额外条件';
+      return conditions.map(ruleConditionText).join('，且');
+    }
+
+    function isRuleCardActive(rule) {
+      if (rule.key === 'all_products') return !state.ruleKey || state.ruleKey === 'all_products';
+      return state.ruleKey === rule.key;
+    }
+
+    function applyRuleCard(rule) {
+      if (rule.key === 'all_products') state.ruleKey = '';
+      else state.ruleKey = state.ruleKey === rule.key ? '' : rule.key;
+      refreshWithFilter();
+    }
+
+    function buildStrategyCard(rule) {
+      const card = document.createElement('article');
+      card.className = `product-rule-card product-rule-card--${rule.severity || 'info'}`;
+      card.classList.toggle('is-active', isRuleCardActive(rule));
+      card.dataset.ruleKey = rule.key;
+      card.setAttribute('role', 'button');
+      card.setAttribute('tabindex', '0');
+      card.setAttribute('aria-pressed', String(isRuleCardActive(rule)));
+      const active = isRuleCardActive(rule);
+      card.title = active ? '点击取消该分群筛选' : '点击筛选该分群商品';
+
+      const head = document.createElement('div');
+      head.className = 'product-rule-card__head';
+      const tag = document.createElement('span');
+      tag.className = 'product-rule-card__tag';
+      tag.textContent = rule.group || '分群';
+      const name = document.createElement('strong');
+      name.className = 'product-rule-card__name';
+      name.textContent = rule.name;
+      const date = document.createElement('span');
+      date.className = 'product-rule-card__date';
+      date.textContent = rulePeriodLabel(rule);
+      const more = document.createElement('button');
+      more.type = 'button';
+      more.className = 'product-rule-card__more';
+      more.setAttribute('aria-label', `查看${rule.name}规则详情`);
+      more.title = '规则详情';
+      more.innerHTML = '<i data-lucide="file-search"></i>';
+      more.addEventListener('click', (event) => {
+        event.stopPropagation();
+        openRuleDetail(rule);
+      });
+      head.append(tag, name, date, more);
+
+      const ruleText = document.createElement('p');
+      ruleText.className = 'product-rule-card__description';
+      ruleText.textContent = ruleConditionSummary(rule);
+
+      const meta = document.createElement('div');
+      meta.className = 'product-rule-card__meta';
+      const value = document.createElement('strong');
+      value.className = 'product-rule-card__value';
+      value.textContent = `${number(rule.matched_count)} 件`;
+      const share = document.createElement('span');
+      share.className = 'product-rule-card__share';
+      share.textContent = rule.share == null ? '占比 --' : `占比 ${(Number(rule.share) * 100).toFixed(1)}%`;
+      meta.append(value, share);
+
+      card.addEventListener('click', () => applyRuleCard(rule));
+      card.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          applyRuleCard(rule);
+        }
+      });
+      card.append(head, ruleText, meta);
+      return card;
+    }
+
+    function buildStrategyPlaceholder() {
+      const card = document.createElement('button');
+      card.type = 'button';
+      card.className = 'product-rule-card product-rule-card--placeholder';
+      card.disabled = true;
+      card.title = '自定义分群规则配置入口规划中';
+      card.textContent = '+ 新建卡';
+      return card;
+    }
+
     function renderRuleCards() {
       const root = $('[data-product-rule-groups]');
       const summary = $('[data-product-rule-summary]');
@@ -76,75 +173,23 @@
       const clear = $('[data-product-rule-clear]');
       if (!root) return;
       const toggle = $('[data-product-rule-toggle]');
-      state.ruleBoardExpanded = Boolean(state.ruleKey) || state.ruleBoardExpanded;
       root.replaceChildren();
-      root.hidden = !state.ruleBoardExpanded;
-      if (summary) {
-        summary.replaceChildren();
-        state.rules.slice(0, 5).forEach((rule) => {
-          const item = document.createElement('span');
-          item.className = `product-rule-summary-item product-rule-summary-item--${rule.severity || 'info'}`;
-          item.textContent = `${rule.name} ${number(rule.matched_count)}件`;
-          summary.appendChild(item);
-        });
-        summary.hidden = state.ruleBoardExpanded || !state.rules.length;
-      }
+      // 策略卡常显（BI 形态）：折叠档只展示前 5 张，「展开更多」显示全部。
+      // 命中筛选的卡始终可见：被折叠时自动展开。
+      const activeIndex = state.rules.findIndex((rule) => isRuleCardActive(rule) && rule.key !== 'all_products');
+      state.ruleBoardExpanded = state.ruleBoardExpanded || activeIndex >= COLLAPSED_CARD_LIMIT;
+      const visibleRules = state.ruleBoardExpanded ? state.rules : state.rules.slice(0, COLLAPSED_CARD_LIMIT);
+      visibleRules.forEach((rule) => root.appendChild(buildStrategyCard(rule)));
+      if (state.rules.length > visibleRules.length || state.ruleBoardExpanded) root.appendChild(buildStrategyPlaceholder());
+      if (!state.rules.length) root.innerHTML = '<p class="panel__hint">当前周期暂无可用经营分群</p>';
       if (toggle) {
-        toggle.textContent = state.ruleBoardExpanded ? '收起分群详情' : '展开分群详情';
+        toggle.textContent = state.ruleBoardExpanded ? '点击收起' : '展开更多';
         toggle.setAttribute('aria-expanded', String(state.ruleBoardExpanded));
       }
-      const groups = new Map();
-      state.rules.forEach((rule) => {
-        if (!groups.has(rule.group)) groups.set(rule.group, []);
-        groups.get(rule.group).push(rule);
-      });
-      groups.forEach((rules, groupName) => {
-        const section = document.createElement('section');
-        section.className = 'product-rule-group';
-        const heading = document.createElement('h4');
-        heading.textContent = groupName;
-        const cards = document.createElement('div');
-        cards.className = 'product-rule-group__cards';
-        rules.forEach((rule) => {
-          const card = document.createElement('article');
-          card.className = `product-rule-card product-rule-card--${rule.severity || 'info'}`;
-          card.classList.toggle('is-active', state.ruleKey === rule.key);
-          const title = document.createElement('strong');
-          title.textContent = rule.name;
-          const desc = document.createElement('span');
-          desc.className = 'product-rule-card__description';
-          desc.textContent = rule.description;
-          const meta = document.createElement('span');
-          meta.className = 'product-rule-card__meta';
-          const share = rule.share == null ? '--' : `${(Number(rule.share) * 100).toFixed(1)}%`;
-          meta.textContent = `${number(rule.matched_count)} 件 · ${share}`;
-          const actions = document.createElement('div');
-          actions.className = 'product-rule-card__actions';
-          const apply = document.createElement('button');
-          apply.type = 'button';
-          apply.className = 'ui-button ui-button--small';
-          apply.textContent = state.ruleKey === rule.key ? '取消筛选' : '查看商品';
-          apply.setAttribute('aria-pressed', String(state.ruleKey === rule.key));
-          apply.addEventListener('click', () => {
-            state.ruleKey = state.ruleKey === rule.key ? '' : rule.key;
-            refreshWithFilter();
-          });
-          const inspect = document.createElement('button');
-          inspect.type = 'button';
-          inspect.className = 'ui-button ui-button--ghost ui-button--small';
-          inspect.innerHTML = '<i data-lucide="file-search"></i><span>规则详情</span>';
-          inspect.addEventListener('click', () => openRuleDetail(rule));
-          actions.append(apply, inspect);
-          card.append(title, desc, meta, actions);
-          cards.appendChild(card);
-        });
-        section.append(heading, cards);
-        root.appendChild(section);
-      });
-      if (!state.rules.length) root.innerHTML = '<p class="panel__hint">当前周期暂无可用经营分群</p>';
+      if (summary) summary.hidden = true;
       if (clear) clear.hidden = !state.ruleKey;
       const active = state.rules.find((rule) => rule.key === state.ruleKey);
-      if (status) status.textContent = active ? `已应用分群：${active.name} · ${active.description}` : '按当前周期经营事实识别需要关注的商品集合';
+      if (status) status.textContent = active ? `已应用分群：${active.name} · ${active.description}` : '口径即规则：点击卡片筛选商品列表，规则口径印在卡上';
     }
 
     function ruleConditionText(condition) {

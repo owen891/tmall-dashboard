@@ -631,6 +631,205 @@ class ImportWorkflowTests(unittest.TestCase):
                 "SELECT COUNT(*) FROM fact_field_lineage WHERE product_id = 'revert-observation'"
             ).fetchone()[0], 0)
 
+    def test_reverting_first_import_removes_product_created_by_that_batch(self):
+        """DATA-01 回归：批次首次导入创建的商品，撤销后不得残留。
+
+        旧实现只在 prior_product 存在时写 products 快照，新建商品在
+        revert_batch 里没有任何变更记录可删，事实行回滚后留下一行孤儿商品。
+        同时 products 快照是在同行的 daily_data 变更之后写入的，而撤销按
+        id DESC 回放，所以「是否仍被引用」必须等事实行全部回滚后再判断。
+        """
+        status, preview = self.preview(
+            ['product_id', 'date', 'payment_amount', 'product_visitors'],
+            [['revert-new-product', '2026-04-11', 100, 10]],
+        )
+        self.assertEqual(status, 200)
+        confirmed = self.client.post('/api/imports', json={
+            'preview_id': preview['data']['id'], 'mapping': preview['data']['mapping'],
+        })
+        self.assertEqual(confirmed.status_code, 201)
+        batch_id = confirmed.get_json()['data']['id']; confirmed.close()
+
+        with self.get_db(self.database_path) as connection:
+            self.assertEqual(connection.execute(
+                "SELECT COUNT(*) FROM products WHERE product_id='revert-new-product'"
+            ).fetchone()[0], 1)
+            # 新建商品也必须留 previous_row=NULL 快照，否则撤销时无从删除。
+            self.assertEqual(connection.execute(
+                """SELECT COUNT(*) FROM import_batch_changes
+                   WHERE batch_id=? AND table_name='products' AND previous_row IS NULL""",
+                (batch_id,)).fetchone()[0], 1)
+
+        reverted = self.client.post(f'/api/imports/{batch_id}/revert')
+        self.assertEqual(reverted.status_code, 200)
+        self.assertTrue(reverted.get_json()['data']['reverted'])
+        reverted.close()
+
+        with self.get_db(self.database_path) as connection:
+            self.assertEqual(connection.execute(
+                "SELECT COUNT(*) FROM daily_data WHERE product_id='revert-new-product'"
+            ).fetchone()[0], 0)
+            self.assertEqual(connection.execute(
+                "SELECT COUNT(*) FROM daily_data_observations WHERE product_id='revert-new-product'"
+            ).fetchone()[0], 0)
+            self.assertEqual(connection.execute(
+                "SELECT COUNT(*) FROM fact_field_lineage WHERE product_id='revert-new-product'"
+            ).fetchone()[0], 0)
+            self.assertEqual(connection.execute(
+                "SELECT COUNT(*) FROM products WHERE product_id='revert-new-product'"
+            ).fetchone()[0], 0)
+
+    def test_revert_keeps_product_still_referenced_by_actions(self):
+        """外键引用时不能删商品行：宁留商品，也不能让整次撤销回滚失败。"""
+        status, preview = self.preview(
+            ['product_id', 'date', 'payment_amount', 'product_visitors'],
+            [['revert-fk-product', '2026-04-12', 100, 10]],
+        )
+        self.assertEqual(status, 200)
+        confirmed = self.client.post('/api/imports', json={
+            'preview_id': preview['data']['id'], 'mapping': preview['data']['mapping'],
+        })
+        self.assertEqual(confirmed.status_code, 201)
+        batch_id = confirmed.get_json()['data']['id']; confirmed.close()
+
+        with self.get_db(self.database_path) as connection:
+            connection.execute(
+                '''INSERT INTO product_actions
+                   (id, product_id, purpose_type, purpose_note, action_type, action_detail,
+                    target_metric, status, planned_at, observer_window_days, version)
+                   VALUES ('fk-keep', 'revert-fk-product', 'increase_sales', 'FK 保留验证',
+                    'image_change', '更换主图', 'payment_amount', 'pending_execution',
+                    '2026-04-12', 7, 1)'''
+            )
+            connection.commit()
+
+        reverted = self.client.post(f'/api/imports/{batch_id}/revert')
+        self.assertEqual(reverted.status_code, 200); reverted.close()
+
+        with self.get_db(self.database_path) as connection:
+            # 事实行已回滚，但被 product_actions 外键引用的商品必须保留。
+            self.assertEqual(connection.execute(
+                "SELECT COUNT(*) FROM daily_data WHERE product_id='revert-fk-product'"
+            ).fetchone()[0], 0)
+            self.assertEqual(connection.execute(
+                "SELECT COUNT(*) FROM products WHERE product_id='revert-fk-product'"
+            ).fetchone()[0], 1)
+
+    def test_reverting_update_restores_previous_product_values(self):
+        """撤销「更新已有商品」必须把商品主档列还原，而不是只回滚事实行。"""
+        headers = ['日期', '商品ID', '商品名称', '支付金额', '退款额', '访客', '买家', '消耗']
+        mapping = {
+            'date': '日期', 'product_id': '商品ID', 'product_name': '商品名称',
+            'payment_amount': '支付金额', 'successful_refund_amount': '退款额',
+            'product_visitors': '访客', 'payment_buyers': '买家', 'ad_spend': '消耗',
+        }
+
+        def import_row(title):
+            _, preview = self.preview(headers, [['2026-04-13', 'revert-title', title, 100, 0, 10, 2, 1]])
+            response = self.client.post('/api/imports', json={
+                'preview_id': preview['data']['id'], 'mapping': mapping,
+            })
+            batch_id = response.get_json()['data']['id']
+            response.close()
+            return batch_id
+
+        first = import_row('原始标题')
+        with self.get_db(self.database_path) as connection:
+            self.assertEqual(connection.execute(
+                "SELECT title FROM products WHERE product_id='revert-title'"
+            ).fetchone()[0], '原始标题')
+
+        second = import_row('被改后的标题')
+        with self.get_db(self.database_path) as connection:
+            self.assertEqual(connection.execute(
+                "SELECT title FROM products WHERE product_id='revert-title'"
+            ).fetchone()[0], '被改后的标题')
+
+        reverted = self.client.post(f'/api/imports/{second}/revert')
+        self.assertEqual(reverted.status_code, 200); reverted.close()
+        with self.get_db(self.database_path) as connection:
+            # 商品主档恢复到第一次导入后的值，且第一批的事实仍在。
+            self.assertEqual(connection.execute(
+                "SELECT title FROM products WHERE product_id='revert-title'"
+            ).fetchone()[0], '原始标题')
+            self.assertEqual(connection.execute(
+                "SELECT payment_amount FROM daily_data WHERE product_id='revert-title' AND date='2026-04-13'"
+            ).fetchone()[0], 100.0)
+            self.assertEqual(connection.execute(
+                "SELECT COUNT(*) FROM products WHERE product_id='revert-title'"
+            ).fetchone()[0], 1)
+
+        # 再撤销第一批：商品最终应被删除（无任何引用）。
+        reverted_first = self.client.post(f'/api/imports/{first}/revert')
+        self.assertEqual(reverted_first.status_code, 200); reverted_first.close()
+        with self.get_db(self.database_path) as connection:
+            self.assertEqual(connection.execute(
+                "SELECT COUNT(*) FROM products WHERE product_id='revert-title'"
+            ).fetchone()[0], 0)
+
+    def test_reverting_older_overlapping_batch_preserves_newer_batch_product(self):
+        """两个批次先后落在同一商品上时，撤销较早批次不得毁掉较新批次写入的商品。
+
+        规则：products 变更按 business_key（即 product_id）判定归属。较早批次的
+        products 变更一旦发现同一 product_id 还有未撤销的更新变更，就整条跳过，
+        商品行保持较新批次写入后的值；只有等较新批次也撤销、本批次的事实行全部
+        回滚、且再没有任何表引用该商品时，才允许删除这一行。
+        """
+        headers = ['日期', '商品ID', '商品名称', '支付金额', '商品访客数']
+
+        def import_row(date, title, amount):
+            _, preview = self.preview(headers, [[date, 'overlap-product', title, amount, 10]])
+            response = self.client.post('/api/imports', json={
+                'preview_id': preview['data']['id'], 'mapping': preview['data']['mapping'],
+            })
+            batch_id = response.get_json()['data']['id']
+            response.close()
+            return batch_id
+
+        older = import_row('2026-04-14', '较早批次', 100)
+        newer = import_row('2026-04-15', '较新批次', 200)
+
+        with self.get_db(self.database_path) as connection:
+            self.assertEqual(connection.execute(
+                "SELECT title FROM products WHERE product_id='overlap-product'"
+            ).fetchone()[0], '较新批次')
+
+        first = self.client.post(f'/api/imports/{older}/revert')
+        self.assertEqual(first.status_code, 200)
+        # 只回滚本批次自己的事实行；被较新批次覆盖的商品变更不计数。
+        self.assertEqual(first.get_json()['data']['restored_count'], 1)
+        first.close()
+
+        with self.get_db(self.database_path) as connection:
+            # 较新批次的商品行、商品值与其事实行都必须完好，且没有被较早批次回滚。
+            self.assertEqual(connection.execute(
+                "SELECT title FROM products WHERE product_id='overlap-product'"
+            ).fetchone()[0], '较新批次')
+            self.assertEqual(connection.execute(
+                "SELECT payment_amount FROM daily_data WHERE product_id='overlap-product'"
+                " AND date='2026-04-15'"
+            ).fetchone()[0], 200.0)
+            self.assertEqual(connection.execute(
+                "SELECT COUNT(*) FROM daily_data WHERE product_id='overlap-product'"
+                " AND date='2026-04-14'"
+            ).fetchone()[0], 0)
+            # 商品变更被跳过，批次停在部分撤销，等较新批次处理后可以续做。
+            self.assertEqual(connection.execute(
+                "SELECT status FROM import_batches WHERE id = ?", (older,)
+            ).fetchone()[0], 'partially_reverted')
+
+        # 较新批次也撤销后，较早批次那条被跳过的商品变更才可完成，商品行最终消失。
+        self.assertEqual(self.client.post(f'/api/imports/{newer}/revert').status_code, 200)
+        self.assertEqual(self.client.post(f'/api/imports/{older}/revert').status_code, 200)
+        with self.get_db(self.database_path) as connection:
+            self.assertEqual(connection.execute(
+                "SELECT COUNT(*) FROM products WHERE product_id='overlap-product'"
+            ).fetchone()[0], 0)
+            self.assertEqual(connection.execute(
+                "SELECT COUNT(*) FROM import_batch_changes WHERE batch_id IN (?, ?)"
+                " AND reverted_at IS NULL", (older, newer)
+            ).fetchone()[0], 0)
+
     def test_confirm_rejects_duplicate_source_columns(self):
         status, preview = self.preview(
             ['product_id', 'date', 'value'],
@@ -810,13 +1009,20 @@ class ImportWorkflowTests(unittest.TestCase):
         response = self.client.post(f'/api/imports/{older}/revert')
         self.assertEqual(response.status_code, 200)
         result = response.get_json()['data']
-        self.assertEqual(result['restored_count'], 1)
+        # restored_count = 2：本批次新建的 import-uncovered 商品行现在也会被
+        # 撤销（事实行 1 + 商品行 1）。旧实现漏记新建商品的 products 快照，
+        # 删除分支永远不可达，所以这里以前只会数到事实行那 1 条。
+        self.assertEqual(result['restored_count'], 2)
         self.assertEqual(result['skipped_count'], 1)
         response.close()
         with self.get_db(self.database_path) as connection:
             self.assertEqual(connection.execute("SELECT payment_amount FROM daily_data WHERE product_id='import-order' AND date='2026-04-04'").fetchone()[0], 200.0)
             self.assertEqual(connection.execute("SELECT COUNT(*) FROM daily_data WHERE product_id='import-uncovered' AND date='2026-04-04'").fetchone()[0], 0)
-            self.assertEqual(connection.execute("SELECT COUNT(*) FROM import_batch_changes WHERE batch_id = ?", (older,)).fetchone()[0], 2)
+            # 新建且再无引用的商品必须删除；被后续批次覆盖的商品必须保留。
+            self.assertEqual(connection.execute("SELECT COUNT(*) FROM products WHERE product_id='import-uncovered'").fetchone()[0], 0)
+            self.assertEqual(connection.execute("SELECT COUNT(*) FROM products WHERE product_id='import-order'").fetchone()[0], 1)
+            # 2 条 daily_data + 2 条 products 快照：新建商品也要留 previous_row=NULL。
+            self.assertEqual(connection.execute("SELECT COUNT(*) FROM import_batch_changes WHERE batch_id = ?", (older,)).fetchone()[0], 4)
             audit = connection.execute(
                 "SELECT action, operator, reason, before_value, after_value FROM audit_logs WHERE entity_type = 'import_batch' AND entity_id = ?",
                 (older,),
@@ -890,11 +1096,15 @@ class ImportWorkflowTests(unittest.TestCase):
         self.assertEqual(self.client.post(f'/api/imports/{newer}/revert').status_code, 200)
         second = self.client.post(f'/api/imports/{older}/revert')
         self.assertEqual(second.status_code, 200)
-        self.assertEqual(second.get_json()['data']['restored_count'], 1)
+        # 事实行 + 本批次新建的商品行 = 2；两批都已撤销，商品不应残留。
+        self.assertEqual(second.get_json()['data']['restored_count'], 2)
         second.close()
         with self.get_db(self.database_path) as connection:
             self.assertEqual(connection.execute(
                 "SELECT COUNT(*) FROM daily_data WHERE product_id='revert-chain'"
+            ).fetchone()[0], 0)
+            self.assertEqual(connection.execute(
+                "SELECT COUNT(*) FROM products WHERE product_id='revert-chain'"
             ).fetchone()[0], 0)
 
     def test_revert_does_not_delete_value_owned_by_partially_reverted_newer_batch(self):

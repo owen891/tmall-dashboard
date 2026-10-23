@@ -1,4 +1,99 @@
+// Shared promotion value semantics. Pure functions also run in Node contract tests.
+(function (root) {
+  const present = (value) => value !== null && value !== undefined && value !== '' && Number.isFinite(Number(value));
+  const money = (value) => present(value) ? `￥${Number(value).toLocaleString('zh-CN', { maximumFractionDigits: 2 })}` : '--';
+  const number = (value) => present(value) ? Number(value).toLocaleString('zh-CN') : '--';
+  const ratio = (value) => present(value) ? Number(value).toFixed(2) : '--';
+  const percent = (value) => present(value) ? `${(Number(value) * 100).toFixed(2)}%` : '--';
+  function coverageLabel(coverage) {
+    if (!coverage) return '';
+    if (coverage.inputs) return Object.entries(coverage.inputs).map(([key, item]) => `${key} ${coverageLabel(item)}`).join('; ');
+    if (coverage.sources) return coverage.sources.map(coverageLabel).join('; ');
+    return `${coverage.observed_rows}/${coverage.expected_rows} ${coverage.source || ''}`.trim();
+  }
+  function format(row, key, kind = 'number') {
+    const status = row.metric_availability?.[key];
+    const value = row[key];
+    const formatter = kind === 'money' || kind === 'moneyNullable' ? money : kind === 'ratio' ? ratio : kind === 'percent' ? percent : number;
+    if (status === 'missing-fields') return '--（未提供）';
+    if (status === 'insufficient-data') return '--（不可计算）';
+    const display = formatter(value);
+    return status === 'partial' ? `${display}（部分 ${coverageLabel(row.metric_coverage?.[key])}）` : display;
+  }
+  function exportValue(row, key) {
+    const status = row.metric_availability?.[key];
+    if (status === 'missing-fields') return '--（未提供）';
+    if (status === 'insufficient-data') return '--（不可计算）';
+    if (status === 'partial') return `${present(row[key]) ? row[key] : '--'}（部分 ${coverageLabel(row.metric_coverage?.[key])}）`;
+    return present(row[key]) ? row[key] : '';
+  }
+  // Large values stay numeric; availability and full coverage are separate UI layers.
+  // format()/exportValue() retain their original evidence-rich table/export contract.
+  function valueText(row, key, kind = 'number') {
+    const status = row.metric_availability?.[key];
+    if (status === 'missing-fields' || status === 'insufficient-data') return '--';
+    const formatter = kind === 'money' || kind === 'moneyNullable' ? money : kind === 'ratio' ? ratio : kind === 'percent' ? percent : number;
+    return formatter(row[key]);
+  }
+  function statusLabel(row, key) {
+    return ({ partial: '部分数据', 'missing-fields': '未提供', 'insufficient-data': '不可计算' })[row.metric_availability?.[key]] || '';
+  }
+  function compact(row, key, kind = 'number') {
+    const label = statusLabel(row, key);
+    return valueText(row, key, kind) + (label ? `（${label}）` : '');
+  }
+  function compactTitle(row, key, kind = 'number') {
+    const detail = format(row, key, kind);
+    return statusLabel(row, key) ? detail : '';
+  }
+  function chartValue(row, key) {
+    return present(row[key]) && (!row.metric_availability?.[key] || row.metric_availability[key] === 'available') ? Number(row[key]) : null;
+  }
+  function summarize(rows) {
+    const result = { metric_availability: {}, metric_coverage: {} };
+    ['ad_spend', 'attributed_payment_amount', 'direct_payment_amount', 'indirect_payment_amount', 'impressions', 'clicks', 'payment_buyers', 'link_gsv'].forEach((key) => {
+      const values = rows.filter((row) => present(row[key]));
+      result[key] = values.length ? values.reduce((sum, row) => sum + Number(row[key]), 0) : null;
+      const parts = rows.map((row) => row.metric_coverage?.[key]).filter(Boolean);
+      const observed = parts.reduce((sum, c) => sum + Number(c.observed_rows || 0), 0);
+      const expected = parts.reduce((sum, c) => sum + Number(c.expected_rows || 0), 0);
+      result.metric_coverage[key] = { observed_rows: parts.length ? observed : values.length, expected_rows: parts.length ? expected : rows.length, source: parts[0]?.source || 'aggregate_rows' };
+      result.metric_availability[key] = !values.length ? 'missing-fields' : values.length < rows.length || rows.some((row) => row.metric_availability?.[key] === 'partial') ? 'partial' : 'available';
+    });
+    [['roi', 'attributed_payment_amount', 'ad_spend'], ['ctr', 'clicks', 'impressions'], ['cvr', 'payment_buyers', 'clicks'], ['expense_ratio', 'ad_spend', 'link_gsv']].forEach(([key, numerator, denominator]) => {
+      const states = [result.metric_availability[numerator], result.metric_availability[denominator]];
+      const status = states.includes('missing-fields') ? 'missing-fields' : states.includes('partial') ? 'partial' : result[denominator] === 0 ? 'insufficient-data' : 'available';
+      result[key] = status === 'available' ? result[numerator] / result[denominator] : null;
+      result.metric_availability[key] = status;
+      result.metric_coverage[key] = { inputs: { [numerator]: result.metric_coverage[numerator], [denominator]: result.metric_coverage[denominator] } };
+    });
+    // Preserve the command-board weighted paid-share formula, but only when
+    // every input is known; missing rows must not become a zero contribution.
+    const paidInputs = rows.map((row) => ({
+      share: row.paid_share,
+      amount: present(row.attributed_payment_amount) ? row.attributed_payment_amount : row.payment_amount,
+      status: row.metric_availability?.paid_share,
+      amountStatus: row.metric_availability?.attributed_payment_amount,
+    }));
+    const paidMissing = paidInputs.some((p) => !present(p.share) || !present(p.amount));
+    const paidPartial = paidInputs.some((p) => p.status === 'partial' || p.amountStatus === 'partial');
+    const paidTotal = paidInputs.reduce((sum, p) => sum + (present(p.amount) ? Number(p.amount) : 0), 0);
+    result.metric_availability.paid_share = !rows.length || paidMissing ? (paidPartial ? 'partial' : 'missing-fields') : paidPartial ? 'partial' : paidTotal === 0 ? 'insufficient-data' : 'available';
+    result.paid_share = result.metric_availability.paid_share === 'available'
+      ? paidInputs.reduce((sum, p) => sum + Number(p.share) * Number(p.amount), 0) / paidTotal : null;
+    result.metric_coverage.paid_share = { inputs: Object.fromEntries(rows.map((row, index) => [String(index), {
+      inputs: { paid_share: row.metric_coverage?.paid_share, attributed_payment_amount: row.metric_coverage?.attributed_payment_amount },
+    }])) };
+    return result;
+  }
+  const api = { present, money, number, ratio, percent, format, exportValue, coverageLabel, summarize, chartValue, valueText, statusLabel, compact, compactTitle };
+  root.TmallPromotionMetrics = api;
+  if (typeof module !== 'undefined' && module.exports) module.exports = api;
+})(typeof window === 'undefined' ? globalThis : window);
+
 (function () {
+  if (typeof document === 'undefined') return;
+  const promotionMetrics = window.TmallPromotionMetrics;
   const $ = (selector, root = document) => root.querySelector(selector);
   const promotionDetailTabs = ['overview', 'units'];
   const tabDefinitions = {
@@ -165,10 +260,10 @@
     state.demoTabs.clear();
     return normalized;
   }
-  const money = (value) => `￥${Number(value || 0).toLocaleString('zh-CN', { maximumFractionDigits: 2 })}`;
-  const number = (value) => Number(value || 0).toLocaleString('zh-CN');
+  const money = promotionMetrics.money;
+  const number = promotionMetrics.number;
   const numberNullable = (value) => value == null || value === '' ? '--' : number(value);
-  const ratio = (value) => Number(value || 0) > 0 ? Number(value).toFixed(2) : '--';
+  const ratio = promotionMetrics.ratio;
   const toast = (message) => window.DemoShell?.showToast?.(message) || window.alert(message);
   const setStatus = (message) => window.DemoShell?.setStatus?.(message);
   const renderDataState = (state, details) => DemoApi.renderDataState($('[data-promotion-table-hint]'), state, details);
@@ -179,9 +274,19 @@
     if (value != null) node.textContent = value;
     return node;
   };
+  const promotionTable = (options = {}) => {
+    const wrap = TmallUI.table(options);
+    const table = wrap.querySelector('table');
+    if (table) {
+      table.dataset.promotionTable = '';
+      table.querySelector('thead')?.setAttribute('data-promotion-head', '');
+      table.querySelector('tbody')?.setAttribute('data-promotion-body', '');
+    }
+    return wrap;
+  };
   const productId = (row) => String(row?.product_id || '');
   const productTitle = (row) => String(row?.title || '').trim() || (productId(row) ? `商品 ${productId(row)}` : '未关联商品');
-  const overallRoi = (row) => Number(row?.roi || row?.overall_roi || 0) || (Number(row?.ad_spend || 0) ? Number(row?.attributed_payment_amount || row?.payment_amount || 0) / Number(row.ad_spend) : 0);
+  const overallRoi = (row) => row?.roi ?? row?.overall_roi ?? null;
 
   function getPeriod(detail) {
     const range = detail || window.TmallDateRange?.getState?.() || {};
@@ -204,46 +309,42 @@
   }
 
   function renderKpis(rows) {
-    const spend = rows.reduce((total, row) => total + Number(row.ad_spend || 0), 0);
-    const gmv = rows.reduce((total, row) => total + Number(row.attributed_payment_amount || row.payment_amount || 0), 0);
-    const linkGsv = rows.reduce((total, row) => total + Number(row.link_gsv || 0), 0);
-    const linkGsvComplete = rows.length > 0 && rows.every((row) => row.link_gsv != null);
-    const direct = rows.reduce((total, row) => total + Number(row.direct_payment_amount || 0), 0);
-    const indirect = rows.reduce((total, row) => total + Number(row.indirect_payment_amount || 0), 0);
-    const impressions = rows.reduce((total, row) => total + Number(row.impressions || 0), 0);
-    const clicks = rows.reduce((total, row) => total + Number(row.clicks || 0), 0);
-    const buyers = rows.reduce((total, row) => total + Number(row.payment_buyers || 0), 0);
-    $('[data-promotion-kpi="spend"]').textContent = money(spend);
-    $('[data-promotion-kpi="gmv"]').textContent = money(gmv);
-    $('[data-promotion-kpi="roi"]').textContent = spend ? (gmv / spend).toFixed(2) : '--';
-    $('[data-promotion-kpi="expense_ratio"]').textContent = linkGsvComplete && linkGsv ? `${(spend / linkGsv * 100).toFixed(2)}%` : '--';
-    $('[data-promotion-kpi="ctr"]').textContent = impressions ? `${(clicks / impressions * 100).toFixed(2)}%` : '--';
-    $('[data-promotion-kpi="cvr"]').textContent = clicks ? `${(buyers / clicks * 100).toFixed(2)}%` : '--';
-    $('[data-promotion-kpi="direct"]').textContent = money(direct);
-    $('[data-promotion-kpi="indirect"]').textContent = money(indirect);
+    const summary = promotionMetrics.summarize(rows);
+    [['spend', 'ad_spend', 'money'], ['gmv', 'attributed_payment_amount', 'money'],
+      ['roi', 'roi', 'ratio'], ['expense_ratio', 'expense_ratio', 'percent'],
+      ['ctr', 'ctr', 'percent'], ['cvr', 'cvr', 'percent'],
+      ['direct', 'direct_payment_amount', 'money'], ['indirect', 'indirect_payment_amount', 'money']].forEach(([target, key, format]) => {
+      $(`[data-promotion-kpi="${target}"]`).textContent = promotionMetrics.valueText(summary, key, format);
+      const statusNode = $(`[data-promotion-kpi-status="${target}"]`);
+      if (statusNode) {
+        statusNode.textContent = promotionMetrics.statusLabel(summary, key);
+        statusNode.hidden = !statusNode.textContent;
+      }
+    });
     $('[data-promotion-kpi="products"]').textContent = number(rows.length);
     $('[data-promotion-kpi-note]').textContent = `${state.period || '--'} 商品口径`;
+    const fields = [['推广花费', 'ad_spend', 'money'], ['推广成交', 'attributed_payment_amount', 'money'], ['推广 ROI', 'roi', 'ratio'], ['费比', 'expense_ratio', 'percent'], ['点击率', 'ctr', 'percent'], ['商品支付转化率', 'cvr', 'percent'], ['直接付费成交', 'direct_payment_amount', 'money'], ['间接付费成交', 'indirect_payment_amount', 'money'], ['点击量', 'clicks', 'number'], ['展现量', 'impressions', 'number'], ['付费成交占比', 'paid_share', 'percent']];
+    const issues = fields.filter(([, key]) => promotionMetrics.statusLabel(summary, key));
+    const evidence = $('[data-promotion-quality]');
+    if (evidence) {
+      evidence.hidden = !issues.length;
+      $('[data-promotion-quality-summary]').textContent = `${issues.length} 项指标需留意`;
+      $('[data-promotion-quality-body]').textContent = issues.map(([label, key, kind]) => `${label}：${promotionMetrics.format(summary, key, kind)}`).join('\n');
+    }
   }
 
   function renderCommandBoard(rows, alerts = []) {
     const list = Array.isArray(rows) ? rows : [];
-    const spend = list.reduce((total, row) => total + Number(row.ad_spend || 0), 0);
-    const gmv = list.reduce((total, row) => total + Number(row.attributed_payment_amount || row.payment_amount || 0), 0);
-    const impressions = list.reduce((total, row) => total + Number(row.impressions || 0), 0);
-    const clicks = list.reduce((total, row) => total + Number(row.clicks || 0), 0);
-    const buyers = list.reduce((total, row) => total + Number(row.payment_buyers || 0), 0);
-    const direct = list.reduce((total, row) => total + Number(row.direct_payment_amount || 0), 0);
-    const indirect = list.reduce((total, row) => total + Number(row.indirect_payment_amount || 0), 0);
-    const paidShareValue = list.reduce((total, row) => total + (row.paid_share == null ? 0 : Number(row.paid_share) * Number(row.attributed_payment_amount || row.payment_amount || 0)), 0);
-    const roi = spend ? gmv / spend : 0;
-    const cvr = clicks ? buyers / clicks : 0;
-    const paidShare = gmv ? paidShareValue / gmv : 0;
+    const quality = promotionMetrics.summarize(list);
+    const roi = quality.roi;
+    const cvr = quality.cvr;
+    const paidShare = quality.paid_share;
     const badge = $('[data-promotion-health-badge]');
     const badgeText = badge?.querySelector('span');
     const insightTitle = $('[data-promotion-insight-title]');
     const insightCopy = $('[data-promotion-insight-copy]');
-    const tone = roi >= 3 ? 'success' : roi >= 1.5 ? 'warning' : 'danger';
-    const statusText = !list.length ? '暂无数据' : tone === 'success' ? '投产健康' : tone === 'warning' ? '需要关注' : '投产偏低';
+    const tone = roi == null ? 'muted' : roi >= 3 ? 'success' : roi >= 1.5 ? 'warning' : 'danger';
+    const statusText = !list.length ? '暂无数据' : roi == null ? '数据未完整' : tone === 'success' ? '投产健康' : tone === 'warning' ? '需要关注' : '投产偏低';
     if (badge) {
       badge.dataset.tone = tone;
       badge.className = `promotion-command__status`;
@@ -252,32 +353,43 @@
       badge.innerHTML = `<i data-lucide="${icon}"></i><span>${statusText}</span>`;
     }
     const setValue = (key, value) => { const node = $(`[data-promotion-funnel="${key}"]`); if (node) node.textContent = value; };
-    setValue('spend', money(spend));
-    setValue('clicks', number(clicks));
-    setValue('gmv', money(gmv));
+    setValue('spend', promotionMetrics.valueText(quality, 'ad_spend', 'money'));
+    setValue('clicks', promotionMetrics.valueText(quality, 'clicks', 'number'));
+    setValue('gmv', promotionMetrics.valueText(quality, 'attributed_payment_amount', 'money'));
+    [['spend', 'ad_spend'], ['clicks', 'clicks'], ['gmv', 'attributed_payment_amount']].forEach(([target, key]) => {
+      const node = $(`[data-promotion-funnel-status="${target}"]`);
+      if (node) { node.textContent = promotionMetrics.statusLabel(quality, key); node.hidden = !node.textContent; }
+    });
     const clickMeta = $('[data-promotion-funnel-meta="clicks"]');
     const gmvMeta = $('[data-promotion-funnel-meta="gmv"]');
-    if (clickMeta) clickMeta.textContent = `${number(impressions)} 次展现 · 点击率 ${impressions ? `${(clicks / impressions * 100).toFixed(2)}%` : '--'}`;
-    if (gmvMeta) gmvMeta.textContent = `推广成交 · 推广 ROI ${roi ? roi.toFixed(2) : '--'}`;
+    if (clickMeta) clickMeta.textContent = `${promotionMetrics.compact(quality, 'impressions', 'number')} 次展现 · 点击率 ${promotionMetrics.compact(quality, 'ctr', 'percent')}`;
+    if (gmvMeta) gmvMeta.textContent = `推广成交 · 推广 ROI ${promotionMetrics.compact(quality, 'roi', 'ratio')}`;
     const signals = {
-      roi: roi ? roi.toFixed(2) : '--',
-      cvr: cvr ? `${(cvr * 100).toFixed(2)}%` : '--',
-      paid_share: paidShare ? `${(paidShare * 100).toFixed(2)}%` : '--',
+      roi: promotionMetrics.valueText(quality, 'roi', 'ratio'),
+      cvr: promotionMetrics.valueText(quality, 'cvr', 'percent'),
+      paid_share: promotionMetrics.valueText(quality, 'paid_share', 'percent'),
       alerts: `${alerts.length} 条`,
     };
     Object.entries(signals).forEach(([key, value]) => { const node = $(`[data-promotion-signal="${key}"]`); if (node) node.textContent = value; });
+    ['roi', 'cvr', 'paid_share'].forEach((key) => {
+      const node = $(`[data-promotion-signal-status="${key}"]`);
+      if (node) { node.textContent = promotionMetrics.statusLabel(quality, key); node.hidden = !node.textContent; }
+    });
     const roiNode = $('[data-promotion-signal="roi"]');
     const cvrNode = $('[data-promotion-signal="cvr"]');
     const paidNode = $('[data-promotion-signal="paid_share"]');
     if (roiNode) roiNode.dataset.tone = tone;
-    if (cvrNode) cvrNode.dataset.tone = cvr >= .05 ? 'success' : cvr >= .025 ? 'warning' : 'danger';
-    if (paidNode) paidNode.dataset.tone = paidShare >= .4 ? 'warning' : 'success';
+    if (cvrNode) cvrNode.dataset.tone = cvr == null ? 'muted' : cvr >= .05 ? 'success' : cvr >= .025 ? 'warning' : 'danger';
+    if (paidNode) paidNode.dataset.tone = paidShare == null ? 'muted' : paidShare >= .4 ? 'warning' : 'success';
     const alertNode = $('[data-promotion-signal="alerts"]');
     if (alertNode) alertNode.dataset.tone = alerts.length ? 'danger' : 'success';
     if (insightTitle && insightCopy) {
       if (!list.length) {
         insightTitle.textContent = '当前筛选范围暂无推广经营数据';
         insightCopy.textContent = '先导入对应日期的推广明细，再查看计划、商品和趋势判断。';
+      } else if (roi == null) {
+        insightTitle.textContent = '推广输入未完整，暂不判断投产高低';
+        insightCopy.textContent = promotionMetrics.format(quality, 'roi', 'ratio');
       } else if (tone === 'success') {
         insightTitle.textContent = '整体投产达到健康区间，可继续观察高效计划';
         insightCopy.textContent = `当前推广 ROI ${roi.toFixed(2)}，优先关注计划与商品的效率差异，不把不同粒度重复相加。`;
@@ -286,7 +398,7 @@
         insightCopy.textContent = `当前推广 ROI ${roi.toFixed(2)}，建议先按计划定位花费集中处，再回到商品看推广依赖。`;
       } else {
         insightTitle.textContent = '整体投产偏低，先控制低效投入';
-        insightCopy.textContent = `当前推广 ROI ${roi ? roi.toFixed(2) : '--'}，建议优先查看计划和商品明细中的低效项。`;
+        insightCopy.textContent = `当前推广 ROI ${promotionMetrics.format(quality, 'roi', 'ratio')}，建议优先查看计划和商品明细中的低效项。`;
       }
     }
     window.lucide?.createIcons();
@@ -316,29 +428,22 @@
       container.innerHTML = '<div class="promotion-board-empty">当前范围没有商品推广数据</div>';
       return;
     }
-    const table = document.createElement('table');
-    table.className = 'promotion-board-table';
-    table.dataset.tableControls = 'true';
-    table.innerHTML = '<thead><tr><th>商品</th><th class="num">推广花费</th><th class="num">推广成交</th><th class="num">链接净销售额</th><th class="num">费比</th><th class="num">推广 ROI</th><th class="num">付费成交占比</th></tr></thead>';
-    const body = document.createElement('tbody');
-    visible.forEach((row) => {
-      const tr = document.createElement('tr');
-      const name = document.createElement('td');
+    const table = TmallUI.table({
+      caption: '商品推广榜',
+      tableClass: 'promotion-board-table',
+      tableControls: true,
+      columns: [
+        { key: 'product', label: '商品', render: (_value, row) => {
       const nameWrap = element('div', 'promotion-board-name');
       const nameCopy = element('div', 'promotion-board-name__copy');
       nameCopy.append(element('strong', '', text(row.title, productId(row) || '未关联商品')), element('span', '', text(productId(row), '无商品 ID')));
       nameWrap.append(productThumbnail(row), nameCopy);
-      name.appendChild(nameWrap);
-      tr.appendChild(name);
-      [money(row.ad_spend), money(row.attributed_payment_amount), row.link_net_sales == null ? '--' : money(row.link_net_sales), row.expense_ratio == null ? '--' : `${(Number(row.expense_ratio) * 100).toFixed(2)}%`, ratio(row.roi), row.paid_share == null ? '--' : `${(Number(row.paid_share) * 100).toFixed(2)}%`].forEach((value) => {
-        const cell = document.createElement('td');
-        cell.className = 'num';
-        cell.textContent = value;
-        tr.appendChild(cell);
-      });
-      body.appendChild(tr);
+          return nameWrap;
+        } },
+        ...[['ad_spend', '推广花费', 'money'], ['attributed_payment_amount', '推广成交', 'money'], ['link_net_sales', '链接净销售额', 'money'], ['expense_ratio', '费比', 'percent'], ['roi', '推广 ROI', 'ratio'], ['paid_share', '付费成交占比', 'percent']].map(([key, label, format]) => ({ key, label, numeric: true, render: (_value, row) => promotionMetrics.format(row, key, format) })),
+      ],
+      rows: visible,
     });
-    table.appendChild(body);
     container.replaceChildren(table);
   }
 
@@ -352,27 +457,20 @@
       container.innerHTML = '<div class="promotion-board-empty">当前范围没有计划推广数据</div>';
       return;
     }
-    const table = document.createElement('table');
-    table.className = 'promotion-board-table';
-    table.dataset.tableControls = 'true';
-    table.innerHTML = '<thead><tr><th>计划 / 渠道</th><th class="num">推广花费</th><th class="num">推广成交</th><th class="num">推广 ROI</th><th class="num">点击率</th></tr></thead>';
-    const body = document.createElement('tbody');
-    visible.forEach((row) => {
-      const tr = document.createElement('tr');
-      const name = document.createElement('td');
+    const table = TmallUI.table({
+      caption: '计划推广榜',
+      tableClass: 'promotion-board-table',
+      tableControls: true,
+      columns: [
+        { key: 'campaign_id', label: '计划 / 渠道', render: (_value, row) => {
       const nameWrap = element('div', 'promotion-plan-name');
       nameWrap.append(element('strong', '', text(row.campaign_id, '未命名计划')), element('span', '', text(row.channel, '未命名渠道')));
-      name.appendChild(nameWrap);
-      tr.appendChild(name);
-      [money(row.ad_spend), money(row.attributed_payment_amount), ratio(row.roi), row.ctr == null ? '--' : `${(Number(row.ctr) * 100).toFixed(2)}%`].forEach((value) => {
-        const cell = document.createElement('td');
-        cell.className = 'num';
-        cell.textContent = value;
-        tr.appendChild(cell);
-      });
-      body.appendChild(tr);
+          return nameWrap;
+        } },
+        ...[['ad_spend', '推广花费', 'money'], ['attributed_payment_amount', '推广成交', 'money'], ['roi', '推广 ROI', 'ratio'], ['ctr', '点击率', 'percent']].map(([key, label, format]) => ({ key, label, numeric: true, render: (_value, row) => promotionMetrics.format(row, key, format) })),
+      ],
+      rows: visible,
     });
-    table.appendChild(body);
     container.replaceChildren(table);
   }
 
@@ -392,9 +490,9 @@
       data: {
         labels: rows.map((row) => row.period || row.date),
         datasets: [
-          { type: 'bar', label: '推广花费', data: rows.map((row) => Number(row.ad_spend || 0)), backgroundColor: getComputedStyle(document.documentElement).getPropertyValue('--chart-warning-fill').trim(), borderRadius: window.DemoCharts?.chartRadius?.() || 4, yAxisID: 'y' },
-          { type: 'bar', label: '推广成交', data: rows.map((row) => Number(row.gmv || row.attributed_payment_amount || 0)), backgroundColor: getComputedStyle(document.documentElement).getPropertyValue('--chart-info-fill').trim(), borderRadius: window.DemoCharts?.chartRadius?.() || 4, yAxisID: 'y' },
-          { type: 'line', label: '推广 ROI', data: rows.map((row) => Number(row.overall_roi || row.roi || 0)), borderColor: getComputedStyle(document.documentElement).getPropertyValue('--success').trim(), tension: .35, pointRadius: window.DemoCharts?.chartPointRadius?.() || 3, borderWidth: window.DemoCharts?.chartLineWidth?.() || 2, yAxisID: 'y1' }
+          { type: 'bar', label: '推广花费', data: rows.map((row) => promotionMetrics.chartValue(row, 'ad_spend')), backgroundColor: getComputedStyle(document.documentElement).getPropertyValue('--chart-warning-fill').trim(), borderRadius: window.DemoCharts?.chartRadius?.() || 4, yAxisID: 'y' },
+          { type: 'bar', label: '推广成交', data: rows.map((row) => promotionMetrics.chartValue(row, 'attributed_payment_amount')), backgroundColor: getComputedStyle(document.documentElement).getPropertyValue('--chart-info-fill').trim(), borderRadius: window.DemoCharts?.chartRadius?.() || 4, yAxisID: 'y' },
+          { type: 'line', label: '推广 ROI', data: rows.map((row) => promotionMetrics.chartValue(row, 'roi')), borderColor: getComputedStyle(document.documentElement).getPropertyValue('--success').trim(), tension: .35, pointRadius: window.DemoCharts?.chartPointRadius?.() || 3, borderWidth: window.DemoCharts?.chartLineWidth?.() || 2, yAxisID: 'y1' }
         ]
       },
       options: {
@@ -480,31 +578,15 @@
   }
 
   function clearTable(message) {
-    const head = $('[data-promotion-head]');
-    const body = $('[data-promotion-body]');
-    head.replaceChildren();
-    body.replaceChildren();
-    const row = body.insertRow();
-    const cell = row.insertCell();
-    cell.textContent = message;
-    cell.colSpan = 6;
-  }
-
-  function addHeaders(labels) {
-    const head = $('[data-promotion-head]');
-    head.replaceChildren();
-    const row = document.createElement('tr');
-    labels.forEach((label, index) => {
-      const th = element('th', index > 0 ? 'num' : '', label);
-      row.appendChild(th);
-    });
-    head.appendChild(row);
-  }
-
-  function addCell(row, value, className) {
-    const cell = element('td', className || '', value);
-    row.appendChild(cell);
-    return cell;
+    const root = $('[data-promotion-table-root]');
+    if (!root) return;
+    root.replaceChildren(promotionTable({
+      caption: '推广数据',
+      tableClass: 'promotion-table',
+      columns: [{ key: 'message', label: '状态' }],
+      rows: [],
+      emptyMessage: message,
+    }));
   }
 
   function activeDefinition(tab = state.activeTab) {
@@ -894,51 +976,42 @@
 
   function renderFieldRows(tab, rows) {
     const columns = selectedColumns(tab);
-    addHeaders(columns.map((column) => column.label));
     $('[data-promotion-visible-field-count]').textContent = `${columns.length} 个字段`;
-    const body = $('[data-promotion-body]');
-    body.replaceChildren();
-    if (!rows.length) {
-      const tr = document.createElement('tr');
-      const cell = tr.insertCell();
-      cell.colSpan = Math.max(columns.length, 1);
-      const empty = element('div', 'ui-empty-state');
-      empty.append(element('strong', '', activeDefinition(tab).empty), element('span', '', '可调整日期范围，或先导入对应月度报表。'));
-      cell.appendChild(empty);
-      body.appendChild(tr);
-      return;
-    }
-    rows.forEach((row) => {
-      const tr = document.createElement('tr');
-      columns.forEach((column) => {
-        if (column.key === 'product') {
-          const cell = document.createElement('td');
-          const identity = element('div', 'product-identity promotion-product-identity');
-          const title = element('div', 'product-title');
-          const nameText = productTitle(row);
-          const displayName = nameText.length > 10 ? `${nameText.slice(0, 10)}…` : nameText;
-          const nameNode = element('strong', '', displayName);
-          nameNode.title = nameText;
-          title.append(nameNode, element('span', '', productId(row) || '无商品 ID'));
-          identity.append(productThumbnail(row), title);
-          cell.appendChild(identity);
-          tr.appendChild(cell);
-          return;
-        }
-        if (column.key === 'action') {
-          const action = document.createElement('td');
-          const button = element('button', 'ui-button ui-button--ghost', '明细');
-          button.type = 'button';
-          button.dataset.promotionDrill = productId(row);
-          button.addEventListener('click', () => openPromotionDetail(row, button));
-          action.appendChild(button);
-          tr.appendChild(action);
-          return;
-        }
-        addCell(tr, formatField(fieldValue(row, column, tab), column.format), column.format ? 'num' : '');
-      });
-      body.appendChild(tr);
-    });
+    const root = $('[data-promotion-table-root]');
+    if (!root) return;
+    root.replaceChildren(promotionTable({
+      caption: activeDefinition(tab).title,
+      tableClass: 'promotion-table',
+      columns: columns.map((column) => ({
+        key: column.key,
+        label: column.label,
+        numeric: Boolean(column.format),
+        className: column.format ? 'promotion-metric-cell' : '',
+        render: (_value, row) => {
+          if (column.key === 'product') return TmallUI.productIdentity({
+            title: productTitle(row), id: productId(row), imageUrl: row.image_url,
+            className: 'promotion-product-identity',
+          });
+          if (column.key === 'action') {
+            const button = element('button', 'ui-button ui-button--ghost', '明细');
+            button.type = 'button';
+            button.dataset.promotionDrill = productId(row);
+            button.addEventListener('click', () => openPromotionDetail(row, button));
+            return button;
+          }
+          const value = column.format
+            ? promotionMetrics.compact(row, column.key, column.format)
+            : formatField(fieldValue(row, column, tab), column.format);
+          const title = column.format ? promotionMetrics.compactTitle(row, column.key, column.format) : '';
+          if (!title) return value;
+          const metricNode = element('span', `promotion-metric-cell promotion-metric-cell--${row.metric_availability?.[column.key] || 'partial'}`, value);
+          metricNode.title = title;
+          return metricNode;
+        },
+      })),
+      rows,
+      emptyMessage: `${activeDefinition(tab).empty} 可调整日期范围，或先导入对应月度报表。`,
+    }));
   }
 
   function renderProducts() {
@@ -951,16 +1024,15 @@
   }
 
   function renderUnavailable() {
-    addHeaders(['可用性说明']);
-    const body = $('[data-promotion-body]');
-    body.replaceChildren();
-    const row = document.createElement('tr');
-    const cell = row.insertCell();
-    cell.colSpan = 1;
-    const empty = element('div', 'ui-empty-state');
-    empty.append(element('strong', '', '当前数据库未提供计划、创意、地域或内容归因'), element('span', '', '页面不会用商品或渠道数据伪造这些层级。导入对应明细后再开放相关分析。'));
-    cell.appendChild(empty);
-    body.appendChild(row);
+    const root = $('[data-promotion-table-root]');
+    if (!root) return;
+    root.replaceChildren(promotionTable({
+      caption: '未提供归因',
+      tableClass: 'promotion-table',
+      columns: [{ key: 'availability', label: '可用性说明' }],
+      rows: [],
+      emptyMessage: '当前数据库未提供计划、创意、地域或内容归因。页面不会用商品或渠道数据伪造这些层级。导入对应明细后再开放相关分析。',
+    }));
   }
 
   function renderActiveTable() {
@@ -1000,13 +1072,35 @@
     $('[data-promotion-table-title]').textContent = `${labels[level]}下钻`;
     $('[data-promotion-table-hint]').textContent = '只展示已导入的同粒度推广事实；推广 ROI、点击率均按汇总后计算。';
     $('[data-promotion-grain]').textContent = $('[data-promotion-table-hint]').textContent;
-    addHeaders([labels[level], '推广花费', '推广成交', '直接付费成交', '间接付费成交', '付费成交占比', '推广 ROI', '点击率', '商品支付转化率', '平均点击花费']);
     const drillHint = '\u5df2\u5bfc\u5165\u4e8b\u5b9e\u6c47\u603b\uff0c\u63a8\u5e7f ROI / \u70b9\u51fb\u7387 \u6309\u6c47\u603b\u540e\u8ba1\u7b97\u3002';
     $('[data-promotion-table-hint]').textContent = drillHint;
     $('[data-promotion-grain]').textContent = drillHint;
-    const body = $('[data-promotion-body]'); body.replaceChildren();
-    if (!rows.length) return clearTable('该筛选范围未导入对应粒度推广数据');
-    rows.forEach((row) => { const tr = document.createElement('tr'); const identifier = level === 'channel' ? row.channel : level === 'campaign' ? `${row.channel} / ${row.campaign_id}` : level === 'unit' ? `${row.channel} / ${row.campaign_id} / ${row.unit_id}` : `${row.channel} / ${row.product_id}`; const values = [identifier, money(row.ad_spend), money(row.attributed_payment_amount), money(row.direct_payment_amount), money(row.indirect_payment_amount), row.paid_share == null ? '--' : `${(row.paid_share * 100).toFixed(2)}%`, ratio(row.roi), row.ctr == null ? '--' : `${(row.ctr * 100).toFixed(2)}%`, row.cvr == null ? '--' : `${(row.cvr * 100).toFixed(2)}%`, row.cpc == null ? '--' : money(row.cpc)]; values.forEach((value, index) => { const cell = addCell(tr, value, index ? 'num' : ''); if (level === 'product' && index === 0) { cell.tabIndex = 0; cell.role = 'button'; cell.title = '打开推广明细'; cell.addEventListener('click', () => openPromotionDetail(row, cell)); cell.addEventListener('keydown', (event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); openPromotionDetail(row, cell); } }); }}); body.appendChild(tr); });
+    const root = $('[data-promotion-table-root]');
+    if (!root) return;
+    const metricColumns = [
+      ['ad_spend', '推广花费', 'money'], ['attributed_payment_amount', '推广成交', 'money'],
+      ['direct_payment_amount', '直接付费成交', 'money'], ['indirect_payment_amount', '间接付费成交', 'money'],
+      ['paid_share', '付费成交占比', 'percent'], ['roi', '推广 ROI', 'ratio'],
+      ['ctr', '点击率', 'percent'], ['cvr', '商品支付转化率', 'percent'], ['cpc', '平均点击花费', 'money'],
+    ];
+    root.replaceChildren(promotionTable({
+      caption: `${labels[level]}下钻`,
+      tableClass: 'promotion-table promotion-drill-table',
+      columns: [
+        { key: 'identifier', label: labels[level], render: (_value, row) => {
+          const identifier = level === 'channel' ? row.channel : level === 'campaign' ? `${row.channel} / ${row.campaign_id}` : level === 'unit' ? `${row.channel} / ${row.campaign_id} / ${row.unit_id}` : `${row.channel} / ${row.product_id}`;
+          if (level !== 'product') return identifier;
+          const button = element('button', 'promotion-drill-link', identifier);
+          button.type = 'button';
+          button.title = '打开推广明细';
+          button.addEventListener('click', () => openPromotionDetail(row, button));
+          return button;
+        } },
+        ...metricColumns.map(([key, label, format]) => ({ key, label, numeric: true, render: (_value, row) => promotionMetrics.format(row, key, format) })),
+      ],
+      rows,
+      emptyMessage: '该筛选范围未导入对应粒度推广数据',
+    }));
   }
   async function loadDrilldown() {
     const level = $('[data-promotion-drill-level]').value; const range = window.TmallDateRange?.getState?.() || {};
@@ -1108,14 +1202,14 @@
     summary.appendChild(summaryHeader);
     const metrics = element('div', 'detail-metrics promotion-detail-metrics');
     metrics.append(
-      metric('推广花费', money(product.ad_spend)),
-      metric('推广成交', money(product.attributed_payment_amount)),
-      metric('链接净销售额', product.link_net_sales == null ? '--' : money(product.link_net_sales)),
-      metric('费比', product.expense_ratio == null ? '--' : `${(Number(product.expense_ratio) * 100).toFixed(2)}%`),
-      metric('推广 ROI', ratio(product.roi)),
-      metric('点击率 / 商品支付转化率', `${product.ctr == null ? '--' : `${(product.ctr * 100).toFixed(2)}%`} / ${product.cvr == null ? '--' : `${(product.cvr * 100).toFixed(2)}%`}`),
-      metric('直接付费成交', money(product.direct_payment_amount)),
-      metric('间接付费成交', money(product.indirect_payment_amount)),
+      metric('推广花费', promotionMetrics.format(product, 'ad_spend', 'money')),
+      metric('推广成交', promotionMetrics.format(product, 'attributed_payment_amount', 'money')),
+      metric('链接净销售额', promotionMetrics.format(product, 'link_net_sales', 'money')),
+      metric('费比', promotionMetrics.format(product, 'expense_ratio', 'percent')),
+      metric('推广 ROI', promotionMetrics.format(product, 'roi', 'ratio')),
+      metric('点击率 / 商品支付转化率', `${promotionMetrics.format(product, 'ctr', 'percent')} / ${promotionMetrics.format(product, 'cvr', 'percent')}`),
+      metric('直接付费成交', promotionMetrics.format(product, 'direct_payment_amount', 'money')),
+      metric('间接付费成交', promotionMetrics.format(product, 'indirect_payment_amount', 'money')),
     );
     summary.appendChild(metrics);
 
@@ -1124,7 +1218,7 @@
     const attributionList = element('div', 'status-list');
     [
       ['商品 ID', productId(product) || '未关联'],
-      ['付费成交占比', product.paid_share == null ? '--' : `${(Number(product.paid_share) * 100).toFixed(2)}%`],
+      ['付费成交占比', promotionMetrics.format(product, 'paid_share', 'percent')],
       ['关联投放单元', `${units.length} 个`],
     ].forEach(([label, value]) => {
       const item = element('div', 'status-list__item');
@@ -1146,27 +1240,23 @@
     if (!units.length) {
       wrap.appendChild(element('div', 'ui-empty-state', '当前商品没有可用的计划 / 单元明细。'));
     } else {
-      const table = document.createElement('table');
-      table.className = 'promotion-detail-table';
-      table.dataset.tableControls = 'true';
-      table.innerHTML = '<thead><tr><th>计划 / 单元</th><th class="num">推广花费</th><th class="num">推广成交</th><th class="num">推广 ROI</th><th class="num">点击率</th><th class="num">商品支付转化率</th><th class="num">平均点击花费</th></tr></thead>';
-      const tableBody = document.createElement('tbody');
-      units.forEach((unit) => {
-        const row = document.createElement('tr');
-        const identity = element('td');
+      const table = TmallUI.table({
+        caption: '计划 / 单元明细',
+        tableClass: 'promotion-detail-table',
+        tableControls: true,
+        columns: [
+          { key: 'campaign_id', label: '计划 / 单元', render: (_value, unit) => {
         const identityWrap = element('div', 'promotion-detail-table__name');
         identityWrap.append(
           element('strong', '', `${text(unit.campaign_id, '未命名计划')} / ${text(unit.unit_id, '未命名单元')}`),
           element('span', '', text(unit.channel, '未命名渠道')),
         );
-        identity.appendChild(identityWrap);
-        row.appendChild(identity);
-        [money(unit.ad_spend), money(unit.attributed_payment_amount), ratio(unit.roi), unit.ctr == null ? '--' : `${(unit.ctr * 100).toFixed(2)}%`, unit.cvr == null ? '--' : `${(unit.cvr * 100).toFixed(2)}%`, unit.cpc == null ? '--' : money(unit.cpc)].forEach((value) => {
-          row.appendChild(element('td', 'num', value));
-        });
-        tableBody.appendChild(row);
+            return identityWrap;
+          } },
+          ...[['ad_spend', '推广花费', 'money'], ['attributed_payment_amount', '推广成交', 'money'], ['roi', '推广 ROI', 'ratio'], ['ctr', '点击率', 'percent'], ['cvr', '商品支付转化率', 'percent'], ['cpc', '平均点击花费', 'money']].map(([key, label, format]) => ({ key, label, numeric: true, render: (_value, unit) => promotionMetrics.format(unit, key, format) })),
+        ],
+        rows: units,
       });
-      table.appendChild(tableBody);
       wrap.appendChild(table);
     }
     detail.appendChild(wrap);

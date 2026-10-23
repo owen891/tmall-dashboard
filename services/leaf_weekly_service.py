@@ -20,7 +20,7 @@ from __future__ import annotations
 from datetime import date, timedelta
 from typing import Any
 
-from db import get_db
+from db import get_db, get_shop_id
 from services.category_mode_service import SOCK_LABEL, mode_to_label
 
 
@@ -48,9 +48,13 @@ def _pct(current: float | None, previous: float | None) -> dict[str, float | Non
     return {'amount': amount, 'rate': amount / previous if previous else None}
 
 
-def _anchor_weeks(conn) -> dict[str, dict[str, Any]]:
+def _anchor_weeks(conn, shop_id: str) -> dict[str, dict[str, Any]]:
     """以数据里最近一个周日所在周为 W0，向前推两周，并取去年同期。"""
-    row = conn.execute('SELECT MAX(date) AS latest FROM daily_data').fetchone()
+    # 「最新日期」必须限定在当前店铺内，否则另一家店铺的最新数据会把
+    # 本店的周锚点整体平移，三周看板全部对错周期。
+    row = conn.execute(
+        'SELECT MAX(date) AS latest FROM daily_data WHERE shop_id = ?', (shop_id,)
+    ).fetchone()
     latest = date.fromisoformat(row['latest']) if row and row['latest'] else date.today()
     # 本周一 = 最近周日的前 6 天。latest 是周一 9.21 时，最近周日 = 9.20。
     this_sunday = latest - timedelta(days=latest.weekday() + 1) if latest.weekday() != 6 else latest
@@ -72,10 +76,10 @@ def _anchor_weeks(conn) -> dict[str, dict[str, Any]]:
     return weeks
 
 
-def _aggregate_period(conn, start: str, end: str, label: str | None = None) -> dict[str, dict[str, Any]]:
+def _aggregate_period(conn, start: str, end: str, shop_id: str, label: str | None = None) -> dict[str, dict[str, Any]]:
     """聚合一个周期内所有商品，按叶子类目分组。"""
     extra = ""
-    params = [start, end]
+    params = [shop_id, start, end]
     if label:
         extra = " AND (p.shop_label = ? OR instr(',' || p.shop_label || ',', ',' || ? || ',') > 0)"
         params.extend([label, label])
@@ -92,7 +96,7 @@ def _aggregate_period(conn, start: str, end: str, label: str | None = None) -> d
                SUM(COALESCE(d.operating_profit, 0))  AS operating_profit
         FROM daily_data d
         LEFT JOIN products p ON p.product_id = d.product_id
-        WHERE d.date >= ? AND d.date <= ?{extra}
+        WHERE d.shop_id = ? AND d.date >= ? AND d.date <= ?{extra}
         GROUP BY p.category, d.product_id
     """
     groups: dict[str, dict[str, Any]] = {}
@@ -125,20 +129,21 @@ def _on_sale_links_by_leaf(conn) -> dict[str, int]:
     return totals
 
 
-def summarize_week(category_mode: str | None = None) -> dict[str, Any]:
+def summarize_week(category_mode: str | None = None, shop_id: str | None = None) -> dict[str, Any]:
     label = mode_to_label(category_mode)
+    shop_id = str(shop_id or get_shop_id())
     with get_db() as conn:
-        weeks = _anchor_weeks(conn)
+        weeks = _anchor_weeks(conn, shop_id)
         # 实际覆盖天数
         for key, w in weeks.items():
             row = conn.execute(
                 'SELECT COUNT(DISTINCT date) AS days, MIN(date) AS d0, MAX(date) AS d1 '
-                'FROM daily_data WHERE date >= ? AND date <= ?',
-                [w['start'], w['end']]).fetchone()
+                'FROM daily_data WHERE shop_id = ? AND date >= ? AND date <= ?',
+                [shop_id, w['start'], w['end']]).fetchone()
             w['covered_days'] = row['days'] or 0
             w['complete'] = w['covered_days'] == 7
 
-        period_data = {key: _aggregate_period(conn, w['start'], w['end'], label)
+        period_data = {key: _aggregate_period(conn, w['start'], w['end'], shop_id, label)
                        for key, w in weeks.items()}
         on_sale_links = _on_sale_links_by_leaf(conn)
 

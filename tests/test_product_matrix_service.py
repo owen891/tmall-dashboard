@@ -100,6 +100,34 @@ class ApplyTierWritebackTests(unittest.TestCase):
         result = apply_tier_writeback(self._make_conn({}), {'available': False})
         self.assertEqual(result.get('updated'), 0)
 
+    def test_tier_with_blank_source_is_locked(self):
+        """有档位但来源为空 → 锁定，不许覆盖。
+
+        2026-10-22 修正前这里是放行的（`if current_source and ...`），
+        而 scripts/sync_five_dim_tier.is_locked 判为锁定；同一个空值
+        两个算法一边保护一边覆盖，谁后跑谁说了算。现在两处统一走
+        services.tier_source.is_tier_locked，空来源一律视为人工赋值。
+        """
+        rows = {'F': {'tier': '利润款', 'tier_source': ''}}
+        conn = self._make_conn(rows)
+        result = apply_tier_writeback(conn, {
+            'available': True,
+            'items': [{'product_id': 'F', 'segment': '引流款'}],
+        })
+        self.assertEqual(result['updated'], 0)
+        self.assertEqual(result['skipped_locked'], 1)
+        self.assertEqual(conn.updates, [])   # 一次 UPDATE 都不能发出去
+
+    def test_blank_tier_still_writable(self):
+        """档位为空 → 可写（算法照样填新品的空档）。"""
+        conn = self._make_conn({'G': {'tier': '', 'tier_source': ''}})
+        result = apply_tier_writeback(conn, {
+            'available': True,
+            'items': [{'product_id': 'G', 'segment': '动销款'}],
+        })
+        self.assertEqual(result['updated'], 1)
+        self.assertEqual(result['skipped_locked'], 0)
+
 
 if __name__ == '__main__':
     unittest.main()

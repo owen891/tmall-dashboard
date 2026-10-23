@@ -10,7 +10,7 @@ import calendar
 import logging
 from datetime import date, datetime, timedelta
 
-from db import get_db
+from db import get_db, get_shop_id
 from services.category_mode_service import mode_to_label
 from services import category_analysis_service as category_service
 # 市场分级算法（8大归类 / 词根需求 / 蓝海机会 / 趋势节点 / 竞店爆品）已投产于市场排行页，
@@ -27,19 +27,29 @@ _log = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 
-def _daily_scope(category_label):
+def _daily_scope(category_label, shop_id=None):
     """返回 (from_sql, where_sql, extra_params)。
 
     品类过滤沿用全站口径：命中 products.shop_label，支持多标签值（如
-    '标品袜子,平销商品'）按 token 匹配。category_label 为空表示不限品类。
+    '标签甲,标签乙'）按 token 匹配。category_label 为空表示不限品类。
+
+    daily_data 是带 shop_id 的多店表：缺了店铺条件，复盘页会把其他店铺的
+    经营事实聚合进当前请求（跨店泄漏 + 口径污染）。店铺条件固定排在日期之后，
+    与调用方 `(start, end, *extra)` 的参数顺序一致，不要调整顺序。
     """
+    scope = str(shop_id or get_shop_id())
     if category_label:
         return (
             'FROM daily_data d JOIN products p ON p.product_id = d.product_id',
-            "(d.date BETWEEN ? AND ?) AND (p.shop_label = ? OR instr(',' || p.shop_label || ',', ',' || ? || ',') > 0)",
-            [category_label, category_label],
+            "(d.date BETWEEN ? AND ?) AND d.shop_id = ?"
+            " AND (p.shop_label = ? OR instr(',' || p.shop_label || ',', ',' || ? || ',') > 0)",
+            [scope, category_label, category_label],
         )
-    return 'FROM daily_data d', '(d.date BETWEEN ? AND ?)', []
+    return 'FROM daily_data d', '(d.date BETWEEN ? AND ?) AND d.shop_id = ?', [scope]
+
+# 源端可能整列缺失的「加总」列：SUM 结果为 NULL 表示源端没提供该字段，
+# 与「真的是 0」是两件事。这两者混在一起，缺失就会被渲染成 0（编造数据）。
+NULLABLE_SUM_KEYS = ('cart_users', 'new_buyers', 'search_visitors', 'search_buyers')
 
 def _empty_totals():
     return {
@@ -49,6 +59,8 @@ def _empty_totals():
         'product_count': 0, 'day_count': 0,
         'first_date': None, 'last_date': None,
         'cart_rate': None, 'fav_rate': None, 'bounce_rate': None,
+        'cart_users': None, 'new_buyers': None,
+        'search_visitors': None, 'search_buyers': None,
     }
 
 def _monthly_fallback_totals(conn, start, end, category_label=None):
@@ -56,7 +68,13 @@ def _monthly_fallback_totals(conn, start, end, category_label=None):
 
     品类过滤沿用 _daily_scope 的 shop_label 口径；比率列（转化率/加购率）取月表
     现成列。profit=0 是月表未回填的哨兵值，按缺失处理（None），不当作真 0。
+
+    monthly_data 是没有 shop_id 的单店旧表（db_migrations.py），只有 default
+    部署能保证它属于当前店铺；非 default scope 一律不回退，宁缺勿串店。
     """
+    from db import legacy_shop_id
+    if str(get_shop_id()) not in ('default', legacy_shop_id()):
+        return None
     month = start[:7]
     if not end.startswith(month):
         return None
@@ -119,6 +137,18 @@ def _derive(totals):
     buyers = totals['buyers']
     ad_spend = totals['ad_spend']
     paid_ipv = totals.get('paid_ipv') or 0.0
+    cart_users = totals.get('cart_users')
+    new_buyers = totals.get('new_buyers')
+    search_visitors = totals.get('search_visitors')
+    search_buyers = totals.get('search_buyers')
+    # 加购率 = 加购人数 ÷ 访客数（先汇总再算比率）。此前这里直接取
+    # daily_data.cart_rate 的逐行平均，会把小流量商品与大盘等权，且与
+    # 「本期汇总」的 cart_users/visitors 口径打架 —— 同一周期两个加购率。
+    # 源端没有 cart_users 时（如月度兜底）才退回逐行平均。
+    if cart_users is not None and visitors:
+        cart_rate = cart_users / visitors
+    else:
+        cart_rate = totals.get('cart_rate')
     return {
         'gsv': gsv,
         'net_sales': net_sales,
@@ -136,8 +166,16 @@ def _derive(totals):
         'net_expense_ratio': (ad_spend / net_sales) if net_sales else None,
         'roi': (gsv / ad_spend) if ad_spend else None,
         'aov': (gsv / buyers) if buyers else None,
+        'uv_value': (gsv / visitors) if visitors else None,
         'refund_ratio': (totals['refund_amount'] / gsv) if gsv else None,
-        'cart_rate': totals.get('cart_rate'),
+        'cart_rate': cart_rate,
+        'cart_users': cart_users,
+        'new_buyers': new_buyers,
+        # 新客占比 = 新买家数 ÷ 成交买家数；新买家数缺失时派生比率必然缺失。
+        'new_buyer_share': (new_buyers / buyers) if (new_buyers is not None and buyers) else None,
+        'search_visitors': search_visitors,
+        'search_buyers': search_buyers,
+        'search_conversion': (search_buyers / search_visitors) if (search_buyers is not None and search_visitors) else None,
         'fav_rate': totals.get('fav_rate'),
         'bounce_rate': totals.get('bounce_rate'),
         # 单次付费访客成本 = 推广花费 ÷ 付费访客数（paid_ipv）。
@@ -235,7 +273,12 @@ def _totals_for_range(conn, start, end, category_label=None, allow_monthly_fallb
             MAX(d.date) AS last_date,
             AVG(NULLIF(d.cart_rate, 0)) AS cart_rate,
             AVG(NULLIF(d.fav_rate, 0)) AS fav_rate,
-            AVG(NULLIF(d.bounce_rate, 0)) AS bounce_rate
+            AVG(NULLIF(d.bounce_rate, 0)) AS bounce_rate,
+            -- 下面四列不加 COALESCE：SUM 为 NULL 表示源端整列缺失，必须与真 0 区分。
+            SUM(d.cart_users) AS cart_users,
+            SUM(d.new_payment_buyers) AS new_buyers,
+            SUM(d.search_ipv) AS search_visitors,
+            SUM(d.search_payment_buyers) AS search_buyers
         {from_sql}
         WHERE {where_sql}
         ''',
@@ -245,6 +288,9 @@ def _totals_for_range(conn, start, end, category_label=None, allow_monthly_fallb
         return _empty_totals()
     totals = {key: row[key] for key in row.keys()}
     for key, value in totals.items():
+        if value is None and key in NULLABLE_SUM_KEYS:
+            # 源端没这一列（如 BI 日快照不含新买家数）→ 保持 None，不补 0。
+            continue
         if value is None:
             totals[key] = None if key.endswith('_rate') or key.endswith('_date') else 0.0
     totals['gsv'] = float(totals.get('gsv') or 0.0)
@@ -281,12 +327,17 @@ def _promotion_paid_cpc(conn, start, end, category_label=None):
         return None
     return None
 
-def _breakdown_block(conn, period, category_label=None):
+def _breakdown_block(conn, period, category_label=None, baselines=None):
     """返回周期内更细粒度的指标行。
 
     月复盘拆成月内周（与 _month_bounded_weeks 同口径：W1 从 1 号到第一个周日），
     周复盘拆成逐日，日复盘只有一行。每行独立聚合并推导比率，
     缺天不补 0 行，只返回有数据的天/周。
+
+    baselines 传 {'mom': {'start','end'}, 'yoy': {'start','end'}} 时，每行按
+    「相对本期首日的偏移天数」映射到基线的同位置区间，产出 row['delta']
+    （逐指标环比/同比）。用偏移映射而不是固定加减 7 天，是为了让月内分周
+    （W1 天数不固定）也能对上正确的基线周。
     """
     if period['type'] == 'month':
         year, month = int(period['key'][:4]), int(period['key'][5:7])
@@ -310,6 +361,15 @@ def _breakdown_block(conn, period, category_label=None):
         spans = [{'label': period['key'], 'start': period['start'], 'end': period['end']}]
         grain = 'day'
 
+    period_start = date.fromisoformat(period['start'])
+    baseline_spans = {}
+    for slot in ('mom', 'yoy'):
+        baseline = (baselines or {}).get(slot) or {}
+        if not baseline.get('start') or not baseline.get('end'):
+            continue
+        baseline_spans[slot] = (date.fromisoformat(baseline['start']),
+                                date.fromisoformat(baseline['end']))
+
     rows = []
     missing_labels = []
     for span in spans:
@@ -323,14 +383,42 @@ def _breakdown_block(conn, period, category_label=None):
         derived = _derive(totals)
         if derived.get('paid_cpc') is None:
             derived['paid_cpc'] = _promotion_paid_cpc(conn, span['start'], span['end'], category_label)
-        rows.append({
+        row = {
             'label': span['label'],
             'start': span['start'],
             'end': span['end'],
             'day_count': totals['day_count'],
             'metrics': {key: (round(derived[key], 4) if isinstance(derived.get(key), float) else derived.get(key))
                         for key in BREAKDOWN_METRIC_KEYS},
-        })
+        }
+        # 逐行同比/环比：同偏移位置的基线区间。基线缺该段数据时不输出变化率
+        # （该天/该周无可比基数），由前端显示 --，不臆造。
+        if baseline_spans:
+            offset = (date.fromisoformat(span['start']) - period_start).days
+            span_days = (date.fromisoformat(span['end']) - date.fromisoformat(span['start'])).days + 1
+            delta = {}
+            for slot, (base_start, base_end) in baseline_spans.items():
+                target_start = base_start + timedelta(days=offset)
+                target_end = target_start + timedelta(days=span_days - 1)
+                if target_end > base_end:
+                    delta[slot] = {key: {'comparable': False, 'reason': 'baseline_out_of_range'}
+                                   for key in BREAKDOWN_METRIC_KEYS}
+                    continue
+                base_totals = _totals_for_range(
+                    conn, target_start.isoformat(), target_end.isoformat(), category_label,
+                    allow_monthly_fallback=False,
+                )
+                if not base_totals['day_count']:
+                    delta[slot] = {key: {'comparable': False, 'reason': 'baseline_no_data'}
+                                   for key in BREAKDOWN_METRIC_KEYS}
+                    continue
+                base_derived = _derive(base_totals)
+                if base_derived.get('paid_cpc') is None:
+                    base_derived['paid_cpc'] = _promotion_paid_cpc(
+                        conn, target_start.isoformat(), target_end.isoformat(), category_label)
+                delta[slot] = _metric_delta_map(derived, base_derived)
+            row['delta'] = delta
+        rows.append(row)
     # 覆盖说明随行返回：缺天是跳过不补 0（正确），但不告知会让读者以为该周期
     # 本就只有这几天。与「流量来源拆解」的覆盖提示保持同一口径。
     return {
@@ -340,6 +428,28 @@ def _breakdown_block(conn, period, category_label=None):
         'observed_count': len(rows),
         'missing_labels': missing_labels,
     }
+
+def _metric_delta_map(current, baseline):
+    """逐指标变化率（breakdown 行用）。
+
+    与 _summary_base_delta 同一套规则：基线为 0 或任一值缺失时不输出变化率，
+    只标原因，避免把「无基数」渲染成 -100% 这类伪事实。
+    """
+    delta = {}
+    for key in BREAKDOWN_METRIC_KEYS:
+        value = (current or {}).get(key)
+        base_value = (baseline or {}).get(key)
+        if value is None or base_value is None:
+            delta[key] = {'comparable': False, 'reason': 'baseline_no_data'}
+        elif not base_value:
+            delta[key] = {'comparable': True, 'abs': round(float(value) - float(base_value), 4)}
+        else:
+            delta[key] = {
+                'comparable': True,
+                'change': round((float(value) - float(base_value)) / abs(float(base_value)) * 100, 1),
+                'abs': round(float(value) - float(base_value), 4),
+            }
+    return delta
 
 METRIC_DEFS = [
     ('gsv', '销售额（支付金额）', 'money', False),
@@ -358,8 +468,9 @@ METRIC_DEFS = [
 ]
 
 BREAKDOWN_METRIC_KEYS = (
-    'gsv', 'net_sales', 'profit', 'visitors', 'conversion', 'aov',
-    'cart_rate', 'ad_spend', 'ad_ratio', 'roi', 'paid_cpc',
+    'gsv', 'net_sales', 'profit', 'visitors', 'buyers', 'conversion', 'aov',
+    'cart_users', 'cart_rate', 'new_buyers', 'new_buyer_share',
+    'uv_value', 'ad_spend', 'ad_ratio', 'roi', 'paid_cpc',
 )
 
 # 本期汇总「基础数据」列（XMind 品类汇总首表）。顺序即展示顺序。
@@ -390,20 +501,12 @@ SUMMARY_BASE_COLUMNS = (
 )
 
 
-def _summary_block(conn, period, channel_totals=None, category_label=None):
-    """本期汇总（XMind「基础数据 / 广告汇总 / 流量汇总」）。
+def _summary_base(conn, start, end, category_label=None):
+    """本期汇总「基础数据」单区间聚合，返回 (base_dict, sample_days)。
 
-    回答「本期整体什么水平」——把核心基数一次列全，放在板块数据最前面，
-    读者先看汇总再看拆解，不必自己从分日表心算合计。
-
-    数据诚实性：
-    - 缺失字段保持 None（前端显示 --），绝不补 0；同时回传 base_missing 让
-      前端能解释哪几列没数、为什么。
-    - 比率由 SUM 后的分子/分母现算（退款率=退款/成交、UV价值=成交/访客、
-      搜索转化率=搜索成交买家/搜索访客…），与逐日聚合口径一致。
-
-    广告/流量按渠道汇总复用调用方已算好的 channel_totals（同一份
-    promotion 事实，避免两处各查一遍 → 未来不一致）。
+    抽出来是为了让本期 / 环比期 / 同比期共用同一段 SQL —— 三处各写一遍，
+    迟早会有一处忘了改，同比环比就和本期不是同一口径了。
+    比率一律由 SUM 后的分子/分母现算，不逐行 AVG。
     """
     from_sql, where_sql, extra = _daily_scope(category_label)
     row = conn.execute(
@@ -421,10 +524,10 @@ def _summary_block(conn, period, channel_totals=None, category_label=None):
                 SUM(d.search_payment_buyers) AS search_buyers,
                 COUNT(DISTINCT d.date) AS sample_days
             {from_sql} WHERE {where_sql}''',
-        (period['start'], period['end'], *extra),
+        (start, end, *extra),
     ).fetchone()
     if not row or not row['sample_days']:
-        return None
+        return None, 0
 
     def div(numerator, denominator):
         try:
@@ -458,6 +561,79 @@ def _summary_block(conn, period, channel_totals=None, category_label=None):
         'ad_spend': ad_spend,
         'ad_ratio': div(ad_spend, gsv),
     }
+    return base, int(row['sample_days'] or 0)
+
+
+def _summary_base_delta(current_base, baseline_base, comparable):
+    """逐列产出同比/环比变化率；基线不可比或缺值时不输出（不臆造百分比）。"""
+    delta = {}
+    for key, _label, _fmt in SUMMARY_BASE_COLUMNS:
+        value = (current_base or {}).get(key)
+        base_value = (baseline_base or {}).get(key)
+        item = {'comparable': bool(comparable)}
+        if not comparable:
+            item['reason'] = 'baseline_grain_mismatch'
+        elif value is None or base_value is None:
+            item['reason'] = 'baseline_no_data'
+        elif not base_value:
+            # 基期为 0（如整期无退款）时变化率无定义，只给绝对值差。
+            item['abs'] = round(float(value) - float(base_value), 4)
+        else:
+            item['change'] = round((float(value) - float(base_value)) / abs(float(base_value)) * 100, 1)
+            item['abs'] = round(float(value) - float(base_value), 4)
+        delta[key] = item
+    return delta
+
+
+def _summary_block(conn, period, channel_totals=None, category_label=None, baselines=None):
+    """本期汇总（XMind「基础数据 / 广告汇总 / 流量汇总」）。
+
+    回答「本期整体什么水平」——把核心基数一次列全，放在板块数据最前面，
+    读者先看汇总再看拆解，不必自己从分日表心算合计。
+
+    数据诚实性：
+    - 缺失字段保持 None（前端显示 --），绝不补 0；同时回传 base_missing 让
+      前端能解释哪几列没数、为什么。
+    - 比率由 SUM 后的分子/分母现算（退款率=退款/成交、UV价值=成交/访客、
+      搜索转化率=搜索成交买家/搜索访客…），与逐日聚合口径一致。
+
+    广告/流量按渠道汇总复用调用方已算好的 channel_totals（同一份
+    promotion 事实，避免两处各查一遍 → 未来不一致）。
+
+    baselines 传 {'mom': {'start','end','label'}, 'yoy': {...}} 时，额外回传
+    base_prev / base_yoy 与 base_delta（逐列环比/同比），让汇总表能直接给出
+    「比上期 / 比去年同期」。区间由调用方按 resolve_compare 的结果给，
+    这里不做周期解析（避免两处各算一套区间而漂移）。
+    基线在该口径下没有日度数据（sample_days=0）时只标 comparable=False，
+    不给极端百分比 —— 汇总层只查 daily_data，不回退月度表，量纲天然一致。
+    """
+    base, sample_days = _summary_base(conn, period['start'], period['end'], category_label)
+    if base is None:
+        return None
+
+    base_prev = base_yoy = None
+    base_delta = {'mom': {}, 'yoy': {}}
+    comparability = {'mom': None, 'yoy': None}
+    for slot, base_key in (('mom', 'base_prev'), ('yoy', 'base_yoy')):
+        baseline = (baselines or {}).get(slot) or {}
+        start, end = baseline.get('start'), baseline.get('end')
+        if not start or not end:
+            continue
+        baseline_base, baseline_days = _summary_base(conn, start, end, category_label)
+        comparable = bool(baseline_days)
+        if base_key == 'base_prev':
+            base_prev = baseline_base
+        else:
+            base_yoy = baseline_base
+        comparability[slot] = {
+            'comparable': comparable,
+            'label': baseline.get('label'),
+            'start': start,
+            'end': end,
+            'sample_days': baseline_days,
+        }
+        base_delta[slot] = _summary_base_delta(base, baseline_base, comparable)
+
     # 某列的「可用性」按原始分子判断：分子整列为 NULL（如 BI 快照不提供
     # 新买家数）时，派生比率必然也是 None，不该只报比率缺失而漏掉源列。
     missing = [key for key, _label, _fmt in SUMMARY_BASE_COLUMNS if base.get(key) is None]
@@ -468,13 +644,20 @@ def _summary_block(conn, period, channel_totals=None, category_label=None):
     # 摆出来，读者会把渠道行加总当成总花费，对不上账却无从解释。
     channel_spend = sum(float(group.get('ad_spend') or 0) for group in groups)
     unattributed = None
-    if ad_spend and groups:
-        residual = float(ad_spend) - channel_spend
-        if residual > max(1.0, 0.005 * float(ad_spend)):
+    if base['ad_spend'] and groups:
+        residual = float(base['ad_spend']) - channel_spend
+        if residual > max(1.0, 0.005 * float(base['ad_spend'])):
             unattributed = round(residual, 2)
     # 流量汇总：渠道级只有点击量（推广明细不提供 UV），因此列名用「点击量」
     # 而不是「访客」，不把点击伪装成访客。转化率分母是点击（非访客），
     # 与基础数据的「转化率（访客）」不同源，列名与提示都要点明，避免被横向比较。
+    def div(numerator, denominator):
+        try:
+            numerator, denominator = float(numerator), float(denominator)
+        except (TypeError, ValueError):
+            return None
+        return (numerator / denominator) if denominator else None
+
     traffic_channels = [{
         'name': group.get('name'),
         'clicks': group.get('clicks'),
@@ -485,14 +668,19 @@ def _summary_block(conn, period, channel_totals=None, category_label=None):
 
     return {
         'grain': 'period',
-        'sample_days': int(row['sample_days'] or 0),
+        'sample_days': sample_days,
         'period_days': period.get('total_days'),
         'base': base,
         'base_columns': [{'key': key, 'label': label, 'format': fmt}
                          for key, label, fmt in SUMMARY_BASE_COLUMNS],
         'base_missing': missing,
+        # 同比/环比：基线原始值 + 逐列变化率 + 可比性（前端据此决定显示 -- 还是「不可比」）
+        'base_prev': base_prev,
+        'base_yoy': base_yoy,
+        'base_delta': base_delta,
+        'base_comparability': comparability,
         'ads_channels': groups,
-        'ads_total_spend': ad_spend,
+        'ads_total_spend': base['ad_spend'],
         'ads_unattributed': unattributed,
         'traffic_channels': traffic_channels,
         'channel_source': (channel_totals or {}).get('source'),

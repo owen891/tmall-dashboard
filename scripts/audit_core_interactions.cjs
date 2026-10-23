@@ -1,7 +1,9 @@
-const { chromium } = require(require.resolve('playwright', { paths: [require('path').join(__dirname, '..', 'desktop')] }));
+const { gateChromium, assertBase } = require('./gate_browser.cjs');
+const chromium = gateChromium();
 const path = require('path');
 
 const base = process.env.TMALL_SMOKE_BASE || 'http://127.0.0.1:8770';
+assertBase(base);
 const scanRoot = process.env.TMALL_AUDIT_SCAN_ROOT || path.resolve(__dirname, '..', 'data', 'import-inbox');
 const pages = [
   ['overview', '/'],

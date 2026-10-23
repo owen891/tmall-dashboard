@@ -138,6 +138,16 @@ class LifecycleService:
         dictionaries = settings_service.get()['classification_dictionaries']
         return [self.assessment(product, context, dictionaries) for product in LifecycleRepo.product_rows()]
 
+    def list_for_products(self, product_ids):
+        """复盘只评估本期范围内的商品，算法、人工阶段与锁定均复用 assessment。"""
+        product_ids = list(dict.fromkeys(str(pid) for pid in product_ids))
+        if not product_ids:
+            return []
+        context = LifecycleRepo.assessment_context(product_ids)
+        dictionaries = settings_service.get()['classification_dictionaries']
+        return [self.assessment(product, context, dictionaries)
+                for product in LifecycleRepo.product_rows(product_ids)]
+
     def get(self, product_id):
         product = LifecycleRepo.product_row(product_id)
         return self.assessment(product) if product else None

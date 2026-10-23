@@ -1,4 +1,4 @@
-﻿(async function () {
+(async function () {
   'use strict';
   const escapeHtml = window.DemoFormat?.escapeHtml
     ? window.DemoFormat.escapeHtml
@@ -74,6 +74,29 @@
 
   function $(sel) { return document.querySelector(sel); }
   function $$(sel) { return Array.from(document.querySelectorAll(sel)); }
+
+  const chartInstances = new Set();
+  function syncChartTheme(chart) {
+    if (!chart) return;
+    const styles = getComputedStyle(document.documentElement);
+    const textColor = styles.getPropertyValue('--text-secondary').trim() || '#64748b';
+    const primaryColor = styles.getPropertyValue('--text-primary').trim() || '#111827';
+    const borderColor = styles.getPropertyValue('--border-default').trim() || '#d1d5db';
+    const option = chart.getOption ? chart.getOption() : {};
+    const axes = (value) => (Array.isArray(value) ? value : value ? [value] : []).map((axis) => ({
+      ...axis,
+      axisLabel: { ...(axis.axisLabel || {}), color: textColor },
+      axisLine: { ...(axis.axisLine || {}), lineStyle: { ...(axis.axisLine?.lineStyle || {}), color: borderColor } },
+      splitLine: { ...(axis.splitLine || {}), lineStyle: { ...(axis.splitLine?.lineStyle || {}), color: borderColor } },
+    }));
+    const themed = { textStyle: { color: textColor }, tooltip: { backgroundColor: styles.getPropertyValue('--surface-base').trim(), borderColor, textStyle: { color: primaryColor } } };
+    if (option.legend) themed.legend = (Array.isArray(option.legend) ? option.legend : [option.legend]).map((legend) => ({ ...legend, textStyle: { ...(legend.textStyle || {}), color: textColor } }));
+    if (option.xAxis) themed.xAxis = axes(option.xAxis);
+    if (option.yAxis) themed.yAxis = axes(option.yAxis);
+    chart.setOption(themed);
+  }
+  function registerChart(chart) { if (chart) { chartInstances.add(chart); syncChartTheme(chart); } return chart; }
+  new MutationObserver(() => chartInstances.forEach(syncChartTheme)).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
 
   function fmtInt(v) {
     if (v == null || isNaN(v)) return '--';
@@ -211,14 +234,17 @@
     const productNode = $('[data-mr-product-trend]');
     const searchNode = $('[data-mr-search-trend]');
     if (typeof echarts !== 'undefined' && productNode && labels.length) {
-      echarts.init(productNode).setOption({
+      const productChart = echarts.init(productNode);
+      productChart.setOption({
         tooltip: { trigger: 'axis' },
         grid: { left: '4%', right: '4%', bottom: '12%', containLabel: true },
         xAxis: { type: 'category', data: labels },
         yAxis: { type: 'value' },
         series: [{ type: 'line', smooth: true, connectNulls: false, data: rankedBuyers, name: '榜内商品日均支付买家', itemStyle: { color: '#2563eb' } }],
       });
-      echarts.init(searchNode).setOption({
+      registerChart(productChart);
+      const searchChart = echarts.init(searchNode);
+      searchChart.setOption({
         tooltip: { trigger: 'axis' },
         legend: { bottom: 0 },
         grid: { left: '4%', right: '8%', top: '10%', bottom: '20%', containLabel: true },
@@ -229,6 +255,7 @@
           { type: 'line', smooth: true, connectNulls: false, data: payRate, name: '平均支付转化率', yAxisIndex: 1, itemStyle: { color: '#059669' } },
         ],
       });
+      registerChart(searchChart);
     }
     if (coverage) {
       const itemCoverage = `${data.item_observed_days || 0}/${data.expected_days || '--'}`;
@@ -425,7 +452,6 @@
     const modal = $('[data-market-trend-modal]');
     const title = $('[data-market-modal-title]');
     const meta = $('[data-market-modal-meta]');
-    const head = $('[data-market-modal-head]');
     const body = $('[data-market-modal-body]');
     const chartNode = $('[data-market-modal-chart]');
     const itemsPanel = $('[data-market-modal-items]');
@@ -449,10 +475,19 @@
         { name: '支付买家', data: data.daily.map(row => row.pay_buyer_count == null ? null : Number(row.pay_buyer_count)), itemStyle: { color: '#059669' } },
         { name: '支付转化率', yAxisIndex: 1, data: data.daily.map(row => row.pay_rate == null ? null : Number(row.pay_rate) * 100), itemStyle: { color: '#d97706' } },
       ]);
-      if (head) head.innerHTML = kind === 'shop' ? '<th>日期</th><th>商品数</th><th>UV</th><th>支付买家</th><th>支付转化率</th>' : '<th>日期</th><th>UV</th><th>支付买家</th><th>支付转化率</th><th>排名</th>';
-      if (body) body.innerHTML = data.daily.map(row => kind === 'shop'
-        ? `<tr><td>${escapeHtml(row.stat_date)}</td><td class="num">${fmtInt(row.item_count)}</td><td class="num">${fmtWan(row.uv)}</td><td class="num">${fmtWan(row.pay_buyer_count)}</td><td class="num">${fmtPct(row.pay_rate)}</td></tr>`
-        : `<tr><td>${escapeHtml(row.stat_date)}</td><td class="num">${fmtWan(row.uv)}</td><td class="num">${fmtWan(row.pay_buyer_count)}</td><td class="num">${fmtPct(row.pay_rate)}</td><td class="num">${fmtInt(row.rank)}</td></tr>`).join('');
+      if (body) renderSharedTableBody(body, kind === 'shop' ? [
+        { key: 'stat_date', label: '日期' },
+        { key: 'item_count', label: '商品数', numeric: true, render: fmtInt },
+        { key: 'uv', label: 'UV', numeric: true, render: fmtWan },
+        { key: 'pay_buyer_count', label: '支付买家', numeric: true, render: fmtWan },
+        { key: 'pay_rate', label: '支付转化率', numeric: true, render: fmtPct },
+      ] : [
+        { key: 'stat_date', label: '日期' },
+        { key: 'uv', label: 'UV', numeric: true, render: fmtWan },
+        { key: 'pay_buyer_count', label: '支付买家', numeric: true, render: fmtWan },
+        { key: 'pay_rate', label: '支付转化率', numeric: true, render: fmtPct },
+        { key: 'rank', label: '排名', numeric: true, render: fmtInt },
+      ], data.daily);
       if (itemsPanel) itemsPanel.hidden = kind !== 'shop';
       if (kind === 'shop' && itemsList) {
         const items = data.items || [];
@@ -478,7 +513,7 @@
     } catch (error) {
       if (requestId !== state.marketModalRequest) return;
       if (meta) meta.textContent = error.message;
-      if (body) body.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:18px;color:var(--text-secondary)">暂无趋势数据</td></tr>';
+      if (body) renderSharedTableBody(body, [], [], '暂无趋势数据');
       if (itemsPanel) itemsPanel.hidden = true;
     }
   }
@@ -517,6 +552,19 @@
       yAxis: [{ type: 'value' }, { type: 'value', axisLabel: { formatter: value => `${value}%` } }],
       series: series.map(item => ({ ...item, type: 'line', smooth: true, connectNulls: false })),
     }, true);
+    registerChart(chart);
+  }
+
+  function renderSharedTableBody(body, columns, rows, emptyMessage = '暂无趋势数据') {
+    const currentTable = body?.closest('table');
+    if (!currentTable || !window.TmallUI?.table?.mount) return;
+    const resolvedColumns = columns.length ? columns : [...currentTable.querySelectorAll('thead th')].map((cell, index) => ({
+      key: `empty_${index}`,
+      label: cell.textContent.trim(),
+      numeric: cell.classList.contains('num'),
+      className: cell.classList.contains('pct') ? 'pct' : '',
+    }));
+    window.TmallUI.table.mount(body, { columns: resolvedColumns, rows, emptyMessage });
   }
 
   async function loadMarketShopTrend(shopId) {
@@ -534,10 +582,22 @@
         { name: '支付转化率', yAxisIndex: 1, data: data.daily.map(row => row.pay_rate == null ? null : Number(row.pay_rate) * 100), itemStyle: { color: '#d97706' } },
       ]);
       if (meta) meta.textContent = `${data.entity_name || shopId} · 覆盖 ${data.observed_days}/${data.expected_days || '--'} 天${data.trend_comparable ? '，可观察区间变化' : '，覆盖不足不下趋势结论'}`;
-      if (body) body.innerHTML = data.daily.map(row => `<tr><td>${escapeHtml(row.stat_date)}</td><td class="num">${fmtInt(row.item_count)}</td><td class="num">${fmtWan(row.uv)}</td><td class="num">${fmtWan(row.pay_buyer_count)}</td><td class="num">${fmtPct(row.pay_rate)}</td></tr>`).join('');
+      if (body) renderSharedTableBody(body, [
+        { key: 'stat_date', label: '日期' },
+        { key: 'item_count', label: '商品数', numeric: true, render: fmtInt },
+        { key: 'uv', label: 'UV', numeric: true, render: fmtWan },
+        { key: 'pay_buyer_count', label: '支付买家', numeric: true, render: fmtWan },
+        { key: 'pay_rate', label: '支付转化率', numeric: true, render: fmtPct },
+      ], data.daily);
     } catch (error) {
       if (meta) meta.textContent = error.message;
-      if (body) body.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--text-secondary);padding:18px">暂无趋势数据</td></tr>';
+      if (body) renderSharedTableBody(body, [
+        { key: 'stat_date', label: '日期' },
+        { key: 'item_count', label: '商品数', numeric: true, render: fmtInt },
+        { key: 'uv', label: 'UV', numeric: true, render: fmtWan },
+        { key: 'pay_buyer_count', label: '支付买家', numeric: true, render: fmtWan },
+        { key: 'pay_rate', label: '支付转化率', numeric: true, render: fmtPct },
+      ], [], '暂无趋势数据');
     }
   }
 
@@ -556,10 +616,22 @@
         { name: '支付转化率', yAxisIndex: 1, data: data.daily.map(row => row.pay_rate == null ? null : Number(row.pay_rate) * 100), itemStyle: { color: '#d97706' } },
       ]);
       if (meta) meta.textContent = `${data.entity_name || itemId} · ${data.shop_name || '未知店铺'} · 覆盖 ${data.observed_days}/${data.expected_days || '--'} 天${data.trend_comparable ? '，可观察区间变化' : '，覆盖不足不下趋势结论'}`;
-      if (body) body.innerHTML = data.daily.map(row => `<tr><td>${escapeHtml(row.stat_date)}</td><td class="num">${fmtWan(row.uv)}</td><td class="num">${fmtWan(row.pay_buyer_count)}</td><td class="num">${fmtPct(row.pay_rate)}</td><td class="num">${fmtInt(row.rank)}</td></tr>`).join('');
+      if (body) renderSharedTableBody(body, [
+        { key: 'stat_date', label: '日期' },
+        { key: 'uv', label: 'UV', numeric: true, render: fmtWan },
+        { key: 'pay_buyer_count', label: '支付买家', numeric: true, render: fmtWan },
+        { key: 'pay_rate', label: '支付转化率', numeric: true, render: fmtPct },
+        { key: 'rank', label: '排名', numeric: true, render: fmtInt },
+      ], data.daily);
     } catch (error) {
       if (meta) meta.textContent = error.message;
-      if (body) body.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--text-secondary);padding:18px">暂无趋势数据</td></tr>';
+      if (body) renderSharedTableBody(body, [
+        { key: 'stat_date', label: '日期' },
+        { key: 'uv', label: 'UV', numeric: true, render: fmtWan },
+        { key: 'pay_buyer_count', label: '支付买家', numeric: true, render: fmtWan },
+        { key: 'pay_rate', label: '支付转化率', numeric: true, render: fmtPct },
+        { key: 'rank', label: '排名', numeric: true, render: fmtInt },
+      ], [], '暂无趋势数据');
     }
   }
 
@@ -581,9 +653,15 @@
     const body = $('[data-market-snapshot-body]');
     const chartNode = $('[data-market-snapshot-chart]');
     const comparison = state.marketSnapshots?.comparisons?.[type];
+    const columns = [
+      { key: 'entity_name', label: '店铺 / 单品 / 关键词', render: (value, row) => value || row.entity_id || '--' },
+      { key: 'previous_metric', label: '前期估算', numeric: true, render: fmtWan },
+      { key: 'current_metric', label: '本期估算', numeric: true, render: fmtWan },
+      { key: 'delta_rate', label: '变化', numeric: true, render: value => value == null ? '--' : `${value >= 0 ? '+' : ''}${(value * 100).toFixed(1)}%` },
+    ];
     if (!comparison || comparison.status !== 'comparable') {
       if (meta) meta.textContent = '该榜单目前只有一个可比较周期。';
-      if (body) body.innerHTML = '<tr><td colspan="4" style="text-align:center;color:var(--text-secondary);padding:18px">暂无可比较周期</td></tr>';
+      if (body) renderSharedTableBody(body, columns, [], '暂无可比较周期');
       if (chartNode && typeof echarts !== 'undefined' && echarts.getInstanceByDom(chartNode)) {
         echarts.getInstanceByDom(chartNode).clear();
       }
@@ -597,7 +675,7 @@
     };
     if (meta) meta.textContent = `${labels[type]} · ${comparison.previous_period.start}~${comparison.previous_period.end} → ${comparison.current_period.start}~${comparison.current_period.end} · 同榜实体 ${comparison.shared_entity_count} 个 · 指标按区间中点估算`;
     const rows = comparison.rows || [];
-    if (body) body.innerHTML = rows.map(row => `<tr><td>${escapeHtml(row.entity_name || row.entity_id)}</td><td class="num">${fmtWan(row.previous_metric)}</td><td class="num">${fmtWan(row.current_metric)}</td><td class="num">${row.delta_rate == null ? '--' : `${row.delta_rate >= 0 ? '+' : ''}${(row.delta_rate * 100).toFixed(1)}%`}</td></tr>`).join('') || '<tr><td colspan="4" style="text-align:center;color:var(--text-secondary);padding:18px">没有跨周期重复实体</td></tr>';
+    if (body) renderSharedTableBody(body, columns, rows, '没有跨周期重复实体');
     if (chartNode && typeof echarts !== 'undefined') {
       const chart = echarts.getInstanceByDom(chartNode) || echarts.init(chartNode);
       const plot = rows.slice(0, 12);
@@ -612,6 +690,7 @@
           { name: '本期估算', type: 'bar', data: plot.map(row => row.current_metric) },
         ],
       }, true);
+      registerChart(chart);
     }
   }
 
@@ -653,19 +732,22 @@
 
   // ===== 渲染类目对比 =====
   function renderCategoryComparison(categories) {
-    const COLORS = { '中筒袜': '#4f46e5', '长筒袜': '#10b981' };
+    // 类目配色按数据顺序分配，不在前端写死任何具体类目名。
+    const COLORS = ['#4f46e5', '#10b981', '#9ca3af', '#3b82f6', '#f59e0b'];
+    const TEXT_COLORS = ['var(--brand-text)', 'var(--success-text)', 'var(--text-secondary)', 'var(--info-text)', 'var(--warning-text)'];
+    const catColor = (i) => COLORS[i % COLORS.length];
+    const catTextColor = (i) => TEXT_COLORS[i % TEXT_COLORS.length];
     // 图表填充 / 柱条继续用原色；**文字**用深一档的 --*-text（原色当文字过不了 WCAG AA：success 2.54:1）。
-    const TEXT_COLORS = { '中筒袜': 'var(--brand-text)', '长筒袜': 'var(--success-text)' };
 
     // 店铺类型分布
     let shopHtml = '';
-    categories.forEach(cat => {
+    categories.forEach((cat, catIndex) => {
       const total = cat.shop_tmall + cat.shop_taobao;
       const tmallPct = total ? (cat.shop_tmall / total * 100) : 0;
       shopHtml += `
         <div style="margin-bottom:12px">
           <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px">
-            <span style="font-weight:600;color:${TEXT_COLORS[cat.category] || 'var(--text-secondary)'}">${escapeHtml(cat.category)}</span>
+            <span style="font-weight:600;color:${catTextColor(catIndex)}">${escapeHtml(cat.category)}</span>
             <span style="color:var(--text-secondary)">天猫 ${tmallPct.toFixed(1)}% / 淘宝 ${(100-tmallPct).toFixed(1)}%</span>
           </div>
           <div style="display:flex;height:20px;border-radius:4px;overflow:hidden">
@@ -687,7 +769,7 @@
     const trendColors = ['#10b981', '#ef4444', '#9ca3af', '#3b82f6', '#f59e0b'];
     let trendHtml = '';
     categories.forEach(cat => {
-      trendHtml += `<div style="margin-bottom:8px"><span style="font-weight:600;font-size:12px;color:${COLORS[cat.category]}">${escapeHtml(cat.category)}</span></div>`;
+      trendHtml += `<div style="margin-bottom:8px"><span style="font-weight:600;font-size:12px;color:${catColor(catIndex)}">${escapeHtml(cat.category)}</span></div>`;
       trendLabels.forEach((label, i) => {
         const val = cat[trendKeys[i]] || 0;
         const maxVal = Math.max(...categories.map(c => c[trendKeys[i]] || 0), 1);
@@ -767,28 +849,27 @@
   // ===== 渲染商品榜单 =====
   function renderProducts(products) {
     const tbody = $('[data-mr-products-body]');
-    if (!products.length) {
-      tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--text-secondary);padding:24px">没有符合条件的数据</td></tr>';
-      return;
-    }
-    tbody.innerHTML = products.map(p => {
-      const rankBadge = p.rank <= 3
-        ? `<span class="ui-badge ui-badge--${p.rank === 1 ? 'danger' : p.rank === 2 ? 'warning' : 'success'}">${p.rank}</span>`
-        : `<span class="ui-badge ui-badge--muted">${p.rank}</span>`;
-      const changeBadge = p.rank_change == null
-        ? '<span style="color:var(--text-secondary)">-</span>'
-        : `<span style="font-family:var(--font-mono);color:var(${p.list_type === '下降榜' ? '--text-secondary' : '--success-text'})">${p.list_type === '下降榜' ? '↓' : '↑'}${Math.abs(p.rank_change)}</span>`;
-      return `<tr>
-        <td>${rankBadge}</td>
-        <td><span class="ui-badge ui-badge--info">${escapeHtml(p.category)}</span></td>
-        <td><span class="ui-badge ui-badge--muted">${escapeHtml(p.list_type)}</span></td>
-        <td style="max-width:300px">${escapeHtml(p.title || '-')}</td>
-        <td style="color:var(--text-secondary)">${escapeHtml(p.shop || '-')}</td>
-        <td>${changeBadge}</td>
-        <td style="font-family:var(--font-mono)">${fmtInt(p.buyers)}</td>
-        <td style="font-family:var(--font-mono)">${fmtInt(p.visitors)}</td>
-      </tr>`;
-    }).join('');
+    const badge = (label, tone) => window.TmallUI?.badge
+      ? window.TmallUI.badge(label || '-', tone)
+      : document.createTextNode(label || '-');
+    const rank = (value) => badge(value, value <= 3 ? (value === 1 ? 'danger' : value === 2 ? 'warning' : 'success') : 'muted');
+    const change = (value, row) => {
+      const node = document.createElement('span');
+      node.style.fontFamily = 'var(--font-mono)';
+      node.style.color = row.list_type === '下降榜' ? 'var(--text-secondary)' : 'var(--success-text)';
+      node.textContent = value == null ? '-' : `${row.list_type === '下降榜' ? '↓' : '↑'}${Math.abs(value)}`;
+      return node;
+    };
+    renderSharedTableBody(tbody, [
+      { key: 'rank', label: '排名', numeric: true, render: rank },
+      { key: 'category', label: '类目', render: value => badge(value, 'info') },
+      { key: 'list_type', label: '榜单', render: value => badge(value, 'muted') },
+      { key: 'title', label: '商品标题', render: value => value || '-' },
+      { key: 'shop', label: '店铺', render: value => value || '-' },
+      { key: 'rank_change', label: '变化', render: change },
+      { key: 'buyers', label: '买家数', numeric: true, render: fmtInt },
+      { key: 'visitors', label: '访客数', numeric: true, render: fmtInt },
+    ], products, '没有符合条件的数据');
   }
 
   // ===== 渲染关键词 =====
@@ -878,25 +959,32 @@
       $$('[data-sycm-item-date]').forEach((el) => { el.textContent = `数据日期 ${d.data?.stat_date || selectedDate() || '--'}`; });
       const tbody = document.querySelector('[data-sycm-item-rank-body]');
       if (!tbody) return;
-      if (!d.ok || !d.data.items.length) {
-        tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--text-secondary);padding:24px">暂无数据</td></tr>';
-        return;
-      }
-      tbody.innerHTML = d.data.items.map((item, idx) => {
-        const img = item.pic_url
-          ? `<img loading="lazy" src="${escapeHtml(item.pic_url)}" alt="${escapeHtml(item.title || '商品图片')}" class="sycm-item-rank-image" onerror="this.style.display='none'">`
-          : '<span class="sycm-item-rank-image-placeholder" aria-hidden="true">暂无</span>';
-        return `<tr>
-          <td>${idx + 1}</td>
-          <td>${img}</td>
-          <td><span class="sycm-item-rank-category">${escapeHtml(item.cate_name || '-')}</span></td>
-          <td class="sycm-item-rank-title" title="${escapeHtml(item.title || '-')}" >${escapeHtml(item.title || '-')}</td>
-          <td class="sycm-item-rank-shop" title="${escapeHtml(item.shop_name || '-')}" >${escapeHtml(item.shop_name || '-')}</td>
-          <td class="num">${fmtWan(item.uv)}</td>
-          <td class="num">${fmtWan(item.pay_buyer_count)}</td>
-          <td class="sycm-item-rank-keyword" title="${escapeHtml(item.core_keyword || '-')}" >${escapeHtml(item.core_keyword || '-')}</td>
-        </tr>`;
-      }).join('');
+      const image = (value, item) => {
+        if (!item.pic_url) {
+          const placeholder = document.createElement('span');
+          placeholder.className = 'sycm-item-rank-image-placeholder';
+          placeholder.setAttribute('aria-hidden', 'true');
+          placeholder.textContent = '暂无';
+          return placeholder;
+        }
+        const img = document.createElement('img');
+        img.loading = 'lazy';
+        img.src = item.pic_url;
+        img.alt = item.title || '商品图片';
+        img.className = 'sycm-item-rank-image';
+        img.addEventListener('error', () => { img.style.display = 'none'; }, { once: true });
+        return img;
+      };
+      renderSharedTableBody(tbody, [
+        { key: 'rank', label: '排名', numeric: true },
+        { key: 'pic_url', label: '主图', render: image },
+        { key: 'cate_name', label: '类目', render: value => value || '-' },
+        { key: 'title', label: '商品标题', render: value => value || '-' },
+        { key: 'shop_name', label: '店铺', render: value => value || '-' },
+        { key: 'uv', label: '访客数', numeric: true, render: fmtWan },
+        { key: 'pay_buyer_count', label: '支付买家', numeric: true, render: fmtWan },
+        { key: 'core_keyword', label: '核心关键词', render: value => value || '-' },
+      ], (d.ok ? (d.data.items || []) : []).map((item, index) => ({ ...item, rank: index + 1 })), '暂无数据');
     } catch (e) {
       console.error('加载生意参谋商品排行失败:', e);
     }
@@ -911,21 +999,20 @@
       $$('[data-sycm-search-date]').forEach((el) => { el.textContent = `数据日期 ${d.data?.stat_date || selectedDate() || '--'}`; });
       const tbody = document.querySelector('[data-sycm-search-rank-body]');
       if (!tbody) return;
-      if (!d.ok || !d.data.keywords.length) {
-        tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--text-secondary);padding:24px">暂无数据</td></tr>';
-        return;
-      }
-      tbody.innerHTML = d.data.keywords.map((kw, idx) => `
-        <tr>
-          <td>${idx + 1}</td>
-          <td>${kw.cate_name}</td>
-          <td><strong>${kw.keyword}</strong></td>
-          <td class="num">${fmtWan(kw.search_heat)}</td>
-          <td class="num">${fmtPct(kw.pay_rate)}</td>
-          <td class="num">${fmtPct(kw.click_rate)}</td>
-          <td class="num">${fmtPct(kw.free_click_rate)}</td>
-        </tr>
-      `).join('');
+      const keyword = value => {
+        const node = document.createElement('strong');
+        node.textContent = value || '-';
+        return node;
+      };
+      renderSharedTableBody(tbody, [
+        { key: 'rank', label: '排名', numeric: true },
+        { key: 'cate_name', label: '类目', render: value => value || '-' },
+        { key: 'keyword', label: '关键词', render: keyword },
+        { key: 'search_heat', label: '搜索热度', numeric: true, render: fmtWan },
+        { key: 'pay_rate', label: '支付转化率', numeric: true, render: fmtPct },
+        { key: 'click_rate', label: '点击率', numeric: true, render: fmtPct },
+        { key: 'free_click_rate', label: '免费点击占比', numeric: true, render: fmtPct },
+      ], (d.ok ? (d.data.keywords || []) : []).map((item, index) => ({ ...item, rank: index + 1 })), '暂无数据');
     } catch (e) {
       console.error('加载生意参谋搜索排行失败:', e);
     }
@@ -934,11 +1021,6 @@
   // ===== 关键词洞察（8大归类 / 蓝海 / 趋势节点）与竞店爆品排名变化 =====
   // 对应后端 /api/sycm/market/keyword-insights 与 /api/sycm/market/rival-item-moves，
   // 补齐月复盘 XMind「市场监控」缺口：8大归类 / 词根需求 / 趋势节点 / 蓝海 / 竞店爆品。
-  function setTableRows(node, colspan, html) {
-    if (!node) return;
-    node.innerHTML = html || `<tr><td colspan="${colspan}" style="text-align:center;color:var(--text-secondary);padding:14px">暂无数据</td></tr>`;
-  }
-
   async function loadKeywordInsights() {
     try {
       const response = await fetch('/api/sycm/market/keyword-insights');
@@ -946,8 +1028,19 @@
       renderKeywordInsights(result.ok ? result.data : null);
     } catch (e) {
       console.error('加载关键词洞察失败:', e);
-      setTableRows(document.querySelector('[data-mr-kw-categories-body]'), 4, '');
-      setTableRows(document.querySelector('[data-mr-blue-ocean-body]'), 4, '');
+      renderSharedTableBody(document.querySelector('[data-mr-kw-categories-body]'), [
+        { key: 'label', label: '归类' },
+        { key: 'keyword_count', label: '覆盖词数', numeric: true, render: fmtInt },
+        { key: 'heat_share', label: '搜索热度占比', numeric: true, render: value => value == null ? '--' : `${(value * 100).toFixed(1)}%` },
+        { key: 'top_keywords', label: '核心词根（热度 TOP3）' },
+      ], [], '暂无数据');
+      renderSharedTableBody(document.querySelector('[data-mr-blue-ocean-body]'), [
+        { key: 'keyword', label: '关键词' },
+        { key: 'search_heat', label: '搜索热度（近7天日均）', numeric: true, render: fmtInt },
+        { key: 'pay_rate', label: '支付转化率', numeric: true, render: value => value == null ? '--' : `${(value * 100).toFixed(2)}%` },
+        { key: 'score', label: '蓝海度', numeric: true, render: value => value == null ? '--' : Number(value).toFixed(3) },
+        { key: 'grade', label: '供给分级' },
+      ], [], '暂无数据');
     }
   }
 
@@ -959,18 +1052,46 @@
         : '暂无搜索榜数据（等待 sycm_market_search_rank 采集）';
     }
     const categoriesBody = document.querySelector('[data-mr-kw-categories-body]');
+    const categoryColumns = [
+      { key: 'label', label: '归类', render: value => {
+        const cell = document.createElement('strong');
+        cell.textContent = value || '--';
+        return cell;
+      } },
+      { key: 'keyword_count', label: '覆盖词数', numeric: true, render: fmtInt },
+      { key: 'heat_share', label: '搜索热度占比', numeric: true, render: value => value == null ? '--' : `${(value * 100).toFixed(1)}%` },
+      { key: 'top_keywords', label: '核心词根（热度 TOP3）' },
+    ];
     if (data && data.available && data.categories.length) {
-      setTableRows(categoriesBody, 4, data.categories.map(cat => `
-        <tr>
-          <td style="font-weight:600">${escapeHtml(cat.label)}</td>
-          <td class="num">${fmtInt(cat.keyword_count)}</td>
-          <td class="num">${cat.heat_share === null || cat.heat_share === undefined ? '--' : (cat.heat_share * 100).toFixed(1) + '%'}</td>
-          <td>${escapeHtml(cat.top_keywords.map(item => item.keyword).join('、'))}</td>
-        </tr>`).join(''));
+      renderSharedTableBody(categoriesBody, categoryColumns, data.categories.map(cat => ({
+        ...cat,
+        top_keywords: cat.top_keywords.map(item => item.keyword).join('、'),
+      })), '暂无数据');
     } else {
-      setTableRows(categoriesBody, 4, '');
+      renderSharedTableBody(categoriesBody, categoryColumns, [], '暂无数据');
     }
     const blueBody = document.querySelector('[data-mr-blue-ocean-body]');
+    const blueColumns = [
+      { key: 'keyword', label: '关键词' },
+      { key: 'search_heat', label: '搜索热度（近7天日均）', numeric: true, render: fmtInt },
+      { key: 'pay_rate', label: '支付转化率', numeric: true, render: value => value == null ? '--' : `${(value * 100).toFixed(2)}%` },
+      { key: 'score', label: '蓝海度', numeric: true, render: value => value == null ? '--' : Number(value).toFixed(3) },
+      { key: 'fullItem', label: '供给分级', numeric: true, render: (_, item) => {
+        const fullItem = item.fullItem && item.fullItem.available !== false && item.fullItem.grade ? item.fullItem : null;
+        const grade = fullItem ? fullItem.grade : '--';
+        const coverText = fullItem ? `${fullItem.cover_count} 品 · ${fullItem.cover_per_10k}/万` : '--';
+        const cell = document.createElement('span');
+        cell.title = fullItem ? `词根「${fullItem.keyword}」每万搜索覆盖 ${fullItem.cover_per_10k}（在榜 ${fullItem.cover_count} 品含该词根）；代表搜索词：${fullItem.keyword_full || fullItem.keyword}` : '';
+        const badge = document.createElement('span');
+        badge.className = `ui-badge ${fullItem && fullItem.grade === '高潜蓝海' ? 'ui-badge--success' : 'ui-badge--muted'}`;
+        badge.textContent = grade;
+        const detail = document.createElement('small');
+        detail.style.color = 'var(--text-secondary)';
+        detail.textContent = coverText;
+        cell.append(badge, document.createTextNode(' '), detail);
+        return cell;
+      } },
+    ];
     if (data && data.available && data.blue_ocean.length) {
       // 完整口径（词根级每万覆盖）可用时以它为主行集；蓝海度/转化率从近似口径映射过来。
       // 两口径词集不同（近似=全量词、完整=细分词根），混排会出现主行无分级值的割裂。
@@ -986,22 +1107,7 @@
           fullItem: item,
         }))
         : data.blue_ocean.map(item => ({ ...item, fullItem: null }));
-      setTableRows(blueBody, 5, rowsSource.map(item => {
-        const fullItem = item.fullItem && item.fullItem.available !== false && item.fullItem.grade ? item.fullItem : null;
-        const grade = fullItem ? fullItem.grade : '--';
-        const coverText = fullItem
-          ? `${fullItem.cover_count} 品 · ${fullItem.cover_per_10k}/万`
-          : '--';
-        const titleAttr = fullItem ? `title="词根「${escapeHtml(fullItem.keyword)}」每万搜索覆盖 ${fullItem.cover_per_10k}（在榜 ${fullItem.cover_count} 品含该词根）；代表搜索词：${escapeHtml(fullItem.keyword_full || fullItem.keyword)}"` : '';
-        return `
-        <tr>
-          <td>${escapeHtml(item.keyword)}</td>
-          <td class="num">${fmtInt(item.search_heat)}</td>
-          <td class="num">${item.pay_rate === null || item.pay_rate === undefined ? '--' : (item.pay_rate * 100).toFixed(2) + '%'}</td>
-          <td class="num">${item.score === null || item.score === undefined ? '--' : Number(item.score).toFixed(3)}</td>
-          <td class="num" ${titleAttr}><span class="ui-badge ${fullItem && fullItem.grade === '高潜蓝海' ? 'ui-badge--success' : 'ui-badge--muted'}">${escapeHtml(grade)}</span> <small style="color:var(--text-secondary)">${coverText}</span></td>
-        </tr>`;
-      }).join(''));
+      renderSharedTableBody(blueBody, blueColumns, rowsSource, '暂无数据');
       const blueHint = document.querySelector('[data-mr-blue-ocean-hint]');
       if (blueHint) {
         blueHint.textContent = full && full.available
@@ -1009,21 +1115,29 @@
           : '近 7 天日均搜索热度 × 支付转化率，剔除泛词；「每万供给覆盖」需在榜商品数据，缺失时仅按蓝海度排序';
       }
     } else {
-      setTableRows(blueBody, 5, '');
+      renderSharedTableBody(blueBody, blueColumns, [], '暂无数据');
     }
     const renderTrend = (selector, rows) => {
       const node = document.querySelector(selector);
-      if (data && data.available && rows.length) {
-        setTableRows(node, 4, rows.map(item => `
-          <tr>
-            <td>${escapeHtml(item.keyword)}</td>
-            <td class="num">${fmtInt(item.recent_heat)}</td>
-            <td class="num">${fmtInt(item.baseline_heat)}</td>
-            <td class="num" style="color:${item.growth > 0 ? 'var(--success-text)' : 'var(--danger-text)'}">${item.growth > 0 ? '+' : ''}${(item.growth * 100).toFixed(0)}%</td>
-          </tr>`).join(''));
-      } else {
-        setTableRows(node, 4, '');
-      }
+      if (!node || !window.TmallUI?.table?.mount) return;
+      window.TmallUI.table.mount(node, {
+        columns: [
+          { key: 'keyword', label: '关键词' },
+          { key: 'recent_heat', label: '近7天', numeric: true, render: fmtInt },
+          { key: 'baseline_heat', label: '前期', numeric: true, render: fmtInt },
+          {
+            key: 'growth', label: '增速', numeric: true,
+            render: (value) => {
+              const change = Number(value) || 0;
+              const cell = document.createElement('span');
+              cell.style.color = change > 0 ? 'var(--success-text)' : 'var(--danger-text)';
+              cell.textContent = `${change > 0 ? '+' : ''}${(change * 100).toFixed(0)}%`;
+              return cell;
+            },
+          },
+        ],
+        rows: data && data.available ? rows : [],
+      });
     };
     const nodes = (data && data.available && data.trend_nodes) || {};
     renderTrend('[data-mr-rising-body]', nodes.rising || []);
@@ -1053,28 +1167,105 @@
     }
     meta.textContent = `共 ${data.shop_count} 家店在榜，展示变动最活跃的 ${data.shops.length} 家`;
     const fmtRank = (value) => (value === null || value === undefined ? '--' : `#${value}`);
+    // 每店窗口内**全部**在榜商品都要列出（不再截断），四类变动 + 持平各自带类型标签；
+    // 排序沿用后端 movers 的绝对变动幅度，其后按排名接持平商品。
+    const rowsOfShop = (shop) => {
+      const decorate = (entry, kind, change, changeText) => ({ ...entry, _kind: kind, _change: change, _changeText: changeText });
+      const rows = [];
+      (shop.rising || []).forEach(entry => rows.push(decorate(entry, '上升', entry.rank_change, `${entry.rank_change > 0 ? '+' : ''}${entry.rank_change}`)));
+      (shop.falling || []).forEach(entry => rows.push(decorate(entry, '下降', entry.rank_change, String(entry.rank_change))));
+      (shop.new_items || []).forEach(entry => rows.push(decorate(entry, '新进榜', null, '新进榜')));
+      (shop.exit_items || []).forEach(entry => rows.push(decorate(entry, '退出', null, '退出')));
+      (shop.stable || []).forEach(entry => rows.push(decorate(entry, '持平', 0, '0')));
+      rows.sort((first, second) => {
+        const magnitude = (row) => (row._change === null || row._change === undefined ? -1 : Math.abs(row._change));
+        return magnitude(second) - magnitude(first);
+      });
+      return rows;
+    };
+    const thumbnail = (_, item) => {
+      const wrap = document.createElement('span');
+      wrap.className = 'market-rival-thumb';
+      const url = safeHttpUrl(item.pic_url);
+      if (!url) {
+        wrap.textContent = '图';
+        wrap.setAttribute('aria-hidden', 'true');
+        return wrap;
+      }
+      const img = document.createElement('img');
+      img.loading = 'lazy';
+      img.src = url;
+      img.alt = item.title ? `${item.title} 主图` : '商品主图';
+      img.addEventListener('error', () => {
+        wrap.textContent = '图';
+        wrap.setAttribute('aria-hidden', 'true');
+      }, { once: true });
+      wrap.append(img);
+      return wrap;
+    };
     body.innerHTML = data.shops.map(shop => {
-      const movers = (shop.movers || []).slice(0, 6);
-      const counts = `↑${shop.rising_count} ↓${shop.falling_count} 新进榜 ${shop.new_count} 退出 ${shop.exit_count}`;
-      const table = movers.length ? `
-        <div class="ui-table-wrap"><table class="ui-data-table market-entity-table">
-          <thead><tr><th>商品</th><th class="num">排名变化</th><th class="num">首日→末日</th><th class="num">访客数</th><th class="num">支付买家</th></tr></thead>
-          <tbody>${movers.map(item => `
-            <tr>
-              <td style="max-width:420px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escapeHtml(item.title)}">${escapeHtml(item.title)}</td>
-              <td class="num" style="color:${item.rank_change > 0 ? 'var(--success-text)' : 'var(--danger-text)'}">${item.rank_change > 0 ? '+' : ''}${item.rank_change}</td>
-              <td class="num">${fmtRank(item.first_rank)} → ${fmtRank(item.last_rank)}</td>
-              <td class="num">${fmtInt(item.uv)}</td>
-              <td class="num">${fmtInt(item.pay_buyer_count)}</td>
-            </tr>`).join('')}</tbody>
-        </table></div>` : '<div class="market-list-empty">该店窗口内无在榜商品变动</div>';
+      const rows = rowsOfShop(shop);
+      const counts = `↑${shop.rising_count} ↓${shop.falling_count} 新进榜 ${shop.new_count} 退出 ${shop.exit_count} 持平 ${shop.unchanged_count ?? 0}`;
+      const table = rows.length ? window.TmallUI.table({
+        tableClass: 'market-entity-table',
+        wrapClass: 'market-entity-table-wrap',
+        columns: [
+          { key: 'pic_url', label: '主图', render: thumbnail },
+          {
+            key: 'title', label: '商品',
+            render: (value) => {
+              const cell = document.createElement('span');
+              cell.className = 'market-rival-title';
+              cell.title = String(value || '');
+              cell.textContent = value || '--';
+              return cell;
+            },
+          },
+          {
+            key: '_kind', label: '变动',
+            render: (value) => {
+              const cell = document.createElement('span');
+              cell.className = value === '上升' ? 'market-rival-change--up'
+                : value === '下降' ? 'market-rival-change--down' : '';
+              cell.textContent = value || '--';
+              return cell;
+            },
+          },
+          {
+            key: '_change', label: '排名变化', numeric: true,
+            render: (value, item) => {
+              const cell = document.createElement('span');
+              if (value === null || value === undefined) {
+                cell.textContent = item._changeText || '--';
+                return cell;
+              }
+              const change = Number(value) || 0;
+              cell.className = change > 0 ? 'market-rival-change--up' : change < 0 ? 'market-rival-change--down' : '';
+              cell.textContent = `${change > 0 ? '+' : ''}${change}`;
+              cell.dataset.sortValue = String(change);
+              return cell;
+            },
+          },
+          {
+            key: 'first_rank', label: '首日→末日', numeric: true,
+            render: (_, item) => {
+              if (item._kind === '新进榜') return `-- → ${fmtRank(item.rank)}`;
+              if (item._kind === '退出') return `${fmtRank(item.rank)} → --`;
+              return `${fmtRank(item.first_rank)} → ${fmtRank(item.last_rank)}`;
+            },
+          },
+          { key: 'uv', label: '访客数', numeric: true, render: fmtInt },
+          { key: 'pay_buyer_count', label: '支付买家', numeric: true, render: fmtInt },
+        ],
+        rows,
+      }).outerHTML : '<div class="market-list-empty">该店窗口内无在榜商品变动</div>';
       return `
-        <details class="market-rival-shop" style="margin-bottom:8px;border:1px solid var(--border-subtle,#e5e7eb);border-radius:8px;padding:8px 12px">
-          <summary style="cursor:pointer;font-weight:600">
+        <details class="market-rival-shop">
+          <summary>
             ${escapeHtml(shop.shop_name)}
-            <span style="font-weight:400;color:var(--text-secondary);margin-left:8px">${counts} · 在榜 ${shop.item_count} 品（${shop.window.start} ~ ${shop.window.end}）</span>
+            <span class="market-rival-shop__summary-meta">${counts} · 在榜 ${shop.item_count} 品 · 列出 ${rows.length} 条（${shop.window.start} ~ ${shop.window.end}）</span>
           </summary>
-          <div style="margin-top:8px">${table}</div>
+          <div class="market-rival-shop__body">${table}</div>
         </details>`;
     }).join('');
   }

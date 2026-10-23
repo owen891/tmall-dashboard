@@ -1,7 +1,13 @@
 (function () {
 
-  // 全局 HTML 转义函数，防止 XSS
+  // 全局 HTML 转义函数，防止 XSS。
+  // 契约来源是 assets/format.js 的 DemoFormat.escapeHtml；这里只做兼容别名，
+  // 让历史上按 `window.escapeHtml(...)` 调用的代码拿到同一个实现。
+  // 兜底分支仅用于未加载 format.js 的页面（component-catalog.html）。
   window.escapeHtml = function (value) {
+    if (window.DemoFormat && typeof window.DemoFormat.escapeHtml === 'function') {
+      return window.DemoFormat.escapeHtml(value);
+    }
     return String(value ?? '').replace(/[&<>"']/g, function (char) {
       return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char];
     });
@@ -74,7 +80,10 @@
       script.src = href;
       script.dataset.tmallRuntimeAsset = 'true';
       script.onload = () => resolve(script);
-      script.onerror = () => reject(new Error(`前端资源加载失败: ${href}`));
+      script.onerror = () => {
+        window.TmallAssetUpdateRequired?.();
+        reject(new Error(`UPDATE_REQUIRED: 页面资源版本不可用，请刷新整个页面: ${href}`));
+      };
       document.head.appendChild(script);
     }).catch((error) => {
       pendingScripts.delete(href);
@@ -84,31 +93,35 @@
     pendingScripts.set(href, promise);
     return promise;
   };
-  const loadOptionalScript = (name) => loadScriptOnce(new URL(name, assetBase).href).catch((error) => {
-    console.error(`[tmall] optional asset unavailable: ${name}`, error);
-    return null;
-  });
+  // Let parser-declared optional scripts finish before deciding whether a
+  // fallback is needed. shell.js precedes those tags in all current templates.
+  const optionalScriptsReady = document.readyState === 'loading'
+    ? new Promise((resolve) => document.addEventListener('DOMContentLoaded', resolve, { once: true }))
+    : Promise.resolve();
+  const loadOptionalScript = (name) => optionalScriptsReady
+    .then(() => loadScriptOnce(new URL(name, assetBase).href))
+    .catch((error) => {
+      console.error(`[tmall] optional asset unavailable: ${name}`, error);
+      return null;
+    });
 
-  // 本文件动态加载的脚本必须带 ?v= 才能穿透 7 天静态缓存，否则改了文件用户也一直拿旧版本。
-  // 改这些文件后同步 bump 这里，并 bump 各页面 HTML 里 shell.js 自己的 ?v=。
-  const RUNTIME_ASSET_V = '20261003a';
-  // table-controls.js / version.js / version-check.js / desktop-integration.js
-  // 不在任何页面的 HTML 里，只由这里动态加载；ui-components.js 两者都有（版本号需保持一致）。
-  loadOptionalScript(`table-controls.js?v=${RUNTIME_ASSET_V}`);
-  loadOptionalScript(`ui-components.js?v=${RUNTIME_ASSET_V}`);
-  loadScriptOnce(new URL(`version.js?v=${RUNTIME_ASSET_V}`, assetBase).href)
-    .then(() => loadScriptOnce(new URL(`version-check.js?v=${RUNTIME_ASSET_V}`, assetBase).href))
+  // The HTML pins shell.js to a content-addressed release directory.
+  // Capture assetBase once: delayed loads stay on that release after publication.
+  loadOptionalScript(`table-controls.js`);
+  loadOptionalScript(`ui-components.js`);
+  loadScriptOnce(new URL(`version.js`, assetBase).href)
+    .then(() => loadScriptOnce(new URL(`version-check.js`, assetBase).href))
     .catch((error) => {
       window.TmallFrontendErrors?.report('runtime_bootstrap_failed', error.message, error.stack || '', 0, 0, error);
       console.error('[tmall] version check unavailable', error);
     });
-  loadOptionalScript(`desktop-integration.js?v=${RUNTIME_ASSET_V}`);
+  loadOptionalScript(`desktop-integration.js`);
 
   const liveAdapters = { 'core-product-analysis': 'core-product-analysis-live.js', overview: 'overview-live.js', products: 'products-live.js', promotion: 'promotion-live.js', 'keyword-promotion': 'keyword-promotion-live.js', 'market-ranking': 'market-ranking-live.js', 'flow-source': 'flow-source-live.js', 'rival-analysis': 'rival-analysis-live.js' };
   const liveAdapter = liveAdapters[document.body.dataset.page];
   const apiReady = window.DemoApi
     ? Promise.resolve(window.DemoApi)
-    : loadScriptOnce(new URL(`api.js?v=${RUNTIME_ASSET_V}`, assetBase).href).then(() => window.DemoApi);
+    : loadScriptOnce(new URL(`api.js`, assetBase).href).then(() => window.DemoApi);
   const requestApi = async (path, options) => {
     const api = await apiReady;
     if (!api?.request) throw new Error('API 客户端不可用');
@@ -135,7 +148,7 @@
   window.TmallDataStates = Object.freeze(DATA_STATES.slice());
   if (liveAdapter && !window.DemoApi) {
     apiReady
-      .then(() => loadScriptOnce(new URL(`${liveAdapter}?v=${RUNTIME_ASSET_V}`, assetBase).href))
+      .then(() => loadScriptOnce(new URL(`${liveAdapter}`, assetBase).href))
       .catch((error) => {
         window.TmallFrontendErrors?.report('page_bootstrap_failed', error.message, liveAdapter, 0, 0, error);
         console.error(`[tmall] page adapter unavailable: ${liveAdapter}`, error);
@@ -165,6 +178,7 @@
       label: '付费',
       items: [
         ['promotion', '推广分析', 'megaphone', 'promotion'],
+        ['promotion-matrix', '推广矩阵', 'percent', 'promotion-matrix'],
         ['new-products', '新品推广', 'sparkles', 'new-products'],
         ['creative-board', '素材点击率', 'image', 'creative-board'],
         ['flow-source', '流量来源', 'git-branch', 'flow-source'],
@@ -193,6 +207,7 @@
     'flow-source': ['流量来源', '生意参谋第一次访问来源，渠道结构与转化分析'],
     'rival-analysis': ['竞店竞品', '竞店核心指标对比与竞品商品分析'],
     promotion: ['推广分析', '按投放粒度解释花费、成交与投产效率'],
+    'promotion-matrix': ['推广矩阵', '只看新老品在各渠道的投放效率，判断单品该放大还是该优化'],
     'new-products': ['新品推广', '按上架节奏分析新品投放效率与销售联动'],
     'creative-board': ['素材点击率', '按单品沉淀素材历史点击质量'],
     'core-product-analysis': ['核心单品九维', '月度复盘沉淀：核心单品在九个经营维度的完整分析'],
@@ -315,7 +330,7 @@
   const categoryMarkup = hideCategoryPages.has(currentPage) ? '' : `
     <div class="demo-category" role="group" aria-label="品类模式">
       <select class="demo-period__select demo-category__select" data-category-mode aria-label="品类模式">
-        <option value="sock">标品袜子</option><option value="all">全部品类</option>
+        <option value="sock">默认品类</option><option value="all">全部品类</option>
       </select>
     </div>`;
   const periodReviewControls = currentPage === 'period-review' ? `
@@ -336,15 +351,80 @@
     <div class="demo-topbar__filters">
       ${categoryMarkup}
       <div class="demo-period" role="group" aria-label="统计时间">
-      <select class="demo-period__select" data-date-preset aria-label="快捷时间范围">
-        <option value="today">今日</option><option value="yesterday">昨日</option><option value="7d">近7天</option><option value="30d" selected>近30天</option><option value="90d">近90天</option><option value="this_week">本周</option><option value="last_week">上周</option><option value="this_month">本月</option><option value="last_month">上月</option><option value="custom">自定义</option>
-      </select>
-      <button type="button" class="demo-period__trigger tabular" data-date-trigger aria-expanded="false"><i data-lucide="calendar-days" aria-hidden="true"></i><span data-period-range>数据库日期加载中…</span></button>
-      ${currentPage === 'overview' ? '<select class="demo-period__select demo-period__compare" data-compare-mode aria-label="对比方式"><option value="none">不对比</option><option value="previous_period">环比</option><option value="year_over_year">同比</option></select>' : ''}
-      <div class="demo-period__popover" data-period-popover hidden>
-        <div class="demo-calendar__toolbar"><button type="button" data-calendar-nav="-1" aria-label="上两个月">‹</button><strong>自定义日期范围</strong><button type="button" data-calendar-nav="1" aria-label="下两个月">›</button></div>
-        <div class="demo-calendar__months"><section data-calendar-month="0"></section><section data-calendar-month="1"></section></div>
-        <div class="demo-calendar__footer"><span data-calendar-help>请选择开始日期</span><button class="ui-button ui-button--ghost" type="button" data-calendar-cancel>取消</button></div>
+      <div class="demo-period__inline" role="group" aria-label="统计时间">
+        <span class="demo-period__inline-label">统计时间：</span>
+        <span class="demo-period__inline-preset" data-period-preset>近30天</span>
+        <span class="demo-period__inline-range tabular" data-period-range>--</span>
+        <span class="demo-period__compare-badge" data-period-compare hidden>环比</span>
+        <span class="demo-period__inline-divider" aria-hidden="true"></span>
+        <button type="button" data-inline-preset="7d">7天</button>
+        <button type="button" data-inline-preset="30d">30天</button>
+        <button type="button" data-inline-preset="this_week">本周</button>
+        <button type="button" data-inline-preset="last_week">上周</button>
+        <button type="button" data-inline-preset="this_month">本月</button>
+        <button type="button" data-inline-preset="last_month">上月</button>
+        <span class="demo-period__inline-divider" aria-hidden="true"></span>
+        <button type="button" data-inline-grain="daily">日</button>
+        <button type="button" data-inline-grain="weekly">周</button>
+        <button type="button" data-inline-grain="monthly">月</button>
+        <button type="button" data-inline-grain="yearly">年</button>
+        <button type="button" class="demo-period__inline-nav" data-inline-nav="-1" aria-label="上一个周期">‹</button>
+        <button type="button" class="demo-period__inline-nav" data-inline-nav="1" aria-label="下一个周期">›</button>
+        <button type="button" class="demo-period__inline-custom" data-inline-custom>自定义</button>
+      </div>
+      <button type="button" class="demo-period__trigger tabular" data-date-trigger hidden aria-haspopup="dialog" aria-expanded="false" aria-controls="period-popover">
+        <i data-lucide="calendar" aria-hidden="true"></i>
+        <span class="demo-period__trigger-main"><span data-period-legacy-preset>近30天</span></span>
+        <span class="demo-period__trigger-range tabular" data-period-legacy-range>--</span>
+        <i data-lucide="chevron-down" aria-hidden="true"></i>
+      </button>
+      <div class="demo-period__popover" data-period-popover id="period-popover" hidden role="dialog" aria-label="选择统计时间">
+        <div class="demo-period__head"><strong>统计时间</strong>
+          <div class="demo-period__grain" role="group" aria-label="时间粒度" data-period-grain>
+            <button type="button" data-grain="daily" class="is-active">按日</button>
+            <button type="button" data-grain="weekly">按周</button>
+            <button type="button" data-grain="monthly">按月</button>
+          </div>
+          <span class="demo-period__hint">预设即点即用；自定义范围需点「应用」</span>
+        </div>
+        <div class="demo-period__mode" role="tablist" aria-label="选择时间方式">
+          <button type="button" class="is-active" data-period-mode="quick" role="tab" aria-selected="true">快捷周期</button>
+          <button type="button" data-period-mode="custom" role="tab" aria-selected="false">自定义日期</button>
+        </div>
+        <div class="demo-period__chips" data-period-chips data-date-preset role="group" aria-label="快捷预设"></div>
+        <div class="demo-period__draft" data-period-custom-panel hidden>
+          <div class="demo-period__inputs">
+            <label>开始 <input type="date" data-period-start aria-label="开始日期"></label>
+            <button type="button" class="demo-period__swap" data-period-swap aria-label="交换起止日期"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="7" y1="4" x2="7" y2="20"/><polyline points="3 8 7 4 11 8"/><line x1="17" y1="20" x2="17" y2="4"/><polyline points="21 16 17 20 13 16"/></svg></button>
+            <label>结束 <input type="date" data-period-end aria-label="结束日期"></label>
+          </div>
+          <button type="button" class="demo-period__calendar-toggle" data-period-calendar-toggle aria-expanded="false">打开日历选择</button>
+           <div class="demo-period__cal" data-period-calendar hidden>
+            <div class="demo-period__cal-toolbar">
+              <span class="demo-period__year">年份 <select data-period-year aria-label="快速跳转年份"></select></span>
+            </div>
+            <div class="demo-calendar__months">
+              <section data-calendar-month="0"></section>
+              <section data-calendar-month="1"></section>
+            </div>
+          </div>
+        </div>
+        <div class="demo-period__footer">
+          <div class="demo-period__info">
+            <span data-period-footer-range>未选择</span>
+            <span data-period-footer-days></span>
+            <span class="demo-period__cutoff"><i></i>数据截至 <b data-period-anchor>--</b>，之后日期不可选</span>
+          </div>
+          <div class="demo-period__compare-group" role="group" aria-label="对比方式" data-compare-mode>
+            <button type="button" data-compare-value="none" class="is-active">不对比</button>
+            <button type="button" data-compare-value="previous_period">环比</button>
+            <button type="button" data-compare-value="year_over_year">同比</button>
+          </div>
+          <div class="demo-period__actions">
+            <button type="button" class="ui-button ui-button--ghost" data-period-cancel>取消</button>
+            <button type="button" class="ui-button ui-button--primary" data-period-apply>应用</button>
+          </div>
+        </div>
       </div>
       </div>
       ${periodReviewControls}
@@ -367,7 +447,7 @@
     requestApi('/api/settings').then((payload) => {
       const modes = payload?.data?.category_modes || payload?.category_modes || [];
       if (!Array.isArray(modes) || !modes.length) return;
-      categorySelect.innerHTML = modes.filter((m) => m && m.enabled !== false).map((m) => `<option value="${String(m.value)}">${String(m.label)}</option>`).join('');
+      categorySelect.innerHTML = modes.filter((m) => m && m.enabled !== false).map((m) => `<option value="${escapeHtml(String(m.value))}">${escapeHtml(String(m.label))}</option>`).join('');
       if (!categoryChangedByUser && !hasStoredCategoryMode() && payload?.data?.category_mode_default) {
         storeCategoryMode(payload.data.category_mode_default);
       }
@@ -379,11 +459,14 @@
     }).catch(() => {});
   }
 
-  const pagesWithoutDateRange = new Set(['data-center', 'data-collection', 'settings', 'goals', 'creative-board']);
+  // core-product-analysis 是固定月报（页面正文写死统计周期），头部日期范围对它无效，
+  // 因此归入无日期控件名单：隐藏控件，同时让日期状态仓不再向 URL 写入 start/end/preset/compare/dim，
+  // 避免"筛选器能改这份报告"的错误暗示。
+  const pagesWithoutDateRange = new Set(['data-center', 'data-collection', 'settings', 'goals', 'creative-board', 'core-product-analysis']);
   if (currentPage === 'lifecycle' || pagesWithoutDateRange.has(currentPage)) header.querySelector('.demo-period').hidden = true;
   if (currentPage === 'overview') {
     header.querySelector('.demo-topbar__tools').insertAdjacentHTML('beforeend', `
-      <button class="ui-button ui-button--primary demo-overview-action" type="button" aria-label="新增运营动作" title="新增运营动作" data-capability-key="overview.create_action" data-overview-action-open><i data-lucide="plus"></i><span>新增运营动作</span></button>`);
+      <button class="ui-button ui-button--primary demo-overview-action" type="button" aria-label="新增运营动作" title="新增运营动作" data-capability-key="overview.create_action" data-overview-action-open><i data-lucide="plus" aria-hidden="true"></i><span>新增动作</span></button>`);
     apiReady.then((api) => api?.loadPageCapabilities?.('overview')).catch(() => {});
   }
 
@@ -397,8 +480,8 @@
           <button class="toolbox-tool" id="toolbox-tab-import" role="tab" type="button" aria-selected="true" aria-pressed="true" aria-controls="toolbox-panel-import" data-tool="import"><strong>经营数据导入</strong><span>使用现有导入服务处理 Excel 工作簿</span></button>
           <button class="toolbox-tool" id="toolbox-tab-scan" role="tab" type="button" aria-selected="false" aria-pressed="false" aria-controls="toolbox-panel-scan" data-tool="scan"><strong>文件夹扫描任务</strong><span>扫描指定文件夹并自动导入新报表</span></button>
         </div>
-        <section class="ui-panel" id="toolbox-panel-import" role="tabpanel" aria-labelledby="toolbox-tab-import" data-tool-panel="import"><div class="panel__header"><div><h3 class="panel__title">导入经营数据</h3><p class="panel__hint">先预览文件、确认字段映射和质量，再写入数据库</p></div><span class="ui-badge ui-badge--info">表格</span></div><label class="upload-zone" for="demoImportFile"><span><i data-lucide="file-up"></i><strong data-import-file-name>选择表格文件</strong><span>支持 .xlsx / .xls / .csv / .zip；可多选，文件选择器内可按 Ctrl+A 全选</span></span></label><input class="sr-only" id="demoImportFile" data-import-file type="file" accept=".xlsx,.xls,.csv,.zip" multiple><div class="ui-filter-toolbar toolbox-import-actions"><button class="ui-button ui-button--primary" type="button" data-import-preview><i data-lucide="scan-search"></i>预览并校验</button><button class="ui-button ui-button--primary" type="button" data-import-confirm disabled><i data-lucide="database"></i>确认导入</button></div><div class="import-progress" aria-hidden="true"><span data-import-progress></span></div><div class="import-result" data-import-result role="status" aria-live="polite">等待选择文件</div><section class="import-preview-panel" data-import-preview-panel hidden><div class="import-preview-panel__summary"><div class="toolbox-import-tabs" data-import-preview-tabs role="tablist" aria-label="预览文件"></div><p class="panel__hint" data-import-quality>选择文件后查看质量摘要</p><p class="panel__hint" data-import-quality-detail>未发现异常行</p></div><div class="ui-table-wrap"><table class="ui-data-table import-preview-table"><thead><tr><th>原始列</th><th>推断类型</th><th>标准字段映射</th><th>匹配状态</th><th>样例</th></tr></thead><tbody data-import-fields></tbody></table></div></section></section>
-        <section class="ui-panel" id="toolbox-panel-scan" role="tabpanel" aria-labelledby="toolbox-tab-scan" data-tool-panel="scan" hidden><div class="panel__header"><div><h3 class="panel__title">文件夹扫描任务</h3><p class="panel__hint">定期检查指定文件夹，新文件会复用导入校验和批次审计</p></div><button class="ui-button ui-button--ghost" type="button" data-refresh-scans aria-label="刷新扫描任务"><i data-lucide="refresh-cw"></i>刷新</button></div><div class="modal-form__body toolbox-scan-form"><label>任务名称<input class="input" name="scan_name" data-scan-name placeholder="例如：每日经营数据扫描" autocomplete="off"></label><label>扫描文件夹<span class="toolbox-scan-folder"><input class="input" name="scan_folder" data-scan-folder placeholder="请选择或输入本机文件夹绝对路径" autocomplete="off"><button class="ui-button" type="button" data-select-scan-folder hidden><i data-lucide="folder-open"></i>选择文件夹</button></span></label><div class="filter-group"><label>文件匹配规则<input class="input" name="scan_pattern" data-scan-pattern value="*.xlsx;*.xls;*.csv;*.zip" autocomplete="off"></label><label>报表来源<select class="select" name="scan_source" data-scan-source><option value="auto">自动识别</option><option value="product_day">商品日度</option><option value="dmp_product_day">DMP 商品日度</option><option value="store_day">店铺日度</option><option value="refund_day">退款日度</option><option value="customer_day">客户日度</option><option value="product_week">商品周度</option><option value="product_month">商品月度</option><option value="promotion_channel_day">推广渠道日度</option><option value="promotion_campaign_day">推广计划日度</option><option value="promotion_unit_day">推广单元日度</option><option value="promotion_product_day">推广商品日度</option></select></label></div><div class="filter-group"><label>扫描频率<select class="select" name="scan_frequency" data-scan-frequency><option value="daily">每天</option><option value="weekly">每周一</option><option value="monthly">每月 1 日</option></select></label><label>扫描时间<input class="input" name="scan_time" data-scan-time type="time" value="08:00" autocomplete="off"></label></div><label class="toolbox-scan-enabled"><input type="checkbox" name="scan_enabled" data-scan-enabled checked> 创建后立即启用</label><button class="ui-button ui-button--primary" type="button" data-add-scan><i data-lucide="folder-plus"></i>添加扫描任务</button><div class="import-result" data-scan-result role="status" aria-live="polite">等待创建任务</div></div><div class="ui-table-wrap toolbox-scan-table"><table class="ui-data-table"><thead><tr><th>任务与文件夹</th><th>计划</th><th>状态</th><th>最近运行</th><th>操作</th></tr></thead><tbody data-scan-list><tr><td colspan="5">加载中…</td></tr></tbody></table></div></section>
+        <section class="ui-panel" id="toolbox-panel-import" role="tabpanel" aria-labelledby="toolbox-tab-import" data-tool-panel="import"><div class="panel__header"><div><h3 class="panel__title">导入经营数据</h3><p class="panel__hint">先预览文件、确认字段映射和质量，再写入数据库</p></div><span class="ui-badge ui-badge--info">表格</span></div><label class="upload-zone" for="demoImportFile"><span><i data-lucide="file-up"></i><strong data-import-file-name>选择表格文件</strong><span>支持 .xlsx / .xls / .csv / .zip；可多选，文件选择器内可按 Ctrl+A 全选</span></span></label><input class="sr-only" id="demoImportFile" data-import-file type="file" accept=".xlsx,.xls,.csv,.zip" multiple><div class="ui-filter-toolbar toolbox-import-actions"><button class="ui-button ui-button--primary" type="button" data-import-preview><i data-lucide="scan-search"></i>预览并校验</button><button class="ui-button ui-button--primary" type="button" data-import-confirm disabled><i data-lucide="database"></i>确认导入</button></div><div class="import-progress" aria-hidden="true"><span data-import-progress></span></div><div class="import-result" data-import-result role="status" aria-live="polite">等待选择文件</div><section class="import-preview-panel" data-import-preview-panel hidden><div class="import-preview-panel__summary"><div class="toolbox-import-tabs" data-import-preview-tabs role="tablist" aria-label="预览文件"></div><p class="panel__hint" data-import-quality>选择文件后查看质量摘要</p><p class="panel__hint" data-import-quality-detail>未发现异常行</p></div><div data-import-fields></div></section></section>
+        <section class="ui-panel" id="toolbox-panel-scan" role="tabpanel" aria-labelledby="toolbox-tab-scan" data-tool-panel="scan" hidden><div class="panel__header"><div><h3 class="panel__title">文件夹扫描任务</h3><p class="panel__hint">定期检查指定文件夹，新文件会复用导入校验和批次审计</p></div><button class="ui-button ui-button--ghost" type="button" data-refresh-scans aria-label="刷新扫描任务"><i data-lucide="refresh-cw"></i>刷新</button></div><div class="modal-form__body toolbox-scan-form"><label>任务名称<input class="input" name="scan_name" data-scan-name placeholder="例如：每日经营数据扫描" autocomplete="off"></label><label>扫描文件夹<span class="toolbox-scan-folder"><input class="input" name="scan_folder" data-scan-folder placeholder="请选择或输入本机文件夹绝对路径" autocomplete="off"><button class="ui-button" type="button" data-select-scan-folder hidden><i data-lucide="folder-open"></i>选择文件夹</button></span></label><div class="filter-group"><label>文件匹配规则<input class="input" name="scan_pattern" data-scan-pattern value="*.xlsx;*.xls;*.csv;*.zip" autocomplete="off"></label><label>报表来源<select class="select" name="scan_source" data-scan-source><option value="auto">自动识别</option><option value="product_day">商品日度</option><option value="dmp_product_day">DMP 商品日度</option><option value="store_day">店铺日度</option><option value="refund_day">退款日度</option><option value="customer_day">客户日度</option><option value="product_week">商品周度</option><option value="product_month">商品月度</option><option value="promotion_channel_day">推广渠道日度</option><option value="promotion_campaign_day">推广计划日度</option><option value="promotion_unit_day">推广单元日度</option><option value="promotion_product_day">推广商品日度</option></select></label></div><div class="filter-group"><label>扫描频率<select class="select" name="scan_frequency" data-scan-frequency><option value="daily">每天</option><option value="weekly">每周一</option><option value="monthly">每月 1 日</option></select></label><label>扫描时间<input class="input" name="scan_time" data-scan-time type="time" value="08:00" autocomplete="off"></label></div><label class="toolbox-scan-enabled"><input type="checkbox" name="scan_enabled" data-scan-enabled checked> 创建后立即启用</label><button class="ui-button ui-button--primary" type="button" data-add-scan><i data-lucide="folder-plus"></i>添加扫描任务</button><div class="import-result" data-scan-result role="status" aria-live="polite">等待创建任务</div></div><div class="toolbox-scan-table" data-scan-list></div></section>
       </div>
     </dialog>`);
 
@@ -513,7 +596,7 @@
   // 日期范围状态仓已拆至 runtime/date-range-store.js；本文件只负责装配。
   // 与其他 runtime 模块（date-range-scope 等）一致：由 shell 在初始化时
   // 加载，页面适配器经 window.TmallDateRange 消费。
-  loadScriptOnce(new URL(`runtime/date-range-store.js?v=${RUNTIME_ASSET_V}`, assetBase).href).then(() => {
+  loadScriptOnce(new URL(`runtime/date-range-store.js`, assetBase).href).then(() => {
     if (!window.TmallRuntime?.createDateRangeStore) throw new Error('date-range-store 模块未导出 createDateRangeStore');
     window.TmallDateRange = window.TmallRuntime.createDateRangeStore({
       header,
@@ -527,12 +610,63 @@
   });
   const getDateRangeState = () => window.TmallDateRange?.getState?.() || {};
 
-  header.querySelector('[data-demo-refresh]').addEventListener('click', (event) => {
-    const refreshButton = event.currentTarget;
+  // 刷新完成回执：页面适配器注册一个返回 Promise 的处理函数（真实等待自己的请求结束），
+  // 顶栏刷新按钮只依据这些回执决定 spinner 何时停止、提示什么结果，不再用固定 500ms 假装成功。
+  // 兼容旧页面：仍然广播 tmall:refresh；监听者可调用 event.detail.waitUntil(promise) 上报完成。
+  const refreshReceipts = new Set();
+  const REFRESH_RECEIPT_TIMEOUT_MS = 15000;
+  window.TmallRefresh = {
+    register(handler) {
+      if (typeof handler !== 'function') return () => {};
+      refreshReceipts.add(handler);
+      return () => refreshReceipts.delete(handler);
+    },
+    unregister(handler) {
+      refreshReceipts.delete(handler);
+    },
+    count: () => refreshReceipts.size,
+  };
+  const runPageRefresh = () => {
+    const reported = [];
+    const waitUntil = (task) => {
+      if (task && typeof task.then === 'function') reported.push(task);
+    };
+    window.dispatchEvent(new CustomEvent('tmall:refresh', { detail: { page: currentPage, waitUntil } }));
+    const tasks = [...reported, ...[...refreshReceipts].map((handler) => Promise.resolve().then(handler))];
+    if (!tasks.length) return Promise.resolve({ status: 'unreported', count: 0 });
+    let timerId = null;
+    const timeout = new Promise((resolve) => {
+      timerId = window.setTimeout(() => resolve({ status: 'timeout', count: tasks.length }), REFRESH_RECEIPT_TIMEOUT_MS);
+    });
+    const settled = Promise.allSettled(tasks).then((results) => {
+      window.clearTimeout(timerId);
+      const failed = results.find((result) => result.status === 'rejected');
+      if (failed) {
+        const reason = failed.reason;
+        return { status: 'failed', count: tasks.length, message: reason?.message || String(reason || '未知错误') };
+      }
+      return { status: 'ok', count: tasks.length };
+    });
+    return Promise.race([settled, timeout]);
+  };
+  const refreshButton = header.querySelector('[data-demo-refresh]');
+  refreshButton.addEventListener('click', async () => {
+    if (refreshButton.classList.contains('is-spinning')) return;
     refreshButton.classList.add('is-spinning');
-    window.dispatchEvent(new CustomEvent('tmall:refresh', { detail: { page: currentPage } }));
+    refreshButton.setAttribute('aria-busy', 'true');
     showToast('正在刷新当前页面数据');
-    window.setTimeout(() => refreshButton.classList.remove('is-spinning'), 500);
+    const result = await runPageRefresh();
+    refreshButton.classList.remove('is-spinning');
+    refreshButton.removeAttribute('aria-busy');
+    if (result.status === 'ok') {
+      showToast(`已刷新当前页面数据（${result.count} 项请求完成）`);
+    } else if (result.status === 'timeout') {
+      showToast('刷新超时：页面数据可能仍在更新，请稍后重试', { duration: 4000 });
+    } else if (result.status === 'failed') {
+      showToast(`刷新失败：${result.message}`, { duration: 5000 });
+    } else {
+      showToast('刷新请求已发送：该页面尚未接入完成回执', { duration: 3000 });
+    }
   });
   header.querySelector('[data-demo-export]').addEventListener('click', () => {
     if (!window.dispatchEvent(new CustomEvent('tmall:export', { cancelable: true, detail: { page: currentPage } }))) return;
@@ -644,10 +778,15 @@
       closeMobileNavigation();
     }
   });
-  document.querySelectorAll('.segmented button').forEach((button) => button.addEventListener('click', () => {
-    const group = button.closest('.segmented');
-    group?.querySelectorAll('button').forEach((item) => item.setAttribute('aria-pressed', String(item === button)));
-  }));
+  // 用 [data-segmented] / [role="group"] / [role="tablist"] 定位，而不是 .segmented：
+  // class 是样式契约，重命名 class 不该让事件静默失效（DESIGN_SYSTEM.md 第 11 节禁止事项 7）。
+  // 这里保留角色选择器兜底，是因为全站 12 个 .segmented 容器只有这一处统一管理
+  // aria-pressed；单纯换成 [data-segmented] 会让所有没标注的容器静默失去状态同步。
+  document.querySelectorAll('[data-segmented] button, [role="group"].segmented button, [role="tablist"].segmented button')
+    .forEach((button) => button.addEventListener('click', () => {
+      const group = button.closest('[data-segmented]') || button.closest('.segmented');
+      group?.querySelectorAll('button').forEach((item) => item.setAttribute('aria-pressed', String(item === button)));
+    }));
   const toolbox = document.querySelector('[data-toolbox-dialog]');
   const toolboxTriggers = [...document.querySelectorAll('[data-open-toolbox]')];
   let toolboxReturnFocus = null;
@@ -775,6 +914,7 @@
     if (!preview) {
       importPreviewPanel.hidden = true;
       importConfirmButton.disabled = true;
+      importFields.replaceChildren();
       return;
     }
     preview = normalizeImportPreview(preview);
@@ -820,15 +960,12 @@
       .map((item) => `第 ${item.row_number || '--'} 行 · ${item.standard_field || '--'} · ${item.reason || item.message || '数据无效'}`)
       .join('；');
     importQualityDetail.textContent = invalidDetails || '未发现异常行';
-    importFields.replaceChildren(...(preview.fields || []).map((field) => {
-      const row = document.createElement('tr');
-      const sourceCell = document.createElement('td');
-      sourceCell.textContent = field.source_column;
-      row.appendChild(sourceCell);
-      const typeCell = document.createElement('td');
-      typeCell.textContent = importMatchLabel(field.inferred_type || 'empty');
-      row.appendChild(typeCell);
-      const mappingCell = document.createElement('td');
+    const importRows = preview.fields || [];
+    importFields.replaceChildren(TmallUI.table({
+      columns: [
+        { key: 'source_column', label: '原始列' },
+        { key: 'inferred_type', label: '推断类型', render: (value) => importMatchLabel(value || 'empty') },
+        { key: 'source_column', label: '标准字段映射', render: (_value, field) => {
       const select = document.createElement('select');
       select.className = 'select';
       select.dataset.importMapping = field.source_column;
@@ -844,15 +981,17 @@
         preview.required_unmapped = requiredMappings(preview);
         renderImportPreview(preview);
       });
-      mappingCell.appendChild(select);
-      row.appendChild(mappingCell);
-      const matchCell = document.createElement('td');
-      matchCell.textContent = select.value ? (field.match_status === 'manual' ? '手动' : importMatchLabel(field.match_status || 'matched')) : '未匹配';
-      row.appendChild(matchCell);
-      const sampleCell = document.createElement('td');
-      sampleCell.textContent = field.sample_value || '--';
-      row.appendChild(sampleCell);
-      return row;
+          return select;
+        }},
+        { key: 'match_status', label: '匹配状态', render: (_value, field) => {
+          const currentKey = Object.entries(preview.mapping || {}).find(([, source]) => source === field.source_column)?.[0] || '';
+          return currentKey ? (field.match_status === 'manual' ? '手动' : importMatchLabel(field.match_status || 'matched')) : '未匹配';
+        }},
+        { key: 'sample_value', label: '样例', render: (value) => value || '--' },
+      ],
+      rows: importRows,
+      tableClass: 'import-preview-table',
+      emptyMessage: '文件中没有可映射字段',
     }));
     const missing = requiredMappings(preview);
     importConfirmButton.disabled = Boolean(missing.length || preview.invalid_rows || preview.duplicate_keys);
@@ -999,60 +1138,60 @@
     return `扫描完成：发现 ${discovered} 个文件，导入 ${imported} 个，阻断 ${blocked} 个，失败 ${failed} 个。`;
   };
   const loadScanJobs = async () => {
-    const tbody = document.querySelector('[data-scan-list]');
-    tbody.innerHTML = '<tr><td colspan="5">正在加载扫描任务…</td></tr>';
+    const scanList = document.querySelector('[data-scan-list]');
+    scanList.replaceChildren(TmallUI.table({
+      columns: [{ key: 'task_name', label: '任务与文件夹' }, { key: 'plan', label: '计划' }, { key: 'status', label: '状态' }, { key: 'last_run', label: '最近运行' }, { key: 'actions', label: '操作' }],
+      emptyMessage: '正在加载扫描任务…', tableClass: 'toolbox-scan-table__table',
+    }));
     const payload = await requestDomainApi('/api/import-scans');
     const rows = payload.data || [];
-    tbody.replaceChildren();
-    if (!rows.length) {
-      const row = tbody.insertRow();
-      const cell = row.insertCell();
-      cell.colSpan = 5;
-      cell.textContent = '暂无文件夹扫描任务';
-      return;
-    }
-    rows.forEach((job) => {
-      const row = tbody.insertRow();
-      const taskCell = row.insertCell();
-      const taskName = document.createElement('strong');
-      const folderPath = document.createElement('span');
-      taskName.textContent = job.task_name || '未命名任务';
-      folderPath.className = 'panel__hint toolbox-scan-path';
-      folderPath.textContent = job.folder_path || '--';
-      taskCell.append(taskName, folderPath);
-      row.insertCell().textContent = scanPlanLabel(job.cron_expr);
-      const statusCell = row.insertCell();
-      const badge = document.createElement('span');
-      const isRunning = job.status === 'running';
-      badge.className = `ui-badge ${isRunning || job.enabled ? 'ui-badge--success' : ''}`.trim();
-      badge.textContent = job.enabled ? '已启用' : '已停用';
-      badge.textContent = isRunning ? '正在扫描' : (job.enabled ? '已启用' : '已停用');
-      statusCell.appendChild(badge);
-      row.insertCell().textContent = formatScanTime(job.last_run);
-      const actions = row.insertCell();
-      actions.className = 'table-actions';
-      actions.append(
-        scanAction('play', '立即扫描', async () => {
-          scanResult.textContent = `正在扫描 ${job.task_name || '任务'}…`;
-          try {
-            const result = await requestDomainApi(`/api/import-scans/${Number(job.id)}/run`, {
-              method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ force: true }),
-            });
-            scanResult.textContent = scanRunSummary(result);
-            await loadScanJobs();
-          }
-            catch (error) { scanResult.textContent = window.TmallScanUi?.errorMessage?.(error) || error.message || '扫描失败'; }
-        }),
-        scanAction(job.enabled ? 'pause' : 'play-circle', job.enabled ? '停用任务' : '启用任务', async () => {
-          try {
-            await requestDomainApi(`/api/import-scans/${Number(job.id)}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ enabled: !job.enabled }) });
-            scanResult.textContent = job.enabled ? '任务已停用' : '任务已启用';
-            await loadScanJobs();
-          } catch (error) { scanResult.textContent = window.TmallScanUi?.errorMessage?.(error) || error.message || '更新任务失败'; }
-        }),
-      );
-      if (isRunning) actions.firstElementChild.disabled = true;
-    });
+    const columns = [
+      { key: 'task_name', label: '任务与文件夹', render: (_value, job) => {
+        const name = document.createElement('strong');
+        const folder = document.createElement('span');
+        const stack = document.createElement('div');
+        name.textContent = job.task_name || '未命名任务';
+        folder.className = 'panel__hint toolbox-scan-path';
+        folder.textContent = job.folder_path || '--';
+        stack.append(name, folder);
+        return stack;
+      }},
+      { key: 'cron_expr', label: '计划', render: (value) => scanPlanLabel(value) },
+      { key: 'status', label: '状态', render: (_value, job) => {
+        const badge = document.createElement('span');
+        const isRunning = job.status === 'running';
+        badge.className = `ui-badge ${isRunning || job.enabled ? 'ui-badge--success' : ''}`.trim();
+        badge.textContent = isRunning ? '正在扫描' : (job.enabled ? '已启用' : '已停用');
+        return badge;
+      }},
+      { key: 'last_run', label: '最近运行', render: (value) => formatScanTime(value) },
+      { key: 'actions', label: '操作', className: 'table-actions', render: (_value, job) => {
+        const actions = document.createElement('div');
+        actions.className = 'table-actions';
+        actions.append(
+          scanAction('play', '立即扫描', async () => {
+            scanResult.textContent = `正在扫描 ${job.task_name || '任务'}…`;
+            try {
+              const result = await requestDomainApi(`/api/import-scans/${Number(job.id)}/run`, {
+                method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ force: true }),
+              });
+              scanResult.textContent = scanRunSummary(result);
+              await loadScanJobs();
+            } catch (error) { scanResult.textContent = window.TmallScanUi?.errorMessage?.(error) || error.message || '扫描失败'; }
+          }),
+          scanAction(job.enabled ? 'pause' : 'play-circle', job.enabled ? '停用任务' : '启用任务', async () => {
+            try {
+              await requestDomainApi(`/api/import-scans/${Number(job.id)}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ enabled: !job.enabled }) });
+              scanResult.textContent = job.enabled ? '任务已停用' : '任务已启用';
+              await loadScanJobs();
+            } catch (error) { scanResult.textContent = window.TmallScanUi?.errorMessage?.(error) || error.message || '更新任务失败'; }
+          }),
+        );
+        if (job.status === 'running') actions.firstElementChild.disabled = true;
+        return actions;
+      }},
+    ];
+    scanList.replaceChildren(TmallUI.table({ columns, rows, tableClass: 'toolbox-scan-table__table', emptyMessage: '暂无文件夹扫描任务' }));
     window.lucide?.createIcons();
   };
   if (window.tmallDesktop?.selectScanFolder) {
@@ -1079,7 +1218,7 @@
     finally { addScanButton.disabled = false; }
   });
   document.querySelector('[data-refresh-scans]').addEventListener('click', () => loadScanJobs().catch((error) => { scanResult.textContent = window.TmallScanUi?.errorMessage?.(error) || error.message || '扫描任务加载失败'; }));
-  loadScanJobs().catch((error) => { document.querySelector('[data-scan-list]').innerHTML = '<tr><td colspan="5">扫描任务加载失败</td></tr>'; scanResult.textContent = window.TmallScanUi?.errorMessage?.(error) || error.message || '扫描任务加载失败'; });
+  loadScanJobs().catch((error) => { document.querySelector('[data-scan-list]').replaceChildren(TmallUI.table({ columns: [{ label: '任务与文件夹' }, { label: '计划' }, { label: '状态' }, { label: '最近运行' }, { label: '操作' }], tableClass: 'toolbox-scan-table__table', emptyMessage: '扫描任务加载失败' })); scanResult.textContent = window.TmallScanUi?.errorMessage?.(error) || error.message || '扫描任务加载失败'; });
   async function syncActionCount() {
     const badge = sidebar.querySelector('[data-nav-action-count]');
     if (!badge) return;

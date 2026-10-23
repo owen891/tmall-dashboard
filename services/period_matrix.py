@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from datetime import date
 
-from db import get_db
+from db import get_db, get_shop_id
 from services.category_mode_service import mode_to_label
 from services import category_analysis_service as category_service
 from services.period_parsing import resolve_period, _period_label
@@ -99,7 +99,7 @@ def _row_status(metrics):
 WUJIE_SOURCE_TABLE = 'promotion_daily_facts'
 
 
-def _wujie_totals(conn, start, end, category_mode, group_by_category=False):
+def _wujie_totals(conn, start, end, category_mode, group_by_category=False, shop_id=None):
     """从万相台后台事实表取「无界」花费与成交。
 
     BI 日度导出的「万相台」列在近两年整列为 '--' 或 0（平台侧没把无界
@@ -111,6 +111,8 @@ def _wujie_totals(conn, start, end, category_mode, group_by_category=False):
     - grain='product' + channel='全部'：避免与计划/单元维度重复计数；
     - product_id 以 '-' 开头的是账户级汇总哨兵行（-998/-999），不是商品；
     - source_batch_id 为空的历史行是月度汇总被塞进月末日期，不是日度事实。
+    - shop_id：promotion_daily_facts 是带 shop_id 的多店表，漏掉它会把别的
+      店铺的投放花费算进本店无界费比。
     """
     if group_by_category:
         empty: object = {}
@@ -124,13 +126,15 @@ def _wujie_totals(conn, start, end, category_mode, group_by_category=False):
         return empty
 
     label = mode_to_label(category_mode)
+    scope = str(shop_id or get_shop_id())
     clauses = [
+        'f.shop_id = ?',
         'f.date >= ?', 'f.date <= ?',
         "f.grain = 'product'", "f.channel = '全部'",
         "f.product_id NOT LIKE '-%'",
         'f.source_batch_id IS NOT NULL',
     ]
-    params = [start.isoformat(), end.isoformat()]
+    params = [scope, start.isoformat(), end.isoformat()]
     if label:
         clauses.append("(p.shop_label = ? OR instr(',' || p.shop_label || ',', ',' || ? || ',') > 0)")
         params.extend([label, label])
@@ -160,17 +164,19 @@ def _wujie_totals(conn, start, end, category_mode, group_by_category=False):
     return pair(rows[0])
 
 
-def _matrix_aggregate(conn, start, end, category_mode, group_by_category=False):
+def _matrix_aggregate(conn, start, end, category_mode, group_by_category=False, shop_id=None):
     """聚合日事实，并补齐 category_analysis_service 未覆盖的加购率 / 投产比。
 
     category_service.BASE_METRICS 不含 cart_rate / ad_roi，直接复用 _summarize
     会让这两列永远为空。这里在它的基础上补算：
     - cart_rate：按行取非零日均值（与复盘服务的口径一致）
     - ad_roi：支付金额 / 推广花费（费用为 0 时返回 None，不臆造）
+    - shop_id：daily_data 是多店表，缺店铺条件会把其他店铺的事实并进本店指标矩阵。
     """
     label = mode_to_label(category_mode)
-    clauses = ['d.date >= ?', 'd.date <= ?']
-    params = [start.isoformat(), end.isoformat()]
+    scope = str(shop_id or get_shop_id())
+    clauses = ['d.shop_id = ?', 'd.date >= ?', 'd.date <= ?']
+    params = [scope, start.isoformat(), end.isoformat()]
     if label:
         clauses.append("(p.shop_label = ? OR instr(',' || p.shop_label || ',', ',' || ? || ',') > 0)")
         params.extend([label, label])
@@ -194,8 +200,8 @@ def _matrix_aggregate(conn, start, end, category_mode, group_by_category=False):
              f"WHERE {' AND '.join(clauses)} ORDER BY d.date")
     rows = [dict(row) for row in conn.execute(query, params).fetchall()]
 
-    wujie_total = _wujie_totals(conn, start, end, category_mode)
-    wujie_groups = _wujie_totals(conn, start, end, category_mode, group_by_category=True)
+    wujie_total = _wujie_totals(conn, start, end, category_mode, shop_id=scope)
+    wujie_groups = _wujie_totals(conn, start, end, category_mode, group_by_category=True, shop_id=scope)
 
     def apply_wujie(totals, wujie):
         """写入无界花费/成交，并据此推导无界 ROI 与无界净费比。"""
@@ -259,7 +265,7 @@ def _matrix_metrics(current, previous):
     return metrics
 
 
-def _build_matrix_row(conn, period_type, period_key, category_mode):
+def _build_matrix_row(conn, period_type, period_key, category_mode, shop_id=None):
     """聚合单个周期的指标，并自动查找上一周期作为对比基线。"""
     period = resolve_period(period_type, period_key)
     prev_period = resolve_period(period_type, period['prev_key'])
@@ -268,8 +274,8 @@ def _build_matrix_row(conn, period_type, period_key, category_mode):
     prev_start = date.fromisoformat(prev_period['start'])
     prev_end = date.fromisoformat(prev_period['end'])
 
-    current, profit_basis, _ = _matrix_aggregate(conn, start, end, category_mode)
-    previous, _, _ = _matrix_aggregate(conn, prev_start, prev_end, category_mode)
+    current, profit_basis, _ = _matrix_aggregate(conn, start, end, category_mode, shop_id=shop_id)
+    previous, _, _ = _matrix_aggregate(conn, prev_start, prev_end, category_mode, shop_id=shop_id)
     metrics = _matrix_metrics(current, previous)
 
     return {
@@ -283,11 +289,13 @@ def _build_matrix_row(conn, period_type, period_key, category_mode):
     }
 
 
-def build_metrics_matrix(period_type, period_key, category_mode=None, limit=8):
+def build_metrics_matrix(period_type, period_key, category_mode=None, limit=8, shop_id=None):
     """返回最近 N 个周期的指标矩阵，用于周期复盘的「指标矩阵」表格。
 
-    每期自动与上一周期环比，保证口径一致。
+    每期自动与上一周期环比，保证口径一致。shop_id 缺省取当前请求/应用 scope
+    （get_shop_id()），保证复盘页只看到本店事实。
     """
+    scope = str(shop_id or get_shop_id())
     period = resolve_period(period_type, period_key)
     periods = [period]
     for _ in range(max(1, limit) - 1):
@@ -298,7 +306,7 @@ def build_metrics_matrix(period_type, period_key, category_mode=None, limit=8):
     rows = []
     with get_db() as conn:
         for p in periods:
-            rows.append(_build_matrix_row(conn, period_type, p['key'], category_mode))
+            rows.append(_build_matrix_row(conn, period_type, p['key'], category_mode, shop_id=scope))
     return {
         'period_type': period_type,
         'period_key': period_key,
@@ -308,8 +316,9 @@ def build_metrics_matrix(period_type, period_key, category_mode=None, limit=8):
     }
 
 
-def build_category_breakdown(period_type, period_key, category_mode=None):
+def build_category_breakdown(period_type, period_key, category_mode=None, shop_id=None):
     """返回当前周期按 products.category 拆分的指标表。"""
+    scope = str(shop_id or get_shop_id())
     period = resolve_period(period_type, period_key)
     prev_period = resolve_period(period_type, period['prev_key'])
     start = date.fromisoformat(period['start'])
@@ -318,9 +327,10 @@ def build_category_breakdown(period_type, period_key, category_mode=None):
     prev_end = date.fromisoformat(prev_period['end'])
 
     with get_db() as conn:
-        current_groups, summarize_current = _matrix_aggregate(conn, start, end, category_mode, group_by_category=True)
+        current_groups, summarize_current = _matrix_aggregate(
+            conn, start, end, category_mode, group_by_category=True, shop_id=scope)
         previous_groups, summarize_previous = _matrix_aggregate(
-            conn, prev_start, prev_end, category_mode, group_by_category=True)
+            conn, prev_start, prev_end, category_mode, group_by_category=True, shop_id=scope)
 
     categories = sorted(set(current_groups.keys()) | set(previous_groups.keys()))
     rows = []

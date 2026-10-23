@@ -256,7 +256,7 @@ class WanxiangtaiService:
         # 提取指标字段
         ad_spend = WanxiangtaiService._to_float(row.get('charge'))
         clicks = WanxiangtaiService._to_int(row.get('click'))
-        impressions = WanxiangtaiService._to_int(row.get('adPv') or row.get('impressions'))
+        impressions = WanxiangtaiService._to_int(row.get('adPv') if row.get('adPv') is not None else row.get('impressions'))
         attributed_payment = WanxiangtaiService._to_float(row.get('alipayInshopAmt'))
         payment_buyers = WanxiangtaiService._to_int(row.get('alipayInshopNum'))
         direct_payment = WanxiangtaiService._to_float(row.get('alipayDirAmt'))

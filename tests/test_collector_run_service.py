@@ -1,5 +1,6 @@
 import json
 import os
+import sqlite3
 import tempfile
 import unittest
 from types import SimpleNamespace
@@ -76,16 +77,18 @@ class CollectorRunServiceTests(unittest.TestCase):
         from services.collector_run_service import stage_source_snapshot, list_data_staging
         with get_db(self.db_path) as conn:
             conn.execute('''CREATE TABLE sycm_flow_source_daily (
-                id INTEGER PRIMARY KEY, stat_date TEXT, channel_name TEXT)''')
-            conn.execute("INSERT INTO sycm_flow_source_daily VALUES (1, '2026-09-18', '搜索')")
+                id INTEGER PRIMARY KEY, stat_date TEXT, channel_name TEXT, shop_id TEXT)''')
+            conn.execute("INSERT INTO sycm_flow_source_daily VALUES (1, '2026-09-18', '搜索', 'default')")
             conn.commit()
+        from services.collector_run_service import create_run
+        run_id = create_run('sycm_flow', 'default', db_path=self.db_path)
         result = stage_source_snapshot(
-            'run-snapshot', 'sycm_flow', 'sycm_flow_source_daily', 'stat_date',
+            run_id, 'sycm_flow', 'sycm_flow_source_daily', 'stat_date',
             db_path=self.db_path,
         )
         self.assertEqual(result['status'], 'published')
         self.assertEqual(result['row_count'], 1)
-        self.assertEqual(list_data_staging('run-snapshot', db_path=self.db_path)[0]['status'], 'published')
+        self.assertEqual(list_data_staging(run_id, db_path=self.db_path)[0]['status'], 'published')
 
     def test_raw_artifact_is_compressed_and_hash_indexed(self):
         from services.collector_run_service import create_run, list_artifacts, persist_artifact, read_artifact
@@ -128,6 +131,169 @@ class CollectorRunServiceTests(unittest.TestCase):
         resolve_health_alert('sycm_flow', 'data_delay', alerts[0]['fingerprint'], db_path=self.db_path)
         self.assertEqual(list_health_alerts(source_key='sycm_flow', db_path=self.db_path), [])
 
+    def test_resolved_alert_can_reopen_and_resolve_again(self):
+        """A resolved alert that fires again must reuse its row.
+
+        Regression: when ``status`` was part of the UNIQUE key, the reopened
+        alert inserted a second row, and resolving it collided with the
+        historical resolved row (sqlite3.IntegrityError). The healthcheck
+        aborted there, so no later source's alerts were ever synced.
+        """
+        from services.collector_run_service import (
+            list_health_alerts, record_health_alert, resolve_health_alert,
+        )
+        first = record_health_alert('bi_daily', 'data_gap', '缺失 1 天：2026-10-03',
+                                    db_path=self.db_path)
+        resolve_health_alert('bi_daily', 'data_gap', first, db_path=self.db_path)
+        self.assertEqual(list_health_alerts(source_key='bi_daily', db_path=self.db_path), [])
+
+        reopened = record_health_alert('bi_daily', 'data_gap', '缺失 1 天：2026-10-13',
+                                       db_path=self.db_path)
+        self.assertEqual(reopened, first)
+        alerts = list_health_alerts(source_key='bi_daily', db_path=self.db_path)
+        self.assertEqual(len(alerts), 1)
+        self.assertEqual(alerts[0]['message'], '缺失 1 天：2026-10-13')
+        self.assertIsNone(alerts[0]['resolved_at'])
+
+        # The second resolve used to raise IntegrityError.
+        resolve_health_alert('bi_daily', 'data_gap', reopened, db_path=self.db_path)
+        self.assertEqual(list_health_alerts(source_key='bi_daily', db_path=self.db_path), [])
+        resolved = list_health_alerts(source_key='bi_daily', status='resolved', db_path=self.db_path)
+        self.assertEqual(len(resolved), 1)
+        # No duplicate row is left behind: one alert identity, one row.
+        conn = sqlite3.connect(self.db_path)
+        try:
+            total = conn.execute('SELECT COUNT(*) FROM collector_health_alerts').fetchone()[0]
+        finally:
+            conn.close()
+        self.assertEqual(total, 1)
+
+    def test_legacy_duplicate_alert_rows_are_merged_on_migration(self):
+        """Upgrading a database that already holds an open+resolved pair."""
+        import sqlite3 as sqlite3_module
+        legacy_path = os.path.join(self.temp_dir.name, 'legacy.db')
+        conn = sqlite3_module.connect(legacy_path)
+        try:
+            conn.execute('''CREATE TABLE collector_health_alerts (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                source_key TEXT NOT NULL,
+                alert_type TEXT NOT NULL,
+                severity TEXT NOT NULL DEFAULT 'warning',
+                status TEXT NOT NULL DEFAULT 'open',
+                fingerprint TEXT NOT NULL,
+                message TEXT NOT NULL,
+                details_json TEXT NOT NULL DEFAULT '{}',
+                first_seen_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                last_seen_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                resolved_at TEXT,
+                UNIQUE(source_key, alert_type, fingerprint, status)
+            )''')
+            conn.execute(
+                'CREATE INDEX idx_collector_health_alerts_status '
+                'ON collector_health_alerts(status, last_seen_at)'
+            )
+            conn.executemany(
+                '''INSERT INTO collector_health_alerts
+                   (source_key, alert_type, severity, status, fingerprint, message,
+                    first_seen_at, last_seen_at, resolved_at)
+                   VALUES (?, ?, 'critical', ?, 'fp-dupe', ?, ?, ?, ?)''',
+                [
+                    ('bi_daily', 'data_gap', 'resolved', '缺失 1 天：2026-10-03',
+                     '2026-10-04 05:00:03', '2026-10-05 05:00:03', '2026-10-05 05:00:03'),
+                    ('bi_daily', 'data_gap', 'open', '缺失 1 天：2026-10-13',
+                     '2026-10-07 05:00:04', '2026-10-14 05:00:04', None),
+                ],
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        from db import init_db
+        init_db(legacy_path)
+
+        conn = sqlite3_module.connect(legacy_path)
+        try:
+            rows = conn.execute(
+                '''SELECT status, message, first_seen_at, last_seen_at, resolved_at
+                   FROM collector_health_alerts'''
+            ).fetchall()
+            unique_keys = [
+                tuple(info[2] for info in conn.execute(f'PRAGMA index_info("{index[1]}")'))
+                for index in conn.execute('PRAGMA index_list(collector_health_alerts)')
+                if index[2]
+            ]
+            leaves_legacy = conn.execute(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' "
+                "AND name='collector_health_alerts_legacy'"
+            ).fetchone()[0]
+        finally:
+            conn.close()
+
+        # The live (open) alert survives with the union of both seen windows.
+        self.assertEqual(len(rows), 1)
+        status, message, first_seen, last_seen, resolved_at = rows[0]
+        self.assertEqual(status, 'open')
+        self.assertEqual(message, '缺失 1 天：2026-10-13')
+        self.assertEqual(first_seen, '2026-10-04 05:00:03')
+        self.assertEqual(last_seen, '2026-10-14 05:00:04')
+        self.assertIsNone(resolved_at)
+        self.assertIn(('source_key', 'alert_type', 'fingerprint'), unique_keys)
+        self.assertNotIn(('source_key', 'alert_type', 'fingerprint', 'status'), unique_keys)
+        self.assertEqual(leaves_legacy, 0)
+
+    def test_interrupted_alert_migration_is_recovered(self):
+        """A migration killed mid-rename must not strand or lose the alert rows."""
+        import sqlite3 as sqlite3_module
+        path = os.path.join(self.temp_dir.name, 'interrupted.db')
+        conn = sqlite3_module.connect(path)
+        try:
+            # State left behind by a run that died after RENAME: the real rows
+            # live in the legacy table, and the new-DDL table was created empty.
+            conn.execute('''CREATE TABLE collector_health_alerts_legacy (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                source_key TEXT NOT NULL,
+                alert_type TEXT NOT NULL,
+                severity TEXT NOT NULL DEFAULT 'warning',
+                status TEXT NOT NULL DEFAULT 'open',
+                fingerprint TEXT NOT NULL,
+                message TEXT NOT NULL,
+                details_json TEXT NOT NULL DEFAULT '{}',
+                first_seen_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                last_seen_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                resolved_at TEXT,
+                UNIQUE(source_key, alert_type, fingerprint, status)
+            )''')
+            conn.execute('''INSERT INTO collector_health_alerts_legacy
+                (source_key, alert_type, severity, status, fingerprint, message)
+                VALUES ('bi_daily', 'data_gap', 'critical', 'open', 'fp-x', '缺失 1 天')''')
+            conn.commit()
+        finally:
+            conn.close()
+
+        from db import init_db
+        init_db(path)
+
+        conn = sqlite3_module.connect(path)
+        try:
+            rows = conn.execute(
+                'SELECT source_key, alert_type, status, message FROM collector_health_alerts'
+            ).fetchall()
+            unique_keys = [
+                tuple(info[2] for info in conn.execute(f'PRAGMA index_info("{index[1]}")'))
+                for index in conn.execute('PRAGMA index_list(collector_health_alerts)')
+                if index[2]
+            ]
+            leftovers = conn.execute(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' "
+                "AND name LIKE 'collector_health_alerts_legacy%'"
+            ).fetchone()[0]
+        finally:
+            conn.close()
+
+        self.assertEqual(rows, [('bi_daily', 'data_gap', 'open', '缺失 1 天')])
+        self.assertIn(('source_key', 'alert_type', 'fingerprint'), unique_keys)
+        self.assertEqual(leftovers, 0)
+
     def test_schema_snapshot_detects_catalog_change(self):
         from services.collector_run_service import save_schema_snapshot
         first = save_schema_snapshot('sycm_flow', {'fields': ['a']}, db_path=self.db_path)
@@ -158,7 +324,15 @@ class CollectorRunServiceTests(unittest.TestCase):
         ]
         self.assertIn("TMALL_CDP_PORT', '9223'", sources[0])
         self.assertIn("TMALL_CDP_PORT', '9223'", sources[1])
-        self.assertIn('else { 9223 }', sources[2])
+        # Browser entrypoints now share a validated configuration reader rather
+        # than duplicating literals. Exercise its default and explicit override.
+        import sys
+        from scripts.browser_runtime import resolve_browser
+        with tempfile.TemporaryDirectory() as directory:
+            env = {'TMALL_CHROME_PATH': sys.executable, 'TMALL_CHROME_PROFILE': directory}
+            self.assertEqual(resolve_browser(directory, environ=env)['port'], 9223)
+            self.assertEqual(resolve_browser(directory, environ={**env, 'TMALL_CDP_PORT': '41999'})['port'], 41999)
+        self.assertIn('Resolve-CollectorBrowser', sources[2])
         self.assertIn('else { 9223 }', sources[3])
         self.assertNotIn('else { 9222 }', sources[3])
 
@@ -509,6 +683,9 @@ class CollectorRunServiceTests(unittest.TestCase):
         child = create_run('sycm_item_flow', 'default', db_path=self.db_path,
                            mode='retry', requested_by=f'retry:{parent}')
         upsert_checkpoint(child, 'product', 'a', db_path=self.db_path, status='succeeded')
+        from services.collector_run_service import record_quality_result
+        update_run(child, status='succeeded', db_path=self.db_path)
+        record_quality_result(child, 'retry_publication', status='passed', db_path=self.db_path)
         diff = retry_diff(parent, child, db_path=self.db_path)
         self.assertEqual(diff['planned'], 2)
         self.assertEqual(diff['recovered'], 1)
@@ -534,6 +711,8 @@ class CollectorRunServiceTests(unittest.TestCase):
             patch('services.collector_retry_service.subprocess.run', return_value=SimpleNamespace(
                 returncode=0, stdout='', stderr='')),
             patch('api.collect_api._consume_structured_checkpoint_events', side_effect=emit_one_success),
+            patch('api.collect_api._browser_for_sources', return_value=None),
+            patch('services.collector_retry_service.resolve_python', return_value='fixture-python'),
         ):
             _run_retry(
                 child, plan, collectors_dir=self.temp_dir.name,
@@ -546,6 +725,69 @@ class CollectorRunServiceTests(unittest.TestCase):
         quality = list_quality_results(child, db_path=self.db_path)
         completion = next(item for item in quality if item['rule_key'] == 'retry_completion')
         self.assertEqual(completion['status'], 'failed')
+
+    def test_get_run_is_not_visible_to_foreign_shop(self):
+        from services.collector_run_service import create_run, get_run
+
+        run_id = create_run('sycm_item_flow', 'shop-a', db_path=self.db_path)
+        self.assertIsNone(get_run(run_id, db_path=self.db_path, shop_id='shop-b'))
+        self.assertEqual(get_run(run_id, db_path=self.db_path, shop_id='shop-a')['id'], run_id)
+        self.assertEqual(get_run(run_id, db_path=self.db_path)['id'], run_id)
+
+    def test_artifact_read_is_not_visible_to_foreign_shop(self):
+        from services.collector_run_service import (
+            create_run, list_artifacts, persist_artifact, read_artifact,
+        )
+
+        run_id = create_run('bi_daily', 'shop-a', db_path=self.db_path)
+        persist_artifact(run_id, 'process_output', 'shop-a raw output', db_path=self.db_path)
+        artifact_id = list_artifacts(run_id, db_path=self.db_path)[0]['id']
+
+        self.assertEqual(list_artifacts(run_id, db_path=self.db_path, shop_id='shop-b'), [])
+        self.assertIsNone(
+            read_artifact(artifact_id, run_id, db_path=self.db_path, shop_id='shop-b')
+        )
+        self.assertEqual(
+            read_artifact(artifact_id, run_id, db_path=self.db_path, shop_id='shop-a')['content'],
+            'shop-a raw output',
+        )
+        self.assertEqual(
+            read_artifact(artifact_id, run_id, db_path=self.db_path)['content'],
+            'shop-a raw output',
+        )
+
+    def test_staging_read_is_not_visible_to_foreign_shop(self):
+        from db import get_db
+        from services.collector_run_service import create_run, list_data_staging
+
+        run_id = create_run('bi_daily', 'shop-a', db_path=self.db_path)
+        with get_db(self.db_path) as conn:
+            for batch_id in (run_id, f'{run_id}:child'):
+                conn.execute(
+                    '''INSERT INTO collector_data_staging
+                       (source_key, batch_id, unit_type, unit_key, payload_json, status)
+                       VALUES (?, ?, ?, ?, ?, ?)''',
+                    ('bi_daily', batch_id, 'row', batch_id, '{"x":1}', 'staged'),
+                )
+            conn.commit()
+
+        self.assertEqual(list_data_staging(run_id, db_path=self.db_path, shop_id='shop-b'), [])
+        self.assertEqual(len(list_data_staging(run_id, db_path=self.db_path, shop_id='shop-a')), 2)
+        self.assertEqual(len(list_data_staging(run_id, db_path=self.db_path)), 2)
+
+    def test_retry_plan_is_not_visible_to_foreign_shop(self):
+        from services.collector_retry_service import build_retry_plan
+        from services.collector_run_service import create_run, upsert_checkpoint
+
+        run_id = create_run('sycm_item_flow', 'shop-a', db_path=self.db_path)
+        upsert_checkpoint(run_id, 'product', 'bad', db_path=self.db_path,
+                          status='failed', error_code='HTTP_429')
+
+        self.assertIsNone(build_retry_plan(run_id, db_path=self.db_path, shop_id='shop-b'))
+        scoped = build_retry_plan(run_id, db_path=self.db_path, shop_id='shop-a')
+        self.assertEqual(scoped['unit_count'], 1)
+        self.assertEqual(scoped['units'][0]['unit_key'], 'bad')
+        self.assertEqual(build_retry_plan(run_id, db_path=self.db_path)['unit_count'], 1)
 
     def test_schema_check_resolves_alert_once_catalog_stabilizes(self):
         from scripts import collector_schema_check

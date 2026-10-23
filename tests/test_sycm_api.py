@@ -46,7 +46,7 @@ class SycmTrendApiTests(unittest.TestCase):
                 ],
             )
             connection.executemany(
-                "INSERT INTO sycm_market_item_rank (stat_date, item_id, uv, pay_buyer_count, is_self, title, pic_url, shop_name, shop_id, cate_id, cate_name, core_keyword, rank) VALUES (?, 'item-1', 100, 10, 0, '外部商品', '', '外部店铺', 'shop-ext', 'cat', '袜子', '', 1)",
+                "INSERT INTO sycm_market_item_rank (stat_date, item_id, uv, pay_buyer_count, is_self, title, pic_url, shop_name, shop_id, cate_id, cate_name, core_keyword, rank) VALUES (?, 'item-1', 100, 10, 0, '外部商品', '', '外部店铺', 'shop-ext', 'cat', '目标品类', '', 1)",
                 [('2026-09-16',), ('2026-09-17',), ('2026-09-18',), ('2026-09-19',), ('2026-09-22',)],
             )
             connection.execute("INSERT INTO sycm_market_item_rank (stat_date, item_id, uv, pay_buyer_count, is_self, title) VALUES ('2026-09-22', 'owned-rank', 900, 90, 0, '自家上榜商品')")

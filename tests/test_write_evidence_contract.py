@@ -4,6 +4,7 @@ import os
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 
 from openpyxl import Workbook
 
@@ -151,6 +152,81 @@ class WriteEvidenceContractTests(unittest.TestCase):
         self.assertEqual(payload['evidence_level'], 'full')
         self.assertEqual(payload['freshness']['period_key'], '2026-08-01')
         self.assertEqual(payload['evidence'][0]['source'], 'period_reviews')
+
+
+class AlertRuleAuditAtomicityTests(unittest.TestCase):
+    """TX-01：告警规则改动与审计记录必须落在同一个事务里。
+
+    原先规则先自行 commit，审计再另开连接提交；审计插入失败时规则已经生效，
+    接口却返回 5xx，于是留下「改动已生效但没有审计证据」的状态。这三个测试
+    注入审计失败，断言业务写入连同审计一起回滚。
+    """
+
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory(prefix='tmall-alert-rule-tx-')
+        self.path = os.path.join(self.temp.name, 'dashboard.db')
+        from app import create_app
+
+        self.app = create_app({'TESTING': True, 'DATABASE_PATH': self.path})
+        self.client = self.app.test_client()
+
+    def tearDown(self):
+        self.temp.cleanup()
+
+    def rule_payload(self, **overrides):
+        payload = {
+            'name': '低 ROI', 'scope': 'promotion_product', 'metric': 'roi',
+            'operator': 'lt', 'threshold': 3, 'level': 'warning',
+            'actor': '推广运营', 'reason': '建立推广门槛',
+        }
+        payload.update(overrides)
+        return payload
+
+    def rule_count(self):
+        from db import get_db
+        with get_db(self.path) as connection:
+            return connection.execute('SELECT COUNT(*) FROM alert_rules').fetchone()[0]
+
+    def create_rule(self):
+        response = self.client.post('/api/alert-rules', json=self.rule_payload())
+        self.assertEqual(response.status_code, 201)
+        return response.get_json()['data']['id']
+
+    def assert_no_audit_rows(self):
+        from db import get_db
+        with get_db(self.path) as connection:
+            rows = connection.execute("SELECT COUNT(*) FROM audit_logs WHERE entity_type = 'alert_rule'").fetchone()[0]
+        self.assertEqual(rows, 0)
+
+    def test_failed_audit_rolls_back_rule_creation(self):
+        # 库里有迁移期播种的默认规则，所以断言增量而不是绝对条数。
+        before = self.rule_count()
+        with patch('services.alert_rules_service.AuditRepo.record', side_effect=RuntimeError('audit failed')):
+            with self.assertRaises(RuntimeError):
+                self.client.post('/api/alert-rules', json=self.rule_payload())
+        self.assertEqual(self.rule_count(), before)
+        self.assert_no_audit_rows()
+
+    def test_failed_audit_rolls_back_rule_update(self):
+        rule_id = self.create_rule()
+        with patch('services.alert_rules_service.AuditRepo.record', side_effect=RuntimeError('audit failed')):
+            with self.assertRaises(RuntimeError):
+                self.client.put(f'/api/alert-rules/{rule_id}', json=self.rule_payload(
+                    name='改过的名字', threshold=9, reason='更新门槛',
+                ))
+        from db import get_db
+        with get_db(self.path) as connection:
+            row = connection.execute('SELECT name, threshold FROM alert_rules WHERE id = ?', (rule_id,)).fetchone()
+        self.assertEqual(row['name'], '低 ROI')
+        self.assertEqual(row['threshold'], 3)
+
+    def test_failed_audit_rolls_back_rule_deletion(self):
+        rule_id = self.create_rule()
+        before = self.rule_count()
+        with patch('services.alert_rules_service.AuditRepo.record', side_effect=RuntimeError('audit failed')):
+            with self.assertRaises(RuntimeError):
+                self.client.delete(f'/api/alert-rules/{rule_id}?reason=删除门槛')
+        self.assertEqual(self.rule_count(), before)
 
 
 if __name__ == '__main__':

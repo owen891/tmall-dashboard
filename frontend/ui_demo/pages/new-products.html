@@ -3,11 +3,11 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>新品推广看板 | 天猫数据仪表盘</title>
+  <title>新品推广看板</title>
   <link rel="stylesheet" href="../assets/tokens.css?v=20261003a">
   <link rel="stylesheet" href="../assets/shell.css?v=20261001j">
   <link rel="stylesheet" href="../assets/components.css?v=20261001j">
-  <link rel="stylesheet" href="../assets/themes/product-domain.css?v=20261001j">
+  <link rel="stylesheet" href="../assets/themes/product-domain.css?v=20261018-product-identity">
   <link rel="stylesheet" href="../assets/themes/promotion-domain.css?v=20261001j">
   <link rel="stylesheet" href="../assets/themes/overview-domain.css?v=20261001j">
   <link rel="stylesheet" href="../assets/themes/lifecycle-domain.css?v=20261001j">
@@ -16,6 +16,7 @@
   <link rel="stylesheet" href="../assets/creative-board.css?v=20261001j">
   <script src="../assets/lucide-custom.min.js?v=20261001j"></script>
   <script src="../assets/echarts-custom.min.js?v=20261001j"></script>
+  <link rel="stylesheet" href="../assets/themes/macos-content.css?v=20261018-regular-titles">
 </head>
 <body data-page="new-products">
   <div class="demo-app">
@@ -88,14 +89,15 @@
           <div class="ui-table-toolbar">
             <div class="ui-table-toolbar__main">
               <input class="input" data-promotion-new-search placeholder="搜索商品 ID / 标题" aria-label="搜索新品">
-              <select class="select" data-promotion-new-sort aria-label="排序"><option value="ad_spend">按花费排序</option><option value="attributed_payment_amount">按推广成交排序</option><option value="roi">按 ROI 排序</option><option value="link_gsv">按销售额排序</option><option value="list_date">按上架日期排序</option></select>
+              <select class="select" data-promotion-new-sort aria-label="排序"><option value="ad_spend">按花费排序</option><option value="attributed_payment_amount">按推广成交排序</option><option value="roi">按 ROI 排序</option><option value="link_gsv">按销售额排序</option><option value="impressions">按展现量排序</option><option value="clicks">按点击量排序</option><option value="payment_buyers">按支付买家排序</option><option value="cart_adds">按加购数排序</option><option value="new_buyers">按拉新买家排序</option><option value="list_date">按上架日期排序</option></select>
             </div>
             <div class="ui-table-toolbar__side">
               <span class="ui-table-toolbar__summary" data-promotion-new-row-count>--</span>
+              <button class="ui-button ui-button--secondary" type="button" data-promotion-new-columns-open><i data-lucide="columns-3" aria-hidden="true"></i>字段设置</button>
               <button class="ui-button ui-button--ghost" type="button" data-promotion-new-refresh><i data-lucide="refresh-cw"></i>刷新</button>
             </div>
           </div>
-          <div class="ui-table-wrap"><table class="ui-data-table" data-promotion-new-table><thead><tr><th>商品 / 上架日</th><th>上架天数</th><th>推广花费</th><th>推广成交</th><th>ROI</th><th>销售额</th><th>费比</th><th>点击率</th><th>转化率</th><th>加购成本</th><th>操作</th></tr></thead><tbody data-promotion-new-body><tr><td>加载中…</td></tr></tbody></table></div>
+          <div class="ui-table-wrap"><table class="ui-data-table" data-promotion-new-table><thead><tr><th>商品 / 上架日</th><th>上架天数</th><th>展现量</th><th>点击量</th><th>点击率</th><th>CPC</th><th>CPM</th><th>推广花费</th><th>推广成交</th><th>ROI</th><th>支付买家</th><th>转化率</th><th>加购数</th><th>加购率</th><th>加购成本</th><th>拉新买家</th><th>新客占比</th><th>销售额</th><th>净销售额</th><th>费比</th><th>操作</th></tr></thead><tbody data-promotion-new-body><tr><td colspan="21">加载中…</td></tr></tbody></table></div>
         </section>
 
         <div class="ui-sticky-action-bar" data-new-products-actions>
@@ -116,11 +118,12 @@
   <dialog class="modal-form cb-image-dialog" data-new-products-image-dialog data-modal-kind="detail" aria-labelledby="new-products-image-title"><div class="modal-form__header"><h3 id="new-products-image-title">素材预览</h3><button class="ui-button ui-button--ghost" type="button" data-new-products-image-close aria-label="关闭图片预览"><i data-lucide="x"></i></button></div><div class="cb-image-dialog__body"><img data-new-products-image-preview alt="素材预览"></div></dialog>
 
   <script src="../assets/api.js?v=20261001j"></script>
-  <script src="../assets/navigation.js?v=20261001j"></script>
+  <script src="../assets/navigation.js?v=20261011a"></script>
   <script src="../assets/charts.js?v=20261001j"></script>
-  <script src="../assets/shell.js?v=20261003c"></script>
-  <script src="../assets/ui-components.js?v=20261003a"></script>
-  <script src="../assets/format.js?v=20261001j"></script>
-  <script src="../assets/new-products-live.js?v=20261001j"></script>
+  <script src="../assets/shell.js?v=20261011a"></script>
+  <script src="../assets/ui-components.js?v=20261018-product-identity"></script>
+  <script src="../assets/format.js?v=20261011a"></script>
+  <script src="../assets/field-selector.js"></script>
+  <script src="../assets/new-products-live.js?v=20261018-product-identity"></script>
 </body>
 </html>

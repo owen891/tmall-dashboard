@@ -16,7 +16,7 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_DB = Path(os.environ.get('TMALL_DB_PATH', PROJECT_ROOT / 'data' / 'dashboard.db'))
-DEFAULT_SHOP_ID = os.environ.get('TMALL_SHOP_ID', '3828498662')
+DEFAULT_SHOP_ID = os.environ.get('TMALL_SHOP_ID', os.environ.get('TMALL_LEGACY_SHOP_ID', 'default'))
 
 
 def main(argv=None):

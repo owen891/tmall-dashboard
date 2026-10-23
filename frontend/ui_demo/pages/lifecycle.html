@@ -3,13 +3,14 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>生命周期 | 天猫数据仪表盘</title>
+  <title>生命周期</title>
   <link rel="stylesheet" href="../assets/tokens.css?v=20261003a">
   <link rel="stylesheet" href="../assets/shell.css?v=20261001j">
   <link rel="stylesheet" href="../assets/components.css?v=20261001j"><link rel="stylesheet" href="../assets/themes/product-domain.css?v=20261001j"><link rel="stylesheet" href="../assets/themes/promotion-domain.css?v=20261001j"><link rel="stylesheet" href="../assets/themes/overview-domain.css?v=20261001j"><link rel="stylesheet" href="../assets/themes/lifecycle-domain.css?v=20261001j"><link rel="stylesheet" href="../assets/themes/settings-domain.css?v=20261001j">
   <script src="../assets/lucide-custom.min.js?v=20261001j"></script>
   <script src="../assets/echarts-custom.min.js?v=20261001j"></script>
   <script src="../assets/charts.js?v=20261001j"></script>
+  <link rel="stylesheet" href="../assets/themes/macos-content.css?v=20261018-regular-titles">
 </head>
 <body data-page="lifecycle">
   <div class="demo-app">
@@ -86,7 +87,7 @@
             <article class="chart-panel ui-panel lifecycle-chart-panel"><div class="panel__header"><div><h3 class="panel__title">售后与投放</h3><p class="panel__hint">退款金额、推广花费与效率</p></div><div class="segmented" role="group" aria-label="效率指标"><button type="button" data-efficiency-mode="refundRate" aria-pressed="true">退款率</button><button type="button" data-efficiency-mode="roi" aria-pressed="false">推广 ROI</button></div></div><div class="chart-box lifecycle-chart-box"><div id="lifecycleEfficiencyChart" class="chart-canvas" role="img" aria-label="月度退款、推广花费与效率趋势"></div></div></article>
           </div>
           <div class="lifecycle-insights" data-lifecycle-insights aria-label="最近月经营结论"></div>
-          <article class="ui-panel"><div class="panel__header"><div><h3 class="panel__title">月度明细</h3><p class="panel__hint">图表的可读数据表</p></div><button class="ui-button ui-button--ghost" type="button" data-lifecycle-columns-open><i data-lucide="settings-2"></i><span>字段设置</span></button></div><div class="ui-table-wrap"><table class="ui-data-table"><thead><tr data-lifecycle-detail-head></tr></thead><tbody data-lifecycle-detail-body></tbody></table></div></article>
+          <article class="ui-panel"><div class="panel__header"><div><h3 class="panel__title">月度明细</h3><p class="panel__hint">图表的可读数据表</p></div><button class="ui-button ui-button--ghost" type="button" data-lifecycle-columns-open><i data-lucide="settings-2"></i><span>字段设置</span></button></div><div data-lifecycle-detail-table></div></article>
         </dialog>
         <dialog class="modal-form ui-field-selector-dialog lifecycle-columns-dialog" data-lifecycle-columns-dialog data-modal-kind="config" hidden aria-labelledby="lifecycle-columns-title">
           <div class="modal-form__header">
@@ -143,12 +144,12 @@
     </div>
   </div>
   <script src="../assets/api.js?v=20261001j"></script>
-  <script src="../assets/navigation.js?v=20261001j"></script>
+  <script src="../assets/navigation.js?v=20261011a"></script>
   <script src="../assets/labels.js?v=20261001j"></script>
-  <script src="../assets/shell.js?v=20261003c"></script>
+  <script src="../assets/shell.js?v=20261011a"></script>
   <script src="../assets/field-selector.js?v=20261001j"></script><script src="../assets/metric-polarity.js?v=20261001j"></script>
   <script src="../assets/field-template-manager.js?v=20261001j"></script>
   <!-- Live adapter calls DemoApi.request('/api/lifecycle?limit=2000') for the product summary. -->
-  <script src="../assets/format.js?v=20261001j"></script><script src="../assets/ui-components.js?v=20261003a"></script><script src="../assets/lifecycle-live.js?v=20261001j"></script>
+  <script src="../assets/format.js?v=20261011a"></script><script src="../assets/ui-components.js?v=20261003a"></script><script src="../assets/lifecycle-live.js?v=20261011a"></script>
 </body>
 </html>

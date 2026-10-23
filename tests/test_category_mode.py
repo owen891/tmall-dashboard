@@ -1,10 +1,10 @@
 # -*- coding: utf-8 -*-
 """Category mode (品类模式) contract tests.
 
-The dashboard supports scoping to a BI product label (标品袜子 etc.) via the
+The dashboard supports scoping to a BI product label (默认品类 etc.) via the
 `category_mode` request parameter:
   - absent / all -> no filtering (backward compatible)
-  - sock        -> alias for 标品袜子
+  - sock        -> alias for 默认品类
   - <label>     -> exact BI label value (multi-label values supported)
 The frontend defaults to sock; the service-side default stays all.
 """
@@ -12,6 +12,7 @@ import os
 import sys
 import tempfile
 import unittest
+from pathlib import Path
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if PROJECT_ROOT not in sys.path:
@@ -31,8 +32,8 @@ class CategoryModeContractTests(unittest.TestCase):
             connection.executemany(
                 'INSERT INTO products (product_id, title, status, shop_label) VALUES (?, ?, ?, ?)',
                 [
-                    ('sock-a', '标品袜A', 'active', '标品袜子'),
-                    ('sock-b', '标品袜B', 'active', '标品袜子,平销商品'),
+                    ('sock-a', '品类甲', 'active', '默认品类'),
+                    ('sock-b', '品类乙', 'active', '默认品类,平销商品'),
                     ('other-a', '内裤A', 'active', '内裤'),
                     ('unlabeled-a', '未打标A', 'active', ''),
                 ],
@@ -187,7 +188,7 @@ class CategoryModeContractTests(unittest.TestCase):
         self.assertLess(size_sock, size_all)
 
     def test_frontend_hides_category_on_data_center(self):
-        shell_js = open(os.path.join(PROJECT_ROOT, 'frontend/ui_demo/assets/shell.js'), encoding='utf-8').read()
+        shell_js = Path(PROJECT_ROOT, 'frontend/ui_demo/assets/shell.js').read_text(encoding='utf-8')
         self.assertIn("hideCategoryPages", shell_js)
         self.assertIn("'data-center'", shell_js)
 
@@ -210,14 +211,14 @@ class CategoryModeContractTests(unittest.TestCase):
             self.assertIsNotNone(resp.get_json()['ok'])
 
     def test_frontend_contract(self):
-        api_js = open(os.path.join(PROJECT_ROOT, 'frontend/ui_demo/assets/api.js'), encoding='utf-8').read()
-        shell_js = open(os.path.join(PROJECT_ROOT, 'frontend/ui_demo/assets/shell.js'), encoding='utf-8').read()
-        shell_css = open(os.path.join(PROJECT_ROOT, 'frontend/ui_demo/assets/shell.css'), encoding='utf-8').read()
+        api_js = Path(PROJECT_ROOT, 'frontend/ui_demo/assets/api.js').read_text(encoding='utf-8')
+        shell_js = Path(PROJECT_ROOT, 'frontend/ui_demo/assets/shell.js').read_text(encoding='utf-8')
+        shell_css = Path(PROJECT_ROOT, 'frontend/ui_demo/assets/shell.css').read_text(encoding='utf-8')
         self.assertIn('dashboard.categoryMode', api_js)
         self.assertIn('category_mode', api_js)
         self.assertIn("DEFAULT_CATEGORY_MODE = 'sock'", api_js)
         self.assertIn('data-category-mode', shell_js)
-        self.assertIn('标品袜子', shell_js)
+        self.assertIn('默认品类', shell_js)
         self.assertIn('demo-category__select', shell_css)
 
     def test_target_progress_sock_filters(self):
@@ -283,7 +284,7 @@ class CategoryModeContractTests(unittest.TestCase):
         df = pd.DataFrame({
             '日期': ['2026-04-05'],
             '商品ID': ['new-sock-2'],
-            '商品标签': ['标品袜子'],
+            '商品标签': ['默认品类'],
             '支付金额': [100],
             '访客数': [10],
         })
@@ -299,7 +300,7 @@ class CategoryModeContractTests(unittest.TestCase):
             label = connection.execute(
                 'SELECT shop_label FROM products WHERE product_id = ?', ('new-sock-2',)
             ).fetchone()['shop_label']
-        self.assertEqual(label, '标品袜子')
+        self.assertEqual(label, '默认品类')
 
     def test_import_batch_writes_shop_label(self):
         from uuid import uuid4
@@ -318,25 +319,25 @@ class CategoryModeContractTests(unittest.TestCase):
 
         run([{
             'shop_id': 'default', 'product_id': 'new-sock', 'date': '2026-04-05',
-            'payment_amount': 100, 'product_visitors': 10, 'product_name': '新品袜',
-            'shop_label': '标品袜子',
+            'payment_amount': 100, 'product_visitors': 10, 'product_name': '新品甲',
+            'shop_label': '默认品类',
         }])
         with get_db(self.database_path) as connection:
             label = connection.execute(
                 'SELECT shop_label FROM products WHERE product_id = ?', ('new-sock',)
             ).fetchone()['shop_label']
-        self.assertEqual(label, '标品袜子')
+        self.assertEqual(label, '默认品类')
         # 空标签导入不得覆盖已有标签
         run([{
             'shop_id': 'default', 'product_id': 'new-sock', 'date': '2026-04-06',
-            'payment_amount': 200, 'product_visitors': 20, 'product_name': '新品袜',
+            'payment_amount': 200, 'product_visitors': 20, 'product_name': '新品甲',
             'shop_label': '',
         }])
         with get_db(self.database_path) as connection:
             label = connection.execute(
                 'SELECT shop_label FROM products WHERE product_id = ?', ('new-sock',)
             ).fetchone()['shop_label']
-        self.assertEqual(label, '标品袜子')
+        self.assertEqual(label, '默认品类')
 
 
 if __name__ == '__main__':

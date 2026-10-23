@@ -405,6 +405,96 @@ class SourceResolutionTests(unittest.TestCase):
             ],
         )
 
+    def test_complete_bi_snapshot_beats_newer_partial_api_snapshot(self):
+        """Excel 快照优先于更晚观测的 API 快照（防回归）。
+
+        BI 的 overViewPageList 接口从不返回成本键，成本只存在于用户导出的
+        商品总览 Excel。两个写入者共用 source_type='paimi_bi_product_day' 与
+        source_system='business_advisor'（SOURCE_PRIORITY 同为 30），因此修复前
+        由 observed_at 决定胜者：滚动重采写下的 API 观测会把 Excel 的
+        operating_profit 覆盖掉，而 Excel 的成本列因逐字段 NULL 保护仍在，
+        利润恒等式（净销−成本=利润）随之被破坏，前端显示「部分口径」。
+
+        修复后按 batch_id 前缀（bi_api_）识别 API 快照并在同优先级内降级。
+        这里刻意让 API 观测后写入（observed_at 更新），断言 Excel 仍然胜出。
+        """
+        from db import get_connection
+        from services.source_resolution_service import record_daily_observation
+
+        connection = get_connection(self.db_path)
+        try:
+            # Excel：完整快照（含成本桶与自洽的利润）
+            record_daily_observation(
+                connection,
+                {'product_id': 'p-tie', 'date': '2026-09-13',
+                 'net_sales': 3968.22, 'operating_profit': 86.4104,
+                 'product_cost': 1520.9, 'sales_cost': 976.39,
+                 'custom_cost': 1134.08, 'logistics_cost': 250.44, 'other_cost': 0.0},
+                source_type='paimi_bi_product_day',
+                source_filename='商品总览_天猫_Primeet派米旗舰店_2026-09-13.xlsx',
+                source_batch_id='5442cf7e5ba3d32db15cd9ecaa80238c',
+                source_system='business_advisor', shop_id='default',
+            )
+            # API：稍后观测，但缺全部成本键，利润与 Excel 不一致
+            record_daily_observation(
+                connection,
+                {'product_id': 'p-tie', 'date': '2026-09-13',
+                 'net_sales': 3968.0, 'operating_profit': -516.0},
+                source_type='paimi_bi_product_day',
+                source_filename='bi_api_full_2026-09-13.json',
+                source_batch_id='bi_api_full_2026-09-13.json',
+                source_system='business_advisor', shop_id='default',
+            )
+            fact = connection.execute(
+                '''SELECT net_sales, operating_profit, product_cost, sales_cost,
+                          custom_cost, logistics_cost, other_cost
+                   FROM daily_data WHERE product_id = 'p-tie' AND date = '2026-09-13' '''
+            ).fetchone()
+            lineage = connection.execute(
+                '''SELECT source_batch_id FROM fact_field_lineage
+                   WHERE product_id = 'p-tie' AND date = '2026-09-13'
+                     AND field_key = 'operating_profit' '''
+            ).fetchone()
+        finally:
+            connection.close()
+
+        self.assertEqual(fact['operating_profit'], 86.4104)
+        self.assertEqual(fact['product_cost'], 1520.9)
+        self.assertEqual(lineage['source_batch_id'], '5442cf7e5ba3d32db15cd9ecaa80238c')
+        identity_gap = (
+            fact['net_sales']
+            - (fact['product_cost'] + fact['sales_cost'] + fact['custom_cost']
+               + fact['logistics_cost'] + fact['other_cost'])
+            - fact['operating_profit']
+        )
+        self.assertLess(abs(identity_gap), abs(fact['net_sales']) * 0.005)
+
+    def test_api_snapshot_still_used_when_no_excel_snapshot_exists(self):
+        """无 Excel 快照时 API 观测必须照常生效（修复不得让字段落空）。"""
+        from db import get_connection
+        from services.source_resolution_service import record_daily_observation
+
+        connection = get_connection(self.db_path)
+        try:
+            record_daily_observation(
+                connection,
+                {'product_id': 'p-api-only', 'date': '2026-10-13',
+                 'net_sales': 100.0, 'operating_profit': 25.0},
+                source_type='paimi_bi_product_day',
+                source_filename='bi_api_full_2026-10-13.json',
+                source_batch_id='bi_api_full_2026-10-13.json',
+                source_system='business_advisor', shop_id='default',
+            )
+            fact = connection.execute(
+                '''SELECT net_sales, operating_profit FROM daily_data
+                   WHERE product_id = 'p-api-only' AND date = '2026-10-13' '''
+            ).fetchone()
+        finally:
+            connection.close()
+
+        self.assertEqual(fact['net_sales'], 100.0)
+        self.assertEqual(fact['operating_profit'], 25.0)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -5,7 +5,7 @@
  *   NODE_PATH=E:\www\tmall-dashboard\desktop\node_modules node scripts/verify_category_dashboard.js
  *
  * 校验点：
- *   1. 经营利润显示真实值（标品袜子本月应为负），不再是「净销售额 − 推广花费」
+ *   1. 经营利润显示真实值（默认品类本月应为负），不再是「净销售额 − 推广花费」
  *   2. 利润口径徽标为「BI 支付预估」，利润面板逐项列出成本
  *   3. 「数据截至」等于库内真实最后一天
  *   4. 对比方式切到「去年同期」后 KPI 标签随之变化

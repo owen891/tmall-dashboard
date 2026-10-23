@@ -39,7 +39,7 @@ RUNTIME_TABLES = {
     },
     "bi_product_daily_raw": {
         "domain": "raw_evidence",
-        "owner": "scripts/import_paimi_bi_daily.py",
+        "owner": "bi-daily-importer (private tool)",
         "lifecycle": "archiveable",
     },
     "keyword_promotion_products": {

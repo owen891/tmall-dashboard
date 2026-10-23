@@ -23,5 +23,13 @@
   body[data-page="flow-source"] .ui-panel .panel__header { margin-bottom: var(--space-3); }
   body[data-page="flow-source"] .flow-table-wrap { max-height: min(48vh, 560px); overflow: auto; }
   body[data-page="flow-source"] .flow-table th { position: sticky; top: 0; z-index: 1; padding-block: 8px; background: var(--surface-muted); }
-  body[data-page="flow-source"] .flow-table td { padding-block: 9px; }
+  body[data-page="flow-source"] .flow-table td { padding-block: 4px; }
+}
+
+/* Desktop refinement: conclusions use rows; charts retain independent plotting areas. */
+@media (min-width: 960px) {
+  body[data-page="flow-source"] .flow-command-list { gap: 0; }
+  body[data-page="flow-source"] .flow-command-item { padding: var(--space-3) 0; border: 0; border-bottom: 1px solid var(--border-default); border-radius: 0; background: transparent; }
+  body[data-page="flow-source"] .flow-command-item:last-child { padding-bottom: 0; border-bottom: 0; }
+  body[data-page="flow-source"] .flow-command-item strong { font-weight: 600; }
 }

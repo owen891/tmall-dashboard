@@ -39,17 +39,21 @@ def validate_page(path: Path) -> list[str]:
 
 def validate_styles() -> list[str]:
     errors: list[str] = []
-    for path in sorted(ASSETS.glob("*.css")):
+    # 递归扫描：此前用 ASSETS.glob("*.css") 只覆盖顶层 13 个文件，
+    # themes/ 下 6 个主题 CSS 从未被契约检查。
+    for path in sorted(ASSETS.rglob("*.css")):
         source = path.read_text(encoding="utf-8")
         for match in CSS_LEGACY_SELECTOR_RE.finditer(source):
             line = source.count("\n", 0, match.start()) + 1
-            errors.append(f"{path.name}:{line}: legacy CSS selector .{match.group(0)[1:]}")
+            errors.append(f"{path.relative_to(ASSETS).as_posix()}:{line}: legacy CSS selector .{match.group(0)[1:]}")
     return errors
 
 
 def validate_scripts() -> list[str]:
     errors: list[str] = []
-    for path in sorted(ASSETS.glob("*.js")):
+    # 递归扫描：此前只覆盖顶层 42 个文件，pages/ 与 runtime/ 下 21 个
+    # 子目录脚本（含 date-range-store 等运行时模块）从未被契约检查。
+    for path in sorted(ASSETS.rglob("*.js")):
         if path.name.endswith(".min.js") or path.name == "ui-components.js":
             continue
         source = path.read_text(encoding="utf-8")
@@ -57,7 +61,7 @@ def validate_scripts() -> list[str]:
             for match in pattern.finditer(source):
                 for token in legacy_tokens(match.group(1)):
                     line = source.count("\n", 0, match.start()) + 1
-                    errors.append(f"{path.name}:{line}: legacy JS class literal {token}")
+                    errors.append(f"{path.relative_to(ASSETS).as_posix()}:{line}: legacy JS class literal {token}")
     return sorted(set(errors))
 
 

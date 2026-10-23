@@ -2,10 +2,12 @@
 <html lang="zh-CN">
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>设置 | 天猫数据仪表盘</title>
+  <title>设置中心</title>
   <link rel="stylesheet" href="../assets/tokens.css?v=20261003a"><link rel="stylesheet" href="../assets/shell.css?v=20261001j"><link rel="stylesheet" href="../assets/components.css?v=20261001j"><link rel="stylesheet" href="../assets/themes/product-domain.css?v=20261001j"><link rel="stylesheet" href="../assets/themes/promotion-domain.css?v=20261001j"><link rel="stylesheet" href="../assets/themes/overview-domain.css?v=20261001j"><link rel="stylesheet" href="../assets/themes/lifecycle-domain.css?v=20261001j"><link rel="stylesheet" href="../assets/themes/settings-domain.css?v=20261001j">
   <link rel="stylesheet" href="../assets/settings-views.css?v=20261001j">
   <script src="../assets/lucide-custom.min.js?v=20261001j"></script>
+  <link rel="stylesheet" href="../assets/themes/macos-content.css?v=20261018-regular-titles">
+  <link rel="stylesheet" href="../assets/themes/settings-workspace.css?v=20261017-structure">
 </head>
 <body data-page="settings">
   <div class="demo-app"><aside class="demo-sidebar" data-shell-sidebar></aside><div class="demo-main">
@@ -18,6 +20,7 @@
 
       
 
+      <div class="settings-workspace">
       <section class="settings-hero" aria-label="当前店铺">
         <span class="settings-hero__avatar" aria-hidden="true"><i data-lucide="settings"></i></span>
         <div class="settings-hero__identity">
@@ -42,7 +45,6 @@
         </div>
       </div>
 
-      <div class="settings-workspace">
       <div class="settings-main">
 
       <section class="ui-panel" id="settings-store" data-settings-form-panel><form class="settings-form" id="settings-form" data-settings-form>
@@ -50,7 +52,7 @@
           <div class="set-card-grid">
             <section class="set-card set-card--wide">
               <div class="set-card__header"><i data-lucide="settings"></i><div><h4>店铺身份</h4><p>店铺名用于页面展示；时区与货币决定数据汇总口径。</p></div></div>
-              <label class="set-field">店铺名<input class="input" name="shop_name" placeholder="例如：派米袜子旗舰店"></label>
+              <label class="set-field">店铺名<input class="input" name="shop_name" placeholder="例如：某某旗舰店"></label>
               <div class="set-chip-row">
                 <label class="set-field set-field--chip">时区<input class="input" name="timezone" value="Asia/Shanghai" readonly></label>
                 <label class="set-field set-field--chip">货币<input class="input" name="currency" value="CNY" readonly></label>
@@ -172,6 +174,6 @@
     <div class="modal-form__body"><h4>最近运行</h4><div class="ui-table-wrap"><table class="ui-data-table"><thead><tr><th>开始时间</th><th>状态</th><th>导入</th><th>阻塞</th><th>失败</th></tr></thead><tbody data-scan-runs></tbody></table></div><h4>发现文件</h4><div class="ui-table-wrap"><table class="ui-data-table"><thead><tr><th>文件</th><th>状态</th><th>批次</th><th>更新时间</th><th>操作</th></tr></thead><tbody data-scan-files></tbody></table></div></div>
     <div class="modal-form__footer"><button class="ui-button" type="button" data-scan-detail-close>关闭</button></div>
   </dialog>
-  <script src="../assets/api.js?v=20261001j"></script><script src="../assets/navigation.js?v=20261001j"></script><script src="../assets/labels.js?v=20261001j"></script><script src="../assets/shell.js?v=20261003c"></script><script src="../assets/ui-components.js?v=20261003a"></script><script src="../assets/field-selector.js?v=20261001j"></script><script src="../assets/alert-rules.js?v=20261001j"></script><script src="../assets/format.js?v=20261001j"></script><script src="../assets/settings-live.js?v=20261001j"></script>
+  <script src="../assets/api.js?v=20261001j"></script><script src="../assets/navigation.js?v=20261011a"></script><script src="../assets/labels.js?v=20261001j"></script><script src="../assets/shell.js?v=20261011a"></script><script src="../assets/ui-components.js?v=20261003a"></script><script src="../assets/field-selector.js?v=20261001j"></script><script src="../assets/alert-rules.js?v=20261001j"></script><script src="../assets/format.js?v=20261011a"></script><script src="../assets/settings-live.js?v=20261001j"></script>
 </body>
 </html>

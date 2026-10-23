@@ -119,3 +119,36 @@
   body[data-page="market-ranking"] .market-workbench-tabs button.is-active { background: var(--brand-solid); color: var(--text-on-brand); }
   body[data-page="market-ranking"] [data-market-panel] { margin-bottom: var(--space-3); }
 }
+
+/* Desktop refinement: private selected tabs are calm; evidence remains individually accessible. */
+/* 竞店爆品排名变化：按店折叠，店头摘要 + 全量变动商品表（含主图）。 */
+.market-rival-shop { margin-bottom: var(--space-2); border: 1px solid var(--border-default); border-radius: var(--radius-sm); padding: var(--space-2) var(--space-3); }
+.market-rival-shop > summary { cursor: pointer; font-weight: 600; color: var(--text-primary); }
+.market-rival-shop__summary-meta { margin-left: var(--space-2); color: var(--text-secondary); font-size: var(--font-size-meta); font-weight: 400; }
+.market-rival-shop__body { margin-top: var(--space-2); }
+.market-rival-thumb { display: grid; width: 44px; height: 44px; place-items: center; overflow: hidden; border-radius: var(--radius-sm); background: var(--surface-muted); color: var(--text-secondary); font-size: var(--font-size-meta); }
+.market-rival-thumb img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.market-rival-title { display: block; max-width: 420px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.market-rival-change--up { color: var(--success-text); }
+.market-rival-change--down { color: var(--danger-text); }
+
+@media (min-width: 960px) {
+  body[data-page="market-ranking"] .market-mode-tabs,
+  body[data-page="market-ranking"] .market-workbench-tabs { border-color: transparent; }
+  body[data-page="market-ranking"] .market-mode-tabs button.is-active,
+  body[data-page="market-ranking"] .market-workbench-tabs button.is-active,
+  body[data-page="market-ranking"] .market-list-pager button.is-active { background: var(--surface-base); color: var(--brand-text); font-weight: 600; }
+  body[data-page="market-ranking"] .market-command-list,
+  body[data-page="market-ranking"] .market-entity-list,
+  body[data-page="market-ranking"] .market-modal-items__list { gap: 0; }
+  body[data-page="market-ranking"] .market-command-item,
+  body[data-page="market-ranking"] .market-entity-row,
+  body[data-page="market-ranking"] .market-modal-item { padding-block: var(--space-3); border: 0; border-bottom: 1px solid var(--border-default); border-radius: 0; background: transparent; }
+  body[data-page="market-ranking"] .market-command-item { padding-inline: 0; }
+  body[data-page="market-ranking"] .market-command-item:last-child,
+  body[data-page="market-ranking"] .market-entity-row:last-child,
+  body[data-page="market-ranking"] .market-modal-item:last-child { border-bottom: 0; }
+  body[data-page="market-ranking"] .market-entity-row:hover { background: var(--surface-muted); }
+  body[data-page="market-ranking"] .market-entry-card { border-color: transparent; }
+  body[data-page="market-ranking"] .market-entry-card.is-active { border-color: var(--border-default); background: var(--brand-tint); }
+}

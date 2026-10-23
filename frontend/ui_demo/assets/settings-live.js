@@ -416,6 +416,10 @@
     return message;
   };
   const appendTextCell = (row, value) => { const cell = document.createElement('td'); cell.textContent = value ?? '--'; row.appendChild(cell); return cell; };
+  const replaceTableBody = (target, columns, rows, emptyMessage) => {
+    if (!target || !window.TmallUI?.table?.mount) return;
+    window.TmallUI.table.mount(target, { columns, rows, emptyMessage });
+  };
   const scanAction = (icon, label, handler) => {
     const button = document.createElement('button'); button.type = 'button'; button.className = 'ui-button ui-button--ghost'; button.title = label; button.setAttribute('aria-label', label);
     const glyph = document.createElement('i'); glyph.dataset.lucide = icon; button.appendChild(glyph); button.addEventListener('click', handler); return button;
@@ -448,16 +452,14 @@
   };
   function renderScanJobs() {
     if (!scanBody) return;
-    scanBody.replaceChildren();
-    if (!scanState.jobs.length) { const row = document.createElement('tr'); const cell = appendTextCell(row, '暂无扫描任务'); cell.colSpan = 6; scanBody.appendChild(row); return; }
-    scanState.jobs.forEach((job) => {
-      const row = document.createElement('tr');
-      const task = document.createElement('td'); const name = document.createElement('strong'); name.textContent = job.task_name || '未命名任务'; const folder = document.createElement('div'); folder.className = 'panel__hint'; folder.textContent = job.folder_path || '--'; task.append(name, folder); row.appendChild(task);
-      appendTextCell(row, scanSourceLabels[job.source_type] || job.source_type);
-      const cronCell = document.createElement('td'); const cronText = document.createTextNode(job.cron_expr || '--'); cronCell.appendChild(cronText); const cronHint = humanizeCron(job.cron_expr); if (cronHint) { const hint = document.createElement('div'); hint.className = 'scan-cron-hint'; hint.textContent = cronHint; cronCell.appendChild(hint); } row.appendChild(cronCell);
-      appendTextCell(row, job.status === 'error' ? '配置异常' : (job.enabled ? (job.status === 'active' ? '已启用' : job.status) : '已停用'));
-      appendTextCell(row, formatScanTime(job.last_run));
-      const actions = document.createElement('td'); actions.className = 'table-actions';
+    replaceTableBody(scanBody, [
+      { key: 'task', label: '任务', render: (_, job) => { const task = document.createElement('div'); const name = document.createElement('strong'); name.textContent = job.task_name || '未命名任务'; const folder = document.createElement('div'); folder.className = 'panel__hint'; folder.textContent = job.folder_path || '--'; task.append(name, folder); return task; } },
+      { key: 'source', label: '来源', render: (_, job) => scanSourceLabels[job.source_type] || job.source_type || '--' },
+      { key: 'cron', label: '计划', render: (_, job) => { const cell = document.createElement('div'); cell.appendChild(document.createTextNode(job.cron_expr || '--')); const cronHint = humanizeCron(job.cron_expr); if (cronHint) { const hint = document.createElement('div'); hint.className = 'scan-cron-hint'; hint.textContent = cronHint; cell.appendChild(hint); } return cell; } },
+      { key: 'status', label: '状态', render: (_, job) => job.status === 'error' ? '配置异常' : (job.enabled ? (job.status === 'active' ? '已启用' : job.status) : '已停用') },
+      { key: 'last_run', label: '最近运行', render: (value) => formatScanTime(value) },
+      { key: 'actions', label: '操作', render: (_, job) => {
+        const actions = document.createElement('div'); actions.className = 'table-actions';
       const canManage = scanState.environment?.can_manage !== false;
       const runButton = scanAction('play', job.enabled ? '立即扫描' : '请先启用任务', () => runScanJob(job));
       runButton.disabled = !job.enabled || !canManage;
@@ -467,8 +469,9 @@
       const deleteButton = scanAction('trash-2', '删除任务', () => deleteScanJob(job));
       [editButton, toggleButton, deleteButton].forEach((button) => { button.disabled = !canManage; button.toggleAttribute('aria-disabled', !canManage); });
       actions.append(runButton, detailButton, editButton, toggleButton, deleteButton);
-      row.appendChild(actions); scanBody.appendChild(row);
-    });
+        return actions;
+      } },
+    ], scanState.jobs, '暂无扫描任务');
     window.lucide?.createIcons();
   }
   async function loadScanJobs() {
@@ -511,20 +514,22 @@
   }
   const renderScanDetailRows = (selector, rows, columns, emptyText) => {
     const body = document.querySelector(selector); body.replaceChildren();
-    if (!rows.length) { const row = document.createElement('tr'); const cell = appendTextCell(row, emptyText); cell.colSpan = columns.length; body.appendChild(row); return; }
-    rows.slice(0, 20).forEach((item) => { const row = document.createElement('tr'); columns.forEach((column) => appendTextCell(row, column(item))); body.appendChild(row); });
+    const tableColumns = columns.map((column, index) => ({ key: `column_${index}`, label: '', render: (_, row) => column(row.item) }));
+    replaceTableBody(body, tableColumns, rows.slice(0, 20).map((item) => ({ item })), emptyText);
   };
   async function loadScanDetails(job) {
     renderScanDetailRows('[data-scan-runs]', [], Array.from({ length: 5 }, () => () => ''), '加载中…'); renderScanDetailRows('[data-scan-files]', [], Array.from({ length: 5 }, () => () => ''), '加载中…');
     try {
       const [runs, files] = await Promise.all([DemoApi.domainRequest(`/api/import-scans/${Number(job.id)}/runs`), DemoApi.domainRequest(`/api/import-scans/${Number(job.id)}/files`)]);
       renderScanDetailRows('[data-scan-runs]', runs.data || [], [(item) => formatScanTime(item.started_at), (item) => item.status, (item) => item.imported_count, (item) => item.blocked_count, (item) => item.failed_count], '暂无运行记录');
-      const body = document.querySelector('[data-scan-files]'); body.replaceChildren();
-      if (!(files.data || []).length) { const row = document.createElement('tr'); const cell = appendTextCell(row, '暂无文件记录'); cell.colSpan = 5; body.appendChild(row); return; }
-      (files.data || []).slice(0, 20).forEach((item) => {
-        const row = document.createElement('tr');
-        appendTextCell(row, item.source_filename); appendTextCell(row, item.status); appendTextCell(row, item.batch_id || '--'); appendTextCell(row, formatScanTime(item.updated_at));
-        const actions = document.createElement('td'); actions.className = 'table-actions';
+      const body = document.querySelector('[data-scan-files]');
+      replaceTableBody(body, [
+        { key: 'source_filename', label: '文件' },
+        { key: 'status', label: '状态' },
+        { key: 'batch_id', label: '批次', render: (value) => value || '--' },
+        { key: 'updated_at', label: '更新时间', render: (value) => formatScanTime(value) },
+        { key: 'actions', label: '操作', render: (_, item) => {
+          const actions = document.createElement('div'); actions.className = 'table-actions';
         if (['blocked', 'failed'].includes(item.status)) {
           const retryButton = scanAction('rotate-ccw', '重新排队', async () => {
             try { await DemoApi.domainRequest(`/api/import-scans/${Number(job.id)}/files/${Number(item.id)}/retry`, { method: 'POST' }); setScanStatus('文件已重新排队'); showToast(`文件已重新排队：${item.source_filename}`); await loadScanDetails(job); await loadScanJobs(); }
@@ -535,8 +540,9 @@
           retryButton.toggleAttribute('aria-disabled', !canManage);
           actions.append(retryButton);
         }
-        row.appendChild(actions); body.appendChild(row);
-      });
+          return actions;
+        } },
+      ], (files.data || []).slice(0, 20), '暂无文件记录');
       window.lucide?.createIcons();
     } catch (error) { setScanStatus(formatScanFormError(error)); }
   }

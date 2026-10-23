@@ -21,6 +21,7 @@ CREATE TABLE products (
     shop_label TEXT, tier TEXT, status TEXT DEFAULT 'active'
 );
 CREATE TABLE daily_data (
+    shop_id TEXT NOT NULL DEFAULT 'default',
     product_id TEXT, date TEXT, payment_amount REAL, net_sales REAL,
     sales_cost REAL, custom_cost REAL, product_cost REAL,
     logistics_cost REAL, other_cost REAL, platform_fee REAL,
@@ -30,6 +31,7 @@ CREATE TABLE daily_data (
 
 
 def _insert(conn, rows):
+    # shop_id 走 DEFAULT，与请求 scope（get_shop_id() 默认 'default'）一致。
     conn.executemany(
         '''INSERT INTO daily_data (product_id, date, payment_amount, net_sales,
                sales_cost, custom_cost, product_cost, logistics_cost, other_cost,

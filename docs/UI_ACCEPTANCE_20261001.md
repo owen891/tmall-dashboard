@@ -5,6 +5,27 @@
 > **复现方式**：第 6 节，一条命令跑完全部验证
 > **可视化报告**：`docs/UI_LAYOUT_AUDIT_20261001.html`（本轮重生成，2.5 MB，含逐页截图）
 
+> ## ⚠️ 2026-10-11 更正：第 2 节的基线数字不可复现
+>
+> 第 2 节那张 11 项基线表来自 `scripts/check_ui_baseline.cjs`。该脚本读取三份探针产物
+> （`dom.json` / `audit.json` / `deep.json`），但这三份**分属不同采集批次**：
+>
+> | 产物 | 采集时间 |
+> |---|---|
+> | `dom.json` | 2026-10-03T07:08:42Z |
+> | `audit.json` | 2026-10-02T02:37:03Z |
+> | `deep.json` | 2026-10-02T02:38:41Z |
+>
+> 最大时间差 **1711.7 分钟（28.5 小时）**，也就是这张表把跨越近 30 小时、可能跨越代码版本的
+> 三次采集拼在了一起。因此第 2 节各格的「现状」值**不能作为当前代码的验收依据**；
+> 第 3 节据此写的 3.3 / 3.4 / 3.5 归因也建立在同一批数据上。
+>
+> 已在该脚本中加入批次守卫（`MAX_BATCH_SKEW_MS = 30 分钟`，超限直接 exit 2 并打印三份产物的
+> 真实时间戳），后续必须用**同一批次**重采的三份产物复跑，才能得到有效结论。
+>
+> 第 1 节「6 项达标」这一结论的**数字**因此存疑；但其中不依赖跨批次比对的部分仍然成立：
+> 横向溢出 3 视口 × 20 页为 0、幽灵 token 防线、极性 4/4、无障碍四项归零。
+
 ---
 
 ## 1. 结论
@@ -423,3 +444,61 @@ node scripts/verify_metric_polarity.cjs
 - **交互态**：hover / focus / active 在截图里不出现，本脚本测不到。已知 `.rival-tab.active`、`.flow-table tr:hover`、`.rival-item-card:hover` 这类只在交互时渲染 —— 它们的 token 已人工修过（修的是「无 fallback 失效」），但**没有自动化验证**。改这块要手工点一遍，或写带 `page.hover()` 的专项探针。
 - **图表填充 / 边框的 WCAG 1.4.11（3:1）**：本轮刻意不改（改了就是改视觉）。已知 `--success` 作柱条填充是 2.54:1。要做是单独一轮。
 - **`--text-tertiary` 的图标用法**：保留给纯图标与禁用态。`product-filters__search > .lucide`（搜索放大镜）严格说是有意义图标、适用 1.4.11（3:1），当前 2.54:1 —— 属可讨论项。
+
+---
+
+## 10. 2026-10-11 补充：门禁加固与三项缺陷修复
+
+本节记录一次独立评审（4 名设计域专家 + 主理人复核）后的整改。**评审结论与本文件的原始基线数据有冲突，
+以本节为准**；冲突原因见开头的「2026-10-11 更正」块。
+
+### 10.1 门禁加固（让度量本身可信）
+
+| 改动 | 问题 | 处理 |
+|---|---|---|
+| `scripts/check_ui_baseline.cjs` | 混读三份不同批次的探针产物，拼出跨代码版本的比对表 | 加批次守卫：`MAX_BATCH_SKEW_MS = 30 分钟`，超限 exit 2 并打印三份产物真实时间戳 |
+| `scripts/check_event_binding.py`（新增） | 「禁止事项 7：禁止用 class 做事件绑定」**没有检查脚本**，实际已被违反 3 处 | 新建门禁并修复全部 3 处；判据用括号深度确定语句边界，宁可漏报不可误报 |
+| `scripts/check_css_tokens.py` | 把 `.ui-button--primary:hover` 里的 `--primary:` 当成「定义了 `--primary`」，于是 `var(--primary)` 这种真错字永远查不出来 | 给定义正则加负向断言 `(?<![A-Za-z0-9_-])`；定义数 182 → 174，排除掉 **8 个被误登记的 BEM 修饰符**（`--active`/`--clickable`/`--discoverable`/`--drillable`/`--first`/`--link`/`--primary`/`--remove`，见 `analysis.css`、`components.css`、`themes/product-domain.css`、`pages/product-detail.html`） |
+| `.github/workflows/quality-gate.yml` + `scripts/test_all.ps1` | `check_event_binding` 若只写进文档就等于不存在；本地入口此前**完全没跑设计系统门禁** | 两处都加入四项静态门禁，且与 `DESIGN_SYSTEM.md` §11.1 清单保持一致 |
+
+**仍然存在的门禁缺口（未修，需单独立项）**：
+
+- `scripts/check_design_system.py` 的组件目录覆盖率只校验 `CATALOG_REQUIRED_COMPONENTS` 里**硬编码的 9 项**，
+  而 `ui-components.js` 实际导出 90+；`COMPONENT_LAYER_CSS = {"components.css","shell.css"}`（:55）假设
+  「组件层只有这两个文件」，但 `components.css` 里有 210 条 `body[data-page]` 页面私有规则 →
+  该假设已失效，页面样式可以绕过页面级 CSS 的检查。
+- `scripts/validate_visual_system.cjs` **从未被 CI 调用**，且自身引用已废弃的 `.metric-card__value`。
+- 手写复合组件预算 378/378 **零余量**：下一个新增复合组件必然导致门禁失败。
+- 禁止事项 8（金额/百分比格式统一）**无静态门禁**；`assets/format.js` 的 `DemoFormat.money` /
+  `percent` / `moneyWan` 全仓**零调用点**（20/21 个页面加载了它，只用到 `escapeHtml`），
+  而 `money()` 有 13 份各页自实现，`¥` / `￥` 与小数位不一致。
+- `scripts/validate_ui_demos.cjs`（本地入口会跑）当前 **exit=1**：18 条 UI 校验错误 + 2 条视觉系统错误
+  （`shell.css` font-size / box-shadow）。经 `git stash` 对比确认属工作区既有问题，非本轮引入，
+  但会让本地入口长期「红着」，从而失去信号价值。
+
+### 10.2 缺陷修复（3 项，均为评审确认的用户可见问题）
+
+| # | 缺陷 | 后果 | 修复 |
+|---|---|---|---|
+| 1 | `assets/operations-center.js` 把「数据不足」当成「来源不可用」 | 没有计划动作时提示「计划日历暂不可用」+ 挂重试按钮；用系统故障措辞描述数据状态，与 `README.md:36` 数据伦理承诺冲突 | 新增 `SOURCE_FAILURE = new Set(['source-unavailable','calculation-failed'])`，只有真故障才计入 `sourceErrors` 并 `clearCalendar` |
+| 2 | `api/lifecycle_api.py:33-34` 用集合级 `all()` 算能力，`lifecycle-live.js:261` 又逐行判 `disabled` | **一个商品不足 60 天，全表「调整」按钮一起变灰**，数据充足的商品也点不动 | 在 `capabilities.rows[product_id]` 下发逐行能力，前端按行取用、无行级数据时才退回集合级；`disabled` 补 `title` 说明原因。新增回归测试 `test_row_capabilities_are_per_product_not_collection_wide`（已验证移除修复即失败） |
+| 3 | `assets/navigation.js` 跨页参数白名单缺 `dim` | `date-range-store.js:193` 把「按周/按月」写进 URL，跨页跳转时被静默丢弃 → 粒度重置回 `daily`，同一段日期换页后意思变了 | 白名单加入 `dim`。已用最小 DOM 桩验证：`dim=weekly` 现在能穿过 `fromCurrent()`，未知参数仍被过滤 |
+
+> 注：`api/api_response.py` 的 `success()` 顶层键是**固定白名单**，传未知键直接 `TypeError`
+> （252 个调用点共用）。所以第 2 项的逐行数据只能放进自由格式的 `capabilities`，不能新增顶层字段。
+
+### 10.3 本轮验证记录
+
+| 项目 | 结果 |
+|---|---|
+| `check_css_syntax.py --strict` | exit 0（19 个 CSS 文件） |
+| `check_design_system.py --strict` | exit 0（手写复合组件 378 处 / 预算 378 处） |
+| `check_css_tokens.py --strict` | exit 0（定义 174 个 / 引用 157 个） |
+| `check_event_binding.py --strict` | exit 0（无 class 选择器事件绑定） |
+| `check_ui_contract.py` | exit 0 |
+| `unittest discover -s tests` | **Ran 913 tests, OK**（101 秒；原文档基线 862，含新增 1 个回归测试） |
+| `pytest` 四个纯 pytest 文件 | 47 passed, 1 skipped |
+| `node scripts/test_frontend_runtime.cjs` | FRONTEND_RUNTIME_OK |
+| `node --check`（全部非 vendor 前端 JS） | 通过 |
+| 缓存版本号 | 被改动的 7 个资源在相关页面统一升为 `?v=20261011a` |
+

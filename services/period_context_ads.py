@@ -10,7 +10,7 @@ import calendar
 import logging
 from datetime import date, datetime, timedelta
 
-from db import get_db
+from db import get_db, get_shop_id
 from services.category_mode_service import mode_to_label
 from services import category_analysis_service as category_service
 # 市场分级算法（8大归类 / 词根需求 / 蓝海机会 / 趋势节点 / 竞店爆品）已投产于市场排行页，
@@ -841,7 +841,7 @@ def _promotion_dimension(conn, period, compare, category_label=None):
         _log.warning('_promotion_dimension failed; returning unavailable block', exc_info=True)
         return {'available': False, 'grain': None, 'items': [], 'missing_inputs': ['promotion_daily_facts']}
 
-def _product_trend(conn, product_id, weeks=8, category_label=None, grain='week'):
+def _product_trend(conn, product_id, weeks=8, category_label=None, grain='week', shop_id=None):
     """单商品近 N 个完整周期（周复盘=月内分周，月复盘=自然月）的趋势序列。
 
     grain='week'：月内分周口径（W1 从 1 号到第一个周日），聚合 daily_data；
@@ -849,14 +849,23 @@ def _product_trend(conn, product_id, weeks=8, category_label=None, grain='week')
     同源）——日导入可能只有最近几个月，商品的完整历史在快照里。
     只统计已结束的周期，进行中的周/月不纳入；比率列与货品榜口径一致。
     返回 {available, grain, points}——points 即序列行。
+
+    daily_data 带 shop_id：不带店铺条件时，同款商品在其他店铺的日事实会被
+    算进本店折线（同 product_id 跨店存在时直接串数）。
     """
     try:
         today = date.today()
+        scope = str(shop_id or get_shop_id())
         rows = []
         if grain == 'month':
             # 月度复盘联动：直接读 BI 月度快照 monthly_data（与生命周期分析同源）。
             # 它的历史远长于日导入（日导入可能只有最近几个月），商品的季节性历史
             # 都在快照里；只取已结束的自然月（month < 当月），进行中月份不纳入。
+            # monthly_data 是无 shop_id 的单店旧表：只有 default 单店部署能保证
+            # 它属于当前店铺，多店 scope 下宁可不显示折线，也不串店。
+            from db import legacy_shop_id
+            if scope not in ('default', legacy_shop_id()):
+                return {'available': False, 'grain': grain, 'points': []}
             current_month = f'{today.year:04d}-{today.month:02d}'
             snapshot_rows = conn.execute(
                 '''SELECT * FROM monthly_data
@@ -921,8 +930,9 @@ def _product_trend(conn, product_id, weeks=8, category_label=None, grain='week')
                           COALESCE(SUM(d.payment_qty), 0) AS payment_qty,
                           COALESCE(SUM(d.ad_spend), 0) AS ad_spend,
                           COALESCE(SUM(d.operating_profit), 0) AS operating_profit
-                   FROM daily_data d WHERE d.product_id = ? AND d.date BETWEEN ? AND ?''',
-                (product_id, start.isoformat(), end.isoformat()),
+                   FROM daily_data d
+                   WHERE d.product_id = ? AND d.date BETWEEN ? AND ? AND d.shop_id = ?''',
+                (product_id, start.isoformat(), end.isoformat(), scope),
             ).fetchone()
                 if row is None:
                     continue

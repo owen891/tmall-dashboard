@@ -84,6 +84,36 @@ from services.period_context_status import (
 def template_for(period_type):
     return TEMPLATES.get(period_type)
 
+
+def _summary_baselines(period, compare):
+    """本期汇总表的同比/环比基线区间。
+
+    环比取 compare（用户选的对比模式，可能是上一期/自选周期），同比固定取
+    period['yoy'] —— 与上方 KPI 卡同源，避免汇总表与指标卡出现两套基线。
+    compare 为「不对比」或该口径无数据时，对应槽位不返回，汇总表就不显示该列。
+    对比模式本身选的就是同比时不再重复给一个同比槽位（否则两列同值）。
+    """
+    baselines = {}
+    if compare.get('available') and compare.get('start'):
+        baselines['mom'] = {'start': compare['start'], 'end': compare['end'],
+                            'label': compare.get('label'),
+                            'short_label': compare.get('short_label') or '环比'}
+    if period.get('yoy') and compare.get('mode') != 'yoy':
+        baselines['yoy'] = {'start': period['yoy']['start'], 'end': period['yoy']['end'],
+                            'label': period.get('yoy_label'),
+                            'short_label': '同比'}
+    return baselines
+
+
+def _breakdown_baselines(period, compare):
+    """期内按日/分周表的同比/环比基线区间（与汇总表同源）。
+
+    月内分周的天数不固定，逐行对比按「相对本期首日的偏移天数」映射，
+    所以这里只需给出基线区间的起点与终点。
+    """
+    return _summary_baselines(period, compare)
+
+
 def build_context(period_type, period_key, saved_target=None, category_mode=None,
                   compare_mode=None, compare_period_key=None, today=None,
                   saved_review=None):
@@ -92,7 +122,7 @@ def build_context(period_type, period_key, saved_target=None, category_mode=None
     saved_target 为复盘里人工填写的销售额目标，优先级最高。
     saved_review 为该期已保存的整行复盘记录（含利润/推广费/净费比目标），
     用于渲染复盘设置里的多指标目标表；不传则只有销售额一项有目标。
-    category_mode 决定品类口径（沿用全站 category_mode：sock=标品袜子，all=不限品类）。
+    category_mode 决定品类口径（沿用全站 category_mode：sock=默认品类，all=不限品类）。
     compare_mode / compare_period_key 决定对比基线（环比上一期 / 同比 / 自选周期 / 不对比）。
     """
     period = resolve_period(period_type, period_key, today=today)
@@ -153,11 +183,15 @@ def build_context(period_type, period_key, saved_target=None, category_mode=None
         # 汇总层广告块含直接 ROI / 三渠道合计，需要 conn 查推广事实表，
         # 必须在连接作用域内完成（与 products/promotion_items 同理）。
         ads = _ads_block(conn, current, prev, period, compare, category_label)
-        breakdown = _breakdown_block(conn, period, category_label)
+        breakdown = _breakdown_block(conn, period, category_label,
+                                     baselines=_breakdown_baselines(period, compare))
         # 本期汇总（XMind 基础数据/广告汇总/流量汇总）排在拆解之前：先看整体
         # 水平再往下钻。广告/流量渠道汇总复用 ads 已算好的 channel_totals，
         # 不另查一遍 promotion 事实，避免同一事实两处计算产生漂移。
-        summary = _summary_block(conn, period, (ads or {}).get('channel_totals'), category_label)
+        # 同比/环比区间与 KPI 卡同源（compare 给环比、period['yoy'] 给同比），
+        # 汇总表与上方指标卡不会出现两套基线。
+        summary = _summary_block(conn, period, (ads or {}).get('channel_totals'), category_label,
+                                 baselines=_summary_baselines(period, compare))
         actions = _actions_block(conn, period, category_label)
         alerts = _alerts_block(conn)
         anomalies = _anomalies_block(conn, period, current, prev, category_label)
@@ -167,7 +201,7 @@ def build_context(period_type, period_key, saved_target=None, category_mode=None
         linked_summaries = _linked_period_summaries(conn, period)
         # 经营目标页按月预置的净利润/推广费/净费比目标（XMind「下月规划」）。
         preset_metric_targets = _goal_metric_targets(conn, period_type, period_key)
-        # 利润结构（利润瀑布）：BI 派米恒等口径，费用 5 桶 + 利润 + 恒等校验。
+        # 利润结构（利润瀑布）：BI 恒等口径，费用 5 桶 + 利润 + 恒等校验。
         # 对比期沿用 compare 区间（available 才有），与指标环比同源。
         from services.profit_structure_service import profit_structure
         profit_structure_payload = (

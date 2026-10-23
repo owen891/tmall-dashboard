@@ -212,33 +212,43 @@
       if (summaryBatches) summaryBatches.textContent = String(batches.length).padStart(2, '0');
       const latestDate = batches.map((batch) => batch.quality_summary?.date_range?.end).filter(Boolean).sort().pop();
       if (summaryLatest) summaryLatest.textContent = latestDate || '--';
-      history.replaceChildren(...batches.map((batch) => {
-        const row = document.createElement('tr');
-        const range = batch.quality_summary?.date_range;
-        const resolution = batch.quality_summary?.source_resolution || {};
-        const qualityText = `${DemoLabels.label('quality', batch.quality_summary?.conclusion, batch.status === 'completed' ? '通过' : '--')} · 补齐 ${resolution.fallback_filled || 0} · 参考 ${resolution.reference_only || 0} · 冲突 ${resolution.conflicts || 0}${resolution.conflicts ? '（主源保留）' : ''} · 汇总剔除 ${batch.quality_summary?.excluded_summary_rows || 0}`;
-        [batch.source_filename, sourceLabels[batch.source_type] || '其他报表', shortHash(batch.source_hash), range?.start && range?.end ? `${range.start} ~ ${range.end}` : '--', qualityText, `${batch.inserted_count || 0} / ${batch.updated_count || 0} / ${batch.invalid_rows || 0}`, batch.completed_at || '--'].forEach((value, index) => { const cell = document.createElement('td'); cell.textContent = value; if (index === 2) cell.title = batch.source_hash || ''; if (index === 4) cell.title = JSON.stringify(resolution); if (index === 5) cell.className = 'num'; row.appendChild(cell); });
-        const cell = document.createElement('td'); const button = document.createElement('button'); button.className = 'ui-button ui-button--ghost'; button.type = 'button'; button.textContent = batch.status === 'completed' ? '撤销' : '已撤销'; button.disabled = batch.status !== 'completed' || (Object.keys(importCapabilities).length > 0 && !DemoApi.can({ capabilities: importCapabilities }, 'can_revert'));
-        button.addEventListener('click', async () => {
-          if (button.disabled) return;
-          const impact = `影响范围：撤销 ${batch.source_filename}，恢复该批次覆盖前的数据；${batch.inserted_count || 0} 条新增记录将被移除，${batch.updated_count || 0} 条更新将回退。`;
-          if (!await confirmRevert(impact)) return;
-          button.disabled = true;
-          try {
-            await DemoApi.domainRequest(`/api/imports/${encodeURIComponent(batch.id)}/revert`, { method: 'POST' });
-            text(status, '批次已撤销。');
-            showToast(`已撤销导入批次：${batch.source_filename}`, { duration: 4500 });
-            await loadHistory();
-          } catch (error) {
-            text(status, error.message || '批次撤销失败，请重试。');
-            showToast(`批次撤销失败：${error.message || '请重试'}`, { duration: 5000 });
-          } finally {
-            if (button.isConnected) button.disabled = false;
-          }
-        }); cell.appendChild(button); row.appendChild(cell); return row;
-      }));
+      if (window.TmallUI?.table?.mount) window.TmallUI.table.mount(history, {
+        caption: '导入批次',
+        columns: [
+          { key: 'source_filename', label: '文件' }, { key: 'source_type', label: '报表类型' },
+          { key: 'source_hash', label: '校验指纹' }, { key: 'date_range', label: '日期范围' },
+          { key: 'quality', label: '质量' }, { key: 'counts', label: '新增 / 更新 / 无效', numeric: true },
+          { key: 'completed_at', label: '完成时间' }, { key: 'action', label: '操作' },
+        ],
+        rows: batches,
+        emptyMessage: '尚无导入批次',
+        renderRow: (batch) => {
+          const row = document.createElement('tr');
+          const range = batch.quality_summary?.date_range;
+          const resolution = batch.quality_summary?.source_resolution || {};
+          const qualityText = `${DemoLabels.label('quality', batch.quality_summary?.conclusion, batch.status === 'completed' ? '通过' : '--')} · 补齐 ${resolution.fallback_filled || 0} · 参考 ${resolution.reference_only || 0} · 冲突 ${resolution.conflicts || 0}${resolution.conflicts ? '（主源保留）' : ''} · 汇总剔除 ${batch.quality_summary?.excluded_summary_rows || 0}`;
+          [batch.source_filename, sourceLabels[batch.source_type] || '其他报表', shortHash(batch.source_hash), range?.start && range?.end ? `${range.start} ~ ${range.end}` : '--', qualityText, `${batch.inserted_count || 0} / ${batch.updated_count || 0} / ${batch.invalid_rows || 0}`, batch.completed_at || '--'].forEach((value, index) => { const cell = document.createElement('td'); cell.textContent = value; if (index === 2) cell.title = batch.source_hash || ''; if (index === 4) cell.title = JSON.stringify(resolution); if (index === 5) cell.className = 'num'; row.appendChild(cell); });
+          const cell = document.createElement('td'); const button = document.createElement('button'); button.className = 'ui-button ui-button--ghost'; button.type = 'button'; button.textContent = batch.status === 'completed' ? '撤销' : '已撤销'; button.disabled = batch.status !== 'completed' || (Object.keys(importCapabilities).length > 0 && !DemoApi.can({ capabilities: importCapabilities }, 'can_revert'));
+          button.addEventListener('click', async () => {
+            if (button.disabled) return;
+            const impact = `影响范围：撤销 ${batch.source_filename}，恢复该批次覆盖前的数据；${batch.inserted_count || 0} 条新增记录将被移除，${batch.updated_count || 0} 条更新将回退。`;
+            if (!await confirmRevert(impact)) return;
+            button.disabled = true;
+            try {
+              await DemoApi.domainRequest(`/api/imports/${encodeURIComponent(batch.id)}/revert`, { method: 'POST' });
+              text(status, '批次已撤销。');
+              showToast(`已撤销导入批次：${batch.source_filename}`, { duration: 4500 });
+              await loadHistory();
+            } catch (error) {
+              text(status, error.message || '批次撤销失败，请重试。');
+              showToast(`批次撤销失败：${error.message || '请重试'}`, { duration: 5000 });
+            } finally {
+              if (button.isConnected) button.disabled = false;
+            }
+          }); cell.appendChild(button); row.appendChild(cell); return row;
+        },
+      });
       if (historyStatus) text(historyStatus, batches.length ? `共 ${batches.length} 个批次` : '尚无导入批次');
-      if (!batches.length) history.innerHTML = '<tr><td colspan="8">尚无导入批次</td></tr>';
     } catch (error) { history.innerHTML = '<tr><td colspan="8">导入历史加载失败</td></tr>'; if (historyStatus) text(historyStatus, error.message || '导入历史加载失败'); }
   }
   document.querySelector('[data-import-history-refresh]')?.addEventListener('click', loadHistory);

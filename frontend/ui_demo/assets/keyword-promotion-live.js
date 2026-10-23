@@ -127,7 +127,7 @@
 
   // ===== 状态 =====
   const state = {
-    filters: { shop_label: '标品袜子', min_spend: '5' },
+    filters: { shop_label: '', min_spend: '5' },
     sortBy: 'total_score',
     sortOrder: 'desc',
     page: 1,
@@ -188,6 +188,7 @@
   // ===== 渲染表头 =====
   function renderHead() {
     const tr = $('[data-kp-head]');
+    if (!tr) return;
     tr.innerHTML = state.visibleColumns.map(key => {
       const col = COLUMN_MAP.get(key);
       if (!col) return '';
@@ -276,18 +277,44 @@
     }
   }
 
+  function renderCellNode(row, key) {
+    const template = document.createElement('template');
+    template.innerHTML = renderCell(row, key);
+    return template.content.cloneNode(true);
+  }
+
+  function replaceTableBody(body, columns, rows, emptyMessage) {
+    if (!body || !window.TmallUI?.table?.mount) return;
+    const mountedTable = window.TmallUI.table.mount(body, { columns, rows, emptyMessage });
+    const headerRow = mountedTable?.querySelector('thead tr');
+    if (headerRow) {
+      headerRow.dataset.kpHead = '';
+      renderHead();
+    }
+  }
+
   // ===== 渲染表格 =====
   function renderTable(rows) {
     const tbody = $('[data-kp-body]');
-    const colCount = state.visibleColumns.length;
-    if (!rows.length) {
-      tbody.innerHTML = `<tr><td colspan="${colCount}">没有符合条件的商品</td></tr>`;
-      return;
-    }
-    tbody.innerHTML = rows.map(row => {
-      const tds = state.visibleColumns.map(key => `<td>${renderCell(row, key)}</td>`).join('');
-      return `<tr>${tds}</tr>`;
-    }).join('');
+    const numericKeys = new Set([
+      'total_score', 'roi', 'ad_spend', 'payment_amount', 'cvr', 'ctr', 'cart_rate', 'cpc', 'cpm',
+      'cart_adds', 'fav_items', 'fav_rate', 'total_fav_cart', 'total_fav_cart_cost', 'cart_cost',
+      'payment_buyers', 'payment_orders', 'avg_payment_per_buyer', 'direct_payment_amount',
+      'indirect_payment_amount', 'direct_payment_orders', 'indirect_payment_orders', 'payment_cost',
+      'roi_with_presale', 'impressions', 'clicks', 'guide_visits', 'guide_visitors', 'guide_visit_rate',
+      'deep_visits', 'avg_pages', 'new_buyers', 'new_buyer_ratio', 'member_signups', 'member_signup_rate',
+      'organic_visitors', 'organic_payment', 'organic_payment_qty', 'organic_buyers', 'organic_cvr',
+      'organic_uv_value', 'organic_cart_qty', 'organic_fav_users', 'organic_traffic_payment',
+      'organic_traffic_impressions', 'platform_boost_payment', 'coupon_received', 'wangwang_consult',
+      'item_fav_cart_count',
+    ]);
+    replaceTableBody(tbody, state.visibleColumns.map((key) => ({
+      key,
+      label: COLUMN_MAP.get(key)?.label || key,
+      numeric: numericKeys.has(key),
+      className: key === 'fav_rate' || key.endsWith('_rate') || key === 'cvr' || key === 'ctr' || key === 'organic_cvr' ? 'pct' : '',
+      render: (_, row) => renderCellNode(row, key),
+    })), rows, '没有符合条件的商品');
   }
 
   // ===== 加载筛选器选项 =====
@@ -302,7 +329,7 @@
         if (!sel) return;
         const current = sel.value;
         const opts = (values || []).map(v => typeof v === 'object' && v !== null ? v.value : v).filter(Boolean);
-        sel.innerHTML = '<option value="">全部</option>' + opts.map(v => `<option value="${v}">${v}</option>`).join('');
+        sel.innerHTML = '<option value="">全部</option>' + opts.map(v => `<option value="${escapeHtml(v)}">${escapeHtml(v)}</option>`).join('');
         if (current && opts.includes(current)) sel.value = current;
       };
 
@@ -371,8 +398,8 @@
   // ===== 加载商品列表 =====
   async function loadProducts() {
     const tbody = $('[data-kp-body]');
-    const colCount = state.visibleColumns.length;
-    tbody.innerHTML = `<tr><td colspan="${colCount}">加载中…</td></tr>`;
+    const loadingColumns = state.visibleColumns.map((key) => ({ key, label: COLUMN_MAP.get(key)?.label || key }));
+    replaceTableBody(tbody, loadingColumns, [], '加载中…');
 
     try {
       const params = new URLSearchParams({
@@ -395,7 +422,7 @@
       $('[data-kp-status]').textContent = `共 ${result.total} 个商品，当前第 ${state.page} 页`;
     } catch (e) {
       console.error('加载商品列表失败', e);
-      tbody.innerHTML = `<tr><td colspan="${colCount}" class="kp-error">加载失败: ${e.message || e}</td></tr>`;
+      replaceTableBody($('[data-kp-body]'), loadingColumns, [], `加载失败: ${e.message || e}`);
     }
   }
 
@@ -585,10 +612,11 @@
       loadProducts();
     });
 
-    // 表头点击排序
-    $('[data-kp-head]').addEventListener('click', e => {
+    // 表头点击排序：监听稳定的表格容器，避免共享表格替换 table 节点后丢失监听器。
+    const tableWrap = $('[data-kp-body]')?.closest('.ui-table-wrap');
+    tableWrap?.addEventListener('click', e => {
       const th = e.target.closest('th[data-sort]');
-      if (!th || !th.dataset.sort) return;
+      if (!th || !th.dataset.sort || !tableWrap.contains(th)) return;
       const col = th.dataset.sort;
       if (state.sortBy === col) {
         state.sortOrder = state.sortOrder === 'desc' ? 'asc' : 'desc';
@@ -625,7 +653,7 @@
     // 重置
     $('[data-kp-reset]').addEventListener('click', () => {
       $('[data-kp-search]').value = '';
-      $('[data-kp-shop-label]').value = '标品袜子';
+      // 品类过滤不预设，由用户从选项中选择；选项来自接口返回的当前品类。
       ['data-kp-category', 'data-kp-gender', 'data-kp-season', 'data-kp-material',
        'data-kp-scene', 'data-kp-thickness', 'data-kp-style', 'data-kp-grade', 'data-kp-action'].forEach(attr => {
         const el = $(`[${attr}]`); if (el) el.value = '';

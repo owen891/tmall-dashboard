@@ -142,7 +142,7 @@
     if (drawer || !window.TmallUI?.detailDrawer) return;
     // 详情面统一 NUI 抽屉：不再自建 <dialog>。焦点圈闭/焦点归还/Escape/背板/
     // 滚动锁全部由 detailDrawer 提供，这里只负责内容、页签与页眉同步。
-    drawer = window.TmallUI.detailDrawer({ title: '商品详情', description: '--', size: 'lg' });
+    drawer = window.TmallUI.detailDrawer({ title: '商品详情', description: '--', size: 'lg', onClose: resetSession });
     drawer.node.classList.add('product-detail-dialog');
     drawer.node.setAttribute('data-modal-kind', 'detail');
     drawerTitle = drawer.node.querySelector('.ui-drawer__copy h2');
@@ -342,18 +342,25 @@
   function renderTrend(rows) {
     const wrapper = section('日趋势', '展示已入库的商品日度经营数据。');
     if (!rows?.length) { wrapper.append(node('p', 'panel__hint', '暂无日趋势数据')); return wrapper; }
-    const tableWrap = node('div', 'ui-table-wrap');
-    const table = node('table', 'ui-data-table');
-    table.innerHTML = '<thead><tr><th>日期</th><th class="num">支付金额</th><th class="num">净销售额</th><th class="num">成功退款金额</th><th class="num">商品访客数</th><th class="num">推广花费</th></tr></thead>';
-    const tbody = document.createElement('tbody');
-    rows.slice(-31).reverse().forEach((row) => {
-      const tr = document.createElement('tr');
-      [row.date, money(row.payment_amount), money(row.net_sales), money(row.refund_amount), number(row.product_visitors), money(row.ad_spend)].forEach((value, index) => {
-        const td = node('td', index ? 'num' : '', value); tr.appendChild(td);
-      });
-      tbody.appendChild(tr);
-    });
-    table.appendChild(tbody); tableWrap.appendChild(table); wrapper.appendChild(tableWrap);
+    const data = rows.slice(-31).reverse();
+    wrapper.appendChild(window.TmallUI.table({
+      columns: [
+        { key: 'date', label: '日期' },
+        { key: 'payment', label: '支付金额', numeric: true },
+        { key: 'netSales', label: '净销售额', numeric: true },
+        { key: 'refund', label: '成功退款金额', numeric: true },
+        { key: 'visitors', label: '商品访客数', numeric: true },
+        { key: 'adSpend', label: '推广花费', numeric: true },
+      ],
+      rows: data.map((row) => ({
+        date: row.date,
+        payment: money(row.payment_amount),
+        netSales: money(row.net_sales),
+        refund: money(row.refund_amount),
+        visitors: number(row.product_visitors),
+        adSpend: money(row.ad_spend),
+      })),
+    }));
     return wrapper;
   }
 
@@ -377,20 +384,27 @@
       : '当前日期范围没有可用的商品级搜索字段，以下搜索指标显示为 --');
     wrapper.appendChild(status);
     if (rows.length) {
-      const tableWrap = node('div', 'ui-table-wrap');
-      const table = node('table', 'ui-data-table');
-      table.innerHTML = '<thead><tr><th>日期</th><th class="num">搜索访客</th><th class="num">搜索占比</th><th class="num">搜索转化率</th><th class="num">搜索点击率</th></tr></thead>';
-      const tbody = document.createElement('tbody');
-      rows.slice(-31).reverse().forEach((row) => {
+      const data = rows.slice(-31).reverse().map((row) => {
         const searchVisitors = row.search_visitors;
         const searchRatio = row.search_ratio ?? (searchVisitors != null && row.product_visitors ? searchVisitors / row.product_visitors : null);
-        const tr = document.createElement('tr');
-        [row.date, searchVisitors == null ? '--' : number(searchVisitors), percent(searchRatio), percent(row.search_conversion), percent(row.search_click_rate)].forEach((value, index) => {
-          tr.appendChild(node('td', index ? 'num' : '', value));
-        });
-        tbody.appendChild(tr);
+        return {
+          date: row.date,
+          visitors: searchVisitors == null ? '--' : number(searchVisitors),
+          share: percent(searchRatio),
+          conversion: percent(row.search_conversion),
+          clickRate: percent(row.search_click_rate),
+        };
       });
-      table.appendChild(tbody); tableWrap.appendChild(table); wrapper.appendChild(tableWrap);
+      wrapper.appendChild(window.TmallUI.table({
+        columns: [
+          { key: 'date', label: '日期' },
+          { key: 'visitors', label: '搜索访客', numeric: true },
+          { key: 'share', label: '搜索占比', numeric: true },
+          { key: 'conversion', label: '搜索转化率', numeric: true },
+          { key: 'clickRate', label: '搜索点击率', numeric: true },
+        ],
+        rows: data,
+      }));
     }
 
     const keywords = section('关键词明细', '只有存在商品级关键词与商品 ID 关联事实时才开放。');
@@ -982,34 +996,37 @@
       target.appendChild(node('p', 'panel__hint', '当前计划没有可验证的商品映射。'));
       return;
     }
-    const tableWrap = node('div', 'ui-table-wrap');
-    const table = node('table', 'ui-data-table');
-    table.innerHTML = '<thead><tr><th>商品</th><th>商品 ID</th><th class="num">创意数</th></tr></thead>';
-    const tbody = document.createElement('tbody');
-    products.forEach((product) => {
-      const tr = document.createElement('tr');
-      [product.title || product.product_name || '--', product.product_id || '--', number(product.creative_count)].forEach((value, index) => tr.appendChild(node('td', index === 2 ? 'num' : '', value)));
-      tbody.appendChild(tr);
-    });
-    table.appendChild(tbody);
-    tableWrap.appendChild(table);
-    target.appendChild(tableWrap);
+    target.appendChild(window.TmallUI.table({
+      columns: [
+        { key: 'title', label: '商品' },
+        { key: 'productId', label: '商品 ID' },
+        { key: 'creativeCount', label: '创意数', numeric: true },
+      ],
+      rows: products.map((product) => ({
+        title: product.title || product.product_name || '--',
+        productId: product.product_id || '--',
+        creativeCount: number(product.creative_count),
+      })),
+    }));
   }
 
   async function loadPromotionCampaignDetail(campaignId) {
     if (!current || !campaignId) return;
     const range = window.TmallDateRange?.getState?.() || {};
-    promotionCampaignDetailState = { campaignId: String(campaignId), loading: true, payload: null, error: '' };
+    const session = current;
+    const requestToken = token;
+    const pendingState = { campaignId: String(campaignId), loading: true, payload: null, error: '' };
+    promotionCampaignDetailState = pendingState;
     renderCurrentPanel();
     try {
       const query = new URLSearchParams({ campaign_id: String(campaignId) });
       if (range.startDate) query.set('start', range.startDate);
       if (range.endDate) query.set('end', range.endDate);
       const payload = await DemoApi.domainRequest(`/api/promotion/campaign-detail?${query}`);
-      if (!current) return;
+      if (current !== session || token !== requestToken || promotionCampaignDetailState !== pendingState) return;
       promotionCampaignDetailState = { campaignId: String(campaignId), loading: false, payload, error: '' };
     } catch (error) {
-      if (!current) return;
+      if (current !== session || token !== requestToken || promotionCampaignDetailState !== pendingState) return;
       promotionCampaignDetailState = { campaignId: String(campaignId), loading: false, payload: null, error: error.message || '计划下钻加载失败，请重试。' };
     }
     renderCurrentPanel();
@@ -1357,6 +1374,37 @@
     }
   }
 
+  function renderDrawerImage(product) {
+    const imageRoot = drawerImage;
+    if (!imageRoot) return;
+    const thumbnailUrl = String(product.image_url || '').trim();
+    const existing = imageRoot.querySelector('img');
+    if (thumbnailUrl && existing?.getAttribute('src') === thumbnailUrl) { existing.alt = product.title || ''; return; }
+    imageRoot.replaceChildren();
+    if (thumbnailUrl) {
+      const image = new Image(52, 52);
+      image.loading = 'lazy';
+      image.src = thumbnailUrl;
+      image.alt = product.title || '';
+      imageRoot.removeAttribute('aria-hidden');
+      image.addEventListener('error', () => {
+        if (image.parentNode !== imageRoot) return;
+        imageRoot.replaceChildren();
+        imageRoot.setAttribute('aria-hidden', 'true');
+        const placeholder = node('i');
+        placeholder.setAttribute('data-lucide', 'image');
+        imageRoot.appendChild(placeholder);
+        window.lucide?.createIcons?.({ attrs: { 'stroke-width': 1.75 } });
+      }, { once: true });
+      imageRoot.appendChild(image);
+    } else {
+      imageRoot.setAttribute('aria-hidden', 'true');
+      const placeholder = node('i');
+      placeholder.setAttribute('data-lucide', 'image');
+      imageRoot.appendChild(placeholder);
+    }
+  }
+
   async function load() {
     const loadToken = ++token;
     promotionCampaignDetailState = { campaignId: '', loading: false, payload: null, error: '' };
@@ -1394,30 +1442,7 @@
     drawerMeta.textContent = [product.category, product.style, statusLabel(product.status), sourceMeta].filter(Boolean).join(' · ') || '--';
     const selectedRange = range.startDate && range.endDate ? `${range.startDate} ~ ${range.endDate}` : '全量数据';
     drawerId.textContent = `商品 ID ${product.product_id || current.productId} · 当前范围 ${selectedRange} · 数据截止 ${text(detail.summary?.data_cutoff_date)}`;
-    const imageRoot = drawerImage;
-    imageRoot.replaceChildren();
-    const thumbnailUrl = String(product.image_url || '').trim();
-    if (thumbnailUrl) {
-      const image = new Image(52, 52);
-      image.loading = 'lazy';
-      image.src = thumbnailUrl;
-      image.alt = product.title || '';
-      imageRoot.removeAttribute('aria-hidden');
-      image.addEventListener('error', () => {
-        imageRoot.replaceChildren();
-        imageRoot.setAttribute('aria-hidden', 'true');
-        const placeholder = node('i');
-        placeholder.setAttribute('data-lucide', 'image');
-        imageRoot.appendChild(placeholder);
-        window.lucide?.createIcons?.({ attrs: { 'stroke-width': 1.75 } });
-      }, { once: true });
-      imageRoot.appendChild(image);
-    } else {
-      imageRoot.setAttribute('aria-hidden', 'true');
-      const placeholder = node('i');
-      placeholder.setAttribute('data-lucide', 'image');
-      imageRoot.appendChild(placeholder);
-    }
+    renderDrawerImage(product);
     const unwrap = (result) => (result && result.status === 'fulfilled'
       ? (result.value?.data || result.value) : null);
     const promotion = unwrap(promotionResult) || {};
@@ -1469,6 +1494,13 @@
     ensureDialog();
     if (!drawer) return;
     current = { ...options, productId: String(options.productId), activeTab: 'overview', view: null };
+    updateTabState();
+    drawer.body.scrollTop = 0;
+    // Identity is already known from the list; never show the previous product while loading.
+    drawerTitle.textContent = current.title || '商品详情';
+    drawerMeta.textContent = '正在读取商品信息…';
+    drawerId.textContent = `商品 ID ${current.productId}`;
+    renderDrawerImage({ title: current.title, image_url: current.imageUrl });
     promotionCampaignDetailState = { campaignId: '', loading: false, payload: null, error: '' };
     drawerWorkbench.href = current.workbenchUrl || `/products/${encodeURIComponent(current.productId)}`;
     if (!current.workbenchUrl && current.sourceRule?.key) drawerWorkbench.href += `?rule_key=${encodeURIComponent(current.sourceRule.key)}`;
@@ -1485,11 +1517,17 @@
     load().catch((error) => body.replaceChildren(node('div', 'ui-empty-state', error.message || '商品详情加载失败')));
   });
 
-  function close() {
+  // Both the public close() and the shared shell's ESC/backdrop/close button end
+  // this product session, so pending responses cannot render into a closed view.
+  function resetSession() {
     token += 1;
     current = null;
     destroyOverviewTrendChart();
-    drawer?.close();
+  }
+
+  function close() {
+    if (drawer && !drawer.node.hidden) drawer.close();
+    else resetSession();
   }
 
   window.ProductDetailDialog = { open, close };

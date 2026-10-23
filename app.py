@@ -4,8 +4,9 @@ import json
 from uuid import uuid4
 from urllib.parse import unquote, urlsplit
 from urllib.request import urlopen
+from urllib.error import HTTPError
 
-from flask import Flask, g, jsonify, redirect, request, send_from_directory
+from flask import Flask, Response, g, jsonify, redirect, request, send_from_directory
 from werkzeug.local import LocalProxy
 from werkzeug.exceptions import HTTPException, RequestEntityTooLarge
 import os
@@ -87,7 +88,14 @@ def _latest_release():
             'tag_name': body.get('tag_name') or body.get('name'),
             'html_url': body.get('html_url') or _RELEASE_PAGE,
         }
-    except Exception:
+    except Exception as error:
+        # HTTPError owns a response stream even though urlopen never entered
+        # the successful-response context manager. Close that stream as well.
+        if isinstance(error, HTTPError):
+            try:
+                error.close()
+            except Exception:
+                pass  # Release checks remain best-effort even if close fails.
         # Offline, blocked, rate limited or malformed: all the same to us.
         payload = None
     _release_cache.update({'checked_at': now, 'payload': payload})
@@ -124,7 +132,7 @@ def create_app(config=None):
     if config:
         app.config.from_mapping(config)
     # Test fixtures historically use the isolated default scope. Production
-    # remains on the configured collector shop (3828498662 in this deployment).
+    # remains on the configured collector shop (deployment-specific).
     if app.config.get('TESTING') and not app.config.get('SHOP_ID'):
         app.config['SHOP_ID'] = 'default'
 
@@ -241,9 +249,12 @@ def create_app(config=None):
     def require_admin_for_external_mutations():
         if request.method not in {'POST', 'PUT', 'PATCH', 'DELETE'}:
             return None
+        # `/api/imports/preview` 曾经也在这里豁免，但它并不是只读接口：
+        # ImportService.preview 会把完整原始文件写进 import_previews（BLOB）。
+        # 豁免等于给认证用户一个绕过 admin 写保护的持久化入口（AUTH-01），
+        # 所以现在它和确认导入一样要求管理写权限。
         public_mutations = {
             '/api/frontend-errors',
-            '/api/imports/preview',
         }
         if request.path in public_mutations:
             return None
@@ -251,10 +262,11 @@ def create_app(config=None):
 
     @app.after_request
     def prevent_dashboard_frontend_staleness(response):
-        if request.path == '/' or request.path == '/api/version' or request.path in {
+        immutable_asset = request.endpoint == 'release_asset' and 'immutable' in response.headers.get('Cache-Control', '')
+        if not immutable_asset and (response.mimetype == 'text/html' or request.path == '/' or request.path == '/api/version' or request.path in {
             '/products', '/promotion', '/lifecycle', '/reviews',
             '/data-center', '/data-collection', '/settings', '/goals', '/period-review',
-        } or request.path.startswith('/assets/'):
+        } or request.path.startswith('/assets/')):
             response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
             response.headers['Pragma'] = 'no-cache'
             response.headers['Expires'] = '0'
@@ -280,8 +292,16 @@ def create_app(config=None):
         if request.method in {'POST', 'PUT', 'PATCH', 'DELETE'} and response.status_code < 400:
             # Mutations may affect multiple cached legacy projections; invalidate
             # the process-local cache instead of serving stale post-write data.
-            from utils.cache import cache
+            from utils.cache import cache, bump_mutation_generation
             cache.clear()
+            # 同时自增库内 generation：其它进程（后台扫描、维护脚本）看不到
+            # 这次 cache.clear()，它们要靠 generation 变化来失效自己的缓存键。
+            try:
+                bump_mutation_generation()
+            except Exception:
+                # generation 自增失败不应让已经成功的写入返回 5xx；
+                # 此时本进程缓存已清空，最坏情况只是其它进程多等一个 TTL。
+                logging.getLogger('cache').warning('mutation generation bump failed', exc_info=True)
         # API 请求日志
         if request.path.startswith('/api/'):
             start = getattr(g, '_request_start_time', None)
@@ -330,9 +350,43 @@ def create_app(config=None):
         app.logger.exception('Unhandled request failure: %s %s [%s]', request.method, request.path, request_id)
         return failure('INTERNAL_ERROR', '服务暂时不可用，请稍后重试', status=500, request_id=request_id)
 
+    from utils.static_release import ensure_initial_release, read_current, read_release_file, render_release_page, ReleaseUnavailable
+
+    # Installed resources may live in a read-only bundle (_MEIPASS). Releases
+    # are persistent application data, alongside the already-selected DB.
+    release_root = app.config.get('ASSET_RELEASE_ROOT') or os.environ.get('TMALL_ASSET_RELEASE_ROOT') or os.path.join(os.path.dirname(app.config['DATABASE_PATH']), 'frontend-releases')
+
+    def release_unavailable():
+        response = jsonify({'ok': False, 'error': {'code': 'UPDATE_REQUIRED', 'message': '页面资源版本已不可用，请刷新整个页面。'}})
+        response.status_code = 410
+        response.headers['X-Tmall-Update-Required'] = '1'
+        response.headers['Cache-Control'] = 'no-store'
+        return response
+
+    def frontend_page(path):
+        try:
+            # Select once for the entire HTML, never once per asset reference.
+            version = ensure_initial_release(demo_root, release_root)
+            return Response(render_release_page(release_root, version, path), mimetype='text/html')
+        except ReleaseUnavailable:
+            return release_unavailable()
+
+    @app.route('/assets/releases/<version>/<path:path>')
+    def release_asset(version, path):
+        import mimetypes
+        import hashlib
+        try:
+            data = read_release_file(release_root, version, 'assets/' + path)
+        except ReleaseUnavailable:
+            return release_unavailable()
+        response = Response(data, mimetype=mimetypes.guess_type(path)[0] or 'application/octet-stream')
+        response.set_etag(hashlib.sha256(data).hexdigest())
+        response.headers['Cache-Control'] = 'public, max-age=31536000, immutable'
+        return response.make_conditional(request)
+
     @app.route('/')
     def index():
-        return send_from_directory(os.path.join(demo_root, 'pages'), 'overview.html', max_age=0)
+        return frontend_page('overview.html')
 
     @app.route('/<page>')
     def application_page(page):
@@ -343,29 +397,29 @@ def create_app(config=None):
             return redirect(LEGACY_REDIRECT_PAGES[page])
         if page not in routable_pages():
             return jsonify({'error': 'page not found'}), 404
-        return send_from_directory(os.path.join(demo_root, 'pages'), f'{page}.html', max_age=0)
+        return frontend_page(f'{page}.html')
 
     @app.route('/products/<product_id>')
     def product_detail_page(product_id):
-        return send_from_directory(os.path.join(demo_root, 'pages'), 'product-detail.html', max_age=0)
+        return frontend_page('product-detail.html')
 
     @app.route('/product-detail')
     def product_detail_landing():
         # Deep link with no product id. Serve the shell so the page can explain
         # how to get there instead of answering a bare 404.
-        return send_from_directory(os.path.join(demo_root, 'pages'), 'product-detail.html', max_age=0)
+        return frontend_page('product-detail.html')
 
     @app.route('/pages/<path:path>')
     def product_pages(path):
-        return send_from_directory(os.path.join(demo_root, 'pages'), path, max_age=0)
+        return frontend_page(path)
 
     # The catalog is also served at `/`, so relative asset URLs resolve here.
     @app.route('/assets/<path:path>')
     def demo_assets(path):
         resp = send_from_directory(os.path.join(demo_root, 'assets'), path)
-        # 静态资源缓存7天（JS/CSS/图片）
-        if path.endswith(('.js', '.css', '.png', '.jpg', '.jpeg', '.gif', '.svg', '.woff', '.woff2', '.ttf')):
-            resp.headers['Cache-Control'] = 'public, max-age=604800'
+        # Compatibility only. Long cache lifetimes belong exclusively to the
+        # immutable release route; timestamps on mutable paths are not versions.
+        resp.headers['Cache-Control'] = 'no-store'
         return resp
 
     @app.route('/api/version')
@@ -375,6 +429,15 @@ def create_app(config=None):
             'version': APP_VERSION,
             'channel': 'stable',
         }
+        # Active UI release id. Pages are served from an immutable snapshot, so a
+        # republished UI keeps working — but a tab that is already open stays on
+        # the previous assets forever, because its HTML still points at the old
+        # release directory and the HTML itself is `no-store`. Reporting the id
+        # lets the client notice the swap and offer a reload.
+        try:
+            data['ui_release'] = read_current(release_root)
+        except ReleaseUnavailable:
+            data['ui_release'] = None
         # `?release=1` additionally reports the upstream latest release so the
         # browser never has to reach a third-party origin itself.
         if request.args.get('release') == '1':

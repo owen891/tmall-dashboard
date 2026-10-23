@@ -2,6 +2,7 @@ from flask import Blueprint, request
 
 from api.api_response import evidence_level_for, failure, limitations_for, success
 from services.category_mode_service import category_filters_from_request
+from services.promotion_matrix_service import promotion_matrix_service
 from services.promotion_service import PromotionValidationError, promotion_service
 
 
@@ -34,8 +35,10 @@ def promotion():
         filters={**{key: value for key, value in filters.items() if value},
                  'start': start_date, 'end': end_date, 'group_by': group_by},
         missing_ranges=missing_ranges,
+        missing_fields=result.get('missing_fields', []),
         source_batches=result['source_batches'],
-        evidence_level=evidence_level_for(availability, missing_inputs=missing_inputs, missing_ranges=missing_ranges),
+        evidence_level=('partial' if result.get('missing_fields') or result.get('partial_fields') else
+                        evidence_level_for(availability, missing_inputs=missing_inputs, missing_ranges=missing_ranges)),
         missing_inputs=missing_inputs,
         limitations=limitations_for(availability, missing_inputs=missing_inputs, missing_ranges=missing_ranges) + result.get('limitations', []),
         freshness={'start': start_date, 'end': end_date},
@@ -121,6 +124,42 @@ def promotion_new_products():
         limitations=limitations_for(availability, missing_inputs=missing_inputs) + result.get('limitations', []),
         evidence_level=evidence_level_for(availability, missing_inputs=missing_inputs),
         evidence=[{'source': 'promotion_daily_facts', 'row_count': len(result['rows'])}],
+    )
+
+
+@promotion_bp.route('/api/promotion/matrix')
+def promotion_matrix():
+    """新老品 × 渠道投放矩阵：按 60 天口径切新老品，判单品可放大/需优化。"""
+    start_date = request.args.get('start')
+    end_date = request.args.get('end')
+    if not start_date or not end_date:
+        return failure('VALIDATION_ERROR', '必须提供 start 和 end', status=422)
+    filters = {**category_filters_from_request()}
+    try:
+        result = promotion_matrix_service.matrix(start_date, end_date, filters)
+    except PromotionValidationError as error:
+        return failure('VALIDATION_ERROR', str(error), status=422)
+    availability = result['availability']
+    missing_inputs = []
+    if availability == 'no-data':
+        missing_inputs = ['promotion_creatives', 'promotion_daily']
+    evidence_level = evidence_level_for(availability, missing_inputs=missing_inputs)
+    if availability == 'available' and (result['coverage'].get('spend_coverage') or 0) < 0.95:
+        # 商品级明细覆盖不到账单口径的 95% 时，结论只代表这部分花费。
+        evidence_level = 'partial'
+    return success(
+        result,
+        availability=availability,
+        filters={'start': start_date, 'end': end_date,
+                 **{k: v for k, v in filters.items() if v}},
+        missing_inputs=missing_inputs,
+        limitations=limitations_for(availability, missing_inputs=missing_inputs) + result.get('limitations', []),
+        evidence_level=evidence_level,
+        freshness={'start': start_date, 'end': end_date},
+        evidence=[
+            {'source': 'promotion_creative_daily', 'row_count': len(result['products'])},
+            {'source': 'promotion_campaign_items', 'row_count': len(result['products'])},
+        ],
     )
 
 

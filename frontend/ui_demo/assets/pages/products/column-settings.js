@@ -31,15 +31,19 @@
     let columnSelector = null;
     let templateManager = null;
 
+    // 【已作废 2026-10-22】下列模板原先引用的无源列（style/product_type/product_time_node/
+    // paid_ipv/organic_ipv/recommend_ipv/click_rate/paid_ratio/keyword_*/crowd_*/site_*/
+    // lifecycle_stage/seasonality/has_pending_action/product_growth_stage）已从
+    // products-live.js 的 columnGroups 移除，模板同步改为只含仍有真实数据的列。
     const templates = {
-      operate: ['tier', 'style', 'product_type', 'product_time_node', 'status', 'payment_amount', 'net_sales', 'conversion', 'refund_rate', 'ad_spend', 'roi', 'paid_ipv', 'organic_ipv', 'search_ipv', 'recommend_ipv', 'repurchase_rate'],
-      select: ['tier', 'style', 'product_type', 'product_time_node', 'category', 'status', 'visitors', 'conversion', 'cart_rate', 'fav_rate', 'payment_amount', 'buyers', 'avg_order_value', 'score'],
-      paid: ['status', 'ad_spend', 'expense_ratio', 'roi', 'paid_ratio', 'keyword_spend', 'keyword_roi', 'crowd_spend', 'crowd_roi', 'impressions', 'clicks', 'ctr'],
-      refund: ['status', 'payment_amount', 'net_sales', 'refund_amount', 'refund_rate', 'buyers', 'avg_order_value', 'new_buyers', 'new_buyer_ratio', 'repurchase_users', 'repurchase_rate', 'score'],
-      lifecycle: ['lifecycle_stage', 'seasonality', 'has_pending_action', 'list_date', 'tier', 'style', 'product_type', 'product_time_node', 'product_growth_stage', 'status', 'payment_amount', 'trend_change'],
-      traffic: ['tier', 'style', 'visitors', 'page_views', 'uv_value', 'paid_ipv', 'organic_ipv', 'conversion', 'cart_rate', 'fav_rate', 'bounce_rate', 'avg_stay_duration', 'click_rate'],
-      transaction: ['tier', 'style', 'payment_amount', 'payment_count', 'buyers', 'avg_order_value', 'net_sales', 'refund_amount', 'refund_rate', 'trend_change', 'cart_qty', 'score'],
-      promotion: ['status', 'ad_spend', 'expense_ratio', 'roi', 'paid_ratio', 'keyword_spend', 'keyword_roi', 'crowd_spend', 'crowd_roi', 'site_spend', 'site_sales', 'site_roi'],
+      operate: ['tier', 'payment_amount', 'net_sales', 'conversion', 'refund_rate', 'ad_spend', 'roi', 'search_ipv', 'repurchase_rate'],
+      select: ['tier', 'visitors', 'conversion', 'cart_rate', 'fav_rate', 'payment_amount', 'buyers', 'avg_order_value', 'score'],
+      paid: ['ad_spend', 'expense_ratio', 'roi', 'impressions', 'clicks', 'ctr', 'cpc', 'cpm', 'click_conversion'],
+      refund: ['tier', 'payment_amount', 'net_sales', 'refund_amount', 'refund_rate', 'buyers', 'avg_order_value', 'new_buyers', 'new_buyer_ratio', 'repurchase_users', 'repurchase_rate', 'score'],
+      lifecycle: ['tier', 'payment_amount', 'trend_change', 'search_click_rate', 'category_width', 'repurchase_rate'],
+      traffic: ['tier', 'visitors', 'page_views', 'uv_value', 'conversion', 'cart_rate', 'fav_rate', 'bounce_rate', 'avg_stay_duration', 'search_visitors', 'search_ratio', 'search_conversion'],
+      transaction: ['tier', 'payment_amount', 'payment_count', 'buyers', 'avg_order_value', 'net_sales', 'refund_amount', 'refund_rate', 'trend_change', 'cart_qty', 'score'],
+      promotion: ['ad_spend', 'expense_ratio', 'roi', 'impressions', 'clicks', 'ctr', 'cpc', 'cpm', 'direct_gmv', 'total_gmv', 'cart_adds', 'cart_cost'],
     };
     const templateLabels = {
       operate: '\u7ecf\u8425\u603b\u89c8',
@@ -82,8 +86,13 @@
     }
 
     function renderColumnOptions(selected = state.visibleColumns) {
+      // hidden 列不进入字段选择器（它们只保留定义用于口径追溯）。
+      // 过滤后若整组为空，则整组不渲染，避免出现空标题分组。
+      const groups = columnGroups
+        .map((group) => ({ label: group.label, fields: (group.columns || []).filter((field) => field && !field.hidden) }))
+        .filter((group) => group.fields.length > 0);
       const config = {
-        groups: columnGroups.map((group) => ({ label: group.label, fields: group.columns })),
+        groups,
         selected,
       };
       if (!columnSelector) {

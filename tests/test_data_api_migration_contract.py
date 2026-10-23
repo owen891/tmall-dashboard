@@ -17,6 +17,7 @@ class DataApiMigrationContractTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.tmp = tempfile.TemporaryDirectory(prefix='tmall-migration-contract-')
+        cls.addClassCleanup(cls.tmp.cleanup)
         cls.app = create_app({
             'TESTING': True,
             'DATABASE_PATH': str(Path(cls.tmp.name) / 'dashboard.db'),

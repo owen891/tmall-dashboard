@@ -10,6 +10,7 @@
 """
 
 import json
+import hashlib
 from datetime import date
 from uuid import uuid4
 
@@ -33,6 +34,27 @@ KNOWN_REPORT_TYPES = {
 }
 
 
+def _import_source_hash(payload, parsed, source_api, report_type, split_type,
+                        start_date, end_date):
+    """Fingerprint effective input and parsed values, not notes/run ownership.
+
+    Parsed values participate so a corrected parser cannot replay an obsolete
+    completed batch. Original raw-page byte hashes remain separate evidence.
+    """
+    envelope = {
+        'version': 'wanxiangtai-import-v1', 'source_api': source_api,
+        'report_type': report_type, 'split_type': split_type,
+        'start_date': start_date, 'end_date': end_date,
+        'payload': payload, 'parsed': parsed,
+    }
+    try:
+        encoded = json.dumps(envelope, ensure_ascii=False, sort_keys=True,
+                             separators=(',', ':'), allow_nan=False).encode('utf-8')
+    except (TypeError, ValueError) as exc:
+        raise WanxiangtaiValidationError('导入内容包含不可指纹化的数值或类型') from exc
+    return hashlib.sha256(encoded).hexdigest()
+
+
 def _sniff_report_type(payload: dict) -> str:
     """report_type 缺省或未知时，按行内维度字段嗅探报表类型。"""
     rows = (payload.get('data') or {}).get('list') or []
@@ -54,6 +76,24 @@ def _parse_query_payload(payload: dict, report_type: str, split_type: str,
     return report_type, wanxiangtai_service.parse_report_payload(
         payload, report_type, split_type, start_date, end_date
     )
+
+
+def _validate_requested_impressions(raw_rows: list[dict]) -> None:
+    """Reject reports whose requested impression field vanished for active rows."""
+    missing = [row for row in raw_rows
+               if row.get('adPv') is None and row.get('impressions') is None]
+    wholly_missing = bool(raw_rows) and len(missing) == len(raw_rows)
+    active_row_missing = any(
+        row.get('adPv') is None and row.get('impressions') is None and (
+            (wanxiangtai_service._to_float(row.get('charge')) or 0) > 0
+            or (wanxiangtai_service._to_int(row.get('click')) or 0) > 0
+        )
+        for row in raw_rows
+    )
+    if wholly_missing or active_row_missing:
+        raise WanxiangtaiValidationError(
+            '原始报表缺少已请求的展现字段 adPv/impressions（整份缺失或投放行缺失），禁止发布，请重试采集'
+        )
 
 
 def _upsert_creatives(conn, shop_id: str, creatives: list[dict]) -> None:
@@ -183,6 +223,15 @@ def import_data():
     source_run_id = str(body.get('source_run_id') or '').strip()
 
     try:
+        if not isinstance(payload, dict):
+            raise WanxiangtaiValidationError('payload 必须是 JSON 对象')
+        info = payload.get('info')
+        if info is not None and not isinstance(info, dict):
+            raise WanxiangtaiValidationError('响应 info 必须是 JSON 对象')
+        if isinstance(info, dict) and 'ok' in info and info['ok'] is not True:
+            raise WanxiangtaiValidationError('来源响应未成功，禁止发布')
+        if payload.get('data') is not None and not isinstance(payload['data'], dict):
+            raise WanxiangtaiValidationError('响应 data 必须是 JSON 对象')
         # 解析数据
         if 'contentSceneCharge' in (payload.get('data') or {}) or 'searchCharge' in (payload.get('data') or {}):
             rows = wanxiangtai_service.parse_charge_sum_response(payload, start_date, end_date)
@@ -198,21 +247,80 @@ def import_data():
         if not rows:
             return failure('NO_DATA', '解析后无有效数据行', status=422)
 
+        if source_api == '/report/query.json':
+            raw_data = payload.get('data') or {}
+            raw_rows = raw_data.get('list') or []
+            if (not isinstance(raw_rows, list)
+                    or len(rows) != len(raw_rows)
+                    or (report_type == 'creative'
+                        and len(parsed['creatives']) != len(raw_rows))):
+                raise WanxiangtaiValidationError('原始报表未完整解析，禁止部分发布')
+            _validate_requested_impressions(raw_rows)
+            expected_count = raw_data.get('count')
+            if expected_count is not None:
+                try:
+                    if type(expected_count) not in (int, str):
+                        raise ValueError('invalid count type')
+                    expected_count = int(expected_count)
+                except (TypeError, ValueError) as exc:
+                    raise WanxiangtaiValidationError('报表 count 必须是非负整数') from exc
+                if expected_count < 0 or expected_count != len(raw_rows):
+                    raise WanxiangtaiValidationError('报表分页数量与 count 不符，禁止发布')
+
         # 多日 chargeSum 是区间汇总，写入独立汇总表，不能伪装成某一天的日事实。
         summary_rows = [r for r in rows if r.get('granularity') == 'summary' or not r.get('date')]
 
         # 写入数据库
         batch_id = f'{source_run_id}:{uuid4().hex}' if source_run_id else str(uuid4())
         shop_id = get_shop_id()
+        source_hash = _import_source_hash(
+            payload, parsed, source_api, report_type, split_type, start_date, end_date)
         inserted = 0
         updated = 0
 
         with get_db() as conn:
+            # Serialize lookup and publication: concurrent identical retries must
+            # not both create batches. Ownership remains local to each run.
+            conn.execute('BEGIN IMMEDIATE')
+            ownership = 'instr(id, :colon) = 0'
+            params = {'shop': shop_id, 'hash': source_hash, 'colon': ':'}
+            if source_run_id:
+                prefix = source_run_id + ':'
+                ownership = ('substr(id, 1, :prefix_len) = :prefix '
+                             'AND length(id) = :prefix_len + 32 '
+                             "AND substr(id, :prefix_len + 1) NOT GLOB '*[^0-9a-f]*'")
+                params.update(prefix=prefix, prefix_len=len(prefix))
+            previous = conn.execute(
+                "SELECT id, total_rows FROM import_batches "
+                "WHERE shop_id=:shop AND source_type='wanxiangtai_api' "
+                "AND source_hash=:hash AND status='completed' AND " + ownership +
+                ' ORDER BY created_at DESC, id DESC LIMIT 1', params).fetchone()
+            if previous:
+                conn.commit()
+                return success({
+                    'batch_id': previous['id'], 'inserted': 0, 'updated': 0,
+                    'reused_rows': previous['total_rows'], 'idempotent': True,
+                    'source_hash': source_hash, 'total_rows': previous['total_rows'],
+                    'source_api': source_api, 'date_range': _extract_date_range(rows),
+                    'report_type': report_type, 'split_type': split_type,
+                    'target': ('promotion_period_summary' if summary_rows else
+                               'promotion_creative_daily' if report_type == 'creative'
+                               else 'promotion_daily_facts'),
+                }, status=201, availability='available')
             conn.execute('DELETE FROM collector_data_staging WHERE batch_id = ?', (batch_id,))
             staging_rows = summary_rows if summary_rows else rows
+            staged_keys = set()
             for index, row in enumerate(staging_rows, start=1):
                 unit_type = 'channel' if summary_rows else 'row'
-                unit_key = f"{row.get('channel', 'unknown')}:{row.get('date') or row.get('period_start') or index}"
+                dimensions = (
+                    [row.get('channel'), row.get('period_start'), row.get('period_end')]
+                    if summary_rows else
+                    [row.get(key) for key in ('date', 'grain', 'channel', 'campaign_id',
+                                             'unit_id', 'product_id', 'creative_id')])
+                unit_key = json.dumps(dimensions, ensure_ascii=False, separators=(',', ':'))
+                if (unit_type, unit_key) in staged_keys:
+                    raise WanxiangtaiValidationError('同一报表存在重复事实维度，禁止发布')
+                staged_keys.add((unit_type, unit_key))
                 conn.execute(
                     '''INSERT INTO collector_data_staging
                        (source_key, batch_id, unit_type, unit_key, payload_json, status, quality_message)
@@ -245,7 +353,7 @@ def import_data():
                        status, total_rows, valid_rows, invalid_rows, inserted_count, updated_count,
                        completed_at, quality_summary)
                        VALUES (?, ?, ?, ?, ?, 'completed', ?, ?, 0, ?, 0, datetime('now'), ?)''',
-                    (batch_id, shop_id, 'wanxiangtai_api', source_api, '',
+                    (batch_id, shop_id, 'wanxiangtai_api', source_api, source_hash,
                      len(summary_rows), len(summary_rows), len(summary_rows),
                      f'{source_note}; summary rows; {report_type}/{split_type}'),
                 )
@@ -256,6 +364,7 @@ def import_data():
                 conn.commit()
                 return success({
                     'batch_id': batch_id, 'inserted': len(summary_rows), 'updated': 0,
+                    'source_hash': source_hash, 'idempotent': False, 'reused_rows': 0,
                     'total_rows': len(summary_rows), 'source_api': source_api,
                     'date_range': _extract_date_range(rows), 'report_type': report_type,
                     'split_type': split_type, 'target': 'promotion_period_summary',
@@ -266,7 +375,7 @@ def import_data():
                    status, total_rows, valid_rows, invalid_rows, inserted_count, updated_count,
                    completed_at, quality_summary)
                    VALUES (?, ?, ?, ?, ?, 'processing', ?, ?, 0, 0, 0, datetime('now'), ?)''',
-                (batch_id, shop_id, 'wanxiangtai_api', source_api, '',
+                (batch_id, shop_id, 'wanxiangtai_api', source_api, source_hash,
                  len(rows), len(rows),
                  f'{source_note}; {len(rows)} rows; {report_type}/{split_type}')
             )
@@ -429,6 +538,7 @@ def import_data():
 
         return success({
             'batch_id': batch_id,
+            'source_hash': source_hash, 'idempotent': False, 'reused_rows': 0,
             'inserted': inserted + creative_stored,
             'updated': updated,
             'total_rows': len(rows),

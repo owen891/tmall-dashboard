@@ -30,6 +30,29 @@
   function $(sel) { return document.querySelector(sel); }
   function $$(sel) { return Array.from(document.querySelectorAll(sel)); }
 
+  const chartInstances = new Set();
+  function syncChartTheme(chart) {
+    if (!chart) return;
+    const styles = getComputedStyle(document.documentElement);
+    const textColor = styles.getPropertyValue('--text-secondary').trim() || '#64748b';
+    const primaryColor = styles.getPropertyValue('--text-primary').trim() || '#111827';
+    const borderColor = styles.getPropertyValue('--border-default').trim() || '#d1d5db';
+    const option = chart.getOption ? chart.getOption() : {};
+    const axes = (value) => (Array.isArray(value) ? value : value ? [value] : []).map((axis) => ({
+      ...axis,
+      axisLabel: { ...(axis.axisLabel || {}), color: textColor },
+      axisLine: { ...(axis.axisLine || {}), lineStyle: { ...(axis.axisLine?.lineStyle || {}), color: borderColor } },
+      splitLine: { ...(axis.splitLine || {}), lineStyle: { ...(axis.splitLine?.lineStyle || {}), color: borderColor } },
+    }));
+    const themed = { textStyle: { color: textColor }, tooltip: { backgroundColor: styles.getPropertyValue('--surface-base').trim(), borderColor, textStyle: { color: primaryColor } } };
+    if (option.legend) themed.legend = (Array.isArray(option.legend) ? option.legend : [option.legend]).map((legend) => ({ ...legend, textStyle: { ...(legend.textStyle || {}), color: textColor } }));
+    if (option.xAxis) themed.xAxis = axes(option.xAxis);
+    if (option.yAxis) themed.yAxis = axes(option.yAxis);
+    chart.setOption(themed);
+  }
+  function registerChart(chart) { if (chart) { chartInstances.add(chart); syncChartTheme(chart); } return chart; }
+  new MutationObserver(() => chartInstances.forEach(syncChartTheme)).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+
   function fmtInt(v) {
     if (v == null || isNaN(v)) return '--';
     return Number(v).toLocaleString('zh-CN');
@@ -101,7 +124,7 @@
       || String(b.last_seen || '').localeCompare(String(a.last_seen || ''))
       || String(a.entity_name || '').localeCompare(String(b.entity_name || ''), 'zh-CN'));
     const options = ranked.map(entity => `<option value="${escapeHtml(entity.entity_id)}">${escapeHtml(entity.entity_name || entity.entity_id)} · ${entity.observed_days}天</option>`).join('');
-    select.innerHTML = `<option value="">${placeholder}</option>${options}`;
+    select.innerHTML = `<option value="">${escapeHtml(placeholder)}</option>${options}`;
     const selected = ranked.find(entity => String(entity.entity_id) === String(selectedId));
     const bestCoverage = Number(ranked[0]?.observed_days || 0);
     const next = selected && Number(selected.observed_days || 0) >= bestCoverage
@@ -172,13 +195,35 @@
           { name: '支付转化率', type: 'line', yAxisIndex: 1, connectNulls: false, data: chartSeries('pay_rate').map(value => value == null ? null : value * 100), itemStyle: { color: '#059669' } },
         ],
       }, true);
+      registerChart(chart);
     }
-    if (tbody) {
-      tbody.innerHTML = dates.map((date, index) => {
-        const row = rows[index];
-        return `<tr><td>${date}</td><td class="num">${row ? fmtWan(row.uv) : '--'}</td><td class="num">${row ? fmtWan(row.pay_buyer_count) : '--'}</td><td class="pct">${row ? fmtPct1(row.pay_rate) : '--'}</td><td>${row ? '已采集' : '未采集'}</td></tr>`;
-      }).join('');
-    }
+    if (tbody) renderSharedTableBody(tbody, [
+      { key: 'stat_date', label: '日期' },
+      { key: 'uv', label: 'UV', numeric: true, render: (value, row) => row.observed ? fmtWan(value) : '--' },
+      { key: 'pay_buyer_count', label: '支付买家', numeric: true, render: (value, row) => row.observed ? fmtWan(value) : '--' },
+      { key: 'pay_rate', label: '支付转化率', numeric: true, className: 'pct', render: (value, row) => row.observed ? fmtPct1(value) : '--' },
+      { key: 'observed', label: '采集状态', render: value => value ? '已采集' : '未采集' },
+    ], dates.map((date, index) => ({ stat_date: date, ...(rows[index] || {}), observed: Boolean(rows[index]) })));
+  }
+
+  function renderSharedTableBody(body, columns, rows, emptyMessage = '暂无数据') {
+    if (!body || !window.TmallUI?.table?.mount) return;
+    window.TmallUI.table.mount(body, { columns, rows, emptyMessage });
+  }
+
+  function renderTableError(body, columnCount, message) {
+    const columns = Array.from({ length: columnCount }, (_, index) => ({
+      key: `error_${index}`,
+      label: '',
+      render: (_, row) => {
+        if (index !== 0) return '';
+        const cell = document.createElement('span');
+        cell.style.color = 'var(--danger-text)';
+        cell.textContent = row.message;
+        return cell;
+      },
+    }));
+    renderSharedTableBody(body, columns, [{ message }], '');
   }
 
   async function initEntityTrends() {
@@ -267,6 +312,7 @@
         yAxis: { type: 'value', axisLabel: { formatter: v => v >= 10000 ? `${(v / 10000).toFixed(1)}万` : v } },
         series: [{ type: 'line', smooth: true, data: buyers, itemStyle: { color: '#2563eb' }, areaStyle: { opacity: 0.08 } }],
       });
+      registerChart(chart);
     }
     if (rateNode) {
       const chart = echarts.init(rateNode);
@@ -277,6 +323,7 @@
         yAxis: { type: 'value', axisLabel: { formatter: v => `${v}%` } },
         series: [{ type: 'line', smooth: true, connectNulls: false, data: rates, itemStyle: { color: '#059669' } }],
       });
+      registerChart(chart);
     }
   }
 
@@ -298,6 +345,7 @@
         barWidth: '50%',
       }],
     });
+    registerChart(chart);
   }
 
   // 渲染支付买家柱状图
@@ -318,6 +366,7 @@
         barWidth: '50%',
       }],
     });
+    registerChart(chart);
   }
 
   // 筛选和排序
@@ -359,28 +408,31 @@
     const filteredCount = $('[data-rival-filtered-count]');
     if (filteredCount) filteredCount.textContent = shops.length;
 
-    if (!shops.length) {
-      tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--text-secondary);padding:24px">暂无符合条件的竞店</td></tr>';
-      return;
-    }
-
-    const html = shops.map((shop, idx) => {
-      const badge = shop.is_tmall
-        ? '<span class="rival-badge rival-badge--tmall">天猫</span>'
-        : '<span class="rival-badge rival-badge--taobao">淘宝</span>';
-      const avgPrice = shop.pay_buyer_count > 0 ? (shop.uv * shop.pay_rate / shop.pay_buyer_count) * shop.pay_rate : 0;
-      return `<tr>
-        <td>${idx + 1}</td>
-        <td><strong>${escapeHtml(shop.shop_name)}</strong></td>
-        <td>${badge}</td>
-        <td class="num">${fmtWan(shop.uv)}</td>
-        <td class="num">${fmtWan(shop.pay_buyer_count)}</td>
-        <td class="pct">${fmtPct1(shop.pay_rate)}</td>
-        <td class="num">${fmtWan(shop.cart_buyer_count)}</td>
-        <td class="num">${fmtWan(shop.collect_buyer_count)}</td>
-      </tr>`;
-    }).join('');
-    tbody.innerHTML = html;
+    const badge = (shop) => {
+      const node = document.createElement('span');
+      node.className = `rival-badge ${shop.is_tmall ? 'rival-badge--tmall' : 'rival-badge--taobao'}`;
+      node.textContent = shop.is_tmall ? '天猫' : '淘宝';
+      return node;
+    };
+    const name = (value) => {
+      const node = document.createElement('strong');
+      node.textContent = value || '--';
+      return node;
+    };
+    const renderBody = (body, columns, rows, emptyMessage) => {
+      if (!body || !window.TmallUI?.table?.mount) return;
+      window.TmallUI.table.mount(body, { columns, rows, emptyMessage });
+    };
+    renderBody(tbody, [
+      { key: 'rank', label: '排名', numeric: true },
+      { key: 'shop_name', label: '店铺', render: name },
+      { key: 'is_tmall', label: '类型', render: (_, shop) => badge(shop) },
+      { key: 'uv', label: '访客数', numeric: true, render: fmtWan },
+      { key: 'pay_buyer_count', label: '支付买家', numeric: true, render: fmtWan },
+      { key: 'pay_rate', label: '支付转化率', numeric: true, className: 'pct', render: fmtPct1 },
+      { key: 'cart_buyer_count', label: '加购人数', numeric: true, render: fmtWan },
+      { key: 'collect_buyer_count', label: '收藏人数', numeric: true, render: fmtWan },
+    ], shops.map((shop, index) => ({ ...shop, rank: index + 1 })), '暂无符合条件的竞店');
 
     // 更新排序图标
     $$('[data-sort]').forEach(th => {
@@ -398,7 +450,7 @@
       const message = state.excludedOwnItemCount
         ? `已排除 ${state.excludedOwnItemCount} 个自家商品；当前日期的推荐竞品数据里没有外部商品。`
         : '当前日期暂无外部竞品商品数据。';
-      container.innerHTML = `<div style="text-align:center;color:var(--text-secondary);padding:24px">${message}</div>`;
+      DemoApi.renderDataState(container, 'no-data', { message });
       return;
     }
 
@@ -450,32 +502,29 @@
 
     const tbody = $('[data-dmp-rivals-body]');
     if (!tbody) return;
-    if (!s.rivals || !s.rivals.length) {
-      tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;color:var(--text-secondary);padding:20px">暂无竞对监控数据（需先在达摩盘建立竞对监控）</td></tr>';
-      return;
-    }
-    tbody.innerHTML = s.rivals.map((r, idx) => {
-      const inter = r.intersection_click_uv == null ? '--' : fmtWan(r.intersection_click_uv);
-      const cost = r.day_cost == null ? '--' : fmtWan(r.day_cost);
-      return `<tr>
-        <td class="num">${idx + 1}</td>
-        <td>${escapeHtml(r.competitor_name || '--')}${r.attention_status ? '' : ' <span style="color:var(--text-secondary)">（未关注）</span>'}</td>
-        <td class="num">${inter}</td>
-        <td class="pct">${fmtPct1(r.intersection_rate)}</td>
-        <td class="num">${cost}</td>
-        <td class="pct">${fmtPct1(r.day_cost_rate)}</td>
-        <td class="pct">${escapeHtml(dmpBucket(r.alipay_share))}</td>
-        <td class="pct">${escapeHtml(dmpBucket(r.ipv_share))}</td>
-        <td class="pct">${escapeHtml(dmpBucket(r.cart_share))}</td>
-      </tr>`;
-    }).join('');
+    renderSharedTableBody(tbody, [
+      { key: 'index', label: '排名', numeric: true },
+      { key: 'competitor_name', label: '竞对店铺', render: (value, row) => {
+        const cell = document.createElement('span');
+        cell.textContent = `${value || '--'}${row.attention_status ? '' : '（未关注）'}`;
+        if (!row.attention_status) cell.style.color = 'var(--text-secondary)';
+        return cell;
+      } },
+      { key: 'intersection_click_uv', label: '人群争夺交集UV', numeric: true, render: value => value == null ? '--' : fmtWan(value) },
+      { key: 'intersection_rate', label: '交集环比', numeric: true, className: 'pct', render: fmtPct1 },
+      { key: 'day_cost', label: '我方日消耗', numeric: true, render: value => value == null ? '--' : fmtWan(value) },
+      { key: 'day_cost_rate', label: '消耗环比', numeric: true, className: 'pct', render: fmtPct1 },
+      { key: 'alipay_share', label: '支付份额变化', numeric: true, className: 'pct', render: dmpBucket },
+      { key: 'ipv_share', label: 'IPV份额变化', numeric: true, className: 'pct', render: dmpBucket },
+      { key: 'cart_share', label: '加购份额变化', numeric: true, className: 'pct', render: dmpBucket },
+    ], (s.rivals || []).map((row, index) => ({ ...row, index: index + 1 })), '暂无竞对监控数据（需先在达摩盘建立竞对监控）');
   }
 
   function renderDmpAd(items) {
     const box = $('[data-dmp-ad-list]');
     if (!box) return;
     if (!items || !items.length) {
-      box.innerHTML = '<div style="text-align:center;color:var(--text-secondary);padding:16px">暂无投放借鉴数据（需先跑 dmp_shop 源取得 TOP 单品）</div>';
+      DemoApi.renderDataState(box, 'no-data', { message: '暂无投放借鉴数据（需先跑 dmp_shop 源取得 TOP 单品）' });
       return;
     }
     box.innerHTML = items.map((it) => {
@@ -486,7 +535,7 @@
         it.wj_amt_scope || '',
       ].filter(Boolean).join(' · ');
       const lessons = (it.lessons || []).map((l) => {
-        const ch = (l.channels || []).map(c => `${c.name || ''}${c.rate != null ? Math.round(c.rate * 100) + '%' : ''}`).filter(Boolean).join('/');
+        const ch = (l.channels || []).map(c => `${escapeHtml(c.name || '')}${c.rate != null ? Math.round(c.rate * 100) + '%' : ''}`).filter(Boolean).join('/');
         const crowds = (l.crowds || []).slice(0, 3).map(c => c.replace(/^自定义竞争店铺：/, '竞店:').replace(/^达摩盘平台精选：/, '精选:')).join('、');
         const kws = (l.keywords || []).slice(0, 5).join('/');
         const parts = [];
@@ -516,7 +565,7 @@
     const cards = $('[data-dmp-shop-cards]');
     if (!cards) return;
     if (!s || !s.available) {
-      cards.innerHTML = '<div style="width:100%;text-align:center;color:var(--text-secondary);padding:12px">暂无全店洞察数据（请在采集中心运行 dmp_shop 源）</div>';
+      DemoApi.renderDataState(cards, 'no-data', { message: '暂无全店洞察数据（请在采集中心运行 dmp_shop 源）' });
       const st = $('[data-dmp-shop-structure]');
       if (st) st.textContent = '';
       return;
@@ -572,7 +621,7 @@
     } catch (err) {
       console.error('加载达摩盘竞争数据失败:', err);
       if (tbody) {
-        tbody.innerHTML = `<tr><td colspan="9" style="text-align:center;color:var(--danger-text);padding:24px">加载失败: ${escapeHtml(err.message)}</td></tr>`;
+        renderTableError(tbody, 9, `加载失败: ${err.message}`);
       }
     } finally {
       dmp.loading = false;
@@ -621,20 +670,22 @@
 
   // 排序和筛选事件
   function initSortAndFilter() {
-    // 排序
-    $$('[data-sort]').forEach(th => {
-      th.addEventListener('click', () => {
-        const key = th.dataset.sort;
-        if (state.sortKey === key) {
-          state.sortDir = state.sortDir === 'asc' ? 'desc' : 'asc';
-        } else {
-          state.sortKey = key;
-          state.sortDir = 'desc';
-        }
-        renderShopsTable();
-        renderUvChart();
-        renderBuyerChart();
-      });
+    // 排序：监听稳定的表格容器，避免共享表格替换 table 节点后丢失监听器。
+    const sortTable = $('[data-rival-shops-body]')?.closest('table');
+    const sortRoot = sortTable?.parentElement;
+    sortRoot?.addEventListener('click', (event) => {
+      const th = event.target.closest?.('th[data-sort]');
+      if (!th || !th.dataset.sort || !sortRoot.contains(th)) return;
+      const key = th.dataset.sort;
+      if (state.sortKey === key) {
+        state.sortDir = state.sortDir === 'asc' ? 'desc' : 'asc';
+      } else {
+        state.sortKey = key;
+        state.sortDir = 'desc';
+      }
+      renderShopsTable();
+      renderUvChart();
+      renderBuyerChart();
     });
 
     // 类型筛选
@@ -701,7 +752,7 @@
       console.error('加载竞店竞品数据失败:', err);
       // 4-3：表格体保持 <td> 占位语义；卡片列表这类区域状态走共享渲染器。
       document.querySelectorAll('[data-rival-shops-body]').forEach((body) => {
-        body.innerHTML = `<tr><td colspan="8" style="text-align:center;color:var(--danger-text);padding:24px">加载失败: ${escapeHtml(err.message)}</td></tr>`;
+        renderTableError(body, 8, `加载失败: ${err.message}`);
       });
       document.querySelectorAll('[data-rival-items-list]').forEach((list) => {
         DemoApi.renderDataState(list, 'calculation-failed', { message: err.message, retry: () => window.location.reload() });

@@ -18,6 +18,14 @@ import json
 import openpyxl
 from api.data_api import DIMENSION_MAP, _aov_expression, _reject_legacy_shop_scope, _validate_period_arg, cached_api, get_prev_period, _get_prev_month
 from services.category_mode_service import mode_to_label
+from services.dmp_item_metrics_enrichment import enrich_rows, snapshot_metadata
+from services.promotion_item_metrics_enrichment import (
+    enrich_rows as promotion_enrich_rows,
+)
+from services.lead_item_metrics_enrichment import (
+    enrich_rows as lead_enrich_rows,
+    source_metadata as lead_source_metadata,
+)
 
 from flask import Blueprint, current_app, g, jsonify, request, send_file
 
@@ -459,6 +467,13 @@ def export_data():
             }
             visitors_col = dim_cfg['visitors_col']
             _monthly_only = dim == 'monthly'
+            # 与 /api/products 保持同一口径（2026-10-19 零值审计）：源表里从未出现非零值的列
+            # 不再 COALESCE 成 0，导出为空单元格而不是假的 0。前端列表与导出必须一致，
+            # 否则运营会拿导出的 0 去复盘一个其实没采到的指标。
+            # 这些列在 SQLite 建表时带 `DEFAULT 0`（db_migrations.py new_monthly_cols /
+            # new_daily_cols），导入没写它们时落库就是 0，所以还要 NULLIF(x, 0) 把
+            # 「没采到的 0」还原成 NULL。依据是同一次全表扫描：这些列 nz=0。
+            # ⚠️ 采集链路真正回填这些字段后，应去掉 NULLIF，否则真实的 0 也会变成空单元格。
             data_cols = {
                 'payment_amount': 'COALESCE(d.payment_amount,0)', 'refund_amount': 'COALESCE(d.refund_amount,0)',
                 'net_sales': 'COALESCE(NULLIF(d.net_sales, 0), d.payment_amount - d.refund_amount, 0)', 'visitors': f'COALESCE(d.{visitors_col},0)',
@@ -466,38 +481,48 @@ def export_data():
                 'search_visitors': 'COALESCE(d.search_visitors,0)' if _monthly_only else '0',
                 'search_ratio': 'COALESCE(d.search_ratio,0)' if _monthly_only else '0',
                 'search_conversion': 'COALESCE(d.search_conversion,0)' if _monthly_only else '0',
-                'paid_ipv': 'COALESCE(d.paid_ipv,0)', 'organic_ipv': 'COALESCE(d.organic_ipv,0)',
-                'search_ipv': 'COALESCE(d.search_ipv,0)', 'recommend_ipv': 'COALESCE(d.recommend_ipv,0)',
+                'paid_ipv': 'NULL' if _monthly_only else 'NULLIF(d.paid_ipv,0)',
+                'organic_ipv': 'NULL' if _monthly_only else 'NULLIF(d.organic_ipv,0)',
+                'search_ipv': ('NULLIF(d.search_ipv,0)' if _monthly_only else 'COALESCE(d.search_ipv,0)'),
+                'recommend_ipv': 'NULL' if _monthly_only else 'NULLIF(d.recommend_ipv,0)',
                 'payment_conversion': 'COALESCE(d.payment_conversion,0)',
                 'conversion': 'COALESCE(d.payment_conversion,0)',
                 'cart_rate': 'COALESCE(d.cart_rate,0)',
                 'fav_rate': 'COALESCE(d.fav_rate,0)',
                 'bounce_rate': 'COALESCE(d.bounce_rate,0)', 'avg_stay_duration': 'COALESCE(d.avg_stay_duration,0)',
-                'ad_spend': 'COALESCE(d.ad_spend,0)', 'ad_roi': 'COALESCE(d.ad_roi,0)',
-                'roi': 'COALESCE(d.ad_roi,0)',
-                'overall_roi': 'COALESCE(d.overall_roi,0)' if _monthly_only else '0',
-                'paid_ratio': 'COALESCE(d.paid_ratio,0)' if _monthly_only else '0',
+                'ad_spend': 'COALESCE(d.ad_spend,0)', 'ad_roi': 'd.ad_roi',
+                'roi': 'd.ad_roi',
+                'overall_roi': 'NULLIF(d.overall_roi,0)' if _monthly_only else 'NULL',
+                'paid_ratio': 'NULLIF(d.paid_ratio,0)' if _monthly_only else 'NULL',
                 'expense_ratio': 'CASE WHEN COALESCE(NULLIF(d.net_sales, 0), d.payment_amount - d.refund_amount, 0) > 0 THEN COALESCE(d.ad_spend,0) * 1.0 / COALESCE(NULLIF(d.net_sales, 0), d.payment_amount - d.refund_amount, 0) ELSE NULL END',
-                'refund_rate': 'COALESCE(d.refund_rate,0)' if _monthly_only else '0',
-                'repurchase_rate': 'COALESCE(d.repurchase_rate,0)', 'repurchase_users': 'COALESCE(d.repurchase_users,0)',
-                'presale_amount': 'COALESCE(d.presale_amount,0)' if not _monthly_only else '0',
-                'presale_qty': 'COALESCE(d.presale_qty,0)' if not _monthly_only else '0',
-                'search_click_rate': 'COALESCE(d.search_click_rate,0)' if not _monthly_only else '0',
-                'cross_sell_qty': 'COALESCE(d.cross_sell_qty,0)', 'cross_sell_rate': 'COALESCE(d.cross_sell_rate,0)',
-                'category_width': 'COALESCE(d.category_width,0)' if not _monthly_only else '0',
-                'buyers': f"COALESCE(d.buyers,0)" if dim != 'weekly' else '0',
+                'refund_rate': 'CASE WHEN COALESCE(d.payment_amount, 0) > 0 THEN COALESCE(d.refund_amount, 0) * 1.0 / d.payment_amount ELSE NULL END',
+                'repurchase_rate': 'NULLIF(d.repurchase_rate,0)', 'repurchase_users': 'NULLIF(d.repurchase_users,0)',
+                'presale_amount': 'NULLIF(d.presale_amount,0)' if not _monthly_only else 'NULL',
+                'presale_qty': 'NULLIF(d.presale_qty,0)' if not _monthly_only else 'NULL',
+                'search_click_rate': 'NULLIF(d.search_click_rate,0)' if not _monthly_only else 'NULL',
+                'cross_sell_qty': 'NULLIF(d.cross_sell_qty,0)', 'cross_sell_rate': 'NULLIF(d.cross_sell_rate,0)',
+                'category_width': 'NULLIF(d.category_width,0)' if not _monthly_only else 'NULL',
+                # 行业搜索点击率取达摩盘 searchCtr 的 peer_value（同行同层），SQL 先给 NULL，
+                # 由 dmp_enrich_rows 回填（与列表同源同口径）。
+                'industry_ctr': 'NULL',
+                'buyers': f"COALESCE(d.buyers,0)" if dim != 'weekly' else 'NULL',
                 'avg_order_value': 'COALESCE(d.avg_order_value,0)',
-                'payment_qty': f"COALESCE(d.payment_qty,0)" if dim == 'monthly' else '0',
-                'payment_count': f"COALESCE(d.payment_qty,0)" if dim == 'monthly' else '0',
-                'cart_qty': f"COALESCE(d.cart_qty,0)" if _monthly_only else '0',
-                'fav_users': f"COALESCE(d.fav_users,0)" if _monthly_only else '0',
-                'score': f"COALESCE(d.score,0)" if _monthly_only else '0',
-                'keyword_spend': 'COALESCE(d.keyword_spend,0)' if _monthly_only else '0',
-                'keyword_roi': 'COALESCE(d.keyword_roi,0)' if _monthly_only else '0',
-                'crowd_spend': 'COALESCE(d.crowd_spend,0)' if _monthly_only else '0',
-                'crowd_roi': 'COALESCE(d.crowd_roi,0)' if _monthly_only else '0',
-                'impressions': 'COALESCE(pd_latest.impressions,0)',
-                'ctr': 'COALESCE(pd_latest.ctr,0)',
+                'payment_qty': f"COALESCE(d.payment_qty,0)" if dim == 'monthly' else 'NULL',
+                'payment_count': f"COALESCE(d.payment_qty,0)" if dim == 'monthly' else 'NULL',
+                'cart_qty': f"COALESCE(d.cart_qty,0)" if _monthly_only else 'NULL',
+                'fav_users': f"COALESCE(d.fav_users,0)" if _monthly_only else 'NULL',
+                'score': 'NULLIF(d.score,0)' if _monthly_only else 'NULL',
+                'keyword_spend': 'NULLIF(d.keyword_spend,0)' if _monthly_only else 'NULL',
+                'keyword_roi': 'NULLIF(d.keyword_roi,0)' if _monthly_only else 'NULL',
+                'crowd_spend': 'NULLIF(d.crowd_spend,0)' if _monthly_only else 'NULL',
+                'crowd_roi': 'NULLIF(d.crowd_roi,0)' if _monthly_only else 'NULL',
+                'impressions': 'pd_latest.impressions',
+                'ctr': 'pd_latest.ctr',
+                # 引导潜客三列在 daily_data/monthly_data 里从未有非零值，SQL 先给 NULL，
+                # 由 lead_enrich_rows 从 promotion_lead_daily 回填（与列表同源同口径）。
+                'guide_visitors': 'NULL',
+                'guide_potential': 'NULL',
+                'guide_potential_ratio': 'NULL',
                 'trend_change': 'd.trend_change' if dim == 'daily' and start and end else 'NULL',
             }
             col_labels = {
@@ -524,6 +549,10 @@ def export_data():
                 'search_click_rate': '\u514d\u8d39\u641c\u7d22\u70b9\u51fb\u7387',
                 'cross_sell_qty': '\u8fde\u5e26\u8d2d\u4e70\u91cf', 'cross_sell_rate': '\u8fde\u5e26\u8d2d\u4e70\u7387',
                 'category_width': '\u8fde\u5e26\u8d2d\u4e70\u53f6\u5b50\u7c7b\u76ee\u5bbd\u5ea6',
+                'industry_ctr': '\u884c\u4e1a\u641c\u7d22\u70b9\u51fb\u7387',
+                'guide_visitors': '\u5f15\u5bfc\u8bbf\u5ba2',
+                'guide_potential': '\u5f15\u5bfc\u6f5c\u5ba2',
+                'guide_potential_ratio': '\u5f15\u5bfc\u6f5c\u5ba2\u5360\u6bd4',
             })
             for c in export_cols:
                 if c in base_cols:
@@ -560,7 +589,7 @@ def export_data():
             sort_col = sort_by if sort_by in sort_whitelist else 'payment_amount'
             order_sql = 'DESC' if order == 'desc' else 'ASC'
             sort_expression = 'p.product_id' if sort_col == 'product_id' else sort_col
-            rows = conn.execute(f'''
+            rows = [dict(r) for r in conn.execute(f'''
             SELECT {select_clause}
                 FROM products p
                 {legacy_lifecycle_join}
@@ -568,10 +597,24 @@ def export_data():
                 {legacy_paid_join}
                 WHERE 1=1{where_sql}
                 ORDER BY {sort_expression} {order_sql}
-            ''', join_params + params).fetchall()
+            ''', join_params + params).fetchall()]
+            # 与 /api/products 同源：日粒度下用达摩盘单品指标补 daily_data 从未采到的列，
+            # 只补 NULL，窗口对齐才生效，窗口信息写进「查询上下文」页。
+            export_dmp_snapshot = None
+            export_promotion = None
+            export_lead = None
+            if dim == 'daily' and rows and start and end:
+                export_enrichment = enrich_rows(conn, rows, start, end)
+                export_dmp_snapshot = snapshot_metadata(export_enrichment.get('snapshot'))
+                # 推广转化指标与列表同源：paid_detail 是 0 行，真实数据在
+                # promotion_daily_facts（grain='product' + channel='全部'）。
+                export_promotion = promotion_enrich_rows(conn, rows, start, end)
+                # 引导潜客指标与列表同源：monthly_data 的 guide_* 从未写过非零值，
+                # 真实数据在 promotion_lead_daily（万相台 item_promotion 报表）。
+                export_lead = lead_enrich_rows(conn, rows, start, end)
         ws.append(headers)
         for r in rows:
-            ws.append(list(r))
+            ws.append(list(r.values()))
 
         # Keep the export auditable: the result sheet is accompanied by the
         # exact period, rule, filters, sort and evidence context used to build it.
@@ -588,6 +631,30 @@ def export_data():
             ('收藏过滤', str(bool(star_only))), ('排序字段', sort_by or ''), ('排序方向', order or ''),
             ('商品结果数', len(rows)), ('查询口径', '与商品列表当前筛选条件一致'),
         ]
+        if export_dmp_snapshot:
+            context_rows.append((
+                '达摩盘补数窗口',
+                f"{export_dmp_snapshot['period_days']}天 {export_dmp_snapshot['snapshot_start_date']}~"
+                f"{export_dmp_snapshot['snapshot_end_date']}（run {export_dmp_snapshot['run_id']}，"
+                f"与请求区间相差 {export_dmp_snapshot['aligned_days']} 天）",
+            ))
+            context_rows.append(('达摩盘补数字段', '/'.join(export_dmp_snapshot['fields'])))
+        if export_promotion and export_promotion.get('applied'):
+            context_rows.append((
+                '推广转化补数来源',
+                "promotion_daily_facts（grain=product, channel=全部）；"
+                "归因成交不含间接成交，与账单口径花费不同源，二者不可相减",
+            ))
+        if export_lead and export_lead.get('applied'):
+            lead_meta = lead_source_metadata(export_lead)
+            context_rows.append((
+                '引导潜客补数来源',
+                f"promotion_lead_daily（万相台 item_promotion 报表，商品日粒度）；"
+                f"覆盖 {lead_meta['covered_start']}~{lead_meta['covered_end']} 共 "
+                f"{lead_meta['covered_days']} 天；占比 = 潜客数 ÷ 入店访客数；"
+                f"单品口径不可相加",
+            ))
+            context_rows.append(('引导潜客补数字段', '/'.join(lead_meta['fields'])))
         for key, value in context_rows:
             context_ws.append([key, json.dumps(value, ensure_ascii=False) if isinstance(value, (dict, list)) else value])
 
@@ -896,40 +963,64 @@ def get_lifecycle():
     product_id = request.args.get('product_id', '')
     limit = request.args.get('limit', 500, type=int)
     limit = max(1, min(limit or 500, 2000))
+    current_month = datetime.now().strftime('%Y-%m')
+    current_month_start = f'{current_month}-01'
+    current_month_end = (datetime.strptime(current_month_start, '%Y-%m-%d').replace(day=28) + timedelta(days=4)).replace(day=1).strftime('%Y-%m-%d')
+    shop_id = get_shop_id()
 
     with get_db() as conn:
         if product_id:
             # Single product lifecycle
             rows = conn.execute('''
+                WITH current_daily AS (
+                    SELECT product_id, SUM(payment_amount) AS payment_amount,
+                           SUM(payment_qty) AS payment_qty, SUM(refund_amount) AS refund_amount
+                    FROM daily_data
+                    WHERE shop_id = ? AND date >= ? AND date < ?
+                    GROUP BY product_id
+                )
                 SELECT p.product_id, p.title, p.image_url, p.tier, p.style,
-                       d.month, d.payment_amount as gsv, d.payment_qty, d.refund_amount,
+                       d.month,
+                       COALESCE(cd.payment_amount, d.payment_amount) as gsv,
+                       COALESCE(cd.payment_qty, d.payment_qty) as payment_qty,
+                       COALESCE(cd.refund_amount, d.refund_amount) as refund_amount,
                        d.visitors, d.ad_spend, d.ad_roi, d.payment_conversion,
                        d.cart_rate, d.fav_rate, d.bounce_rate, d.avg_stay_duration,
                        d.uv_value, d.search_visitors, d.search_ratio, d.net_sales,
-                       d.buyers, d.avg_order_value, d.repurchase_rate, d.cross_sell_rate
+                       d.buyers,
+                       d.avg_order_value, d.repurchase_rate, d.cross_sell_rate
                 FROM products p
                 JOIN monthly_data d ON p.product_id = d.product_id
+                LEFT JOIN current_daily cd ON cd.product_id = d.product_id AND d.month = ?
                 WHERE p.product_id = ?
                 ORDER BY d.month
-            ''', (product_id,)).fetchall()
+            ''', (shop_id, current_month_start, current_month_end, current_month, product_id)).fetchall()
         else:
             # Top products lifecycle summary
             _label_clause, _label_params = shop_label_filter(category_filters_from_request())
             _lifecycle_where = (' WHERE ' + _label_clause) if _label_clause else ''
             rows = conn.execute('''
+                WITH current_daily AS (
+                    SELECT product_id, SUM(payment_amount) AS payment_amount
+                    FROM daily_data
+                    WHERE shop_id = ? AND date >= ? AND date < ?
+                    GROUP BY product_id
+                )
                 SELECT p.product_id, p.title, p.image_url, p.tier, p.style,
-                       GROUP_CONCAT(d.month || ':' || COALESCE(d.payment_amount,0)) as gsv_series,
-                       SUM(d.payment_amount) as total_gsv,
+                       GROUP_CONCAT(d.month || ':' || COALESCE(cd.payment_amount, d.payment_amount, 0)) as gsv_series,
+                       SUM(COALESCE(cd.payment_amount, d.payment_amount)) as total_gsv,
                        COUNT(DISTINCT d.month) as active_months,
                        MIN(d.month) as first_month,
                        MAX(d.month) as last_month
                 FROM products p
                 JOIN monthly_data d ON p.product_id = d.product_id
+                LEFT JOIN current_daily cd ON cd.product_id = d.product_id AND d.month = ?
                 ''' + _lifecycle_where + '''
                 GROUP BY p.product_id
                 ORDER BY total_gsv DESC
                 LIMIT ?
-            ''', (*_label_params, limit)).fetchall()
+            ''', (shop_id, current_month_start, current_month_end, current_month,
+                  *_label_params, limit)).fetchall()
 
     return jsonify([dict(r) for r in rows])
 

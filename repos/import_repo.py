@@ -1,4 +1,5 @@
 import json
+from contextlib import nullcontext
 
 from db import get_db, get_shop_id
 from repos.audit_repo import AuditRepo
@@ -51,7 +52,7 @@ def _stage_rows(connection, batch_id, rows):
 
 class ImportRepo:
     @staticmethod
-    def complete_product_daily_batch(batch, rows):
+    def complete_product_daily_batch(batch, rows, *, scan_claim=None):
         inserted_count = 0
         updated_count = 0
         resolution_summary = {
@@ -61,7 +62,7 @@ class ImportRepo:
             'primary_kept': 0,
             'effective_unique': 0,
         }
-        with get_db() as connection:
+        with get_db() as connection, (scan_claim.transaction(connection, batch) if scan_claim else nullcontext()):
             try:
                 shop_id = str(batch.get('shop_id') or next(
                     (row.get('shop_id') for row in rows if row.get('shop_id')), 'default'
@@ -80,6 +81,8 @@ class ImportRepo:
                 _stage_rows(connection, batch['id'], rows)
                 seen_product_snapshots = set()
                 for row in rows:
+                    if scan_claim:
+                        scan_claim.validate(connection, batch)
                     shop_id = str(row.get('shop_id') or 'default')
                     existing = connection.execute(
                         'SELECT * FROM daily_data WHERE shop_id = ? AND product_id = ? AND date = ?',
@@ -103,14 +106,17 @@ class ImportRepo:
                         'SELECT * FROM products WHERE product_id = ?',
                         (row['product_id'],),
                     ).fetchone()
-                    if row['product_id'] not in seen_product_snapshots and prior_product:
+                    # 新商品也必须留快照（previous_row 为 NULL），否则撤销时
+                    # revert_batch 看不到这条 products 变更，删除分支不会触发，
+                    # 会在 daily_data 已回滚后留下一行没有任何事实引用的 products。
+                    if row['product_id'] not in seen_product_snapshots:
                         connection.execute(
                             '''INSERT INTO import_batch_changes (batch_id, table_name, business_key, previous_row, written_by)
                                VALUES (?, 'products', ?, ?, ?)''',
                             (
                                 batch['id'],
                                 json.dumps({'product_id': row['product_id']}, ensure_ascii=False, sort_keys=True),
-                                json.dumps(dict(prior_product), ensure_ascii=False),
+                                json.dumps(dict(prior_product), ensure_ascii=False) if prior_product else None,
                                 batch['id'],
                             ),
                         )
@@ -186,6 +192,8 @@ class ImportRepo:
                     "UPDATE import_staging_rows SET status = 'published', published_at = CURRENT_TIMESTAMP WHERE batch_id = ?",
                     (batch['id'],),
                 )
+                if scan_claim:
+                    scan_claim.finish(connection, batch)
                 connection.commit()
             except Exception:
                 connection.rollback()
@@ -193,7 +201,7 @@ class ImportRepo:
         return inserted_count, updated_count
 
     @staticmethod
-    def complete_generic_batch(batch, table_name, key_columns, rows):
+    def complete_generic_batch(batch, table_name, key_columns, rows, *, scan_claim=None):
         allowed = {
             'store_daily_facts', 'promotion_daily_facts', 'weekly_data', 'monthly_data',
         }
@@ -204,7 +212,7 @@ class ImportRepo:
             'fallback_filled': 0, 'reference_only': 0, 'conflicts': 0,
             'primary_kept': 0, 'effective_unique': 0,
         }
-        with get_db() as connection:
+        with get_db() as connection, (scan_claim.transaction(connection, batch) if scan_claim else nullcontext()):
             try:
                 connection.execute(
                     '''INSERT INTO import_batches (id, shop_id, source_type, source_filename, source_hash, status,
@@ -215,6 +223,8 @@ class ImportRepo:
                 )
                 _stage_rows(connection, batch['id'], rows)
                 for row in rows:
+                    if scan_claim:
+                        scan_claim.validate(connection, batch)
                     where = ' AND '.join(f'{column} = ?' for column in key_columns)
                     values = [row[column] for column in key_columns]
                     existing = connection.execute(f'SELECT * FROM {table_name} WHERE {where}', values).fetchone()
@@ -298,6 +308,8 @@ class ImportRepo:
                     "UPDATE import_staging_rows SET status = 'published', published_at = CURRENT_TIMESTAMP WHERE batch_id = ?",
                     (batch['id'],),
                 )
+                if scan_claim:
+                    scan_claim.finish(connection, batch)
                 connection.commit()
             except Exception:
                 connection.rollback()
@@ -337,6 +349,7 @@ class ImportRepo:
                 restored_count = 0
                 skipped_count = 0
                 product_skipped_count = 0
+                pending_product_deletions = {}
                 affected_products = set()
                 affected_dates = {}
                 revertable_observation_keys = set()
@@ -364,15 +377,13 @@ class ImportRepo:
                         key = json.loads(change['business_key'])
                         product_id = key['product_id']
                         if change['previous_row'] is None:
-                            referenced = connection.execute(
-                                '''SELECT 1 FROM daily_data WHERE product_id = ? LIMIT 1''',
-                                (product_id,),
-                            ).fetchone()
-                            if referenced:
-                                product_skipped_count += 1
-                            else:
-                                connection.execute('DELETE FROM products WHERE product_id = ?', (product_id,))
-                                restored_count += 1
+                            # 本批次新建的商品：真正删除必须推迟到本批次的事实行
+                            # 都回滚之后再做判断。products 变更是在同一条行的
+                            # daily_data 变更之后写入的，而这里按 id 倒序处理，
+                            # 所以此刻「该商品是否仍被事实引用」看到的正是本批次
+                            # 自己还没删掉的 daily_data 行——当下判断必然误判为
+                            # 「仍被引用」而跳过删除，商品行就留了下来。
+                            pending_product_deletions[change['id']] = product_id
                         else:
                             previous = json.loads(change['previous_row'])
                             columns = [column for column in previous if column != 'id']
@@ -381,7 +392,7 @@ class ImportRepo:
                                 [previous[column] for column in columns],
                             )
                             restored_count += 1
-                        connection.execute('UPDATE import_batch_changes SET reverted_at = CURRENT_TIMESTAMP WHERE id = ?', (change['id'],))
+                            connection.execute('UPDATE import_batch_changes SET reverted_at = CURRENT_TIMESTAMP WHERE id = ?', (change['id'],))
                         continue
                     if table_name == 'daily_data':
                         shop_id, product_id, fact_date = _parse_daily_business_key(change['business_key'])
@@ -424,10 +435,46 @@ class ImportRepo:
                         connection, product_id, fact_date,
                         shop_id=shop_id, preserve_legacy=False,
                     )
+                # 事实行已回滚完，现在才能安全判断「这些商品还有没有人用」。
+                # 除 daily_data 外，还要看所有外键指向 products 的表
+                # （product_identity_map / product_actions / product_notes，
+                # 见 db_migrations.py:77、:769、:921）——外键开启时直接 DELETE
+                # 会抛 IntegrityError，把整次撤销回滚掉，那比留下孤儿行更糟。
+                for change_id, product_id in pending_product_deletions.items():
+                    still_used = any(
+                        connection.execute(sql, (product_id,)).fetchone()
+                        for sql in (
+                            'SELECT 1 FROM daily_data WHERE product_id = ? LIMIT 1',
+                            'SELECT 1 FROM product_identity_map WHERE canonical_product_id = ? LIMIT 1',
+                            'SELECT 1 FROM product_actions WHERE product_id = ? LIMIT 1',
+                            'SELECT 1 FROM product_notes WHERE product_id = ? LIMIT 1',
+                            'SELECT 1 FROM product_tags WHERE product_id = ? LIMIT 1',
+                        )
+                    )
+                    if still_used:
+                        # 商品在本批次之外仍被引用：保留商品行，但把这条变更记为
+                        # 已处理，避免撤销永远停在 partially_reverted 上。
+                        connection.execute(
+                            'UPDATE import_batch_changes SET reverted_at = CURRENT_TIMESTAMP WHERE id = ?',
+                            (change_id,),
+                        )
+                        product_skipped_count += 1
+                        continue
+                    connection.execute('DELETE FROM products WHERE product_id = ?', (product_id,))
+                    connection.execute(
+                        'UPDATE import_batch_changes SET reverted_at = CURRENT_TIMESTAMP WHERE id = ?',
+                        (change_id,),
+                    )
+                    restored_count += 1
                 remaining = connection.execute(
                     'SELECT COUNT(*) FROM import_batch_changes WHERE batch_id = ? AND reverted_at IS NULL', (batch_id,)
                 ).fetchone()[0]
-                final_status = 'partially_reverted' if remaining else 'reverted'
+                # 「还有未撤销的变更」不等于「撤销彻底」：商品行可能因为仍被其他
+                # 表引用而被有意保留（product_skipped_count）。那种情况下事实行
+                # 已回滚、变更也已标记处理，但商品仍在——必须让调用方看得见，
+                # 否则接口会报 reverted=true 而库里还留着商品。
+                fully_reverted = remaining == 0 and product_skipped_count == 0
+                final_status = 'partially_reverted' if not fully_reverted else 'reverted'
                 connection.execute(
                     "UPDATE import_batches SET status = ?, completed_at = CURRENT_TIMESTAMP WHERE id = ?",
                     (final_status, batch_id),
@@ -490,11 +537,17 @@ class ImportRepo:
                 AuditRepo.record(
                     'import_batch', batch_id, 'revert', 'admin', '撤销导入批次',
                     {'status': batch['status']},
-                    {'status': final_status, 'restored_count': restored_count, 'skipped_count': skipped_count},
+                    {'status': final_status, 'restored_count': restored_count,
+                     'skipped_count': skipped_count, 'product_skipped_count': product_skipped_count},
                     connection=connection,
                 )
                 connection.commit()
-                return {'restored_count': restored_count, 'skipped_count': skipped_count}
+                return {
+                    'restored_count': restored_count,
+                    'skipped_count': skipped_count,
+                    'product_skipped_count': product_skipped_count,
+                    'fully_reverted': fully_reverted,
+                }
             except Exception:
                 connection.rollback()
                 raise

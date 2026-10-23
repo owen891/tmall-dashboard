@@ -5,7 +5,6 @@ import base64
 import hashlib
 import json
 import os
-import shutil
 import sqlite3
 import sys
 import tempfile
@@ -17,6 +16,7 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from app import create_app
 from db import init_db
+from scripts.sqlite_snapshot import create_snapshot, verify_manifest
 
 
 FORMAL_ROUTES = (
@@ -54,33 +54,30 @@ def _sha256(path):
 
 
 def run_recovery_drill(source_database_path):
-    """Verify a source database can be copied and migrated without touching it."""
+    """Verify a WAL-complete snapshot and migration without changing the source."""
     source = Path(source_database_path).resolve()
     if not source.is_file():
         raise FileNotFoundError(source)
-    source_sha256 = _sha256(source)
     with tempfile.TemporaryDirectory(prefix='tmall-recovery-drill-') as directory:
         copy_path = Path(directory) / 'dashboard.db'
-        shutil.copy2(source, copy_path)
-        copy_sha256_before = _sha256(copy_path)
-        integrity_before = _database_report(copy_path)['integrity']
+        snapshot = create_snapshot(source, copy_path)
+        before = verify_manifest(copy_path, snapshot['manifest'])
         init_db(str(copy_path))
-        after = _database_report(copy_path)
-    report = {
+        # Migration may add columns/tables but must not silently change values.
+        after = verify_manifest(copy_path, snapshot['manifest'], allow_schema_changes=True)
+        database = _database_report(copy_path)
+    return {
+        'ok': True,
         'source_path': str(source),
-        'source_sha256': source_sha256,
-        'copy_sha256_before': copy_sha256_before,
-        'integrity_before': integrity_before,
+        'source_sha256': snapshot['source_sha256'],
+        'copy_sha256_before': snapshot['destination_sha256'],
+        'integrity_before': before['integrity'],
         'integrity_after': after['integrity'],
-        'tables_after': after['tables'],
+        'tables_after': database['tables'],
+        'manifest': snapshot['manifest'],
+        'content_matches_before': True,
+        'content_matches_after': True,
     }
-    report['ok'] = (
-        report['source_sha256'] == report['copy_sha256_before']
-        and report['integrity_before'] == 'ok'
-        and report['integrity_after'] == 'ok'
-        and report['tables_after'] > 0
-    )
-    return report
 
 
 def run_preflight(database_path=None, *, username=None, password=None, require_auth=False):
@@ -97,18 +94,23 @@ def run_preflight(database_path=None, *, username=None, password=None, require_a
     source = Path(database_path).resolve()
     with tempfile.TemporaryDirectory(prefix='tmall-production-preflight-') as directory:
         runtime_path = Path(directory) / 'dashboard.db'
-        if source.is_file():
-            shutil.copy2(source, runtime_path)
+        snapshot = create_snapshot(source, runtime_path) if source.is_file() else None
         app_config = {'TESTING': False, 'DATABASE_PATH': str(runtime_path)}
         if username is not None:
             app_config['DASHBOARD_USERNAME'] = username
         if password is not None:
             app_config['DASHBOARD_PASSWORD'] = password
         app = create_app(app_config)
+        if snapshot:
+            verify_manifest(runtime_path, snapshot['manifest'], allow_schema_changes=True)
+        database = _database_report(runtime_path)
+        database['source_path'] = str(source)
+        database['snapshot_verified'] = snapshot is not None
         with app.test_client() as client:
             health_response = client.get('/healthz')
             health_status = health_response.status_code
             health_payload = health_response.get_json()
+            health_response.close()
             routes = {}
             for route in FORMAL_ROUTES:
                 response = client.get(route)
@@ -133,7 +135,6 @@ def run_preflight(database_path=None, *, username=None, password=None, require_a
             elif require_auth:
                 auth_report['error'] = 'AUTH_CONFIGURATION_REQUIRED'
 
-    database = _database_report(source)
     ok = (
         database['integrity'] == 'ok'
         and health_status == 200

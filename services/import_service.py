@@ -238,9 +238,38 @@ class _HtmlTableParser(HTMLParser):
 
 class ImportService:
     PREVIEW_TTL_SECONDS = 24 * 60 * 60
+    #: 预览配额。import_previews 保存的是完整原始文件 BLOB，没有上限时任何能调用
+    #: preview 的身份都可以反复上传把库撑大（AUTH-01）。这里做的是廉价上限，
+    #: 超限直接 422 让调用方先确认或等待过期清理，而不是静默写爆磁盘。
+    PREVIEW_MAX_ROWS_PER_SHOP = 200
+    PREVIEW_MAX_BYTES_PER_SHOP = 256 * 1024 * 1024
 
     def __init__(self):
         self.previews = {}
+
+    def _preview_usage(self, shop_id):
+        """返回当前店铺预览暂存的 (条数, 总字节数)。"""
+        with get_db() as connection:
+            row = connection.execute(
+                '''SELECT COUNT(*) AS row_count,
+                          COALESCE(SUM(LENGTH(content)), 0) AS byte_count
+                   FROM import_previews WHERE shop_id = ?''',
+                (shop_id,),
+            ).fetchone()
+        return int(row['row_count'] or 0), int(row['byte_count'] or 0)
+
+    def _enforce_preview_quota(self, shop_id, incoming_bytes):
+        rows, total_bytes = self._preview_usage(shop_id)
+        if rows + 1 > self.PREVIEW_MAX_ROWS_PER_SHOP:
+            raise ImportValidationError(
+                f'预览暂存条目已达上限（{self.PREVIEW_MAX_ROWS_PER_SHOP} 条）；'
+                '请先确认导入，或等待过期预览被清理后重试'
+            )
+        if total_bytes + int(incoming_bytes or 0) > self.PREVIEW_MAX_BYTES_PER_SHOP:
+            raise ImportValidationError(
+                f'预览暂存空间已达上限（{self.PREVIEW_MAX_BYTES_PER_SHOP // (1024 * 1024)} MB）；'
+                '请先确认导入，或等待过期预览被清理后重试'
+            )
 
     def cleanup_expired_previews(self, ttl_seconds=None):
         """Remove abandoned preview payloads from memory and persistent storage."""
@@ -603,6 +632,11 @@ class ImportService:
         self.cleanup_expired_previews()
         if source_type != 'auto' and source_type not in SOURCE_REQUIREMENTS:
             raise ImportValidationError('不支持的 source_type')
+        # 配额判断放在解析之前：解析（pandas/openpyxl）本身消耗 CPU，
+        # 已经超限的请求没必要再付出解析代价。
+        from db import get_shop_id
+        shop_id = get_shop_id()
+        self._enforce_preview_quota(shop_id, len(content or b''))
         frame = self._read_workbook(content, filename)
         columns = [str(column).strip() for column in frame.columns]
         mapping = self._mapping(columns)
@@ -615,9 +649,7 @@ class ImportService:
                 SOURCE_REQUIREMENTS['dmp_product_day'] <= set(mapping)
                 and len(set(mapping) & {'paid_visitors', 'organic_visitors', 'recommend_visitors', 'repurchase_rate', 'presale_amount', 'search_click_rate'}) >= 2
             ) else source_type
-        from db import get_shop_id
-        shop_id = get_shop_id()
-        if source_type in {'product_week', 'product_month'} and get_shop_id() != 'default':
+        if source_type in {'product_week', 'product_month'} and shop_id != 'default':
             raise ImportScopeError(
                 f'{source_type} 当前仍使用单店旧表，不支持非 default 店铺；请先完成周/月表店铺迁移'
             )
@@ -823,7 +855,7 @@ class ImportService:
             return number / 100 if has_percent or abs(number) > 1 else number
         return number
 
-    def confirm(self, preview_id, mapping):
+    def confirm(self, preview_id, mapping, *, scan_claim=None):
         self.cleanup_expired_previews()
         from db import get_shop_id
         shop_id = get_shop_id()
@@ -863,7 +895,7 @@ class ImportService:
         preview['quality'] = quality
 
         if source_type not in {'product_day', 'dmp_product_day'}:
-            return self._confirm_generic(preview, mapping, shop_id)
+            return self._confirm_generic(preview, mapping, shop_id, scan_claim=scan_claim)
         rows = []
         invalid_fields_by_row = {}
         for warning in quality.get('invalid_field_rows', quality.get('field_warnings', [])):
@@ -936,12 +968,12 @@ class ImportService:
             'invalid_rows': 0,
             'quality_summary': json.dumps(preview['quality'], ensure_ascii=False),
         }
-        inserted_count, updated_count = ImportRepo.complete_product_daily_batch(batch, rows)
+        inserted_count, updated_count = ImportRepo.complete_product_daily_batch(batch, rows, **({"scan_claim": scan_claim} if scan_claim else {}))
         self.previews.pop(preview_id, None)
         self._delete_preview(preview_id, shop_id)
         return self._report(batch, inserted_count, updated_count)
 
-    def _confirm_generic(self, preview, mapping, shop_id=None):
+    def _confirm_generic(self, preview, mapping, shop_id=None, *, scan_claim=None):
         if shop_id is None:
             from db import get_shop_id
             shop_id = get_shop_id()
@@ -1016,7 +1048,7 @@ class ImportService:
         for row in rows:
             if 'source_batch_id' in row:
                 row['source_batch_id'] = batch['id']
-        inserted_count, updated_count = ImportRepo.complete_generic_batch(batch, table_name, key_columns, rows)
+        inserted_count, updated_count = ImportRepo.complete_generic_batch(batch, table_name, key_columns, rows, **({"scan_claim": scan_claim} if scan_claim else {}))
         self.previews.pop(preview['id'], None)
         self._delete_preview(preview['id'], shop_id)
         return self._report(batch, inserted_count, updated_count)
@@ -1115,9 +1147,10 @@ class ImportService:
         if result is False:
             raise ImportValidationError('导入批次已撤销')
         return {
-            'id': batch_id, 'reverted': result['skipped_count'] == 0,
+            'id': batch_id, 'reverted': bool(result.get('fully_reverted', result['skipped_count'] == 0)),
             'restored_count': result['restored_count'],
             'skipped_count': result['skipped_count'],
+            'product_skipped_count': result.get('product_skipped_count', 0),
         }
 
 

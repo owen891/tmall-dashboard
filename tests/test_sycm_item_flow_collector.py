@@ -11,7 +11,7 @@ from urllib.error import HTTPError
 COLLECTOR_PATH = Path(
     os.environ.get(
         'TMALL_SYCM_ITEM_FLOW_COLLECTOR',
-        r'E:\www\BI采集\collectors\collect_sycm_item_flow_v6.py',
+        str(Path(__file__).resolve().parents[1] / 'collectors' / 'collect_sycm_item_flow_v6.py'),
     )
 )
 
@@ -46,6 +46,7 @@ class SycmItemFlowCollectorTests(unittest.TestCase):
         module.API_RETRIES = 2
         module.API_RETRY_DELAY = 0
         error = HTTPError('https://example.test', 502, 'bad gateway', {}, None)
+        self.addCleanup(error.close)
         with patch.object(module.urllib.request, 'urlopen', side_effect=[error, self._success_response()]) as request:
             result = module.call_api('', 'https://example.test', 'https://example.test/ref')
         self.assertEqual(result['code'], 0)

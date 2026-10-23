@@ -50,24 +50,47 @@
   }
 
   function renderProducts() {
-    const host = $('[data-cb-products]'); const head = $('[data-cb-table-head]'); if (!host || !head) return;
-    const visible = state.visibleColumns.map((key) => columns.find((column) => column.key === key)).filter(Boolean);
-    head.innerHTML = visible.map((column) => `<th>${column.label}</th>`).join('');
+    const host = $('[data-cb-products]'); const currentTable = host?.closest('table');
+    if (!host || !currentTable || !window.TmallUI?.table?.mount) return;
+    const visible = state.visibleColumns
+      .filter((key) => key !== 'image' || !state.visibleColumns.includes('product'))
+      .map((key) => columns.find((column) => column.key === key)).filter(Boolean);
     const products = filteredProducts();
-    host.innerHTML = products.length ? products.map((product) => `<tr data-cb-open="${esc(product.product_id)}" tabindex="0" aria-label="查看${esc(product.title || product.product_id)}的素材明细">${visible.map((column) => {
-      if (column.key === 'product') return `<td class="cb-product-cell"><strong>${esc(product.title || product.product_id)}</strong><small>${esc(product.product_id)}</small></td>`;
-      if (column.key === 'image') return `<td class="cb-image-cell">${product.image_url ? `<img src="${esc(product.image_url)}" alt="" loading="lazy">` : '<span>--</span>'}</td>`;
-      if (column.key === 'category') return `<td>${esc(product.shop_label || '未分类')}</td>`;
-      if (column.key === 'creative_count') return `<td class="num">${product.creatives?.length || 0}</td>`;
-      if (column.key === 'ad_spend' || column.key === 'attributed_payment_amount') return `<td class="num">${moneyCompact(product[column.key])}</td>`;
-      if (column.key === 'ctr' || column.key === 'cart_rate') return `<td class="num">${percent(product[column.key])}</td>`;
-      if (column.key === 'cvr') return `<td class="num">${percent(product.cvr)}</td>`;
-      if (column.key === 'roi') return `<td class="num" data-tone="${roiTone(product.roi)}">${ratio(product.roi)}</td>`;
-      if (column.key === 'clicks' || column.key === 'impressions' || column.key === 'payment_buyers' || column.key === 'new_buyers') return `<td class="num">${Number(product[column.key] || 0).toLocaleString('zh-CN')}</td>`;
-      if (column.key === 'cart_cost' || column.key === 'direct_payment_amount') return `<td class="num">${moneyCompact(product[column.key])}</td>`;
-      if (column.key === 'first_date' || column.key === 'last_date') return `<td>${esc(product[column.key] || '--')}</td>`;
-      return '<td>--</td>';
-    }).join('')}</tr>`).join('') : `<tr><td colspan="${visible.length}"><div class="ui-empty-state"><span>当前筛选条件没有单品</span></div></td></tr>`;
+    const numericKeys = new Set(['creative_count', 'ad_spend', 'attributed_payment_amount', 'ctr', 'cart_rate', 'roi', 'clicks', 'impressions', 'cvr', 'cart_cost', 'payment_buyers', 'direct_payment_amount', 'new_buyers']);
+    const tableColumns = visible.map((column) => ({
+      key: column.key,
+      label: column.label,
+      numeric: numericKeys.has(column.key),
+      className: `cb-col--${column.key}`,
+      render: (value, product) => {
+        if (column.key === 'product') return TmallUI.productIdentity({
+          title: product.title, id: product.product_id,
+          imageUrl: state.visibleColumns.includes('image') ? product.image_url : '',
+          showThumbnail: state.visibleColumns.includes('image'),
+          className: 'cb-product-identity',
+        });
+        if (column.key === 'image') {
+          if (!product.image_url) return '--';
+          const image = document.createElement('img'); image.className = 'cb-image-cell__image'; image.src = product.image_url; image.alt = ''; image.loading = 'lazy'; image.addEventListener('error', () => image.remove(), { once: true }); return image;
+        }
+        if (column.key === 'category') return product.shop_label || '未分类';
+        if (column.key === 'creative_count') return product.creatives?.length || 0;
+        if (column.key === 'ad_spend' || column.key === 'attributed_payment_amount' || column.key === 'cart_cost' || column.key === 'direct_payment_amount') return moneyCompact(value);
+        if (column.key === 'ctr' || column.key === 'cart_rate' || column.key === 'cvr') return percent(value);
+        if (column.key === 'roi') { const node = document.createElement('span'); node.dataset.tone = roiTone(value); node.textContent = ratio(value); return node; }
+        if (column.key === 'clicks' || column.key === 'impressions' || column.key === 'payment_buyers' || column.key === 'new_buyers') return Number(value || 0).toLocaleString('zh-CN');
+        if (column.key === 'first_date' || column.key === 'last_date') return value || '--';
+        return value ?? '--';
+      },
+    }));
+    const table = TmallUI.table.mount(host, { caption: '单品列表', columns: tableColumns, rows: products, emptyMessage: '当前筛选条件没有单品', rowClassName: 'cb-product-row' });
+    const nextBody = table?.querySelector('tbody');
+    if (!nextBody) return;
+    [...nextBody.querySelectorAll('tr')].forEach((row, index) => {
+      const product = products[index];
+      if (!product) return;
+      row.dataset.cbOpen = String(product.product_id || ''); row.tabIndex = 0; row.setAttribute('aria-label', `查看${product.title || product.product_id}的素材明细`);
+    });
     window.lucide?.createIcons();
   }
 

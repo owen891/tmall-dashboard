@@ -3,6 +3,7 @@ import re
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 import io
 
 from openpyxl import Workbook
@@ -14,6 +15,9 @@ if PROJECT_ROOT not in sys.path:
 
 class ShopScopeApiTests(unittest.TestCase):
     def setUp(self):
+        self._env = patch.dict('os.environ', {'TMALL_LEGACY_SHOP_ID': 'legacy-shop'})
+        self._env.start()
+        self.addCleanup(self._env.stop)
         self.temp_dir = tempfile.TemporaryDirectory(prefix='tmall-dashboard-shop-scope-')
         from app import create_app
         from db import get_db
@@ -132,8 +136,10 @@ class ShopScopeApiTests(unittest.TestCase):
         )
         self.assertEqual(products.status_code, 200)
         row = next(item for item in products.get_json()['data']['rows'] if item['product_id'] == 'scope-product')
-        self.assertEqual(row['impressions'], 0)
-        self.assertEqual(row['total_orders'], 0)
+        # 非 default 店铺不联 paid_detail（join 条件 1=0），这些单店旧指标应当“不可得”，
+        # 返回 NULL（前端渲染 `--`），而不是伪造一个真实的 0。
+        self.assertIsNone(row['impressions'])
+        self.assertIsNone(row['total_orders'])
         products.close()
 
         export = self.client.post(
@@ -264,7 +270,7 @@ class ShopScopeApiTests(unittest.TestCase):
         with self.app.test_request_context('/api/product-overview/rule-results?shop_id=default'):
             self.assertIsNone(product_overview_api._reject_named_shop_read())
 
-        with self.app.test_request_context('/api/x?shop_id=3828498662'):
+        with self.app.test_request_context('/api/x?shop_id=legacy-shop'):
             self.assertIsNone(reject_legacy_shop_scope('probe'))
 
     def test_no_gbk_mojibake_literals_in_scope_sources(self):
@@ -405,3 +411,33 @@ class ShopScopeApiTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+def test_primary_shop_legacy_period_endpoints_share_scope_guard(tmp_path, monkeypatch):
+    from app import create_app
+    from scripts.gate_fixture import seed_database, SHOP_ID
+    from unittest.mock import patch
+    from services.shop_scope_service import reject_legacy_shop_scope
+    database = tmp_path / 'scope-contract.db'
+    monkeypatch.setenv('TMALL_LEGACY_SHOP_ID', SHOP_ID)
+    app = create_app({'TESTING': True, 'DATABASE_PATH': str(database),
+                      'SHOP_ID': SHOP_ID, 'ASSET_RELEASE_ROOT': str(tmp_path / 'assets'),
+                      'IMPORT_SCAN_ALLOWED_ROOTS': []})
+    seed_database(database)
+    paths = ['/api/products?dim=monthly', '/api/trend?dim=monthly',
+             '/api/compare?dim=monthly&period_a=2026-08&period_b=2026-09',
+             '/api/target_progress?dim=monthly&period=2026-09',
+             '/api/products?dim=weekly', '/api/trend?dim=weekly']
+    with app.test_client() as client:
+        for path in paths:
+            with patch('services.shop_scope_service.reject_legacy_shop_scope',
+                       wraps=reject_legacy_shop_scope) as guard:
+                with client.get(path) as response:
+                    assert response.status_code == 200, (path, response.get_json())
+                assert guard.called, path
+            for shop in ('shop-a', 'shop-b', 'untrusted'):
+                with client.get(path + '&shop_id=' + shop) as response:
+                    assert response.status_code == 422, (path, shop, response.get_json())
+                    assert response.get_json()['code'] == 'UNSUPPORTED_SCOPE'
+        with client.get('/api/products?dim=daily&shop_id=shop-a') as response:
+            assert response.status_code == 200

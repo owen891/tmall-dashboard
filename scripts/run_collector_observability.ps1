@@ -15,7 +15,15 @@ if (-not $ProjectRoot) {
 
 $ErrorActionPreference = 'Stop'
 Set-Location -LiteralPath $ProjectRoot
-$python = if ($env:TMALL_COLLECT_PYTHON) { $env:TMALL_COLLECT_PYTHON } else { Join-Path $ProjectRoot '.venv\Scripts\python.exe' }
+# 统一解释器解析（2026-10-23 修复「统一运行」缺陷）：不再硬编码 .venv，
+# 与采集/聚合/备份链一致走 resolve_runtime.ps1。
+. (Join-Path $PSScriptRoot 'resolve_runtime.ps1')
+try {
+    $python = Resolve-CollectorPython -ProjectRoot $ProjectRoot
+} catch {
+    Write-Host "[ERROR] 运行时解析失败：$($_.Exception.Message)" -ForegroundColor Red
+    exit 20
+}
 $logDir = Join-Path $ProjectRoot 'logs'
 New-Item -ItemType Directory -Path $logDir -Force | Out-Null
 $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'

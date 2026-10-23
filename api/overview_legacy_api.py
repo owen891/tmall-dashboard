@@ -61,6 +61,9 @@ def get_trend():
         visitors_col = dim_cfg['visitors_col']
         # daily_data carries payment_qty; weekly_data predates that field.
         payment_qty_expr = 'SUM(payment_qty)' if dimension in {'monthly', 'daily'} else '0'
+        # 净利润口径与总览一致：daily/monthly 有 operating_profit，weekly_data 没有该列，
+        # 因此周度趋势返回 NULL（前端按未知处理），而不是伪造 0。
+        profit_expr = 'SUM(operating_profit)' if table in {'daily_data', 'monthly_data'} else 'NULL'
         scope_sql = ' AND shop_id = ?' if table == 'daily_data' else ''
         _label_clause, _label_params = shop_label_filter(category_filters_from_request())
         _join_sql = f' JOIN products p ON p.product_id = {table}.product_id' if _label_clause else ''
@@ -76,6 +79,7 @@ def get_trend():
                         THEN SUM(ad_spend) * 1.0 / (SUM(payment_amount) - SUM(refund_amount)) ELSE NULL END as expense_ratio,
                    AVG(payment_conversion) as conversion,
                    {payment_qty_expr} as payment_count,
+                   {profit_expr} as profit,
                    AVG(cart_rate) as cart_rate,
                    AVG(fav_rate) as fav_rate
             FROM {table}{_join_sql}
@@ -95,6 +99,14 @@ def get_trend():
         # 前端趋势图默认取 payment_amount；接口历史字段为 gmv，两者同义。
         for row in rows:
             row['payment_amount'] = row.get('gmv')
+            # 净利润率是「同区间利润/同区间净销售额」，必须先聚合再相除，
+            # 不能对逐行 profit_rate 求平均，所以放在这里算。
+            profit = row.get('profit')
+            net_sales = row.get('net_sales')
+            if profit is None or not net_sales:
+                row['profit_rate'] = None
+            else:
+                row['profit_rate'] = round(float(profit) / float(net_sales), 6)
 
     return jsonify(rows)
 

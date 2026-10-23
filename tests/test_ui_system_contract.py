@@ -346,29 +346,13 @@ def test_date_picker_smoke_gate_contract():
 
 
 def test_date_picker_smoke_gate_runs_when_chrome_available():
-    """Chrome 可用时真实运行冒烟门禁；需要本地服务，缺失则跳过。"""
+    """Integration-only: require the runner-owned service/browser, never skip."""
     import os
-    import shutil
     import subprocess
 
-    chrome_candidates = [
-        os.environ.get("TMALL_CHROME"),
-        r"C:\Program Files\Google\Chrome\Application\chrome.exe",
-        r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
-        shutil.which("google-chrome"),
-        shutil.which("chromium"),
-    ]
-    chrome = next((c for c in chrome_candidates if c and os.path.isfile(c)), None)
-    if not chrome:
-        raise unittest.SkipTest("未找到 Chrome")
-
-    base = os.environ.get("TMALL_SMOKE_BASE", "http://127.0.0.1:5000")
-    import urllib.request
-    try:
-        urllib.request.urlopen(base, timeout=3).close()
-    except Exception:
-        raise unittest.SkipTest(f"本地服务不可用：{base}")
-
+    base = os.environ.get("TMALL_SMOKE_BASE")
+    assert os.environ.get("TMALL_GATE_BROWSER_SCOPE"), "Run the integration gate runner"
+    assert base, "Owned gate service is required"
     result = subprocess.run(
         ["node", str(ROOT / "scripts" / "smoke_date_picker.cjs"), base],
         capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=240,
@@ -474,17 +458,17 @@ def test_ci_wires_static_and_browser_gates():
     纯 pytest 风格文件（无 unittest.TestCase）会被收集 0 个测试 —— 等于从未执行。
     """
     workflow = (ROOT / ".github" / "workflows" / "quality-gate.yml").read_text(encoding="utf-8")
+    import json
+    assert "python scripts/run_quality_gates.py --tier release" in workflow
+    manifest = json.loads((ROOT / "scripts/quality_gates.json").read_text(encoding="utf-8"))
+    commands = [" ".join(gate.get("argv", [])) for gate in manifest["gates"]]
     for command in (
-        "python -m pytest",
-        "scripts/check_css_syntax.py --strict",
-        "scripts/check_design_system.py --strict",
-        "scripts/check_css_tokens.py --strict",
-        "scripts/check_event_binding.py --strict",
-        "tsc -p tsconfig.json --noEmit",
-        "scripts/smoke_popover.cjs",
-        "scripts/smoke_date_picker.cjs",
+        "-m pytest tests", "scripts/check_css_syntax.py --strict",
+        "scripts/check_design_system.py --strict", "scripts/check_css_tokens.py --strict",
+        "scripts/check_event_binding.py --strict", "tsc -p tsconfig.json --noEmit",
+        "scripts/smoke_popover.cjs", "scripts/smoke_date_picker.cjs",
     ):
-        assert command in workflow, f"CI 未接入门禁：{command}"
+        assert any(command in actual for actual in commands), f"Manifest missing gate: {command}"
 
 
 def test_type_checked_file_list_only_grows():
@@ -538,16 +522,23 @@ def test_date_picker_smoke_gate_asserts_selection_takes_effect():
 
 
 def test_pytest_only_test_files_are_covered_by_ci():
-    """纯 pytest 风格文件必须在 CI 里显式列出，否则 unittest discover 收集不到。"""
-    workflow = (ROOT / ".github" / "workflows" / "quality-gate.yml").read_text(encoding="utf-8")
+    """Directory discovery covers every pytest-only file, including future additions."""
+    import json
+    workflow = (ROOT / ".github/workflows/quality-gate.yml").read_text(encoding="utf-8")
+    assert "python scripts/run_quality_gates.py --tier release" in workflow
+    manifest = json.loads((ROOT / "scripts/quality_gates.json").read_text(encoding="utf-8"))
+    gate = next(g for g in manifest["gates"] if g["id"] == "pytest")
+    argv = gate["argv"]
+    assert argv[argv.index("pytest") + 1] == "tests"
+    assert not any(arg.startswith(("--ignore", "--deselect")) for arg in argv)
+    assert "-k" not in argv and "-m" not in argv[argv.index("pytest") + 1:]
     for path in sorted((ROOT / "tests").glob("test_*.py")):
-        source = path.read_text(encoding="utf-8")
-        has_unittest_class = "unittest.TestCase" in source
-        has_bare_tests = bool(re.search(r"(?m)^def test_", source))
-        if has_bare_tests and not has_unittest_class:
-            assert path.name in workflow, (
-                f"{path.name} 是纯 pytest 风格，unittest discover 收集不到，必须在 CI 中显式运行"
-            )
+        assert path.parent == ROOT / argv[argv.index("pytest") + 1]
+    # The sole browser node is assigned explicitly, not skipped or dropped.
+    assert manifest["browser_pytest_nodes"] == [
+        "tests/test_ui_system_contract.py::test_date_picker_smoke_gate_runs_when_chrome_available"
+    ]
+    assert any(g.get("kind") == "browser-pytest" and g["tier"] == "integration" for g in manifest["gates"])
 
 
 def test_ci_referenced_files_are_tracked_by_git():

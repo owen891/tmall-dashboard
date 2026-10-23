@@ -108,11 +108,82 @@
 
     function formatColumnValue(item, column) {
       const value = column.key === 'payment_amount' ? salesOf(item) : column.key === 'ad_spend' ? spendOf(item) : field(item, column.key);
+      if (column.format === 'profit') return profitBlock(value);
       if (column.format === 'money') return money(value);
       if (column.format === 'number') return number(value);
       if (column.format === 'percent') return percent(value);
       if (column.format === 'decimal') return decimal(value);
       return String(item[column.key] || '--');
+    }
+
+    // 利润色块（对齐边界 BI .slot-color-block）：红=盈利/涨、绿=亏损/跌（中国电商惯例，
+    // 方向语义与 --trend-up-text 一致）；0 是盈亏平衡真值用中性灰，空值灰块 `--`。
+    function profitBlock(value) {
+      const block = document.createElement('span');
+      block.className = 'profit-block';
+      const num = Number(value);
+      if (value === null || value === undefined || value === '' || !Number.isFinite(num)) {
+        block.classList.add('profit-block--empty');
+        block.textContent = '--';
+        return block;
+      }
+      if (num > 0) block.classList.add('profit-block--positive');
+      else if (num < 0) block.classList.add('profit-block--negative');
+      else block.classList.add('profit-block--zero');
+      block.textContent = `${num > 0 ? '+' : ''}${number(num)}`;
+      return block;
+    }
+
+    function isProfitColumn(column) {
+      return Boolean(column && column.format === 'profit');
+    }
+
+    // 行 hover 动作浮层（对齐边界 BI 行级操作不占列宽）：商品格 hover 弹出，
+    // 详情/跟进/打标走详情工作台（那里已有完整表单），收藏就地切换，
+    // 目标/警戒为 BI 式「功能先占位」——后端商品级 API 未建，disabled+说明。
+    function attachRowActions(anchor, item) {
+      if (!window.TmallUI?.popover) return;
+      let popover = null;
+      let closeTimer = null;
+      const cancelClose = () => { if (closeTimer) { window.clearTimeout(closeTimer); closeTimer = null; } };
+      const scheduleClose = () => {
+        cancelClose();
+        closeTimer = window.setTimeout(() => { popover?.close(); popover = null; }, 260);
+      };
+      const open = () => {
+        cancelClose();
+        if (popover?.isOpen()) return;
+        const canEdit = !Object.keys(state.capabilities).length || DemoApi.can({ capabilities: state.capabilities }, 'can_edit');
+        const panel = document.createElement('div');
+        panel.className = 'product-row-actions';
+        const actions = [
+          ['eye', '详情', () => openProductDetail(item, anchor)],
+          ['square-pen', '跟进', () => openProductDetail(item, anchor)],
+          ['tag', '打标', () => openProductDetail(item, anchor)],
+          ['star', Number(item.starred || 0) === 1 ? '取消收藏' : '收藏', (button) => { popover?.close({ restoreFocus: false }); popover = null; toggleStar(item, button); }, !canEdit],
+          ['target', '目标', null],
+          ['triangle-alert', '警戒', null],
+        ];
+        actions.forEach(([icon, label, handler, disabled]) => {
+          const button = document.createElement('button');
+          button.type = 'button';
+          button.className = 'product-row-actions__item';
+          if (!handler || disabled) {
+            button.disabled = true;
+            button.title = !handler ? '商品级目标/警戒值 API 规划中' : '当前角色无编辑权限';
+          }
+          button.innerHTML = `<i data-lucide="${icon}"></i><span>${label}</span>`;
+          button.addEventListener('click', () => handler?.(button));
+          panel.appendChild(button);
+        });
+        popover = window.TmallUI.popover({ anchor, content: panel, placement: 'bottom', className: 'product-row-actions-popover' });
+        popover.node.addEventListener('mouseenter', cancelClose);
+        popover.node.addEventListener('mouseleave', scheduleClose);
+        window.lucide?.createIcons();
+      };
+      anchor.addEventListener('mouseenter', open);
+      anchor.addEventListener('mouseleave', scheduleClose);
+      anchor.addEventListener('focusin', open);
     }
 
     function renderHeader() {
@@ -167,6 +238,85 @@
       renderTable();
     }
 
+    // ===== 汇总行（对齐边界 BI「汇总：全部｜当前页」）=====
+    // 「全部」档用后端 summary（按全部筛选条件聚合，不含分页）；
+    // 「当前页」档前端对本页行现算。率类指标两侧都是"先聚合再相除"。
+    const SUMMARY_SUM_KEYS = ['payment_amount', 'net_sales', 'refund_amount', 'ad_spend', 'operating_profit', 'product_cost', 'buyers', 'visitors', 'payment_count'];
+    function summarySums(rows) {
+      const sums = {};
+      SUMMARY_SUM_KEYS.forEach((key) => { sums[key] = rows.reduce((acc, item) => acc + (Number(item[key]) || 0), 0); });
+      return sums;
+    }
+
+    function summaryValue(key, scope, pageSums) {
+      const src = scope === 'page' ? pageSums : state.summary;
+      if (!src) return '--';
+      const sum = (name) => Number(src[name]) || 0;
+      const ratio = (num, den) => (den > 0 ? num / den : null);
+      switch (key) {
+        case 'payment_amount': case 'net_sales': case 'refund_amount':
+        case 'ad_spend': case 'operating_profit': case 'product_cost':
+        case 'buyers': case 'visitors': case 'payment_count': {
+          const value = Number(src[key]);
+          return Number.isFinite(value) ? value : null;
+        }
+        case 'refund_rate': return ratio(sum('refund_amount'), sum('payment_amount'));
+        case 'expense_ratio': return ratio(sum('ad_spend'), sum('net_sales'));
+        case 'profit_rate': return ratio(sum('operating_profit'), sum('net_sales'));
+        case 'conversion': return ratio(sum('buyers'), sum('visitors'));
+        case 'roi': return ratio(sum('net_sales'), sum('ad_spend'));
+        default: return null;
+      }
+    }
+
+    function renderSummaryCell(cell, key, value) {
+      const column = columnsByKey.get(key);
+      if (!column || !column.format) { cell.textContent = ''; return; }
+      if (isProfitColumn(column)) {
+        cell.classList.add('num--profit');
+        cell.appendChild(profitBlock(value));
+        return;
+      }
+      if (column.format === 'money') cell.textContent = money(value);
+      else if (column.format === 'number') cell.textContent = number(value);
+      else if (column.format === 'percent') cell.textContent = percent(value);
+      else if (column.format === 'decimal') cell.textContent = decimal(value);
+      else cell.textContent = '--';
+    }
+
+    function buildSummaryRow(rows) {
+      const row = document.createElement('tr');
+      row.className = 'ui-summary-row';
+      const pageSums = summarySums(rows);
+      const labelCell = row.insertCell();
+      labelCell.colSpan = 2;
+      labelCell.className = 'ui-summary-row__label';
+      const label = document.createElement('span');
+      label.textContent = '汇总：';
+      labelCell.appendChild(label);
+      [['all', '全部'], ['page', '当前页']].forEach(([scope, text]) => {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'ui-summary-row__scope';
+        button.textContent = text;
+        button.setAttribute('aria-pressed', String(state.summaryScope === scope));
+        button.addEventListener('click', () => {
+          state.summaryScope = scope;
+          const body = $('[data-products-body]');
+          const current = body?.querySelector('.ui-summary-row');
+          if (current) current.replaceWith(buildSummaryRow(visibleRows()));
+        });
+        labelCell.appendChild(button);
+      });
+      state.visibleColumns.forEach((key) => {
+        const cell = row.insertCell();
+        cell.dataset.fieldKey = key;
+        if (columnsByKey.get(key)?.format) cell.classList.add('num');
+        renderSummaryCell(cell, key, summaryValue(key, state.summaryScope, pageSums));
+      });
+      return row;
+    }
+
     function updateTimelineControls() {
       document.body.dataset.productsDisplayMode = state.displayMode;
       const tools = $('[data-products-timeline-tools]');
@@ -192,7 +342,7 @@
       const metricMax = {};
       state.visibleColumns.forEach((key) => {
         const column = columnsByKey.get(key);
-        if (column?.format) metricMax[key] = Math.max(...rows.map((item) => metricBarValue(item, key)), 0);
+        if (column?.format && !isProfitColumn(column)) metricMax[key] = Math.max(...rows.map((item) => metricBarValue(item, key)), 0);
       });
       updateKpis(rows);
       if (!rows.length) {
@@ -203,6 +353,7 @@
         updateSelection();
         return;
       }
+      body.appendChild(buildSummaryRow(rows));
       rows.forEach((item) => {
         const id = productId(item);
         const row = document.createElement('tr');
@@ -220,52 +371,6 @@
         });
         addCell(row, check, '', 'select');
 
-        const identity = document.createElement('div');
-        identity.className = 'product-identity';
-        let thumbnail;
-        const thumbnailUrl = String(item.image_url || '').trim();
-        if (item.image_url) {
-          thumbnail = document.createElement('img');
-          thumbnail.className = 'product-thumb';
-          thumbnail.alt = '';
-          thumbnail.loading = 'lazy';
-          thumbnail.referrerPolicy = 'no-referrer';
-          thumbnail.src = item.image_url;
-          thumbnail.addEventListener('error', () => {
-            thumbnail.replaceWith(makeProductPlaceholder(item, id));
-          }, { once: true });
-        }
-        else if (thumbnailUrl) {
-          thumbnail = document.createElement('img');
-          thumbnail.className = 'product-thumb';
-          thumbnail.alt = '';
-          thumbnail.loading = 'lazy';
-          thumbnail.referrerPolicy = 'no-referrer';
-          thumbnail.src = thumbnailUrl;
-          thumbnail.addEventListener('error', () => {
-            const placeholder = document.createElement('span');
-            placeholder.className = 'product-thumb product-thumb--placeholder';
-            placeholder.setAttribute('aria-hidden', 'true');
-            placeholder.textContent = String(item.title || id || '商品').trim().slice(0, 1);
-            thumbnail.replaceWith(placeholder);
-          }, { once: true });
-        } else {
-          thumbnail = document.createElement('span');
-          thumbnail.className = 'product-thumb product-thumb--placeholder';
-          thumbnail.setAttribute('aria-hidden', 'true');
-          thumbnail.textContent = String(item.title || id || '商品').trim().slice(0, 1);
-        }
-        const title = document.createElement('div');
-        title.className = 'product-title';
-        const titleButton = document.createElement('button');
-        titleButton.type = 'button';
-        titleButton.className = 'product-title__link';
-        titleButton.textContent = item.title || '未命名商品';
-        titleButton.title = item.title || '未命名商品';
-        titleButton.setAttribute('aria-label', `查看商品详情：${item.title || id || '未命名商品'}`);
-        titleButton.addEventListener('click', () => openProductDetail(item, titleButton));
-        const sub = document.createElement('div');
-        sub.className = 'product-title__meta';
         const star = document.createElement('button');
         star.type = 'button';
         star.className = 'star-button';
@@ -276,11 +381,13 @@
         star.setAttribute('aria-label', Number(item.starred || 0) === 1 ? '取消收藏' : '收藏');
         star.setAttribute('aria-pressed', String(Number(item.starred || 0) === 1));
         star.addEventListener('click', async () => toggleStar(item, star));
-        const idLabel = document.createElement('span');
-        idLabel.textContent = id || '--';
-        title.append(titleButton, sub);
-        sub.append(star, idLabel);
-        identity.append(thumbnail, title);
+        const identity = TmallUI.productIdentity({
+          title: item.title, id, imageUrl: item.image_url,
+          maxTitleChars: 8, titleClassName: 'product-title__link',
+          onTitleClick: (event) => openProductDetail(item, event.currentTarget),
+          metaItems: [star],
+        });
+        attachRowActions(identity, item);
         addCell(row, identity, '', 'title');
 
        state.visibleColumns.forEach((key) => {
@@ -298,8 +405,8 @@
         else if (key === 'seasonality') addCell(row, DemoLabels.classification('seasonal_attributes', item.seasonality, item.seasonality || '--'), '', key);
         else if (key === 'has_pending_action') addCell(row, badge(item.has_pending_action ? '有待办' : '无待办', '无待办'), '', key);
         else {
-          const cell = addCell(row, formatColumnValue(item, column), column.format ? 'num metric-bar-cell' : '', key);
-          if (column.format && metricMax[key] > 0) {
+          const cell = addCell(row, formatColumnValue(item, column), column.format ? (isProfitColumn(column) ? 'num num--profit' : 'num metric-bar-cell') : '', key);
+          if (column.format && !isProfitColumn(column) && metricMax[key] > 0) {
             cell.style.setProperty('--metric-fill', `${Math.round((metricBarValue(item, key) / metricMax[key]) * 100)}%`);
           }
         }
@@ -322,7 +429,7 @@
           && Boolean(column?.format)
           && !(state.periodDimension === 'monthly' && monthlyUnsupported.has(key));
       });
-      const fallback = ['payment_amount', 'net_sales', 'visitors', 'conversion', 'refund_rate', 'expense_ratio', 'ad_spend', 'roi', 'buyers', 'avg_order_value', 'repurchase_rate'];
+      const fallback = ['payment_amount', 'net_sales', 'operating_profit', 'visitors', 'conversion', 'refund_rate', 'expense_ratio', 'ad_spend', 'roi', 'buyers', 'avg_order_value', 'repurchase_rate'];
       return [...new Set(selectedMetrics.length ? selectedMetrics : fallback)].filter((key) => columnsByKey.has(key));
     }
 
@@ -341,29 +448,6 @@
       const selectCell = addCell(row, check, '', 'select');
       if (rowSpan > 1) selectCell.rowSpan = rowSpan;
 
-      const identity = document.createElement('div');
-      identity.className = 'product-identity';
-      const thumbnailUrl = String(item.image_url || '').trim();
-      const thumbnail = thumbnailUrl ? document.createElement('img') : makeProductPlaceholder(item, id);
-      if (thumbnailUrl) {
-        thumbnail.className = 'product-thumb';
-        thumbnail.alt = '';
-        thumbnail.loading = 'lazy';
-        thumbnail.referrerPolicy = 'no-referrer';
-        thumbnail.src = thumbnailUrl;
-        thumbnail.addEventListener('error', () => thumbnail.replaceWith(makeProductPlaceholder(item, id)), { once: true });
-      }
-      const title = document.createElement('div');
-      title.className = 'product-title';
-      const titleButton = document.createElement('button');
-      titleButton.type = 'button';
-      titleButton.className = 'product-title__link';
-      titleButton.textContent = item.title || '未命名商品';
-      titleButton.title = item.title || '未命名商品';
-      titleButton.setAttribute('aria-label', `查看商品详情：${item.title || id || '未命名商品'}`);
-      titleButton.addEventListener('click', () => openProductDetail(item, titleButton));
-      const sub = document.createElement('div');
-      sub.className = 'product-title__meta';
       const star = document.createElement('button');
       star.type = 'button';
       star.className = 'star-button';
@@ -374,11 +458,12 @@
       star.setAttribute('aria-label', Number(item.starred || 0) === 1 ? '取消收藏' : '收藏');
       star.setAttribute('aria-pressed', String(Number(item.starred || 0) === 1));
       star.addEventListener('click', async () => toggleStar(item, star));
-      const idLabel = document.createElement('span');
-      idLabel.textContent = id || '--';
-      title.append(titleButton, sub);
-      sub.append(star, idLabel);
-      identity.append(thumbnail, title);
+      const identity = TmallUI.productIdentity({
+        title: item.title, id, imageUrl: item.image_url,
+        maxTitleChars: 8, titleClassName: 'product-title__link',
+        onTitleClick: (event) => openProductDetail(item, event.currentTarget),
+        metaItems: [star],
+      });
       const titleCell = addCell(row, identity, '', 'title');
       if (rowSpan > 1) titleCell.rowSpan = rowSpan;
     }
@@ -399,8 +484,8 @@
         const column = columnsByKey.get(key);
         if (!column || key === 'trend_change') return;
         const valueItem = { ...item, ...detail };
-        const cell = addCell(row, formatColumnValue(valueItem, column), column.format ? 'num metric-bar-cell' : '', key);
-        if (column.format && metricMax[key] > 0) {
+        const cell = addCell(row, formatColumnValue(valueItem, column), column.format ? (isProfitColumn(column) ? 'num num--profit' : 'num metric-bar-cell') : '', key);
+        if (column.format && !isProfitColumn(column) && metricMax[key] > 0) {
           cell.style.setProperty('--metric-fill', `${Math.round((metricBarValue(valueItem, key) / metricMax[key]) * 100)}%`);
         }
       });

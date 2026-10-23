@@ -1,3 +1,4 @@
+import os
 from copy import deepcopy
 import math
 
@@ -27,7 +28,8 @@ DEFAULTS = {
     'category_mode_default': 'sock',
     'category_modes': [
         {'value': 'all', 'label': '全部品类', 'shop_label': None, 'enabled': True, 'system': True},
-        {'value': 'sock', 'label': '标品袜子', 'shop_label': '标品袜子', 'enabled': True, 'system': True},
+        {'value': 'sock', 'label': os.environ.get('TMALL_CATEGORY_LABEL', '默认品类'),
+         'shop_label': os.environ.get('TMALL_CATEGORY_LABEL', '默认品类'), 'enabled': True, 'system': True},
     ],
     'week_starts_on': 'monday', 'annual_target_default': 0.0,
     'growth_multiplier': 1.0, 'overachievement_threshold': 1.0,
@@ -35,11 +37,15 @@ DEFAULTS = {
     'field_mappings': {}, 'mapping_templates': {},
     'classification_dictionaries': default_dictionaries(),
     'product_view_template': 'operate', 'view_templates': {
-        'operate': {'label': '基础运营', 'columns': ['product_id', 'title', 'payment_amount', 'net_sales', 'conversion', 'refund_rate', 'roi', 'paid_ipv', 'organic_ipv', 'search_ipv', 'recommend_ipv', 'repurchase_rate']},
-        'select': {'label': '选款分析', 'columns': ['product_id', 'title', 'tier', 'style', 'conversion', 'payment_amount', 'refund_rate', 'score']},
-        'paid': {'label': '推广效率', 'columns': ['product_id', 'title', 'ad_spend', 'roi', 'overall_roi', 'paid_ratio']},
+        # 【2026-10-22】内置商品视图已剔除「长期 100% 空值」的列（paid_ipv/organic_ipv/
+        # recommend_ipv/style/overall_roi/paid_ratio/lifecycle_stage/seasonality/
+        # has_pending_action），与 frontend/ui_demo/assets/products-live.js 中
+        # 标记 hidden: true 的列保持一致；数据链路补齐后两边同时恢复。
+        'operate': {'label': '基础运营', 'columns': ['product_id', 'title', 'payment_amount', 'net_sales', 'conversion', 'refund_rate', 'roi', 'search_ipv', 'repurchase_rate']},
+        'select': {'label': '选款分析', 'columns': ['product_id', 'title', 'tier', 'conversion', 'payment_amount', 'refund_rate', 'score']},
+        'paid': {'label': '推广效率', 'columns': ['product_id', 'title', 'ad_spend', 'roi']},
         'refund': {'label': '退款售后', 'columns': ['product_id', 'title', 'payment_amount', 'refund_amount', 'refund_rate', 'score']},
-        'lifecycle': {'label': '生命周期', 'columns': ['product_id', 'title', 'lifecycle_stage', 'seasonality', 'has_pending_action']},
+        'lifecycle': {'label': '生命周期', 'columns': ['product_id', 'title', 'tier', 'payment_amount', 'trend_change', 'repurchase_rate', 'search_click_rate', 'category_width']},
     },
     'promotion_view_templates': {
         'products': {
@@ -96,7 +102,7 @@ VIEW_COLUMNS = {
     'recommend_ipv', 'buyers', 'avg_order_value', 'payment_count', 'cart_qty',
     'cart_users', 'fav_users', 'trend_change', 'repurchase_rate', 'repurchase_users',
     'cross_sell_rate', 'cross_sell_qty', 'cross_sell_categories', 'new_buyers',
-    'new_buyer_ratio', 'guide_visits', 'guide_visitors', 'guide_potential',
+    'new_buyer_ratio', 'guide_visitors', 'guide_potential',
     'guide_potential_ratio', 'keyword_spend', 'keyword_sales', 'keyword_roi',
     'keyword_visitors', 'keyword_ppc', 'crowd_spend', 'crowd_sales', 'crowd_roi',
     'crowd_visitors', 'crowd_ppc', 'site_spend', 'site_sales', 'site_roi',
@@ -108,6 +114,8 @@ VIEW_COLUMNS = {
     'item_fav_cart', 'item_fav_cart_cost', 'total_favs', 'item_fav_cost',
     'item_fav_rate', 'cart_cost', 'industry_ctr', 'click_rate',
     'presale_amount', 'presale_qty', 'search_click_rate', 'category_width',
+    # 2026-10-24 商品列表重构新增：利润三列（与 products-live.js columnGroups 同步）
+    'operating_profit', 'profit_rate', 'product_cost',
 }
 
 
@@ -303,7 +311,7 @@ class SettingsService:
                 if value in {'all', 'sock'}:
                     if value == 'all' and item.get('shop_label') not in (None, '', 'all'):
                         raise SettingsValidationError('全部品类不能设置商品标签映射')
-                    shop_label = None if value == 'all' else '标品袜子'
+                    shop_label = None if value == 'all' else os.environ.get('TMALL_CATEGORY_LABEL', '默认品类')
                     normalized_modes.append({
                         'value': value, 'label': label, 'shop_label': shop_label,
                         'enabled': bool(item.get('enabled', True)), 'system': True,

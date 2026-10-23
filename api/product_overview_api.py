@@ -5,12 +5,35 @@ from datetime import date, timedelta
 from flask import Blueprint, request
 
 from api.api_response import evidence_level_for, failure, limitations_for, success
-from db import get_db
+from db import get_db, get_shop_id
 from services.category_mode_service import category_filters_from_request
 from services.product_rules_service import evaluate_rule, list_rules
+from services.shop_scope_service import current_request_shop_id
 
 
 product_overview_bp = Blueprint("product_overview", __name__)
+
+# monthly_data / products 仍是单店旧表（没有 shop_id 列），只有 default 店铺
+# scope 能安全读取。命名店铺必须 fail closed，绝不能把默认店的月表数据
+# 当成命名店铺的数据返回。
+from db import legacy_shop_id
+
+
+def default_shop_scopes():
+    return ('default', legacy_shop_id())
+
+
+def _reject_named_shop_read():
+    """Fail closed for tables that cannot isolate named shops."""
+    shop_id = current_request_shop_id() or get_shop_id()
+    if shop_id in default_shop_scopes():
+        return None
+    return failure(
+        "UNSUPPORTED_SCOPE",
+        f"product-overview 当前仅支持 default 店铺 scope，不允许访问 shop_id={shop_id}",
+        {"shop_id": shop_id},
+        status=422,
+    )
 
 
 def _period():
@@ -33,6 +56,9 @@ def product_overview_rules():
 
 @product_overview_bp.get("/api/product-overview/rule-results")
 def product_overview_rule_results():
+    rejected = _reject_named_shop_read()
+    if rejected is not None:
+        return rejected
     period = _period()
     status = (request.args.get("status") or "active").strip()
     category_filters = category_filters_from_request()
@@ -59,7 +85,7 @@ def product_overview_rule_results():
             f"""
             SELECT p.product_id, d.payment_amount, d.refund_amount,
                    d.ad_spend, d.payment_conversion, d.cart_rate,
-                   d.avg_order_value, d.visitors
+                   d.avg_order_value, d.visitors, d.buyers
               FROM products p
               INNER JOIN monthly_data d ON d.product_id = p.product_id AND d.month = ?
              WHERE {' AND '.join(where)}
@@ -154,8 +180,9 @@ def product_overview_matrix():
     from services.product_matrix_service import product_matrix
     period = request.args.get("period", "").strip() or None
     category_filters = category_filters_from_request()
+    shop_id = current_request_shop_id() or get_shop_id()
     with get_db() as conn:
-        matrix = product_matrix(conn, period, category_label=category_filters.get("shop_label"))
+        matrix = product_matrix(conn, period, category_label=category_filters.get("shop_label"), shop_id=shop_id)
     availability = "available" if matrix.get("available") else "no-data"
     missing_inputs = matrix.get("missing_inputs") or ([] if availability == "available" else ["daily_data"])
     return success(
@@ -176,8 +203,9 @@ def product_overview_matrix_apply():
     from services.product_matrix_service import apply_tier_writeback, product_matrix
     period = request.args.get("period", "").strip() or None
     category_filters = category_filters_from_request()
+    shop_id = current_request_shop_id() or get_shop_id()
     with get_db() as conn:
-        matrix = product_matrix(conn, period, category_label=category_filters.get("shop_label"))
+        matrix = product_matrix(conn, period, category_label=category_filters.get("shop_label"), shop_id=shop_id)
         if not matrix.get("available"):
             return failure("NO_DATA", "当前周期没有可分层的商品数据", status=422)
         result = apply_tier_writeback(conn, matrix)
@@ -193,7 +221,7 @@ def product_overview_matrix_apply():
 def product_overview_profit_structure():
     """利润结构（利润瀑布）：净销 → 五桶费用 → 利润，恒等校验 + 前期环比。
 
-    口径与 BI 派米「利润(支付预估)」恒等（8 月验证 diff=0）；补采窗口费用列
+    口径与 BI「利润(支付预估)」恒等（8 月验证 diff=0）；补采窗口费用列
     缺失按哨兵处理，不 COALESCE 成 0。
     """
     from services.profit_structure_service import build_structure
@@ -201,9 +229,12 @@ def product_overview_profit_structure():
     start = (request.args.get("start") or "").strip()
     end = (request.args.get("end") or "").strip()
     category_filters = category_filters_from_request()
+    shop_id = current_request_shop_id() or get_shop_id()
     with get_db() as conn:
         if not end:
-            row = conn.execute("SELECT MAX(date) AS latest FROM daily_data").fetchone()
+            row = conn.execute(
+                "SELECT MAX(date) AS latest FROM daily_data WHERE shop_id = ?", (shop_id,)
+            ).fetchone()
             latest = str(row["latest"]) if row and row["latest"] else None
             if not latest:
                 return success(
@@ -213,7 +244,7 @@ def product_overview_profit_structure():
             # 进行中的月份只覆盖部分天数，费用结构噪声大，缺省取最近一个完整月。
             end = latest if not _is_ongoing_month(latest) else _prev_month_end(latest)
             start = f"{end[:7]}-01"
-        payload = build_structure(conn, start, end, category_label=category_filters.get("shop_label"))
+        payload = build_structure(conn, start, end, category_label=category_filters.get("shop_label"), shop_id=shop_id)
     availability = "available" if payload.get("available") else "no-data"
     return success(
         payload,

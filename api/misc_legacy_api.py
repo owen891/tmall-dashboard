@@ -9,6 +9,7 @@ from flask import Blueprint, jsonify, request
 from db import get_db
 from api.api_response import failure, json_object
 from repos.audit_repo import AuditRepo
+from services.tier_source import tier_source_for_write
 
 
 misc_legacy_bp = Blueprint('misc_legacy', __name__)
@@ -35,13 +36,19 @@ def update_product_field(product_id):
             return failure('NOT_FOUND', '商品不存在', status=404)
 
         # 获取旧值用于日志
-        old_row = conn.execute(f'SELECT {field} FROM products WHERE product_id = ?', (product_id,)).fetchone()
+        old_row = conn.execute(
+            f'SELECT {field}, tier_source FROM products WHERE product_id = ?', (product_id,)
+        ).fetchone()
         old_value = old_row[0] if old_row else ''
+        old_source = old_row['tier_source'] if old_row else ''
+        next_source = tier_source_for_write(field, old_source)
 
-        # 更新字段
+        # 更新字段：改 tier 必须同时把来源标记成 manual，
+        # 否则 scripts/sync_five_dim_tier.py 会把这行当成「来源不明的锁定行」永久跳过。
         conn.execute(
-            f'UPDATE products SET {field} = ?, updated_at = CURRENT_TIMESTAMP WHERE product_id = ?',
-            (value, product_id)
+            f'UPDATE products SET {field} = ?, tier_source = ?, '
+            'updated_at = CURRENT_TIMESTAMP WHERE product_id = ?',
+            (value, next_source, product_id)
         )
         conn.execute(
             'INSERT INTO operation_logs (action, detail, operator) VALUES (?, ?, ?)',
@@ -49,9 +56,11 @@ def update_product_field(product_id):
         )
         AuditRepo.record(
             'product', product_id, 'update_field', data.get('operator') or 'admin',
-            data.get('reason') or f'修改商品{field}', {field: old_value}, {field: value},
+            data.get('reason') or f'修改商品{field}',
+            {field: old_value, 'tier_source': old_source},
+            {field: value, 'tier_source': next_source},
             connection=conn,
         )
         conn.commit()
 
-    return jsonify({'success': True, 'field': field, 'value': value})
+    return jsonify({'success': True, 'field': field, 'value': value, 'tier_source': next_source})

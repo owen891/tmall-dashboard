@@ -9,14 +9,13 @@
 - 路由注册验证：通过 Flask url_map 检查所有路由是否注册
 - GET 请求：应返回 200 或 404（无数据时允许 404），不应 500
 - POST/PUT/DELETE：应返回非 500（路由存在但资源不存在是正常的）
-- 不修改任何数据，只读测试
+- 只修改一次性测试数据库，不读取或复制用户数据库
 """
 
 import sys
 import atexit
 import io
 import os
-import shutil
 import tempfile
 import time
 import unittest
@@ -28,24 +27,22 @@ PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
-# Mutation smoke tests run against a disposable copy so the checked-in demo
-# database remains stable across local and CI test runs.
+# Deterministic empty-schema fixture: importing tests must never read user data.
 _TEST_DATA_DIR = tempfile.TemporaryDirectory(prefix='tmall-dashboard-tests-')
 atexit.register(_TEST_DATA_DIR.cleanup)
 _TEST_DB_PATH = os.path.join(_TEST_DATA_DIR.name, 'dashboard.db')
-_SOURCE_DB_PATH = os.path.join(PROJECT_ROOT, 'data', 'dashboard.db')
-if os.path.exists(_SOURCE_DB_PATH):
-    shutil.copy2(_SOURCE_DB_PATH, _TEST_DB_PATH)
 
 from app import create_app
 from db import get_db
-app = create_app({'TESTING': True, 'DATABASE_PATH': _TEST_DB_PATH, 'SHOP_ID': '3828498662'})
+from scripts.gate_fixture import seed_database
+app = create_app({'TESTING': True, 'DATABASE_PATH': _TEST_DB_PATH, 'SHOP_ID': 'default'})
 
 #: 事实行必须写对 shop_id，否则会被按店铺过滤掉。
 # daily_data.shop_id 的列默认值是 'default'，而这里 app 用的是真实店铺号，
 # 不显式写入就会造出「主档有商品、单日事实查不到」的假象，
 # 让 /api/products 的 daily+单日区间查询（走 JOIN 事实表）返回 0 条。
 _TEST_SHOP_ID = app.config['SHOP_ID']
+seed_database(_TEST_DB_PATH)
 
 
 def _insert_contract_products():
@@ -100,8 +97,18 @@ class SmokeTestBase(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        """创建测试客户端，复用现有数据库"""
-        cls.client = app.test_client()
+        """Track streamed/file responses until class cleanup closes them."""
+        from flask.testing import FlaskClient
+        responses = []
+
+        class ClosingClient(FlaskClient):
+            def open(self, *args, **kwargs):
+                response = super().open(*args, **kwargs)
+                responses.append(response)
+                return response
+
+        cls.client = ClosingClient(app, app.response_class)
+        cls.addClassCleanup(lambda: [response.close() for response in responses])
 
     def assertGetNoCrash(self, path, params=None):
         """GET 请求不应返回 500（崩溃），允许 200 或 404"""

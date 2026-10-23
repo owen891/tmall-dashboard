@@ -75,6 +75,60 @@ class WanxiangtaiServiceTests(unittest.TestCase):
         finally:
             temp_dir.cleanup()
 
+    def test_import_rejects_report_when_requested_impressions_are_absent_everywhere(self):
+        temp_dir = tempfile.TemporaryDirectory(prefix='wanxiangtai-missing-impressions-')
+        try:
+            app = create_app({
+                'TESTING': True,
+                'DATABASE_PATH': os.path.join(temp_dir.name, 'dashboard.db'),
+            })
+            response = app.test_client().post('/api/wanxiangtai/import', json={
+                'payload': {'data': {'list': [{
+                    'date': '2026-09-26', 'promotionId': 'product-1',
+                    'charge': 0, 'click': 0, 'alipayInshopAmt': 25,
+                }]}},
+                'report_type': 'item_promotion', 'split_type': 'day',
+                'start_date': '2026-09-26', 'end_date': '2026-09-26',
+            })
+            self.assertEqual(response.status_code, 422)
+            self.assertIn('缺少已请求的展现字段', response.get_json()['message'])
+            with app.app_context():
+                from db import get_db
+                with get_db() as conn:
+                    self.assertEqual(conn.execute(
+                        'SELECT COUNT(*) FROM promotion_daily_facts'
+                    ).fetchone()[0], 0)
+        finally:
+            temp_dir.cleanup()
+
+    def test_import_rejects_active_rows_missing_impressions_even_when_other_rows_have_them(self):
+        temp_dir = tempfile.TemporaryDirectory(prefix='wanxiangtai-partial-impressions-')
+        try:
+            app = create_app({
+                'TESTING': True,
+                'DATABASE_PATH': os.path.join(temp_dir.name, 'dashboard.db'),
+            })
+            response = app.test_client().post('/api/wanxiangtai/import', json={
+                'payload': {'data': {'list': [
+                    {'date': '2026-09-30', 'promotionId': 'known', 'charge': 4,
+                     'click': 2, 'adPv': 100},
+                    {'date': '2026-09-30', 'promotionId': 'broken', 'charge': 2,
+                     'click': 1},
+                ]}},
+                'report_type': 'item_promotion', 'split_type': 'day',
+                'start_date': '2026-09-30', 'end_date': '2026-09-30',
+            })
+            self.assertEqual(response.status_code, 422)
+            self.assertIn('投放行缺失', response.get_json()['message'])
+            with app.app_context():
+                from db import get_db
+                with get_db() as conn:
+                    self.assertEqual(conn.execute(
+                        'SELECT COUNT(*) FROM promotion_daily_facts'
+                    ).fetchone()[0], 0)
+        finally:
+            temp_dir.cleanup()
+
     def test_period_summary_endpoint_reads_interval_rows(self):
         temp_dir = tempfile.TemporaryDirectory(prefix='wanxiangtai-summary-')
         try:

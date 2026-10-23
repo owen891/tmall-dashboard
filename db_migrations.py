@@ -6,7 +6,7 @@ _run_init_migrations 全量建表/迁移 SQL。db.py 负责连接管理并委托
 """
 
 
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 7
 
 
 def _schema_is_current(conn):
@@ -319,7 +319,7 @@ def _run_init_migrations(conn):
     CREATE INDEX IF NOT EXISTS idx_monthly_product ON monthly_data(product_id);
     CREATE INDEX IF NOT EXISTS idx_monthly_month ON monthly_data(month);
 
-    -- 原始派米 BI 月度商品总览字段：保留报表中未映射到 monthly_data 的完整字段。
+    -- 原始 BI 月度商品总览字段：保留报表中未映射到 monthly_data 的完整字段。
     -- 每个商品/月份只有一份当前有效载荷，导入时按月份整体替换，便于回滚。
     CREATE TABLE IF NOT EXISTS monthly_source_payload (
         product_id TEXT NOT NULL,
@@ -558,6 +558,24 @@ def _run_init_migrations(conn):
         PRIMARY KEY (shop_id, date, channel, campaign_id, unit_id, product_id)
     );
     CREATE INDEX IF NOT EXISTS idx_promotion_daily_facts_grain ON promotion_daily_facts(date, channel, campaign_id, unit_id, product_id);
+    CREATE TABLE IF NOT EXISTS promotion_lead_daily (
+        shop_id TEXT NOT NULL DEFAULT 'default',
+        date DATE NOT NULL,
+        product_id TEXT NOT NULL,
+        inshop_uv INTEGER,
+        potential_uv INTEGER,
+        potential_uv_rate REAL,
+        ad_spend REAL,
+        ad_pv INTEGER,
+        clicks INTEGER,
+        payment_amount REAL,
+        payment_orders INTEGER,
+        cart_adds INTEGER,
+        source_batch_id TEXT,
+        fetched_at TEXT,
+        PRIMARY KEY (shop_id, date, product_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_promotion_lead_daily_date ON promotion_lead_daily(date, product_id);
     CREATE TABLE IF NOT EXISTS promotion_period_summary (
         shop_id TEXT NOT NULL DEFAULT 'default',
         period_start DATE NOT NULL,
@@ -1199,7 +1217,7 @@ def _run_init_migrations(conn):
         first_seen_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
         last_seen_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
         resolved_at TEXT,
-        UNIQUE(source_key, alert_type, fingerprint, status)
+        UNIQUE(source_key, alert_type, fingerprint)
     );
     CREATE INDEX IF NOT EXISTS idx_collector_health_alerts_status
         ON collector_health_alerts(status, last_seen_at);
@@ -1308,6 +1326,80 @@ def _run_init_migrations(conn):
         cursor.execute('DROP TABLE goal_locks_legacy')
         cursor.execute('CREATE INDEX IF NOT EXISTS idx_goal_locks_year ON goal_locks(year)')
 
+    # collector_health_alerts 早期把 ``status`` 也放进了唯一键，于是同一个
+    # fingerprint 可以同时留下一条 resolved 历史行和一条 open 现行行；
+    # ``resolve_health_alert`` 把 open 行改成 resolved 时会撞上那条历史行，
+    # 抛 UNIQUE constraint failed 并让整个 healthcheck 中断（后续所有源的
+    # 告警同步都被这一次异常截断）。这里把唯一键收窄为告警身份本身
+    # （source_key, alert_type, fingerprint），同指纹的多行合并为一行：
+    # 优先保留 open 行（现行告警不能丢），并把 first_seen/last_seen 取并集。
+    alerts_legacy = 'collector_health_alerts_legacy'
+    # 上一次迁移中断可能留下改好名的遗留表：先恢复，再按下面的流程重跑。
+    recovered = cursor.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name=?", (alerts_legacy,)
+    ).fetchone()
+    if recovered:
+        cursor.execute('DROP TABLE IF EXISTS collector_health_alerts')
+        cursor.execute(f'ALTER TABLE {alerts_legacy} RENAME TO collector_health_alerts')
+    unique_keys = []
+    for index_row in cursor.execute('PRAGMA index_list(collector_health_alerts)').fetchall():
+        if not index_row[2]:
+            continue
+        columns = tuple(
+            info[2] for info in cursor.execute(f'PRAGMA index_info("{index_row[1]}")').fetchall()
+        )
+        unique_keys.append(columns)
+    if ('source_key', 'alert_type', 'fingerprint', 'status') in unique_keys:
+        cursor.execute(f'ALTER TABLE collector_health_alerts RENAME TO {alerts_legacy}')
+        cursor.execute('''CREATE TABLE collector_health_alerts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            source_key TEXT NOT NULL,
+            alert_type TEXT NOT NULL,
+            severity TEXT NOT NULL DEFAULT 'warning',
+            status TEXT NOT NULL DEFAULT 'open',
+            fingerprint TEXT NOT NULL,
+            message TEXT NOT NULL,
+            details_json TEXT NOT NULL DEFAULT '{}',
+            first_seen_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            last_seen_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            resolved_at TEXT,
+            UNIQUE(source_key, alert_type, fingerprint)
+        )''')
+        cursor.execute(f'''INSERT INTO collector_health_alerts
+            (id, source_key, alert_type, severity, status, fingerprint, message,
+             details_json, first_seen_at, last_seen_at, resolved_at)
+        SELECT live.id, live.source_key, live.alert_type, live.severity, live.status,
+               live.fingerprint, live.message, live.details_json,
+               (SELECT MIN(other.first_seen_at) FROM {alerts_legacy} other
+                 WHERE other.source_key = live.source_key
+                   AND other.alert_type = live.alert_type
+                   AND other.fingerprint = live.fingerprint),
+               (SELECT MAX(other.last_seen_at) FROM {alerts_legacy} other
+                 WHERE other.source_key = live.source_key
+                   AND other.alert_type = live.alert_type
+                   AND other.fingerprint = live.fingerprint),
+               live.resolved_at
+        FROM {alerts_legacy} live
+        WHERE live.id = (
+            SELECT candidate.id FROM {alerts_legacy} candidate
+             WHERE candidate.source_key = live.source_key
+               AND candidate.alert_type = live.alert_type
+               AND candidate.fingerprint = live.fingerprint
+             ORDER BY (candidate.status = 'open') DESC, candidate.id DESC
+             LIMIT 1
+        )''')
+        cursor.execute(f'DROP TABLE {alerts_legacy}')
+        # 索引随遗留表一起被删除，重新建回来（与上方建表语句同名）。
+        cursor.execute(
+            'CREATE INDEX IF NOT EXISTS idx_collector_health_alerts_status '
+            'ON collector_health_alerts(status, last_seen_at)'
+        )
+        cursor.execute(
+            "INSERT OR REPLACE INTO schema_migrations(version, name, state) "
+            "VALUES (?, ?, 'applied')",
+            (SCHEMA_VERSION, 'collector_health_alert_unique_identity'),
+        )
+
     # Migration: bind import batches to the shop that produced them. Existing
     # single-shop history remains owned by the default shop.
     cursor.execute("PRAGMA table_info(import_batches)")
@@ -1372,6 +1464,12 @@ def _run_init_migrations(conn):
         'product_growth_stage': 'TEXT DEFAULT \'\'',
         'product_time_node': 'TEXT DEFAULT \'\'',
         'shop_label': 'TEXT DEFAULT \'\'',
+        # 档位来源标记（manual / matrix-auto / five-dim-auto）。
+        # 原先只在 services/product_matrix_service 与 scripts/sync_five_dim_tier
+        # 里用 ALTER TABLE 临时补列，新库建表时没有这一列，任何绕过这两个入口
+        # 的读路径都会撞上「no such column: tier_source」。这里补进建表迁移，
+        # 让新库一次到位、存量库由 ALTER TABLE 兜底。
+        'tier_source': 'TEXT NOT NULL DEFAULT \'\'',
     }
     cursor.execute("PRAGMA table_info(products)")
     existing_product_cols = {row[1] for row in cursor.fetchall()}
@@ -1705,3 +1803,55 @@ def _run_init_migrations(conn):
         "VALUES (?, ?, 'applied')",
         (SCHEMA_VERSION, 'storage_growth_indexes'),
     )
+
+    # CACHE-01：进程内 TTL cache 原先只在 Web 进程处理成功 mutation 后清空，
+    # 而 scripts/run_import_scanner.py 是独立进程（直接调 ImportService.confirm），
+    # 它写入的批次不会触发 Web 进程的 cache.clear()，于是首页可能继续返回
+    # 30~60 秒的旧数据。这里在库内维护一个单调递增的 mutation generation，
+    # 任何进程写入后自增；Web 进程把它拼进缓存键，只要 generation 变了，
+    # 旧键自然失效——不需要跨进程通知，也不需要共享缓存。
+    cursor.execute('''CREATE TABLE IF NOT EXISTS mutation_generation (
+        scope TEXT PRIMARY KEY,
+        generation INTEGER NOT NULL DEFAULT 0,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )''')
+    cursor.execute(
+        "INSERT OR IGNORE INTO mutation_generation(scope, generation) VALUES ('global', 0)"
+    )
+    cursor.execute(
+        "INSERT OR REPLACE INTO schema_migrations(version, name, state) "
+        "VALUES (?, ?, 'applied')",
+        (SCHEMA_VERSION, 'mutation_generation_for_shared_cache'),
+    )
+
+    # TIER-SOURCE-01（2026-10-22）：档位来源标记的历史欠账回填。
+    #
+    # 背景：人工写入口（api/catalog_mutations_api.py 的单条/批量、
+    # api/misc_legacy_api.py 的行内编辑）历史上只改 products.tier、不写
+    # products.tier_source，留下「档位非空但来源为空」的行。这些行被
+    # scripts/sync_five_dim_tier.is_locked 判为人工锁定永久跳过，
+    # 同时又会被旧版 product_matrix_service.apply_tier_writeback 覆盖——
+    # 同一个空值两个算法一边保护一边放行。写入口已在同批修复中补上
+    # tier_source='manual'，这里把存量空来源行一次性标注清楚。
+    #
+    # 只回填「有档位且来源为空」的行：空档位不属于人工赋值，保持原样；
+    # 已有 matrix-auto / five-dim-auto 的行不动，算法还应该能继续更新它们。
+    cursor.execute('''UPDATE products SET tier_source = 'manual'
+        WHERE COALESCE(TRIM(tier), '') != ''
+          AND COALESCE(TRIM(tier_source), '') = '' ''')
+    backfilled_tier_sources = cursor.rowcount
+    cursor.execute(
+        "INSERT OR REPLACE INTO schema_migrations(version, name, state) "
+        "VALUES (?, ?, 'applied')",
+        (SCHEMA_VERSION, 'tier_source_backfill_manual'),
+    )
+    # rowcount 只在本次真的补了行时才有意义，用一条审计记录留痕，
+    # 便于事后核对「谁在什么时候把哪些行标成了 manual」。
+    if backfilled_tier_sources:
+        cursor.execute(
+            'INSERT INTO audit_logs (entity_type, entity_id, action, operator, reason, '
+            'before_value, after_value) VALUES (?, ?, ?, ?, ?, ?, ?)',
+            ('products', 'tier_source-backfill', 'backfill_tier_source', 'migration',
+             '给有档位但来源为空的历史行补 manual 标记', '{}',
+             '{"rows": %d, "tier_source": "manual"}' % backfilled_tier_sources),
+        )

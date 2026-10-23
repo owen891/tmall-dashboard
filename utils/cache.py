@@ -38,3 +38,44 @@ class TTLCache:
 
 cache = TTLCache()
 
+
+MUTATION_GENERATION_SCOPE = 'global'
+
+
+def bump_mutation_generation(connection=None):
+    """库内自增 mutation generation，任何进程写入后都应调用。
+
+    CACHE-01：独立扫描进程（scripts/run_import_scanner.py）无法触发 Web
+    进程的 cache.clear()。把 generation 存进库里，Web 进程拼进缓存键，
+    跨进程失效就变成一次普通读取，不需要共享缓存或事件通道。
+    """
+    if connection is not None:
+        connection.execute(
+            '''INSERT INTO mutation_generation(scope, generation, updated_at)
+               VALUES (?, 1, CURRENT_TIMESTAMP)
+               ON CONFLICT(scope) DO UPDATE SET
+                   generation = generation + 1,
+                   updated_at = CURRENT_TIMESTAMP''',
+            (MUTATION_GENERATION_SCOPE,),
+        )
+        return
+    from db import get_db
+    with get_db() as conn:
+        bump_mutation_generation(conn)
+        conn.commit()
+
+
+def read_mutation_generation():
+    """读取当前 generation。读到任何错误都返回 None（调用方退回不缓存/短 TTL）。"""
+    try:
+        from db import get_db
+        with get_db() as conn:
+            row = conn.execute(
+                'SELECT generation FROM mutation_generation WHERE scope = ?',
+                (MUTATION_GENERATION_SCOPE,),
+            ).fetchone()
+        return int(row['generation']) if row else 0
+    except Exception:
+        # 迁移尚未跑过、库不可用等情况下不能因为缓存键取不到就打断请求。
+        return None
+

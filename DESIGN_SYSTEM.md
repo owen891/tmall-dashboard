@@ -950,7 +950,7 @@ const TEMPLATES = {
 
 
 
-* 直接用字段名作为 query 参数，如 `?category=堆堆袜&gender=女&min_spend=5`
+* 直接用字段名作为 query 参数，如 `?category=款式词&gender=女&min_spend=5`
 
 * 范围筛选：`min_{field}` / `max_{field}`
 
@@ -969,6 +969,31 @@ const TEMPLATES = {
 ***
 
 ## 八、前端代码规范
+
+### 8.0 CSS 分层约定（新代码必须遵守）
+
+19 个 CSS 文件是全局级联，一旦没有分层约定，选择器互相覆盖、错误波及范围无法静态推断。新代码按下表分层；老代码遇到再顺手收，**不要求一次性重写**。
+
+| 层 | 文件 | 职责 | 允许 | 禁止 |
+|---|---|---|---|---|
+| L0 令牌 | `tokens.css` | 唯一颜色/间距/字体来源 | 定义 `--token`、裸色值 | 写选择器样式 |
+| L1 基础 | `components.css` 的 `Canonical UI component contract` 段 | `.ui-*` 组件契约 | 组件类名、浮层定位 | 引用具体页面 |
+| L2 外壳 | `shell.js`/`shell.css` | 顶栏、侧栏、全局工具 | `demo-*` 外壳类名 | 页面业务样式 |
+| L3 页面 | `{page}.css`、`themes/{domain}-domain.css` | 单个页面/域的样式 | 必须限定在 `body[data-page="x"]` 或页面根类下 | 改 `.ui-*` 组件；自写 `position:fixed` 浮层 |
+| L4 工具 | `scripts/`、测试 | 校验与门禁 | — | 参与运行时样式 |
+
+三条硬规则（由 `scripts/check_design_system.py` 强制）：
+
+1. **颜色必须走 token**：除 `tokens.css` 外不得新增裸 `#hex` / `rgb()` / `hsl()`。历史违规记录在门禁的 `RAW_COLOR_BASELINE`，只允许减少。
+2. **浮层必须走原语**：页面级 CSS 不得自写 `position:fixed`。下拉、选择器、提示一律用 `TmallUI.popover`，由它统一负责 fixed 定位、视口夹紧、空间不足翻转、点外关闭、ESC、焦点返回、单例。
+3. **组件目录必须覆盖**：新增组件要同步补 `pages/component-catalog.html`，否则 `check_design_system.py` 报 R3。
+4. **复合组件不得在 HTML 里手写拼装**：`ui-panel`、`ui-metric-card`、`ui-table-wrap`、`ui-data-table`、`ui-empty-state`、`ui-page-header`、`ui-filter-toolbar`、`ui-table-toolbar`、`ui-context-bar`、`ui-metric-grid`、`ui-sticky-action-bar`、`ui-modal`、`ui-popover`、`ui-drawer`、`ui-field-selector` 一律走 `TmallUI.*` 工厂，否则报 R5。
+
+   **原子类（`ui-button`、`ui-badge`）允许在 HTML 里手写**。这是刻意的：原子类没有内部结构约定，静态标记手写合理；强制它们走 JS 工厂会破坏服务端渲染、增加无谓 JS 依赖，收益为负。门禁只针对"内部有 header/body/tools 结构约定、手写易与工厂输出漂移"的复合组件。
+
+   每页的允许量记录在 `scripts/check_design_system.py` 的 `UI_HANDWRITE_BASELINE`（引入时实测 **378 处**，集中在 `ui-panel` 104 / `ui-metric-card` 104）。**只允许下降**：收敛某页后请同步下调该页数字，把进展固化下来。
+
+> 为什么要硬性规定浮层：曾经因为没有浮层原语，时间选择器自己写定位；一次 CSS 解析错误（孤立声明块）吞掉了 `position:fixed`，弹窗以 `static` 渲染到文档流底部（top 2211px / 视口 800px），页面表现是「点了没反应」——console 无报错、单元测试全绿，只有真实浏览器点击才能发现。
 
 ### 8.1 文件命名
 
@@ -1325,14 +1350,27 @@ TmallUI.fieldSelector(options)
 
 字段选择器是跨商品、生命周期、经营概览和推广页面复用的公共组件。实现位于 `frontend/ui_demo/assets/field-selector.js`，统一入口为 `TmallUI.fieldSelector(options)`；`DemoFieldSelector.create(options)` 仅作为历史页面兼容调用。组件根节点和子节点使用 `ui-field-selector*` canonical class，支持字段分组、必选字段、勾选、顺序调整和预览。
 
-历史页面中的 `.button`、`.panel`、`.metric-card`、`.badge`、`.empty-state`、`.data-table` 等 class 由 `TmallUI.upgradeLegacy()` 自动映射到 `ui-*` canonical class。新代码不得再新增历史 class 的独立实现。
+历史页面中的 `.button`、`.panel`、`.metric-card`、`.badge`、`.empty-state`、`.data-table` 等 class **没有自动迁移兜底**：`TmallUI.upgradeLegacy()` 已被有意移除（`tests/test_ui_system_contract.py` 断言其不存在），历史 class 只保留为兼容别名，不会再被自动映射。新代码必须直接使用 `ui-*` canonical class 或 `TmallUI.*` 工厂，不得再新增历史 class 的独立实现。
 
 组件契约目录位于 `/component-catalog`。提交前运行：
 
 ```text
 python scripts/check_ui_contract.py
+python scripts/check_css_syntax.py --strict
+python scripts/check_design_system.py --strict
+python scripts/check_css_tokens.py --strict
+python scripts/check_event_binding.py --strict
+node desktop/node_modules/typescript/bin/tsc -p tsconfig.json --noEmit
 pytest -q tests/test_ui_system_contract.py
 ```
+
+前五项中的后四项（`check_css_syntax` / `check_design_system` / `check_css_tokens` / `check_event_binding`）
+同时由 `.github/workflows/quality-gate.yml` 的 "Run static design-system gates" 步骤
+和本地入口 `scripts/test_all.ps1` 执行。**两处清单必须保持一致**：只写进本文档而不进这两处，
+门禁等于不存在——历史上 `check_event_binding` 对应的「禁止事项 7」就是因为没有检查脚本，
+被违反了三处而无人发现。
+
+类型检查范围由 `tsconfig.json` 的 `include` 白名单控制，只覆盖已标注的核心模块（`ui-components.js`、`runtime/*`、纯函数模块），不产出运行时代码。新增标注文件时同步加入清单；`tests/test_ui_system_contract.py` 会断言清单「只增不减」，防止覆盖范围被悄悄缩小。
 
 `TmallUI.audit()` 可在浏览器开发工具中检查当前页面是否存在未接入公共组件契约的节点。
 
@@ -1352,14 +1390,96 @@ pytest -q tests/test_ui_system_contract.py
 
 7. **禁止用 class 做事件绑定** — 必须用 data 属性
 
+   由 `scripts/check_event_binding.py --strict` 强制。判据：`querySelector*('.x…')`
+   的结果在同一语句内被 `addEventListener` / `on<事件>=` 绑定时判为违规，
+   修法是改用 `[data-*]` 选择器并在元素上补对应属性。豁免仅限于组件层
+   （`ui-components.js`、`field-selector.js`）定位自己创建的子节点。
+
 8. **禁止不同页面用不同的金额 / 百分比格式** — 统一用格式化函数
+
+   唯一契约来源是 `frontend/ui_demo/assets/format.js`（`DemoFormat.money` /
+   `percent` / `moneyWan`）。注意它按设计**不拼接货币符号**，只负责千分位与小数位。
+   **本条目前没有静态门禁**，靠评审发现：仓库里曾有 13 份各自实现的 `money()`，
+   `¥` / `￥` 与小数位（0/1/2）互不一致。
 
 
 
 ***
 
-*文档版本：v1.1 | 最后更新：2026-09-17*
+*文档版本：v1.1 | 最后更新：2026-10-11*
 
 *基于 tmall-dashboard v1.0.13 实际实现总结*
 
 *v1.1 修正：API 返回格式、shell.js 自动加载机制、导航注册位置、标准数据状态、主题系统、目录结构、DemoApi 接口*
+
+*2026-10-11 补充：提交前门禁清单加入 `check_event_binding.py`；明确禁止事项 7 的检查脚本与豁免范围；*
+*说明禁止事项 8 的格式化契约现状（`format.js` 不拼符号，且尚无静态门禁）。*
+
+
+### 2026-10-17 增补：首页 U01–U03 周期与质量展示契约
+- 所选日期区间与月度诊断分开标注；只在范围、来源、指标定义和当前值均可核验一致时展示月度比较。不匹配显示“暂无同范围比较”，不补0%。
+- 月目标进度独立于上期比较是否存在；仅有匹配月目标时显示，不把日期范围KPI冒充月目标实绩。
+- 历史首末日期是跨度，不是当前范围覆盖天数；缺日读取响应envelope missing_ranges，无完整性合同则标待核验。缺失详情使用可键盘展开的原生details。
+- 首页状态色由语义modifier决定；loading/unknown/no-data为中性，warning为警告色，failure为危险色，available为成功色。
+- 首页筛选与操作区允许换行，自定义日期控件不得以overflow:hidden裁掉。保持其他页面shell规则不变。
+- 复现命令：node scripts/test_overview_ux_runtime.cjs；pytest tests/test_overview_kpi_ui.py会运行真实JS行为测试。
+
+### 2026-10-17 增补：桌面首页克制视觉
+- 仅 >=960px 首页样式增补；保留现有品牌与状态色 token，未做手机端改版。统一KPI面板，核心指标先于摘要，细分隔代替嵌套小卡片阴影；保留选中和focus反馈。
+- 960–1199px顶部为两行：品类与动作、日期；新增动作弹窗仅正文滚动。不得改变数据口径。
+- 专项静态契约 node scripts/test_apple_desktop.cjs；实际桌面几何需结合浏览器证据，不以正则测试替代视觉验收。
+
+### 2026-10-17 桌面首页高亮收敛
+- 主/次指标 is-selected 使用既有brand-tint浅底、brand底线、brand-text标签；数值与涨跌语义色不变。未选中hover为surface-muted；focus-visible独立2px内圈。只作用于>=960px首页，不改选中业务逻辑。
+
+2026-10-17 | Codex | 首页桌面高亮 | 【已作废】此前“细底线”要求，按用户最新要求取消选中底线；保留浅紫底、标签强调、焦点可见及原单元格尺寸 | 用户要求更收敛 | 仅首页桌面主次指标
+
+2026-10-17 | Codex | macOS桌面外壳与选中态 | 全站桌面导航侧条（展开/收起）、日期快捷入口底线、品类页签及旧页签兼容样式改为底色识别；224px侧栏、32px导航行、系统字体、8px圆角、取消悬停位移；保留原配色、分隔线、焦点及业务语义色 | 用户选择macOS紧凑原生应用方向 | >=960px，不改数据与移动端
+
+2026-10-17 | Codex | 全页面桌面主体 | 21个模板末尾加载macos-content.css（首页主体排除）；指标分组统一、静态面板去漂浮、紧凑控件/表格/筛选与弹窗，覆盖分析/品类/复盘/设置/九维旧类；九维生成器同步引用 | 用户要求其他页面统一macOS风格 | >=960px，颜色和业务行为不变
+
+2026-10-17 | Codex | 逐页结构改造第一批 | 商品列表真实前移至分群/矩阵之前，字段模板/列设置归列表；推广KPI前移、范围来源合并、诊断平面化；设置摘要/6分区移为工作区侧导航，右侧分组表单。全部原data/name、ID、控件与脚本守恒 | 修正此前仅共享外观而未逐页整理结构的不足 | 本批仅商品/推广/设置3页，另16页结构改造待办；保留配色、数据口径与交互，无手机端适配工作
+
+
+### 2026-10-18 增补：PC 自定义分析工作区
+- 延续 macOS 紧凑原生应用方向及原配色，只做 PC（>=960px）。`analysis-workspace.css` 在共享主题之后加载；左侧模板与配置检查器，右侧统一结果面，减少嵌套边框/圆角，不改 API 参数、统计口径、保存格式。
+- 六个模板为原生 button，aria-pressed 跟随当前选中态；六个原配置标签显式关联输入。原有 ID/data hooks 保留。
+- `createChartCard` 在下一帧且 canvas 仍已挂载时初始化 ECharts，避免脱离 DOM 的 0×0 画布；保留 resize/dispose 登记。
+- 定向静态契约：`node scripts/test_analysis_workspace.cjs`。960/1024/1440 PC 浏览器夹具验证及原始/修改/回滚证据：`E:/tmp/tmall-apple-desktop-20261017/VERIFICATION.txt`。夹具不等于生产业务数据验证；不开展手机端改版。
+
+
+### 2026-10-18 增补：PC 推广总览数值 / 状态 / 证据分层
+- `promotion-live.js` 增加纯展示接口 valueText/statusLabel/compact；renderKpis 与 renderCommandBoard 的大号字段仅展示值，部分/未提供/不可计算放短状态，覆盖行数与来源保存在原生 details 数据完整度。原 format/exportValue/summarize/chartValue 不变；缺失不补0，部分比率仍为不可用。
+- >=960px 仅调整展示间距、信号列与窄PC金额布局；960–1199px 前四核心指标两列，避免金额断行。未进行手机端设计。
+- 原有 ID/data/name/控件/脚本保留；macOS 结构 fixture 仅增补新状态/证据 hooks。`node scripts/test_promotion_presentation.cjs` 与既有 promotion_missingness 契约共同回归；浏览器同一冻结输入做原版/修改/回滚验证，证据沿用 E:/tmp/tmall-apple-desktop-20261017 四角色。本批仅修推广首屏，不代表首页/商品深改完成。
+
+
+### 2026-10-18 增补：PC 时间选择器视觉收敛
+- 仅 shell.css 的 >=960px 增补：顶栏时间文字/按钮减轻字重；日期弹层标题14px，统一radius-md与elevation-md；月份/年份选中改浅品牌底，保留日期起止实心小圆点、区间带与独立键盘焦点；取消按钮去描边。原有尺寸、锚定、DOM、事件、日期范围与应用逻辑不变。不新建选择器组件，不改手机端。
+- 原版/修改/回滚同一浏览器输入验证日/周/月/年、双月范围选择及应用、Esc与焦点返回、960/1024/1440视口包含。沿用 E:/tmp/tmall-apple-desktop-20261017 四角色，不以静态检查替代画面核对。
+
+
+### 2026-10-18 增补：PC全站克制型苹果风收敛（不改配色/业务）
+- 先统一共享组件，再逐页减噪：21模板同协议截图，18个CSS文件收敛。按钮/输入/分段/指标/面板/工具区/表格/空态状态/浮层/键盘禁用共10类检查；主题token只读，不增裸色或!important、不改HTML/JS/指标计算与日期逻辑。仅>=960px。
+- 真实差异：首页辅助摘要gap12→8px；商品详情标题34→22px；新品漏斗重复边框1→0px；类目判断竖线3→0px；创意工具条及九维维度边框1→0px。已合格的分析/推广工作区保留，不为凑数量重写。
+- 验收：21页PARENT/候选/执行step回滚均HTTP200、0pageerror/hidden泄漏；37场代表PC状态检查；深浅弹层/焦点/禁用/日期应用；四项strict、UI静态、TypeScript及既有6组工作区/结构契约通过。不是完整CI或全部业务流程验收。
+- 既有P2：首页已发布legacy趋势菜单底部超视口、Esc无效，新旧同现且候选未恶化；其未发布配套JS未夹带本轮。需后续独立迁移popover。
+- 证据及逐页说明：E:/tmp/tmall-apple-desktop-20261017/site-refinement/comparison.html、coverage.txt、independent-review.txt。沿用四角色；ROLLBACK.sh TARGET_COPY --step site-refinement恢复本轮PARENT，默认恢复累计原版；旧发布保留。
+
+2026-10-18 | Codex补验 | 商品详情真实长文本 | 补测真实商品后发现既有3列信息区挤压标签；仅详情CSS收敛为清晰信息行、完整标签和正常换行值，保留全部8字段与顺序；独立960/1024/1440复验 | 避免只验收空态而漏掉真实内容 | 仅PC详情；同一实际GET快照三态数据一致，完整21页候选重跑，证据site-refinement/independent-readability-review.txt
+
+
+### 2026-10-18 增补：商品详情主图
+- 复用现有product.image_url，补齐模板data-product-detail-image节点；PC商品名左侧96×96主图，contain完整展示，沿用radius-md/surface-base，未增加图库或新弹窗。
+- renderProductImage仅在图片成功加载后显示；缺少URL/加载失败收起且清除旧src；同图日期刷新不重复闪烁；alt使用商品名纯文本。无API/指标变更，不增加手机端展示。
+- 真实商品固定GET快照的960/1024/1440有图/缺图/坏图九场三态验证；6项原生JS回归、四strict/UI/结构/类型门禁与精确补丁/回滚验证见E:/tmp/tmall-apple-desktop-20261017/VERIFICATION.txt。ROLLBACK.sh TARGET_COPY --step product-image只恢复本轮，旧step与累计回滚保留。
+
+2026-10-18 | Codex | PC异常提醒去装饰竖线 | operations-center__item左侧3px状态色粗线改为1px中性细边，高风险/异常提醒标签及全文保留 | 用户截图框出左侧红色竖线，继续收敛 | 仅>=960px，真实提醒三宽原版/修改/回滚及精确哈希验证；不改HTML/JS/风险判断，沿用四角色；--step alert-stripe恢复本轮
+
+
+### 2026-10-18 增补：PC真实任务路径与文字收敛
+- 商品筛选保留所有控件/字段/ID与查询逻辑：DOM先搜索，再把呈现方式/日周月和更多筛选/收藏/重置合为次级行，冗余说明仅改sr-only而非删除。1440表头Y520→430、1024Y639→549、960Y757→715；不靠隐藏业务字段达成。
+- PC正文与展示字统一系统UI字体；status-list与明细值从代码等宽字改为同一UI字重500/表格数字等宽，代码/商品ID规则不动，配色token不变。
+- 真实商品入口是列表→快速查看抽屉→完整工作台：抽屉open即显示已知商品名/ID/主图，不等8个请求才填身份，不闪旧商品；复用原图片渲染，旧图片迟到error不可清空新图。只加可选imageUrl展示参数，不改API/指标。
+- 【已修复】旧发布首页趋势菜单越界/Esc旧P2：源码原有popover迁移此前未发布，本批检查原节点/8checkbox/最多3指标、视口夹紧、Esc/外点/焦点与重复开关后发布；仅在restoreTrendMenu增补RAF条件归焦：空白外点回触发器，点击新控件不抢焦点；共享popover不改。原LIVE与PARENT基线在VERIFICATION中分开。
+- 源码PARENT/修改/执行step回滚同协议的文字、表头、同步反馈与实际GET数据；严格门禁、21模板和独立复核的最终证据沿用E:/tmp/tmall-apple-desktop-20261017四角色。ROLLBACK.sh TARGET_COPY --step workflow-refinement恢复本批源码PARENT；保留历史step与完整累计回滚。未宣称全业务流程/全CI/手机验收。

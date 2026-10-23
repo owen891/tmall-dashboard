@@ -425,6 +425,12 @@ class ImportScanServiceTests(unittest.TestCase):
             )
             connection.commit()
 
+        # T06: expiry is now a hard boundary; the old token must not resurrect.
+        self.assertFalse(ImportScanService._touch_lease(job['id'], token))
+        with get_db(self.db_path) as connection:
+            connection.execute('UPDATE import_scan_jobs SET lease_until=? WHERE id=?',
+                               ((datetime.now(timezone.utc) + timedelta(seconds=30)).isoformat(), job['id']))
+            connection.commit()
         self.assertTrue(ImportScanService._touch_lease(job['id'], token))
         with get_db(self.db_path) as connection:
             after = connection.execute(
@@ -481,6 +487,10 @@ class ImportScanServiceTests(unittest.TestCase):
         self.assertNotEqual(row['status'], 'failed')
 
         # The real owner can still claim and write.
+        with get_db(self.db_path) as connection:
+            connection.execute('UPDATE import_scan_jobs SET lease_token=?, lease_until=? WHERE id=?',
+                               ('owner-a', (datetime.now(timezone.utc) + timedelta(seconds=120)).isoformat(), job['id']))
+            connection.commit()
         self.assertTrue(ImportScanService._claim_discovered_file(file_id, 'owner-a'))
         ImportScanService._update_file(file_id, 'owner-a', status='failed', error_code='OWNER_WRITE')
         with get_db(self.db_path) as connection:
@@ -516,6 +526,10 @@ class ImportScanServiceTests(unittest.TestCase):
                 (file_id,),
             )
             connection.commit()
+        with get_db(self.db_path) as connection:
+            connection.execute('UPDATE import_scan_jobs SET lease_token=?, lease_until=? WHERE id=?',
+                               ('owner-c', (datetime.now(timezone.utc) + timedelta(seconds=120)).isoformat(), job['id']))
+            connection.commit()
         self.assertTrue(ImportScanService._claim_discovered_file(file_id, 'owner-c'))
 
         # A crashed holder's row is reclaimable only once it goes stale.
@@ -537,6 +551,10 @@ class ImportScanServiceTests(unittest.TestCase):
             connection.execute(
                 "UPDATE import_scan_files SET updated_at=? WHERE id=?", (stale, file_id)
             )
+            connection.commit()
+        with get_db(self.db_path) as connection:
+            connection.execute('UPDATE import_scan_jobs SET lease_token=?, lease_until=? WHERE id=?',
+                               ('owner-d', (datetime.now(timezone.utc) + timedelta(seconds=120)).isoformat(), job['id']))
             connection.commit()
         self.assertTrue(ImportScanService._claim_discovered_file(file_id, 'owner-d'))
 

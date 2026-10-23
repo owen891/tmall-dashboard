@@ -2,7 +2,7 @@
 """构建「推广分析复盘」数据集（近30天，指定品类，叠加单品利润 + 主图）。
 
 用法：python scripts/promo_review/build_data.py [品类标签]
-      默认 'sock'（=标品袜子）；传 'all' 表示不限品类。
+      默认 'sock'（=默认品类）；传 'all' 表示不限品类。
 
 口径（与月复盘「广告复盘」模块一致）：
 - 汇总层（花费/投产/费比/净费比/利润）取自 daily_data（BI 账单口径），品类按
@@ -71,6 +71,47 @@ PERIODS = {
         'monthly_yoy': ('2026-10', '2025-10'),
         'cost_note': '本期 6 天费用列在 BI 补采窗口内为 NULL（BI 未导出 10 月成本），利润结构不可拆桶。',
         'yoy_note': '两侧同为 6 个自然日（10 月 1~6 日），逐日对齐。',
+    },
+    # 自然周（周一~周日）。2026-10-19 是周一，故最近一个完整自然周为 10-12~10-18。
+    'week': {
+        'name': '本周（10-12~10-18）', 'title': '本周',
+        'cur': ('2026-10-12', '2026-10-18'),
+        'prev': ('2026-10-05', '2026-10-11'),
+        'yoy_cur': ('2026-10-12', '2026-10-18'),
+        'yoy_prev': ('2025-10-12', '2025-10-18'),
+        'cost': ('2026-10-12', '2026-10-15'),
+        'prev_desc': '上周（10-05~10-11）',
+        'yoy_desc': '去年同期（2025-10-12~10-18）',
+        'monthly_yoy': ('2026-10', '2025-10'),
+        'cost_note': ('10-16~10-18 三天的费用列在 BI 字段窗口内为 NULL（API 源不返回成本明细，'
+                      '需等窗口过后滚动补采或 Excel 导入回填），故利润结构只覆盖成本齐备的 4 天；'
+                      '本期汇总层的净利润仍取 BI 利润列，覆盖全部 7 天。'),
+        'yoy_note': ('2025 年 10 月在 daily_data 无任何日粒度数据（历史只采到 2025-09），'
+                     '同比两侧不可比 → 同比留空，不臆造。'),
+        # 双11 活动时间轴（运营提供的平台规则，外部事实，非数据推测）。
+        # 用于把「本期为什么跌」拆成「活动节奏」而不是笼统归因。
+        'campaign': {
+            'name': '2026 天猫双11',
+            'timeline': [
+                ('预售定金', '2026-10-15 20:00', '2026-10-20 17:59', '付定金锁客，成交计入尾款日'),
+                ('现货预热', '2026-10-17 00:00', '2026-10-20 19:59', '加购/收藏蓄水，用户等开卖'),
+                ('现货开卖', '2026-10-20 20:00', '2026-11-13 23:59', '收割期，含尾款支付'),
+            ],
+            # 阶段切分：**互斥**，可相加（否则各段之和不等于本期合计）。
+            # 边界按活动开启日归入新阶段（10-15 20:00 开启 → 10-16 起整日计入定金期）。
+            'phases': [
+                ('大促尾波', '2026-10-12', '2026-10-12',
+                 '承接上一波大促（10-07~10-08 峰值）的余温'),
+                ('定金前平销', '2026-10-13', '2026-10-15',
+                 '定金期尚未开启，正常平销'),
+                ('定金期+预热', '2026-10-16', '2026-10-18',
+                 '10-15 20:00 定金开启、10-17 00:00 现货预热开启，用户锁客延后成交'),
+            ],
+            # 与上面互斥分段不同，这是「纯现货预热」切片（10-17 起），用于单独看预热强度
+            'overlap_slice': ('现货预热期内', '2026-10-17', '2026-10-18',
+                              '仅统计 10-17 00:00 现货预热开启后的两天'),
+            'harvest_start': '2026-10-20',
+        },
     },
 }
 
@@ -236,10 +277,51 @@ prod_daily = {r['product_id']: r for r in rows(f"""
            COALESCE(SUM(d.ad_spend),0) ad_spend,
            COALESCE(SUM(d.operating_profit),0) profit,
            COALESCE(SUM(d.payment_qty),0) qty,
-           COALESCE(SUM(d.buyers),0) buyers
+           COALESCE(SUM(d.buyers),0) buyers,
+           COALESCE(SUM(d.ipv),0) ipv,
+           COALESCE(SUM(d.cart_users),0) cart_users
     FROM daily_data d JOIN products p ON p.product_id = d.product_id
     WHERE d.date BETWEEN ? AND ?{CAT_SQL}
     GROUP BY d.product_id""", [CUR[0], CUR[1], *CAT_PARAMS])}
+
+# 单品级「引导访问潜客占比」：万相台 inshopPotentialUv / inshopUv（单品日粒度）。
+# 已逐行验证平台字段 inshopPotentialUvRate 与该式完全一致（714/714，0 例外）。
+# 注意：单品口径**不可相加**——同一用户逛多个商品会重复计数，
+#       各单品之和必然大于店铺账户口径，所以这里只在单品行展示，不做店铺汇总。
+lead_by_product = {}
+lead_by_date = {}
+try:
+    for _r in rows(f"""SELECT l.product_id,
+                              COALESCE(SUM(l.inshop_uv),0) uv,
+                              COALESCE(SUM(l.potential_uv),0) pot
+                       FROM promotion_lead_daily l JOIN products p ON p.product_id = l.product_id
+                       WHERE l.date BETWEEN ? AND ?{CAT_SQL}
+                       GROUP BY l.product_id""",
+                   [CUR[0], CUR[1], *CAT_PARAMS]):
+        _uv = float(_r.get('uv') or 0)
+        _pot = float(_r.get('pot') or 0)
+        if _uv > 0 and _pot > 0:
+            lead_by_product[_r['product_id']] = round(_pot / _uv, 6)
+except Exception:
+    lead_by_product = {}
+
+try:
+    for _r in rows(f"""SELECT l.date d,
+                              COALESCE(SUM(l.inshop_uv),0) uv,
+                              COALESCE(SUM(l.potential_uv),0) pot
+                       FROM promotion_lead_daily l JOIN products p ON p.product_id = l.product_id
+                       WHERE l.date BETWEEN ? AND ?{CAT_SQL}
+                       GROUP BY l.date""",
+                   [CUR[0], CUR[1], *CAT_PARAMS]):
+        _uv = float(_r.get('uv') or 0)
+        _pot = float(_r.get('pot') or 0)
+        lead_by_date[_r['d']] = {
+            'inshop_uv': int(_uv),
+            'potential_uv': int(_pot),
+            'lead_ratio': round(_pot / _uv, 6) if _uv else None,
+        }
+except Exception:
+    lead_by_date = {}
 
 promo = {r['product_id']: r for r in rows(f"""
     SELECT f.product_id,
@@ -340,6 +422,11 @@ def merge(pid):
         'cart_cost': (spend / (p.get('carts') or 0)) if spend and p.get('carts') else None,
         'new_cost': (spend / (p.get('new_buyers') or 0)) if spend and p.get('new_buyers') else None,
         'cart_rate': ((p.get('carts') or 0) / p['clicks']) if p.get('clicks') else None,
+        # 店铺侧加购率：加购人数 ÷ 访客（与分阶段表的「加购率」同口径，可横向对照）
+        'cart_rate_shop': (((d.get('cart_users') or 0) / (d.get('ipv') or 0))
+                           if (d.get('ipv') or 0) else None),
+        # 引导潜客占比：monthly_data 口径，库里全为 0 → 一律 None，表格显示 --
+        'lead_ratio': lead_by_product.get(pid),
         'carts': p.get('carts'), 'new_buyers': p.get('new_buyers'), 'clicks': p.get('clicks'),
     }
 
@@ -382,6 +469,59 @@ out['efficient_items'] = sorted(
     [m for m in real if m['profit'] > 1000 and (m['ad_ratio_bill'] or 1) < 0.15],
     key=lambda x: x['profit'], reverse=True)[:15]
 
+# ---------- 3b) 费比分档 → 利润率（效率标杆的实测依据，不写死结论） ----------
+# 报告里「费比 <15% 的款利润率普遍 15%~30%」这类句子必须来自实测；
+# 不同周期会反转（本周就没有一款能做到），所以按档位算出来再决定怎么写。
+out['ratio_bands'] = rows(f"""
+    WITH x AS (
+        SELECT d.product_id,
+               SUM(d.net_sales) net, SUM(d.operating_profit) op, SUM(d.ad_spend) ad
+        FROM daily_data d JOIN products p ON p.product_id = d.product_id
+        WHERE d.date BETWEEN ? AND ?{CAT_SQL}
+        GROUP BY d.product_id)
+    SELECT CASE
+             WHEN net <= 1000 THEN 'small'
+             WHEN ad / net < 0.15 THEN 'b15'
+             WHEN ad / net < 0.25 THEN 'b25'
+             WHEN ad / net < 0.35 THEN 'b35'
+             ELSE 'over35' END AS band,
+           COUNT(*) AS n,
+           ROUND(SUM(net), 2) AS net,
+           ROUND(SUM(op), 2) AS profit,
+           ROUND(SUM(ad), 2) AS ad,
+           ROUND(SUM(op) / NULLIF(SUM(net), 0), 4) AS profit_rate,
+           ROUND(SUM(ad) / NULLIF(SUM(net), 0), 4) AS ad_ratio,
+           SUM(CASE WHEN op < 0 THEN 1 ELSE 0 END) AS loss_n
+    FROM x GROUP BY band ORDER BY band""", [CUR[0], CUR[1], *CAT_PARAMS])
+
+# 盈利/亏损两组的规模对比，供「结构性」结论引用
+out['pn_split'] = one(f"""
+    WITH x AS (
+        SELECT d.product_id, SUM(d.net_sales) net, SUM(d.operating_profit) op, SUM(d.ad_spend) ad
+        FROM daily_data d JOIN products p ON p.product_id = d.product_id
+        WHERE d.date BETWEEN ? AND ?{CAT_SQL}
+        GROUP BY d.product_id)
+    SELECT SUM(CASE WHEN op > 0 THEN 1 ELSE 0 END) win_n,
+           SUM(CASE WHEN op <= 0 THEN 1 ELSE 0 END) loss_n,
+           ROUND(SUM(CASE WHEN op > 0 THEN net ELSE 0 END), 2) win_net,
+           ROUND(SUM(CASE WHEN op <= 0 THEN net ELSE 0 END), 2) loss_net,
+           ROUND(SUM(CASE WHEN op > 0 THEN op ELSE 0 END), 2) win_profit,
+           ROUND(SUM(CASE WHEN op <= 0 THEN op ELSE 0 END), 2) loss_profit,
+           ROUND(SUM(CASE WHEN op > 0 THEN ad ELSE 0 END), 2) win_ad,
+           ROUND(SUM(CASE WHEN op <= 0 THEN ad ELSE 0 END), 2) loss_ad,
+           COUNT(*) AS total_n
+    FROM x""", [CUR[0], CUR[1], *CAT_PARAMS])
+
+# 退款率（环比看质量），本期/对比期各一
+out['refund'] = {
+    'cur': one(f"""SELECT ROUND(SUM(d.refund_amount),2) refund, ROUND(SUM(d.payment_amount),2) pay
+                   FROM daily_data d JOIN products p ON p.product_id = d.product_id
+                   WHERE d.date BETWEEN ? AND ?{CAT_SQL}""", [CUR[0], CUR[1], *CAT_PARAMS]),
+    'prev': one(f"""SELECT ROUND(SUM(d.refund_amount),2) refund, ROUND(SUM(d.payment_amount),2) pay
+                    FROM daily_data d JOIN products p ON p.product_id = d.product_id
+                    WHERE d.date BETWEEN ? AND ?{CAT_SQL}""", [PREV[0], PREV[1], *CAT_PARAMS]),
+}
+
 # ---------- 4) 利润结构（成本齐备子窗口，品类过滤） ----------
 ps = one(f"""SELECT COALESCE(SUM(d.net_sales),0) net_sales,
                     SUM(d.sales_cost) sales_cost, SUM(d.custom_cost) custom_cost,
@@ -411,10 +551,24 @@ out['trend'] = rows(f"""SELECT d.date,
                                COALESCE(SUM(d.ad_spend),0) ad_spend,
                                COALESCE(SUM(d.net_sales),0) net_sales,
                                COALESCE(SUM(d.payment_amount),0) gsv,
-                               COALESCE(SUM(d.operating_profit),0) profit
+                               COALESCE(SUM(d.operating_profit),0) profit,
+                               COALESCE(SUM(d.ipv),0) ipv,
+                               COALESCE(SUM(d.buyers),0) buyers,
+                               COALESCE(SUM(d.cart_users),0) cart_users,
+                               COALESCE(SUM(d.payment_qty),0) qty
                         FROM daily_data d JOIN products p ON p.product_id = d.product_id
                         WHERE d.date BETWEEN ? AND ?{CAT_SQL}
                         GROUP BY d.date ORDER BY d.date""", [CUR[0], CUR[1], *CAT_PARAMS])
+# 逐日转化/加购派生指标（比率一律由当日总量重推，不用均值）
+for _r in out['trend']:
+    _ip = float(_r.get('ipv') or 0) or 1
+    _ct = float(_r.get('cart_users') or 0)
+    _ad = float(_r.get('ad_spend') or 0)
+    _bu = float(_r.get('buyers') or 0)
+    _r['cvr'] = round(_bu / _ip, 6)
+    _r['cart_rate'] = round(_ct / _ip, 6)
+    _r['cart_cost'] = round(_ad / _ct, 4) if _ct else None
+    _r['cart_to_buy'] = round(_bu / _ct, 6) if _ct else None
 
 out['promo_trend'] = rows(f"""SELECT f.date, SUM(f.ad_spend) spend,
                                      SUM(f.attributed_payment_amount) attr,
@@ -424,6 +578,200 @@ out['promo_trend'] = rows(f"""SELECT f.date, SUM(f.ad_spend) spend,
                               WHERE f.date BETWEEN ? AND ? AND f.grain='product'
                                 AND f.channel='全部' AND f.product_id NOT LIKE '-%'{CAT_SQL}
                               GROUP BY f.date ORDER BY f.date""", [CUR[0], CUR[1], *CAT_PARAMS])
+
+# ---------- 6) 数据缺口自检（供报告「口径与缺口」节如实引用，不写死日期） ----------
+from datetime import date as _dt_date, timedelta as _td  # noqa: E402
+
+
+def _date_span(rng):
+    a = _dt_date.fromisoformat(rng[0]); b = _dt_date.fromisoformat(rng[1])
+    return [(a + _td(days=i)).isoformat() for i in range((b - a).days + 1)]
+
+
+_span = _date_span(CUR)
+_daily_days = {r['date'] for r in out['trend']}
+_promo_days = {r['date'] for r in out['promo_trend']}
+# 成本列齐全的天：当天该品类所有行 product_cost 均非 NULL
+_cost_days = {r['date'] for r in rows(f"""
+    SELECT d.date FROM daily_data d JOIN products p ON p.product_id = d.product_id
+    WHERE d.date BETWEEN ? AND ?{CAT_SQL}
+    GROUP BY d.date
+    HAVING SUM(CASE WHEN d.product_cost IS NULL THEN 1 ELSE 0 END) = 0
+""", [CUR[0], CUR[1], *CAT_PARAMS])}
+out['coverage'] = {
+    'window_days': len(_span),
+    'missing_daily': [d for d in _span if d not in _daily_days],
+    'missing_promo': [d for d in _span if d not in _promo_days],
+    'cost_ready_days': sorted(_cost_days),
+    'cost_missing_days': [d for d in _span if d not in _cost_days],
+}
+
+# ---------- 7) 活动阶段拆解（双11 预热期归因） ----------
+# 目的：把「本期为什么跌」从「投放变差」拆成「活动节奏 + 投放动作」两件事。
+# 蓄水期考核不看当期 ROI（用户此刻在攒加购，成交延后到收割日），改看
+#   加购成本 = 花费 / 加购人数   —— 买一个「未来的成交机会」多少钱
+#   加购→成交 转化             —— 蓄的水有多少真的流到成交
+# 这两个指标能在「当期 GSV 崩了」的情况下判断投放本身有没有变差。
+_CAMP = PERIOD.get('campaign') or {}
+out['campaign'] = {
+    'name': _CAMP.get('name'),
+    'timeline': _CAMP.get('timeline') or [],
+    'harvest_start': _CAMP.get('harvest_start'),
+    'phases': [],
+}
+
+
+def _phase_agg(start, end):
+    r = one(f"""SELECT COUNT(DISTINCT d.date) days,
+                       COALESCE(SUM(d.ad_spend),0) ad,
+                       COALESCE(SUM(d.payment_amount),0) gsv,
+                       COALESCE(SUM(d.net_sales),0) net,
+                       COALESCE(SUM(d.operating_profit),0) profit,
+                       COALESCE(SUM(d.ipv),0) ipv,
+                       COALESCE(SUM(d.buyers),0) buyers,
+                       COALESCE(SUM(d.payment_qty),0) qty,
+                       COALESCE(SUM(d.cart_users),0) cart_u,
+                       COALESCE(SUM(d.fav_users),0) fav_u
+                FROM daily_data d JOIN products p ON p.product_id = d.product_id
+                WHERE d.date BETWEEN ? AND ?{CAT_SQL}""", [start, end, *CAT_PARAMS])
+    return dict(r) if r else {}
+
+
+def _lead_agg(start, end):
+    """区间内品类口径的引导访问潜客合计（单品级 SUM，仅供看结构，不是店铺口径）。"""
+    try:
+        return one(f"""SELECT COUNT(DISTINCT l.date) days,
+                              COUNT(*) rows_n,
+                              COALESCE(SUM(l.inshop_uv),0) inshop_uv,
+                              COALESCE(SUM(l.potential_uv),0) potential_uv,
+                              COALESCE(SUM(l.ad_spend),0) ad
+                       FROM promotion_lead_daily l JOIN products p ON p.product_id = l.product_id
+                       WHERE l.date BETWEEN ? AND ?{CAT_SQL}""",
+                   [start, end, *CAT_PARAMS]) or {}
+    except Exception as _e:
+        return {'error': str(_e)}
+
+
+for _nm, _s, _e, _desc in (_CAMP.get('phases') or []):
+    _a = _phase_agg(_s, _e)
+    _n = int(_a.get('days') or 0) or 1
+    _ipv = float(_a.get('ipv') or 0) or 1
+    _cart = float(_a.get('cart_u') or 0)
+    _ad = float(_a.get('ad') or 0)
+    _lgl = _lead_agg(_s, _e)
+    _luv = float(_lgl.get('inshop_uv') or 0)
+    _lpot = float(_lgl.get('potential_uv') or 0)
+    out['campaign']['phases'].append({
+        'name': _nm, 'start': _s, 'end': _e, 'desc': _desc,
+        'days': int(_a.get('days') or 0),
+        'gsv': round(float(_a.get('gsv') or 0), 2),
+        'net': round(float(_a.get('net') or 0), 2),
+        'ad': round(_ad, 2),
+        'profit': round(float(_a.get('profit') or 0), 2),
+        'ipv': int(_ipv),
+        'buyers': int(float(_a.get('buyers') or 0)),
+        'qty': int(float(_a.get('qty') or 0)),
+        'cart_u': int(_cart),
+        'fav_u': int(float(_a.get('fav_u') or 0)),
+        'gsv_per_day': round(float(_a.get('gsv') or 0) / _n, 2),
+        'ipv_per_day': round(_ipv / _n, 2),
+        'buyers_per_day': round(float(_a.get('buyers') or 0) / _n, 2),
+        'cart_per_day': round(_cart / _n, 2),
+        'cvr': round(float(_a.get('buyers') or 0) / _ipv, 6),
+        'cart_rate': round(_cart / _ipv, 6),
+        'cart_cost': round(_ad / _cart, 4) if _cart else None,
+        'fav_cost': round(_ad / float(_a.get('fav_u') or 1), 4) if float(_a.get('fav_u') or 0) else None,
+        'cart_to_buy': round(float(_a.get('buyers') or 0) / _cart, 6) if _cart else None,
+        'feibi': round(_ad / float(_a.get('gsv') or 1), 6) if float(_a.get('gsv') or 0) else None,
+        'lead_inshop_uv': int(_luv),
+        'lead_potential_uv': int(_lpot),
+        'lead_ratio': round(_lpot / _luv, 6) if _luv else None,
+    })
+
+# 对照基线：9 月正常期（无大促）的蓄水效率，用来判断「加购成本 3 元」是否异常
+_b = one(f"""SELECT COALESCE(SUM(d.ad_spend),0) ad,
+                    COALESCE(SUM(d.cart_users),0) cart_u,
+                    COALESCE(SUM(d.buyers),0) buyers,
+                    COALESCE(SUM(d.ipv),0) ipv,
+                    COALESCE(SUM(d.payment_amount),0) gsv
+             FROM daily_data d JOIN products p ON p.product_id = d.product_id
+             WHERE d.date BETWEEN '2026-09-01' AND '2026-09-30'{CAT_SQL}""", [*CAT_PARAMS])
+if _b and float(_b.get('cart_u') or 0):
+    out['campaign']['baseline_sept'] = {
+        'label': '2026-09 整月（无大促对照）',
+        'cart_cost': round(float(_b['ad']) / float(_b['cart_u']), 4),
+        'cart_to_buy': round(float(_b['buyers']) / float(_b['cart_u']), 6),
+        'cvr': round(float(_b['buyers']) / (float(_b['ipv']) or 1), 6),
+        'cart_rate': round(float(_b['cart_u']) / (float(_b['ipv']) or 1), 6),
+    }
+else:
+    out['campaign']['baseline_sept'] = None
+
+# 重叠切片：现货预热纯窗口（与上面互斥分段并存，用于单独度量预热强度）
+_ov = _CAMP.get('overlap_slice')
+if _ov:
+    _onm, _os, _oe, _odesc = _ov
+    _oa = _phase_agg(_os, _oe)
+    _on = int(_oa.get('days') or 0) or 1
+    _ocart = float(_oa.get('cart_u') or 0)
+    _oad = float(_oa.get('ad') or 0)
+    out['campaign']['overlap_slice'] = {
+        'name': _onm, 'start': _os, 'end': _oe, 'desc': _odesc,
+        'days': int(_oa.get('days') or 0),
+        'gsv': round(float(_oa.get('gsv') or 0), 2),
+        'ad': round(_oad, 2),
+        'profit': round(float(_oa.get('profit') or 0), 2),
+        'ipv': int(float(_oa.get('ipv') or 0)),
+        'buyers': int(float(_oa.get('buyers') or 0)),
+        'cart_u': int(_ocart),
+        'cvr': round(float(_oa.get('buyers') or 0) / (float(_oa.get('ipv') or 0) or 1), 6),
+        'cart_cost': round(_oad / _ocart, 4) if _ocart else None,
+        'cart_to_buy': round(float(_oa.get('buyers') or 0) / _ocart, 6) if _ocart else None,
+        'gsv_per_day': round(float(_oa.get('gsv') or 0) / _on, 2),
+    }
+else:
+    out['campaign']['overlap_slice'] = None
+
+# ---------- 8) 引导访问潜客占比（万相台单品日粒度，promotion_lead_daily） ----------
+# 口径：potential_uv / inshop_uv，即万相台「引导访问潜客数 ÷ 入店访客数」。
+# 已验证平台字段 inshopPotentialUvRate 与该式逐行一致（品类 714 行样本，0 例外）。
+# 重要：单品口径**不可相加**，同一用户逛多个商品会被重复计数，
+#       所以这里的 SUM 只代表「各单品之和」，不是店铺账户口径，报告必须标注。
+def _lead_pack(_l):
+    _uv = float(_l.get('inshop_uv') or 0)
+    _pot = float(_l.get('potential_uv') or 0)
+    return {
+        'days': int(_l.get('days') or 0),
+        'rows': int(_l.get('rows_n') or 0),
+        'inshop_uv': int(_uv),
+        'potential_uv': int(_pot),
+        'ratio': round(_pot / _uv, 6) if _uv else None,
+        'ad': round(float(_l.get('ad') or 0), 2),
+    }
+
+
+_lead_cur = _lead_agg(CUR[0], CUR[1])
+_lead_prev = _lead_agg(PREV[0], PREV[1])
+_lead_range = None
+try:
+    _lr = one('SELECT MIN(date) a, MAX(date) b, COUNT(*) n FROM promotion_lead_daily')
+    if _lr and _lr.get('a'):
+        _lead_range = {'start': _lr['a'], 'end': _lr['b'], 'rows': int(_lr.get('n') or 0)}
+except Exception:
+    _lead_range = None
+out['campaign']['lead'] = {
+    'source': 'promotion_lead_daily（万相台 item_promotion 报表）',
+    'field_note': 'inshopPotentialUv / inshopUv；平台 inshopPotentialUvRate 与该式逐行一致',
+    'grain': 'product_day',
+    'window': f'{CUR[0]}~{CUR[1]}',
+    'available': bool(_lead_cur.get('inshop_uv')),
+    'current': _lead_pack(_lead_cur),
+    'prev': _lead_pack(_lead_prev),
+    'daily': [{'date': _k, **(_v or {})} for _k, _v in sorted(lead_by_date.items())],
+    'table_range': _lead_range,
+    'caveat': '单品口径不可相加：SUM 是各单品之和，必然大于店铺账户口径，不能当店铺整体看',
+    'error': _lead_cur.get('error'),
+}
 
 suffix = 'all' if not CATEGORY else 'sock'
 out_path = f'_tmp/promo_review_data_{suffix}_{period_key}.json'

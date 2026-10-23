@@ -49,6 +49,10 @@
   --font-size-meta: 12px;
   --font-size-secondary: 13px;
   --font-size-body: 14px;
+  /* 表格数字专用字号：比正文大 1px、配合 tabular-nums 与 500 字重，
+     让「1,234,567 / 99.99%」在宽表里比文字列更先被眼睛抓到。
+     参考边界 BI：全站表格数字 15px/500 是出现频次最高的字号（375 次）。 */
+  --font-size-table-number: 15px;
   --font-size-label: 14px;
   --font-size-section: 17px;
   --font-size-title: 22px;
@@ -69,11 +73,25 @@
   --icon-emphasis: 20px;
   --icon-empty: 24px;
 
-  --radius-sm: 8px;
-  --radius-md: 12px;
-  --radius-lg: 16px;
-  --radius-container: 24px;
+  /* 2026-10-23：圆角收口为单一 6px（参考边界 BI 的 --bi-radius:6px 单值体系）。
+     原为 8/12/16/24 四档，隐含「容器越大圆角越大」，实际效果是页面里同时存在
+     四种曲率，卡片和面板的边角对不齐。单一值让卡片/面板/控件/弹窗共用一套语汇；
+     胶囊、头像、徽标仍走 --radius-full 或局部 3px。 */
+  --radius-sm: 6px;
+  --radius-md: 6px;
+  --radius-lg: 6px;
+  --radius-container: 6px;
   --radius-full: 999px;
+
+  /* 空态高度：按场景分三档，不再用一个 180px 兜所有场景。
+     表格空态要撑住表头以下的留白、上传型空态要放下拖拽区、图表空态只需占位。
+     对齐边界 BI 的 --bi-table-empty-height / --bi-table-upload-empty-height /
+     --bi-analysis-chart-empty-height。页面用
+     style="--empty-min-height: var(--empty-height-table)" 覆盖。 */
+  --empty-height-default: 180px;
+  --empty-height-table: 256px;
+  --empty-height-upload: 356px;
+  --empty-height-chart: 220px;
   --shadow-sm-raw: 0 1px 2px rgb(17 24 39 / 0.04);
   --shadow-md-raw: 0 2px 4px rgb(17 24 39 / 0.05);
   --shadow-lg-raw: 0 8px 24px rgb(17 24 39 / 0.16);
@@ -129,6 +147,29 @@
   --brand-solid: #4f46e5;    /* 白字 6.29:1 */
   --brand-solid-hover: #4338ca;  /* 白字 7.90:1，hover 再深一档 */
   --danger-solid: #b91c1c;   /* 白字 6.47:1 */
+  /* 主色实心底上的次级文字/标记（2026-10-24 策略卡选中态用，白系覆盖任意品牌色底） */
+  --on-brand-muted: rgb(255 255 255 / 0.82);
+  --on-brand-tag-bg: rgb(255 255 255 / 0.16);
+  --on-brand-hover-bg: rgb(255 255 255 / 0.14);
+
+  /* 涨跌语义色：中国惯例「涨=红、跌=绿」。
+     2026-10-23 前我们是绿涨红跌（西方惯例），与业务方看电商报表的直觉相反 ——
+     卖家看到红色第一反应是「涨了」，看到绿色是「掉了」。
+     注意：这两个 token 表达的是**方向**，不是「好坏」。
+     退款率、费比上涨同样是 --trend-up-text（红），不代表它是好事。 */
+  --trend-up-text: #b91c1c;    /* 涨=红，白底 5.79:1 */
+  --trend-down-text: #047857;  /* 跌=绿，白底 4.90:1 */
+  --trend-flat-text: var(--text-secondary);
+
+  /* 利润实心色块（对齐边界 BI .slot-color-block，2026-10-24 商品列表重构）。
+     盈利=红底白字、亏损=绿底白字（方向语义与 --trend-up/down-text 同族）；
+     0=盈亏平衡真值用中性灰，空值灰块 `--`。取值沿用涨跌文字色同源（对比度已验证）。 */
+  --profit-up-bg: #b91c1c;     /* 白字 5.79:1 */
+  --profit-up-text: #ffffff;
+  --profit-down-bg: #047857;   /* 白字 4.90:1 */
+  --profit-down-text: #ffffff;
+  --profit-flat-bg: #646c79;   /* 白字 5.31:1，0 与空值共用 */
+  --profit-flat-text: #ffffff;
 
   /* 焦点环必须是**不透明**的。2026-10-03：原值 color-mix(--brand 30%, transparent)
      合成到页面底色后只有 ~1.5:1（暗色 42% 也只有 ~2.1:1），远低于 WCAG 1.4.11
@@ -219,6 +260,7 @@
   --font-size-meta: 11px;
   --font-size-secondary: 12px;
   --font-size-body: 13px;
+  --font-size-table-number: 14px;
 }
 
 :root[data-theme="dark"] {
@@ -251,6 +293,20 @@
   --brand-solid: #4f46e5;    /* 白字 6.29:1（暗色下 --brand 是浅色，压白字只有 2.98:1） */
   --brand-solid-hover: #4338ca;  /* 白字 7.90:1 */
   --danger-solid: #b91c1c;   /* 白字 6.47:1 */
+  --on-brand-muted: rgb(255 255 255 / 0.82);
+  --on-brand-tag-bg: rgb(255 255 255 / 0.16);
+  --on-brand-hover-bg: rgb(255 255 255 / 0.14);
+  /* 涨跌语义色（暗色）。方向语义同浅色区：涨=红、跌=绿。 */
+  --trend-up-text: #fca5a5;    /* 最差 6.49:1 @ surface-muted */
+  --trend-down-text: #10b981;  /* 最差 4.86:1 @ surface-muted */
+  --trend-flat-text: var(--text-secondary);
+  /* 利润实心色块（暗色）。暗底上色块要更亮一档才能压住白字。 */
+  --profit-up-bg: #dc2626;     /* 白字 4.83:1 @ surface-card */
+  --profit-up-text: #ffffff;
+  --profit-down-bg: #059669;   /* 白字 4.52:1 @ surface-card */
+  --profit-down-text: #ffffff;
+  --profit-flat-bg: #4b5563;
+  --profit-flat-text: #e5e7eb;
   /* --focus-ring 不在暗色块里重定义：它等于 var(--brand)，暗色自动解析成 #818cf8。
      焦点环对比度：6.13:1 @ surface-page、5.60:1 @ surface-card，均 >= 3:1（WCAG 1.4.11）。 */
   --overlay-backdrop: rgb(0 0 0 / 0.52);

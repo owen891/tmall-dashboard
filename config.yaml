@@ -10,7 +10,8 @@ data:
   backup_on_import: true
   # 保留策略：单份备份约 3.3GB。
   # 原值 30 份 ≈ 75GB；2026-09-20 收紧到 4，2026-10-08 应要求再收紧到 1。
-  max_backups: 1
+  # SAFE-01: 正式备份保护最新3个已验证代；容量冲突告警而非删保护副本。
+  max_backups: 3
   max_backup_total_gb: 20
 
 thresholds:

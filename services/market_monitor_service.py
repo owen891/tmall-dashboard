@@ -1,6 +1,6 @@
-"""市场监控深化计算（对齐月复盘 XMind「市场监控-行业」）。
+"""市场监控深化计算（对齐月复盘框架「市场监控-行业」）。
 
-四项能力，口径迁移自 `E:/skill-dianshang/月复盘SKILL/SKILL.md` §340-360：
+四项能力：
 - 关键词 8 大归类 + 词根需求：类目/人群/属性/风格/场景/功能/品牌/价格，
   每类给出搜索量占比 + 覆盖词数 + 核心词根（TOP3）。
 - 蓝海机会词：细分词（剔除泛词）高搜索 × 高支付转化。SKILL 完整口径还要求
@@ -17,74 +17,34 @@
 """
 
 from collections import defaultdict
+import json
+from pathlib import Path
 
-# 泛词表（SKILL：泛词参与蓝海判断会让大词被误判为蓝海）。
-GENERIC_KEYWORDS = {
-    '袜子', '袜', '袜子女', '袜子男', '男袜子', '女袜子', '男士袜子', '女士袜子',
-    '男款袜子', '女款袜子', '袜子男款', '袜子女款', '男士袜', '女士袜',
-    'socks', '店铺', '旗舰店',
-}
 
-# 8 大归类规则词典（有序，先命中先归类）。词表是可维护的初版，
-# 归类结果随搜索词滚动变化，后续可在页面上人工纠偏后回填这里。
-KEYWORD_RULES = (
-    ('brand', '品牌', (
-        '蕉内', '有棵树', '秘密世界', '棉竹屋', '棉芝士', '妮轻', '竹久', '南极人',
-        '俞兆林', '猫人', '北极绒', '帕兰朵', '优衣库', '斐乐', '耐克', 'nike',
-        '阿迪', 'adidas', '乔丹', '安踏', '李宁', '迪士尼', 'miniso', '名创优品',
-        'ubras', '内外', '蕉下', '浪莎', '梦娜', '芬腾', '恒源祥', '七匹狼',
-        # 2026-10-02 按未归 TOP100 热度词回填：新锐品牌/设计师品牌/海外品牌。
-        '小野和子', '茉寻', '涞觅', '菇娘家', '绫', '汲润', '觅橘', '宝娜斯',
-        '上森派系', '一朵云', '一只鱼', '黄小姐', '蒋大猫', '安幸', 'yangma',
-        'calzedonia', 'wolford', 'tabio', 'himade', 'purple guys', 'roji',
-        'swwamvennt',
-    )),
-    ('crowd', '人群', (
-        '儿童', '婴', '宝宝', '幼儿', '男', '女', '情侣', '亲子', '学生', '月子',
-        '孕妇', '老人', '大码', '加大', '成人', '伪娘', 'lolita', '艺术生',
-    )),
-    ('function', '功能', (
-        '压力', '抗菌', '防臭', '防滑', '防勾丝', '瑜伽', '睡眠', '运动', '篮球',
-        '跑步', '登山', '滑雪', '骑行', '健身', '防晒', '保暖', '发热', '自发热',
-        '吸汗', '透气', '束腰', '塑形', '矫正', '按摩', '托腹', '静音', '压缩',
-        '护膝', '瘦腿', '马油', '脚尖加固', '加固', '防磨', '吸湿',
-    )),
-    ('scene', '场景', (
-        '春夏', '秋冬', '夏季', '冬季', '春秋', '四季', '春款', '夏款', '秋款',
-        '冬款', '坐月子', '月子里', '婚', '新娘', '通勤', '户外', '居家', '睡觉',
-        '高跟鞋', '单鞋', '靴子', '搭lo', 'jk',
-    )),
-    ('style', '风格', (
-        '日系', '韩系', 'ins', '复古', '甜美', '学院', '港风', '法式', '纯欲',
-        '辣妹', '堆堆', '字母', '卡通', '印花', '刺绣', '纯色', '撞色', '彩色',
-        '彩虹', '条纹', '格纹', '波点', '褶皱', '木耳边', '花边', '蕾丝',
-        'lolita', '渔网', '肉色', '腿精', '银葱', '花藤', '奶油', '雾霾蓝',
-        'lolita袜', 'lolita',
-    )),
-    ('attribute', '属性', (
-        '纯棉', '棉', '羊毛', '羊绒', '蚕丝', '冰丝', '莫代尔', '竹纤维', '莱卡',
-        '锦纶', '涤纶', '薄', '厚', '中厚', '加绒', '加厚', '毛巾圈', '毛圈',
-        '网眼', '隐形', '透明', '黑色', '白色', '灰色', '肤色', '咖啡', '卡其',
-        '高腰', '低腰', '长款', '短款', '钢丝', '无骨', '无缝',
-        '即弃', '银葱', '毛巾', '夹趾', '分趾', '半掌', '踩脚', '浅口', '松口', '天鹅绒', '水光', '美肤',
-        '丝滑', '油亮', '光面', '冰', 'cool',
-    )),
-    ('price', '价格', (
-        '特价', '清仓', '折扣', '便宜', '平价', '百亿补贴', '包邮', '断码',
-        '9.9', '19.9', '29.9', '39.9',
-        '先用后付', '超级品类日', '天天特卖', '淘工厂', '福袋', '30元',
-    )),
-    ('category', '类目', (
-        '袜子', '中筒', '长筒', '船袜', '隐形袜', '短袜', '连裤袜', '打底裤',
-        '丝袜', '黑丝', '白丝', '灰丝', '过膝', '小腿袜', '五指袜', '地板袜',
-        '毛圈袜', '拖鞋袜', '蹦迪袜', '足球袜', '袜套', '袜筒', '筒袜',
-        '光腿', '美腿', '打底', '压力袜', '静脉曲张',
-        # 2026-10-02 按未归 TOP100 回填：长袜/裤袜系与形态细分。
-        '长袜', '裤袜', '腿袜', '吊带袜', '大腿袜', '长腿袜', '半腿袜', '半截袜',
-        '靴袜', '连体袜', '连袜裤', '网袜', '网面袜', '白袜', '膝盖袜', '护腿',
-        '腿套', '千金袜', '小白袜', '冰冰袜', '毛巾袜', '连裤', '打底袜', '袜裤', '诸暨',
-    )),
-)
+def _load_lexicon():
+    """归类词典是运营配置（品牌与类目词表），随私有数据目录 data/ 分发。
+
+    公开 checkout 不携带该文件：词典为空时归类全部退化为「其他」、
+    蓝海词根集为空，市场监控仍只读运行、不臆造数据。
+    """
+    path = Path(__file__).resolve().parents[1] / 'data' / 'market_monitor_lexicon.json'
+    try:
+        payload = json.loads(path.read_text(encoding='utf-8'))
+    except (OSError, ValueError):
+        return frozenset(), ()
+    generic = frozenset(str(item) for item in payload.get('generic_keywords') or [])
+    rules = tuple(
+        (str(key), str(label), tuple(str(term) for term in terms or []))
+        for key, label, terms in payload.get('keyword_rules') or []
+    )
+    return generic, rules
+
+
+# 泛词表（泛词参与蓝海判断会让大词被误判为蓝海）。
+# 8 大归类规则词典（有序，先命中先归类）。词表随搜索词滚动维护，
+# 在页面上人工纠偏后回填 data/market_monitor_lexicon.json（私有运营数据）。
+GENERIC_KEYWORDS, KEYWORD_RULES = _load_lexicon()
+
 
 KEYWORD_CATEGORY_LABELS = {key: label for key, label, _ in KEYWORD_RULES} | {'other': '其他'}
 
@@ -129,7 +89,7 @@ def blue_ocean_words(keyword_rows, item_titles):
     """蓝海完整口径（SKILL 阶段二点五，硬约束）：
 
     - 词集收敛：只对「类目 / 功能」两类归类的词跑覆盖（SKILL 原义=细分品类/
-      功能词，如 堆堆袜/小腿袜/压力袜——先人工挑 20 个细分词再算覆盖）。
+      功能词，如 款式词/款型词/功能词——先人工挑 20 个细分词再算覆盖）。
       对全量 2500+ 词跑覆盖会让 600 款在榜样本淹没绝大多数词（覆盖=0 全被
       误判「高潜蓝海」），品牌/人群/属性等非供给维度词不进分级榜。
     - 搜索量 = 词精确匹配的近 7 天日均搜索热度（不累加词根下其他词）；
@@ -145,9 +105,9 @@ def blue_ocean_words(keyword_rows, item_titles):
         return {'available': False, 'words': [],
                 'missing_inputs': ['sycm_market_search_rank']}
     # 细分词根集：类目词（形态/品类）+ 功能词，均来自 8 大归类词典——
-    # 与 SKILL CATEGORY_WORDS 同性质（细分品类/功能词，如 堆堆袜/压力袜）。
+    # 与 SKILL CATEGORY_WORDS 同性质（细分品类/功能词，如 款式词/功能词）。
     # 覆盖匹配按「词根」而非长尾组合词：600 款在榜样本不会原样包含
-    # 「袜子女2026新款爆款」这类长尾词，完整词匹配全得 0 覆盖；
+    # 「品类长尾2026新款爆款」这类长尾词，完整词匹配全得 0 覆盖；
     # 词根才是供给粒度（与 SKILL 原文 str.contains(word) 的短词集一致）。
     # ≥3 字下限过滤过泛功能词（如「加固」单独出现时覆盖无意义）。
     supply_root_terms = set()
@@ -172,7 +132,7 @@ def blue_ocean_words(keyword_rows, item_titles):
         roots = [root for root in supply_root_terms if root in text]
         if not roots:
             continue
-        # 取最长的命中词根做匹配单位（「压力袜」优先于「袜」类泛根）。
+        # 取最长的命中词根做匹配单位（「功能词」优先于泛根）。
         root = max(roots, key=len)
         daily_heat = sum(heats) / len(heats)
         if daily_heat < 100:
@@ -180,7 +140,7 @@ def blue_ocean_words(keyword_rows, item_titles):
         cover = sum(1 for title in item_titles if root in str(title or ''))
         cover_per_10k = (cover / (daily_heat / 10000.0)) if daily_heat else None
         # ⚠️ cover=0 **不等于**「供给稀缺」。在榜样本只有最新日 600 款（5 类目 × top120），
-        #    当词根与标题用词不一致时（「脚尖加固」「毛巾袜」标题里基本没人这么写）也是 0。
+        #    当词根与标题用词不一致时（「脚尖加固」「材质词」标题里基本没人这么写）也是 0。
         #    把 0 直接判「高潜蓝海」会让整张榜单塌成一档 —— 实测 12 词里 8 词覆盖为 0、
         #    全判高潜蓝海，分级等于失效，且对运营是误导（会去追一个根本不存在的蓝海）。
         #    故 cover=0 单列「待核」：给出信号，但不给分级结论。
@@ -363,29 +323,36 @@ def keyword_insights(start_date, end_date, rows):
     }
 
 
-def rival_item_moves(start_date, end_date, rows, movers_limit=8):
+def rival_item_moves(start_date, end_date, rows, movers_limit=200):
     """竞店爆品排名变化（XMind「竞店-爆品排名变化」）。
 
-    rows: [(stat_date, item_id, title, shop_name, rank, is_self, uv, pay_buyer_count)] 升序。
-    以窗口内每个商品 首次/末次 在榜排名对比；只在首日出现而不在末日 = 退出，
+    rows: [(stat_date, item_id, title, shop_name, rank, is_self, uv, pay_buyer_count[, pic_url])]
+    升序。以窗口内每个商品 首次/末次 在榜排名对比；只在首日出现而不在末日 = 退出，
     反之 = 新进榜。is_self=1（本店）不纳入竞店口径。
+
+    movers_limit 是**单类上限**（默认 200，仅作 payload 兜底），不是页面展示条数：
+    页面按店铺展开后应展示该店窗口内全部有排名变化的商品（含主图），
+    未变动的在榜商品数单独回传 `unchanged_count`，避免「在榜 81 品却只列 6 行」的误解。
     """
     by_shop = defaultdict(lambda: defaultdict(list))
     shop_days = defaultdict(set)
-    for stat_date, item_id, title, shop_name, rank, is_self, uv, pay_buyer_count in rows:
+    for row in rows:
+        # 兼容 8 列（无 pic_url 的旧调用/旧测试）与 9 列两种行结构。
+        stat_date, item_id, title, shop_name, rank, is_self, uv, pay_buyer_count = row[:8]
+        pic_url = row[8] if len(row) > 8 else None
         if is_self:
             continue
         shop = shop_name or '未知店铺'
         by_shop[shop][str(item_id)].append({
             'date': str(stat_date), 'rank': rank, 'title': title or '',
-            'uv': uv, 'pay_buyer_count': pay_buyer_count,
+            'uv': uv, 'pay_buyer_count': pay_buyer_count, 'pic_url': pic_url or '',
         })
         shop_days[shop].add(str(stat_date))
     shops = []
     for shop, items in by_shop.items():
         days = sorted(shop_days[shop])
         first_day, last_day = days[0], days[-1]
-        rising, falling, new_items, exit_items = [], [], [], []
+        rising, falling, new_items, exit_items, stable = [], [], [], [], []
         for item_id, appearances in items.items():
             appearances.sort(key=lambda entry: entry['date'])
             dates_seen = {entry['date'] for entry in appearances}
@@ -393,36 +360,48 @@ def rival_item_moves(start_date, end_date, rows, movers_limit=8):
             last = appearances[-1]
             if first_day not in dates_seen and last_day in dates_seen:
                 new_items.append({'item_id': item_id, 'title': last['title'] or item_id,
-                                  'rank': last['rank'], 'date': last['date']})
+                                  'rank': last['rank'], 'date': last['date'],
+                                  'pic_url': last['pic_url']})
                 continue
             if first_day in dates_seen and last_day not in dates_seen:
                 exit_items.append({'item_id': item_id, 'title': first['title'] or item_id,
-                                   'rank': first['rank'], 'date': first['date']})
+                                   'rank': first['rank'], 'date': first['date'],
+                                   'pic_url': first['pic_url']})
                 continue
             if first['rank'] is None or last['rank'] is None:
                 continue
             change = int(first['rank']) - int(last['rank'])  # 排名变小=上升
             entry = {'item_id': item_id, 'title': last['title'] or item_id,
                      'first_rank': first['rank'], 'last_rank': last['rank'],
-                     'rank_change': change, 'uv': last['uv'], 'pay_buyer_count': last['pay_buyer_count']}
+                     'rank_change': change, 'uv': last['uv'], 'pay_buyer_count': last['pay_buyer_count'],
+                     'pic_url': last['pic_url']}
             if change > 0:
                 rising.append(entry)
             elif change < 0:
                 falling.append(entry)
+            else:
+                stable.append(entry)
         rising.sort(key=lambda item: item['rank_change'], reverse=True)
         falling.sort(key=lambda item: item['rank_change'])
-        movers = (rising[:movers_limit] + falling[:movers_limit])
+        stable.sort(key=lambda item: (item['last_rank'] if item['last_rank'] is not None else 10 ** 9))
+        new_items.sort(key=lambda item: (item['rank'] if item['rank'] is not None else 10 ** 9))
+        exit_items.sort(key=lambda item: (item['rank'] if item['rank'] is not None else 10 ** 9))
+        # 页面的「变动最大」列与表格都按绝对变动幅度降序，上升/下降混排。
+        movers = sorted(rising + falling, key=lambda item: abs(item['rank_change']), reverse=True)
         shops.append({
             'shop_name': shop,
             'window': {'start': first_day, 'end': last_day, 'day_count': len(days)},
             'item_count': len(items),
             'rising_count': len(rising), 'falling_count': len(falling),
             'new_count': len(new_items), 'exit_count': len(exit_items),
+            'unchanged_count': len(stable),
             'rising': rising[:movers_limit],
             'falling': falling[:movers_limit],
             'new_items': new_items[:movers_limit],
             'exit_items': exit_items[:movers_limit],
-            'movers': movers,
+            'stable': stable[:movers_limit],
+            'movers': movers[:movers_limit * 2],
+            'movers_total': len(movers),
         })
     shops.sort(key=lambda item: (item['rising_count'] + item['falling_count']
                                  + item['new_count'] + item['exit_count']), reverse=True)
@@ -439,7 +418,7 @@ def rival_item_moves(start_date, end_date, rows, movers_limit=8):
 def trend_items(start_date, end_date, rows, limit=10):
     """商品排行 · 趋势市场（XMind「行业-商品排行-趋势市场」）。
 
-    rows 同 `rival_item_moves`（[(stat_date, item_id, title, shop_name, rank, is_self, uv, pay_buyer_count)]）。
+    rows 同 `rival_item_moves`（[(stat_date, item_id, title, shop_name, rank, is_self, uv, pay_buyer_count[, pic_url])]）。
     与 `rival_item_moves` **同源**（窗口首尾排名对比），差别只在聚合维度：
     按商品而非按店 —— 所以两个函数必须一起改，别让口径分叉。
 
@@ -449,13 +428,16 @@ def trend_items(start_date, end_date, rows, limit=10):
     """
     by_item = defaultdict(list)
     all_days = set()
-    for stat_date, item_id, title, shop_name, rank, is_self, uv, pay_buyer_count in rows:
+    for row in rows:
+        stat_date, item_id, title, shop_name, rank, is_self, uv, pay_buyer_count = row[:8]
+        pic_url = row[8] if len(row) > 8 else None
         all_days.add(str(stat_date))
         if is_self:
             continue
         by_item[str(item_id)].append({
             'date': str(stat_date), 'rank': rank, 'title': title or '',
             'shop_name': shop_name or '', 'uv': uv, 'pay_buyer_count': pay_buyer_count,
+            'pic_url': pic_url or '',
         })
     if not all_days:
         return {'available': False, 'rising': [], 'new_items': [],
@@ -471,7 +453,7 @@ def trend_items(start_date, end_date, rows, limit=10):
             new_items.append({'item_id': item_id, 'title': last['title'] or item_id,
                               'shop_name': last['shop_name'], 'rank': last['rank'],
                               'uv': last['uv'], 'pay_buyer_count': last['pay_buyer_count'],
-                              'date': last['date']})
+                              'pic_url': last['pic_url'], 'date': last['date']})
             continue
         if first['rank'] is None or last['rank'] is None:
             continue
@@ -481,7 +463,8 @@ def trend_items(start_date, end_date, rows, limit=10):
                            'shop_name': last['shop_name'],
                            'first_rank': first['rank'], 'last_rank': last['rank'],
                            'rank_change': change,
-                           'uv': last['uv'], 'pay_buyer_count': last['pay_buyer_count']})
+                           'uv': last['uv'], 'pay_buyer_count': last['pay_buyer_count'],
+                           'pic_url': last['pic_url']})
     rising.sort(key=lambda item: item['rank_change'], reverse=True)
     new_items.sort(key=lambda item: (item['rank'] if item['rank'] is not None else 10 ** 9))
     return {

@@ -7,6 +7,23 @@ PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
+# 中性测试词典：市场监控归类的断言不依赖私有运营词表（公开环境词典为空）。
+import services.market_monitor_service as _market_monitor
+_market_monitor.GENERIC_KEYWORDS = frozenset({'泛品', 'generic'})
+_market_monitor.KEYWORD_RULES = (
+    ('brand', '品牌', ('甲牌',)),
+    ('crowd', '人群', ('男款', '儿童款')),
+    ('function', '功能', ('加压型',)),
+    ('scene', '场景', ('秋冬季',)),
+    ('style', '风格', ('褶饰款',)),
+    ('attribute', '属性', ('纯麻质',)),
+    ('price', '价格', ('特价',)),
+    ('category', '类目', ('筒装式', '丝光款', '板式装')),
+)
+_market_monitor.KEYWORD_CATEGORY_LABELS = {
+    key: label for key, label, _ in _market_monitor.KEYWORD_RULES
+} | {'other': '其他'}
+
 
 class PeriodReviewsTests(unittest.TestCase):
     def setUp(self):
@@ -132,7 +149,7 @@ class PeriodReviewsTests(unittest.TestCase):
         from db import get_db
 
         with get_db(self.app.config['DATABASE_PATH']) as connection:
-            connection.execute("INSERT INTO products (product_id, title, shop_label) VALUES ('flow-product', '闭环商品', '标品袜子')")
+            connection.execute("INSERT INTO products (product_id, title, shop_label) VALUES ('flow-product', '闭环商品', '默认品类')")
             connection.commit()
 
         created = self.client.post('/api/actions', json={
@@ -505,6 +522,160 @@ class PeriodReviewsTests(unittest.TestCase):
         self.assertIn('goods', payload['data']['missing_required_sections'])
         self.assertTrue(payload['unknowns'])
 
+    # ------------------------------------------------ 状态机：final 只能由服务端派生
+    # 回归背景：旧表单分支沿用已保存 sections 却不重算 missing_required，
+    # 且 status 直接取 payload，导致「缺必填段落也能落成 final」。
+    _FINAL_REQUIRED = {'category_summary', 'goods', 'ads', 'summary', 'next_plan'}
+
+    def _complete_sections(self, text='完整内容'):
+        return {
+            'category_summary': {'text': f'{text}·品类汇总'},
+            'goods': {'text': f'{text}·货品'},
+            'ads': {'text': f'{text}·广告'},
+            'summary': {'text': f'{text}·总结'},
+            'next_plan': {'text': f'{text}·下期规划'},
+        }
+
+    def test_legacy_form_without_sections_cannot_be_final(self):
+        """(a) 旧表单只提交摘要三件套、没有任何段落时，不能落成 final。
+
+        复现的缺陷：legacy 分支没有重算 missing_required，于是 missing=[] →
+        默认 status 变 final，库里存下一条「已定稿但什么都没写」的复盘。
+        """
+        response = self.client.put('/api/period-reviews/week/2026-09-W4', json={
+            'summary': 's', 'conclusions': 'c', 'next_actions': 'n', 'reviewer': 'operator',
+        })
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json(); response.close()
+        self.assertEqual(payload['data']['review']['status'], 'draft')
+        # 缺口必须按模板真实重算，而不是沿用上一轮的（空）结果。
+        self.assertEqual(set(payload['data']['missing_required_sections']), self._FINAL_REQUIRED)
+        self.assertTrue(payload['unknowns'])
+
+        detail = self.client.get('/api/period-reviews/week/2026-09-W4').get_json()
+        self.assertEqual(detail['data']['review']['status'], 'draft')
+
+    def test_legacy_form_over_partial_sections_stays_draft(self):
+        """(a) 已保存段落残缺时，旧表单沿用旧段落也必须保持 draft。"""
+        first = self.client.put('/api/period-reviews/week/2026-09-W4', json={
+            'reviewer': 'operator',
+            'sections': {'category_summary': {'text': '只写了品类汇总'}},
+        })
+        self.assertEqual(first.status_code, 200)
+        self.assertEqual(first.get_json()['data']['review']['status'], 'draft')
+        first.close()
+
+        response = self.client.put('/api/period-reviews/week/2026-09-W4', json={
+            'summary': 's', 'conclusions': 'c', 'next_actions': 'n', 'reviewer': 'operator',
+        })
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json(); response.close()
+        self.assertEqual(payload['data']['review']['status'], 'draft')
+        self.assertIn('goods', payload['data']['missing_required_sections'])
+        # 旧表单仍要保留已保存的段落（原有行为不能回退）。
+        self.assertEqual(
+            payload['data']['review']['sections']['category_summary']['text'], '只写了品类汇总',
+        )
+
+    def test_explicit_final_with_missing_required_sections_is_rejected(self):
+        """(b) 客户端显式要 final 但必填段落不全 → 422，且不得写入任何内容。
+
+        选择「拒绝」而不是「静默降级」：降级会返回 ok=true，前端据此显示「已定稿」，
+        把客户端 bug 藏起来；本文件其余非法输入一律 422 VALIDATION_ERROR。
+        """
+        seeded = self.client.put('/api/period-reviews/week/2026-09-W4', json={
+            'reviewer': 'operator',
+            'sections': {'category_summary': {'text': '先存的草稿'}},
+        })
+        self.assertEqual(seeded.status_code, 200); seeded.close()
+
+        response = self.client.put('/api/period-reviews/week/2026-09-W4', json={
+            'reviewer': 'operator',
+            'status': 'final',
+            'sections': {'category_summary': {'text': '想定稿但缺其它必填段落'}},
+        })
+        self.assertEqual(response.status_code, 422)
+        payload = response.get_json(); response.close()
+        self.assertFalse(payload['ok'])
+        self.assertEqual(payload['code'], 'VALIDATION_ERROR')
+        self.assertIn('goods', payload['details']['missing_required_sections'])
+
+        # 旧表单 + 显式 final 同样拒绝（第二条复现路径）。
+        legacy_final = self.client.put('/api/period-reviews/week/2026-09-W4', json={
+            'summary': 's', 'conclusions': 'c', 'next_actions': 'n', 'reviewer': 'operator',
+            'status': 'final',
+        })
+        self.assertEqual(legacy_final.status_code, 422)
+        self.assertEqual(legacy_final.get_json()['code'], 'VALIDATION_ERROR')
+        legacy_final.close()
+
+        # 拒绝必须是「不落库」，而不是「先写进去再改回 draft」。
+        stored = self.client.get('/api/period-reviews/week/2026-09-W4').get_json()['data']['review']
+        self.assertEqual(stored['status'], 'draft')
+        self.assertEqual(stored['sections']['category_summary']['text'], '先存的草稿')
+
+    def test_complete_review_can_be_finalised(self):
+        """(c) 必填段落齐全时 final 仍可达：显式指定与省略后派生两条路径都要通。"""
+        explicit = self.client.put('/api/period-reviews/week/2026-09-W4', json={
+            'reviewer': 'operator',
+            'status': 'final',
+            'sections': self._complete_sections('W4'),
+        })
+        self.assertEqual(explicit.status_code, 200)
+        payload = explicit.get_json(); explicit.close()
+        self.assertEqual(payload['data']['missing_required_sections'], [])
+        self.assertEqual(payload['data']['review']['status'], 'final')
+
+        derived = self.client.put('/api/period-reviews/month/2026-09', json={
+            'reviewer': 'operator',
+            'sections': self._complete_sections('9月'),
+        })
+        self.assertEqual(derived.status_code, 200)
+        derived_payload = derived.get_json(); derived.close()
+        self.assertEqual(derived_payload['data']['review']['status'], 'final')
+
+        detail = self.client.get('/api/period-reviews/week/2026-09-W4').get_json()
+        self.assertEqual(detail['data']['review']['status'], 'final')
+
+    def test_unknown_status_values_are_rejected(self):
+        """(d) 状态是白名单枚举：只有 draft / final 是合法输入。"""
+        for status in ('published', 'locked', 'approved', 'archived', 'Final', 'FINAL'):
+            with self.subTest(status=status):
+                response = self.client.put('/api/period-reviews/week/2026-09-W4', json={
+                    'reviewer': 'operator', 'status': status,
+                    'sections': {'category_summary': {'text': 'x'}},
+                })
+                self.assertEqual(response.status_code, 422)
+                payload = response.get_json(); response.close()
+                self.assertEqual(payload['code'], 'VALIDATION_ERROR')
+                self.assertEqual(payload['details']['status'], status)
+                self.assertEqual(payload['details']['allowed_statuses'], ['draft', 'final'])
+
+        # 内容齐全也不能绕过白名单（否则「特权状态」只是换个名字）。
+        complete = self.client.put('/api/period-reviews/week/2026-09-W5', json={
+            'reviewer': 'operator', 'status': 'published',
+            'sections': self._complete_sections('W5'),
+        })
+        self.assertEqual(complete.status_code, 422)
+        complete.close()
+
+    def test_omitted_or_blank_status_is_derived_by_server(self):
+        """未传 / 空串状态表示「由服务端派生」，不能成为提权入口。"""
+        blank = self.client.put('/api/period-reviews/week/2026-09-W4', json={
+            'reviewer': 'operator', 'status': '',
+            'sections': {'category_summary': {'text': '只有一段'}},
+        })
+        self.assertEqual(blank.status_code, 200)
+        blank_payload = blank.get_json(); blank.close()
+        self.assertEqual(blank_payload['data']['review']['status'], 'draft')
+
+        omitted = self.client.put('/api/period-reviews/week/2026-09-W4', json={
+            'reviewer': 'operator', 'sections': self._complete_sections('W4'),
+        })
+        self.assertEqual(omitted.status_code, 200)
+        omitted_payload = omitted.get_json(); omitted.close()
+        self.assertEqual(omitted_payload['data']['review']['status'], 'final')
+
     def test_unknown_sections_are_rejected_and_legacy_put_preserves_sections(self):
         saved = self.client.put('/api/period-reviews/month/2026-08', json={
             'reviewer': 'operator',
@@ -606,13 +777,13 @@ class PeriodReviewsTests(unittest.TestCase):
             for index, stat_date in enumerate(days):
                 # 竞店甲：A 商品排名 10 → 3（上升）；B 商品 3 → 10（下降）。
                 rank_a = 10 if index < 6 else 3
-                item_rows.append((stat_date, 'cate', '中筒袜', 'A', '压力袜男士透气款',
+                item_rows.append((stat_date, 'cate', '款型甲', 'A', '加压型男士透气款',
                                   '竞店甲', 'shop-a', 100.0, 10.0, 1, rank_a, 0))
-                item_rows.append((stat_date, 'cate', '中筒袜', 'B', '压力袜女士薄款',
+                item_rows.append((stat_date, 'cate', '款型甲', 'B', '加压型女士薄款',
                                   '竞店甲', 'shop-a', 200.0, 20.0, 1, 13 - rank_a, 0))
-                # 搜索词：压力袜有覆盖（title 含该词根），冷门词无覆盖。
-                keyword_rows.append((stat_date, 'cate', '中筒袜', '压力袜', 5000.0, 0.2, 0.1, 0.3, 1))
-                keyword_rows.append((stat_date, 'cate', '中筒袜', '毛巾袜', 500.0, 0.1, 0.1, 0.2, 2))
+                # 搜索词：功能词根有覆盖（title 含该词根），冷门词无覆盖。
+                keyword_rows.append((stat_date, 'cate', '款型甲', '加压型', 5000.0, 0.2, 0.1, 0.3, 1))
+                keyword_rows.append((stat_date, 'cate', '款型甲', '板式装', 500.0, 0.1, 0.1, 0.2, 2))
             connection.executemany(
                 '''INSERT INTO sycm_market_item_rank
                    (stat_date, cate_id, cate_name, item_id, title, shop_name, shop_id,
@@ -638,9 +809,9 @@ class PeriodReviewsTests(unittest.TestCase):
 
         insights = market['keyword_insights']
         self.assertTrue(insights['available'])
-        # 「压力袜」先命中「功能」词典（规则表有序，先命中先归类），「毛巾袜」命中「属性」。
+        # 「加压型」先命中「功能」词典（规则表有序，先命中先归类），「板式装」命中「类目」。
         labels = {row['label'] for row in insights['categories']}
-        self.assertEqual(labels, {'功能', '属性'})
+        self.assertEqual(labels, {'功能', '类目'})
         for row in insights['categories']:
             self.assertIn('keyword_count', row)
             self.assertIn('heat_share', row)
@@ -650,8 +821,8 @@ class PeriodReviewsTests(unittest.TestCase):
         self.assertTrue(supply['available'])
         by_root = {row['keyword']: row for row in supply['words']}
         # 有覆盖 → 参与分级；无覆盖 → 待核（不能判「高潜蓝海」）。
-        self.assertNotEqual(by_root['压力袜']['grade'], '待核')
-        self.assertEqual(by_root['毛巾袜']['grade'], '待核')
+        self.assertNotEqual(by_root['加压型']['grade'], '待核')
+        self.assertEqual(by_root['板式装']['grade'], '待核')
         self.assertEqual(supply['pending_count'], 1)
 
         moves = market['rival_moves']
@@ -721,7 +892,7 @@ class PeriodReviewsTests(unittest.TestCase):
 
         with get_db(self.app.config['DATABASE_PATH']) as connection:
             connection.execute(
-                "INSERT INTO products (product_id, title, category) VALUES ('breakdown-product', '类目商品', '袜子')")
+                "INSERT INTO products (product_id, title, category) VALUES ('breakdown-product', '类目商品', '目标品类')")
             connection.executemany(
                 '''INSERT INTO daily_data
                    (product_id, date, payment_amount, ipv, buyers)
@@ -758,7 +929,7 @@ class PeriodReviewsTests(unittest.TestCase):
             )
             connection.executemany(
                 'INSERT INTO products (product_id, title, shop_label) VALUES (?, ?, ?)',
-                [('dmp-in', 'DMP 标品', '标品袜子'), ('dmp-out', 'DMP 非标', '非标袜子女')],
+                [('dmp-in', 'DMP 标品', '默认品类'), ('dmp-out', 'DMP 非标', '细分品类A')],
             )
             # daily_data 有数据，但 DMP 快照对齐时应当胜出。
             connection.execute(
@@ -1099,9 +1270,9 @@ class PeriodReviewsTests(unittest.TestCase):
             connection.executemany(
                 'INSERT INTO products (product_id, title, image_url, shop_label) VALUES (?, ?, ?, ?)',
                 [
-                    ('P-SOCK', '标品袜子A', '', '标品袜子'),
-                    ('P-MULTI', '标品袜子B', '', '标品袜子,平销商品'),
-                    ('P-OTHER', '非标袜子女C', '', '非标袜子女'),
+                    ('P-SOCK', '默认品类A', '', '默认品类'),
+                    ('P-MULTI', '默认品类B', '', '默认品类,平销商品'),
+                    ('P-OTHER', '细分品类AC', '', '细分品类A'),
                 ],
             )
             connection.executemany(
@@ -1118,19 +1289,19 @@ class PeriodReviewsTests(unittest.TestCase):
             connection.commit()
 
     def test_review_context_filters_by_selected_category(self):
-        """品类口径必须真实过滤：标品袜子只算自己的商品，全部品类才算全店。"""
+        """品类口径必须真实过滤：默认品类只算自己的商品，全部品类才算全店。"""
         self._seed_category_data()
 
         sock = self.client.get(
             '/api/period-reviews/week/2026-09-W3/context?category_mode=sock'
         ).get_json()
-        self.assertEqual(sock['data']['context']['category']['label'], '标品袜子')
+        self.assertEqual(sock['data']['context']['category']['label'], '默认品类')
         self.assertTrue(sock['data']['context']['category']['filtered'])
-        # 1000 + 300（多标签值 '标品袜子,平销商品' 也要按 token 命中）
+        # 1000 + 300（多标签值 '默认品类,平销商品' 也要按 token 命中）
         self.assertEqual(sock['data']['context']['metrics']['current']['gsv'], 1300)
         self.assertEqual(sock['data']['context']['metrics']['current']['product_count'], 2)
-        self.assertEqual(sock['filters']['category_label'], '标品袜子')
-        self.assertIn('标品袜子', ' '.join(sock['assumptions']))
+        self.assertEqual(sock['filters']['category_label'], '默认品类')
+        self.assertIn('默认品类', ' '.join(sock['assumptions']))
 
         everything = self.client.get(
             '/api/period-reviews/week/2026-09-W3/context?category_mode=all'
@@ -1142,7 +1313,7 @@ class PeriodReviewsTests(unittest.TestCase):
 
         # 只有非标商品的品类必须算不到标品商品
         other = self.client.get(
-            '/api/period-reviews/week/2026-09-W3/context?category_mode=非标袜子女'
+            '/api/period-reviews/week/2026-09-W3/context?category_mode=细分品类A'
         ).get_json()
         self.assertEqual(other['data']['context']['metrics']['current']['gsv'], 500)
 
@@ -1157,10 +1328,10 @@ class PeriodReviewsTests(unittest.TestCase):
     def test_review_records_and_keeps_category_scope(self):
         saved = self.client.put('/api/period-reviews/week/2026-09-W3?category_mode=sock', json={
             'reviewer': 'operator',
-            'sections': {'performance': {'text': '标品袜子口径'}},
+            'sections': {'performance': {'text': '默认品类口径'}},
         })
         self.assertEqual(saved.status_code, 200)
-        self.assertEqual(saved.get_json()['data']['category']['label'], '标品袜子')
+        self.assertEqual(saved.get_json()['data']['category']['label'], '默认品类')
         saved.close()
 
         detail = self.client.get('/api/period-reviews/week/2026-09-W3').get_json()
@@ -1206,7 +1377,7 @@ class PeriodReviewsTests(unittest.TestCase):
 
         with get_db(self.app.config['DATABASE_PATH']) as connection:
             connection.execute(
-                "INSERT INTO products (product_id, title, image_url, shop_label) VALUES ('P-1', '标品袜子', '', '标品袜子')"
+                "INSERT INTO products (product_id, title, image_url, shop_label) VALUES ('P-1', '默认品类', '', '默认品类')"
             )
             connection.executemany(
                 'INSERT INTO daily_data (product_id, date, payment_amount, ipv, buyers) VALUES (?, ?, ?, ?, ?)',
@@ -1305,7 +1476,7 @@ class PeriodReviewsTests(unittest.TestCase):
 
         with get_db(self.app.config['DATABASE_PATH']) as connection:
             connection.executemany(
-                "INSERT INTO products (product_id, title, image_url, shop_label) VALUES (?, ?, '', '标品袜子')",
+                "INSERT INTO products (product_id, title, image_url, shop_label) VALUES (?, ?, '', '默认品类')",
                 [('P-A', 'A'), ('P-B', 'B')],
             )
             connection.executemany(
@@ -1341,13 +1512,13 @@ class PeriodReviewsTests(unittest.TestCase):
                 'INSERT INTO products (product_id, title, shop_label, list_date) VALUES (?, ?, ?, ?)',
                 [
                     # 老品：三个榜单主力
-                    ('V-TOP', '销售冠军', '标品袜子', '2025-01-01'),
-                    ('V-PAID', '付费大户', '标品袜子', '2025-01-01'),
-                    ('V-LOSS', '亏损款', '标品袜子', '2025-01-01'),
+                    ('V-TOP', '销售冠军', '默认品类', '2025-01-01'),
+                    ('V-PAID', '付费大户', '默认品类', '2025-01-01'),
+                    ('V-LOSS', '亏损款', '默认品类', '2025-01-01'),
                     # 新品：上架在周期结束日前 60 天内
-                    ('V-NEW', '新品A', '标品袜子', '2026-08-20'),
+                    ('V-NEW', '新品A', '默认品类', '2026-08-20'),
                     # 新品但上架超 60 天，不算新品
-                    ('V-OLDNEW', '旧上架', '标品袜子', '2026-06-01'),
+                    ('V-OLDNEW', '旧上架', '默认品类', '2026-06-01'),
                 ],
             )
             # 2026-09-W3 = 09-14 ~ 09-20；两天数据保证周内分解表有行
@@ -1414,7 +1585,7 @@ class PeriodReviewsTests(unittest.TestCase):
 
         with get_db(self.app.config['DATABASE_PATH']) as connection:
             connection.execute(
-                "INSERT INTO products (product_id, title, shop_label) VALUES ('monthly-only-review', '月表商品', '标品袜子')"
+                "INSERT INTO products (product_id, title, shop_label) VALUES ('monthly-only-review', '月表商品', '默认品类')"
             )
             connection.execute(
                 '''INSERT INTO monthly_data
@@ -1629,9 +1800,9 @@ class PeriodReviewsTests(unittest.TestCase):
             connection.executemany(
                 'INSERT INTO products (product_id, title, image_url, shop_label) VALUES (?, ?, ?, ?)',
                 [
-                    ('A-1', '标品袜子A', '', '标品袜子'),
-                    ('B-1', '标品袜子B', '', '标品袜子'),
-                    ('C-1', '非标袜子女C', '', '非标袜子女'),
+                    ('A-1', '默认品类A', '', '默认品类'),
+                    ('B-1', '默认品类B', '', '默认品类'),
+                    ('C-1', '细分品类AC', '', '细分品类A'),
                 ],
             )
             # 商品级合计（channel='全部'）决定 TOP 榜顺序与「合计」列
@@ -1663,10 +1834,10 @@ class PeriodReviewsTests(unittest.TestCase):
                    (campaign_id, product_id, campaign_name, product_name, image_url, channel)
                    VALUES (?, ?, ?, ?, ?, ?)''',
                 [
-                    ('C-EXACT', 'A-1', '全站_A1', '标品袜子A', 'https://img.example.com/a-1.jpg', '货品全站推广'),
-                    ('C-OTHER', 'C-1', '全站_C1', '非标袜子女C', '', '货品全站推广'),
-                    ('C-SHARED', 'A-1', '关键词_多商品', '标品袜子A', '', '关键词推广'),
-                    ('C-SHARED', 'B-1', '关键词_多商品', '标品袜子B', '', '关键词推广'),
+                    ('C-EXACT', 'A-1', '全站_A1', '默认品类A', 'https://img.example.com/a-1.jpg', '货品全站推广'),
+                    ('C-OTHER', 'C-1', '全站_C1', '细分品类AC', '', '货品全站推广'),
+                    ('C-SHARED', 'A-1', '关键词_多商品', '默认品类A', '', '关键词推广'),
+                    ('C-SHARED', 'B-1', '关键词_多商品', '默认品类B', '', '关键词推广'),
                 ],
             )
             connection.commit()
@@ -1904,27 +2075,34 @@ class PeriodReviewsTests(unittest.TestCase):
 
     def test_linked_summaries_month_reads_weeks_and_week_reads_prev_month(self):
         """P2 周月互汇：月复盘汇入本月各周结论，周复盘读上月月复盘。"""
-        # 先存本月两个周复盘 + 上月一个月复盘（subsections 结构）
+        # 先存本月两个周复盘 + 上月一个月复盘（subsections 结构）。
+        # 定稿前提是必填段落齐全：这里补齐其余段落，但保留被断言的那段原文。
+        w1_sections = self._complete_sections('W1')
+        w1_sections['category_summary'] = {'subsections': {
+            'analysis': 'W1 净销售达成 90%', 'root_cause': '流量下滑'}}
         self.client.put('/api/period-reviews/week/2026-09-W1', json={
             'reviewer': 'operator',
             'status': 'final',
-            'sections': {'category_summary': {'subsections': {
-                'analysis': 'W1 净销售达成 90%', 'root_cause': '流量下滑'}}},
+            'sections': w1_sections,
         })
+        w2_sections = self._complete_sections('W2')
+        w2_sections['category_summary'] = {'text': 'W2 纯文本老结构结论'}
         self.client.put('/api/period-reviews/week/2026-09-W2', json={
             'reviewer': 'operator',
             'status': 'final',
-            'sections': {'category_summary': {'text': 'W2 纯文本老结构结论'}},
+            'sections': w2_sections,
         })
         self.client.put('/api/period-reviews/week/2026-09-W4', json={
             'reviewer': 'operator',
             'sections': {'category_summary': {'text': 'W4 草稿不应汇入月复盘'}},
         })
+        august_sections = self._complete_sections('8月')
+        august_sections['category_summary'] = {'subsections': {
+            'analysis': '8月净销售 71.9 万', 'root_cause': '访客下滑 30%+，调价影响人群池'}}
         self.client.put('/api/period-reviews/month/2026-08', json={
             'reviewer': 'operator',
             'status': 'final',
-            'sections': {'category_summary': {'subsections': {
-                'analysis': '8月净销售 71.9 万', 'root_cause': '访客下滑 30%+，调价影响人群池'}}},
+            'sections': august_sections,
         })
 
         month = self.client.get('/api/period-reviews/month/2026-09/context').get_json()['data']['context']

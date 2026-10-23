@@ -5,7 +5,7 @@ from werkzeug.utils import secure_filename
 from datetime import datetime, timedelta
 from db import get_db
 from api.api_response import failure
-from utils.cache import cache as _ttl_cache
+from utils.cache import cache as _ttl_cache, read_mutation_generation
 
 
 # 获取项目根目录的绝对路径
@@ -20,11 +20,17 @@ DIMENSION_MAP = {
 }
 
 def _request_cache_key(prefix):
-    """生成基于请求路径和查询参数的缓存 key"""
+    """生成基于请求路径和查询参数的缓存 key
+
+    键里带上库内 mutation generation：后台扫描进程直接调 ImportService.confirm
+    写库，不会触发 Web 进程的 cache.clear()，只有 generation 变了旧键才失效，
+    否则首页会继续返回 30~60 秒的旧数据（CACHE-01）。
+    """
     params = sorted(request.args.items())
     param_str = "&".join(f"{k}={v}" for k, v in params)
     shop_id = getattr(getattr(__import__('flask').g, 'shop_id', None), '__str__', lambda: 'default')()
-    return f"{prefix}:{request.path}:{shop_id}:{param_str}"
+    generation = read_mutation_generation()
+    return f"{prefix}:{request.path}:{shop_id}:{param_str}:g{generation}"
 
 
 def cached_api(prefix, ttl=60):
@@ -41,7 +47,10 @@ def cached_api(prefix, ttl=60):
                 if hasattr(result, 'status_code') and result.status_code == 200 and hasattr(result, 'get_json'):
                     data = result.get_json()
                     if data is not None:
-                        _ttl_cache.set(key, data, ttl)
+                        # 读取 generation 失败时不要写入缓存：键里没有有效的
+                        # generation，写入就等于放弃了跨进程失效能力。
+                        if read_mutation_generation() is not None:
+                            _ttl_cache.set(key, data, ttl)
             except Exception:
                 # 缓存存储失败不影响主流程响应
                 pass
@@ -85,15 +94,10 @@ def _upload_folder():
 
 
 def _reject_legacy_shop_scope(dimension):
-    """Weekly/monthly facts and targets are still single-shop legacy tables."""
-    configured_shop = str(current_app.config.get('SHOP_ID') or os.environ.get('TMALL_SHOP_ID') or '').strip()
-    requested_shop = (request.args.get('shop_id') or '').strip() or configured_shop
-    if dimension in {'weekly', 'monthly'} and requested_shop and requested_shop != 'default':
-        return failure(
-            'UNSUPPORTED_SCOPE',
-            f'{dimension} 维度当前不支持 shop_id；请使用日度事实，或先完成周/月表店铺迁移',
-            status=422,
-        )
+    # Legacy period tables share the canonical single-shop scope guard.
+    if dimension in {'weekly', 'monthly'}:
+        from services.shop_scope_service import reject_legacy_shop_scope
+        return reject_legacy_shop_scope(dimension)
     return None
 
 

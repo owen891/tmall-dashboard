@@ -94,6 +94,109 @@ class FormalMutationApiTests(unittest.TestCase):
         self.assertEqual(response.status_code, 422)
         self.assertEqual(response.get_json()['code'], 'VALIDATION_ERROR')
 
+    def test_metadata_tier_update_marks_source_manual(self):
+        """人工改档位必须同时写 tier_source='manual'。
+
+        否则脚本看到「有档位、来源空」，一边判成人工锁定永久跳过，
+        一边又当空值覆盖——两个算法对同一个空值的语义相反。
+        """
+        response = self.client.put('/api/products/formal-001/metadata', json={
+            'field': 'tier', 'value': '利润款', 'operator': '商品运营', 'reason': '人工分层',
+        })
+        payload = response.get_json()
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(payload['data']['tier_source'], 'manual')
+
+        from db import get_db
+        with get_db(self.path) as connection:
+            row = connection.execute(
+                'SELECT tier, tier_source FROM products WHERE product_id = ?', ('formal-001',)
+            ).fetchone()
+            audit = connection.execute(
+                "SELECT before_value, after_value FROM audit_logs "
+                "WHERE entity_type = 'product' ORDER BY id DESC LIMIT 1"
+            ).fetchone()
+        self.assertEqual(row['tier'], '利润款')
+        self.assertEqual(row['tier_source'], 'manual')
+        self.assertEqual(json.loads(audit['after_value'])['tier_source'], 'manual')
+
+    def test_metadata_style_update_keeps_existing_tier_source(self):
+        """改非档位字段不能动 tier_source，否则会把算法自填的行误锁成人工。"""
+        from db import get_db
+        with get_db(self.path) as connection:
+            connection.execute(
+                "UPDATE products SET tier = '引流款', tier_source = 'five-dim-auto' "
+                "WHERE product_id = ?", ('formal-001',)
+            )
+            connection.commit()
+
+        response = self.client.put('/api/products/formal-001/metadata', json={
+            'field': 'style', 'value': '日式', 'operator': '商品运营', 'reason': '风格修正',
+        })
+        self.assertEqual(response.status_code, 200)
+
+        with get_db(self.path) as connection:
+            row = connection.execute(
+                'SELECT tier, tier_source FROM products WHERE product_id = ?', ('formal-001',)
+            ).fetchone()
+        self.assertEqual(row['tier_source'], 'five-dim-auto')
+
+    def test_batch_tier_update_marks_source_manual(self):
+        response = self.client.post('/api/products/batch-update', json={
+            'product_ids': ['formal-001', 'formal-002'],
+            'field': 'tier', 'value': '动销款', 'operator': '商品运营', 'reason': '批量分层',
+        })
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.get_json()['data']['updated_count'], 2)
+
+        from db import get_db
+        with get_db(self.path) as connection:
+            rows = connection.execute(
+                'SELECT tier, tier_source FROM products '
+                'WHERE product_id IN (?, ?) ORDER BY product_id', ('formal-001', 'formal-002')
+            ).fetchall()
+        for row in rows:
+            self.assertEqual(row['tier'], '动销款')
+            self.assertEqual(row['tier_source'], 'manual')
+
+    def test_batch_style_update_keeps_tier_source(self):
+        from db import get_db
+        with get_db(self.path) as connection:
+            connection.execute(
+                "UPDATE products SET tier = '利润款', tier_source = 'matrix-auto' "
+                "WHERE product_id = ?", ('formal-001',)
+            )
+            connection.commit()
+
+        response = self.client.post('/api/products/batch-update', json={
+            'product_ids': ['formal-001'], 'field': 'style', 'value': '极简',
+            'operator': '商品运营', 'reason': '统一风格',
+        })
+        self.assertEqual(response.status_code, 200)
+
+        with get_db(self.path) as connection:
+            row = connection.execute(
+                'SELECT tier_source FROM products WHERE product_id = ?', ('formal-001',)
+            ).fetchone()
+        self.assertEqual(row['tier_source'], 'matrix-auto')
+
+    def test_legacy_field_tier_update_marks_source_manual(self):
+        response = self.client.put('/api/products/formal-002/field', json={
+            'field': 'tier', 'value': '潜力款', 'operator': '商品运营', 'reason': '人工分层',
+        })
+        self.assertEqual(response.status_code, 200)
+        # 这个旧接口返回扁平结构（success/field/value/tier_source），没有 data 包装。
+        self.assertEqual(response.get_json()['tier_source'], 'manual')
+
+        from db import get_db
+        with get_db(self.path) as connection:
+            row = connection.execute(
+                'SELECT tier, tier_source FROM products WHERE product_id = ?', ('formal-002',)
+            ).fetchone()
+        self.assertEqual(row['tier'], '潜力款')
+        self.assertEqual(row['tier_source'], 'manual')
+
     def test_overview_event_mutations_return_structured_evidence(self):
         created = self.client.post('/api/overview/events', json={
             'event_date': '2026-08-10', 'title': '活动开始',

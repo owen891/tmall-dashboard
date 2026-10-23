@@ -1,4 +1,4 @@
-﻿(function () {
+(function () {
   // `/products/<product_id>` carries the id as the last segment. `/product-detail`
   // is the id-less deep link: its last segment is the route name itself, so it
   // must not be mistaken for a product id. 静态文件路径（`/pages/product-detail.html`，
@@ -10,6 +10,11 @@
   const $ = (selector) => document.querySelector(selector);
   const $$ = (selector) => [...document.querySelectorAll(selector)];
   const setText = (selector, value) => $$(selector).forEach((node) => { node.textContent = value ?? '--'; });
+  // 流量来源渠道名来自生意参谋采集数据，会同时插进 HTML 属性值与文本节点，
+  // 必须转义——否则渠道名里的双引号/尖括号会闭合属性或注入标签。
+  const escapeHtml = window.DemoFormat?.escapeHtml
+    ? window.DemoFormat.escapeHtml
+    : (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
   const money = (value) => value == null ? '--' : `¥${Number(value).toLocaleString('zh-CN', { maximumFractionDigits: 2 })}`;
   const percent = (value) => value == null ? '--' : `${(Number(value) * 100).toFixed(2)}%`;
   const pct = (value) => value == null ? '--' : `${Number(value).toFixed(1)}%`;
@@ -42,6 +47,11 @@
 
   function number(value, digits = 0) {
     return value == null ? '--' : Number(value).toLocaleString('zh-CN', { maximumFractionDigits: digits });
+  }
+
+  function replaceTableBody(target, columns, rows, emptyMessage, renderRow = null) {
+    if (!target || !window.TmallUI?.table?.mount) return;
+    window.TmallUI.table.mount(target, { columns, rows, emptyMessage, renderRow });
   }
 
   function themeRange() {
@@ -85,20 +95,15 @@
 
     const target = $('[data-product-search-trend]');
     if (target) {
-      target.replaceChildren(...rows.map((item) => {
+      replaceTableBody(target, [
+        { key: 'date', label: '日期' }, { key: 'search_visitors', label: '搜索访客', numeric: true },
+        { key: 'search_ratio', label: '搜索占比', numeric: true }, { key: 'search_conversion', label: '搜索转化率', numeric: true },
+        { key: 'search_click_rate', label: '搜索点击率', numeric: true },
+      ], rows.map((item) => {
         const searchVisitors = item.search_visitors;
         const itemVisitors = item.product_visitors;
-        const searchRatio = item.search_ratio ?? (searchVisitors != null && itemVisitors ? searchVisitors / itemVisitors : null);
-        const tr = document.createElement('tr');
-        [item.date, number(searchVisitors), percent(searchRatio), percent(item.search_conversion), percent(item.search_click_rate)].forEach((value, index) => {
-          const td = document.createElement('td');
-          td.textContent = value;
-          if (index > 0) td.className = 'num';
-          tr.appendChild(td);
-        });
-        return tr;
-      }));
-      if (!rows.length) target.innerHTML = '<tr><td colspan="5">暂无可展示的搜索日度数据</td></tr>';
+        return { date: item.date, search_visitors: number(searchVisitors), search_ratio: percent(item.search_ratio ?? (searchVisitors != null && itemVisitors ? searchVisitors / itemVisitors : null)), search_conversion: percent(item.search_conversion), search_click_rate: percent(item.search_click_rate) };
+      }), '暂无可展示的搜索日度数据');
     }
 
     const keywords = $('[data-product-search-keywords]');
@@ -125,41 +130,28 @@
     const channels = $('[data-product-promotion-channels]');
     const channelRows = Array.isArray(data.channel_mix) ? data.channel_mix : [];
     if (channels) {
-      channels.replaceChildren(...channelRows.map((item) => {
-        const tr = document.createElement('tr');
-        [item.channel || '--', money(item.ad_spend), money(item.attributed_payment_amount), percent(item.spend_share), item.roi == null ? '--' : Number(item.roi).toFixed(2), percent(item.ctr), percent(item.cvr)].forEach((value, index) => {
-          const td = document.createElement('td');
-          td.textContent = value;
-          if (index > 0) td.className = 'num';
-          tr.appendChild(td);
-        });
-        return tr;
-      }));
-      if (!channelRows.length) channels.innerHTML = '<tr><td colspan="7">暂无推广渠道数据</td></tr>';
+      replaceTableBody(channels, [
+        { key: 'channel', label: '渠道' }, { key: 'ad_spend', label: '推广花费', numeric: true },
+        { key: 'attributed_payment_amount', label: '推广成交', numeric: true }, { key: 'spend_share', label: '花费占比', numeric: true },
+        { key: 'roi', label: 'ROI', numeric: true }, { key: 'ctr', label: '点击率', numeric: true }, { key: 'cvr', label: '转化率', numeric: true },
+      ], channelRows.map((item) => ({ channel: item.channel || '--', ad_spend: money(item.ad_spend), attributed_payment_amount: money(item.attributed_payment_amount), spend_share: percent(item.spend_share), roi: item.roi == null ? '--' : Number(item.roi).toFixed(2), ctr: percent(item.ctr), cvr: percent(item.cvr) })), '暂无推广渠道数据');
     }
 
     const campaigns = $('[data-product-promotion-campaigns]');
     const campaignRows = Array.isArray(data.campaigns) ? data.campaigns : [];
     if (campaigns) {
-      campaigns.replaceChildren(...campaignRows.map((item) => {
+      replaceTableBody(campaigns, [
+        { key: 'campaign', label: '计划' }, { key: 'channel', label: '渠道' }, { key: 'plan_type', label: '计划类型' },
+        { key: 'ad_spend', label: '推广花费', numeric: true }, { key: 'attributed_payment_amount', label: '推广成交', numeric: true },
+        { key: 'roi', label: 'ROI', numeric: true }, { key: 'clicks', label: '点击量', numeric: true }, { key: 'cvr', label: '转化率', numeric: true },
+      ], campaignRows, '暂无可下钻的推广计划', (item) => {
         const tr = document.createElement('tr');
         const name = document.createElement('td');
-        const button = document.createElement('button');
-        button.type = 'button';
-        button.className = 'ui-button ui-button--link';
-        button.textContent = item.campaign_name || item.campaign_id || '--';
-        button.addEventListener('click', () => loadCampaignDetail(item.campaign_id));
-        name.appendChild(button);
-        tr.appendChild(name);
-        [item.channel || '--', item.plan_type || '--', money(item.ad_spend), money(item.attributed_payment_amount), item.roi == null ? '--' : Number(item.roi).toFixed(2), number(item.clicks), percent(item.cvr)].forEach((value, index) => {
-          const td = document.createElement('td');
-          td.textContent = value;
-          if (index >= 2) td.className = 'num';
-          tr.appendChild(td);
-        });
+        const button = document.createElement('button'); button.type = 'button'; button.className = 'ui-button ui-button--link'; button.textContent = item.campaign_name || item.campaign_id || '--'; button.addEventListener('click', () => loadCampaignDetail(item.campaign_id));
+        name.appendChild(button); tr.appendChild(name);
+        [item.channel || '--', item.plan_type || '--', money(item.ad_spend), money(item.attributed_payment_amount), item.roi == null ? '--' : Number(item.roi).toFixed(2), number(item.clicks), percent(item.cvr)].forEach((value, index) => { const td = document.createElement('td'); td.textContent = value; if (index >= 2) td.className = 'num'; tr.appendChild(td); });
         return tr;
-      }));
-      if (!campaignRows.length) campaigns.innerHTML = '<tr><td colspan="8">暂无可下钻的推广计划</td></tr>';
+      });
     }
 
     const limitations = $('[data-product-promotion-limitations]');
@@ -185,17 +177,10 @@
     const target = $('[data-product-trade-trend]');
     const rows = Array.isArray(data.trend) ? data.trend : [];
     if (target) {
-      target.replaceChildren(...rows.map((item) => {
-        const tr = document.createElement('tr');
-        [item.date, money(item.payment_amount), money(item.refund_amount), percent(item.refund_rate), money(item.net_sales), number(item.buyers), number(item.payment_qty)].forEach((value, index) => {
-          const td = document.createElement('td');
-          td.textContent = value;
-          if (index > 0) td.className = 'num';
-          tr.appendChild(td);
-        });
-        return tr;
-      }));
-      if (!rows.length) target.innerHTML = '<tr><td colspan="7">当前日期范围没有商品交易事实</td></tr>';
+      replaceTableBody(target, [
+        { key: 'date', label: '日期' }, { key: 'payment_amount', label: '支付金额', numeric: true }, { key: 'refund_amount', label: '退款金额', numeric: true },
+        { key: 'refund_rate', label: '退款率', numeric: true }, { key: 'net_sales', label: '净销售额', numeric: true }, { key: 'buyers', label: '支付买家', numeric: true }, { key: 'payment_qty', label: '支付件数', numeric: true },
+      ], rows.map((item) => ({ date: item.date, payment_amount: money(item.payment_amount), refund_amount: money(item.refund_amount), refund_rate: percent(item.refund_rate), net_sales: money(item.net_sales), buyers: number(item.buyers), payment_qty: number(item.payment_qty) })), '当前日期范围没有商品交易事实');
     }
 
     const limitations = $('[data-product-trade-limitations]');
@@ -288,21 +273,17 @@
     const rows = Array.isArray(analysis.rows) ? analysis.rows : [];
     const keys = new Set(['dimension_value', ...(analysis.analysis_fields || []), 'conversion_rate']);
     const columns = (columnMap[analysis.key] || []).filter(([key]) => keys.has(key) && (key === 'dimension_value' || rows.some((item) => item[key] != null)));
-    const headerRow = document.createElement('tr');
-    columns.forEach(([, label]) => { const th = document.createElement('th'); th.textContent = label; headerRow.appendChild(th); });
-    head.replaceChildren(headerRow);
-    body.replaceChildren(...rows.map((item) => {
-      const tr = document.createElement('tr');
-      columns.forEach(([key]) => {
-        const td = document.createElement('td');
-        const value = item[key];
-        td.textContent = value == null ? '--' : key === 'payment_amount' || key === 'refund_amount' || key === 'ad_spend' ? money(value) : key === 'conversion_rate' ? percent(value) : key === 'payment_quantity' || key === 'buyers' || key === 'visitors' ? number(value) : String(value);
-        if (['payment_amount', 'refund_amount', 'ad_spend', 'payment_quantity', 'buyers', 'visitors', 'conversion_rate'].includes(key)) td.className = 'num';
-        tr.appendChild(td);
-      });
-      return tr;
-    }));
-    if (!rows.length) body.innerHTML = `<tr><td colspan="${Math.max(columns.length, 1)}">${analysis.coverage?.row_count ? '当前字段条件下暂无可展示的下钻行' : '当前主题没有真实事实行'}</td></tr>`;
+    if (window.TmallUI?.table?.mount) window.TmallUI.table.mount(body, {
+      caption: `${analysis.label || analysis.key || '主题'}下钻结果`,
+      columns: columns.map(([key, label]) => ({
+        key,
+        label,
+        numeric: ['payment_amount', 'refund_amount', 'ad_spend', 'payment_quantity', 'buyers', 'visitors', 'conversion_rate'].includes(key),
+        render: (value) => value == null ? '--' : key === 'payment_amount' || key === 'refund_amount' || key === 'ad_spend' ? money(value) : key === 'conversion_rate' ? percent(value) : key === 'payment_quantity' || key === 'buyers' || key === 'visitors' ? number(value) : String(value),
+      })),
+      rows,
+      emptyMessage: analysis.coverage?.row_count ? '当前字段条件下暂无可展示的下钻行' : '当前主题没有真实事实行',
+    });
   }
 
   async function loadGranularCapabilities() {
@@ -338,7 +319,7 @@
     } catch (error) {
       if (status) status.textContent = '加载失败';
       const body = $('[data-product-granular-analysis-body]');
-      if (body) body.innerHTML = `<tr><td>下钻失败：${error.message || '请重试'}</td></tr>`;
+      if (body) body.innerHTML = `<tr><td>下钻失败：${escapeHtml(error.message || '请重试')}</td></tr>`;
     }
   }
 
@@ -494,8 +475,21 @@
     }
     card.append(content, controls); return card;
   }
-  function renderHistory(rows) { const target = $('[data-product-detail-lifecycle-history]'); if (!target) return; target.replaceChildren(...(rows || []).map((item) => { const tr = document.createElement('tr'); [item.created_at, item.recommended_stage, item.manual_stage, item.reason, item.operator, item.version].forEach((value, index) => { const td = document.createElement('td'); td.textContent = value == null || value === '' ? '--' : String(value); if (index === 5) td.className = 'num'; tr.appendChild(td); }); return tr; })); if (!rows?.length) target.innerHTML = '<tr><td colspan="6">暂无生命周期历史</td></tr>'; }
-  function renderComparison(rows, contributions) { const target = $('[data-product-detail-period-comparison]'); if (target) { target.replaceChildren(...(rows || []).map((item) => { const tr = document.createElement('tr'); const metrics = item.metrics || {}; [item.month, metrics.net_sales?.current, pct(metrics.net_sales?.change_pct), pct(metrics.product_visitors?.change_pct), item.anomalies?.join('、') || '无明显变化'].forEach((value, index) => { const td = document.createElement('td'); td.textContent = value == null ? '--' : (index === 1 ? money(value) : String(value)); if (index > 0 && index < 4) td.className = 'num'; tr.appendChild(td); }); return tr; })); if (!rows?.length) target.innerHTML = '<tr><td colspan="5">暂无周期对比数据</td></tr>'; } const summary = $('[data-product-detail-contribution]'); if (summary) { const latest = (contributions || []).at(-1); summary.replaceChildren(latest ? row('贡献分析（非因果）', latest.drivers.map((driver) => `${driver.metric}: ${driver.delta == null ? '--' : Number(driver.delta).toFixed(2)}`).join('、')) : row('贡献分析', '暂无可比较周期')); } }
+  function renderHistory(rows) {
+    const target = $('[data-product-detail-lifecycle-history]'); if (!target) return;
+    replaceTableBody(target, [
+      { key: 'created_at', label: '时间' }, { key: 'recommended_stage', label: '系统阶段' }, { key: 'manual_stage', label: '人工阶段' },
+      { key: 'reason', label: '原因' }, { key: 'operator', label: '操作人' }, { key: 'version', label: '版本', numeric: true },
+    ], (rows || []).map((item) => ({ created_at: item.created_at || '--', recommended_stage: item.recommended_stage || '--', manual_stage: item.manual_stage || '--', reason: item.reason || '--', operator: item.operator || '--', version: item.version || '--' })), '暂无生命周期历史');
+  }
+  function renderComparison(rows, contributions) {
+    const target = $('[data-product-detail-period-comparison]');
+    if (target) replaceTableBody(target, [
+      { key: 'month', label: '月份' }, { key: 'net_sales', label: '净销售额', numeric: true }, { key: 'sales_change', label: '销售额变化', numeric: true },
+      { key: 'visitor_change', label: '访客变化', numeric: true }, { key: 'anomalies', label: '异常' },
+    ], (rows || []).map((item) => { const metrics = item.metrics || {}; return { month: item.month || '--', net_sales: metrics.net_sales?.current == null ? '--' : money(metrics.net_sales.current), sales_change: pct(metrics.net_sales?.change_pct), visitor_change: pct(metrics.product_visitors?.change_pct), anomalies: item.anomalies?.join('、') || '无明显变化' }; }), '暂无周期对比数据');
+    const summary = $('[data-product-detail-contribution]'); if (summary) { const latest = (contributions || []).at(-1); summary.replaceChildren(latest ? row('贡献分析（非因果）', latest.drivers.map((driver) => `${driver.metric}: ${driver.delta == null ? '--' : Number(driver.delta).toFixed(2)}`).join('、')) : row('贡献分析', '暂无可比较周期')); }
+  }
   function renderEvidence(summary) { const target = $('[data-product-detail-evidence]'); if (!target) return; const coverage = summary?.coverage || {}; target.replaceChildren(row('证据等级', summary?.level || '--'), row('覆盖范围', `${coverage.start || '--'} 至 ${coverage.end || '--'}（${coverage.days || 0} 天）`), row('数据来源', (summary?.sources || []).map((source) => `${source.source}: ${source.row_count}`).join('、') || '--'), row('缺失字段', (summary?.missing_fields || []).join('、') || '无'), row('限制说明', (summary?.unknowns || []).join('、') || '暂不支持严格因果归因')); }
   function renderProblemContext(context) {
     const panel = $('[data-product-problem-context]');
@@ -574,7 +568,7 @@
       }
       if (!d.ok) {
         const tbody = document.querySelector('[data-item-flow-table]');
-        if (tbody) tbody.innerHTML = `<tr><td colspan="11" style="text-align:center;color:var(--text-secondary);padding:24px">${d.message || '暂无流量来源数据'}</td></tr>`;
+        if (tbody) tbody.innerHTML = `<tr><td colspan="11" style="text-align:center;color:var(--text-secondary);padding:24px">${escapeHtml(d.message || '暂无流量来源数据')}</td></tr>`;
         return;
       }
       const data = d.data;
@@ -633,7 +627,7 @@
         const indent = (node.level - 1) * 20;
 
         const toggleBtn = hasChildren
-          ? `<span class="toggle-btn" data-item-flow-toggle="${node.channel_name}">${isExpanded ? '−' : '+'}</span>`
+          ? `<span class="toggle-btn" data-item-flow-toggle="${escapeHtml(node.channel_name)}">${isExpanded ? '−' : '+'}</span>`
           : `<span class="toggle-btn toggle-btn--empty">·</span>`;
 
         const uvPct = totalUv > 0 ? (node.uv / totalUv * 100).toFixed(1) + '%' : '--';
@@ -644,7 +638,7 @@
           <td>
             <div class="channel-cell" style="padding-left:${indent}px">
               ${toggleBtn}
-              <span class="channel-name ${hasChildren ? 'channel-name--clickable' : ''}" data-item-flow-channel="${node.channel_name}">${node.channel_name}</span>
+              <span class="channel-name ${hasChildren ? 'channel-name--clickable' : ''}" data-item-flow-channel="${escapeHtml(node.channel_name)}">${escapeHtml(node.channel_name)}</span>
             </div>
           </td>
           <td class="num">${(node.uv || 0).toLocaleString('zh-CN')}</td>
@@ -687,7 +681,7 @@
             renderTable();
           });
         });
-        tbody.querySelectorAll('.channel-name--clickable').forEach(el => {
+        tbody.querySelectorAll('[data-item-flow-channel]').forEach(el => {
           el.addEventListener('click', () => {
             const name = el.dataset.itemFlowChannel;
             if (itemFlowExpanded.has(name)) {
@@ -755,6 +749,23 @@
     }
   }
 
+  function renderProductImage(product) {
+    const image = document.querySelector('[data-product-detail-image]');
+    if (!image) return;
+    const url = typeof product.image_url === 'string' ? product.image_url.trim() : '';
+    image.alt = `${product.title || '商品'} 主图`;
+    // Keep an already loaded image steady when the date range refreshes.
+    if (url && image.getAttribute('src') === url && image.complete && image.naturalWidth > 0) {
+      image.hidden = false;
+      return;
+    }
+    image.hidden = true;
+    image.removeAttribute('src');
+    image.onload = () => { image.hidden = false; };
+    image.onerror = () => { image.hidden = true; image.removeAttribute('src'); };
+    if (url) image.src = url;
+  }
+
   async function load(range) {
     // No product id: `/product-detail` was opened directly. Say how to get here
     // rather than requesting `/api/products//detail` and reporting that as a
@@ -779,12 +790,7 @@
       ['rule_key', 'category_mode', 'period'].forEach((key) => { if (sourceParams.get(key)) query.set(key, sourceParams.get(key)); });
       const payload = await DemoApi.domainRequest(`/api/products/${encodeURIComponent(id)}/detail${query.toString() ? `?${query}` : ''}`); detailPayload = payload; const data = payload.data;
       setText('[data-product-detail-title]', data.product.title || id);
-      // 设置商品主图
-      const productImg = document.querySelector('[data-product-detail-image]');
-      if (productImg && data.product.image_url) {
-        productImg.src = data.product.image_url;
-        productImg.style.display = 'block';
-      }
+      renderProductImage(data.product);
       setText('[data-product-detail-meta]', `商品 ${id} · 数据截止 ${data.summary.data_cutoff_date || '--'}`);
       setText('[data-product-detail-breadcrumb]', `商品经营 / 商品列表 / ${data.product.title || id}`);
       $('[data-product-detail-meta]').textContent = `商品 ${id} · 数据截止 ${data.summary.data_cutoff_date || '--'}`;
@@ -806,7 +812,10 @@
       $('[data-product-detail-stage]').textContent = data.lifecycle?.stage_label || data.lifecycle?.stage || '--'; $('[data-product-detail-days]').textContent = data.lifecycle?.continuous_valid_days ?? '--'; $('[data-product-detail-confidence]').textContent = `置信度：${DemoLabels.label('confidence', data.lifecycle?.confidence)} · ${data.lifecycle?.locked ? '人工' : '系统'}`; $('[data-product-detail-rationale]').textContent = data.lifecycle?.rationale || '暂无判断依据';
       const trendRows = Array.isArray(data.daily_trend) ? data.daily_trend : [];
       const trend = $('[data-product-detail-trend]');
-      trend.replaceChildren(...trendRows.map((item) => { const tr = document.createElement('tr'); [item.date, money(item.payment_amount), money(item.net_sales), item.product_visitors ?? '--', money(item.ad_spend)].forEach((value, index) => { const td = document.createElement('td'); td.textContent = value; if (index) td.className = 'num'; tr.appendChild(td); }); return tr; })); if (!trendRows.length) trend.innerHTML = '<tr><td colspan="5">暂无日度数据</td></tr>';
+      replaceTableBody(trend, [
+        { key: 'date', label: '日期' }, { key: 'payment_amount', label: '支付金额', numeric: true }, { key: 'net_sales', label: '净销售额', numeric: true },
+        { key: 'product_visitors', label: '商品访客', numeric: true }, { key: 'ad_spend', label: '推广花费', numeric: true },
+      ], trendRows.map((item) => ({ date: item.date, payment_amount: money(item.payment_amount), net_sales: money(item.net_sales), product_visitors: item.product_visitors ?? '--', ad_spend: money(item.ad_spend) })), '暂无日度数据');
       const actions = $('[data-product-detail-actions]'); const actionRows = Array.isArray(data.actions) ? data.actions : []; actions.replaceChildren(...actionRows.map(actionCard)); if (!actionRows.length) actions.textContent = '暂无运营动作'; renderHistory(data.lifecycle_history); renderComparison(data.period_comparison, data.contribution_analysis); renderEvidence(data.evidence_summary);
       const exportLink = $('[data-product-detail-export]'); if (exportLink) { const exportQuery = new URLSearchParams({ capability_key: 'product-detail.export' }); if (selectedRange.startDate) exportQuery.set('start', selectedRange.startDate); if (selectedRange.endDate) exportQuery.set('end', selectedRange.endDate); ['rule_key', 'category_mode', 'period'].forEach((key) => { if (sourceParams.get(key)) exportQuery.set(key, sourceParams.get(key)); }); exportLink.href = `/api/products/${encodeURIComponent(id)}/detail/export?${exportQuery}`; }
       loadItemFlowSource(id, selectedRange);
@@ -911,24 +920,27 @@
       chartEl.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--text-secondary);">暂无趋势数据</div>';
     }
     const table = document.querySelector('[data-drill-table]');
-    if (data.length) {
-      var rows = data.map(function(item, idx) {
-        var tr = document.createElement('tr');
-        var val = getDrillValue(item, metric);
-        var prev = idx > 0 ? getDrillValue(data[idx - 1], metric) : null;
-        var change = (prev != null && prev != 0 && val != null) ? ((val - prev) / prev * 100) : null;
-        [item.date, format(val), (change != null ? (change > 0 ? '+' : '') + change.toFixed(1) + '%' : '--')].forEach(function(value, index) {
-          var td = document.createElement('td'); td.textContent = value;
-          if (index > 0) td.className = 'num';
-          if (index === 2 && change != null) td.style.color = change > 0 ? 'var(--success-text)' : 'var(--danger-text)';
-          tr.appendChild(td);
-        });
-        return tr;
-      });
-      table.replaceChildren.apply(table, rows);
-    } else {
-      table.innerHTML = '<tr><td colspan="3" style="text-align:center;color:var(--text-secondary);padding:24px;">暂无数据</td></tr>';
-    }
+    const rows = data.map(function(item, idx) {
+      const val = getDrillValue(item, metric);
+      const prev = idx > 0 ? getDrillValue(data[idx - 1], metric) : null;
+      const change = (prev != null && prev !== 0 && val != null) ? ((val - prev) / prev * 100) : null;
+      return {
+        date: item.date,
+        value: format(val),
+        change: change != null ? `${change > 0 ? '+' : ''}${change.toFixed(1)}%` : '--',
+        changeValue: change,
+      };
+    });
+    replaceTableBody(table, [
+      { key: 'date', label: '周期' },
+      { key: 'value', label: '数值', numeric: true },
+      { key: 'change', label: '环比', numeric: true, render: (value, row) => {
+        const cell = document.createElement('span');
+        cell.textContent = value;
+        if (row.changeValue != null) cell.style.color = row.changeValue > 0 ? 'var(--success-text)' : 'var(--danger-text)';
+        return cell;
+      } },
+    ], rows, '暂无数据');
   }
 
   function renderDrillModal(metric) {

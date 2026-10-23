@@ -1,6 +1,8 @@
 from datetime import date
 import re
 
+import os
+
 from flask import Blueprint, request
 
 from api.api_response import evidence_level_for, failure, json_object, limitations_for, success
@@ -12,6 +14,12 @@ from services.category_mode_service import available_labels, mode_to_label, requ
 period_reviews_bp = Blueprint('period_reviews', __name__)
 
 PERIOD_TYPES = ('day', 'week', 'month')
+
+# 客户端可以显式提交的复盘状态白名单。
+# final 是服务端派生的终态（必填段落齐全才允许落库），不是客户端可以随便写的一个值；
+# 未在表内的状态（published/locked/approved/...）一律 422 拒绝，避免出现下游
+# （services/period_context_status.py 按 status='final' 读取）无法识别的中间态。
+REVIEW_STATUS_INPUTS = ('draft', 'final')
 
 
 def _validate_period_key(period_type, period_key):
@@ -48,6 +56,41 @@ def _parse_period(period_type, period_key):
         raise ValueError('周期类型必须为 day、week 或 month')
     _validate_period_key(period_type, period_key)
     return period_type, period_key
+
+
+def _requested_review_status(payload):
+    """解析客户端显式提交的状态，非法值抛 ValueError(原值)。
+
+    返回 'draft' / 'final'，或 None 表示「未指定，由服务端派生」。
+    空串与缺省等价，避免空串成为绕过白名单的后门。
+    """
+    raw = payload.get('status')
+    if raw is None:
+        return None
+    status = str(raw).strip()
+    if not status:
+        return None
+    if status not in REVIEW_STATUS_INPUTS:
+        raise ValueError(status)
+    return status
+
+
+def _missing_required_sections(template, sections):
+    """按模板重算必填段落缺口。
+
+    必须始终基于「实际将落库的 sections」调用：只要有一处沿用了旧结果
+    （例如旧表单分支把已保存段落带过来），缺口就会失真，final 也就跟着失真。
+    """
+    sections = sections if isinstance(sections, dict) else {}
+    missing = []
+    for section in template:
+        if not section.get('required'):
+            continue
+        entry = sections.get(section['key'])
+        text = str((entry if isinstance(entry, dict) else {}).get('text') or '').strip()
+        if not text:
+            missing.append(section['key'])
+    return missing
 
 
 def _review_evidence(period_type, period_key, action='read', row_count=1):
@@ -102,9 +145,11 @@ def period_review_period_options():
     )
 
 
+# 品类显示名是部署私有配置（公开代码不带具体经营品类），经 TMALL_CATEGORY_LABEL 注入。
+_CATEGORY_LABEL = os.environ.get('TMALL_CATEGORY_LABEL', '默认品类')
 SYSTEM_CATEGORIES = (
     {'value': 'all', 'label': '全部品类', 'shop_label': None, 'enabled': True, 'system': True},
-    {'value': 'sock', 'label': '标品袜子', 'shop_label': '标品袜子', 'enabled': True, 'system': True},
+    {'value': 'sock', 'label': _CATEGORY_LABEL, 'shop_label': _CATEGORY_LABEL, 'enabled': True, 'system': True},
 )
 
 
@@ -284,6 +329,15 @@ def save_period_review(period_type, period_key):
     sections = payload.get('sections')
     structured = isinstance(sections, dict) and bool(sections)
 
+    # 状态先过白名单：非法状态不该被写进库，也不该被静默吞掉改成 draft。
+    try:
+        requested_status = _requested_review_status(payload)
+    except ValueError as error:
+        return failure(
+            'VALIDATION_ERROR', '复盘状态不合法',
+            {'status': str(error), 'allowed_statuses': list(REVIEW_STATUS_INPUTS)}, status=422,
+        )
+
     existing = PeriodReviewsRepo.get(period_type, period_key)
     # 品类口径：显式传入 > 全局 category_mode > 该期已保存的口径。写盘后复盘自带口径，
     # 之后换品类查看时能明确提示"这期是按哪个品类写的"。
@@ -354,10 +408,7 @@ def save_period_review(period_type, period_key):
                 )
                 if joined:
                     entry['text'] = joined
-        missing_required = [
-            section['key'] for section in template
-            if section.get('required') and not str((sections.get(section['key']) or {}).get('text') or '').strip()
-        ]
+        missing_required = _missing_required_sections(template, sections)
         if not reviewer:
             return failure('VALIDATION_ERROR', '复盘人不能为空', status=422)
         legacy = reviews_service.legacy_fields_from_sections(period_type, sections)
@@ -373,11 +424,7 @@ def save_period_review(period_type, period_key):
         }
         sections = previous.get('sections') or None
         # 状态按已保存段落重算，避免「只存目标」把还没写完的草稿误标成 final。
-        saved_sections = previous.get('sections') or {}
-        missing_required = [
-            section['key'] for section in template
-            if section.get('required') and not str((saved_sections.get(section['key']) or {}).get('text') or '').strip()
-        ]
+        missing_required = _missing_required_sections(template, previous.get('sections'))
     else:
         if any(not payload.get(key) for key in ('summary', 'conclusions', 'next_actions', 'reviewer')):
             return failure('VALIDATION_ERROR', '周期复盘字段不完整', status=422)
@@ -388,6 +435,19 @@ def save_period_review(period_type, period_key):
         }
         # 旧表单只写摘要字段时保留已保存的结构化段落，避免互相覆盖。
         sections = (existing or {}).get('sections') or None
+        # 沿用旧段落就必须按「实际会落库的 sections」重算缺口：以前这里不重算，
+        # 于是 missing_required 一直是 []，一条什么都没写的复盘会被默认存成 final。
+        missing_required = _missing_required_sections(template, sections)
+
+    # final 只能是派生结果：必填段落齐全才允许落库。
+    # 客户端在残缺内容上显式要 final 一律 422 拒绝（而不是悄悄改成 draft）——
+    # 静默降级会返回 ok=true，前端据此显示「已定稿」，把客户端 bug 藏起来；
+    # 拒绝与 422 前让请求整体不落库，保证「状态说 final ⇒ 内容真的完整」。
+    if requested_status == 'final' and missing_required:
+        return failure(
+            'VALIDATION_ERROR', '必填段落未填写完整，不能定稿',
+            {'missing_required_sections': missing_required, 'status': 'final'}, status=422,
+        )
 
     # 目标字段：payload 未提供时沿用已保存值。
     # 否则「只改段落文字」的局部保存会把已录入的目标一起清空。
@@ -402,7 +462,7 @@ def save_period_review(period_type, period_key):
         'reviewer': reviewer,
         'sections': sections,
         'category_mode': category_mode,
-        'status': payload.get('status') or ('draft' if missing_required else 'final'),
+        'status': requested_status or ('draft' if missing_required else 'final'),
         'template_version': reviews_service.TEMPLATE_VERSION,
         'reason': payload.get('reason'),
     })

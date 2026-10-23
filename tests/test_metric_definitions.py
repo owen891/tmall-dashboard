@@ -13,9 +13,12 @@ class MetricDefinitionTests(unittest.TestCase):
             'returning_payment_buyers': 5,
             'ad_spend': 80,
             'attributed_payment_amount': 240,
+            'operating_profit': 135,
         })
 
         self.assertEqual(result['values']['net_sales'], 900.0)
+        self.assertEqual(result['values']['profit'], 135.0)
+        self.assertEqual(result['values']['profit_rate'], 0.15)
         self.assertEqual(result['values']['refund_rate'], 0.1)
         self.assertEqual(result['values']['payment_conversion_rate'], 0.1)
         self.assertEqual(result['values']['average_order_value'], 50.0)
@@ -78,6 +81,47 @@ class MetricDefinitionTests(unittest.TestCase):
         self.assertIsNone(result['data']['refund_rate'])
         self.assertIsNone(result['data']['ad_spend'])
         self.assertIsNone(result['data']['expense_ratio'])
+
+    def test_overview_exposes_net_profit_and_rate(self):
+        from services.metrics_service import build_overview
+
+        result = build_overview({
+            'fact_count': 1,
+            'data_end_date': '2026-08-02',
+            'payment_amount': 1000,
+            'successful_refund_amount': 100,
+            'product_visitors': 200,
+            'payment_buyers': 20,
+            'returning_payment_buyers': 5,
+            'ad_spend': 80,
+            'operating_profit': 135,
+        }, '2026-08-01', '2026-08-02')
+
+        self.assertEqual(result['data']['profit'], 135.0)
+        self.assertEqual(result['data']['profit_rate'], 0.15)
+        self.assertEqual(result['data']['metric_availability']['profit_rate'], 'available')
+        self.assertEqual(result['availability'], 'available')
+
+    def test_overview_without_cost_data_keeps_profit_unknown(self):
+        from services.metrics_service import build_overview
+
+        result = build_overview({
+            'fact_count': 1,
+            'data_end_date': '2026-08-02',
+            'payment_amount': 1000,
+            'successful_refund_amount': 100,
+            'product_visitors': 200,
+            'payment_buyers': 20,
+            'returning_payment_buyers': 5,
+            'ad_spend': 80,
+        }, '2026-08-01', '2026-08-02')
+
+        self.assertIsNone(result['data']['profit'])
+        self.assertIsNone(result['data']['profit_rate'])
+        self.assertEqual(result['data']['metric_availability']['profit'], 'missing-fields')
+        self.assertIn('operating_profit', result['data']['missing_fields'])
+        # 可选增强指标缺失不应把核心经营指标整体判为数据不足。
+        self.assertEqual(result['availability'], 'available')
 
 
 if __name__ == '__main__':

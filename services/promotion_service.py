@@ -7,6 +7,157 @@ class PromotionValidationError(ValueError):
 
 
 class PromotionService:
+    @staticmethod
+    def _coverage(observed, expected, source='promotion_daily_facts', unit='fact_rows'):
+        return {'observed_rows': int(observed or 0), 'expected_rows': int(expected or 0),
+                'source': source, 'unit': unit}
+
+    @staticmethod
+    def _availability(coverage):
+        parts = coverage.get('sources', [coverage])
+        # Rows with no spend/clicks are intentionally excluded from the
+        # impression denominator.  When every selected row is such an
+        # inactive row, impressions are not a missing source field; CTR/CPM
+        # simply have no active traffic on which to calculate.
+        if (coverage.get('excluded_inactive_rows') and
+                not any(p['expected_rows'] for p in parts)):
+            return 'insufficient-data'
+        if not any(p['observed_rows'] for p in parts):
+            return 'missing-fields'
+        if any(p['observed_rows'] < p['expected_rows'] for p in parts):
+            return 'partial'
+        return 'available'
+
+    @classmethod
+    def _derive_quality(cls, row, *, paid_share_mode='store'):
+        """Same historical formulas; incomplete inputs are not complete ratios."""
+        ratios = {
+            'roi': (('attributed_payment_amount',), 'ad_spend', 1),
+            'direct_roi': (('direct_payment_amount',), 'ad_spend', 1),
+            'ctr': (('clicks',), 'impressions', 1),
+            'cvr': (('payment_buyers',), 'clicks', 1),
+            'cpc': (('ad_spend',), 'clicks', 1),
+            'cpm': (('ad_spend',), 'impressions', 1000),
+            'cart_rate': (('cart_adds',), 'clicks', 1),
+            'cart_cost': (('ad_spend',), 'cart_adds', 1),
+            'new_buyer_ratio': (('new_buyers',), 'payment_buyers', 1),
+            'new_customer_cost': (('ad_spend',), 'new_buyers', 1),
+            'expense_ratio': (('ad_spend',), 'link_net_sales', 1),
+            'paid_share': ((('direct_payment_amount', 'indirect_payment_amount')
+                            if paid_share_mode == 'direct_total' else ('attributed_payment_amount',)),
+                           'attributed_payment_amount' if paid_share_mode == 'direct_total' else 'store_payment_amount', 1),
+        }
+        availability, coverage = row['metric_availability'], row['metric_coverage']
+        for metric, (numerators, denominator, scale) in ratios.items():
+            if metric == 'cart_cost' and row.pop('_source_cart_cost_used', False):
+                continue  # existing source-cost precedence, not a new ROI rule
+            dependencies = (*numerators, denominator)
+            if any(name not in coverage for name in dependencies):
+                continue
+            statuses = [availability[name] for name in dependencies]
+            row[metric] = None
+            if 'missing-fields' in statuses:
+                status = 'missing-fields'
+            elif 'partial' in statuses:
+                status = 'partial'
+            elif 'insufficient-data' in statuses:
+                status = 'insufficient-data'
+            elif row[denominator] == 0:
+                status = 'insufficient-data'
+            else:
+                row[metric] = round(sum(row[k] for k in numerators) / row[denominator] * scale, 6)
+                status = 'available'
+            availability[metric] = status
+            coverage[metric] = {'unit': 'dependency_coverage',
+                                'inputs': {name: coverage[name] for name in dependencies}}
+        row['missing_fields'] = sorted(k for k, v in availability.items() if v == 'missing-fields')
+        row['partial_fields'] = sorted(k for k, v in availability.items() if v == 'partial')
+        return row
+
+    @classmethod
+    def _quality(cls, raw, normalized, grain, start=None, end=None, *, paid_share_mode='store'):
+        expected = int(raw.get('_expected_rows', 1 if raw else 0))
+        row = dict(normalized)
+        coverage = {}
+        for field in PromotionRepo.FACT_METRICS:
+            raw_key = 'fact_' + field if 'fact_' + field in raw else field
+            value = raw.get(raw_key)
+            observed = raw.get('_observed_' + field, int(value is not None))
+            field_coverage = cls._coverage(observed, expected)
+            if field == 'impressions' and '_active_impressions_expected_rows' in raw:
+                active_expected = int(raw.get('_active_impressions_expected_rows') or 0)
+                active_observed = int(raw.get('_active_impressions_observed_rows') or 0)
+                field_coverage = cls._coverage(active_observed, active_expected)
+                excluded = max(expected - active_expected, 0)
+                if excluded:
+                    field_coverage['excluded_inactive_rows'] = excluded
+            # Real zero is authoritative. Only absence allows the legacy month
+            # fallback; its denominator explicitly remains monthly source rows.
+            if grain == 'product' and field in ('cart_adds', 'new_buyers') and value is None and raw.get('paid_detail_rows'):
+                value = raw.get('paid_' + field)
+                field_coverage = cls._coverage(raw.get('_paid_observed_' + field, int(value is not None)),
+                                               raw.get('paid_detail_rows'), 'paid_detail', 'month_rows')
+            row[field] = value
+            coverage[field] = field_coverage
+        for field in ('total_orders', 'favs', 'direct_cart_adds', 'indirect_cart_adds'):
+            if field in raw:
+                row[field] = raw[field]
+                coverage[field] = cls._coverage(raw.get('_paid_observed_' + field, int(raw[field] is not None)),
+                                               raw.get('paid_detail_rows'), 'paid_detail', 'month_rows')
+        for field, observed in (('link_gsv', '_link_observed_payment'), ('link_net_sales', '_link_observed_net')):
+            if field in raw:
+                row[field] = raw[field]
+                coverage[field] = cls._coverage(raw.get(observed, int(raw[field] is not None)),
+                                               raw.get('_link_expected_rows', 1), 'daily_data', 'fact_rows')
+        if 'store_payment_amount' in raw:
+            row['store_payment_amount'] = raw['store_payment_amount']
+            coverage['store_payment_amount'] = cls._coverage(raw.get('_store_observed_rows'),
+                                                            raw.get('_store_expected_rows'), 'store_daily_facts')
+        row.update(metric_coverage=coverage,
+                   metric_availability={k: cls._availability(v) for k, v in coverage.items()},
+                   source_grain=grain, source_window={'start': start, 'end': end})
+        if grain == 'product' and raw.get('source_cart_cost') is not None:
+            row['cart_cost'] = raw['source_cart_cost']
+            coverage['cart_cost'] = cls._coverage(raw.get('_paid_observed_cart_cost', 1),
+                                                 raw.get('paid_detail_rows'), 'paid_detail', 'month_rows')
+            row['metric_availability']['cart_cost'] = cls._availability(coverage['cart_cost'])
+            row['_source_cart_cost_used'] = True
+        cls._derive_quality(row, paid_share_mode=paid_share_mode)
+        return {k: v for k, v in row.items() if not k.startswith('_') and k not in
+                ('fact_cart_adds', 'fact_new_buyers', 'paid_cart_adds', 'paid_new_buyers', 'paid_detail_rows', 'source_cart_cost')}
+
+    @classmethod
+    def _summary(cls, rows, grain, start=None, end=None, *, paid_share_mode='store'):
+        """Sum only known values; keep mixed source denominators separated."""
+        result = {'metric_coverage': {}, 'metric_availability': {}, 'source_grain': grain,
+                  'source_window': {'start': start, 'end': end}}
+        fields = set(PromotionRepo.FACT_METRICS)
+        fields.update(k for r in rows for k, c in r.get('metric_coverage', {}).items()
+                      if c.get('unit') != 'dependency_coverage')
+        for field in fields:
+            selected = rows[:1] if field == 'store_payment_amount' else rows
+            known = [r[field] for r in selected if r.get(field) is not None]
+            result[field] = round(sum(known), 6) if known else None
+            parts = {}
+            for row in selected:
+                c = row.get('metric_coverage', {}).get(field)
+                if not c:
+                    continue
+                for part in c.get('sources', [c]):
+                    key = (part['source'], part['unit'])
+                    target = parts.setdefault(key, cls._coverage(0, 0, *key))
+                    target['observed_rows'] += part['observed_rows']
+                    target['expected_rows'] += part['expected_rows']
+                    if part.get('excluded_inactive_rows'):
+                        target['excluded_inactive_rows'] = target.get('excluded_inactive_rows', 0) + part['excluded_inactive_rows']
+            coverage = (next(iter(parts.values())) if len(parts) == 1 else
+                        {'unit': 'mixed_source_rows', 'sources': list(parts.values())})
+            if not parts:
+                coverage = cls._coverage(0, 0)
+            result['metric_coverage'][field] = coverage
+            result['metric_availability'][field] = cls._availability(coverage)
+        return cls._derive_quality(result, paid_share_mode=paid_share_mode)
+
     # 计划名 → 投放方式关键词（按序匹配，先命中先归）
     PLAN_TYPE_KEYWORDS = [
         ('控点击', ('控点击', '拉点击')),
@@ -53,7 +204,7 @@ class PromotionService:
             buyers = int(row['payment_buyers'] or 0)
             direct = float(row['direct_payment_amount'] or 0)
             indirect = float(row['indirect_payment_amount'] or 0)
-            store_payment = float(row.pop('store_payment_amount') or 0)
+            store_payment = float(row.get('store_payment_amount') or 0)
             link_gsv = row.get('link_gsv')
             fact_cart_adds = row.get('fact_cart_adds')
             fact_new_buyers = row.get('fact_new_buyers')
@@ -110,7 +261,7 @@ class PromotionService:
                 })
             if group_by == 'campaign':
                 normalized['plan_type'] = self.plan_type_of(row.get('campaign_name'))
-            result.append(normalized)
+            result.append(self._quality(row, normalized, group_by, start_date, end_date))
         trend = []
         for row in PromotionRepo.trend(start_date, end_date, filters):
             spend = float(row['ad_spend'] or 0)
@@ -118,12 +269,12 @@ class PromotionService:
             clicks = int(row['clicks'] or 0)
             impressions = int(row['impressions'] or 0)
             buyers = int(row['payment_buyers'] or 0)
-            trend.append({
+            trend.append(self._quality(row, {
                 **row,
                 'roi': round(deal / spend, 6) if spend else None,
                 'ctr': round(clicks / impressions, 6) if impressions else None,
                 'cvr': round(buyers / clicks, 6) if clicks else None,
-            })
+            }, 'product', start_date, end_date))
         alerts = alert_rules_service.evaluate_promotion(result)
         breakdown_rows = PromotionRepo.monthly_breakdowns(
             start_date,
@@ -151,6 +302,11 @@ class PromotionService:
         available_grains = PromotionRepo.available_grains(start_date, end_date, filters)
         return {
             'group_by': group_by, 'rows': result, 'trend': trend, 'alerts': alerts,
+            'summary': self._summary(result, group_by, start_date, end_date),
+            'missing_fields': sorted({field for row in result for field in row['missing_fields']}),
+            'partial_fields': sorted({field for row in result for field in row['partial_fields']}),
+            'source_window': {'start': start_date, 'end': end_date},
+            'coverage_unit': 'selected_fact_rows_not_calendar_dates',
             'available_grains': available_grains,
             'breakdowns': breakdowns,
             'source_batches': PromotionRepo.source_batches(start_date, end_date, filters),
@@ -197,45 +353,14 @@ class PromotionService:
     def plan_types(self, start_date, end_date, filters=None):
         """投放方式效果对比：按计划名解析投放方式后聚合计划粒度行。"""
         filters = filters or {}
-        rows = PromotionRepo.list(start_date, end_date, 'campaign', filters)
+        rows = [self._quality(row, row, 'campaign', start_date, end_date)
+                for row in PromotionRepo.list(start_date, end_date, 'campaign', filters)]
         grouped = {}
         for row in rows:
-            spend = float(row['ad_spend'] or 0)
-            deal = float(row['attributed_payment_amount'] or 0)
-            clicks = int(row['clicks'] or 0)
-            impressions = int(row['impressions'] or 0)
-            buyers = int(row['payment_buyers'] or 0)
-            cart_adds = int(row['fact_cart_adds'] or 0)
-            plan_type = self.plan_type_of(row.get('campaign_name'))
-            bucket = grouped.setdefault(plan_type, {
-                'plan_count': 0, 'ad_spend': 0.0, 'attributed_payment_amount': 0.0,
-                'impressions': 0, 'clicks': 0, 'payment_buyers': 0, 'cart_adds': 0,
-            })
-            bucket['plan_count'] += 1
-            bucket['ad_spend'] += spend
-            bucket['attributed_payment_amount'] += deal
-            bucket['impressions'] += impressions
-            bucket['clicks'] += clicks
-            bucket['payment_buyers'] += buyers
-            bucket['cart_adds'] += cart_adds
-        result = []
-        for plan_type, bucket in grouped.items():
-            spend = bucket['ad_spend']
-            clicks = bucket['clicks']
-            impressions = bucket['impressions']
-            cart_adds = bucket['cart_adds']
-            result.append({
-                'plan_type': plan_type,
-                'plan_count': bucket['plan_count'],
-                'ad_spend': round(spend, 6),
-                'attributed_payment_amount': round(bucket['attributed_payment_amount'], 6),
-                'roi': round(bucket['attributed_payment_amount'] / spend, 6) if spend else None,
-                'ctr': round(clicks / impressions, 6) if impressions else None,
-                'cvr': round(bucket['payment_buyers'] / clicks, 6) if clicks else None,
-                'cart_adds': cart_adds,
-                'cart_cost': round(spend / cart_adds, 6) if cart_adds else None,
-            })
-        result.sort(key=lambda item: item['ad_spend'], reverse=True)
+            grouped.setdefault(self.plan_type_of(row.get('campaign_name')), []).append(row)
+        result = [{**self._summary(members, 'campaign', start_date, end_date),
+                   'plan_type': name, 'plan_count': len(members)} for name, members in grouped.items()]
+        result.sort(key=lambda item: item['ad_spend'] or 0, reverse=True)
         return {'rows': result, 'availability': 'available' if result else 'no-data'}
 
     def new_products(self, start_date, end_date, filters=None):
@@ -344,8 +469,8 @@ class PromotionService:
             ],
         }
 
-    @staticmethod
-    def _detail_row_metrics(row, plan_type=None):
+    @classmethod
+    def _detail_row_metrics(cls, row, plan_type=None, start=None, end=None, grain="campaign"):
         spend = float(row.get('ad_spend') or 0)
         deal = float(row.get('attributed_payment_amount') or 0)
         clicks = int(row.get('clicks') or 0)
@@ -372,7 +497,7 @@ class PromotionService:
         }
         if plan_type is not None:
             normalized['plan_type'] = plan_type
-        return normalized
+        return cls._quality(row, normalized, grain, start, end, paid_share_mode='direct_total')
 
     def product_detail(self, start_date, end_date, product_id):
         """商品推广详情抽屉：计划列表 + 渠道花费结构。"""
@@ -389,48 +514,29 @@ class PromotionService:
                 campaigns = [fallback]
         normalized_campaigns = []
         for row in campaigns:
-            normalized_campaigns.append(self._detail_row_metrics(row, self.plan_type_of(row.get('campaign_name'))))
+            normalized_campaigns.append(self._detail_row_metrics(row, self.plan_type_of(row.get('campaign_name')), start_date, end_date, grain='product' if str(row.get('campaign_id', '')).startswith('product:') else 'campaign'))
         channel_mix = PromotionRepo.channel_mix_for_product(start_date, end_date, product_id)
         if not channel_mix and normalized_campaigns:
             channel_buckets = {}
             for row in normalized_campaigns:
-                channel = row.get('channel') or '未标注渠道'
-                bucket = channel_buckets.setdefault(channel, {'channel': channel, 'ad_spend': 0, 'attributed_payment_amount': 0, 'impressions': 0, 'clicks': 0, 'payment_buyers': 0, 'cart_adds': 0, 'new_buyers': 0, 'direct_payment_amount': 0, 'indirect_payment_amount': 0})
-                bucket['ad_spend'] += float(row['ad_spend'] or 0)
-                bucket['attributed_payment_amount'] += float(row['attributed_payment_amount'] or 0)
-                for key in ('impressions', 'clicks', 'payment_buyers', 'cart_adds', 'new_buyers'):
-                    bucket[key] += int(row.get(key) or 0)
-                for key in ('direct_payment_amount', 'indirect_payment_amount'):
-                    bucket[key] += float(row.get(key) or 0)
-            channel_mix = sorted(channel_buckets.values(), key=lambda item: item['ad_spend'], reverse=True)
+                channel_buckets.setdefault(row.get('channel') or '未标注渠道', []).append(row)
+            channel_mix = [{**self._summary(members, 'channel', start_date, end_date,
+                                           paid_share_mode='direct_total'), 'channel': channel}
+                           for channel, members in channel_buckets.items()]
+            channel_mix.sort(key=lambda item: item['ad_spend'] or 0, reverse=True)
         total_mix_spend = sum(float(row['ad_spend'] or 0) for row in channel_mix)
         normalized_mix = []
         for row in channel_mix:
             normalized_mix.append({
-                **self._detail_row_metrics(row),
+                **(row if 'metric_coverage' in row else self._detail_row_metrics(row, start=start_date, end=end_date, grain='channel')),
                 'spend_share': round(float(row['ad_spend'] or 0) / total_mix_spend, 6) if total_mix_spend else None,
             })
-        summary = {
-            'ad_spend': round(sum(float(row['ad_spend'] or 0) for row in normalized_campaigns), 6),
-            'attributed_payment_amount': round(sum(float(row['attributed_payment_amount'] or 0) for row in normalized_campaigns), 6),
-            'impressions': sum(int(row['impressions'] or 0) for row in normalized_campaigns),
-            'clicks': sum(int(row['clicks'] or 0) for row in normalized_campaigns),
-            'payment_buyers': sum(int(row['payment_buyers'] or 0) for row in normalized_campaigns),
-            'cart_adds': sum(int(row['cart_adds'] or 0) for row in normalized_campaigns),
-            'new_buyers': sum(int(row['new_buyers'] or 0) for row in normalized_campaigns),
-        }
+        summary = self._summary(normalized_campaigns, 'campaign', start_date, end_date, paid_share_mode='direct_total')
         spend = summary['ad_spend']
         behavior = PromotionRepo.product_behavior_for_period(start_date, end_date, product_id)
         guide_potential = int(behavior.get('guide_potential') or 0)
         guide_visitors = int(behavior.get('guide_visitors') or 0)
         summary.update({
-            'roi': round(summary['attributed_payment_amount'] / spend, 6) if spend else None,
-            'ctr': round(summary['clicks'] / summary['impressions'], 6) if summary['impressions'] else None,
-            'cvr': round(summary['payment_buyers'] / summary['clicks'], 6) if summary['clicks'] else None,
-            'cpc': round(spend / summary['clicks'], 6) if summary['clicks'] else None,
-            'cart_cost': round(spend / summary['cart_adds'], 6) if summary['cart_adds'] else None,
-            'new_customer_cost': round(spend / summary['new_buyers'], 6) if summary['new_buyers'] else None,
-            'new_buyer_ratio': round(summary['new_buyers'] / summary['payment_buyers'], 6) if summary['payment_buyers'] else None,
             'guide_visitors': guide_visitors,
             'guide_potential': guide_potential,
             'guide_potential_ratio': round(guide_potential / guide_visitors, 6) if guide_visitors else None,
@@ -457,14 +563,7 @@ class PromotionService:
         products = PromotionRepo.campaign_products(campaign_id)
         return {
             'campaign_id': campaign_id,
-            'summary': {
-                **summary,
-                'roi': round(deal / spend, 6) if spend else None,
-                'ctr': round(clicks / impressions, 6) if impressions else None,
-                'cvr': round(int(summary.get('payment_buyers') or 0) / clicks, 6) if clicks else None,
-                'cart_cost': round(spend / cart_adds, 6) if cart_adds else None,
-                'plan_type': self.plan_type_of(summary.get('campaign_name')),
-            },
+            'summary': self._detail_row_metrics(summary, self.plan_type_of(summary.get('campaign_name')), start_date, end_date),
             'products': products,
         }
 

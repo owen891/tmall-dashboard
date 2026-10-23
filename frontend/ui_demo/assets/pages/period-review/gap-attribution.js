@@ -75,15 +75,6 @@
       };
     }
 
-    function factorRow(name, contribution, factText) {
-      // 4-3：这里的 contribution 是「该因子对销售额变化的贡献」，极性跟随销售额（越高越好）。
-      const cls = contribution === 0 ? '' : MetricPolarity.deltaClass('gsv', contribution);
-      return h('tr', null,
-        h('td', { text: name }),
-        h('td', { class: `num pr-delta ${cls}`.trim(), text: signedMoney(contribution) }),
-        h('td', { class: 'num', text: factText }));
-    }
-
     /** 归因线索行：事实 + 「看明细」跳转到对应结论段。 */
     function clueLine(text, section, anchorLabel, diagnosisSource) {
       const source = {
@@ -157,30 +148,28 @@
           const residual = d.total - sumContrib;
           const aligned = Math.abs(residual) < 0.5
             || (Math.abs(d.total) > 1 && Math.abs(residual) / Math.abs(d.total) < 0.005);
+          const decompositionRows = [
+            { factor: '流量（访客数）', contribution: d.visitors, facts: `${formatValue(f.visitors[0], 'number')} → ${formatValue(f.visitors[1], 'number')}` },
+            { factor: '转化率', contribution: d.conversion, facts: `${fmtPct(f.conversion[0])} → ${fmtPct(f.conversion[1])}` },
+            { factor: '净销售客单价', contribution: d.aov, facts: `${formatValue(f.aov[0], 'money')} → ${formatValue(f.aov[1], 'money')}` },
+            { kind: 'sum', factor: '三因子贡献合计', contribution: sumContrib, facts: '' },
+            { kind: 'reconcile', factor: '净销售额变化额（对账）', contribution: d.total, facts: '' },
+            { kind: 'residual', factor: '未解释差额', contribution: aligned ? null : residual, facts: '', aligned },
+          ];
           parts.push(h('div', { class: 'pr-gap__decompose' },
             h('p', { class: 'pr-gap__hint', text: `净销售额环比变化 ${signedMoney(d.total)} 的三因子拆解（连环替代法）：` }),
-            h('table', { class: 'pr-table' },
-              h('thead', null, h('tr', null,
-                h('th', { text: '因子' }), h('th', { class: 'num', text: '对净销售额的贡献' }), h('th', { class: 'num', text: '上期 → 本期' }))),
-              h('tbody', null,
-                factorRow('流量（访客数）', d.visitors, `${formatValue(f.visitors[0], 'number')} → ${formatValue(f.visitors[1], 'number')}`),
-                factorRow('转化率', d.conversion, `${fmtPct(f.conversion[0])} → ${fmtPct(f.conversion[1])}`),
-                factorRow('净销售客单价', d.aov, `${formatValue(f.aov[0], 'money')} → ${formatValue(f.aov[1], 'money')}`),
-                h('tr', { class: 'pr-gap__sum' },
-                  h('td', { text: '三因子贡献合计' }),
-                  h('td', { class: 'num', text: signedMoney(sumContrib) }),
-                  h('td', { class: 'num', text: '' })),
-                h('tr', null,
-                  h('td', { text: '净销售额变化额（对账）' }),
-                  h('td', { class: 'num', text: signedMoney(d.total) }),
-                  h('td', { class: 'num', text: '' })),
-                h('tr', null,
-                  h('td', { text: '未解释差额' }),
-                  h('td', {
-                    class: `num ${aligned ? '' : 'pr-delta is-down'}`.trim(),
-                    text: aligned ? '0（已对齐）' : signedMoney(residual),
-                  }),
-                  h('td', { class: 'num', text: '' })))),
+            window.TmallUI.table({
+              tableClass: 'pr-table',
+              rowClassName: (row) => row.kind === 'sum' ? 'pr-gap__sum' : '',
+              columns: [
+                { key: 'factor', label: '因子' },
+                { key: 'contribution', label: '对净销售额的贡献', numeric: true, render: (value, row) => row.kind === 'residual'
+                  ? h('span', { class: row.aligned ? '' : 'pr-delta is-down', text: row.aligned ? '0（已对齐）' : signedMoney(value) })
+                  : h('span', { class: row.kind ? '' : `pr-delta ${value === 0 ? '' : MetricPolarity.deltaClass('gsv', value)}`.trim(), text: signedMoney(value) }) },
+                { key: 'facts', label: '上期 → 本期', numeric: true },
+              ],
+              rows: decompositionRows,
+            }),
             aligned ? null : h('p', { class: 'pr-gap__hint' },
               `差额 ${signedMoney(residual)} 来自口径差异（转化率/买家数与净销售额非同源），非计算错误；对账不平的结论请降级使用。`),
           ));

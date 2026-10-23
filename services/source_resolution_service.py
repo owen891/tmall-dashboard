@@ -215,6 +215,25 @@ def _load_candidates(connection, product_id, stat_date, field_key, legacy=None, 
     return candidates
 
 
+def _is_partial_bi_snapshot(item):
+    """True for the BI API re-collection written by collect_overview_full.py.
+
+    The BI API (`overViewPageList`) never returns the cost/profit bucket keys
+    (netHpCost / saleCost / zdyFyAll / deliverCost / otherCost / ptCost), while
+    the user-exported 商品总览 Excel does.  Both writers share
+    source_type='paimi_bi_product_day' and source_system='business_advisor',
+    so without this discriminator the two are indistinguishable to _choose and
+    the more recently observed one wins -- letting a routine weekly re-collection
+    overwrite Excel costs and break the profit identity.  The API batch id is
+    always `bi_api_full_<date>.json`; Excel batches are content hashes or the
+    original file name.
+    """
+    if item[1] not in AUTHORITATIVE_SNAPSHOT_SOURCE_TYPES:
+        return False
+    batch_id = item[2]
+    return isinstance(batch_id, str) and batch_id.startswith('bi_api_')
+
+
 def _choose(field_key, candidates):
     if not candidates:
         return None
@@ -228,7 +247,14 @@ def _choose(field_key, candidates):
     primary = PRIMARY_SOURCES.get(field_key)
     preferred = [item for item in candidates if item[0] == primary] if primary else []
     pool = authoritative or preferred or candidates
-    pool = sorted(pool, key=lambda item: SOURCE_PRIORITY.get(item[0], 0), reverse=True)
+    # Within an equal source priority, prefer the complete user-exported BI
+    # snapshot over the partial API snapshot.  Source priority still dominates,
+    # so a promotion_tool value is not displaced by a BI snapshot.
+    pool = sorted(
+        pool,
+        key=lambda item: (SOURCE_PRIORITY.get(item[0], 0), not _is_partial_bi_snapshot(item)),
+        reverse=True,
+    )
     selected = pool[0]
     distinct = []
     for item in candidates:

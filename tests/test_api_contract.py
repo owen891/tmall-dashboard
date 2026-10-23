@@ -82,6 +82,70 @@ class OverviewContractTests(unittest.TestCase):
         self.assertIsNone(payload['data']['payment_amount'])
         self.assertIsNone(payload['data']['refund_rate'])
 
+    def test_overview_disclosure_fails_closed_for_mixed_sources(self):
+        from db import get_db
+
+        with get_db(self.database_path) as connection:
+            connection.executemany(
+                'INSERT INTO products (product_id, title, status) VALUES (?, ?, ?)',
+                [('mixed-bi', '混合 BI', 'active'), ('mixed-sycm', '混合流量', 'active')],
+            )
+            connection.executemany(
+                '''INSERT INTO daily_data (
+                       product_id, date, payment_amount, refund_amount,
+                       ipv, buyers, ad_spend, data_source
+                   ) VALUES (?, ?, ?, 0, ?, ?, 0, ?)''',
+                [
+                    ('mixed-bi', '2026-04-03', 10, 10, 1, 'mixed-bi-source'),
+                    ('mixed-sycm', '2026-04-03', 20, 20, 2, 'mixed-sycm-source'),
+                ],
+            )
+            connection.executemany(
+                '''INSERT INTO import_batches (
+                       id, source_type, source_filename, source_hash, status,
+                       total_rows, valid_rows, invalid_rows
+                   ) VALUES (?, ?, ?, ?, 'completed', 1, 1, 0)''',
+                [
+                    ('mixed-bi-batch', 'paimi_bi_product_day', 'mixed-bi-source', 'a' * 64),
+                    ('mixed-sycm-batch', 'sycm_flow', 'mixed-sycm-source', 'b' * 64),
+                ],
+            )
+            connection.executemany(
+                '''INSERT INTO daily_data_observations (
+                       product_id, date, source_system, source_type,
+                       source_batch_id, source_filename, payload_json, field_presence_json
+                   ) VALUES (?, ?, ?, ?, ?, ?, '{}', '{}')''',
+                [
+                    ('mixed-bi', '2026-04-03', 'bi', 'paimi_bi_product_day', 'mixed-bi-batch', 'mixed-bi-source'),
+                    ('mixed-sycm', '2026-04-03', 'sycm', 'sycm_flow', 'mixed-sycm-batch', 'mixed-sycm-source'),
+                ],
+            )
+            connection.commit()
+
+        payload = self.client.get(
+            '/api/overview?start=2026-04-03&end=2026-04-03'
+        ).get_json()
+        self.assertEqual(payload['data']['source_disclosures']['status'], 'unknown')
+        self.assertIsNone(payload['data']['source_disclosures']['precision'])
+        self.assertEqual(payload['evidence'][0]['source'], 'daily_data')
+
+        with get_db(self.database_path) as connection:
+            connection.execute(
+                "UPDATE import_batches SET source_type = 'paimi_bi_product_day' "
+                "WHERE id = 'mixed-sycm-batch'"
+            )
+            connection.execute(
+                "UPDATE daily_data_observations SET source_type = 'paimi_bi_overview' "
+                "WHERE source_batch_id = 'mixed-sycm-batch'"
+            )
+            connection.commit()
+
+        declared = self.client.get(
+            '/api/overview?start=2026-04-03&end=2026-04-03'
+        ).get_json()
+        self.assertEqual(declared['data']['source_disclosures']['status'], 'declared')
+        self.assertFalse(declared['data']['source_disclosures']['upstream_atomic'])
+
     def test_overview_marks_monthly_fallback_as_partial_evidence(self):
         from db import get_db
 
@@ -191,6 +255,47 @@ class OverviewContractTests(unittest.TestCase):
 
         self.assertEqual(len(payload), 1)
         self.assertEqual(payload[0]['payment_count'], 7)
+
+    def test_daily_trend_exposes_net_profit_and_rate_for_the_bucket(self):
+        from db import get_db
+
+        with get_db(self.database_path) as connection:
+            connection.execute(
+                '''INSERT INTO daily_data (
+                       product_id, date, payment_amount, refund_amount, operating_profit, ipv
+                   ) VALUES (?, ?, ?, ?, ?, ?)''',
+                ('trend-profit', '2026-04-05', 1000, 0, 120, 50),
+            )
+            connection.commit()
+
+        payload = self.client.get(
+            '/api/trend?dim=daily&start=2026-04-05&end=2026-04-05'
+        ).get_json()
+
+        self.assertEqual(len(payload), 1)
+        self.assertAlmostEqual(payload[0]['profit'], 120.0, places=6)
+        self.assertAlmostEqual(payload[0]['profit_rate'], 0.12, places=6)
+
+    def test_weekly_trend_reports_unknown_profit_instead_of_zero(self):
+        from db import get_db
+
+        with get_db(self.database_path) as connection:
+            connection.execute(
+                '''INSERT INTO weekly_data (
+                       product_id, week_start, payment_amount, refund_amount, ipv
+                   ) VALUES (?, ?, ?, ?, ?)''',
+                ('trend-week-profit', '2026-04-01', 1000, 0, 50),
+            )
+            connection.commit()
+
+        payload = self.client.get(
+            '/api/trend?dim=weekly&start=2026-04-01&end=2026-04-07'
+        ).get_json()
+
+        self.assertTrue(payload)
+        row = next(item for item in payload if item['period'] == '2026-04-01')
+        self.assertIsNone(row['profit'])
+        self.assertIsNone(row['profit_rate'])
 
     def test_daily_matrix_uses_imported_facts_without_zero_fallback(self):
         response = self.client.get('/api/overview/daily-matrix?start=2026-04-01&end=2026-04-02')

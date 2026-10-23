@@ -1,4 +1,4 @@
-﻿"""
+"""
 数据采集状态API
 提供各数据源的采集状态查询和手动触发功能
 """
@@ -16,6 +16,8 @@ from api.api_response import success, failure
 from db import get_db
 from db import get_shop_id
 from config import APP_VERSION
+from scripts.runtime_paths import resolve_python, RuntimeConfigurationError, loopback_proxy_env
+from scripts.browser_runtime import resolve_browser, require_browser_identity, BrowserConfigurationError
 from services.collector_run_service import (
     create_run,
     get_run,
@@ -36,8 +38,11 @@ from services.collector_run_service import (
     reconcile_stale_runs,
     upsert_checkpoint,
     update_run,
+    classify_collection_failure, retry_decision, healthcheck_coverage, verify_fact_dates,
+    collection_completion_evidence,
 )
 from services.collector_retry_service import retry_diff, start_retry
+from services.shop_scope_service import current_request_shop_id
 
 collect_bp = Blueprint('collect', __name__)
 
@@ -163,7 +168,7 @@ def _extract_coverage_event(lines):
 
 def _build_result_event(source_key, run_id, *, status, return_code=None,
                         row_count=0, coverage=None, quality_gate=None,
-                        error_code=None):
+                        error_code=None, window_start=None, window_end=None):
     """Create the stable terminal event consumed by logs and replay tooling."""
     return {
         'event': 'result',
@@ -176,6 +181,8 @@ def _build_result_event(source_key, run_id, *, status, return_code=None,
         'coverage': coverage,
         'quality_gate': quality_gate,
         'error_code': error_code,
+        'window_start': window_start,
+        'window_end': window_end,
     }
 
 
@@ -187,26 +194,11 @@ def _classify_process_failure(lines, return_code=None):
     when the shared Chrome/CDP endpoint has disappeared between preparation and
     process launch.
     """
-    tail_lines = [str(line).strip() for line in (lines or []) if str(line).strip()]
-    tail = '\n'.join(tail_lines[-20:])
-    normalized = tail.lower()
-    cdp_markers = (
-        'connectionrefusederror',
-        'winerror 10061',
-        'urlopen error',
-        '127.0.0.1:',
-        '/json',
-        'get_cookies_from_cdp',
-    )
-    if any(marker in normalized for marker in cdp_markers):
-        message = 'CDP 浏览器调试端口不可用，采集器未能连接浏览器。'
-        if tail:
-            message += f'\n{tail}'
-        return 'CDP_UNAVAILABLE', message[:2000]
-    message = f'采集失败，返回码 {return_code}' if return_code is not None else '采集失败'
-    if tail:
-        message += f'\n{tail}'
-    return 'PROCESS_FAILED', message[:2000]
+    result = classify_collection_failure(lines, return_code)
+    message = result['message']
+    if result['code'] == 'CDP_UNAVAILABLE':
+        message = 'CDP 浏览器调试端口不可用。\n' + message
+    return result['code'], message[:2000]
 
 # 采集脚本路径：允许部署环境覆盖，默认优先使用仓库内 collectors，
 # 再兼容项目同级的本地采集器目录。
@@ -219,7 +211,8 @@ def _default_collectors_dir():
 
 
 COLLECTORS_DIR = os.environ.get('TMALL_COLLECTORS_DIR') or _default_collectors_dir()
-VENV_PYTHON = os.environ.get('TMALL_COLLECT_PYTHON', sys.executable)
+# Resolve per request: a validated runtime switch does not require stale module globals.
+VENV_PYTHON = sys.executable  # Backward-compatible fallback, never overrides explicit settings.
 CDP_PORT = int(os.environ.get('TMALL_CDP_PORT', '9223'))
 
 # 数据源配置
@@ -521,6 +514,7 @@ def get_collect_health():
             # 近期断档检查：日度源逐日核对最近 7 天（T-1 采集，今天不计为缺失）。
             # age_days 只能发现"整体滞后"；中间缺一天、但最新日期仍是新的时会被漏掉。
             source_rows[-1]['missing_dates'] = []
+            source_rows[-1]['gap_check_status'] = 'not_applicable'
             if not table_error and config.get('fresh_days', 3) <= 3:
                 try:
                     present_rows = conn.execute(
@@ -528,6 +522,7 @@ def get_collect_health():
                             WHERE {config["date_col"]} >= date('now', '-8 days')'''
                     ).fetchall()
                     present = {str(row['d'])[:10] for row in present_rows}
+                    source_rows[-1]['gap_check_status'] = 'verified'
                     today = datetime.now().date()
                     source_rows[-1]['missing_dates'] = [
                         (today - timedelta(days=offset)).isoformat()
@@ -535,7 +530,22 @@ def get_collect_health():
                         if (today - timedelta(days=offset)).isoformat() not in present
                     ]
                 except Exception:
-                    source_rows[-1]['missing_dates'] = []
+                    source_rows[-1]['gap_check_status'] = 'unknown'
+            open_gaps = conn.execute(
+                "SELECT fingerprint FROM collector_health_alerts WHERE source_key=? AND alert_type='date_gap' AND status='open'",
+                (key,),
+            ).fetchall()
+            candidate_dates = {row['fingerprint'] for row in open_gaps}
+            source_rows[-1]['open_gap_dates'] = sorted(candidate_dates)
+            if config.get('fresh_days', 3) <= 3 and config.get('cadence') != 'window':
+                candidate_dates.update((datetime.now().date() - timedelta(days=offset)).isoformat()
+                                       for offset in range(1, 8))
+            source_rows[-1]['coverage_scope'] = 'date_presence_and_required_fields'
+            source_rows[-1]['coverage_acceptance'] = verify_fact_dates(
+                conn, config['table'], config['date_col'],
+                COLLECTOR_CATALOG.get(key, {}).get('fields'), candidate_dates,
+                shop_id=current_request_shop_id(),
+            )
         staging = conn.execute(
             '''SELECT status, COUNT(*) AS count FROM collector_data_staging
                WHERE created_at >= datetime('now', '-7 days') GROUP BY status'''
@@ -546,14 +556,19 @@ def get_collect_health():
                   if row.get('enabled', True) and (
                       row['table_error'] or not row['last_run'] or row['age_days'] is None
                       or row['age_days'] > row.get('fresh_days', 3)
-                      or row.get('missing_dates')
+                      or row.get('missing_dates') or row.get('gap_check_status') == 'unknown'
+                      or row.get('open_gap_dates')
+                      or row['coverage_acceptance']['status'] in {'unknown', 'partial'}
                       or row['last_run']['status'] in {'failed', 'auth_required', 'blocked', 'partial'})]
+    monitor = healthcheck_coverage(current_app.config.get('COLLECTOR_HEARTBEAT_PATH',
+        PROJECT_ROOT / 'logs' / 'collector-health-heartbeat.json'))
     return success({
+        'monitoring': monitor,
         'sources': source_rows,
         'staging_7d': {row['status']: row['count'] for row in staging},
         'source_count': len(source_rows),
         'unhealthy_count': len(unhealthy),
-        'status': 'degraded' if unhealthy else 'healthy',
+        'status': 'degraded' if unhealthy or monitor['status'] != 'active' else 'healthy',
     }, availability='available', evidence=[
         {'source': 'collector_runs', 'window': '7d'},
         {'source': 'collector_data_staging', 'window': '7d'},
@@ -578,26 +593,56 @@ _prepare_lock = threading.Lock()
 
 
 def check_collect_env(source_key):
-    """完全跳过页面准备：采集脚本自己会处理cookie和登录态。"""
+    """Source-specific hook; runtime/browser ownership is checked before locks.
+
+    The collector still validates its own remote session. This hook must not be
+    interpreted as proof of login or permission to open a different browser.
+    """
     return None
+
+
+def _browser_for_sources(source_keys):
+    requested = set(source_keys)
+    if requested <= {'bi_monthly'}:
+        return None  # Local aggregation has no browser dependency.
+    if requested - {'bi_monthly', 'bi_daily', 'sycm_flow', 'sycm_item_flow', 'sycm_market', 'wanxiangtai'}:
+        # The disabled DTS/DMP sources need a different browser and explicit
+        # configuration; never silently send them to the selected BI browser.
+        raise BrowserConfigurationError('SOURCE_BROWSER_NOT_CONFIGURED')
+    browser = resolve_browser(PROJECT_ROOT)
+    require_browser_identity(browser)
+    return browser
+
+
+def _apply_browser_env(env, browser):
+    if browser is not None:
+        env.update({'TMALL_CDP_PORT': str(browser['port']), 'TMALL_CDP_HOST': browser['host'],
+                    'TMALL_CHROME_PATH': browser['executable'], 'TMALL_CHROME_PROFILE': browser['user_data_dir'],
+                    'TMALL_CHROME_REUSE_ONLY': '1' if browser['reuse_only'] else '0'})
+    return env
 
 
 
 def prepare_collect_pages(source_keys):
-    """Start the shared CDP pages and verify the BI login before collection."""
-    requested = set(source_keys or DATA_SOURCES)
+    """Honor selected-browser reuse policy and verify session/page readiness."""
+    requested = set(source_keys or (key for key, item in DATA_SOURCES.items() if item.get('enabled', True)))
     if requested == {'bi_monthly'}:
         return True, '月度聚合不需要浏览器'
     needs_bi = bool(requested & {'bi_daily'})
     script = PROJECT_ROOT / 'scripts' / 'auto_login_bi.py'
     if not script.exists():
         return False, f'页面准备脚本不存在: {script}'
-    args = [VENV_PYTHON, '-u', str(script), '--sources', ','.join(sorted(requested))]
+    try:
+        python = resolve_python(PROJECT_ROOT, fallback=VENV_PYTHON)
+        browser = _browser_for_sources(requested)
+    except (RuntimeConfigurationError, BrowserConfigurationError) as exc:
+        return False, str(exc)
+    args = [python, '-u', str(script), '--sources', ','.join(sorted(requested))]
     if not needs_bi:
         args.append('--skip-bi-login')
-    env = os.environ.copy()
+    env = loopback_proxy_env()
     env['PYTHONIOENCODING'] = 'utf-8'
-    env['TMALL_CDP_PORT'] = str(CDP_PORT)
+    _apply_browser_env(env, browser)
     env['TMALL_DB_PATH'] = current_app.config['DATABASE_PATH']
     try:
         result = subprocess.run(
@@ -618,7 +663,7 @@ def prepare_collect_pages(source_keys):
 def prepare_collect():
     """Prepare the browser pages required by manual collection."""
     data = request.get_json() or {}
-    source_keys = data.get('sources') or list(DATA_SOURCES)
+    source_keys = data.get('sources') or [key for key, item in DATA_SOURCES.items() if item.get('enabled', True)]
     if isinstance(source_keys, str):
         source_keys = [source_keys]
     invalid = [key for key in source_keys if key not in DATA_SOURCES]
@@ -644,12 +689,37 @@ def trigger_collect():
 
     db_path = current_app.config.get('DATABASE_PATH')
     shop_id = get_shop_id()
-    run_id = create_run(source_key, shop_id, db_path=db_path, mode='manual')
+    default_day = (datetime.now().date() - timedelta(days=1)).isoformat()
+    window_start = data.get('window_start') or data.get('date') or default_day
+    window_end = data.get('window_end') or window_start
+    try:
+        first = datetime.strptime(window_start, '%Y-%m-%d').date()
+        last = datetime.strptime(window_end, '%Y-%m-%d').date()
+        if last < first or (last - first).days > 31:
+            raise ValueError('window must contain 1 to 32 days')
+    except (ValueError, TypeError):
+        return failure('INVALID_WINDOW', '业务日期窗口必须为 YYYY-MM-DD 且不超过 32 天', status=422)
+    run_id = create_run(source_key, shop_id, db_path=db_path, mode='manual',
+                        window_start=window_start, window_end=window_end)
 
     if not os.path.exists(script_path):
         update_run(run_id, status='failed', db_path=db_path,
                    error_code='SCRIPT_NOT_FOUND', error_message=f'采集脚本不存在: {script_path}')
         return failure('SCRIPT_NOT_FOUND', f'采集脚本不存在: {script_path}')
+
+    try:
+        collect_python = resolve_python(PROJECT_ROOT, fallback=VENV_PYTHON)
+    except RuntimeConfigurationError as exc:
+        update_run(run_id, status='blocked', db_path=db_path,
+                   error_code='RUNTIME_CONFIG_INVALID', error_message=str(exc))
+        return failure('RUNTIME_CONFIG_INVALID', str(exc), status=503)
+
+    try:
+        browser_config = _browser_for_sources({source_key})
+    except BrowserConfigurationError as exc:
+        update_run(run_id, status='blocked', db_path=db_path,
+                   error_code='BROWSER_NOT_READY', error_message=str(exc))
+        return failure('BROWSER_NOT_READY', str(exc), status=503)
 
     # 在启动线程前占用数据源锁，避免并发请求同时启动同一采集器。
     source_lock = _collect_locks[source_key]
@@ -657,7 +727,7 @@ def trigger_collect():
         update_run(run_id, status='failed', db_path=db_path,
                    error_code='ALREADY_RUNNING', error_message='该数据源正在采集中，请稍候')
         return failure('ALREADY_RUNNING', '该数据源正在采集中，请稍候')
-    if not acquire_lease(source_key, shop_id, run_id, db_path=db_path):
+    if not acquire_lease(source_key, shop_id, run_id, db_path=db_path, ttl_seconds=2700):
         source_lock.release()
         update_run(run_id, status='failed', db_path=db_path,
                    error_code='ALREADY_RUNNING', error_message='该数据源在其他进程中正在采集中')
@@ -722,6 +792,19 @@ def trigger_collect():
     def run_collection():
         all_output = []
         last_error = None
+        import time as _clock
+        started = _clock.monotonic()
+        total_budget = COLLECT_TIMEOUT
+        def retry_allowed(failure, attempt):
+            decision = retry_decision(failure, attempt=attempt + 1,
+                elapsed_seconds=_clock.monotonic() - started,
+                max_attempts=MAX_RETRIES + 1, budget_seconds=total_budget, default_delay=RETRY_DELAY)
+            all_output.append('RETRY_POLICY ' + json.dumps(decision))
+            update_run(run_id, db_path=db_path, stats={'retry_policy': decision,
+                'max_attempts': MAX_RETRIES + 1, 'budget_seconds': total_budget})
+            if decision['retry']:
+                _clock.sleep(decision['delay_seconds'])
+            return decision['retry']
         def process_quality(status, actual, message=None):
             record_quality_result(
                 run_id, 'process_exit_code', db_path=db_path,
@@ -730,6 +813,18 @@ def trigger_collect():
             )
         try:
             for attempt in range(MAX_RETRIES + 1):
+                if _clock.monotonic() - started >= total_budget:
+                    with _state_lock:
+                        collect_tasks[source_key] = {'status': 'failed', 'run_id': run_id,
+                            'last_run': datetime.now().isoformat(), 'output': all_output,
+                            'error': '采集总时间预算已耗尽', 'attempts': attempt}
+                    update_run(run_id, status='failed', db_path=db_path,
+                               error_code='TIME_BUDGET_EXHAUSTED', error_message='采集总时间预算已耗尽')
+                    upsert_checkpoint(run_id, 'process', source_key, db_path=db_path,
+                                      status='failed', error_code='TIME_BUDGET_EXHAUSTED')
+                    process_quality('failed', 'time_budget_exhausted')
+                    save_collect_state()
+                    return
                 with _state_lock:
                     collect_tasks[source_key] = {
                         'status': 'running',
@@ -743,17 +838,23 @@ def trigger_collect():
                                   status='running')
                 save_collect_state()
                 try:
-                    process_env = os.environ.copy()
+                    process_env = loopback_proxy_env()
                     process_env['PYTHONIOENCODING'] = 'utf-8'
                     process_env['TMALL_COLLECT_RUN_ID'] = run_id
+                    process_env['TMALL_WINDOW_START'] = window_start
+                    process_env['TMALL_SHOP_ID'] = shop_id
+                    process_env['TMALL_WINDOW_END'] = window_end
                     process_env['TMALL_DB_PATH'] = db_path
-                    process_env['TMALL_CDP_PORT'] = str(CDP_PORT)
+                    _apply_browser_env(process_env, browser_config)
+                    if browser_config is not None:
+                        # Revalidate on every retry, not only before the request queues.
+                        require_browser_identity(browser_config)
                     process_env['TMALL_COLLECTOR_VERSION'] = APP_VERSION
                     # 单品流量采集的商品数上限。采集器默认已是 200，这里再固化一次，
                     # 避免部署环境未设置时回落到旧的 50 造成覆盖度断崖。
                     process_env.setdefault('TMALL_ITEM_MAX_ITEMS', '50')  # 用户要求TOP50
                     proc = subprocess.Popen(
-                        [VENV_PYTHON, '-u', script_path],
+                        [collect_python, '-u', script_path],
                         cwd=COLLECTORS_DIR,
                         stdout=subprocess.PIPE,
                         stderr=subprocess.STDOUT,
@@ -764,7 +865,7 @@ def trigger_collect():
                         env=process_env,
                     )
                     try:
-                        stdout, _ = proc.communicate(timeout=COLLECT_TIMEOUT)
+                        stdout, _ = proc.communicate(timeout=max(0.01, min(COLLECT_TIMEOUT, total_budget - (_clock.monotonic() - started))))
                         output_lines = (stdout or '').splitlines()
                         persist_artifact(run_id, 'process_output', stdout or '', db_path=db_path)
                         structured_checkpoint_count = _consume_structured_checkpoint_events(
@@ -779,10 +880,7 @@ def trigger_collect():
                         proc.wait()
                         all_output.append(f'[系统] 采集超时（{COLLECT_TIMEOUT}秒），已强制终止')
                         last_error = f'采集超时（{COLLECT_TIMEOUT}秒）'
-                        if attempt < MAX_RETRIES:
-                            all_output.append(f'[系统] {RETRY_DELAY}秒后进行第{attempt + 2}次重试...')
-                            import time as _time
-                            _time.sleep(RETRY_DELAY)
+                        if retry_allowed(classify_collection_failure(['timeout']), attempt):
                             continue
                         with _state_lock:
                             collect_tasks[source_key] = {
@@ -806,13 +904,30 @@ def trigger_collect():
                         return
 
                     if proc.returncode == 0:
+                        evidence = collection_completion_evidence(output_lines, run_id=run_id,
+                            source_key=source_key, window_start=window_start, window_end=window_end, db_path=db_path)
+                        if not evidence['ok']:
+                            update_run(run_id, status=evidence['status'], db_path=db_path,
+                                error_code=evidence['code'], error_message='采集完成证据未通过，禁止发布旧分区快照',
+                                stats={'completion_evidence': evidence})
+                            upsert_checkpoint(run_id, 'process', source_key, db_path=db_path,
+                                status='failed', error_code=evidence['code'])
+                            process_quality('failed', evidence['code'])
+                            with _state_lock:
+                                collect_tasks[source_key] = {'status': evidence['status'], 'run_id': run_id,
+                                    'last_run': datetime.now().isoformat(), 'output': all_output, 'error': evidence['code']}
+                            save_collect_state()
+                            return
+                        coverage = evidence['receipt']['coverage']
                         snapshot = None
                         try:
                             # Legacy collectors write facts directly; capture
                             # the resulting partition for unified audit/quality.
                             snapshot = stage_source_snapshot(
                                 run_id, source_key, config['table'], config['date_col'],
-                                db_path=db_path,
+                                db_path=db_path, window_start=window_start, window_end=window_end,
+                                expected_rows=evidence['receipt']['row_count'],
+                                required_fields=COLLECTOR_CATALOG.get(source_key, {}).get('fields', []),
                             )
                             record_quality_result(
                                 run_id, 'staging_snapshot_non_empty',
@@ -829,7 +944,7 @@ def trigger_collect():
                             )
                         with _state_lock:
                             collect_tasks[source_key] = {
-                                'status': 'completed',
+                                'status': 'pending_quality',
                                 'last_run': datetime.now().isoformat(),
                                 'output': all_output,
                                 'return_code': proc.returncode,
@@ -839,7 +954,9 @@ def trigger_collect():
                         has_output = bool(output_lines)
                         snapshot_ok = bool(snapshot and snapshot.get('status') == 'published'
                                            and snapshot.get('row_count', 0) > 0)
-                        gate_ok = has_output and snapshot_ok
+                        gate_ok = has_output and snapshot_ok and snapshot.get('row_count') == evidence['receipt']['row_count']
+                        with _state_lock:
+                            collect_tasks[source_key]['status'] = 'completed' if gate_ok else 'failed'
                         update_run(run_id, status='succeeded' if gate_ok else 'failed', db_path=db_path,
                                    attempt=attempt + 1,
                                    stats={'return_code': proc.returncode, 'output_lines': len(all_output),
@@ -866,6 +983,7 @@ def trigger_collect():
                             coverage=coverage,
                             quality_gate='passed' if gate_ok else 'failed',
                             error_code=None if gate_ok else 'QUALITY_GATE_FAILED',
+                            window_start=window_start, window_end=window_end,
                         ), ensure_ascii=False))
                         save_collect_state()
                         return
@@ -873,17 +991,12 @@ def trigger_collect():
                     failure_code, last_error = _classify_process_failure(
                         output_lines, proc.returncode,
                     )
-                    if attempt < MAX_RETRIES:
-                        all_output.append(
-                            f'[系统] {failure_code}: {last_error[:500]}，'
-                            f'{RETRY_DELAY}秒后重试...'
-                        )
-                        import time as _time
-                        _time.sleep(RETRY_DELAY)
+                    failure = classify_collection_failure(output_lines, proc.returncode)
+                    if retry_allowed(failure, attempt):
                         continue
                     with _state_lock:
                         collect_tasks[source_key] = {
-                            'status': 'failed',
+                            'status': failure['status'],
                             'last_run': datetime.now().isoformat(),
                             'output': all_output,
                             'error': last_error,
@@ -891,42 +1004,45 @@ def trigger_collect():
                             'attempts': attempt + 1,
                             'run_id': run_id,
                         }
-                    update_run(run_id, status='failed', db_path=db_path, attempt=attempt + 1,
+                    update_run(run_id, status=failure['status'], db_path=db_path, attempt=attempt + 1,
                                error_code=failure_code, error_message=last_error)
                     process_quality('failed', proc.returncode, last_error)
                     upsert_checkpoint(run_id, 'process', source_key, db_path=db_path,
                                       status='failed', error_code=failure_code,
                                       error_message=last_error)
                     all_output.append('RESULT_JSON ' + json.dumps(_build_result_event(
-                        source_key, run_id, status='failed', return_code=proc.returncode,
+                        source_key, run_id, status=failure['status'], return_code=proc.returncode,
                         quality_gate='not_evaluated', error_code=failure_code), ensure_ascii=False))
                     save_collect_state()
                     return
                 except Exception as error:
                     last_error = str(error)
-                    if attempt < MAX_RETRIES:
-                        all_output.append(f'[系统] 采集异常: {error}，{RETRY_DELAY}秒后重试...')
-                        import time as _time
-                        _time.sleep(RETRY_DELAY)
+                    exception_code = 'BROWSER_NOT_READY' if isinstance(error, BrowserConfigurationError) else 'COLLECTOR_EXCEPTION'
+                    failure = classify_collection_failure([type(error).__name__ + ': ' + str(error)])
+                    if isinstance(error, BrowserConfigurationError):
+                        failure.update(status='blocked', retryable=False)
+                    elif failure['category'] != 'unknown':
+                        exception_code = failure['code']
+                    if not isinstance(error, BrowserConfigurationError) and retry_allowed(failure, attempt):
                         continue
                     with _state_lock:
                         collect_tasks[source_key] = {
-                            'status': 'failed',
+                            'status': failure['status'],
                             'last_run': datetime.now().isoformat(),
                             'output': all_output,
                             'error': last_error,
                             'attempts': attempt + 1,
                             'run_id': run_id,
                         }
-                    update_run(run_id, status='failed', db_path=db_path, attempt=attempt + 1,
-                               error_code='COLLECTOR_EXCEPTION', error_message=last_error)
+                    update_run(run_id, status=failure['status'], db_path=db_path, attempt=attempt + 1,
+                               error_code=exception_code, error_message=last_error)
                     process_quality('failed', 'exception', last_error)
                     upsert_checkpoint(run_id, 'process', source_key, db_path=db_path,
-                                      status='failed', error_code='COLLECTOR_EXCEPTION',
+                                      status='failed', error_code=exception_code,
                                       error_message=last_error)
                     all_output.append('RESULT_JSON ' + json.dumps(_build_result_event(
-                        source_key, run_id, status='failed', quality_gate='not_evaluated',
-                        error_code='COLLECTOR_EXCEPTION'), ensure_ascii=False))
+                        source_key, run_id, status=failure['status'], quality_gate='not_evaluated',
+                        error_code=exception_code), ensure_ascii=False))
                     save_collect_state()
                     return
         finally:
@@ -981,16 +1097,17 @@ def get_collect_log(source_key):
 @collect_bp.route('/api/collect/runs/<run_id>', methods=['GET'])
 def get_collect_run(run_id):
     """Return a durable collector run record by id."""
-    run = get_run(run_id, db_path=current_app.config.get('DATABASE_PATH'))
+    db_path = current_app.config.get('DATABASE_PATH')
+    shop_id = current_request_shop_id()
+    run = get_run(run_id, db_path=db_path, shop_id=shop_id)
     if not run:
         return failure('RUN_NOT_FOUND', '采集运行记录不存在', status=404)
-    db_path = current_app.config.get('DATABASE_PATH')
     return success({
         'run': run,
-        'checkpoints': list_checkpoints(run_id, db_path=db_path),
-        'quality_results': list_quality_results(run_id, db_path=db_path),
-        'artifacts': list_artifacts(run_id, db_path=db_path),
-        'quality_gate': quality_gate(run_id, db_path=db_path),
+        'checkpoints': list_checkpoints(run_id, db_path=db_path, shop_id=shop_id),
+        'quality_results': list_quality_results(run_id, db_path=db_path, shop_id=shop_id),
+        'artifacts': list_artifacts(run_id, db_path=db_path, shop_id=shop_id),
+        'quality_gate': quality_gate(run_id, db_path=db_path, shop_id=shop_id),
     })
 
 
@@ -998,8 +1115,10 @@ def get_collect_run(run_id):
 def retry_collect_run(run_id):
     """Preview or execute a retry limited to failed checkpoint units."""
     body = request.get_json(silent=True) or {}
+    db_path = current_app.config.get('DATABASE_PATH')
+    shop_id = current_request_shop_id()
     try:
-        parent = get_run(run_id, db_path=current_app.config.get('DATABASE_PATH'))
+        parent = get_run(run_id, db_path=db_path, shop_id=shop_id)
         if not parent:
             return failure('RUN_NOT_FOUND', '采集运行记录不存在', status=404)
         config = DATA_SOURCES.get(parent['source_key'])
@@ -1008,10 +1127,11 @@ def retry_collect_run(run_id):
         result = start_retry(
             run_id,
             collectors_dir=COLLECTORS_DIR,
-            python_executable=VENV_PYTHON,
+            python_executable=resolve_python(PROJECT_ROOT, fallback=VENV_PYTHON) if body.get('execute') else VENV_PYTHON,
             script_name=config['script'],
-            db_path=current_app.config.get('DATABASE_PATH'),
+            db_path=db_path,
             execute=bool(body.get('execute')),
+            shop_id=shop_id,
         )
         return success(result, status=202 if result.get('started') else 200)
     except ValueError as exc:
@@ -1025,6 +1145,7 @@ def get_collect_artifact(run_id, artifact_id):
         artifact = read_artifact(
             artifact_id, run_id,
             db_path=current_app.config.get('DATABASE_PATH'),
+            shop_id=current_request_shop_id(),
         )
     except ValueError as exc:
         return failure('ARTIFACT_INVALID', str(exc), status=409)
@@ -1037,10 +1158,12 @@ def get_collect_artifact(run_id, artifact_id):
 
 @collect_bp.route('/api/collect/runs/<run_id>/staging', methods=['GET'])
 def get_collect_staging(run_id):
-    run = get_run(run_id, db_path=current_app.config.get('DATABASE_PATH'))
+    db_path = current_app.config.get('DATABASE_PATH')
+    shop_id = current_request_shop_id()
+    run = get_run(run_id, db_path=db_path, shop_id=shop_id)
     if not run:
         return failure('RUN_NOT_FOUND', '采集运行记录不存在', status=404)
-    rows = list_data_staging(run_id, db_path=current_app.config.get('DATABASE_PATH'))
+    rows = list_data_staging(run_id, db_path=db_path, shop_id=shop_id)
     quality = summarize_data_staging(rows)
     # Avoid returning all raw payloads by default; callers can request them
     # explicitly when replay/debugging is needed.
@@ -1064,6 +1187,7 @@ def get_collect_retry_diff(run_id, child_run_id):
         result = retry_diff(
             run_id, child_run_id,
             db_path=current_app.config.get('DATABASE_PATH'),
+            shop_id=current_request_shop_id(),
         )
     except ValueError as exc:
         return failure('RETRY_SCOPE_ERROR', str(exc), status=422)

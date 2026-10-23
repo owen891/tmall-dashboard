@@ -2,10 +2,10 @@
 """Category mode (品类模式) support.
 
 The dashboard can be scoped to a product label from the BI 商品标签 column
-(e.g. 标品袜子). The frontend sends `category_mode` on API requests:
+(e.g. a product label). The frontend sends `category_mode` on API requests:
 
     all        -> no filtering (backward compatible default)
-    sock       -> short alias for 标品袜子
+    sock       -> short alias for the default product label
     <label>    -> exact BI label value (supports multi-label values)
 
 The service-side default is `all`, so existing callers without the parameter
@@ -20,7 +20,11 @@ from flask import has_request_context, request
 from db import get_db
 
 SOCK_MODE = 'sock'
-SOCK_LABEL = '标品袜子'
+import os as _os
+
+# 品类标签显示名是部署私有配置（公开代码不带具体经营品类），与
+# api/period_reviews_api.py 的 SYSTEM_CATEGORIES 同走 TMALL_CATEGORY_LABEL。
+SOCK_LABEL = _os.environ.get('TMALL_CATEGORY_LABEL', '默认品类')
 ALL_MODES = ('all', SOCK_MODE)
 CATEGORY_MODE_PARAM = 'category_mode'
 
@@ -53,7 +57,7 @@ def shop_label_filter(filters: dict | None = None) -> tuple[str | None, list]:
     """Return (where_sql, params) for the category mode already present in filters.
 
     Uses filters['shop_label'] when set (the API layer resolves category_mode into
-    this key). Multi-label values (e.g. '标品袜子,平销商品') match by token.
+    this key). Multi-label values (e.g. 'label-a,label-b') match by token.
 
     Returns (None, []) when no filtering applies.
     """

@@ -30,7 +30,8 @@ def _db_path_from_env(arg_path):
     )
 
 
-def lease_is_active(db_path, source_key, shop_id='3828498662'):
+def lease_is_active(db_path, source_key, shop_id=None):
+    shop_id = shop_id or os.environ.get('TMALL_LEGACY_SHOP_ID', 'default')
     conn = sqlite3.connect(db_path)
     try:
         row = conn.execute(
@@ -55,7 +56,7 @@ def lease_is_active(db_path, source_key, shop_id='3828498662'):
 def main():
     parser = argparse.ArgumentParser(description='检查采集数据源的跨进程租约')
     parser.add_argument('source_key')
-    parser.add_argument('--shop-id', default=os.environ.get('TMALL_SHOP_ID', '3828498662'))
+    parser.add_argument('--shop-id', default=os.environ.get('TMALL_SHOP_ID', os.environ.get('TMALL_LEGACY_SHOP_ID', 'default')))
     parser.add_argument('--db-path', default=None)
     args = parser.parse_args()
     db_path = _db_path_from_env(args.db_path)

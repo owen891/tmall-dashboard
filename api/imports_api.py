@@ -114,6 +114,14 @@ def list_imports():
 def revert_import(batch_id):
     try:
         result = import_service.revert(batch_id)
+        unknowns = []
+        if result.get('skipped_count'):
+            unknowns.append('存在未恢复记录，后续批次覆盖关系未改变')
+        if result.get('product_skipped_count'):
+            # 商品行被保留是因为仍被其他批次/表引用：必须显式告知，
+            # 不能让调用方以为「撤销成功 = 商品也没了」。
+            unknowns.append(
+                f'有 {result["product_skipped_count"]} 个商品仍被其他数据引用，未随本批次删除')
         return success(
             result,
             source_batches=[{'id': batch_id}],
@@ -121,8 +129,9 @@ def revert_import(batch_id):
                 'source': 'import_batch_changes', 'batch_id': batch_id,
                 'restored_count': result.get('restored_count', 0),
                 'skipped_count': result.get('skipped_count', 0),
+                'product_skipped_count': result.get('product_skipped_count', 0),
             }],
-            unknowns=['存在未恢复记录，后续批次覆盖关系未改变'] if result.get('skipped_count') else [],
+            unknowns=unknowns,
         )
     except ImportScopeError as error:
         return failure('UNSUPPORTED_SCOPE', str(error), status=422)

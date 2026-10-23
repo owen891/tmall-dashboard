@@ -266,9 +266,9 @@ Executed with a verified backup at `data/backups/dashboard-20260923-232137.db`:
 | 消费方 | 访问方式 | 位置 |
 |---|---|---|
 | 本应用（唯一写者） | 导入/补数脚本 + API | 本仓库 |
-| 月复盘SKILL `ecommerce-monthly-review` | `scripts/master_db.py`（mode=ro + query_only） | `E:\skill-dianshang\月复盘SKILL` |
-| 点击率看板 | `master_db.py`（mode=ro） | `E:\skill-dianshang\点击率看板` |
-| 产品矩阵地图 | 各脚本 mode=ro 直连 | `E:\skill-dianshang\产品矩阵地图` |
+| 月复盘SKILL `ecommerce-monthly-review` | `scripts/master_db.py`（mode=ro + query_only） | 私有月复盘技能目录 |
+| 点击率看板 | `master_db.py`（mode=ro） | 私有点击率看板目录 |
+| 产品矩阵地图 | 各脚本 mode=ro 直连 | 私有产品矩阵目录 |
 
 ### 9.2 被消费的表和字段（稳定面）
 
@@ -278,7 +278,7 @@ Executed with a verified backup at `data/backups/dashboard-20260923-232137.db`:
 | `monthly_data.ad_spend / visitors / buyers / cart_users / payment_qty` | 月复盘 | 核心指标卡/趋势 | daily_data 访客叫 `ipv`，两表字段名不同 |
 | `monthly_data.gross_profit / operating_profit` | 月复盘 | 利润 | 2026-08 前有值；08-10 由 backfill_monthly_cost_fields 回填 |
 | `daily_data.ipv / buyers / operating_profit / net_sales / ad_spend` | 月复盘 | 当月周度聚合、利润 | operating_profit=BI支付预估口径（2026-08=-2.30万已对账） |
-| `products.product_tags` | 月复盘/矩阵 | 品类筛选（'标品袜子'） | 注意与 `shop_label` 是两个字段，勿混 |
+| `products.product_tags` | 月复盘/矩阵 | 品类筛选（'默认品类'） | 注意与 `shop_label` 是两个字段，勿混 |
 | `products.image_url / status / list_date / title` | 月复盘 | 主图/在架/新品判断 | status是当前快照，非月末快照 |
 | `promotion_daily_facts.*`（channel/product粒度） | 月复盘/矩阵 | 推广费/渠道对比 | `channel='全部'` 与分渠道行并存会重复计数，取数方须防重 |
 | `promotion_creatives.*` + `promotion_creative_daily.*` | 点击率看板 | 创意CTR分析 | 创意粒度（非素材图片粒度） |
@@ -296,6 +296,6 @@ Executed with a verified backup at `data/backups/dashboard-20260923-232137.db`:
 
 | 数据 | 位置 | 说明 |
 |---|---|---|
-| 2026-08 及更早市场/竞店/搜索词 | `E:\skill-dianshang\月复盘SKILL\数据库\socks_bi_data.db`（冻结只读） | 等待经 import_market_* 收编 |
-| 素材图片粒度CTR（2026-08/09三商品） | `E:\skill-dianshang\点击率看板\materials.db`（冻结只读） | 主库只有创意粒度 |
-| 派米市场明细（蓝海探测 panel） | 月复盘工作目录 CSV/JSON | 最后一条未收编旁路 |
+| 2026-08 及更早市场/竞店/搜索词 | 私有冻结只读库（历史市场数据） | 等待经 import_market_* 收编 |
+| 素材图片粒度CTR（2026-08/09三商品） | 私有冻结只读库（素材粒度） | 主库只有创意粒度 |
+| BI 市场明细（蓝海探测 panel） | 月复盘工作目录 CSV/JSON | 最后一条未收编旁路 |

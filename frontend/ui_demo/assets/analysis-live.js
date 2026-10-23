@@ -1,6 +1,8 @@
 (function () {
   const $ = (selector) => document.querySelector(selector);
   const $$ = (selector) => [...document.querySelectorAll(selector)];
+  // 全站唯一转义契约来源：assets/format.js。回退分支只在本文件被单独加载时兜底。
+  const escapeHtml = window.DemoFormat?.escapeHtml ? window.DemoFormat.escapeHtml : (value) => String(value ?? '').replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
 
   const metricLabels = {
     payment_amount: '支付金额', net_sales: '净销售额', product_visitors: '商品访客数',
@@ -25,6 +27,37 @@
 
   let currentConfig = null;
   let chartInstances = [];
+  // FE-02：每个图表实例的 resize 处理器单独留档，dispose 时一并解绑。
+  // 匿名监听器无法解绑，会在每次搜索后累积并回调已销毁的实例。
+  const chartResizeHandlers = new WeakMap();
+  let analysisSourceNotice = null;
+
+  function disposeChartInstance(chart) {
+    if (!chart) return;
+    const resizeHandler = chartResizeHandlers.get(chart);
+    if (resizeHandler) {
+      window.removeEventListener('resize', resizeHandler);
+      chartResizeHandlers.delete(chart);
+    }
+    chart.dispose();
+  }
+
+  function clearAnalysisSourceNotice() {
+    if (!analysisSourceNotice) return;
+    analysisSourceNotice.remove();
+    analysisSourceNotice = null;
+  }
+
+  // UX-02：回退到别的接口必须在图表上方显式标注，不能让用户以为看的是自定义分析的口径。
+  function renderAnalysisSourceNotice(result) {
+    clearAnalysisSourceNotice();
+    if (!result?.notice) return;
+    const container = $('#analysisCharts');
+    if (!container) return;
+    analysisSourceNotice = document.createElement('div');
+    DemoApi.renderDataState(analysisSourceNotice, 'partial', { message: result.notice });
+    container.insertAdjacentElement('beforebegin', analysisSourceNotice);
+  }
 
   function syncDateInputs(range) {
     if (!range?.startDate || !range?.endDate) return;
@@ -56,8 +89,12 @@
     // 绑定模板切换
     $$('.analysis-template').forEach((tpl) => {
       tpl.addEventListener('click', () => {
-        $$('.analysis-template').forEach((t) => t.classList.remove('analysis-template--active'));
+        $$('.analysis-template').forEach((t) => {
+          t.classList.remove('analysis-template--active');
+          t.setAttribute('aria-pressed', 'false');
+        });
         tpl.classList.add('analysis-template--active');
+        tpl.setAttribute('aria-pressed', 'true');
         applyTemplate(tpl.dataset.template);
       });
     });
@@ -65,6 +102,13 @@
     // 绑定生成按钮
     $('#runAnalysisBtn').addEventListener('click', runAnalysis);
     $('#saveAnalysisBtn').addEventListener('click', saveAnalysis);
+    // UX-03：向顶栏刷新按钮上报真实完成——等本次分析请求结束（成功或失败）才回执，
+    // 顶栏据此停止 spinner 并给出真实结果，而不是固定 500ms 后假装刷新成功。
+    window.TmallRefresh?.register?.(async () => {
+      const result = await runAnalysis();
+      if (result?.ok === false) throw result.error || new Error('分析请求失败');
+      return result?.source || 'analysis';
+    });
     ['categorySelect', 'categoryGrainSelect', 'categoryMetricSelect', 'compareModeSelect', 'categoryStartDate', 'categoryEndDate', 'compareStartDate', 'compareEndDate'].forEach((id) => {
       $(`#${id}`)?.addEventListener('change', () => {
         if ($('#categoryAnalysisConfig') && !$('#categoryAnalysisConfig').hidden) {
@@ -132,10 +176,14 @@
     DemoApi.renderDataState(chartsContainer, 'loading', { message: '正在计算经营分析…' });
 
     try {
-      const data = await fetchAnalysisData(config);
-      renderCharts(config, data);
+      const result = await fetchAnalysisData(config);
+      renderAnalysisSourceNotice(result);
+      renderCharts(config, result.data);
+      return { ok: true, source: result.source };
     } catch (error) {
+      renderAnalysisSourceNotice(null);
       DemoApi.renderDataState(chartsContainer, 'calculation-failed', { message: error.message, retry: () => runAnalysis() });
+      return { ok: false, error };
     }
   }
 
@@ -187,7 +235,7 @@
       if (!select || !modes.length) return;
       const selected = select.value;
       select.innerHTML = modes.filter((item) => item && item.enabled !== false)
-        .map((item) => `<option value="${String(item.value)}">${String(item.label)}</option>`).join('');
+        .map((item) => `<option value="${escapeHtml(String(item.value))}">${escapeHtml(String(item.label))}</option>`).join('');
       if ([...select.options].some((option) => option.value === selected)) select.value = selected;
     } catch (_error) {
       // Keep built-in options available when settings are temporarily unavailable.
@@ -198,12 +246,15 @@
     const config = categoryConfig();
     currentConfig = { template: 'category-period', ...config };
     const container = $('#analysisCharts');
+    clearAnalysisSourceNotice();
     DemoApi.renderDataState(container, 'loading', { message: '正在计算品类对比…' });
     try {
       const payload = await fetchCategoryAnalysis(config);
       renderCategoryAnalysis(config, payload?.data || payload || {});
+      return { ok: true, source: 'category-analysis' };
     } catch (error) {
       DemoApi.renderDataState(container, 'calculation-failed', { message: error.message, retry: () => runCategoryAnalysis() });
+      return { ok: false, error };
     }
   }
 
@@ -248,15 +299,71 @@
       container.appendChild(card);
     }
     const qualityCard = document.createElement('div'); qualityCard.className = 'analysis-chart category-analysis-quality';
-    qualityCard.innerHTML = `<div class="analysis-chart__header"><h3 class="analysis-chart__title">数据完整度</h3></div><p>${quality.is_partial_period ? '当前周期为部分周期。' : '当前周期完整。'} ${quality.missing_fields?.length ? `缺少字段：${quality.missing_fields.join('、')}` : '未发现缺失字段。'}</p><small>数据来源：${(quality.source_tables || []).join('、') || '接口聚合结果'}</small>`;
+    qualityCard.innerHTML = `<div class="analysis-chart__header"><h3 class="analysis-chart__title">数据完整度</h3></div><p>${quality.is_partial_period ? '当前周期为部分周期。' : '当前周期完整。'} ${quality.missing_fields?.length ? `缺少字段：${escapeHtml(quality.missing_fields.join('、'))}` : '未发现缺失字段。'}</p><small>数据来源：${escapeHtml((quality.source_tables || []).join('、') || '接口聚合结果')}</small>`;
     container.appendChild(qualityCard);
     const contributors = data.contributors || {};
     [['增长商品', contributors.up], ['下滑商品', contributors.down]].forEach(([title, rows]) => {
       if (!rows?.length) return;
       const card = document.createElement('div'); card.className = 'analysis-chart';
-      card.innerHTML = `<div class="analysis-chart__header"><h3 class="analysis-chart__title">${title}</h3></div><div class="ui-table-wrap"><table class="ui-data-table"><thead><tr><th>商品</th><th class="num">贡献金额</th><th class="num">贡献率</th></tr></thead><tbody>${rows.slice(0, config.topN).map((row) => `<tr><td>${row.title || row.name || row.product_name || '--'}</td><td class="num">${formatValue(row.amount ?? row.value, 'payment_amount')}</td><td class="num">${formatValue(row.rate, 'payment_conversion_rate')}</td></tr>`).join('')}</tbody></table></div>`;
+      const heading = document.createElement('div');
+      heading.className = 'analysis-chart__header';
+      const titleNode = document.createElement('h3');
+      titleNode.className = 'analysis-chart__title';
+      titleNode.textContent = title;
+      heading.append(titleNode);
+      const table = TmallUI.table({
+        caption: title,
+        columns: [
+          { key: 'product', label: '商品', render: (_value, row) => row.title || row.name || row.product_name || '--' },
+          { key: 'amount', label: '贡献金额', numeric: true, render: (_value, row) => formatValue(row.amount ?? row.value, 'payment_amount') },
+          { key: 'rate', label: '贡献率', numeric: true, render: (value) => formatValue(value, 'payment_conversion_rate') },
+        ],
+        rows: rows.slice(0, config.topN),
+      });
+      card.append(heading, table);
       container.appendChild(card);
     });
+  }
+
+  // UX-02：只有"接口本身不存在/不支持"才允许回退到 /api/trend，且维度与指标必须能等价折算；
+  // 5xx、超时、响应格式错误等真实故障一律抛出，由调用方渲染错误状态与重试。
+  const TREND_DIMENSION_MAP = { date: 'daily', week: 'weekly', month: 'monthly' };
+  const TREND_METRIC_MAP = {
+    payment_amount: 'payment_amount',
+    net_sales: 'net_sales',
+    ad_spend: 'ad_spend',
+    expense_ratio: 'expense_ratio',
+    payment_conversion_rate: 'conversion',
+    product_visitors: 'visitors',
+    payment_qty: 'payment_count',
+  };
+
+  const isAnalysisEndpointUnavailable = (error) => {
+    const status = Number(error?.status);
+    return status === 404 || status === 405 || error?.code === 'ENDPOINT_UNAVAILABLE';
+  };
+
+  async function fetchTrendFallback(config) {
+    const trendDim = TREND_DIMENSION_MAP[config.dimension];
+    const trendMetric = TREND_METRIC_MAP[config.metric];
+    if (!trendDim) {
+      throw new Error(`自定义分析接口不可用，且趋势接口不支持「${dimensionLabels[config.dimension] || config.dimension}」维度，无法等价回退`);
+    }
+    if (!trendMetric) {
+      throw new Error(`自定义分析接口不可用，且趋势接口没有「${metricLabels[config.metric] || config.metric}」指标，无法等价回退`);
+    }
+    // /api/trend 直出数组（无 ok/data 信封），因此用 request 而不是 domainRequest。
+    const params = new URLSearchParams({ dim: trendDim, start: config.startDate, end: config.endDate });
+    const payload = await DemoApi.request(`/api/trend?${params}`);
+    const rows = Array.isArray(payload) ? payload : (payload?.data || []);
+    return {
+      data: {
+        categories: rows.map((row) => row.period ?? row.date ?? ''),
+        series: [rows.map((row) => Number(row[trendMetric] ?? 0))],
+      },
+      source: 'trend-fallback',
+      notice: `自定义分析接口在本环境不可用，已回退到 /api/trend（dim=${trendDim}）。该接口按「${dimensionLabels[config.dimension] || config.dimension}」聚合，字段口径与覆盖范围和自定义分析不同，也不含对比周期与数据完整度信息。`,
+    };
   }
 
   async function fetchAnalysisData(config) {
@@ -268,25 +375,25 @@
       limit: config.topN,
     });
 
-    // 优先使用自定义分析接口，如果没有则用趋势接口
     try {
       const resp = await DemoApi.domainRequest(`/api/analysis/custom?${params}`);
-      if (resp && resp.data) return resp.data;
-    } catch (e) {
-      // 自定义接口不存在，使用趋势接口
+      if (resp && resp.data) return { data: resp.data, source: 'custom' };
+      if (resp?.availability === 'no-data') return { data: { categories: [], series: [] }, source: 'custom' };
+      const malformed = new Error('自定义分析接口返回的数据不符合契约（缺少 data）');
+      malformed.code = 'INVALID_RESPONSE';
+      throw malformed;
+    } catch (error) {
+      if (!isAnalysisEndpointUnavailable(error)) throw error;
+      return fetchTrendFallback(config);
     }
-
-    // 回退到趋势接口
-    const trendResp = await DemoApi.domainRequest(`/api/trend?${params}`);
-    return trendResp?.data || trendResp || { series: [], categories: [] };
   }
 
   function renderCharts(config, data) {
     const chartsContainer = $('#analysisCharts');
     chartsContainer.innerHTML = '';
 
-    // 销毁旧图表
-    chartInstances.forEach((c) => c.dispose());
+    // 销毁旧图表（连同它们各自的 resize 监听）
+    chartInstances.forEach((chart) => disposeChartInstance(chart));
     chartInstances = [];
 
     const categories = data.categories || data.dates || [];
@@ -312,17 +419,24 @@
       const tableCard = document.createElement('div');
       tableCard.className = 'analysis-chart';
       tableCard.style.gridColumn = '1 / -1';
-      tableCard.innerHTML = `
-        <div class="analysis-chart__header"><h3 class="analysis-chart__title">商品明细 TOP ${config.topN}</h3></div>
-        <div class="ui-table-wrap"><table class="ui-data-table">
-          <thead><tr><th>排名</th><th>商品</th><th class="num">${metricLabels[config.metric]}</th><th class="num">占比</th></tr></thead>
-          <tbody>${data.products.slice(0, config.topN).map((p, i) => `
-            <tr><td>${i + 1}</td><td>${p.title || p.name || '--'}</td>
-            <td class="num">${formatValue(p[config.metric], config.metric)}</td>
-            <td class="num">${p.percent ? p.percent.toFixed(1) + '%' : '--'}</td></tr>
-          `).join('')}</tbody>
-        </table></div>
-      `;
+      const heading = document.createElement('div');
+      heading.className = 'analysis-chart__header';
+      const titleNode = document.createElement('h3');
+      titleNode.className = 'analysis-chart__title';
+      titleNode.textContent = `商品明细 TOP ${config.topN}`;
+      heading.append(titleNode);
+      const products = data.products.slice(0, config.topN);
+      const table = TmallUI.table({
+        caption: titleNode.textContent,
+        columns: [
+          { key: 'rank', label: '排名', render: (_value, _row, index) => index + 1 },
+          { key: 'product', label: '商品', render: (_value, row) => row.title || row.name || '--' },
+          { key: 'metric', label: metricLabels[config.metric], numeric: true, render: (_value, row) => formatValue(row[config.metric], config.metric) },
+          { key: 'percent', label: '占比', numeric: true, render: (value) => value ? `${value.toFixed(1)}%` : '--' },
+        ],
+        rows: products,
+      });
+      tableCard.append(heading, table);
       chartsContainer.appendChild(tableCard);
     }
   }
@@ -340,11 +454,19 @@
 
     const canvas = card.querySelector('.analysis-chart__canvas');
     if (window.echarts) {
-      const chart = echarts.init(canvas);
-      const option = buildChartOption(chartType, categories, seriesData, seriesNames);
-      chart.setOption(option);
-      chartInstances.push(chart);
-      window.addEventListener('resize', () => chart.resize());
+      // Initialize only after the caller has attached the card to the result canvas.
+      requestAnimationFrame(() => {
+        if (!canvas.isConnected) return;
+        const chart = echarts.init(canvas);
+        const option = buildChartOption(chartType, categories, seriesData, seriesNames);
+        chart.setOption(option);
+        const resizeHandler = () => {
+          if (!chart.isDisposed?.()) chart.resize();
+        };
+        window.addEventListener('resize', resizeHandler);
+        chartResizeHandlers.set(chart, resizeHandler);
+        chartInstances.push(chart);
+      });
     }
 
     return card;
@@ -438,12 +560,12 @@
     list.innerHTML = saved.map((item) => `
       <div class="analysis-saved__item">
         <div>
-          <div class="analysis-saved__name">${item.name}</div>
-          <div class="analysis-saved__meta">${metricLabels[item.config.metric]} · ${dimensionLabels[item.config.dimension]} · ${item.config.startDate} ~ ${item.config.endDate}</div>
+          <div class="analysis-saved__name">${escapeHtml(item.name)}</div>
+          <div class="analysis-saved__meta">${escapeHtml(metricLabels[item.config.metric])} · ${escapeHtml(dimensionLabels[item.config.dimension])} · ${escapeHtml(item.config.startDate)} ~ ${escapeHtml(item.config.endDate)}</div>
         </div>
         <div class="analysis-saved__actions">
-          <button class="ui-button ui-button--ghost ui-button--sm" data-load="${item.id}">加载</button>
-          <button class="ui-button ui-button--ghost ui-button--sm" data-delete="${item.id}">删除</button>
+          <button class="ui-button ui-button--ghost ui-button--sm" data-load="${escapeHtml(item.id)}">加载</button>
+          <button class="ui-button ui-button--ghost ui-button--sm" data-delete="${escapeHtml(item.id)}">删除</button>
         </div>
       </div>
     `).join('');

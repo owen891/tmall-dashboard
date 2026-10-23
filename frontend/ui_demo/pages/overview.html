@@ -3,12 +3,13 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>数据概览 | 天猫数据仪表盘</title>
+  <title>数据概览</title>
   <link rel="stylesheet" href="../assets/tokens.css?v=20261003a">
   <link rel="stylesheet" href="../assets/shell.css?v=20261001j">
-  <link rel="stylesheet" href="../assets/components.css?v=20261001j"><link rel="stylesheet" href="../assets/themes/product-domain.css?v=20261001j"><link rel="stylesheet" href="../assets/themes/promotion-domain.css?v=20261001j"><link rel="stylesheet" href="../assets/themes/overview-domain.css?v=20261001j"><link rel="stylesheet" href="../assets/themes/lifecycle-domain.css?v=20261001j"><link rel="stylesheet" href="../assets/themes/settings-domain.css?v=20261001j">
+  <link rel="stylesheet" href="../assets/components.css?v=20261001j"><link rel="stylesheet" href="../assets/themes/product-domain.css?v=20261001j"><link rel="stylesheet" href="../assets/themes/promotion-domain.css?v=20261001j"><link rel="stylesheet" href="../assets/themes/overview-domain.css?v=20261017-desktop-highlight-no-line"><link rel="stylesheet" href="../assets/themes/lifecycle-domain.css?v=20261001j"><link rel="stylesheet" href="../assets/themes/settings-domain.css?v=20261001j">
   <script src="../assets/lucide-custom.min.js?v=20261001j"></script>
   <script src="../assets/echarts-custom.min.js?v=20261001j"></script>
+  <link rel="stylesheet" href="../assets/themes/macos-content.css?v=20261018-regular-titles">
 </head>
 <body data-page="overview">
   <div class="demo-app">
@@ -19,12 +20,12 @@
         <div class="ui-page-header">
           <div>
             <h1>数据概览</h1>
-            <p>先看当前经营结果，再处理目标差额与待办动作。</p>
-            <p class="ui-page-header__scope">当前店铺 · 当前经营周期</p>
+            <p>查看指标，跟进异常与动作。</p>
+            <p class="ui-page-header__scope"><span data-overview-period>当前店铺 · 正在读取周期</span></p>
           </div>
           <div class="panel__tools">
             <span class="ui-badge ui-badge--success" data-overview-cutoff>数据截至 --</span>
-            <span class="ui-badge ui-badge--info" data-overview-coverage>覆盖 -- 天</span>
+            <span class="ui-badge ui-badge--info" data-overview-coverage>当前覆盖待核验</span>
           </div>
         </div>
 
@@ -35,11 +36,12 @@
       <div><h3 id="overview-decision-title">当前周期先处理什么</h3></div>
       <div class="overview-v2-context__meta">
         <span class="overview-v2-status" data-overview-quality data-availability="loading">加载中</span>
-        <span class="overview-decision__context" data-overview-context>加载中…</span>
+        <details class="overview-data-details"><summary>数据详情</summary><p data-overview-context>加载中…</p><p data-overview-quality-details>正在读取可用性</p><p data-overview-missing-ranges>正在核验缺日信息</p></details>
       </div>
     </div>
+    <p class="overview-data-scope" data-overview-data-scope>正在确认当前卡片口径</p>
     <div class="overview-decision__items">
-      <div class="overview-decision__item"><span>目标完成度</span><strong data-overview-summary="target">--</strong><small>按当前周期目标计算</small></div>
+      <div class="overview-decision__item"><span>目标完成度</span><strong data-overview-summary="target">--</strong><small data-overview-target-scope>正在确认目标周期</small></div>
       <div class="overview-decision__item"><span>待处理动作</span><strong data-overview-summary="actions">--</strong><small>需要运营跟进的事项</small></div>
       <div class="overview-decision__item"><span>重点异常</span><strong data-overview-summary="anomalies">--</strong><small data-overview-summary-meta="anomalies">等待异常数据…</small></div>
     </div>
@@ -60,6 +62,8 @@
       <button type="button" class="overview-decision__secondary-item" data-overview-kpi-select="ad_roi"><span>推广 ROI</span><strong data-overview-kpi="ad_roi">--</strong><small data-overview-kpi-meta="ad_roi">等待加载…</small></button>
       <button type="button" class="overview-decision__secondary-item" data-overview-kpi-select="refund_rate"><span>退款率</span><strong data-overview-kpi="refund_rate">--</strong><small data-overview-kpi-meta="refund_rate">等待加载…</small></button>
       <button type="button" class="overview-decision__secondary-item" data-overview-kpi-select="expense_ratio"><span>费比</span><strong data-overview-kpi="expense_ratio">--</strong><small data-overview-kpi-meta="expense_ratio">等待加载…</small></button>
+      <button type="button" class="overview-decision__secondary-item" data-overview-kpi-select="profit"><span>净利润额</span><strong data-overview-kpi="profit">--</strong><small data-overview-kpi-meta="profit">等待加载…</small></button>
+      <button type="button" class="overview-decision__secondary-item" data-overview-kpi-select="profit_rate"><span>净利润率</span><strong data-overview-kpi="profit_rate">--</strong><small data-overview-kpi-meta="profit_rate">等待加载…</small></button>
     </div>
   </section>
         <section class="sr-only" aria-labelledby="overview-aux-kpis-title">
@@ -72,18 +76,18 @@
 
         <section class="section-grid overview-v2-main-grid">
           <article class="chart-panel ui-panel">
-            <div class="panel__header"><div><h3 class="panel__title" data-overview-trend-title>指标对比 · 趋势</h3><p class="panel__hint" data-overview-trend-hint>按月度数据对比净销售额、支付金额和推广花费实际值</p></div><div class="trend-picker" data-overview-trend-control><button class="ui-button trend-picker__trigger" type="button" data-overview-trend-trigger aria-expanded="false"><span>指标对比</span><span class="trend-picker__selection" data-overview-trend-selection>已选 3 项</span><i data-lucide="chevron-down" aria-hidden="true"></i></button><div class="trend-picker__menu" data-overview-trend-menu role="group" aria-label="选择对比指标" hidden><label class="trend-picker__option"><input type="checkbox" value="net_sales" data-overview-trend-mode checked><span>净销售额</span></label><label class="trend-picker__option"><input type="checkbox" value="payment_amount" data-overview-trend-mode checked><span>支付金额</span></label><label class="trend-picker__option"><input type="checkbox" value="payment_conversion_rate" data-overview-trend-mode><span>商品支付转化率</span></label><label class="trend-picker__option"><input type="checkbox" value="visitors" data-overview-trend-mode><span>商品访客数</span></label><label class="trend-picker__option"><input type="checkbox" value="ad_spend" data-overview-trend-mode checked><span>推广花费</span></label><label class="trend-picker__option"><input type="checkbox" value="ad_roi" data-overview-trend-mode><span>推广 ROI</span></label><label class="trend-picker__option"><input type="checkbox" value="refund_rate" data-overview-trend-mode><span>退款率</span></label><label class="trend-picker__option"><input type="checkbox" value="expense_ratio" data-overview-trend-mode><span>费比</span></label><p class="trend-picker__hint">最多同时对比 3 个指标</p></div></div></div>
+            <div class="panel__header"><div><h3 class="panel__title" data-overview-trend-title>指标对比 · 趋势</h3><p class="panel__hint" data-overview-trend-hint>按月度数据对比净销售额、支付金额和推广花费实际值</p></div><div class="trend-picker" data-overview-trend-control><button class="ui-button trend-picker__trigger" type="button" data-overview-trend-trigger aria-expanded="false"><span>指标对比</span><span class="trend-picker__selection" data-overview-trend-selection>已选 3 项</span><i data-lucide="chevron-down" aria-hidden="true"></i></button><div class="trend-picker__menu" data-overview-trend-menu role="group" aria-label="选择对比指标" hidden><label class="trend-picker__option"><input type="checkbox" value="net_sales" data-overview-trend-mode checked><span>净销售额</span></label><label class="trend-picker__option"><input type="checkbox" value="payment_amount" data-overview-trend-mode checked><span>支付金额</span></label><label class="trend-picker__option"><input type="checkbox" value="payment_conversion_rate" data-overview-trend-mode><span>商品支付转化率</span></label><label class="trend-picker__option"><input type="checkbox" value="visitors" data-overview-trend-mode><span>商品访客数</span></label><label class="trend-picker__option"><input type="checkbox" value="ad_spend" data-overview-trend-mode checked><span>推广花费</span></label><label class="trend-picker__option"><input type="checkbox" value="ad_roi" data-overview-trend-mode><span>推广 ROI</span></label><label class="trend-picker__option"><input type="checkbox" value="refund_rate" data-overview-trend-mode><span>退款率</span></label><label class="trend-picker__option"><input type="checkbox" value="expense_ratio" data-overview-trend-mode><span>费比</span></label><label class="trend-picker__option"><input type="checkbox" value="profit" data-overview-trend-mode><span>净利润额</span></label><label class="trend-picker__option"><input type="checkbox" value="profit_rate" data-overview-trend-mode><span>净利润率</span></label><p class="trend-picker__hint">最多同时对比 3 个指标</p></div></div></div>
             <div class="chart-box overview-v2-chart"><div id="overviewHomeTrend" class="chart-canvas" data-overview-home-trend role="img" aria-label="指标对比趋势"></div></div>
           </article>
           <article class="ui-panel" aria-live="polite">
-            <div class="panel__header"><div><h3 class="panel__title">目标进度</h3><p class="panel__hint">按经营周期从近到远</p></div><a class="ui-button" href="/goals">目标详情</a></div>
+            <div class="panel__header"><div><h3 class="panel__title">目标进度</h3><p class="panel__hint" data-overview-target-period>按各自目标周期展示</p></div><a class="ui-button" href="/goals">目标详情</a></div>
             <div class="overview-v2-targets" data-overview-home-targets><div class="ui-empty-state"><span>加载中…</span></div></div>
           </article>
         </section>
 
         <section class="operations-center" data-overview-operations-center aria-labelledby="overview-operations-title">
           <article class="ui-panel operations-center__panel">
-            <div class="panel__header operations-center__header"><div><h3 class="panel__title" id="overview-operations-title">异常与行动</h3><p class="panel__hint">按优先级处理异常、待办动作和系统通知</p></div><div class="panel__tools"><span class="ui-badge ui-badge--warning" data-operations-pending-count>待处理 --</span><a class="ui-button" href="/reviews">进入经营复盘</a></div></div>
+            <div class="panel__header operations-center__header"><div><h3 class="panel__title" id="overview-operations-title">异常与行动</h3><p class="panel__hint"><span data-overview-diagnosis-scope>月度诊断周期待加载</span></p></div><div class="panel__tools"><span class="ui-badge ui-badge--warning" data-operations-pending-count>待处理 --</span><a class="ui-button" href="/reviews">经营复盘：处理动作</a><a class="ui-button ui-button--ghost" href="/period-review">周期复盘：比较经营</a></div></div>
             <div class="operations-center__toolbar" role="tablist" aria-label="运营提醒筛选"><div class="segmented"><button type="button" role="tab" aria-selected="true" data-operations-filter="all">全部</button><button type="button" role="tab" aria-selected="false" data-operations-filter="todo">待处理</button><button type="button" role="tab" aria-selected="false" data-operations-filter="anomaly">异常提醒</button><button type="button" role="tab" aria-selected="false" data-operations-filter="system">系统通知</button></div><button class="ui-button ui-button--ghost" type="button" data-operations-refresh><i data-lucide="refresh-cw"></i><span>刷新提醒</span></button></div>
             <div class="operations-center__layout">
               <section class="operations-center__feed" aria-labelledby="operations-feed-title"><div class="operations-center__section-head"><div><h4 id="operations-feed-title">提醒列表</h4><p data-operations-feed-status>加载中…</p></div><span class="ui-badge ui-badge--info" data-operations-feed-count>--</span></div><div class="operations-center__feed-list" data-operations-feed role="list" aria-live="polite"><div class="ui-empty-state"><span>加载中…</span></div></div></section>
@@ -93,7 +97,7 @@
         </section>
 
         <section class="ui-panel overview-home-matrix" aria-labelledby="overview-matrix-title">
-          <div class="panel__header"><div><h3 class="panel__title" id="overview-matrix-title">日度经营矩阵（需日度明细）</h3><p class="panel__hint">当前导入为月度数据；补充日度导出后可按天查看，支持横向滚动和来源追溯</p></div><div class="panel__tools"><span class="overview-matrix__status" data-overview-matrix-status>加载中…</span><button class="ui-button" type="button" data-overview-matrix-columns-open><i data-lucide="settings-2"></i><span>字段设置</span></button><button class="ui-button" type="button" data-overview-matrix-export><i data-lucide="download"></i><span>导出当前结果</span></button></div></div>
+          <div class="panel__header"><div><h3 class="panel__title" id="overview-matrix-title">日度经营矩阵（需日度明细）</h3><p class="panel__hint">有日度明细时按天查看；表格支持横向滚动和来源追溯</p></div><div class="panel__tools"><span class="overview-matrix__status" data-overview-matrix-status>加载中…</span><button class="ui-button" type="button" data-overview-matrix-columns-open><i data-lucide="settings-2"></i><span>字段设置</span></button><button class="ui-button" type="button" data-overview-matrix-export><i data-lucide="download"></i><span>导出当前结果</span></button></div></div>
           <div class="overview-matrix__table"><div class="ui-table-wrap ui-table-wrap--scroll ui-table-wrap--discoverable"><table class="ui-data-table" data-overview-matrix-table data-page-size="7" data-page-sizes="7,14,30,50,100"><caption class="sr-only">按日期查看经营指标与数据来源</caption><thead><tr data-overview-matrix-head></tr></thead><tbody data-overview-home-matrix><tr><td colspan="9">加载中…</td></tr></tbody></table></div></div>
         </section>
 
@@ -146,13 +150,13 @@
   </dialog>
 
   <script src="../assets/api.js?v=20261001j"></script>
-  <script src="../assets/navigation.js?v=20261001j"></script>
+  <script src="../assets/navigation.js?v=20261011a"></script>
   <script src="../assets/labels.js?v=20261001j"></script>
   <script src="../assets/charts.js?v=20261001j"></script>
-  <script src="../assets/shell.js?v=20261003c"></script>
+  <script src="../assets/shell.js?v=20261011a"></script>
   <script src="../assets/field-selector.js?v=20261001j"></script><script src="../assets/metric-polarity.js?v=20261001j"></script>
   <script src="../assets/ui-components.js?v=20261003a"></script>
-  <script src="../assets/operations-center.js?v=20261001j"></script>
-  <script src="../assets/format.js?v=20261001j"></script><script src="../assets/overview-live.js?v=20261001j"></script>
+  <script src="../assets/operations-center.js?v=20261011a"></script>
+  <script src="../assets/format.js?v=20261011a"></script><script src="../assets/overview-live.js?v=20261001j"></script>
 </body>
 </html>

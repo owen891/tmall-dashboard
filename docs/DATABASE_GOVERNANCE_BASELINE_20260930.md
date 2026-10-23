@@ -34,8 +34,8 @@ The schema inventory found 14 tables that are present in the database but are no
 
 | Domain | Primary table(s) | Grain and scope | Current observation |
 | --- | --- | --- | --- |
-| Daily product facts | `daily_data` | One product/date/shop row | Production data is scoped to shop `3828498662`; business-key duplicate check passed |
-| Store daily facts | `store_daily_facts` | One shop/date row | Production data is scoped to shop `3828498662`; business-key duplicate check passed |
+| Daily product facts | `daily_data` | One product/date/shop row | Production data is scoped to shop `legacy-shop`; business-key duplicate check passed |
+| Store daily facts | `store_daily_facts` | One shop/date row | Production data is scoped to shop `legacy-shop`; business-key duplicate check passed |
 | Promotion facts | `promotion_daily_facts` | Shop/date plus channel/campaign/unit/product grain | Grain values are nonblank; business-key duplicate check passed |
 | Monthly facts | `monthly_data` | Product/month row without a shop key | Must remain default-single-shop only unless a shop key is introduced |
 | Observations | `daily_data_observations` | Source observation for product/date/shop | Protected from routine deletion |

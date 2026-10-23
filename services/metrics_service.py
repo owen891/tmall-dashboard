@@ -12,6 +12,8 @@ def build_overview(totals, start_date, end_date):
                 'payment_amount': None,
                 'successful_refund_amount': None,
                 'net_sales': None,
+                'profit': None,
+                'profit_rate': None,
                 'ad_spend': None,
                 'visitors': None,
                 'refund_rate': None,
@@ -31,7 +33,7 @@ def build_overview(totals, start_date, end_date):
     refund_amount = None if totals['successful_refund_amount'] is None else float(totals['successful_refund_amount'])
     ad_spend = None if totals['ad_spend'] is None else float(totals['ad_spend'])
     metric_names = (
-        'net_sales', 'refund_rate', 'payment_conversion_rate',
+        'net_sales', 'profit', 'profit_rate', 'refund_rate', 'payment_conversion_rate',
         'average_order_value', 'expense_ratio', 'returning_buyer_ratio',
     )
     if totals.get('attributed_payment_amount') is not None:
@@ -44,11 +46,15 @@ def build_overview(totals, start_date, end_date):
         'returning_payment_buyers': totals.get('returning_payment_buyers'),
         'ad_spend': ad_spend,
         'attributed_payment_amount': totals.get('attributed_payment_amount'),
+        'operating_profit': totals.get('operating_profit'),
     }, names=metric_names)
     derived = derived_result['values']
+    # 净利润/净利润率依赖成本口径，属可选增强指标：缺 operating_profit 时只在
+    # 卡片上显示「字段缺失」，不把整个经营总览降级为 insufficient-data。
+    optional_metrics = {'profit', 'profit_rate'}
     unavailable = {
         key: state for key, state in derived_result['metric_availability'].items()
-        if state != 'available'
+        if state != 'available' and key not in optional_metrics
     }
     return {
         'availability': 'available' if not unavailable else 'insufficient-data',

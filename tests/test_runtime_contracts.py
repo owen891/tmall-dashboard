@@ -10,9 +10,12 @@ class RuntimeContractsTests(unittest.TestCase):
         with open(os.path.join(root, 'scripts', 'smoke_core_pages.cjs'), encoding='utf-8') as handle:
             smoke = handle.read()
 
-        self.assertIn("os.environ.get('TMALL_PORT', '8770')", server)
-        self.assertIn("os.environ.get('TMALL_DB_PATH')", server)
-        self.assertIn("'http://127.0.0.1:8770'", smoke)
+        self.assertIn("make('127.0.0.1', 0", server)
+        self.assertIn("env['TMALL_DB_PATH']", server)
+        self.assertIn("TMALL_GATE_NONCE", server)
+        self.assertNotIn("os.path.abspath('data/dashboard.db')", server)
+        self.assertIn("assertBase(base)", smoke)
+
 
     def test_upload_limit_has_one_documented_value(self):
         root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -40,10 +43,24 @@ class RuntimeContractsTests(unittest.TestCase):
         with open(os.path.join(root, '.github', 'workflows', 'quality-gate.yml'), encoding='utf-8') as handle:
             workflow = handle.read()
 
-        self.assertIn('python scripts/production_smoke.py', workflow)
-        self.assertIn('DASHBOARD_USERNAME: quality-gate', workflow)
-        self.assertIn('RUNNER_TEMP/tmall-production-smoke.db', workflow)
-        self.assertIn('release_audit.py --database "$RUNNER_TEMP/tmall-production-smoke.db" --strict', workflow)
+        import json
+        self.assertIn('python scripts/run_quality_gates.py --tier release', workflow)
+        with open(os.path.join(root, 'scripts', 'quality_gates.json'), encoding='utf-8') as handle:
+            manifest = json.load(handle)
+        gates = {gate['id']: gate for gate in manifest['gates']}
+        self.assertEqual(gates['production-smoke']['tier'], 'release')
+        self.assertEqual(gates['production-smoke']['argv'][1:], [
+            'scripts/production_smoke.py', '--database', '{database}', '--port', '{production_port}'
+        ])
+        self.assertEqual(gates['release-audit']['argv'][1:], [
+            'scripts/release_audit.py', '--database', '{database}', '--strict'
+        ])
+        with open(os.path.join(root, 'scripts', 'run_quality_gates.py'), encoding='utf-8') as handle:
+            runner = handle.read()
+        self.assertIn("'DASHBOARD_USERNAME': 'gate-fixture'", runner)
+        self.assertIn("'DASHBOARD_PASSWORD': secrets.token_hex(24)", runner)
+        self.assertIn("'database': env['TMALL_DB_PATH']", runner)
+
 
 
 if __name__ == '__main__':

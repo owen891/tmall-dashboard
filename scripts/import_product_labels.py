@@ -3,7 +3,7 @@
 into products.shop_label.
 
 Each product keeps the label of its latest non-empty observation (daily beats monthly,
-newer date beats older). Labels like 标品袜子 / 非标袜子女 / 专业运动系列 / 儿童袜 power
+newer date beats older). Labels like the default category or niche series power
 the global category mode on the dashboard.
 """
 from __future__ import annotations

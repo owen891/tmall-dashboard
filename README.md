@@ -1,16 +1,24 @@
 # 天猫数据仪表盘
 
-[![Release](https://img.shields.io/badge/release-v2.0.2--dev-f08c46)](https://github.com/owen891/tmall-dashboard/releases)
+[![Release](https://img.shields.io/badge/release-v2.0.3-4f46e5)](https://github.com/owen891/tmall-dashboard/releases)
 ![Python](https://img.shields.io/badge/Python-3.14-3776ab)
 ![Flask](https://img.shields.io/badge/Flask-SQLite-111111)
 
 面向单店铺运营团队的经营分析与商品运营工作台。系统以 Flask、SQLite 和原生 HTML/CSS/JavaScript 构建，把经营结果、商品表现、推广投放、生命周期、行动复盘和数据治理放在同一套可追溯流程中。
 
-当前本地开发版本：`v2.0.2`。该版本尚未发布 GitHub Release 或桌面安装包；已发布的最后版本仍为 [`v1.0.13`](https://github.com/owen891/tmall-dashboard/releases/tag/v1.0.13)。详细变更见 [更新说明](CHANGELOG.md)。
+当前版本：`v2.0.3`（已发布 [GitHub Release](https://github.com/owen891/tmall-dashboard/releases) 与桌面安装包，支持在线更新）。详细变更见 [更新说明](CHANGELOG.md)。
 
 ## 产品界面
 
-总览先给出净销售额、转化、目标进度和待处理动作；商品运营承接筛选、分析和行动；数据中心负责导入、校验、审计与来源治理。
+总览先给出净销售额、转化、目标进度和待处理动作；商品运营承接筛选、分析和行动；数据中心负责导入、校验、审计与来源治理。以下截图来自空数据演示环境，仅展示界面结构与交互。
+
+| 数据概览 | 商品运营 |
+|---|---|
+| ![数据概览](docs/screenshots/overview.png) | ![商品运营](docs/screenshots/products.png) |
+
+| 周期复盘 | 数据中心 |
+|---|---|
+| ![周期复盘](docs/screenshots/period-review.png) | ![数据中心](docs/screenshots/data-center.png) |
 
 ## 核心能力
 

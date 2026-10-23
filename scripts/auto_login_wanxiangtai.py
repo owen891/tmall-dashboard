@@ -30,6 +30,9 @@ if str(_PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(_PROJECT_ROOT))
 
 from services.credentials_crypto import decrypt_password
+from scripts.browser_runtime import resolve_browser, require_browser_identity, BrowserConfigurationError
+from scripts.collector_preflight import open_json, probe_session
+from scripts.runtime_paths import loopback_proxy_env
 
 CDP_PORT = int(os.environ.get('TMALL_CDP_PORT', '9223'))
 WXT_URL = 'https://one.alimama.com/'
@@ -38,40 +41,41 @@ TAOBAO_LOGIN_URL = 'https://login.taobao.com/member/login.jhtml?redirectURL=http
 USERNAME = os.environ.get('WXT_USERNAME', '')
 PASSWORD = os.environ.get('WXT_PASSWORD', '')
 
-if not USERNAME or not PASSWORD:
-    try:
-        db_path = os.environ.get('TMALL_DB_PATH') or os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'data', 'dashboard.db')
-        with __import__('sqlite3').connect(db_path) as _conn:
-            _row = _conn.execute("SELECT setting_value FROM app_settings WHERE setting_key = 'collector_credentials'").fetchone()
-        if _row:
-            _payload = json.loads(_row[0])
-            if 'username' in _payload or 'password' in _payload: _payload = {'bi': _payload}
-            _item = _payload.get('wanxiangtai') or {}
-            USERNAME = USERNAME or str(_item.get('username') or '').strip()
-            PASSWORD = PASSWORD or decrypt_password(str(_item.get('password') or ''))
-    except Exception:
-        pass
+def load_credentials():
+    global USERNAME, PASSWORD
+    if not USERNAME or not PASSWORD:
+        try:
+            db_path = os.environ.get('TMALL_DB_PATH') or os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'data', 'dashboard.db')
+            with __import__('sqlite3').connect(db_path) as _conn:
+                _row = _conn.execute("SELECT setting_value FROM app_settings WHERE setting_key = 'collector_credentials'").fetchone()
+            if _row:
+                _payload = json.loads(_row[0])
+                if 'username' in _payload or 'password' in _payload: _payload = {'bi': _payload}
+                _item = _payload.get('wanxiangtai') or {}
+                USERNAME = USERNAME or str(_item.get('username') or '').strip()
+                PASSWORD = PASSWORD or decrypt_password(str(_item.get('password') or ''))
+        except Exception:
+            pass
 
-# Backward-compatible fallback for the legacy local credential file.
-if not USERNAME or not PASSWORD:
-    try:
-        _lines = open(os.environ.get('TMALL_CREDENTIAL_FILE', r'E:\桌面\AI\BI.txt'), encoding='utf-8').read().splitlines()
-        for _i, _line in enumerate(_lines[:-1]):
-            if _line.startswith(('账号：', '账号:')) and _lines[_i + 1].startswith(('密码：', '密码:')):
-                USERNAME = USERNAME or _line[3:].lstrip('：:').strip()
-                PASSWORD = PASSWORD or _lines[_i + 1][3:].lstrip('：:').strip()
-                break
-    except (OSError, UnicodeError):
-        pass
-
+    # Backward-compatible fallback for the legacy local credential file.
+    if not USERNAME or not PASSWORD:
+        try:
+            with open(os.environ.get('TMALL_CREDENTIAL_FILE', r'E:\桌面\AI\BI.txt'), encoding='utf-8') as handle:
+                _lines = handle.read().splitlines()
+            for _i, _line in enumerate(_lines[:-1]):
+                if _line.startswith(('账号：', '账号:')) and _lines[_i + 1].startswith(('密码：', '密码:')):
+                    USERNAME = USERNAME or _line[3:].lstrip('：:').strip()
+                    PASSWORD = PASSWORD or _lines[_i + 1][3:].lstrip('：:').strip()
+                    break
+        except (OSError, UnicodeError):
+            pass
 
 def get_tabs():
-    with urllib.request.urlopen(f'http://127.0.0.1:{CDP_PORT}/json', timeout=5) as f:
-        return json.loads(f.read())
+    return open_json(f'http://127.0.0.1:{CDP_PORT}/json')
 
 
 def get_browser_ws():
-    ver = json.loads(urllib.request.urlopen(f'http://127.0.0.1:{CDP_PORT}/json/version', timeout=5).read())
+    ver = open_json(f'http://127.0.0.1:{CDP_PORT}/json/version')
     return ver['webSocketDebuggerUrl']
 
 
@@ -106,28 +110,13 @@ def cdp_eval(ws_url, expression, timeout=15):
 
 
 def check_login():
-    """检查万相台是否已登录。返回 True/False。"""
-    tab = find_tab('one.alimama.com')
-    if not tab:
-        print('[登录] 未找到万相台标签页，新开一个...')
-        create_tab(WXT_URL)
-        time.sleep(5)
-        tab = find_tab('one.alimama.com')
-        if not tab:
-            print('[错误] 无法打开万相台页面')
-            return False
-
-    url = tab.get('url', '')
-    if 'login' not in url:
-        print(f'[登录] 万相台已登录: {url[:60]}')
-        return True
-
-    print(f'[登录] 万相台未登录，URL: {url[:60]}')
-    return False
+    """An existing tab URL alone is never proof of an authenticated session."""
+    return probe_session('wanxiangtai', f'http://127.0.0.1:{CDP_PORT}') is True
 
 
 def do_login():
     """走淘宝账密登录流程。"""
+    load_credentials()
     if not USERNAME or not PASSWORD:
         print('[错误] 未设置 WXT_USERNAME / WXT_PASSWORD 环境变量')
         return False
@@ -198,76 +187,28 @@ def do_login():
     ''')
 
     if result in ('need_slider', 'need_qrcode'):
-        verify_type = '滑块/验证码' if result == 'need_slider' else '扫码登录'
-        slider_wait = int(os.environ.get('TMALL_SLIDER_WAIT_SECONDS', '600'))
-        
-        # 检查当前是不是headless模式
-        try:
-            version_info = json.loads(urllib.request.urlopen(f'http://127.0.0.1:{CDP_PORT}/json/version', timeout=3).read())
-            is_headless = 'HeadlessChrome' in version_info.get('User-Agent', '')
-        except:
-            is_headless = False
-        
-        print('\n' + '='*60)
-        print(f'⚠️  检测到需要人工操作: {verify_type}')
-        if is_headless:
-            print('⚠️  当前Chrome为无头(后台)模式，正在自动切换为有头窗口...')
-            # 杀掉当前调试Chrome进程
-            subprocess.run(['taskkill', '/F', '/IM', 'chrome.exe', '/FI', f'COMMANDLINE eq *--remote-debugging-port={CDP_PORT}*'], 
-                         capture_output=True, shell=True)
-            time.sleep(3)
-            # 重新启动有头Chrome
-            chrome_path = r'C:\Program Files\Google\Chrome\Application\chrome.exe'
-            user_data_dir = os.path.expandvars(r'%LOCALAPPDATA%\TmallDashboard\CollectorChrome')
-            subprocess.Popen([
-                chrome_path,
-                f'--remote-debugging-port={CDP_PORT}',
-                '--remote-allow-origins=*',
-                f'--user-data-dir={user_data_dir}',
-                '--no-first-run',
-                '--no-default-browser-check',
-                'https://one.alimama.com/'
-            ])
-            time.sleep(5)
-            print('✅ 已弹出Chrome窗口，请在浏览器中完成登录操作')
-        else:
-            print('请在Chrome窗口中完成登录操作')
-        print(f'[等待] 最多等待 {slider_wait} 秒，每10秒检测一次登录状态...')
-        print('='*60 + '\n')
-        
-        for i in range(slider_wait // 10):
-            time.sleep(10)
-            tab = find_tab('one.alimama.com')
-            if tab and 'login' not in tab.get('url', ''):
-                elapsed = (i+1) * 10
-                print(f'\n✅ [登录] 万相台登录成功！（耗时 {elapsed} 秒）')
-                return True
-            tab = find_tab('login.taobao.com')
-            if tab:
-                url = tab.get('url', '')
-                if 'login' not in url:
-                    print(f'\n✅ [登录] 已跳转到: {url[:60]}')
-                    return True
-            # 每30秒打印一次等待提示
-            if (i+1) % 3 == 0:
-                remaining = slider_wait - (i+1)*10
-                print(f'  仍在等待登录完成... 剩余 {remaining} 秒')
-        
-        print('\n❌ [超时] 等待人工登录超时，未检测到成功登录')
+        print('MANUAL_LOGIN_REQUIRED: captcha/interactive login; selected browser is not killed or restarted')
         return False
 
-    # 检查登录结果
-    time.sleep(3)
-    tab = find_tab('one.alimama.com')
-    if tab and 'login' not in tab.get('url', ''):
-        print(f'[登录] 万相台登录成功')
-        return True
-
-    print('[登录] 登录结果未知，仍在登录页')
-    return False
+    # Only an authoritative session response can prove success.
+    return check_login()
 
 
 def main():
+    global CDP_PORT
+    try:
+        browser = resolve_browser(_PROJECT_ROOT)
+        require_browser_identity(browser)
+    except BrowserConfigurationError as exc:
+        print(str(exc))
+        return 21
+    CDP_PORT = browser['port']
+    os.environ.update(loopback_proxy_env())
+    if browser['reuse_only']:
+        if probe_session('wanxiangtai', f'http://127.0.0.1:{CDP_PORT}') is not True:
+            print('MANUAL_LOGIN_REQUIRED: WXT authoritative session check unavailable; no browser action taken')
+            return 22
+        return 0
     print('=' * 50)
     print('  万相台自动登录')
     print('=' * 50)

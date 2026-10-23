@@ -32,7 +32,7 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-DEFAULT_KEEP_NEWEST = 4
+DEFAULT_KEEP_NEWEST = 3
 DEFAULT_MAX_TOTAL_BYTES = 20 * 1024 ** 3  # 20GB
 
 logger = logging.getLogger(__name__)
@@ -154,4 +154,112 @@ def prune_backups(
         )
         if report is not None:
             report['over_capacity'] = True
+    return removed
+
+
+def prune_verified_backups(backup_dir, keep_newest=DEFAULT_KEEP_NEWEST,
+                           max_total_bytes=DEFAULT_MAX_TOTAL_BYTES,
+                           protected=(), report=None, source=None):
+    """SAFE-01 policy: actually verify content, then rotate one source group.
+
+    Sidecar success flags and hashes alone are NOT proof of a recoverable DB.
+    Reopen SQLite and compare the COMPLETE schema/business manifest before a
+    file can count as a generation or become a deletion candidate. Canonical
+    source paths partition the managed set. A mixed directory without explicit
+    source selection fails closed. Unknown/other-source files are not deleted.
+    Legacy C1-C6 prune_backups stays available as a separate low-level primitive.
+    """
+    import json
+    import sqlite3
+    try:
+        from scripts.sqlite_snapshot import sha256, sidecar_path, verify_manifest
+    except ImportError:
+        from sqlite_snapshot import sha256, sidecar_path, verify_manifest
+    directory = Path(backup_dir).resolve()
+    report = report if report is not None else {}
+    warnings = []
+    excluded = {Path(p).resolve() for p in protected}
+    source = Path(source).resolve() if source else None
+    groups = {}
+    evidence = {}
+    all_source_paths = set()
+    if not directory.is_dir():
+        return []
+    for sidecar in directory.glob('*.db.manifest.json'):
+        path = Path(str(sidecar)[:-len('.manifest.json')])
+        if path.resolve() == source:
+            continue
+        if path.is_symlink() or sidecar.is_symlink() or path.resolve().parent != directory:
+            warnings.append('UNMANAGED_PATH: ' + str(path))
+            continue
+        try:
+            record = json.loads(sidecar.read_text(encoding='utf-8'))
+            origin_text = record.get('source')
+            if not isinstance(origin_text, str) or not Path(origin_text).is_absolute():
+                raise ValueError('missing canonical source identity')
+            origin = Path(origin_text).resolve()
+            all_source_paths.add(origin)
+            if source is not None and origin != source:
+                continue  # other source: no counting, inspection or deletion
+            if _size(Path(str(path) + '-wal')) > 0:
+                raise ValueError('active WAL is not a closed backup')
+            if (record.get('ok') is not True or record.get('integrity') != 'ok'
+                    or record.get('manifest', {}).get('version') != 1
+                    or record.get('destination') != str(path.resolve())
+                    or record.get('destination_sha256') != sha256(path)):
+                raise ValueError('verification evidence mismatch')
+            # Never trust self-asserted integrity or a hash of non-SQLite bytes.
+            # Default validation covers every actual table, not a projection
+            # supplied by a forged/accidentally truncated manifest.
+            verify_manifest(path, record['manifest'])
+            groups.setdefault(origin, []).append(path)
+            evidence[path] = {'db_sha256': record['destination_sha256'],
+                              'sidecar_sha256': sha256(sidecar)}
+        except (OSError, ValueError, TypeError, AttributeError, KeyError, sqlite3.Error) as error:
+            warnings.append('UNVERIFIED_BACKUP_RETAINED: ' + str(path) + ': ' + str(error))
+    if source is None:
+        if len(groups) == 1:
+            source = next(iter(groups))
+        elif len(groups) > 1:
+            warnings.append('BACKUP_SOURCE_SELECTION_REQUIRED: mixed source directory; nothing pruned')
+    verified = [p for p in groups.get(source, []) if p.resolve() not in all_source_paths]
+    verified.sort(key=lambda p: (_mtime(p), p.name), reverse=True)
+    keep = max(3, int(keep_newest))
+    candidates = [p for p in verified if p.resolve() not in excluded]
+    current = [p for p in verified if p.resolve() in excluded]
+    retained = set(current + candidates[:max(0, keep - len(current))])
+    removed = []
+    for path in candidates:
+        if path in retained:
+            continue
+        try:
+            # A replacement sidecar cannot swap the approved deletion candidate
+            # or make a corrupted protected generation silently count as valid.
+            for checked in retained | {path}:
+                saved = evidence[checked]
+                if (sha256(sidecar_path(checked)) != saved['sidecar_sha256']
+                        or sha256(checked) != saved['db_sha256']
+                        or _size(Path(str(checked) + '-wal')) > 0):
+                    raise ValueError('verified generation changed since retention preview')
+            path.unlink()
+            removed.append(path)
+            sidecar_path(path).unlink()
+        except (OSError, ValueError, KeyError) as error:
+            warnings.append('PRUNE_SKIPPED: ' + str(path) + ': ' + str(error))
+    # Capacity accounts for the directory, not permission to prune other sources.
+    total = sum(_size(p) for p in directory.glob('*.db')
+                if p.is_file() and p.resolve() not in all_source_paths)
+    report.update({'source': str(source) if source else None,
+                   'verified_generations': sum(p.exists() for p in verified),
+                   'minimum_generations': 3, 'keep_newest': keep,
+                   'total_bytes': total, 'capacity_scope': 'directory',
+                   'max_total_bytes': max_total_bytes,
+                   'over_capacity': total > max_total_bytes})
+    if total > max_total_bytes:
+        warnings.append(f'BACKUP_CAPACITY_CONFLICT: {total} > {max_total_bytes}; protected generations retained')
+    if report['verified_generations'] < 3:
+        warnings.append(f'BACKUP_GENERATIONS_PENDING: {report["verified_generations"]}/3 verified generations for selected source')
+    report['warnings'] = warnings
+    for warning in warnings:
+        logger.warning(warning)
     return removed

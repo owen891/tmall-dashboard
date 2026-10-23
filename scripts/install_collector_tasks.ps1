@@ -1,127 +1,72 @@
-﻿<#
+<#
 .SYNOPSIS
-    注册 / 更新 / 移除 tmall-dashboard 的 Windows 计划任务。
-
+Register selected dashboard tasks without silently enabling paused jobs.
 .DESCRIPTION
-    2026-10-02 重写。原版本有三个问题，会误导后来者：
-      1. 注册的任务名（-Collectors / -Observability / -Backup）与线上实际完全不符；
-      2. 用 schtasks.exe，而线上是用 PowerShell 的 Register-ScheduledTask 注册的
-         （schtasks.exe 在部分受限环境还会被安全策略直接拦截）；
-      3. 引用 run_daily_collect.ps1，但线上采集走的是 auto-collect.ps1
-         （RPA 链：自动登录 + 触发 API + 等采集完成）。
-    新版本按 Get-ScheduledTask 实测的现状重建，支持 -WhatIf 预演。
-
-    当前任务体系（2026-10-02 实测）：
-      Collect-Others     09:30  auto-collect.ps1 -Sources sycm_flow,sycm_item_flow,sycm_market,wanxiangtai
-      Collect-BI         11:30  auto-collect.ps1 -Sources bi_daily,bi_monthly
-      Aggregate-Daily    12:30  aggregate_store_daily_task.ps1   （独立聚合，不依赖采集脚本是否跑完）
-      Observability      13:00  run_collector_observability.ps1  （巡检 + 告警落库）
-      DailyBackup        03:00  run_daily_backup.ps1             （默认 Disabled）
-
-    另有两个非定时任务，本脚本不自动注册（避免意外副作用，需要时手工建）：
-      CollectorChrome   无触发器，跑 start-chrome-debug.ps1 起 CDP 9223，是采集的前置依赖
-      DevServer         登录时触发，跑 start_dev_server.py
-
-.PARAMETER ProjectRoot
-    项目根目录。缺省按脚本位置推断（不要在 param 默认值里求 $MyInvocation —— 
-    通过 powershell.exe -File 调用时那里是空的，会让脚本第一行就抛错）。
-
-.PARAMETER RunAsUser
-    运行身份，缺省沿用现有任务的做法：当前用户 / Interactive / Limited。
-
-.PARAMETER Remove
-    移除本脚本管理的任务。
-
-.EXAMPLE
-    .\install_collector_tasks.ps1 -WhatIf      # 预演，不实际改动
-    .\install_collector_tasks.ps1              # 注册 / 更新
-    .\install_collector_tasks.ps1 -Remove -WhatIf
+Existing triggers, settings, principal and enabled state are preserved unless
+-Enable/-Disable or -RunAsUser is explicitly supplied. New tasks are disabled.
+Only selected tasks are changed. -WhatIf performs no scheduler mutation.
+DevServer is opt-in; legacy browser/backfill tasks are not managed here.
 #>
 [CmdletBinding(SupportsShouldProcess)]
 param(
     [string]$ProjectRoot,
+    [ValidatePattern('^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$')]
     [string]$TaskPrefix = 'TmallDashboard',
+    [ValidateSet('Collect-Others','Collect-BI','Aggregate-Daily','Observability','DailyBackup','DevServer')]
+    [string[]]$TaskSuffixes = @('Collect-Others','Collect-BI','Aggregate-Daily','Observability','DailyBackup'),
     [string]$RunAsUser = '',
+    [switch]$Enable,
+    [switch]$Disable,
     [switch]$Remove
 )
-
 $ErrorActionPreference = 'Stop'
-
-if (-not $ProjectRoot) {
-    $ProjectRoot = Split-Path -Parent (Split-Path -Parent $PSCommandPath)
+if ($Enable -and $Disable) { throw 'Enable and Disable are mutually exclusive' }
+if ($Remove -and ($Enable -or $Disable)) { throw 'Remove cannot change enabled state' }
+if (-not $ProjectRoot) { $ProjectRoot = Split-Path -Parent $PSScriptRoot }
+$ProjectRoot = (Resolve-Path -LiteralPath $ProjectRoot).ProviderPath
+$wrapper = Join-Path $ProjectRoot 'scripts\run_scheduled_task.ps1'
+if (-not $Remove -and -not (Test-Path -LiteralPath $wrapper -PathType Leaf)) {
+    throw "Scheduled entry point not found: $wrapper"
 }
-if (-not (Test-Path -LiteralPath $ProjectRoot)) { throw "项目根目录不存在: $ProjectRoot" }
-
-$tasks = @(
-    @{ Suffix = 'Collect-Others';  Script = 'auto-collect.ps1';                 Args = '-Sources sycm_flow,sycm_item_flow,sycm_market,wanxiangtai'; Time = '09:30' }
-    @{ Suffix = 'Collect-BI';      Script = 'auto-collect.ps1';                 Args = '-Sources bi_daily,bi_monthly';                               Time = '11:30' }
-    @{ Suffix = 'Aggregate-Daily'; Script = 'aggregate_store_daily_task.ps1';   Args = '';                                                           Time = '12:30' }
-    @{ Suffix = 'Observability';   Script = 'run_collector_observability.ps1';  Args = '';                                                           Time = '13:00' }
-    @{ Suffix = 'DailyBackup';     Script = 'run_daily_backup.ps1';             Args = '';                                                           Time = '03:00'; Disabled = $true }
-)
-
-# 与线上现有任务对齐：72 小时执行上限（实际不会跑到）、错过就补跑、
-# 同一任务不并发（IgnoreNew）、允许电池供电时启动。
-$settings = New-ScheduledTaskSettingsSet `
-    -ExecutionTimeLimit (New-TimeSpan -Hours 72) `
-    -StartWhenAvailable `
-    -MultipleInstances IgnoreNew `
-    -AllowStartIfOnBatteries `
-    -DontStopIfGoingOnBatteries
-
-if ($RunAsUser) {
-    $principal = New-ScheduledTaskPrincipal -UserId $RunAsUser -LogonType Interactive -RunLevel Limited
-} else {
-    $principal = $null   # 交给 Register-ScheduledTask 用当前用户
-}
-
-foreach ($task in $tasks) {
-    $name = "$TaskPrefix-$($task.Suffix)"
-
+$times = @{'Collect-Others'='09:30'; 'Collect-BI'='11:30'; 'Aggregate-Daily'='12:30'; 'Observability'='13:00'; 'DailyBackup'='03:00'}
+foreach ($suffix in ($TaskSuffixes | Select-Object -Unique)) {
+    $name = "$TaskPrefix-$suffix"
+    $existing = Get-ScheduledTask -TaskName $name -TaskPath '\' -ErrorAction SilentlyContinue
     if ($Remove) {
-        if ($PSCmdlet.ShouldProcess($name, '移除计划任务')) {
-            $existing = Get-ScheduledTask -TaskName $name -ErrorAction SilentlyContinue
-            if ($existing) { Unregister-ScheduledTask -TaskName $name -Confirm:$false }
-            Write-Host "已移除: $name"
+        if ($existing -and $PSCmdlet.ShouldProcess($name, 'Remove selected scheduled task')) {
+            Unregister-ScheduledTask -TaskName $name -TaskPath '\' -Confirm:$false
         }
         continue
     }
-
-    $scriptPath = Join-Path $ProjectRoot "scripts\$($task.Script)"
-    if (-not (Test-Path -LiteralPath $scriptPath)) { throw "脚本不存在: $scriptPath" }
-
-    $argument = "-ExecutionPolicy Bypass -File `"$scriptPath`""
-    if ($task.Args) { $argument += " $($task.Args)" }
-
-    $action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument $argument -WorkingDirectory $ProjectRoot
-    $trigger = New-ScheduledTaskTrigger -Daily -At $task.Time
-
-    if ($PSCmdlet.ShouldProcess($name, "注册计划任务 @ $($task.Time)")) {
-        $registerArgs = @{
-            TaskName    = $name
-            Action      = $action
-            Trigger     = $trigger
-            Settings    = $settings
-            Description = "tmall-dashboard: $($task.Script) $($task.Args)".Trim()
-            Force       = $true
-        }
-        if ($principal) { $registerArgs.Principal = $principal }
-        $null = Register-ScheduledTask @registerArgs
-
-        if ($task.Disabled) {
-            Disable-ScheduledTask -TaskName $name | Out-Null
-            Write-Host "已注册: $name @ $($task.Time) [Disabled]"
-        } else {
-            Write-Host "已注册: $name @ $($task.Time)"
-        }
+    $enabled = if ($Enable) { $true } elseif ($Disable) { $false } elseif ($existing) { [bool]$existing.Settings.Enabled } else { $false }
+    # Native objects are preserved for registered tasks, including scheduler conditions.
+    $settings = if ($existing) { $existing.Settings } else {
+        $timeLimit = if ($suffix -eq 'DevServer') { [TimeSpan]::Zero } else { New-TimeSpan -Hours 72 }
+        New-ScheduledTaskSettingsSet -ExecutionTimeLimit $timeLimit -StartWhenAvailable -MultipleInstances IgnoreNew -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries
     }
-}
-
-if (-not $Remove) {
-    Write-Host ''
-    Write-Host '当前 Tmall* 任务：'
-    Get-ScheduledTask | Where-Object { $_.TaskName -like "$TaskPrefix*" } | Sort-Object TaskName | ForEach-Object {
-        $info = Get-ScheduledTaskInfo -TaskName $_.TaskName -ErrorAction SilentlyContinue
-        Write-Host ("  {0,-42} [{1}] NextRun={2}" -f $_.TaskName, $_.State, $info.NextRunTime)
+    $settings.Enabled = $enabled
+    $trigger = if ($existing) { $existing.Triggers } elseif ($suffix -eq 'DevServer') {
+        New-ScheduledTaskTrigger -AtLogOn
+    } else { New-ScheduledTaskTrigger -Daily -At $times[$suffix] }
+    $principal = if ($RunAsUser) {
+        New-ScheduledTaskPrincipal -UserId $RunAsUser -LogonType Interactive -RunLevel Limited
+    } elseif ($existing) { $existing.Principal } else {
+        New-ScheduledTaskPrincipal -UserId ([System.Security.Principal.WindowsIdentity]::GetCurrent().Name) -LogonType Interactive -RunLevel Limited
+    }
+    $argument = "-NoProfile -NonInteractive -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$wrapper`" -ProjectRoot `"$ProjectRoot`" -TaskSuffix $suffix"
+    $action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument $argument -WorkingDirectory $ProjectRoot
+    if ($PSCmdlet.ShouldProcess($name, "Register selected task; Enabled=$enabled")) {
+        $registerArgs = @{
+            TaskName=$name; TaskPath='\'; Action=$action;
+            Settings=$settings; Principal=$principal; Force=$true;
+        }
+        # Omit empty triggers: Register-ScheduledTask rejects explicit $null,
+        # while omitting Trigger correctly preserves an on-demand task.
+        if ($null -ne $trigger -and @($trigger).Count -gt 0) { $registerArgs.Trigger = $trigger }
+        if ($existing) {
+            if ($null -ne $existing.Description) { $registerArgs.Description = $existing.Description }
+        } else { $registerArgs.Description = "tmall-dashboard: controlled runtime / $suffix" }
+        $null = Register-ScheduledTask @registerArgs
+        Write-Output "REGISTERED $name Enabled=$enabled"
     }
 }

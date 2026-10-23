@@ -1,6 +1,7 @@
 import math
 import operator as comparison
 
+from db import get_db
 from repos.alert_rules_repo import AlertRulesRepo
 from repos.audit_repo import AuditRepo
 
@@ -49,36 +50,61 @@ class AlertRulesService:
         return [self._serialize(rule) for rule in AlertRulesRepo.list(scope=scope)]
 
     def create(self, payload):
+        """创建规则 + 写审计，同一事务；审计失败则规则不落库。"""
         values = self._validate(payload, require_all=True)
-        rule = AlertRulesRepo.create(values)
-        AuditRepo.record(
-            'alert_rule', rule['id'], 'create', payload.get('actor') or 'admin',
-            payload.get('reason') or '创建预警规则', None, self._serialize(rule),
-        )
+        with get_db() as connection:
+            try:
+                rule = AlertRulesRepo.create(values, connection=connection)
+                AuditRepo.record(
+                    'alert_rule', rule['id'], 'create', payload.get('actor') or 'admin',
+                    payload.get('reason') or '创建预警规则', None, self._serialize(rule),
+                    connection=connection,
+                )
+                connection.commit()
+            except Exception:
+                connection.rollback()
+                raise
         return self._serialize(rule)
 
     def update(self, rule_id, payload):
-        current = AlertRulesRepo.get(rule_id)
-        if not current:
-            raise AlertRuleNotFoundError('预警规则不存在')
-        merged = {**current, **payload}
-        values = self._validate(merged, require_all=True)
-        updated = AlertRulesRepo.update(rule_id, values)
-        serialized = self._serialize(updated)
-        AuditRepo.record(
-            'alert_rule', rule_id, 'update', payload.get('actor') or 'admin',
-            payload.get('reason') or '更新预警规则', self._serialize(current), serialized,
-        )
+        """更新规则 + 写审计，同一事务；审计失败则改动整体回滚。"""
+        with get_db() as connection:
+            try:
+                current = AlertRulesRepo.get(rule_id, connection=connection)
+                if not current:
+                    raise AlertRuleNotFoundError('预警规则不存在')
+                merged = {**current, **payload}
+                values = self._validate(merged, require_all=True)
+                updated = AlertRulesRepo.update(rule_id, values, connection=connection)
+                if not updated:
+                    raise AlertRuleNotFoundError('预警规则不存在')
+                serialized = self._serialize(updated)
+                AuditRepo.record(
+                    'alert_rule', rule_id, 'update', payload.get('actor') or 'admin',
+                    payload.get('reason') or '更新预警规则', self._serialize(current), serialized,
+                    connection=connection,
+                )
+                connection.commit()
+            except Exception:
+                connection.rollback()
+                raise
         return serialized
 
     def delete(self, rule_id, actor='admin', reason='删除预警规则'):
-        current = AlertRulesRepo.get(rule_id)
-        if not current or not AlertRulesRepo.delete(rule_id):
-            raise AlertRuleNotFoundError('预警规则不存在')
-        AuditRepo.record(
-            'alert_rule', rule_id, 'delete', actor or 'admin', reason or '删除预警规则',
-            self._serialize(current), None,
-        )
+        """删除规则 + 写审计，同一事务；审计失败则删除整体回滚。"""
+        with get_db() as connection:
+            try:
+                current = AlertRulesRepo.get(rule_id, connection=connection)
+                if not current or not AlertRulesRepo.delete(rule_id, connection=connection):
+                    raise AlertRuleNotFoundError('预警规则不存在')
+                AuditRepo.record(
+                    'alert_rule', rule_id, 'delete', actor or 'admin', reason or '删除预警规则',
+                    self._serialize(current), None, connection=connection,
+                )
+                connection.commit()
+            except Exception:
+                connection.rollback()
+                raise
 
     def evaluate_promotion(self, rows):
         rules = AlertRulesRepo.list(scope='promotion_product', enabled=True)

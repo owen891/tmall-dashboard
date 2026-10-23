@@ -1,5 +1,5 @@
 (function () {
-  const assetBase = new URL('.', document.currentScript?.src || window.location.href);
+  const apiBase = window.location.origin;
   const SEMVER_PATTERN = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
   const normalizeVersion = value => {
     const normalized = String(value ?? '').trim().replace(/^v/i, '');
@@ -77,11 +77,62 @@
     document.body.appendChild(banner);
   };
 
+  const uiReleaseDismissPrefix = 'tmall-ui-release-dismissed:';
+  const uiReleaseDismissed = (release) => {
+    try { return sessionStorage.getItem(uiReleaseDismissPrefix + release) === '1'; } catch { return false; }
+  };
+  const showUiUpdateBanner = (release) => {
+    if (!release || uiReleaseDismissed(release) || document.querySelector('[data-update-banner]')) return;
+    const banner = document.createElement('aside');
+    banner.className = 'web-update-banner';
+    banner.dataset.updateBanner = 'true';
+    banner.setAttribute('role', 'status');
+    banner.setAttribute('aria-live', 'polite');
+    const message = document.createElement('span');
+    const title = document.createElement('strong');
+    title.textContent = '界面资源已更新';
+    const hint = document.createElement('span');
+    hint.textContent = '当前页面仍是旧资源，刷新后生效';
+    message.append(title, hint);
+    const actions = document.createElement('span');
+    actions.className = 'web-update-banner__actions';
+    const refresh = document.createElement('button');
+    refresh.type = 'button';
+    refresh.dataset.updateRefresh = 'true';
+    refresh.textContent = '立即刷新';
+    const later = document.createElement('button');
+    later.type = 'button';
+    later.dataset.updateDismiss = 'true';
+    later.setAttribute('aria-label', '稍后提醒');
+    later.textContent = '稍后';
+    actions.append(refresh, later);
+    banner.append(message, actions);
+    refresh.addEventListener('click', () => window.location.reload());
+    later.addEventListener('click', () => {
+      try { sessionStorage.setItem(uiReleaseDismissPrefix + release, '1'); } catch {}
+      banner.remove();
+    });
+    document.body.appendChild(banner);
+  };
+  // The server stamps every rendered page with the release it was built from,
+  // so the page can compare itself against the now-active release without
+  // remembering anything from a previous visit.
+  const renderedRelease = () => document.querySelector('meta[name="tmall-release"]')?.getAttribute('content') || null;
+  const checkUiRelease = (payload) => {
+    const active = payload?.ui_release;
+    const rendered = renderedRelease();
+    if (active && rendered && active !== rendered) showUiUpdateBanner(active);
+  };
+
   const check = async () => {
     try {
-      const response = await fetch(new URL('../api/version?client=web', assetBase), { cache: 'no-store', headers: { Accept: 'application/json' } });
+      const response = await fetch(new URL('/api/version?client=web', apiBase), { cache: 'no-store', headers: { Accept: 'application/json' } });
       if (!response.ok) return;
-      const version = (await response.json())?.data?.version;
+      const payload = (await response.json())?.data;
+      // A republished UI keeps the product version but swaps the release id.
+      // Without this the tab silently stays on the previous assets.
+      checkUiRelease(payload);
+      const version = payload?.version;
       if (newerThan(version, currentVersion)) showBanner(version);
     } catch {
       // Update checks are best-effort and must not affect dashboard use.
@@ -95,7 +146,7 @@
       // Ask our own backend, which proxies the upstream release API. Calling the
       // third-party API directly from the browser logged a CORS failure on every
       // page load whenever the host was unreachable.
-      const response = await fetch(new URL('../api/version?client=web&release=1', assetBase), { cache: 'no-store', headers: { Accept: 'application/json' } });
+      const response = await fetch(new URL('/api/version?client=web&release=1', apiBase), { cache: 'no-store', headers: { Accept: 'application/json' } });
       if (!response.ok) return;
       const release = (await response.json())?.data?.latest_release;
       const version = release?.tag_name;

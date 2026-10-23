@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>自定义分析 | 天猫数据仪表盘</title>
+  <title>自定义分析</title>
   <link rel="stylesheet" href="../assets/tokens.css?v=20261003a">
   <link rel="stylesheet" href="../assets/shell.css?v=20261001j">
   <link rel="stylesheet" href="../assets/components.css?v=20261001j"><link rel="stylesheet" href="../assets/themes/product-domain.css?v=20261001j"><link rel="stylesheet" href="../assets/themes/promotion-domain.css?v=20261001j"><link rel="stylesheet" href="../assets/themes/overview-domain.css?v=20261001j"><link rel="stylesheet" href="../assets/themes/lifecycle-domain.css?v=20261001j"><link rel="stylesheet" href="../assets/themes/settings-domain.css?v=20261001j">
@@ -42,6 +42,8 @@
   .analysis-empty { text-align: center; padding: var(--space-8); color: var(--text-secondary); }
   .analysis-empty__icon { font-size: 3rem; margin-bottom: var(--space-3); opacity: 0.3; }
   </style> -->
+  <link rel="stylesheet" href="../assets/themes/macos-content.css?v=20261018-regular-titles">
+  <link rel="stylesheet" href="../assets/themes/analysis-workspace.css?v=20261017-workspace-1">
 </head>
 <body data-page="analysis">
   <div class="demo-app">
@@ -62,19 +64,22 @@
 
         
 
-        <div class="analysis-templates" id="analysisTemplates">
-          <div class="analysis-template analysis-template--active" data-template="sales-trend">销售趋势</div>
-          <div class="analysis-template" data-template="traffic-source">流量来源</div>
-          <div class="analysis-template" data-template="conversion-funnel">转化漏斗</div>
-          <div class="analysis-template" data-template="product-ranking">商品排行</div>
-          <div class="analysis-template" data-template="ad-performance">广告表现</div>
-          <div class="analysis-template" data-template="category-period">品类周期分析</div>
+        <div class="analysis-workspace">
+          <aside class="analysis-workspace__inspector" aria-label="分析配置">
+            <h2 class="analysis-workspace__heading">分析模板</h2>
+        <div class="analysis-templates" id="analysisTemplates" role="group" aria-label="分析模板">
+          <button type="button" class="analysis-template analysis-template--active" data-template="sales-trend" aria-pressed="true">销售趋势</button>
+          <button type="button" class="analysis-template" data-template="traffic-source" aria-pressed="false">流量来源</button>
+          <button type="button" class="analysis-template" data-template="conversion-funnel" aria-pressed="false">转化漏斗</button>
+          <button type="button" class="analysis-template" data-template="product-ranking" aria-pressed="false">商品排行</button>
+          <button type="button" class="analysis-template" data-template="ad-performance" aria-pressed="false">广告表现</button>
+          <button type="button" class="analysis-template" data-template="category-period" aria-pressed="false">品类周期分析</button>
         </div>
 
         <div class="analysis-config">
           <div class="analysis-config__grid">
             <div class="analysis-config__field">
-              <label class="analysis-config__label">指标</label>
+              <label class="analysis-config__label" for="metricSelect">指标</label>
               <select class="analysis-config__select" id="metricSelect">
                 <option value="payment_amount">支付金额</option>
                 <option value="net_sales">净销售额</option>
@@ -87,7 +92,7 @@
               </select>
             </div>
             <div class="analysis-config__field">
-              <label class="analysis-config__label">维度</label>
+              <label class="analysis-config__label" for="dimensionSelect">维度</label>
               <select class="analysis-config__select" id="dimensionSelect">
                 <option value="date">按日期</option>
                 <option value="week">按周</option>
@@ -97,7 +102,7 @@
               </select>
             </div>
             <div class="analysis-config__field">
-              <label class="analysis-config__label">图表类型</label>
+              <label class="analysis-config__label" for="chartTypeSelect">图表类型</label>
               <select class="analysis-config__select" id="chartTypeSelect">
                 <option value="line">折线图</option>
                 <option value="bar">柱状图</option>
@@ -106,15 +111,15 @@
               </select>
             </div>
             <div class="analysis-config__field">
-              <label class="analysis-config__label">开始日期</label>
+              <label class="analysis-config__label" for="startDate">开始日期</label>
               <input type="date" class="analysis-config__input" id="startDate">
             </div>
             <div class="analysis-config__field">
-              <label class="analysis-config__label">结束日期</label>
+              <label class="analysis-config__label" for="endDate">结束日期</label>
               <input type="date" class="analysis-config__input" id="endDate">
             </div>
             <div class="analysis-config__field">
-              <label class="analysis-config__label">TOP N</label>
+              <label class="analysis-config__label" for="topNSelect">TOP N</label>
               <select class="analysis-config__select" id="topNSelect">
                 <option value="10">TOP 10</option>
                 <option value="20">TOP 20</option>
@@ -127,7 +132,7 @@
 
         <section class="category-analysis-config" id="categoryAnalysisConfig" hidden>
           <div class="category-analysis-config__grid">
-            <div class="analysis-config__field"><label class="analysis-config__label" for="categorySelect">品类</label><select class="analysis-config__select" id="categorySelect"><option value="all">全部品类</option><option value="sock">标品袜子</option></select></div>
+            <div class="analysis-config__field"><label class="analysis-config__label" for="categorySelect">品类</label><select class="analysis-config__select" id="categorySelect"><option value="all">全部品类</option><option value="sock">默认品类</option></select></div>
             <div class="analysis-config__field"><label class="analysis-config__label" for="categoryGrainSelect">统计粒度</label><select class="analysis-config__select" id="categoryGrainSelect"><option value="day">按日</option><option value="week">按周</option><option value="month">按月</option></select></div>
             <div class="analysis-config__field"><label class="analysis-config__label" for="categoryMetricSelect">分析指标</label><select class="analysis-config__select" id="categoryMetricSelect"><option value="payment_amount">支付金额</option><option value="net_sales">净销售额</option><option value="payment_qty">支付件数</option><option value="visitors">访客数</option><option value="payment_conversion_rate">支付转化率</option><option value="average_order_value">客单价</option><option value="ad_spend">推广花费</option><option value="gross_profit">毛利</option><option value="operating_profit">经营利润</option><option value="profit_rate">经营利润率</option></select></div>
             <div class="analysis-config__field"><label class="analysis-config__label" for="compareModeSelect">对比方式</label><select class="analysis-config__select" id="compareModeSelect"><option value="yoy">去年同期</option><option value="previous">上一周期</option><option value="custom">自定义对比</option><option value="none">不对比</option></select></div>
@@ -137,11 +142,17 @@
           <div class="category-analysis-config__grid category-analysis-config__grid--compare" id="categoryCompareDates"><div class="analysis-config__field"><label class="analysis-config__label" for="compareStartDate">对比开始日期</label><input type="date" class="analysis-config__input" id="compareStartDate"></div><div class="analysis-config__field"><label class="analysis-config__label" for="compareEndDate">对比结束日期</label><input type="date" class="analysis-config__input" id="compareEndDate"></div></div>
         </section>
 
+          </aside>
+          <section class="analysis-workspace__results" aria-label="分析结果">
+            <header class="analysis-workspace__result-header"><h2 class="analysis-workspace__heading">分析结果</h2><p>配置保留在左侧，可随时调整后重新生成。</p></header>
         <div class="analysis-charts" id="analysisCharts">
           <div class="analysis-empty">
             <div class="analysis-empty__icon"><i data-lucide="bar-chart-3"></i></div>
             <p>选择配置后点击"生成图表"开始分析</p>
           </div>
+        </div>
+
+          </section>
         </div>
 
         <div class="analysis-saved" id="savedAnalysisSection" style="display:none;">
@@ -152,9 +163,9 @@
     </div>
   </div>
   <script src="../assets/api.js?v=20261001j"></script>
-  <script src="../assets/navigation.js?v=20261001j"></script>
+  <script src="../assets/navigation.js?v=20261011a"></script>
   <script src="../assets/labels.js?v=20261001j"></script>
-  <script src="../assets/shell.js?v=20261003c"></script>
-  <script src="../assets/format.js?v=20261001j"></script><script src="../assets/ui-components.js?v=20261003a"></script><script src="../assets/analysis-live.js?v=20261001j"></script>
+  <script src="../assets/shell.js?v=20261011a"></script>
+  <script src="../assets/format.js?v=20261011a"></script><script src="../assets/ui-components.js?v=20261003a"></script><script src="../assets/analysis-live.js?v=20261017-template-buttons"></script>
 </body>
 </html>

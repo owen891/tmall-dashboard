@@ -25,18 +25,51 @@ const getArg = (name, fallback) => {
 const STRICT = args.includes('--strict');
 const DIR = path.resolve(getArg('--dir', '.tmp/ui-audit'));
 
+/**
+ * 三份探针产物必须来自同一次采集。
+ *
+ * 为什么要有这道闸：三个脚本跑完的时间差通常在分钟级，但一旦有人只重跑了其中
+ * 一个（例如改完 CSS 只重跑 audit_ui_layout），比对表就会把 10-02 的布局数据
+ * 和 10-03 的 DOM 数据拼在一起，得出一张看起来正常、实则跨代码版本的表。
+ * 库里确实发生过：验收报告记的 4,283px 与产物里的 4,295px 对不上，无人察觉。
+ */
+const MAX_BATCH_SKEW_MS = 30 * 60 * 1000;
+
 const readJson = (file) => {
   const p = path.join(DIR, file);
   if (!fs.existsSync(p)) {
     console.error(`缺少探针产物：${p}\n先跑第 7 节的 audit_ui_dom / audit_ui_layout / audit_ui_deep。`);
     process.exit(2);
   }
-  return JSON.parse(fs.readFileSync(p, 'utf8'));
+  const stat = fs.statSync(p);
+  return { data: JSON.parse(fs.readFileSync(p, 'utf8')), file, mtimeMs: stat.mtimeMs };
 };
 
-const dom = readJson('dom.json');
-const layout = readJson('audit.json');
-const deep = readJson('deep.json');
+const probes = {
+  dom: readJson('dom.json'),
+  layout: readJson('audit.json'),
+  deep: readJson('deep.json'),
+};
+
+{
+  const stamps = Object.values(probes).map((p) => p.mtimeMs);
+  const skew = Math.max(...stamps) - Math.min(...stamps);
+  if (skew > MAX_BATCH_SKEW_MS) {
+    const detail = Object.values(probes)
+      .map((p) => `  ${p.file}  ${new Date(p.mtimeMs).toISOString()}`)
+      .join('\n');
+    console.error(
+      `探针产物不属于同一次采集：最大时间差 ${(skew / 60000).toFixed(1)} 分钟`
+      + `（上限 ${MAX_BATCH_SKEW_MS / 60000} 分钟）。\n${detail}\n`
+      + '三份产物跨了不同的采集批次，比对结论不成立。请重跑全部三个探针后再比对。',
+    );
+    process.exit(2);
+  }
+}
+
+const dom = probes.dom.data;
+const layout = probes.layout.data;
+const deep = probes.deep.data;
 
 const viewportsOf = (source, name) => Object.values(source?.pages?.[name]?.viewports || {});
 const allViewports = (source) => Object.entries(source?.pages || {}).flatMap(
