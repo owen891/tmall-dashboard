@@ -172,6 +172,9 @@ pelican-*.html
 /scripts/archive/fix_socks_untagged_20261006.py
 /scripts/backfill_monthly_profit_from_daily.py
 /scripts/backfill_promo_detail_from_bi.py
+# 私人版报表导入/巡检脚本：文件名本身含品牌词，故连文件名一并排除在公开仓库之外。
+# 公开 checkout 由 tests/test_import_backup_retention_contract.py 的
+# SNAPSHOT_ENTRYPOINTS_AVAILABLE 探测缺失并只跑 legacy 入口。
 /scripts/import_paimi_bi_daily.py
 /scripts/import_paimi_bi_overview.py
 /scripts/import_paimi_monthly.py

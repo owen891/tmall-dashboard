@@ -4,6 +4,9 @@ import io
 import sys
 import tempfile
 import unittest
+from services.snapshot_source_types import SNAPSHOT_SOURCE_TYPES
+SNAPSHOT_TYPE = next(iter(SNAPSHOT_SOURCE_TYPES))
+SNAPSHOT_OVERVIEW_TYPE = f'{SNAPSHOT_TYPE.rsplit("_", 2)[0]}_overview'
 
 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -106,7 +109,7 @@ class OverviewContractTests(unittest.TestCase):
                        total_rows, valid_rows, invalid_rows
                    ) VALUES (?, ?, ?, ?, 'completed', 1, 1, 0)''',
                 [
-                    ('mixed-bi-batch', 'paimi_bi_product_day', 'mixed-bi-source', 'a' * 64),
+                    ('mixed-bi-batch', SNAPSHOT_TYPE, 'mixed-bi-source', 'a' * 64),
                     ('mixed-sycm-batch', 'sycm_flow', 'mixed-sycm-source', 'b' * 64),
                 ],
             )
@@ -116,7 +119,7 @@ class OverviewContractTests(unittest.TestCase):
                        source_batch_id, source_filename, payload_json, field_presence_json
                    ) VALUES (?, ?, ?, ?, ?, ?, '{}', '{}')''',
                 [
-                    ('mixed-bi', '2026-04-03', 'bi', 'paimi_bi_product_day', 'mixed-bi-batch', 'mixed-bi-source'),
+                    ('mixed-bi', '2026-04-03', 'bi', SNAPSHOT_TYPE, 'mixed-bi-batch', 'mixed-bi-source'),
                     ('mixed-sycm', '2026-04-03', 'sycm', 'sycm_flow', 'mixed-sycm-batch', 'mixed-sycm-source'),
                 ],
             )
@@ -131,12 +134,13 @@ class OverviewContractTests(unittest.TestCase):
 
         with get_db(self.database_path) as connection:
             connection.execute(
-                "UPDATE import_batches SET source_type = 'paimi_bi_product_day' "
-                "WHERE id = 'mixed-sycm-batch'"
+                "UPDATE import_batches SET source_type = ? WHERE id = 'mixed-sycm-batch'",
+                (SNAPSHOT_TYPE,),
             )
             connection.execute(
-                "UPDATE daily_data_observations SET source_type = 'paimi_bi_overview' "
-                "WHERE source_batch_id = 'mixed-sycm-batch'"
+                "UPDATE daily_data_observations SET source_type = ? "
+                "WHERE source_batch_id = 'mixed-sycm-batch'",
+                (SNAPSHOT_OVERVIEW_TYPE,),
             )
             connection.commit()
 

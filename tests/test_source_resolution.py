@@ -1,6 +1,14 @@
 import os
 import tempfile
 import unittest
+from services.snapshot_source_types import SNAPSHOT_SOURCE_TYPES
+
+# The authoritative snapshot source_type is a deployment-private token; the
+# public checkout falls back to a neutral value. Pin it here so the precedence
+# assertions never depend on which deployment runs the suite.
+SNAPSHOT_TYPE = next(iter(SNAPSHOT_SOURCE_TYPES))
+SNAPSHOT_OVERVIEW_TYPE = f'{SNAPSHOT_TYPE.rsplit("_", 2)[0]}_overview'
+assert SNAPSHOT_TYPE in SNAPSHOT_SOURCE_TYPES
 
 
 class SourceResolutionTests(unittest.TestCase):
@@ -31,7 +39,7 @@ class SourceResolutionTests(unittest.TestCase):
             self.assertEqual(connection.execute("SELECT COUNT(*) FROM daily_data_observations").fetchone()[0], 2)
             self.assertEqual(connection.execute("SELECT COUNT(*) FROM reconciliation_results").fetchone()[0], 1)
 
-    def test_paimi_bi_snapshot_overrides_older_promotion_value_when_present(self):
+    def test_snapshot_overrides_older_promotion_value_when_present(self):
         from db import get_connection
         from services.source_resolution_service import record_daily_observation
 
@@ -39,21 +47,21 @@ class SourceResolutionTests(unittest.TestCase):
         try:
             record_daily_observation(
                 connection,
-                {'product_id': 'p-paimi', 'date': '2026-08-18', 'ad_spend': 12},
+                {'product_id': 'p-snapshot', 'date': '2026-08-18', 'ad_spend': 12},
                 source_type='promotion_product_day', source_batch_id='promotion-1',
                 source_system='promotion_tool', shop_id='default',
             )
             record_daily_observation(
                 connection,
-                {'product_id': 'p-paimi', 'date': '2026-08-18', 'ad_spend': 8},
-                source_type='paimi_bi_product_day', source_batch_id='paimi-1',
+                {'product_id': 'p-snapshot', 'date': '2026-08-18', 'ad_spend': 8},
+                source_type=SNAPSHOT_TYPE, source_batch_id='snapshot-1',
                 source_system='business_advisor', shop_id='default',
             )
             fact = connection.execute(
-                "SELECT ad_spend, recommend_ipv, paid_ipv, organic_ipv, order_amount FROM daily_data WHERE product_id = 'p-paimi'"
+                "SELECT ad_spend, recommend_ipv, paid_ipv, organic_ipv, order_amount FROM daily_data WHERE product_id = 'p-snapshot'"
             ).fetchone()
             lineage = connection.execute(
-                "SELECT effective_source_type FROM fact_field_lineage WHERE product_id = 'p-paimi' AND field_key = 'ad_spend'"
+                "SELECT effective_source_type FROM fact_field_lineage WHERE product_id = 'p-snapshot' AND field_key = 'ad_spend'"
             ).fetchone()
         finally:
             connection.close()
@@ -63,7 +71,7 @@ class SourceResolutionTests(unittest.TestCase):
         self.assertIsNone(fact['paid_ipv'])
         self.assertIsNone(fact['organic_ipv'])
         self.assertIsNone(fact['order_amount'])
-        self.assertEqual(lineage['effective_source_type'], 'paimi_bi_product_day')
+        self.assertEqual(lineage['effective_source_type'], SNAPSHOT_TYPE)
 
     def test_missing_refund_is_derived_from_payment_minus_net_sales(self):
         """退款字段窗口兜底：BI 近 ~13 天不返回退款，按恒等式=支付−净销 推导占位。
@@ -81,7 +89,7 @@ class SourceResolutionTests(unittest.TestCase):
                 connection,
                 {'product_id': 'p-refund', 'date': '2026-09-29',
                  'payment_amount': 100, 'net_sales': 78},
-                source_type='paimi_bi_product_day', source_batch_id='bi-1',
+                source_type=SNAPSHOT_TYPE, source_batch_id='bi-1',
                 source_system='business_advisor', shop_id='default',
             )
             # 退款已存在 → 不覆盖
@@ -89,7 +97,7 @@ class SourceResolutionTests(unittest.TestCase):
                 connection,
                 {'product_id': 'p-refund', 'date': '2026-09-28',
                  'payment_amount': 100, 'net_sales': 78, 'successful_refund_amount': 30},
-                source_type='paimi_bi_product_day', source_batch_id='bi-1',
+                source_type=SNAPSHOT_TYPE, source_batch_id='bi-1',
                 source_system='business_advisor', shop_id='default',
             )
             # 净销>支付（异常行）→ 不推导出负退款
@@ -97,14 +105,14 @@ class SourceResolutionTests(unittest.TestCase):
                 connection,
                 {'product_id': 'p-refund', 'date': '2026-09-27',
                  'payment_amount': 50, 'net_sales': 78},
-                source_type='paimi_bi_product_day', source_batch_id='bi-1',
+                source_type=SNAPSHOT_TYPE, source_batch_id='bi-1',
                 source_system='business_advisor', shop_id='default',
             )
             # 缺净销 → 无从推导
             record_daily_observation(
                 connection,
                 {'product_id': 'p-refund', 'date': '2026-09-26', 'payment_amount': 100},
-                source_type='paimi_bi_product_day', source_batch_id='bi-1',
+                source_type=SNAPSHOT_TYPE, source_batch_id='bi-1',
                 source_system='business_advisor', shop_id='default',
             )
             facts = {
@@ -409,7 +417,7 @@ class SourceResolutionTests(unittest.TestCase):
         """Excel 快照优先于更晚观测的 API 快照（防回归）。
 
         BI 的 overViewPageList 接口从不返回成本键，成本只存在于用户导出的
-        商品总览 Excel。两个写入者共用 source_type='paimi_bi_product_day' 与
+        商品总览 Excel。两个写入者共用 source_type=SNAPSHOT_TYPE 与
         source_system='business_advisor'（SOURCE_PRIORITY 同为 30），因此修复前
         由 observed_at 决定胜者：滚动重采写下的 API 观测会把 Excel 的
         operating_profit 覆盖掉，而 Excel 的成本列因逐字段 NULL 保护仍在，
@@ -430,7 +438,7 @@ class SourceResolutionTests(unittest.TestCase):
                  'net_sales': 3968.22, 'operating_profit': 86.4104,
                  'product_cost': 1520.9, 'sales_cost': 976.39,
                  'custom_cost': 1134.08, 'logistics_cost': 250.44, 'other_cost': 0.0},
-                source_type='paimi_bi_product_day',
+                source_type=SNAPSHOT_TYPE,
                 source_filename='商品总览_天猫_Primeet派米旗舰店_2026-09-13.xlsx',
                 source_batch_id='5442cf7e5ba3d32db15cd9ecaa80238c',
                 source_system='business_advisor', shop_id='default',
@@ -440,7 +448,7 @@ class SourceResolutionTests(unittest.TestCase):
                 connection,
                 {'product_id': 'p-tie', 'date': '2026-09-13',
                  'net_sales': 3968.0, 'operating_profit': -516.0},
-                source_type='paimi_bi_product_day',
+                source_type=SNAPSHOT_TYPE,
                 source_filename='bi_api_full_2026-09-13.json',
                 source_batch_id='bi_api_full_2026-09-13.json',
                 source_system='business_advisor', shop_id='default',
@@ -480,7 +488,7 @@ class SourceResolutionTests(unittest.TestCase):
                 connection,
                 {'product_id': 'p-api-only', 'date': '2026-10-13',
                  'net_sales': 100.0, 'operating_profit': 25.0},
-                source_type='paimi_bi_product_day',
+                source_type=SNAPSHOT_TYPE,
                 source_filename='bi_api_full_2026-10-13.json',
                 source_batch_id='bi_api_full_2026-10-13.json',
                 source_system='business_advisor', shop_id='default',

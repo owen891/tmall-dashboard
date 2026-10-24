@@ -5,6 +5,9 @@ import unittest
 from pathlib import Path
 
 from scripts.reconcile_observation_batches import apply_plan, plan, run
+from services.snapshot_source_types import SNAPSHOT_SOURCE_TYPES
+SNAPSHOT_TYPE = next(iter(SNAPSHOT_SOURCE_TYPES))
+SNAPSHOT_OVERVIEW_TYPE = f'{SNAPSHOT_TYPE.rsplit("_", 2)[0]}_overview'
 
 
 class ReconcileObservationBatchesTests(unittest.TestCase):
@@ -42,17 +45,17 @@ class ReconcileObservationBatchesTests(unittest.TestCase):
     def test_unique_match_is_planned_and_applied(self):
         self.connection.execute(
             '''INSERT INTO import_batches
-               VALUES ('batch-1', 'shop-a', 'paimi_bi_product_day',
+               VALUES ('batch-1', 'shop-a', ?,
                        'C:/imports/bi-2026-08-21.xlsx', 'completed', 2, ?, '2026-08-22')''',
-            (json.dumps({'date': '2026-08-21'}),),
+            (SNAPSHOT_TYPE, json.dumps({'date': '2026-08-21'})),
         )
         self.connection.executemany(
             '''INSERT INTO daily_data_observations
                (id,shop_id,product_id,date,source_system,source_type,source_batch_id,source_filename)
                VALUES (?,?,?,?,?,?,?,?)''',
             [
-                (1, 'shop-a', 'p1', '2026-08-21', 'business_advisor', 'paimi_bi_product_day', 'bi-2026-08-21.xlsx', 'bi-2026-08-21.xlsx'),
-                (2, 'shop-a', 'p2', '2026-08-21', 'business_advisor', 'paimi_bi_product_day', 'bi-2026-08-21.xlsx', 'bi-2026-08-21.xlsx'),
+                (1, 'shop-a', 'p1', '2026-08-21', 'business_advisor', SNAPSHOT_TYPE, 'bi-2026-08-21.xlsx', 'bi-2026-08-21.xlsx'),
+                (2, 'shop-a', 'p2', '2026-08-21', 'business_advisor', SNAPSHOT_TYPE, 'bi-2026-08-21.xlsx', 'bi-2026-08-21.xlsx'),
             ],
         )
         report = plan(self.connection)

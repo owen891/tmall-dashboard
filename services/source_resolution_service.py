@@ -221,8 +221,9 @@ def _is_partial_bi_snapshot(item):
 
     The BI API (`overViewPageList`) never returns the cost/profit bucket keys
     (netHpCost / saleCost / zdyFyAll / deliverCost / otherCost / ptCost), while
-    the user-exported 商品总览 Excel does.  Both writers share
-    source_type='paimi_bi_product_day' and source_system='business_advisor',
+    the user-exported 商品总览 Excel does.  Both writers share the authoritative
+    snapshot source_type (see snapshot_source_types) and
+    source_system='business_advisor',
     so without this discriminator the two are indistinguishable to _choose and
     the more recently observed one wins -- letting a routine weekly re-collection
     overwrite Excel costs and break the profit identity.  The API batch id is

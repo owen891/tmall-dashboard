@@ -410,6 +410,18 @@ class LauncherDatePropagationTests(unittest.TestCase):
         self.assertIn('[string[]]$Dates', text)
         self.assertIn("'--dates'", text)
 
+    def test_aggregate_task_joins_multiple_dates_into_one_argument(self):
+        """`--dates` is a single-value flag, not append/nargs.
+
+        `@('--dates') + $targets` sends the 2nd..nth dates as stray positionals,
+        so argparse dies with "unrecognized arguments" and any multi-date
+        backfill fails while a single-date run looks fine. The dates must be
+        joined into one comma-separated value.
+        """
+        text = self._script('aggregate_store_daily_task.ps1').read_text(encoding='utf-8-sig')
+        self.assertNotIn("$dateArgs = @('--dates') + $targets", text)
+        self.assertIn("($targets -join ',')", text)
+
     def test_run_daily_collect_dispatches_month_argument_as_year_month(self):
         text = self._script('run_daily_collect.ps1').read_text(encoding='utf-8-sig')
         self.assertIn('DateStyle', text)

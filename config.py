@@ -1,4 +1,5 @@
 import os
+import re
 import sys
 from pathlib import Path
 
@@ -36,7 +37,14 @@ def _split_scan_roots(value):
     raw = str(value or '').strip()
     if not raw:
         return []
-    separator = ';' if ';' in raw else os.pathsep
+    # 优先分号：Windows 盘符路径（D:/inbox）在 POSIX 上会被 os.pathsep（':'）
+    # 拆成 'D' 与 '/inbox'。仅当没有分号且不存在盘符形态时才用 pathsep。
+    if ';' in raw:
+        separator = ';'
+    elif re.search(r'(?:^|;)[A-Za-z]:[\/]', raw):
+        separator = ';'
+    else:
+        separator = os.pathsep
     return [item.strip() for item in raw.split(separator) if item.strip()]
 
 

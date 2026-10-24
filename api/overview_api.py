@@ -10,6 +10,7 @@ from repos.metrics_repo import MetricsRepo
 from services.metrics_service import build_overview
 from services.category_mode_service import category_filters_from_request
 from services.shop_scope_service import reject_legacy_shop_scope
+from services.snapshot_source_types import SNAPSHOT_SOURCE_PREFIX
 
 
 overview_bp = Blueprint('overview', __name__)
@@ -30,7 +31,7 @@ def _source_disclosures(source_batches):
         if part.strip()
     }
     is_bi = bool(source_types) and all(
-        source_type.startswith('paimi_bi_') for source_type in source_types
+        source_type.startswith(SNAPSHOT_SOURCE_PREFIX) for source_type in source_types
     )
     if not is_bi:
         return {
