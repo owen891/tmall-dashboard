@@ -60,29 +60,26 @@ jobs:
           python -m pip install -r requirements-desktop.txt
           npm ci --prefix desktop
           npx --prefix desktop playwright install --with-deps chromium
-      - name: Run release tests and audit
+      - name: Audit python unit tests
+        shell: bash
+        run: python -W error::ResourceWarning -m unittest discover -s tests -v
+      - name: Audit UI demos and visual system
+        shell: bash
+        run: node scripts/validate_ui_demos.cjs
+      - name: Audit production preflight
+        shell: bash
+        run: python scripts/production_preflight.py
+      - name: Audit desktop tests
+        shell: bash
+        run: npm test --prefix desktop
+      - name: Audit desktop build
+        shell: bash
+        run: npm run build --prefix desktop
+      - name: Audit clean tree after build
         shell: bash
         run: |
-          set -euo pipefail
-          echo "::group::python -m unittest discover"
-          python -W error::ResourceWarning -m unittest discover -s tests -v
-          echo "::endgroup::"
-          echo "::group::validate_ui_demos"
-          node scripts/validate_ui_demos.cjs
-          echo "::endgroup::"
-          echo "::group::production_preflight"
-          python scripts/production_preflight.py
-          echo "::endgroup::"
-          echo "::group::desktop tests"
-          npm test --prefix desktop
-          echo "::endgroup::"
-          echo "::group::desktop build"
-          npm run build --prefix desktop
-          echo "::endgroup::"
-          echo "::group::git diff --exit-code"
           git status --porcelain
           git diff --exit-code
-          echo "::endgroup::"
       - name: Build Windows package
         shell: powershell
         run: powershell -ExecutionPolicy Bypass -File scripts/build_desktop.ps1 -SkipInstall -SkipPythonTests
@@ -123,29 +120,26 @@ jobs:
           python -m pip install -r requirements-desktop.txt
           npm ci --prefix desktop
           npx --prefix desktop playwright install --with-deps chromium
-      - name: Run release tests and audit
+      - name: Audit python unit tests
+        shell: bash
+        run: python -W error::ResourceWarning -m unittest discover -s tests -v
+      - name: Audit UI demos and visual system
+        shell: bash
+        run: node scripts/validate_ui_demos.cjs
+      - name: Audit production preflight
+        shell: bash
+        run: python scripts/production_preflight.py
+      - name: Audit desktop tests
+        shell: bash
+        run: npm test --prefix desktop
+      - name: Audit desktop build
+        shell: bash
+        run: npm run build --prefix desktop
+      - name: Audit clean tree after build
         shell: bash
         run: |
-          set -euo pipefail
-          echo "::group::python -m unittest discover"
-          python -W error::ResourceWarning -m unittest discover -s tests -v
-          echo "::endgroup::"
-          echo "::group::validate_ui_demos"
-          node scripts/validate_ui_demos.cjs
-          echo "::endgroup::"
-          echo "::group::production_preflight"
-          python scripts/production_preflight.py
-          echo "::endgroup::"
-          echo "::group::desktop tests"
-          npm test --prefix desktop
-          echo "::endgroup::"
-          echo "::group::desktop build"
-          npm run build --prefix desktop
-          echo "::endgroup::"
-          echo "::group::git diff --exit-code"
           git status --porcelain
           git diff --exit-code
-          echo "::endgroup::"
       - name: Build macOS package
         shell: bash
         run: |
