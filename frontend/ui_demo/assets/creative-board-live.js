@@ -134,13 +134,16 @@
   }
 
   async function load() {
-    const host = $('[data-cb-products]'); if (!host) return; host.innerHTML = '<div class="ui-empty-state"><span>加载中…</span></div>';
+    // tbody 里只能放 <tr>：<div> 会被浏览器丢弃，空态/加载态必须用行承载。
+    const host = $('[data-cb-products]'); if (!host) return;
+    const stateRow = (message) => `<tr class="ui-table-state-row"><td colspan="8"><div class="ui-empty-state"><span>${message}</span></div></td></tr>`;
+    host.innerHTML = stateRow('加载中…');
     try {
       const query = new URLSearchParams();
       if (state.productId) query.set('product_id', state.productId);
       const response = await DemoApi.domainRequest('/api/creative-board' + (query.toString() ? `?${query}` : ''));
       state.products = Array.isArray(response.data?.products) ? response.data.products : []; state.categories = Array.isArray(response.data?.categories) ? response.data.categories : []; state.totals = response.data?.totals || {}; renderSummary(); renderProducts();
-    } catch (error) { host.innerHTML = `<div class="ui-empty-state"><span>${esc(error.message || '素材数据加载失败')}</span></div>`; }
+    } catch (error) { host.innerHTML = stateRow(esc(error.message || '素材数据加载失败')); }
   }
 
   function boot() {

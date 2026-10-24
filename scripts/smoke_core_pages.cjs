@@ -193,7 +193,13 @@ async function inspect(browser, viewport, label) {
     const dialogs = await inspectDialogs(page, id, browser, viewport);
 
     if (id === 'creative-board') {
-      const productCount = await page.locator('[data-cb-products] tr[data-cb-open], [data-cb-products] .ui-empty-state').count();
+      await page.waitForFunction(() => {
+        const host = document.querySelector('[data-cb-products]');
+        return host && host.querySelector('tr[data-cb-open], .ui-empty-state');
+      }, { timeout: 20000 }).catch(() => {});
+      const productCount = await page.locator(
+        '[data-cb-products] tr[data-cb-open], [data-cb-products] .ui-empty-state'
+      ).count();
       if (!productCount) throw new Error('creative board did not render products or empty state');
     }
     results.push({ id, label, status: response?.status(), errors, overflow, canvas, nonblankCanvas, dialogs, ...metrics });
