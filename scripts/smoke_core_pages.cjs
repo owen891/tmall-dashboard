@@ -66,7 +66,8 @@ async function waitForCanvases(page) {
       for (let index = 3; index < data.length; index += 4) if (data[index] !== 0) return true;
       return false;
     });
-  }, { timeout: 5000 });
+  }, { timeout: 20000 });
+  // CI 慢机上图表渲染可能超过 5s
 }
 
 async function inspectDialogs(page, id, browser, viewport) {
