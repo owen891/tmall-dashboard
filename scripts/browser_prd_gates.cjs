@@ -3,6 +3,8 @@ const chromium = gateChromium();
 
 const base = process.env.TMALL_SMOKE_BASE || 'http://127.0.0.1:8770';
 assertBase(base);
+// 与 frontend/ui_demo/assets/pages/products/column-settings.js 保持一致
+const VIEW_COLUMN_LIMIT = 25;
 const states = ['no-data', 'insufficient-data', 'missing-fields', 'calculation-failed', 'source-unavailable', 'partial'];
 const capabilityContract = ['can_drilldown', 'can_edit_stage'];
 const flowModalSelector = '[data-modal-kind="flow"]';
