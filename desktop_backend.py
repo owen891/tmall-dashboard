@@ -12,6 +12,7 @@ from desktop_runtime import (
     desktop_environment,
     ensure_desktop_directories,
 )
+from config import _split_scan_roots
 
 
 def _desktop_port(value):
@@ -44,7 +45,7 @@ def parse_args(argv=None):
 
 def build_app_config(paths: DesktopPaths):
     environment = desktop_environment(paths)
-    scan_roots = [root for root in environment['IMPORT_SCAN_ALLOWED_ROOTS'].split(os.pathsep) if root]
+    scan_roots = [root for root in _split_scan_roots(environment['IMPORT_SCAN_ALLOWED_ROOTS']) if root]
     return {
         'TESTING': False,
         'DATABASE_PATH': paths.database,

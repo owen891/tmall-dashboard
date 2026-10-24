@@ -2,6 +2,7 @@ import os
 import sys
 from dataclasses import dataclass
 from pathlib import Path
+from config import _split_scan_roots
 
 
 @dataclass(frozen=True)
@@ -40,7 +41,7 @@ def desktop_environment(paths: DesktopPaths, environment=None) -> dict:
     source_environment = os.environ if environment is None else environment
     configured_roots = str(source_environment.get('IMPORT_SCAN_ALLOWED_ROOTS') or '')
     scan_roots = [paths.import_inbox, *(
-        root for root in configured_roots.split(os.pathsep) if root.strip()
+        root for root in _split_scan_roots(configured_roots) if root.strip()
     )]
     scan_roots = list(dict.fromkeys(scan_roots))
     return {

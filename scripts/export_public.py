@@ -295,12 +295,15 @@ def _sanitize_settings_service(text: str) -> str:
         count=1,
         flags=re.S,
     )
-    text = _replace_required(
-        text,
-        "        values['collector_credentials'] = self._mask_collector_credentials(values.get('collector_credentials'))\n",
-        "",
-        "services/settings_service.py",
-    )
+    # Collector credential handling was removed from the public settings service
+    # outright, so this line may no longer exist.
+    if "_mask_collector_credentials(values.get('collector_credentials'))" in text:
+        text = _replace_required(
+            text,
+            "        values['collector_credentials'] = self._mask_collector_credentials(values.get('collector_credentials'))\n",
+            "",
+            "services/settings_service.py",
+        )
     text = re.sub(r"^.*collector_credentials.*\n", "", text, flags=re.M)
     if "collector_credentials" in text or "credentials_crypto" in text:
         raise SystemExit("public settings transform left collector credential code")
@@ -359,7 +362,11 @@ def _transform(rel: PurePosixPath, text: str) -> str:
     if name == "app.py":
         text = _replace_required(text, "from api.collect_api import collect_bp\n", "", name)
         text = _replace_required(text, "    app.register_blueprint(collect_bp)\n", "", name)
-        text = _replace_required(text, "            '/data-center', '/data-collection', '/settings', '/goals', '/period-review',\n", "            '/data-center', '/settings', '/goals', '/period-review',\n", name)
+        # Private pages are injected at runtime from a private registry, so the
+        # public app.py may already be free of these literals. Transform only
+        # when the pre-registry form is still present.
+        if "'/data-center', '/data-collection'" in text:
+            text = _replace_required(text, "            '/data-center', '/data-collection', '/settings', '/goals', '/period-review',\n", "            '/data-center', '/settings', '/goals', '/period-review',\n", name)
         text = text.replace("configured collector shop", "configured shop")
         text = re.sub(
             r"\n# The web client used to call the upstream release API.*?\n\ndef _database_path_from_uri",
@@ -399,7 +406,9 @@ def _transform(rel: PurePosixPath, text: str) -> str:
     elif name == "services/market_monitor_service.py":
         text = re.sub(r"口径由公开版月度复盘规则定义", "口径由公开版月度复盘规则定义", text)
     elif name == "services/application_pages.py":
-        text = _replace_required(text, "    'data-collection',\n", "", name)
+        # Private pages now come from a runtime registry; the literal may be gone.
+        if "    'data-collection',\n" in text:
+            text = _replace_required(text, "    'data-collection',\n", "", name)
     elif name == "services/page_capability_service.py":
         text = re.sub(
             r"\n    \{\n        'key': 'data-collection'.*?\n    \},",

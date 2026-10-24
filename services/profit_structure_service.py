@@ -1,6 +1,6 @@
 """利润结构拆解（利润瀑布）——对齐 BI 口径，恒等公式已实测验证。
 
-口径（与 `E:/www/BI采集/collectors/collect_overview_daily.py` FIELD_MAP 注释一致）：
+口径（与商品总览报表导入器的 FIELD_MAP 注释一致）：
     利润(支付预估) = 净销售额(支付) − 销售费用(sales_cost) − 自定义费用(custom_cost)
                       − 净货品成本(product_cost) − 发货费用(logistics_cost) − 其他费用(other_cost)
 

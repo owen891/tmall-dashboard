@@ -49,7 +49,7 @@ def task_inventory():
     try:
         completed = subprocess.run(
             ['schtasks.exe', '/Query', '/FO', 'CSV', '/NH'],
-            capture_output=True, text=True, encoding='mbcs', errors='replace', timeout=20,
+            capture_output=True, text=True, encoding=('mbcs' if os.name == 'nt' else 'utf-8'), errors='replace', timeout=20,
         )
         lines = [line for line in completed.stdout.splitlines()
                  if any(token.lower() in line.lower() for token in

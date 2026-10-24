@@ -235,7 +235,7 @@
   document.documentElement.dataset.theme = theme;
   const themeColorMeta = document.head.querySelector('meta[name="theme-color"]') || document.head.appendChild(Object.assign(document.createElement('meta'), { name: 'theme-color' }));
   const route = (page) => {
-    // 能力目录的 route 已是绝对路径（如 /data-collection）；再补前缀会拼出 //xxx，
+    // 能力目录的 route 已是绝对路径（如 /settings）；再补前缀会拼出 //xxx，
     // DemoNavigation 的 new URL 会把第二段当主机名，href 退化成 '/'。
     const path = page.startsWith('/') ? page : (page === 'overview' ? '/' : (page === 'catalog' ? '/component-catalog' : `/${page}`));
     return window.DemoNavigation?.fromCurrent ? window.DemoNavigation.fromCurrent(path) : path;
