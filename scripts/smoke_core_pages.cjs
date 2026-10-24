@@ -99,8 +99,11 @@ async function inspectDialogs(page, id, browser, viewport) {
     await page.waitForFunction(() => {
       const href = document.querySelector('[data-shared-product-workbench]')?.getAttribute('href');
       return Boolean(href && href.startsWith('/products/'));
-    }, { timeout: 5000 });
-    await page.locator('.product-detail-dialog [data-product-detail-tab="promotion"]').click();
+    }, { timeout: 20000 });
+    // CI 慢机上详情弹窗的数据面板要先加载完成才渲染 tab，显式等待后点击。
+    const promotionTab = page.locator('.product-detail-dialog [data-product-detail-tab="promotion"]');
+    await promotionTab.waitFor({ state: 'visible', timeout: 20000 });
+    await promotionTab.click();
     await page.locator('.product-detail-dialog [data-product-detail-panel="promotion"]').waitFor({ state: 'visible' });
     await inspectOpenDialog('.product-detail-dialog', 'products-detail-promotion');
     await page.locator('.ui-drawer.is-open .ui-drawer__close').click();
