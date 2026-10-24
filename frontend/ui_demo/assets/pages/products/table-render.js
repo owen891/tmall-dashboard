@@ -130,7 +130,8 @@
       if (num > 0) block.classList.add('profit-block--positive');
       else if (num < 0) block.classList.add('profit-block--negative');
       else block.classList.add('profit-block--zero');
-      block.textContent = `${num > 0 ? '+' : ''}${number(num)}`;
+      // BI 色块内是整数金额：小数在 28px 高的色块里只添噪
+      block.textContent = `${num > 0 ? '+' : ''}${number(Math.round(num))}`;
       return block;
     }
 

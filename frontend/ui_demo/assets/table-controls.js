@@ -234,7 +234,7 @@
   // 结果通过 window 事件交付给页面（products-live 监听 tmall:table-range-filter /
   // tmall:table-header-sort），本模块保持与业务解耦。
   function readRangeBounds(key) {
-    const url = new URL(global.location.href);
+    const url = new URL(window.location.href);
     const bounds = {};
     const min = url.searchParams.get(`min_${key}`);
     const max = url.searchParams.get(`max_${key}`);
