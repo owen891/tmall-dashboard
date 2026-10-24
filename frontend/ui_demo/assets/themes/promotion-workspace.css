@@ -1,0 +1,132 @@
+/* Promotion workspace: metrics first, one scope context, a flat diagnostic group.
+ * Desktop only. View visibility and all data bindings remain owned by existing scripts. */
+@media (min-width: 960px) {
+  html body[data-page="promotion"] .demo-page .promotion-workspace-context {
+    display: grid;
+    gap: var(--space-2);
+    margin-bottom: var(--space-3);
+    padding: var(--space-3) var(--space-4);
+    border-radius: var(--radius-md);
+    box-shadow: none;
+  }
+  html body[data-page="promotion"] .promotion-workspace-context .ui-context-bar__copy {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: var(--space-2) var(--space-3);
+  }
+  html body[data-page="promotion"] .promotion-workspace-context .promotion-source-strip {
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    align-items: baseline;
+    gap: var(--space-2);
+  }
+  html body[data-page="promotion"] .promotion-workspace-context .promotion-source-strip__item {
+    padding: 0;
+    background: transparent;
+    font-weight: 500;
+  }
+  html body[data-page="promotion"] .demo-page .promotion-view-tabs {
+    margin-block: 0 var(--space-4);
+  }
+  html body[data-page="promotion"] .demo-page .ui-metric-grid {
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+  }
+  html body[data-page="promotion"] .demo-page .ui-metric-grid > .ui-metric-card {
+    grid-row: auto;
+    grid-column: span 3;
+    min-height: 0;
+    padding: var(--space-3) var(--space-4);
+  }
+  html body[data-page="promotion"] .demo-page .ui-metric-grid > .ui-metric-card:nth-child(-n+4) {
+    border-bottom: 1px solid var(--border-default);
+  }
+  html body[data-page="promotion"] .demo-page .ui-metric-grid > .ui-metric-card:nth-child(4) {
+    border-inline-end: 0;
+  }
+  html body[data-page="promotion"] .demo-page .ui-metric-grid > .ui-metric-card:nth-child(n+5) {
+    grid-column: span 4;
+  }
+  html body[data-page="promotion"] .demo-page .promotion-decision-card {
+    padding: var(--space-4);
+    margin-bottom: var(--space-4);
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-md);
+    background: var(--surface-base);
+    box-shadow: none;
+  }
+  html body[data-page="promotion"] .demo-page .promotion-command {
+    grid-template-columns: minmax(0, 1fr) minmax(210px, .42fr);
+    gap: var(--space-5);
+    margin: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+  }
+  html body[data-page="promotion"] .promotion-command__heading h2 {
+    margin: 0;
+    font-size: var(--font-size-body);
+    font-weight: 600;
+  }
+  html body[data-page="promotion"] .promotion-command__heading p {
+    font-size: var(--font-size-meta);
+  }
+  html body[data-page="promotion"] .promotion-funnel {
+    gap: var(--space-5);
+  }
+  html body[data-page="promotion"] .promotion-funnel__step {
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+  }
+  html body[data-page="promotion"] .promotion-funnel__step:not(:last-child)::after {
+    right: calc(var(--space-4) * -1);
+  }
+  html body[data-page="promotion"] .promotion-funnel__value {
+    font-size: var(--font-size-section);
+    font-weight: 600;
+    overflow-wrap: anywhere;
+  }
+  html body[data-page="promotion"] .promotion-command__signals h3 {
+    font-size: var(--font-size-body);
+    font-weight: 600;
+  }
+  html body[data-page="promotion"] .promotion-signal {
+    padding-block: var(--space-2);
+  }
+}
+
+/* PC value / availability / evidence hierarchy. No changes to metric calculations. */
+@media (min-width: 960px) {
+  html body[data-page="promotion"] .demo-page .promotion-metric-state { color: var(--text-secondary); font-size: var(--font-size-meta); font-weight: 500; line-height: var(--line-height-secondary); letter-spacing: 0; }
+  html body[data-page="promotion"] .demo-page .ui-metric-card > .promotion-metric-state { margin-top: var(--space-1); }
+  html body[data-page="promotion"] .demo-page .metric-card__meta { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-1); }
+  html body[data-page="promotion"] .demo-page .promotion-quality { margin: calc(var(--space-4) * -1) 0 var(--space-4); padding: var(--space-3) var(--space-4); border: 1px solid var(--border-default); border-top: 0; border-radius: 0 0 var(--radius-md) var(--radius-md); background: var(--surface-base); color: var(--text-secondary); font-size: var(--font-size-meta); }
+  html body[data-page="promotion"] .demo-page .promotion-quality summary { min-height: var(--control-height-sm); cursor: pointer; line-height: var(--line-height-secondary); }
+  html body[data-page="promotion"] .demo-page .promotion-quality summary > span { margin-inline-end: var(--space-3); }
+  html body[data-page="promotion"] .demo-page .promotion-quality__action { color: var(--brand-text); }
+  html body[data-page="promotion"] .demo-page .promotion-quality summary:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: var(--space-1); border-radius: var(--radius-sm); }
+  html body[data-page="promotion"] .demo-page .promotion-quality__body { margin-top: var(--space-3); padding-top: var(--space-3); border-top: 1px solid var(--border-default); white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.85; }
+  html body[data-page="promotion"] .demo-page .promotion-signal { grid-template-columns: minmax(0, 1fr) minmax(0, auto); align-items: baseline; column-gap: var(--space-3); row-gap: var(--space-1); }
+  html body[data-page="promotion"] .demo-page .promotion-signal > span:first-child { min-width: 0; }
+  html body[data-page="promotion"] .demo-page .promotion-signal > strong { min-width: 0; white-space: nowrap; }
+  html body[data-page="promotion"] .demo-page .promotion-signal > .promotion-metric-state { grid-column: 1 / -1; }
+  html body[data-page="promotion"] .demo-page .promotion-funnel__value { white-space: nowrap; }
+}
+
+@media (min-width: 960px) {
+  html body[data-page="promotion"] .demo-page .ui-metric-grid > .ui-metric-card { align-content: start; gap: var(--space-1); }
+  html body[data-page="promotion"] .demo-page .ui-metric-grid .metric-card__value { margin-top: 0; }
+  html body[data-page="promotion"] .demo-page .metric-card__label > .promotion-metric-state { margin-inline-start: var(--space-2); }
+}
+
+@media (min-width: 960px) and (max-width: 1199px) {
+  html body[data-page="promotion"] .demo-page .ui-metric-grid > .ui-metric-card:nth-child(-n+4) { grid-column: span 6; }
+  html body[data-page="promotion"] .demo-page .ui-metric-grid > .ui-metric-card:nth-child(2) { border-inline-end: 0; }
+}

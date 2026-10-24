@@ -193,3 +193,13 @@ pelican-*.html
 /services/keyword_promotion_service.py
 /repos/keyword_promotion_repo.py
 /services/private_pages_registry.py
+
+/scripts/sync_five_dim_tier.py
+/scripts/sync_tier_dictionary.py
+/scripts/import_keyword_promotion.py
+/scripts/analyze_opportunity_v2.py
+/scripts/analyze_root_families.py
+/scripts/export_liankuwa_demand.py
+/scripts/fetch_wanxiangtai_lead.py
+/scripts/_scan_injection.cjs
+/scripts/shot_custom_picker.cjs

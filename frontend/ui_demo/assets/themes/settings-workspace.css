@@ -1,0 +1,30 @@
+/* Settings center: one calm reading column, grouped sections, predictable tabs. */
+@media (min-width: 960px) {
+  html body[data-page="settings"] .settings-workspace { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-4); }
+  html body[data-page="settings"] .settings-hero { min-height: 72px; }
+  html body[data-page="settings"] .settings-tabs-row { position: sticky; top: var(--topbar-height); z-index: 8; margin: 0; padding: var(--space-2) 0; background: var(--surface-page); }
+  html body[data-page="settings"] .settings-tabs { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: var(--space-1); }
+  html body[data-page="settings"] .settings-tabs button { min-width: 0; padding-inline: var(--space-2); }
+  html body[data-page="settings"] .settings-main { min-width: 0; display: grid; gap: var(--space-4); }
+  html body[data-page="settings"] .settings-main > .ui-panel,
+  html body[data-page="settings"] .settings-main > .settings-template-panel,
+  html body[data-page="settings"] .settings-main > .settings-category-panel { padding: var(--space-5); border-radius: var(--radius-lg); }
+  html body[data-page="settings"] .settings-main .set-card-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-4); }
+  html body[data-page="settings"] .settings-main .set-card { min-height: 0; }
+  html body[data-page="settings"] .settings-main .set-card--wide { grid-column: 1 / -1; }
+  html body[data-page="settings"] .settings-main .settings-savebar { border-radius: var(--radius-md); }
+}
+@media (min-width: 960px) and (max-width: 1180px) {
+  html body[data-page="settings"] .settings-tabs { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+@media (max-width: 959px) {
+  html body[data-page="settings"] .settings-workspace { display: grid; gap: var(--space-3); }
+  html body[data-page="settings"] .settings-tabs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-1); }
+  html body[data-page="settings"] .settings-tabs button { min-width: 0; }
+}
+@media (max-width: 620px) {
+  html body[data-page="settings"] .settings-main .set-card-grid { grid-template-columns: 1fr; }
+  html body[data-page="settings"] .settings-main > .ui-panel,
+  html body[data-page="settings"] .settings-main > .settings-template-panel,
+  html body[data-page="settings"] .settings-main > .settings-category-panel { padding: var(--space-4); }
+}

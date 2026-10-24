@@ -1,0 +1,312 @@
+{
+  "schema_version": 1,
+  "browser_pytest_nodes": [
+    "tests/test_ui_system_contract.py::test_date_picker_smoke_gate_runs_when_chrome_available"
+  ],
+  "gates": [
+    {
+      "id": "pytest",
+      "tier": "fast",
+      "argv": [
+        "{python}",
+        "-W",
+        "error::ResourceWarning",
+        "-m",
+        "pytest",
+        "tests",
+        "-q",
+        "-p",
+        "scripts.gate_pytest_plugin",
+        "-W",
+        "error::pytest.PytestUnraisableExceptionWarning",
+        "-W",
+        "error::pytest.PytestUnhandledThreadExceptionWarning",
+        "-o",
+        "addopts="
+      ]
+    },
+    {
+      "id": "js-syntax",
+      "tier": "fast",
+      "kind": "js-syntax"
+    },
+    {
+      "id": "frontend-runtime",
+      "tier": "fast",
+      "argv": [
+        "node",
+        "scripts/test_frontend_runtime.cjs"
+      ]
+    },
+    {
+      "id": "static-release-runtime",
+      "tier": "fast",
+      "argv": [
+        "node",
+        "scripts/test_static_release_runtime.cjs"
+      ]
+    },
+    {
+      "id": "gate-browser-contract",
+      "tier": "fast",
+      "argv": [
+        "node",
+        "scripts/test_gate_browser_runtime.cjs"
+      ]
+    },
+    {
+      "id": "contrast-execution-contract",
+      "tier": "fast",
+      "argv": [
+        "node",
+        "tests/test_contrast_execution.cjs"
+      ]
+    },
+    {
+      "id": "ui-contract",
+      "tier": "fast",
+      "argv": [
+        "node",
+        "scripts/validate_ui_demos.cjs"
+      ]
+    },
+    {
+      "id": "css-syntax",
+      "tier": "fast",
+      "argv": [
+        "{python}",
+        "scripts/check_css_syntax.py",
+        "--strict"
+      ]
+    },
+    {
+      "id": "design-system",
+      "tier": "fast",
+      "argv": [
+        "{python}",
+        "scripts/check_design_system.py",
+        "--strict"
+      ]
+    },
+    {
+      "id": "css-tokens",
+      "tier": "fast",
+      "argv": [
+        "{python}",
+        "scripts/check_css_tokens.py",
+        "--strict"
+      ]
+    },
+    {
+      "id": "event-binding",
+      "tier": "fast",
+      "argv": [
+        "{python}",
+        "scripts/check_event_binding.py",
+        "--strict"
+      ]
+    },
+    {
+      "id": "frontend-types",
+      "tier": "fast",
+      "argv": [
+        "node",
+        "desktop/node_modules/typescript/bin/tsc",
+        "-p",
+        "tsconfig.json",
+        "--noEmit"
+      ]
+    },
+    {
+      "id": "desktop-test",
+      "tier": "fast",
+      "argv": [
+        "{npm}",
+        "test",
+        "--prefix",
+        "desktop"
+      ]
+    },
+    {
+      "id": "desktop-build",
+      "tier": "fast",
+      "argv": [
+        "{npm}",
+        "run",
+        "build",
+        "--prefix",
+        "desktop"
+      ]
+    },
+    {
+      "id": "browser-pytest",
+      "tier": "integration",
+      "kind": "browser-pytest"
+    },
+    {
+      "id": "core-pages",
+      "tier": "integration",
+      "argv": [
+        "node",
+        "scripts/smoke_core_pages.cjs"
+      ]
+    },
+    {
+      "id": "browser-prd",
+      "tier": "integration",
+      "argv": [
+        "node",
+        "scripts/browser_prd_gates.cjs"
+      ]
+    },
+    {
+      "id": "browser-capability",
+      "tier": "integration",
+      "env": {
+        "TMALL_CAPABILITY_ONLY": "1"
+      },
+      "argv": [
+        "node",
+        "scripts/browser_prd_gates.cjs"
+      ]
+    },
+    {
+      "id": "core-interactions",
+      "tier": "integration",
+      "argv": [
+        "node",
+        "scripts/audit_core_interactions.cjs"
+      ]
+    },
+    {
+      "id": "ui-contrast",
+      "tier": "integration",
+      "argv": [
+        "node",
+        "scripts/audit_ui_contrast.cjs",
+        "--states"
+      ]
+    },
+    {
+      "id": "popover",
+      "tier": "integration",
+      "argv": [
+        "node",
+        "scripts/smoke_popover.cjs"
+      ]
+    },
+    {
+      "id": "date-picker",
+      "tier": "integration",
+      "argv": [
+        "node",
+        "scripts/smoke_date_picker.cjs"
+      ]
+    },
+    {
+      "id": "production-preflight",
+      "tier": "release",
+      "argv": [
+        "{python}",
+        "scripts/production_preflight.py",
+        "--database",
+        "{database}"
+      ]
+    },
+    {
+      "id": "production-smoke",
+      "tier": "release",
+      "argv": [
+        "{python}",
+        "scripts/production_smoke.py",
+        "--database",
+        "{database}",
+        "--port",
+        "{production_port}"
+      ]
+    },
+    {
+      "id": "release-audit",
+      "tier": "release",
+      "argv": [
+        "{python}",
+        "scripts/release_audit.py",
+        "--database",
+        "{database}",
+        "--strict"
+      ]
+    }
+  ],
+  "existing_skip_allowlist": [
+    {
+      "nodeid": "tests/test_auto_collect_launcher.py::AutoCollectLauncherTests::test_bi_sources_and_utf8_logs",
+      "reason": "Windows launcher",
+      "condition": "non_windows_or_missing_powershell",
+      "baseline_commit": "ef28bb6d04257cedb76273e4aecb9cfdd2e5c4c6",
+      "baseline_file_sha256": "3f99ed8df6687723ddfb03d343de3c95e6130fc6876ebdeb05cd70c0827352da"
+    },
+    {
+      "nodeid": "tests/test_auto_collect_launcher.py::AutoCollectLauncherTests::test_other_sources_and_utf8_logs",
+      "reason": "Windows launcher",
+      "condition": "non_windows_or_missing_powershell",
+      "baseline_commit": "ef28bb6d04257cedb76273e4aecb9cfdd2e5c4c6",
+      "baseline_file_sha256": "3f99ed8df6687723ddfb03d343de3c95e6130fc6876ebdeb05cd70c0827352da"
+    },
+    {
+      "nodeid": "tests/test_auto_collect_launcher.py::AutoCollectLauncherTests::test_failed_login_does_not_trigger_collection",
+      "reason": "Windows launcher",
+      "condition": "non_windows_or_missing_powershell",
+      "baseline_commit": "ef28bb6d04257cedb76273e4aecb9cfdd2e5c4c6",
+      "baseline_file_sha256": "3f99ed8df6687723ddfb03d343de3c95e6130fc6876ebdeb05cd70c0827352da"
+    },
+    {
+      "nodeid": "tests/test_auto_collect_launcher.py::AutoCollectLauncherTests::test_runtime_preflight_failure_does_not_login_or_trigger",
+      "reason": "Windows launcher",
+      "condition": "non_windows_or_missing_powershell",
+      "baseline_commit": "ef28bb6d04257cedb76273e4aecb9cfdd2e5c4c6",
+      "baseline_file_sha256": "3f99ed8df6687723ddfb03d343de3c95e6130fc6876ebdeb05cd70c0827352da"
+    },
+    {
+      "nodeid": "tests/test_auto_collect_launcher.py::AutoCollectLauncherTests::test_monthly_only_does_not_require_or_prepare_browser",
+      "reason": "Windows launcher",
+      "condition": "non_windows_or_missing_powershell",
+      "baseline_commit": "ef28bb6d04257cedb76273e4aecb9cfdd2e5c4c6",
+      "baseline_file_sha256": "3f99ed8df6687723ddfb03d343de3c95e6130fc6876ebdeb05cd70c0827352da"
+    },
+    {
+      "nodeid": "tests/test_auto_collect_launcher.py::AutoCollectLauncherTests::test_unknown_session_blocks_before_cookie_export_and_trigger",
+      "reason": "Windows launcher",
+      "condition": "non_windows_or_missing_powershell",
+      "baseline_commit": "ef28bb6d04257cedb76273e4aecb9cfdd2e5c4c6",
+      "baseline_file_sha256": "3f99ed8df6687723ddfb03d343de3c95e6130fc6876ebdeb05cd70c0827352da"
+    },
+    {
+      "nodeid": "tests/test_collection_recovery_contract.py::RuntimeResolverTests::test_powershell_reads_same_record_and_rejects_bad_config",
+      "reason": "Windows resolver",
+      "condition": "non_windows_or_missing_powershell",
+      "baseline_commit": "ef28bb6d04257cedb76273e4aecb9cfdd2e5c4c6",
+      "baseline_file_sha256": "46ab0d22f3f5053a99591c36794aaf31f0f1737faca72eb743d31dfcf5d2cc03"
+    },
+    {
+      "nodeid": "tests/test_sycm_item_flow_collector.py::SycmItemFlowCollectorTests::test_call_api_retries_transient_http_failure",
+      "reason": "external sycm item-flow collector is unavailable",
+      "condition": "external_sycm_source_missing",
+      "baseline_commit": "ef28bb6d04257cedb76273e4aecb9cfdd2e5c4c6",
+      "baseline_file_sha256": "4a71f47967cd3e73c2e830d4aae53ea6549298e74616b7993006d6bb18722b25"
+    },
+    {
+      "nodeid": "tests/test_sycm_item_flow_collector.py::SycmItemFlowCollectorTests::test_call_api_retries_empty_response",
+      "reason": "external sycm item-flow collector is unavailable",
+      "condition": "external_sycm_source_missing",
+      "baseline_commit": "ef28bb6d04257cedb76273e4aecb9cfdd2e5c4c6",
+      "baseline_file_sha256": "4a71f47967cd3e73c2e830d4aae53ea6549298e74616b7993006d6bb18722b25"
+    },
+    {
+      "nodeid": "tests/test_sycm_item_flow_collector.py::SycmItemFlowCollectorTests::test_save_to_db_creates_a_schema_compatible_with_the_insert",
+      "reason": "external sycm item-flow collector is unavailable",
+      "condition": "external_sycm_source_missing",
+      "baseline_commit": "ef28bb6d04257cedb76273e4aecb9cfdd2e5c4c6",
+      "baseline_file_sha256": "4a71f47967cd3e73c2e830d4aae53ea6549298e74616b7993006d6bb18722b25"
+    }
+  ]
+}

@@ -1,0 +1,79 @@
+/* Product workspace: real list-first DOM, with tools next to the table they control.
+ * Desktop-only refinement; existing palette, hidden states and table hooks stay authoritative. */
+@media (min-width: 960px) {
+  html body[data-page="products"] .products-workspace-nav { display: flex; align-items: center; gap: var(--space-1); }
+  html body[data-page="products"] .products-workspace-nav a { padding: var(--space-2) var(--space-3); border-radius: var(--radius-sm); color: var(--text-secondary); font-size: var(--font-size-secondary); text-decoration: none; }
+  html body[data-page="products"] .products-workspace-nav a:hover { color: var(--text-primary); background: var(--surface-muted); }
+  html body[data-page="products"] .products-workspace-nav a:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+  html body[data-page="products"] :is(#products-list, #products-analysis) { scroll-margin-top: calc(var(--topbar-height) + var(--space-4)); }
+  html body[data-page="products"] #products-list { padding: var(--space-4) !important; }
+  html body[data-page="products"] #products-list .product-list__header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: var(--space-3); margin-bottom: var(--space-3) !important; padding-bottom: var(--space-3) !important; border-bottom: 1px solid var(--border-default); }
+  html body[data-page="products"] #products-list .product-list__header .panel__title::after { content: none; }
+  html body[data-page="products"] #products-list .product-page-controls { min-width: 0; margin: 0; }
+  html body[data-page="products"] #products-list .product-field-controls { width: auto; padding: 0; border: 0; border-radius: 0; background: transparent; flex-wrap: wrap; gap: var(--space-2); }
+  html body[data-page="products"] #products-list .product-filter-stack { padding: 0; border: 0; border-radius: 0; background: transparent; }
+  html body[data-page="products"] #products-list .product-filter-stack__heading { min-height: 0; padding: 0 0 var(--space-2); }
+  html body[data-page="products"] #products-list .product-filter-stack__eyebrow { color: var(--text-secondary); font-weight: 400; }
+  html body[data-page="products"] #products-list .product-filters { grid-template-columns: minmax(0, 1fr); padding: 0 !important; gap: var(--space-2) !important; border-radius: 0; background: transparent; }
+  html body[data-page="products"] #products-list .product-view-switch { padding-bottom: 0; border-bottom: 0; }
+  html body[data-page="products"] #products-list .product-filters__main { grid-template-columns: minmax(140px, 1fr) minmax(0, 1.45fr) minmax(150px, .8fr); gap: var(--space-2) !important; }
+  html body[data-page="products"] #products-list .product-filters__actions { justify-content: flex-start; }
+  html body[data-page="products"] #products-list .ui-table-wrap { height: auto !important; min-height: 0 !important; max-height: min(64vh, 720px) !important; }
+  html body[data-page="products"] #products-list .table-controls--server { margin-top: var(--space-3) !important; padding-inline: 0; border-radius: 0; background: transparent; }
+  html body[data-page="products"] #products-analysis { margin-top: var(--space-5); padding: var(--space-4); border-radius: var(--radius-md); box-shadow: none; }
+  html body[data-page="products"] [data-product-matrix-board] { margin-top: var(--space-4); }
+}
+
+/* Site refinement B: separate display controls from search, without another card. */
+@media (min-width: 960px) {
+  html body[data-page="products"] #products-list .product-filter-stack__heading strong { font-size: var(--font-size-meta); font-weight: 600; }
+  html body[data-page="products"] #products-list .product-view-switch { gap: var(--space-4); padding-block: var(--space-1); }
+  html body[data-page="products"] #products-list .product-view-switch :is(.product-mode-switch, .product-period-switch, .product-timeline-limit-switch) { gap: var(--space-1); padding: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; }
+  html body[data-page="products"] #products-list .product-view-switch .segmented button { border-radius: var(--radius-sm); }
+  html body[data-page="products"] #products-list .product-view-switch .segmented button[aria-pressed="true"] { background: var(--brand-tint); color: var(--brand-text); box-shadow: none; }
+  html body[data-page="products"] #products-list .product-filters__main { display: flex; flex-wrap: wrap; align-items: stretch; }
+  html body[data-page="products"] #products-list .product-filters__search { flex: 1 1 240px; }
+  html body[data-page="products"] #products-list .product-filters__core { flex: 2 1 360px; }
+  html body[data-page="products"] #products-list .product-filters__sort { flex: 1 1 220px; }
+  html body[data-page="products"] #products-list .product-filters__actions { align-items: center; gap: var(--space-2); padding-block: var(--space-1) var(--space-2); }
+  html body[data-page="products"] #products-list .product-filters__actions .ui-button:not([aria-pressed="true"]):not([aria-expanded="true"]):not(:hover) { border-color: transparent; background: transparent; box-shadow: none; }
+}
+
+/* PC workflow: search first, presentation and utility actions share one quiet row.
+ * Controls keep their original nodes/hooks and logical keyboard order. */
+@media (min-width: 960px) {
+  html body[data-page="products"] #products-list .product-filter-stack__heading.sr-only { padding: 0; }
+  html body[data-page="products"] #products-list .product-filters__secondary { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: var(--space-2) var(--space-4); }
+  html body[data-page="products"] #products-list .product-filters__secondary .product-view-switch { flex: 1 1 300px; min-width: 0; padding: 0; }
+  html body[data-page="products"] #products-list .product-filters__secondary .product-filters__actions { flex: 0 1 auto; margin: 0; padding: 0; }
+}
+
+/* Floating pagination is an overlapping layer, not a transparent content row. */
+@media (min-width: 960px) {
+  html body[data-page="products"] #products-list .table-controls--server.is-table-sticky-footer { background: var(--surface-base); }
+}
+
+/* Product names are quiet single-line labels; full names stay in title/aria and detail. */
+@media (min-width: 960px) {
+  html body[data-page="products"] #products-list .product-title__link {
+    display: block;
+    min-width: 0;
+    max-width: 100%;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    -webkit-line-clamp: unset;
+    font-size: var(--font-size-secondary);
+    font-weight: 400;
+    line-height: var(--line-height-secondary);
+  }
+}
+
+/* Ordinary lists use the remaining viewport without shrinking rows or changing page size.
+ * table-controls measures actual wrapped navigation and pagination on resize. */
+@media (min-width: 960px) {
+  html body[data-page="products"][data-products-display-mode="list"] #products-list .ui-table-wrap {
+    --products-list-viewport-offset: calc(var(--topbar-height) + var(--control-height-touch) + var(--space-8));
+    max-height: calc(100dvh - var(--products-list-viewport-offset)) !important;
+  }
+}

@@ -1,0 +1,98 @@
+/* macOS desktop content system. Existing palette and business states are authoritative.
+ * Loaded last. No display/visibility/position/overflow overrides: hidden, sticky and dialogs keep their contracts. */
+@media (min-width: 960px) {
+  html body[data-page]:not([data-page="overview"]) :is(.demo-page, .analysis-page, .category-dashboard-page) { padding: var(--space-6) var(--space-8); }
+  html body[data-page]:not([data-page="overview"]) :is(.ui-page-header, .analysis-page__header, .category-dashboard-header) { gap: var(--space-4); margin-bottom: var(--space-5); align-items: center; flex-wrap: wrap; }
+  html body[data-page]:not([data-page="overview"]) :is(.ui-page-header h1, .analysis-page__title, .category-dashboard-header h1) { font-family: var(--font-sans); font-size: var(--font-size-title); font-weight: 600; letter-spacing: -.025em; line-height: var(--line-height-title); }
+  html body[data-page]:not([data-page="overview"]) :where(.ui-panel, .chart-panel, .table-panel, .dashboard-panel, .analysis-config, .analysis-chart, .set-card, .ninedim .item) { border-radius: var(--radius-md); box-shadow: none; }
+  html body[data-page]:not([data-page="overview"]) :is(.ui-panel, .chart-panel, .table-panel, .dashboard-panel, .analysis-config, .analysis-chart, .set-card):hover { transform: none; box-shadow: none; border-color: var(--border-default); }
+  html body[data-page]:not([data-page="overview"]) :where(.ui-panel, .chart-panel, .table-panel, .dashboard-panel, .analysis-config, .analysis-chart) { padding: var(--space-4); }
+  html body[data-page]:not([data-page="overview"]) :is(.panel__header, .analysis-chart__header) { margin-bottom: var(--space-4); gap: var(--space-3); }
+  html body[data-page]:not([data-page="overview"]) :is(.panel__title, .ui-panel__title, .analysis-chart__title, .dashboard-panel h2, .set-card__header h4) { font-family: var(--font-sans); font-size: var(--font-size-body); font-weight: 600; letter-spacing: -.01em; }
+  html body[data-page]:not([data-page="overview"]) :is(.ui-metric-grid, .dashboard-kpis, .pr-kpi-grid, .cb-summary, .collect-health-grid) { gap: 0; border: 1px solid var(--border-default); border-radius: var(--radius-md); background: var(--surface-base); margin-bottom: var(--space-6); }
+  html body[data-page]:not([data-page="overview"]) :is(.ui-metric-grid > .ui-metric-card, .dashboard-kpis > .dashboard-kpi, .pr-kpi-grid > .pr-kpi, .cb-summary > .ui-metric-card, .collect-health-grid > .ui-metric-card) { min-width: 0; min-height: 88px; padding: var(--space-3) var(--space-4); border: 0; border-inline-end: 1px solid var(--border-default); border-radius: 0; box-shadow: none; background: transparent; transform: none; }
+  html body[data-page]:not([data-page="overview"]) :is(.ui-metric-grid > .ui-metric-card, .dashboard-kpis > .dashboard-kpi, .pr-kpi-grid > .pr-kpi, .cb-summary > .ui-metric-card, .collect-health-grid > .ui-metric-card):last-child { border-inline-end: 0; }
+  html body[data-page]:not([data-page="overview"]) :is(.ui-metric-grid > .ui-metric-card, .dashboard-kpis > .dashboard-kpi, .pr-kpi-grid > .pr-kpi, .cb-summary > .ui-metric-card, .collect-health-grid > .ui-metric-card):hover { box-shadow: none; transform: none; }
+  html body[data-page]:not([data-page="overview"]) .ui-metric-grid > button.ui-metric-card:hover,
+  html body[data-page]:not([data-page="overview"]) .ui-metric-grid > .ui-metric-card.is-selected { background: var(--brand-tint); }
+  html body[data-page]:not([data-page="overview"]) :is(.ui-metric-card__value, .metric-card__value, .dashboard-kpi strong, .pr-kpi__value) { font-family: var(--font-sans); font-size: var(--font-size-kpi); font-weight: 600; letter-spacing: -.025em; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+  html body[data-page]:not([data-page="overview"]) :is(.ui-button, .input, .select, .analysis-config__input, .analysis-config__select) { min-height: var(--control-height-sm); padding-block: var(--space-1); border-radius: var(--radius-sm); font-family: var(--font-sans); font-size: var(--font-size-secondary); }
+  html body[data-page]:not([data-page="overview"]) .ui-button { box-shadow: none; }
+  html body[data-page]:not([data-page="overview"]) :where(.ui-filter-toolbar, .ui-table-toolbar, .dashboard-controls, .promotion-drill-toolbar) { gap: var(--space-2); padding: var(--space-3); border-radius: var(--radius-sm); border-color: transparent; background: var(--surface-base); }
+  html body[data-page]:not([data-page="overview"]) :is(.ui-filter-toolbar__main, .filter-group, .panel__tools) { gap: var(--space-2); }
+  html body[data-page]:not([data-page="overview"]) .segmented { padding: var(--space-1); gap: var(--space-1); border-radius: var(--radius-sm); box-shadow: none; }
+  html body[data-page]:not([data-page="overview"]) .segmented button { min-height: var(--control-height-sm); padding-block: var(--space-1); border-radius: var(--radius-sm); font-size: var(--font-size-secondary); }
+  html body[data-page]:not([data-page="overview"]) :where(.ui-data-table, .pr-table, .dashboard-table table, .flow-table, .rival-table, .ninedim .tbl) { font-family: var(--font-sans); font-size: var(--font-size-secondary); font-variant-numeric: tabular-nums; }
+  html body[data-page]:not([data-page="overview"]) :where(.ui-data-table, .pr-table, .dashboard-table table, .flow-table, .rival-table, .ninedim .tbl) th { height: 40px; padding: 0 var(--space-3); font-size: var(--font-size-meta); font-weight: 600; background: var(--surface-muted); }
+  html body[data-page]:not([data-page="overview"]) :where(.ui-data-table, .pr-table, .dashboard-table table, .flow-table, .rival-table, .ninedim .tbl) td { height: 40px; padding: 0 var(--space-3); }
+  /* 空表那一行要撑满表头以下的高度（BI 是 256px），不能被上面这条 40px 的行高压成一条线。
+     前缀必须与上一行同构（0,3,3 > 0,2,3），否则 td 规则会赢。 */
+  html body[data-page]:not([data-page="overview"]) :where(.ui-data-table) td.ui-table-empty { height: var(--empty-height-table); padding: var(--space-6); color: var(--text-secondary); text-align: center; }
+  html body[data-page]:not([data-page="overview"]) :where(.ui-data-table, .pr-table, .dashboard-table table, .flow-table, .rival-table, .ninedim .tbl) td.num { font-size: var(--font-size-table-number); font-weight: 500; }
+  /* 汇总行 + 利润色块（2026-10-24 商品列表重构）。前缀与上面 td 规则同构，
+     否则密度层的 td 高度/内边距会把汇总行与色块压回默认形态。 */
+  html body[data-page]:not([data-page="overview"]) :where(.ui-data-table) tr.ui-summary-row td { height: 40px; background: var(--brand-tint); font-weight: 600; }
+  html body[data-page]:not([data-page="overview"]) :where(.ui-data-table) tr.ui-summary-row td.num { font-size: var(--font-size-table-number); }
+  html body[data-page]:not([data-page="overview"]) :where(.ui-data-table) .profit-block { min-width: 84px; padding: 0 var(--space-2); border-radius: var(--radius-md); font-size: var(--font-size-table-number); font-weight: 500; line-height: 28px; }
+  html body[data-page]:not([data-page="overview"]) .ui-data-table th.is-sortable { padding: 0; }
+  html body[data-page]:not([data-page="overview"]) .table-sort-button { min-height: 40px; }
+  html body[data-page]:not([data-page="overview"]) :is(.table-controls, .table-pagination) { padding-block: var(--space-2); font-size: var(--font-size-meta); }
+  html body[data-page]:not([data-page="overview"]) :is(dialog.ui-modal, dialog.ui-field-selector-dialog, dialog.pr-settings-dialog, dialog.lifecycle-edit-dialog, dialog.collect-credentials-dialog) { border-radius: var(--radius-md); box-shadow: var(--elevation-lg); font-family: var(--font-sans); }
+  html body[data-page]:not([data-page="overview"]) :is(.modal-form__header, .ui-modal__header, .modal-form__footer, .ui-modal__footer) { padding: var(--space-3) var(--space-4); }
+  html body[data-page]:not([data-page="overview"]) :is(.modal-form__body, .ui-modal__body) { padding: var(--space-4); gap: var(--space-3); }
+  html body[data-page]:not([data-page="overview"]) .set-card { padding: var(--space-4); gap: var(--space-3); }
+  html body[data-page]:not([data-page="overview"]) .settings-main > .ui-panel { box-shadow: none; }
+  html body[data-page]:not([data-page="overview"]) .ninedim .dim { background: var(--surface-base); border-radius: var(--radius-sm); }
+  html body[data-page]:not([data-page="overview"]) .ninedim .nav a { min-height: var(--control-height-sm); padding-block: var(--space-1); border-radius: var(--radius-sm); }
+  html body[data-page]:not([data-page="overview"]) :is(.analysis-config__input, .analysis-config__select):focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+  html body[data-page]:not([data-page="overview"]) .ui-metric-card:hover { transform: none; box-shadow: none; }
+
+  /* PC shared refinement 2026-10-18.
+   * 【已作废】2026-10-18: mixed panel/table :is groups above imported
+   * sibling specificity, notably .ninedim .item / .ninedim .tbl, into other pages.
+   * Those groups now use :where. Toolbar defaults also yield to page adapters.
+   * Exact prior selectors remain in PARENT. State, focus and dialog groups unchanged. */
+  html body[data-page]:not([data-page="overview"]) .ui-page-header p { line-height: var(--line-height-secondary); }
+  html body[data-page]:not([data-page="overview"]) .ui-page-header p.ui-page-header__scope { font-weight: 400; }
+  html body[data-page]:not([data-page="overview"]) .ui-data-table th { font-weight: 500; }
+  html body[data-page]:not([data-page="overview"]) .ui-modal__header,
+  html body[data-page]:not([data-page="overview"]) .modal-form__header { gap: var(--space-3); }
+  html body[data-page]:not([data-page="overview"]) .ui-modal__footer,
+  html body[data-page]:not([data-page="overview"]) .modal-form__footer { gap: var(--space-2); }
+
+  /* Desktop readability: keep complete copy and existing page adapters authoritative. */
+  html body[data-page]:not([data-page="overview"]) :where(.ui-page-header, .analysis-page__header, .category-dashboard-header) > div:first-child { min-width: 0; }
+  html body[data-page]:not([data-page="overview"]) :where(.ui-page-header, .analysis-page__header, .category-dashboard-header) p { max-width: 72ch; overflow-wrap: anywhere; }
+  html body[data-page]:not([data-page="overview"]) :where(.demo-page__actions) { flex-wrap: wrap; gap: var(--space-2); }
+  html body[data-page]:not([data-page="overview"]) :where(.demo-page__actions) > .ui-button { flex-shrink: 0; white-space: nowrap; }
+  html body[data-page]:not([data-page="overview"]) :where(.ui-data-table, .pr-table, .dashboard-table table, .flow-table, .rival-table, .ninedim .tbl) td { line-height: var(--line-height-secondary); vertical-align: middle; }
+  html body[data-page="product-detail"] .product-workbench__identity-copy > p[data-product-detail-title] { margin-block: var(--space-2); font-size: var(--font-size-body); font-weight: 500; line-height: var(--line-height-body); letter-spacing: normal; overflow-wrap: anywhere; }
+
+  /* Shared PC dialogs: a consistent sheet hierarchy, including the overview shell.
+   * Version-release hero retains its own presentation; no open/hidden/focus behavior changes. */
+  html body[data-page] dialog[open]:is(.modal-form, .ui-modal, .toolbox-dialog) { border-radius: var(--radius-lg); font-family: var(--font-sans); }
+  html body[data-page] dialog[open]:is(.modal-form, .ui-modal, .toolbox-dialog) :where(.modal-form__header, .ui-modal__header, .toolbox-dialog__header) { padding: var(--space-4) var(--space-5); gap: var(--space-3); }
+  html body[data-page] dialog[open]:is(.modal-form, .ui-modal, .toolbox-dialog) :where(.modal-form__header, .ui-modal__header, .toolbox-dialog__header) :is(h2, h3) { margin: 0; font-size: var(--font-size-section); font-weight: 600; line-height: var(--line-height-section); letter-spacing: -.015em; }
+  html body[data-page] dialog[open]:is(.modal-form, .ui-modal, .toolbox-dialog) :where(.modal-form__body, .ui-modal__body) { padding: var(--space-4) var(--space-5); gap: var(--space-3); }
+  html body[data-page] dialog[open]:is(.modal-form, .ui-modal, .toolbox-dialog) :where(.modal-form__footer, .ui-modal__footer) { padding: var(--space-3) var(--space-5); gap: var(--space-2); }
+
+  /* User typography contract: all PC headings and list titles are regular.
+   * The narrow font-weight exception also wins over legacy inline heading weights.
+   * Number/value cells are deliberately not selected. */
+  html body[data-page] :is(h1, h2, h3, h4, h5, h6, [role="heading"], [class*="__title"], [class*="-title"], [class*="__name"], [class*="-name"], th, .table-sort-button, .ui-empty-state > strong, .data-state > strong, .demo-picker__header > strong, .demo-picker__toolbar > strong, .demo-picker__week),
+  html body[data-page] :is(h1, h2, h3, h4, h5, h6, [role="heading"], [class*="__title"], [class*="-title"], [class*="__name"], [class*="-name"], th, .table-sort-button, .ui-empty-state > strong, .data-state > strong, .demo-picker__header > strong, .demo-picker__toolbar > strong, .demo-picker__week) :where(*):not([class*="__value"], [class*="__roi"], [data-kpi-value]) { font-weight: 400 !important; }
+
+  /* PC lifecycle drawer: eight related metrics share one quiet, readable surface. */
+  html body[data-page="lifecycle"] .ui-drawer .lifecycle-metrics { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0; border: 1px solid var(--border-default); border-radius: var(--radius-md); background: var(--surface-base); }
+  html body[data-page="lifecycle"] .ui-drawer .lifecycle-metric { padding: var(--space-3); border: 0; border-inline-start: 1px solid var(--border-default); border-block-start: 1px solid var(--border-default); border-radius: 0; background: transparent; }
+  html body[data-page="lifecycle"] .ui-drawer .lifecycle-metric:nth-child(4n + 1) { border-inline-start: 0; }
+  html body[data-page="lifecycle"] .ui-drawer .lifecycle-metric:nth-child(-n + 4) { border-block-start: 0; }
+  html body[data-page="lifecycle"] .ui-drawer .lifecycle-metric strong { font-family: var(--font-sans); font-weight: 500; font-variant-numeric: tabular-nums; }
+
+  /* PC long-page readability: complete diagnostics on demand, regular list identity. */
+  html body[data-page="data-collection"] details.integration-card__issue > summary { cursor: pointer; font-weight: 400; }
+  html body[data-page="data-collection"] details.integration-card__issue > summary:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; border-radius: var(--radius-sm); }
+  html body[data-page="data-collection"] .integration-card__issue-content { max-height: 240px; overflow: auto; margin-top: var(--space-2); white-space: pre-wrap; }
+  html body[data-page="data-collection"] .integration-card__issue-content:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+  html body[data-page="lifecycle"] .lifecycle-assessment-product strong { font-weight: 400; }
+}

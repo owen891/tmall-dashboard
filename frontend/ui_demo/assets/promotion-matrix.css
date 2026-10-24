@@ -1,0 +1,58 @@
+/* 推广矩阵只补充页面结构；颜色、圆角、控件全部沿用全局设计系统 token。
+   页面回答两个问题：新老品在各渠道投得怎么样、哪些单品该放大或该优化。 */
+body[data-page="promotion-matrix"] .pm-summary { margin-bottom: var(--space-4); }
+body[data-page="promotion-matrix"] .pm-page > .ui-panel + .ui-panel { margin-top: var(--space-4); }
+body[data-page="promotion-matrix"] .ui-panel { padding: 0; overflow: hidden; }
+body[data-page="promotion-matrix"] .ui-panel__header { align-items: center; }
+body[data-page="promotion-matrix"] .pm-panel--table .ui-panel__body { padding: 0; }
+body[data-page="promotion-matrix"] .pm-panel--table .ui-table-toolbar { padding: var(--space-3) var(--space-4); margin: 0; border-bottom: 1px solid var(--border-default); }
+body[data-page="promotion-matrix"] .pm-table-host { min-width: 0; }
+
+.pm-baseline-note { color: var(--text-secondary); font-size: var(--font-size-meta); font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+.pm-matrix-table thead th { white-space: nowrap; }
+.pm-matrix-table tbody th { color: var(--text-primary); font-size: var(--font-size-secondary); font-weight: 400; text-align: left; white-space: nowrap; }
+.pm-matrix-table tfoot td,
+.pm-matrix-table tfoot th { border-top: 1px solid var(--border-strong); color: var(--text-primary); font-weight: 500; }
+.pm-matrix-table tfoot th { text-align: left; }
+
+.pm-products-scroll { max-height: min(60vh, 720px); overflow: auto; }
+.pm-products-table thead th { position: sticky; top: 0; z-index: 1; background: var(--surface-muted); white-space: nowrap; }
+.pm-products-table tbody td { vertical-align: middle; }
+.pm-products-table .pm-product-cell { min-width: 260px; }
+.pm-products-table [data-tone="success"] { color: var(--success-text); }
+.pm-products-table [data-tone="warning"] { color: var(--warning-text); }
+.pm-products-table [data-tone="danger"] { color: var(--danger-text); }
+.pm-products-table [data-tone="muted"] { color: var(--text-secondary); }
+.pm-products-table .ui-badge { white-space: nowrap; }
+.pm-row--insufficient td { color: var(--text-secondary); }
+
+.pm-search { flex: 0 1 320px; min-width: 200px; max-width: 320px; }
+/* 两组筛选（新老 / 效率）各带短标签，并排时能分清哪组管什么。 */
+.pm-filter-group { display: flex; align-items: center; gap: var(--space-2); min-width: 0; }
+.pm-filter-label { color: var(--text-tertiary); font-size: var(--font-size-meta); white-space: nowrap; }
+
+.pm-coverage { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-3) var(--space-4); margin: 0 0 var(--space-3); }
+.pm-coverage > div { display: grid; gap: 2px; }
+.pm-coverage dt { color: var(--text-secondary); font-size: var(--font-size-meta); }
+.pm-coverage dd { margin: 0; color: var(--text-primary); font-size: var(--font-size-body); font-variant-numeric: tabular-nums; }
+.pm-notes { display: grid; gap: var(--space-1); margin: 0; padding-left: var(--space-4); color: var(--text-secondary); font-size: var(--font-size-meta); line-height: var(--line-height-meta); }
+
+@media (min-width: 1181px) {
+  body[data-page="promotion-matrix"] .demo-page { max-width: 1680px; }
+  body[data-page="promotion-matrix"] .ui-metric-grid { gap: var(--space-4); }
+  body[data-page="promotion-matrix"] .ui-metric-card { min-height: 108px; }
+  .pm-coverage { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+}
+
+@media (max-width: 1180px) {
+  body[data-page="promotion-matrix"] .ui-metric-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .pm-matrix-table { min-width: 880px; }
+  .pm-coverage { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 720px) {
+  body[data-page="promotion-matrix"] .ui-table-toolbar { align-items: stretch; flex-direction: column; }
+  .pm-search { flex: 1 1 auto; width: 100%; max-width: none; }
+  .pm-products-scroll { max-height: none; }
+}
