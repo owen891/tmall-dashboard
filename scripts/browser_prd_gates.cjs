@@ -160,11 +160,13 @@ const flowImpactLabel = '影响';
   if (await page.locator('[data-products-column-key]:checked').count() !== 0 || !await page.locator('[data-products-columns-apply]').isDisabled()) {
     throw new Error('product column clear-all did not clear selection and disable apply');
   }
-  for (const key of ['search_conversion', 'paid_ipv', 'direct_gmv', 'cart_cost', 'click_rate']) {
+  // paid_ipv / click_rate 已于 2026-10-22 作废（无数据源），改用同组的现存字段。
+  const previewKeys = ['search_conversion', 'search_ipv', 'direct_gmv', 'cart_cost', 'ctr'];
+  for (const key of previewKeys) {
     await page.locator(`[data-products-column-key="${key}"]`).check();
   }
   const productPreviewBeforeMove = await page.locator('[data-products-preview-key]').evaluateAll((items) => items.map((item) => item.dataset.productsPreviewKey));
-  if (JSON.stringify(productPreviewBeforeMove) !== JSON.stringify(['search_conversion', 'paid_ipv', 'direct_gmv', 'cart_cost', 'click_rate'])) {
+  if (JSON.stringify(productPreviewBeforeMove) !== JSON.stringify(previewKeys)) {
     throw new Error(`product preview did not append selected fields in order: ${productPreviewBeforeMove.join(',')}`);
   }
   await page.locator('[data-products-preview-key]').first().getByRole('button', { name: /^下移/ }).click();
