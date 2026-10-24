@@ -48,7 +48,9 @@ def desktop_environment(paths: DesktopPaths, environment=None) -> dict:
         'TMALL_DB_PATH': paths.database,
         'DATABASE_URL': _sqlite_url(paths.database),
         'TMALL_UPLOAD_FOLDER': paths.uploads,
-        'IMPORT_SCAN_ALLOWED_ROOTS': os.pathsep.join(scan_roots),
+        # 统一用分号序列化：盘符路径在 POSIX 上会被 ':' 拆坏，且分号是
+        # Windows 习惯写法，跨平台读回一致。
+        'IMPORT_SCAN_ALLOWED_ROOTS': ';'.join(scan_roots),
         'TMALL_DESKTOP_MODE': '1',
     }
 
