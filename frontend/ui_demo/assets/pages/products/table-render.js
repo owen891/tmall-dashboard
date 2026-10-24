@@ -30,6 +30,7 @@
       productId, salesOf, spendOf, columnsByKey, makeProductPlaceholder,
       openProductDetail, toggleStar, updateField, rememberClassification,
       classificationValues, setStatus, asArray, currentRange,
+      openProductTargetDialog,
     } = deps;
 
     function setRowStatus(message) {
@@ -162,7 +163,7 @@
           ['square-pen', '跟进', () => openProductDetail(item, anchor)],
           ['tag', '打标', () => openProductDetail(item, anchor)],
           ['star', Number(item.starred || 0) === 1 ? '取消收藏' : '收藏', (button) => { popover?.close({ restoreFocus: false }); popover = null; toggleStar(item, button); }, !canEdit],
-          ['target', '目标', null],
+          ['target', '目标', () => { popover?.close({ restoreFocus: false }); popover = null; openProductTargetDialog(item); }],
           ['triangle-alert', '警戒', null],
         ];
         actions.forEach(([icon, label, handler, disabled]) => {
@@ -171,7 +172,7 @@
           button.className = 'product-row-actions__item';
           if (!handler || disabled) {
             button.disabled = true;
-            button.title = !handler ? '商品级目标/警戒值 API 规划中' : '当前角色无编辑权限';
+            button.title = !handler ? '商品级警戒值依赖告警规则商品维度迁移，规划中' : '当前角色无编辑权限';
           }
           button.innerHTML = `<i data-lucide="${icon}"></i><span>${label}</span>`;
           button.addEventListener('click', () => handler?.(button));

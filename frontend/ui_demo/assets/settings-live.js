@@ -59,7 +59,6 @@
     return {
       shop_name: data.get('shop_name') || '', timezone: data.get('timezone') || 'Asia/Shanghai',
       currency: data.get('currency') || 'CNY', week_starts_on: data.get('week_starts_on') || 'monday',
-      collector_username: data.get('collector_username') || '', collector_password: data.get('collector_password') || '',
       annual_target_default: data.get('annual_target_default') || '', growth_multiplier: data.get('growth_multiplier') || '',
       overachievement_threshold: data.get('overachievement_threshold') || '',
       continuous_days: data.get('continuous_days') || '60', seasonal_months: data.get('seasonal_months') || '12',
@@ -234,17 +233,9 @@
     if (!form) return;
     const scalarKeys = ['shop_name', 'timezone', 'currency', 'week_starts_on', 'annual_target_default', 'growth_multiplier', 'overachievement_threshold'];
     scalarKeys.forEach((key) => { if (form.elements[key] && data[key] !== null && data[key] !== undefined) form.elements[key].value = data[key]; });
-    const rawCredentials = data.collector_credentials || {};
-    const credentials = rawCredentials.bi || rawCredentials;
-    form.elements.collector_username.value = credentials.username || '';
-    form.elements.collector_password.value = '';
-    const credentialsStatus = document.querySelector('[data-collector-credentials-status]');
-    if (credentialsStatus) { credentialsStatus.replaceChildren(document.createTextNode(credentials.password_set ? 'BI账号已配置（留空表示不修改）' : '未配置')); credentialsStatus.dataset.tone = credentials.password_set ? 'success' : 'muted'; }
     const thresholds = data.lifecycle_thresholds || {};
     form.elements.continuous_days.value = thresholds.continuous_days ?? 60;
     form.elements.seasonal_months.value = thresholds.seasonal_months ?? 12;
-    const storeBadge = document.querySelector('[data-tree-badge="store"]');
-    if (storeBadge) storeBadge.textContent = credentials.password_set ? '已配置' : '';
   };
   const resetTemplateDraft = (data) => {
     templateSnapshot = {
@@ -312,12 +303,11 @@
   const saveCore = async (event) => {
     event?.preventDefault();
     if (savingState.core || !canEditSettings()) { if (!canEditSettings()) setDomainStatus('core', '当前设置不可修改'); return; }
-    const data = new FormData(form); const existingCredentials = settingsPayload.data?.collector_credentials || {};
+    const data = new FormData(form);
     savingState.core = true; setCoreButtonBusy(true); updateDirtyUi(); setDomainStatus('core', '正在保存…');
     try {
       const response = await DemoApi.domainRequest('/api/settings', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
         shop_name: data.get('shop_name'), timezone: data.get('timezone'), currency: data.get('currency'), week_starts_on: data.get('week_starts_on'),
-        collector_credentials: { bi: { username: data.get('collector_username'), password: data.get('collector_password') }, sycm: existingCredentials.sycm || {}, wanxiangtai: existingCredentials.wanxiangtai || {} },
         annual_target_default: Number(data.get('annual_target_default') || 0), growth_multiplier: Number(data.get('growth_multiplier') || 1), overachievement_threshold: Number(data.get('overachievement_threshold') || 1),
         lifecycle_thresholds: { continuous_days: Number(data.get('continuous_days') || 60), seasonal_months: Number(data.get('seasonal_months') || 12) },
       }) });
@@ -360,8 +350,6 @@
     form.elements.timezone.value = values.timezone;
     form.elements.currency.value = values.currency;
     form.elements.week_starts_on.value = values.week_starts_on;
-    form.elements.collector_username.value = values.collector_username;
-    form.elements.collector_password.value = '';
     form.elements.annual_target_default.value = values.annual_target_default;
     form.elements.growth_multiplier.value = values.growth_multiplier;
     form.elements.overachievement_threshold.value = values.overachievement_threshold;

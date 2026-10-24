@@ -107,6 +107,22 @@ class KeywordPromotionRepo:
         }
 
     @staticmethod
+    @staticmethod
+    def data_window():
+        """全表数据窗口与导入时间（数据保鲜标识用，与查询过滤无关）。"""
+        with get_db() as conn:
+            row = conn.execute(
+                'SELECT MIN(data_start_date), MAX(data_end_date), MAX(report_time), COUNT(*)'
+                ' FROM keyword_promotion_products'
+            ).fetchone()
+        def _fmt(v):
+            raw = str(v or '')
+            return f'{raw[:4]}-{raw[4:6]}-{raw[6:8]}' if len(raw) == 8 and raw.isdigit() else (raw or None)
+        return {
+            'start': _fmt(row[0]), 'end': _fmt(row[1]),
+            'imported_at': row[2], 'rows': row[3] or 0,
+        }
+
     def summary(filters):
         shop_id = get_shop_id()
         where = ['shop_id = ?']

@@ -55,6 +55,9 @@ PUBLIC_EDITION_EXCLUDES = (
     'pages/core-product-analysis.html',
     'assets/core-product-analysis-live.js',
     'assets/themes/core-product-domain.css',
+    'pages/keyword-promotion.html',
+    'assets/keyword-promotion-live.js',
+    'assets/keyword-promotion.css',
 )
 
 

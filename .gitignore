@@ -181,3 +181,9 @@ pelican-*.html
 /tests/test_paimi_bi_fields.py
 /scripts/enrich_products_from_standard_reference.py
 /tests/test_standard_reference_sync.py
+
+# 关键词选品页（2026-10-24 起私人版专属：数据来自万相台报表手动导入，
+# 公开版不携带页面；后端 API 保留但公开环境无数据表）
+/frontend/ui_demo/pages/keyword-promotion.html
+/frontend/ui_demo/assets/keyword-promotion-live.js
+/frontend/ui_demo/assets/keyword-promotion.css

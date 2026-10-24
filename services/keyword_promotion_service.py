@@ -34,6 +34,7 @@ class KeywordPromotionService:
 
     def summary(self, filters):
         result = KeywordPromotionRepo.summary(filters)
+        result['data_window'] = KeywordPromotionRepo.data_window()
         # 格式化
         for key in ['total_spend', 'total_payment', 'avg_roi', 'avg_cvr', 'avg_ctr',
                     'avg_cart_rate', 'overall_roi']:

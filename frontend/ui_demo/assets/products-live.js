@@ -451,6 +451,118 @@
     DemoLabels.setDictionaries(dictionaries);
   }
 
+  // 商品目标对话框（product_targets）：月度目标销售额/费比 + 实时达成率。
+  // 周期取当前窗口所在月份（目标粒度为月，BI 同款「先占位后填数」闭环）。
+  async function openProductTargetDialog(item) {
+    const id = productId(item);
+    if (!id) return;
+    const range = currentRange();
+    const rangeEnd = (range && range.endDate) || '';
+    const period = state.periodDimension === 'monthly'
+      ? currentMonthPeriod()
+      : (rangeEnd ? rangeEnd.slice(0, 7) : new Date().toISOString().slice(0, 7));
+    let targets = [];
+    try {
+      const response = await DemoApi.domainRequest(`/api/products/${encodeURIComponent(id)}/targets`);
+      targets = asArray(response.data);
+    } catch (error) {
+      toast(error.message || '商品目标加载失败');
+      return;
+    }
+    const current = targets.find((row) => row.period === period) || null;
+    const body = document.createElement('div');
+    body.className = 'product-target-form';
+    const title = document.createElement('p');
+    title.className = 'panel__hint';
+    title.textContent = `${item.title || id} · ${period} 月度目标`;
+    const gsvLabel = document.createElement('label');
+    gsvLabel.className = 'product-target-form__field';
+    gsvLabel.append('目标销售额(元)');
+    const gsvInput = document.createElement('input');
+    gsvInput.className = 'input';
+    gsvInput.type = 'number';
+    gsvInput.min = '0';
+    gsvInput.step = 'any';
+    gsvInput.placeholder = '例如 100000';
+    gsvInput.value = current && current.target_gsv != null ? String(current.target_gsv) : '';
+    gsvLabel.appendChild(gsvInput);
+    const ratioLabel = document.createElement('label');
+    ratioLabel.className = 'product-target-form__field';
+    ratioLabel.append('目标费比(%)');
+    const ratioInput = document.createElement('input');
+    ratioInput.className = 'input';
+    ratioInput.type = 'number';
+    ratioInput.min = '0';
+    ratioInput.max = '100';
+    ratioInput.step = 'any';
+    ratioInput.placeholder = '例如 30';
+    ratioInput.value = current && current.target_ad_ratio != null ? String(Math.round(Number(current.target_ad_ratio) * 10000) / 100) : '';
+    ratioLabel.appendChild(ratioInput);
+    const achievement = document.createElement('p');
+    achievement.className = 'product-target-form__achievement';
+    if (current && current.achievement_rate != null) {
+      achievement.textContent = `本月经实：销售额 ${money(current.achieved_gsv)} · 达成率 ${percent(current.achievement_rate)} · 实际费比 ${percent(current.achieved_expense_ratio)}`;
+    } else if (current) {
+      achievement.textContent = '本月经实数据暂缺';
+    } else {
+      achievement.textContent = '该月尚未设置目标';
+    }
+    body.append(title, gsvLabel, ratioLabel, achievement);
+
+    const saveButton = document.createElement('button');
+    saveButton.type = 'button';
+    saveButton.className = 'ui-button ui-button--primary';
+    saveButton.textContent = '保存目标';
+    const clearButton = document.createElement('button');
+    clearButton.type = 'button';
+    clearButton.className = 'ui-button ui-button--ghost';
+    clearButton.textContent = '清除目标';
+    clearButton.disabled = !current;
+    const cancelButton = document.createElement('button');
+    cancelButton.type = 'button';
+    cancelButton.className = 'ui-button';
+    cancelButton.textContent = '取消';
+
+    const dialog = window.TmallUI.modal({
+      title: '商品目标',
+      description: '目标按月存储；达成率 = 本月已实销售额 ÷ 目标销售额',
+      body,
+      footer: [clearButton, cancelButton, saveButton],
+      size: 'sm',
+    });
+    dialog.open();
+    cancelButton.addEventListener('click', () => dialog.close());
+    saveButton.addEventListener('click', async () => {
+      const gsv = gsvInput.value.trim();
+      const ratioPct = ratioInput.value.trim();
+      if (!gsv && !ratioPct) { toast('至少填写一个目标值'); return; }
+      try {
+        await DemoApi.domainRequest(`/api/products/${encodeURIComponent(id)}/target`, jsonOptions({
+          period,
+          target_gsv: gsv === '' ? null : Number(gsv),
+          target_ad_ratio: ratioPct === '' ? null : Number(ratioPct) / 100,
+          operator: '商品运营',
+          reason: `设置${period}月度目标`,
+        }, 'PUT'));
+        toast('商品目标已保存');
+        dialog.close();
+      } catch (error) {
+        toast(error.message || '目标保存失败');
+      }
+    });
+    clearButton.addEventListener('click', async () => {
+      try {
+        await DemoApi.domainRequest(`/api/products/${encodeURIComponent(id)}/target`, jsonOptions({
+          period, operator: '商品运营', reason: `清除${period}月度目标`,
+        }, 'DELETE'));
+        toast('商品目标已清除');
+        dialog.close();
+      } catch (error) {
+        toast(error.message || '目标清除失败');
+      }
+    });
+  }
+
   const columnsDialog = $('[data-products-columns-dialog]');
   // 表格渲染/时间线/移动端摘要/分页选择模块（从本闭包切出，依赖显式注入）
   const tableRender = window.TmallProducts?.createTableRender
@@ -459,6 +571,7 @@
         productId, salesOf, spendOf, columnsByKey, makeProductPlaceholder,
         openProductDetail, toggleStar, updateField, rememberClassification,
         classificationValues, setStatus, asArray, currentRange,
+        openProductTargetDialog,
       })
     : null;
   // 列设置/模板模块（从本闭包切出，依赖显式注入）

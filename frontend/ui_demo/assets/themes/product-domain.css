@@ -467,6 +467,10 @@ body[data-page="products"] .product-list__header .product-field-controls { grid-
 .product-row-actions__item:hover:not(:disabled) { background: var(--surface-muted); color: var(--brand-text); }
 .product-row-actions__item:disabled { color: var(--text-tertiary); cursor: not-allowed; opacity: 0.6; }
 .product-row-actions__item .lucide { width: 14px; height: 14px; flex: 0 0 14px; }
+/* 商品目标对话框（product_targets）：月度目标销售额/费比 + 达成率回显。 */
+.product-target-form { display: grid; gap: var(--space-3); min-width: 280px; }
+.product-target-form__field { display: grid; gap: var(--space-1); font-size: var(--font-size-secondary); color: var(--text-secondary); }
+.product-target-form__achievement { margin: 0; padding: var(--space-2) var(--space-3); border-radius: var(--radius-md); background: var(--surface-muted); color: var(--text-secondary); font-size: var(--font-size-meta); font-variant-numeric: tabular-nums; }
 .product-rule-detail-dialog { width: min(720px, calc(100vw - 32px)); max-height: min(760px, calc(100vh - 32px)); }
 .product-rule-detail-dialog.ui-drawer-dialog { inset: 0 0 0 auto; width: min(720px, 100vw); height: 100dvh; max-width: 100vw; max-height: none; margin: 0; border-radius: 0; border-width: 0 0 0 1px; transform: translateX(100%); transition: transform 180ms ease; }
 .product-rule-detail-dialog.ui-drawer-dialog[open] { display: flex; flex-direction: column; transform: translateX(0); }
