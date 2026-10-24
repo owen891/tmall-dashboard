@@ -42,7 +42,7 @@ app = create_app({'TESTING': True, 'DATABASE_PATH': _TEST_DB_PATH, 'SHOP_ID': 'd
 # 不显式写入就会造出「主档有商品、单日事实查不到」的假象，
 # 让 /api/products 的 daily+单日区间查询（走 JOIN 事实表）返回 0 条。
 _TEST_SHOP_ID = app.config['SHOP_ID']
-seed_database(_TEST_DB_PATH)
+seed_database(_TEST_DB_PATH, shop_id=_TEST_SHOP_ID)
 
 
 def _insert_contract_products():

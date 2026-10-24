@@ -6,8 +6,9 @@ SHOP_ID = 'legacy-shop'
 PRODUCT_ID = 'gate-product-001'
 
 
-def seed_database(database):
+def seed_database(database, shop_id=None):
     # The caller creates the current schema in a fresh temporary database first.
+    shop_scope = shop_id or SHOP_ID
     with closing(sqlite3.connect(database)) as connection:
         with connection:
             # Collector-owned schema from collect_sycm_item_flow_v6.py; empty by design.
@@ -30,7 +31,7 @@ def seed_database(database):
                     'INSERT OR REPLACE INTO daily_data '
                     '(product_id, date, ipv, pv, payment_amount, buyers, '
                     'net_sales, shop_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-                    (PRODUCT_ID, f'2026-09-{day:02}', 100, 200, 200.0, 10, 200.0, SHOP_ID),
+                    (PRODUCT_ID, f'2026-09-{day:02}', 100, 200, 200.0, 10, 200.0, shop_scope),
                 )
             # The lifecycle cards consume monthly_data, not daily_data. Derive
             # this fixture month from the same eight seeded days; it is still
@@ -43,5 +44,5 @@ def seed_database(database):
                 "WHERE product_id = ? AND shop_id = ? "
                 "AND date BETWEEN '2026-09-10' AND '2026-09-17' "
                 "GROUP BY product_id, substr(date, 1, 7)",
-                (PRODUCT_ID, SHOP_ID),
+                (PRODUCT_ID, shop_scope),
             )
