@@ -140,7 +140,10 @@ jobs:
     steps:
       - name: Clean checkout
         uses: actions/checkout@v4
-        with: { clean: true, fetch-depth: 0, ref: ${{ github.ref }} }
+        with:
+          clean: true
+          fetch-depth: 0
+          ref: ${{ github.ref }}
       - uses: actions/setup-python@v5
         with: { python-version: '3.14', cache: pip }
       - name: Install metadata tools
