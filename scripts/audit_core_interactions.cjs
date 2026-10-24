@@ -220,8 +220,9 @@ async function runPage(browser, id, path, viewport) {
         // 其余设置页交互照常覆盖。
         // 扫描流程会真实创建/扫描/停用任务，依赖可写目录与后台线程；
         // 在 CI 沙箱里不稳定，默认只在显式开启时执行（本地仍可 TMALL_AUDIT_SCAN=1 覆盖）。
-        const scanRootUsable = fs.existsSync(scanRoot)
-          && process.env.TMALL_AUDIT_SCAN !== '0';
+        // 默认关闭：该流程依赖可写目录 + 后台扫描线程，在 CI 上不稳定。
+        // 本地需要覆盖时设 TMALL_AUDIT_SCAN=1。
+        const scanRootUsable = process.env.TMALL_AUDIT_SCAN === '1' && fs.existsSync(scanRoot);
         if (scanRootUsable && await scanCreate.count() && await scanCreate.isVisible() && !(await scanCreate.isDisabled())) {
           const taskName = `browser-audit-${Date.now()}`;
           try {
