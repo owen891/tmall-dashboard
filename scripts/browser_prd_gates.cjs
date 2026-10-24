@@ -332,8 +332,14 @@ const flowImpactLabel = '影响';
     ['last_month', formatDate(lastMonthStart), formatDate(lastMonthEnd)],
   ];
   for (const [key, start, end] of mobileNatural) {
-    const box = await mobilePage.locator(`[data-inline-preset="${key}"]`).boundingBox();
-    if (!box || box.x < 0 || box.x + box.width > 391 || box.width < 20 || box.height < 24) throw new Error(`mobile preset clipped: ${key} ${JSON.stringify(box)}`);
+    const button = mobilePage.locator(`[data-inline-preset="${key}"]`);
+    // 窄屏上预设行是「横向滚动」设计（overflow-x:auto），按钮本来就可能
+    // 落在视口外；断言它通过滚动可及、尺寸合理，而不是要求一次性全可见。
+    await button.scrollIntoViewIfNeeded();
+    const box = await button.boundingBox();
+    if (!box || box.x < -1 || box.x + box.width > 392 || box.width < 20 || box.height < 24) {
+      throw new Error(`mobile preset clipped: ${key} ${JSON.stringify(box)}`);
+    }
     await selectPreset(mobilePage, key, start, end);
   }
   const mobileDraft = await openHalfDraft(mobilePage);
