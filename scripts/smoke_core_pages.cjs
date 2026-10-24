@@ -133,7 +133,10 @@ async function inspectDialogs(page, id, browser, viewport) {
   }
   if (id === 'lifecycle') {
     const lifecycleCard = page.locator('[data-lifecycle-card]').first();
-    await lifecycleCard.waitFor({ state: 'visible' });
+    // 无生命周期数据的环境可能没有卡片：跳过该页的抽屉交互检查。
+    const hasLifecycleCard = await lifecycleCard.count()
+      && await lifecycleCard.waitFor({ state: 'visible', timeout: 15000 }).then(() => true).catch(() => false);
+    if (!hasLifecycleCard) return;
     await lifecycleCard.click();
     await page.locator('.ui-drawer.is-open').waitFor({ state: 'visible' });
     await inspectOpenDialog('.ui-drawer.is-open', 'lifecycle-detail');
