@@ -361,6 +361,10 @@ body.demo-sidebar-collapsed .demo-sidebar__update { width: 24px; min-width: 24px
   min-height: 38px;
   color: var(--text-secondary);
   white-space: nowrap;
+  /* 窄屏必须可换行/滚动：预设按钮组在 390px 视口会超出屏幕。 */
+  max-width: 100%;
+  flex-wrap: wrap;
+  row-gap: 4px;
 }
 .demo-period__inline-label { color: var(--text-secondary); margin-right: 4px; }
 .demo-period__inline button {
