@@ -78,7 +78,8 @@ async function gateDetailSurfaces(page) {
   // 共享商品详情：抽屉化 + detail 分类标记 + 焦点归还（products fixtures 是门禁硬前提）。
   await page.goto(`${base}/products`, { waitUntil: 'domcontentloaded', timeout: 10000 });
   await page.waitForSelector('[data-products-body] tr', { timeout: 5000 });
-  const productTrigger = page.locator('[data-products-body] tr').first().locator('button[aria-label^="查看商品详情"]');
+  // 汇总行是 tbody 首行，商品行带 data-product-id；跳过汇总行取首件商品。
+  const productTrigger = page.locator('[data-products-body] tr[data-product-id]').first().locator('button[aria-label^="查看商品详情"]');
   await productTrigger.click();
   await page.locator('.ui-drawer.is-open').waitFor({ state: 'visible', timeout: 5000 });
   if (await page.locator('.ui-drawer.is-open[data-modal-kind="detail"]').count() !== 1) {

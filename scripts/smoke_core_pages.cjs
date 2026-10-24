@@ -88,7 +88,8 @@ async function inspectDialogs(page, id, browser, viewport) {
     if (viewport.width <= 520) {
       await page.locator('[data-products-mobile-summary] .products-mobile-summary__item').first().locator('button').click();
     } else {
-      await page.locator('[data-products-body] tr').first().locator('button[aria-label^="查看商品详情"]').click();
+      // 汇总行按 BI 惯例是 tbody 首行，商品行带 data-product-id，据此跳过汇总行。
+      await page.locator('[data-products-body] tr[data-product-id]').first().locator('button[aria-label^="查看商品详情"]').click();
     }
     await page.waitForTimeout(250);
     await inspectOpenDialog('.product-detail-dialog', 'products-detail');
