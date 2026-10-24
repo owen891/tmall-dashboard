@@ -286,6 +286,20 @@
       else cell.textContent = '--';
     }
 
+    // 分层分类徽标（对齐 BI 字母徽标）：分层值是可配置词条，按值哈希稳定落位到
+    // --tier-chip-0..5 色槽——同值永远同色，词条增删不打乱既有配色。未分层不渲染。
+    function tierChip(item) {
+      const value = DemoLabels.clean(item.tier, '');
+      if (!value) return null;
+      let hash = 0;
+      for (const char of String(value)) hash = (hash * 31 + char.codePointAt(0)) >>> 0;
+      const chip = document.createElement('span');
+      chip.className = `ui-tier-chip ui-tier-chip--c${hash % 6}`;
+      chip.textContent = value;
+      chip.title = `分层：${value}`;
+      return chip;
+    }
+
     function buildSummaryRow(rows) {
       const row = document.createElement('tr');
       row.className = 'ui-summary-row';
@@ -363,6 +377,8 @@
         const row = document.createElement('tr');
         row.dataset.productId = id;
 
+        const tierChipNode = tierChip(item);
+
         const check = document.createElement('input');
         check.type = 'checkbox';
         check.value = id;
@@ -389,7 +405,7 @@
           title: item.title, id, imageUrl: item.image_url,
           maxTitleChars: 8, titleClassName: 'product-title__link',
           onTitleClick: (event) => openProductDetail(item, event.currentTarget),
-          metaItems: [star],
+          metaItems: [tierChipNode, star].filter(Boolean),
         });
         attachRowActions(identity, item);
         addCell(row, identity, '', 'title');
@@ -466,7 +482,7 @@
         title: item.title, id, imageUrl: item.image_url,
         maxTitleChars: 8, titleClassName: 'product-title__link',
         onTitleClick: (event) => openProductDetail(item, event.currentTarget),
-        metaItems: [star],
+        metaItems: [tierChip(item), star].filter(Boolean),
       });
       const titleCell = addCell(row, identity, '', 'title');
       if (rowSpan > 1) titleCell.rowSpan = rowSpan;

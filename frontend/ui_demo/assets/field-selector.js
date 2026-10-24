@@ -2,7 +2,8 @@
   function create(options) {
     const root = options.root;
     // 上限约束（对齐 BI maxNum）：只拦「新增勾选」，不截断已保存的存量选择。
-    const maxSelected = Number.isFinite(options.maxSelected) && options.maxSelected > 0
+    // setConfig 可按 TAB/模板自适应更新上限（取 max(下限, 最大内置模板列数)）。
+    let maxSelected = Number.isFinite(options.maxSelected) && options.maxSelected > 0
       ? Math.floor(options.maxSelected) : 0;
     let groups = [];
     let fieldsByKey = new Map();
@@ -352,6 +353,9 @@
     }
 
     function setConfig(config) {
+      if (Number.isFinite(config.maxSelected) && config.maxSelected > 0) {
+        maxSelected = Math.floor(config.maxSelected);
+      }
       groups = normalizeGroups(config.groups);
       fieldsByKey = new Map(groups.flatMap((group) => group.fields).map((field) => [field.key, field]));
       selected = normalizeSelected(config.selected);

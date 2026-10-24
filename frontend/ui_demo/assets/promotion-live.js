@@ -793,9 +793,14 @@
     return fieldSelector?.getSelected() || [];
   }
 
+  // 视窗上限（对齐 BI maxNum）：下限 25，但不得低于当前 TAB 最大内置模板的列数，
+  // 否则「完整明细」这类 26 列模板会被上限卡住无法还原。
+  const COLUMN_LIMIT_FLOOR = 25;
+  let fieldColumnLimit = COLUMN_LIMIT_FLOOR;
+
   function updateFieldDialogStatus() {
     const selected = selectedDialogFields();
-    $('[data-promotion-field-selection-count]').textContent = `${selected.length} 个字段`;
+    $('[data-promotion-field-selection-count]').textContent = `${selected.length} / ${fieldColumnLimit} 个字段`;
     $('[data-promotion-fields-apply]').disabled = selected.length === 0;
     $('[data-promotion-template-save]').disabled = selected.length === 0;
     $('[data-promotion-field-status]').textContent = selected.length ? '' : '至少保留一个字段';
@@ -803,11 +808,16 @@
 
   function renderFieldOptions(selected = state.selectedFields[state.dialogTab]) {
     const definition = activeDefinition(state.dialogTab);
+    fieldColumnLimit = Math.max(
+      COLUMN_LIMIT_FLOOR,
+      ...tabDefinitions[state.dialogTab].templates.map((template) => template.fields.length),
+      (selected || []).length,
+    );
     const groups = [...new Set(definition.columns.map((column) => column.group || '字段'))].map((group) => ({
       label: group,
       fields: definition.columns.filter((column) => (column.group || '字段') === group),
     }));
-    const config = { groups, selected };
+    const config = { groups, selected, maxSelected: fieldColumnLimit };
     if (!fieldSelector) {
       fieldSelector = TmallUI.fieldSelector({
         root: $('[data-promotion-field-selector]'),
@@ -818,6 +828,9 @@
         optionDataAttribute: 'data-promotion-field-key',
         previewDataAttribute: 'data-promotion-preview-key',
         onChange: updateFieldDialogStatus,
+        onCapacity: (limit) => {
+          $('[data-promotion-field-status]').textContent = `最多选择 ${limit} 个字段，请先取消部分字段`;
+        },
       });
     } else {
       fieldSelector.setConfig(config);

@@ -303,7 +303,10 @@
     const netSales = overview.net_sales;
     text($('[data-overview-summary="net_sales"]'), !finiteMetric(netSales) ? '--' : moneyWan(netSales));
     text($('[data-overview-summary-meta="net_sales"]'), overview.data_cutoff_date ? `数据截至 ${overview.data_cutoff_date}` : '等待加载');
-    text($('[data-overview-cutoff]'), overview.data_cutoff_date ? `数据截至 ${overview.data_cutoff_date}` : '数据截至 --');
+    const cutoffBadge = $('[data-overview-cutoff]');
+    text(cutoffBadge, overview.data_cutoff_date ? `数据截至 ${overview.data_cutoff_date}` : '数据截至 --');
+    // 口径披露（对齐 BI「数据更新延迟」提示）：明说「数据截至」是什么、什么时候该起疑。
+    if (cutoffBadge) cutoffBadge.title = '「数据截至」是所选区间内最后一次成功采集入库的日期；若早于区间结束日期，说明尾段数据尚未入库，并非该日没有交易。';
     const freshness = overview.context?.latest_import?.completed_at || overview.data_cutoff_date;
     text($('[data-overview-summary="freshness"]'), freshness ? '已更新' : '--');
     text($('[data-overview-summary-meta="freshness"]'), freshness ? `最近导入 ${String(freshness).slice(0, 16)}` : '最近导入');

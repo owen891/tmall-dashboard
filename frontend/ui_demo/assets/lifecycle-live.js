@@ -541,10 +541,16 @@
     const countElement = $('[data-lifecycle-visible-count]');
     const status = $('[data-lifecycle-columns-status]');
     if (countElement) countElement.textContent = String(normalized.length);
+    const limitElement = $('[data-lifecycle-visible-limit]');
+    if (limitElement) limitElement.textContent = String(lifecycleColumnLimit);
     if (status) status.textContent = normalized.length ? '' : '至少保留月份字段';
     const applyButton = $('[data-lifecycle-columns-apply]');
     if (applyButton) applyButton.disabled = !normalized.length;
   }
+
+  // 视窗上限（对齐 BI maxNum）：下限 25；不低于最大内置模板列数与当前已选数。
+  const LIFECYCLE_COLUMN_LIMIT_FLOOR = 25;
+  let lifecycleColumnLimit = LIFECYCLE_COLUMN_LIMIT_FLOOR;
 
   function renderLifecycleTemplateSelect(selected = state.detailFields) {
     const select = $('[data-lifecycle-template-select]');
@@ -566,9 +572,15 @@
 
   function renderLifecycleColumnSelector(selected = state.detailFields) {
     if (!lifecycleColumnsDialog || !window.TmallUI) return;
+    lifecycleColumnLimit = Math.max(
+      LIFECYCLE_COLUMN_LIMIT_FLOOR,
+      ...Object.values(lifecycleDetailTemplates).map((fields) => (Array.isArray(fields) ? fields.length : 0)),
+      (selected || []).length,
+    );
     const config = {
       groups: lifecycleDetailFieldGroups,
       selected: normalizeLifecycleDetailFields(selected),
+      maxSelected: lifecycleColumnLimit,
     };
     if (!lifecycleColumnSelector) {
       lifecycleColumnSelector = TmallUI.fieldSelector({
@@ -583,6 +595,10 @@
           if (JSON.stringify(normalized) !== JSON.stringify(nextSelected)) lifecycleColumnSelector.setSelected(normalized, { notify: false });
           updateLifecycleColumnsDialogStatus(normalized);
           renderLifecycleTemplateSelect(normalized);
+        },
+        onCapacity: (limit) => {
+          const status = $('[data-lifecycle-columns-status]');
+          if (status) status.textContent = `最多选择 ${limit} 个字段，请先取消部分字段`;
         },
       });
     } else {

@@ -41,6 +41,14 @@
 .ui-badge--warning { background: var(--warning-tint); color: var(--warning-text); }
 .ui-badge--danger { background: var(--danger-tint); color: var(--danger-text); }
 .ui-badge--info { background: var(--info-tint); color: var(--info-text); }
+/* 分层分类徽标：实心底白字，色槽 --tier-chip-0..5 按值哈希稳定落位（对齐 BI 字母徽标）。 */
+.ui-tier-chip { display: inline-flex; min-height: 18px; align-items: center; padding: 0 6px; border-radius: var(--radius-sm); color: var(--text-on-brand); font-size: var(--font-size-meta); font-weight: 500; line-height: var(--line-height-meta); white-space: nowrap; }
+.ui-tier-chip--c0 { background: var(--tier-chip-0); }
+.ui-tier-chip--c1 { background: var(--tier-chip-1); }
+.ui-tier-chip--c2 { background: var(--tier-chip-2); }
+.ui-tier-chip--c3 { background: var(--tier-chip-3); }
+.ui-tier-chip--c4 { background: var(--tier-chip-4); }
+.ui-tier-chip--c5 { background: var(--tier-chip-5); }
 .ui-empty-state { display: grid; min-height: var(--empty-min-height, var(--empty-height-default)); place-items: center; align-content: center; gap: var(--space-1); padding: var(--space-6); color: var(--text-secondary); text-align: center; }
 .ui-empty-state strong { color: var(--text-primary); font-size: var(--font-size-body); }
 .ui-empty-state span { font-size: var(--font-size-meta); }

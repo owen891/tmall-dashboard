@@ -80,9 +80,11 @@ if (-not $SkipService) {
         try {
             . (Join-Path $PSScriptRoot 'resolve_runtime.ps1')
             $python = Resolve-CollectorPython -ProjectRoot $ProjectRoot
-            Write-Log "启动看板服务: $python scripts\start_dev_server.py --port 5000"
+            Write-Log "启动看板服务: $python scripts\start_dashboard.py --port 5000"
+            # 必须走 start_dashboard.py：中文部署 env（TMALL_CATEGORY_LABEL）经
+            # PowerShell 传递会被 ANSI 解码成乱码，品类筛选随之归零。
             Start-Process -FilePath $python `
-                -ArgumentList @('scripts\start_dev_server.py', '--port', '5000') `
+                -ArgumentList @('scripts\start_dashboard.py', '--port', '5000') `
                 -WorkingDirectory $ProjectRoot -WindowStyle Hidden
             $svcDeadline = (Get-Date).AddSeconds($ServiceWaitSeconds)
             $svcOk = $false

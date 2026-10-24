@@ -41,6 +41,13 @@ class LegacyImportCliTests(unittest.TestCase):
         })
 
     def tearDown(self):
+        # 门禁以 -W error::ResourceWarning 运行：残留 sqlite 句柄在终结器里
+        # 会让用例失败。显式结束请求上下文并销毁 app，再 GC。
+        try:
+            self.app.do_teardown_appcontext(None)
+        except Exception:
+            pass
+        self.app = None
         gc.collect()
         self.temp_dir.cleanup()
 
