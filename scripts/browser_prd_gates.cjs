@@ -148,8 +148,11 @@ const flowImpactLabel = '影响';
   await page.locator('[data-products-columns-select-all]').click();
   const allColumnKeys = await page.locator('[data-products-column-key]').evaluateAll((inputs) => inputs.map((input) => input.dataset.productsColumnKey));
   const checkedAfterSelectAll = await page.locator('[data-products-column-key]:checked').count();
-  if (checkedAfterSelectAll !== allColumnKeys.length || new Set(allColumnKeys).size !== allColumnKeys.length) {
-    throw new Error(`product column select-all is incomplete or duplicated: ${checkedAfterSelectAll}/${allColumnKeys.length}`);
+  // 商品列表有显式的视图列上限（VIEW_COLUMN_LIMIT）：全选只补满上限，
+  // 不是「勾选全部可选列」。这里断言的是「补满且无重复」。
+  if (checkedAfterSelectAll !== Math.min(allColumnKeys.length, VIEW_COLUMN_LIMIT)
+      || new Set(allColumnKeys).size !== allColumnKeys.length) {
+    throw new Error(`product column select-all did not fill to the view limit: ${checkedAfterSelectAll}/${allColumnKeys.length}`);
   }
   await page.locator('[data-products-columns-clear-all]').click();
   if (await page.locator('[data-products-column-key]:checked').count() !== 0 || !await page.locator('[data-products-columns-apply]').isDisabled()) {
