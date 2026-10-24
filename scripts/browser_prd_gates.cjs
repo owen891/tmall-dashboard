@@ -242,11 +242,14 @@ const flowImpactLabel = '影响';
     window.addEventListener('tmall:date-range-change', () => { window.__dateContractChanges += 1; });
   });
   await installDateCounter(page);
+  // 与 assets/runtime/date-range-store.js::formatRangeLabel 的实际格式一致：
+  // 同年时结尾省略年份，用点号分隔（2026.10.19-10.24）。
   const visibleRangeText = (start, end) => {
     const [sy, sm, sd] = start.split('-').map(Number);
     const [ey, em, ed] = end.split('-').map(Number);
-    const first = `${sy}年${sm}月${sd}日`;
-    return start === end ? first : `${first}-${sy === ey ? '' : `${ey}年`}${em}月${ed}日`;
+    const first = `${sy}.${sm}.${sd}`;
+    const last = sy === ey ? `${em}.${ed}` : `${ey}.${em}.${ed}`;
+    return start === end ? first : `${first}-${last}`;
   };
   const expectRange = async (target, start, end) => {
     const observed = await dateSnapshot(target);
