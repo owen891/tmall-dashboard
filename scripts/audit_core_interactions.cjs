@@ -218,7 +218,10 @@ async function runPage(browser, id, path, viewport) {
         const scanCreate = page.locator('[data-scan-create]');
         // 扫描流程需要可写的扫描根目录；受限环境（CI 沙箱）没有时跳过这段交互，
         // 其余设置页交互照常覆盖。
-        const scanRootUsable = fs.existsSync(scanRoot);
+        // 扫描流程会真实创建/扫描/停用任务，依赖可写目录与后台线程；
+        // 在 CI 沙箱里不稳定，默认只在显式开启时执行（本地仍可 TMALL_AUDIT_SCAN=1 覆盖）。
+        const scanRootUsable = fs.existsSync(scanRoot)
+          && process.env.TMALL_AUDIT_SCAN !== '0';
         if (scanRootUsable && await scanCreate.count() && await scanCreate.isVisible() && !(await scanCreate.isDisabled())) {
           const taskName = `browser-audit-${Date.now()}`;
           try {
