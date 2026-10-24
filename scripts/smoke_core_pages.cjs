@@ -195,10 +195,10 @@ async function inspect(browser, viewport, label) {
     if (id === 'creative-board') {
       await page.waitForFunction(() => {
         const host = document.querySelector('[data-cb-products]');
-        return host && host.querySelector('tr[data-cb-open], .ui-empty-state');
+        return host && host.querySelector('tr[data-cb-open], .ui-table-empty, .ui-empty-state');
       }, { timeout: 20000 }).catch(() => {});
       const productCount = await page.locator(
-        '[data-cb-products] tr[data-cb-open], [data-cb-products] .ui-empty-state'
+        '[data-cb-products] tr[data-cb-open], [data-cb-products] .ui-table-empty, [data-cb-products] .ui-empty-state'
       ).count();
       if (!productCount) throw new Error('creative board did not render products or empty state');
     }
