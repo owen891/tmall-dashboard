@@ -203,3 +203,5 @@ pelican-*.html
 /scripts/fetch_wanxiangtai_lead.py
 /scripts/_scan_injection.cjs
 /scripts/shot_custom_picker.cjs
+
+/scripts/export_bi_wide.py

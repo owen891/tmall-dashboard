@@ -1,0 +1,14 @@
+const fs=require('node:fs'),path=require('node:path'),vm=require('node:vm'),assert=require('node:assert/strict');
+const i=process.argv.indexOf('--root'),root=path.resolve(i<0?path.join(__dirname,'..'):process.argv[i+1]);
+const js=fs.readFileSync(path.join(root,'frontend/ui_demo/assets/product-detail-live.js'),'utf8'),html=fs.readFileSync(path.join(root,'frontend/ui_demo/pages/product-detail.html'),'utf8');
+assert.equal((html.match(/data-product-detail-image(?=\s|>)/g)||[]).length,1,'one actual image hook');
+const start=js.indexOf('  function renderProductImage(product) {'),end=js.indexOf('  async function load(range)',start);assert(start>=0&&end>start,'real renderer exists');
+const image={hidden:true,alt:'',complete:false,naturalWidth:0,src:'',getAttribute(n){return this[n]||null},removeAttribute(n){this[n]=''}};
+const ctx={document:{querySelector(){return image}}};vm.createContext(ctx);vm.runInContext(js.slice(start,end)+';globalThis.render=renderProductImage;',ctx);
+ctx.render({title:'商品A',image_url:' /a.png '});assert.equal(image.src,'/a.png');assert.equal(image.hidden,true);image.onload();assert.equal(image.hidden,false);assert.equal(image.alt,'商品A 主图');console.log('PASS valid main image appears only after load');
+image.complete=true;image.naturalWidth=96;const oldOnload=image.onload;ctx.render({title:'商品A',image_url:'/a.png'});assert.equal(image.hidden,false);assert.equal(image.onload,oldOnload);console.log('PASS same loaded image stays steady on date refresh');
+ctx.render({title:'无图商品',image_url:null});assert.equal(image.hidden,true);assert.equal(image.src,'');console.log('PASS missing URL clears previous image');
+ctx.render({title:'坏图',image_url:'/broken.png'});image.onerror();assert.equal(image.hidden,true);assert.equal(image.src,'');console.log('PASS failed image hides broken icon and releases space');
+ctx.render({title:'<img onerror=bad>',image_url:'/b.png'});image.onload();assert.equal(image.hidden,false);assert.equal(image.alt,'<img onerror=bad> 主图');console.log('PASS later image recovers and alt stays plain text');
+ctx.document.querySelector=()=>null;ctx.render({title:'空态',image_url:'/a.png'});console.log('PASS absent image node remains safe');
+console.log('RESULT 6/6 product image contracts');
