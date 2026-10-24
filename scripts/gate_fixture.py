@@ -2,7 +2,15 @@
 from contextlib import closing
 import sqlite3
 
-SHOP_ID = 'legacy-shop'
+# 店铺 scope 必须与 db.legacy_shop_id() 的解析结果一致：该值来自
+# TMALL_LEGACY_SHOP_ID（部署私有）。公开/CI 环境未配置时服务端守卫只接受
+# 'default'，fixture 若仍写死一个命名 scope，所有请求都会 UNSUPPORTED_SCOPE。
+def _shop_scope():
+    import os
+    return os.environ.get('TMALL_LEGACY_SHOP_ID') or 'default'
+
+
+SHOP_ID = _shop_scope()
 
 # 品类标签必须与运行时解析的 category_mode=sock 标签一致，否则 gate 服务上
 # 所有带 category_mode 的请求都会 422（sock 模式解析不到任何商品）。
