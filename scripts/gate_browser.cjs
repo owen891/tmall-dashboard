@@ -110,7 +110,18 @@ async function launchGateChrome(base, dependencies = {}) {
       if (!running()) throw new Error('OWNED_BROWSER_EXITED');
       const active = path.join(profile, 'DevToolsActivePort');
       if (fs.existsSync(active)) {
-        const [rawPort, browserPath] = fs.readFileSync(active, 'utf8').trim().split(/\r?\n/);
+        let content;
+        try {
+          content = fs.readFileSync(active, 'utf8');
+        } catch (error) {
+          // Windows 上 Chrome 可能仍独占该文件（EBUSY）；下一轮再读。
+          if (error && ['EBUSY', 'EPERM', 'EACCES'].includes(error.code)) {
+            await sleep(50);
+            continue;
+          }
+          throw error;
+        }
+        const [rawPort, browserPath] = content.trim().split(/\r?\n/);
         const port = Number(rawPort);
         if (!Number.isInteger(port) || port <= 1023 || port > 65535 || [5000, 9223].includes(port)
             || !browserPath?.startsWith('/devtools/browser/')) throw new Error('UNSAFE_OWNED_CDP');
