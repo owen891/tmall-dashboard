@@ -171,7 +171,7 @@ const flowImpactLabel = '影响';
   }
   await page.locator('[data-products-preview-key]').first().getByRole('button', { name: /^下移/ }).click();
   const productPreviewOrder = await page.locator('[data-products-preview-key]').evaluateAll((items) => items.map((item) => item.dataset.productsPreviewKey));
-  if (JSON.stringify(productPreviewOrder.slice(0, 2)) !== JSON.stringify(['paid_ipv', 'search_conversion'])) {
+  if (JSON.stringify(productPreviewOrder.slice(0, 2)) !== JSON.stringify([previewKeys[1], previewKeys[0]])) {
     throw new Error(`product preview move did not change order: ${productPreviewOrder.join(',')}`);
   }
   let templatePutCount = 0;
