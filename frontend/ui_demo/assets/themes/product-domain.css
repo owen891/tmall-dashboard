@@ -902,6 +902,15 @@ body[data-page="products"] .product-title__meta > span {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* 分层徽标是实心底白字：.product-title span 与 .product-title__meta > span 两条规则
+   会连带覆盖 color/字号/等宽字体/截断，这里同特异性全部取回。 */
+body[data-page="products"] .product-title__meta > span.ui-tier-chip {
+  color: var(--text-on-brand);
+  flex: none;
+  font-family: inherit;
+  overflow: visible;
+  text-overflow: clip;
+}
 body[data-page="products"] .product-title__meta .star-button {
   width: 22px;
   min-width: 22px;

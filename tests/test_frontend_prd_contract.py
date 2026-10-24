@@ -820,6 +820,35 @@ class FrontendPrdContractTests(unittest.TestCase):
         self.assertIn("'product_personal_view': None", service)
         self.assertIn('个人视窗必须包含显示字段', service)
 
+    def test_view_column_limit_spans_pages_and_tier_chip_uses_token_palette(self):
+        promotion = self.read('frontend/ui_demo/assets/promotion-live.js')
+        lifecycle = self.read('frontend/ui_demo/assets/lifecycle-live.js')
+        lifecycle_page = self.read('frontend/ui_demo/pages/lifecycle.html')
+        selector = self.read('frontend/ui_demo/assets/field-selector.js')
+        # 跨页上限：promotion/lifecycle 都接 maxSelected；上限不得低于当前 TAB 最大内置模板
+        self.assertIn('COLUMN_LIMIT_FLOOR = 25', promotion)
+        self.assertIn('maxSelected: fieldColumnLimit', promotion)
+        self.assertIn('...tabDefinitions[state.dialogTab].templates.map((template) => template.fields.length)', promotion)
+        self.assertIn('maxSelected: lifecycleColumnLimit', lifecycle)
+        self.assertIn('data-lifecycle-visible-limit', lifecycle_page)
+        self.assertIn('data-lifecycle-visible-count', lifecycle_page)
+        # 共享组件支持 setConfig 更新上限（TAB 切换自适应）
+        self.assertIn('Number.isFinite(config.maxSelected)', selector)
+        # 分层徽标：值哈希稳定落位 + 六槽 token 色板 + 白字走 on-brand token
+        renderer = self.read('frontend/ui_demo/assets/pages/products/table-render.js')
+        styles = self.read('frontend/ui_demo/assets/components.css')
+        tokens = self.read('frontend/ui_demo/assets/tokens.css')
+        self.assertIn('function tierChip(item)', renderer)
+        self.assertIn('ui-tier-chip--c${hash % 6}', renderer)
+        chip_rule = styles.split('.ui-tier-chip {')[1].split('}')[0]
+        self.assertIn('color: var(--text-on-brand);', chip_rule)
+        for index in range(6):
+            self.assertIn(f'--tier-chip-{index}:', tokens)
+            self.assertIn(f'.ui-tier-chip--c{index} {{ background: var(--tier-chip-{index}); }}', styles)
+        # 数据截至徽标披露口径说明
+        overview = self.read('frontend/ui_demo/assets/overview-live.js')
+        self.assertIn('cutoffBadge.title', overview)
+
     def test_field_settings_use_one_shared_selector_component(self):
         component_path = ROOT / 'frontend/ui_demo/assets/field-selector.js'
         self.assertTrue(component_path.exists(), 'field settings must be implemented by one shared component')
