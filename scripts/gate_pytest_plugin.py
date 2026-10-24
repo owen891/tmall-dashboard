@@ -26,7 +26,8 @@ def allowed_existing_skip(nodeid, reason):
             except (OSError, ValueError):
                 return True
             required = manifest.get('private_python_modules') or []
-            return not any((root / item).is_file() for item in required)
+            # 任一私有模块缺失即视为「公开 checkout 环境」，允许该 skip。
+            return any(not (root / item).is_file() for item in required)
         if entry['condition'] == 'external_sycm_source_missing':
             return not Path(os.environ.get(
                 'TMALL_SYCM_ITEM_FLOW_COLLECTOR',
@@ -71,12 +72,14 @@ def pytest_runtest_teardown(item, nextitem):
     """
     import gc
     import sqlite3
-    for obj in gc.get_objects():
-        if isinstance(obj, sqlite3.Connection):
-            try:
-                obj.close()
-            except sqlite3.ProgrammingError:
-                pass
+    leaked = [obj for obj in gc.get_objects() if isinstance(obj, sqlite3.Connection)]
+    if not leaked:
+        return  # 没有泄漏时完全不干预 GC/文件句柄，避免影响其它测试
+    for obj in leaked:
+        try:
+            obj.close()
+        except sqlite3.ProgrammingError:
+            pass
     gc.collect()
 
 

@@ -1,6 +1,7 @@
 """Filesystem-only release transactions. Never imports app or business DB."""
 import json
 from pathlib import Path
+import pathlib
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -10,7 +11,10 @@ from utils import static_release as releases
 
 class StaticReleaseTests(unittest.TestCase):
     def setUp(self):
-        self.temp = tempfile.TemporaryDirectory()
+        # 受限环境下 TMPDIR 会回退到仓库根，Windows 上会让目录 rename 撞上
+        # 权限/占用问题；显式放到仓库的父目录。
+        self.temp = tempfile.TemporaryDirectory(
+            dir=str(pathlib.Path(__file__).resolve().parents[1].parent))
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
         self.source = self.root / 'source'

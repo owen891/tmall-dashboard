@@ -64,17 +64,16 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
-          python -W error::ResourceWarning -m unittest discover -s tests -v 2>&1 | tee /tmp/unittest.log
-          status=${PIPESTATUS[0]}
-          if [ "$status" -ne 0 ]; then
-            {
-              echo '### Unit test failures'
-              echo '```'
-              grep -E '^(FAIL|ERROR):' /tmp/unittest.log | head -30
-              echo '```'
-            } >> "$GITHUB_STEP_SUMMARY"
-          fi
-          exit "$status"
+          mkdir -p audit-logs
+          python -W error::ResourceWarning -m unittest discover -s tests -v 2>&1 | tee audit-logs/unittest.log
+          exit ${PIPESTATUS[0]}
+      - name: Upload audit log when tests fail
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: unittest-log-${{ runner.os }}
+          path: audit-logs/unittest.log
+          if-no-files-found: warn
       - name: Audit UI demos and visual system
         shell: bash
         run: node scripts/validate_ui_demos.cjs
@@ -136,17 +135,16 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
-          python -W error::ResourceWarning -m unittest discover -s tests -v 2>&1 | tee /tmp/unittest.log
-          status=${PIPESTATUS[0]}
-          if [ "$status" -ne 0 ]; then
-            {
-              echo '### Unit test failures'
-              echo '```'
-              grep -E '^(FAIL|ERROR):' /tmp/unittest.log | head -30
-              echo '```'
-            } >> "$GITHUB_STEP_SUMMARY"
-          fi
-          exit "$status"
+          mkdir -p audit-logs
+          python -W error::ResourceWarning -m unittest discover -s tests -v 2>&1 | tee audit-logs/unittest.log
+          exit ${PIPESTATUS[0]}
+      - name: Upload audit log when tests fail
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: unittest-log-${{ runner.os }}
+          path: audit-logs/unittest.log
+          if-no-files-found: warn
       - name: Audit UI demos and visual system
         shell: bash
         run: node scripts/validate_ui_demos.cjs

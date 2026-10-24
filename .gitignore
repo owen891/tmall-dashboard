@@ -211,3 +211,5 @@ pelican-*.html
 
 /scripts/export_bi_wide.py
 /tests/test_standard_reference_sync.py
+/scripts/import_snapshot_bi_daily.py
+/scripts/import_snapshot_bi_overview.py
