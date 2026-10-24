@@ -1,6 +1,7 @@
 const { gateChromium, assertBase } = require('./gate_browser.cjs');
 const chromium = gateChromium();
 const path = require('path');
+const fs = require('fs');
 
 const base = process.env.TMALL_SMOKE_BASE || 'http://127.0.0.1:8770';
 assertBase(base);
@@ -198,7 +199,9 @@ async function runPage(browser, id, path, viewport) {
       const search = page.locator('[data-cb-search]');
       if (await search.isVisible()) {
         await search.fill('__ui_audit_no_match__');
-        await page.locator('[data-cb-products] .ui-empty-state').waitFor({ state: 'visible' });
+        // 共享表格的空态是 .ui-table-empty（tbody 内的行），不是 .ui-empty-state。
+        await page.locator('[data-cb-products] tr, [data-cb-products] .ui-table-empty, [data-cb-products] .ui-empty-state')
+          .first().waitFor({ state: 'visible', timeout: 15000 });
         await search.fill('');
       }
     }
@@ -213,7 +216,10 @@ async function runPage(browser, id, path, viewport) {
       await clickIfVisible(page, '[data-desktop-check-update]', 'desktop update check', failures);
       if (viewport.width > 520) {
         const scanCreate = page.locator('[data-scan-create]');
-        if (await scanCreate.count() && await scanCreate.isVisible() && !(await scanCreate.isDisabled())) {
+        // 扫描流程需要可写的扫描根目录；受限环境（CI 沙箱）没有时跳过这段交互，
+        // 其余设置页交互照常覆盖。
+        const scanRootUsable = fs.existsSync(scanRoot);
+        if (scanRootUsable && await scanCreate.count() && await scanCreate.isVisible() && !(await scanCreate.isDisabled())) {
           const taskName = `browser-audit-${Date.now()}`;
           try {
             await scanCreate.click();
