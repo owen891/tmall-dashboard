@@ -314,6 +314,69 @@
       "condition": "private_importer_missing",
       "baseline_commit": "232db2b",
       "baseline_file_sha256": "206e6a5395b57ca63f3db58c1bd6619aa1c82350e4517f131f97a42ae4de6e68"
+    },
+    {
+      "nodeid": "tests/test_collection_pipeline_architecture.py::LauncherDatePropagationTests::test_aggregate_task_accepts_and_forwards_dates",
+      "reason": "Windows PowerShell",
+      "condition": "non_windows_or_missing_powershell",
+      "baseline_commit": "9089e50",
+      "baseline_file_sha256": "17fa3b6402ce7e25291fe3038c80079a04658f5c583336bcf0e127d91e48fab0"
+    },
+    {
+      "nodeid": "tests/test_collection_pipeline_architecture.py::LauncherDatePropagationTests::test_aggregate_task_joins_multiple_dates_into_one_argument",
+      "reason": "Windows PowerShell",
+      "condition": "non_windows_or_missing_powershell",
+      "baseline_commit": "9089e50",
+      "baseline_file_sha256": "17fa3b6402ce7e25291fe3038c80079a04658f5c583336bcf0e127d91e48fab0"
+    },
+    {
+      "nodeid": "tests/test_collection_pipeline_architecture.py::LauncherDatePropagationTests::test_catchup_passes_target_date_to_collector",
+      "reason": "Windows PowerShell",
+      "condition": "non_windows_or_missing_powershell",
+      "baseline_commit": "9089e50",
+      "baseline_file_sha256": "17fa3b6402ce7e25291fe3038c80079a04658f5c583336bcf0e127d91e48fab0"
+    },
+    {
+      "nodeid": "tests/test_collection_pipeline_architecture.py::LauncherDatePropagationTests::test_catchup_propagates_aggregate_failure",
+      "reason": "Windows PowerShell",
+      "condition": "non_windows_or_missing_powershell",
+      "baseline_commit": "9089e50",
+      "baseline_file_sha256": "17fa3b6402ce7e25291fe3038c80079a04658f5c583336bcf0e127d91e48fab0"
+    },
+    {
+      "nodeid": "tests/test_collection_pipeline_architecture.py::LauncherDatePropagationTests::test_catchup_verifies_the_target_partition_afterwards",
+      "reason": "Windows PowerShell",
+      "condition": "non_windows_or_missing_powershell",
+      "baseline_commit": "9089e50",
+      "baseline_file_sha256": "17fa3b6402ce7e25291fe3038c80079a04658f5c583336bcf0e127d91e48fab0"
+    },
+    {
+      "nodeid": "tests/test_collection_pipeline_architecture.py::LauncherDatePropagationTests::test_collect_result_contract_is_used_by_both_primary_chains",
+      "reason": "Windows PowerShell",
+      "condition": "non_windows_or_missing_powershell",
+      "baseline_commit": "9089e50",
+      "baseline_file_sha256": "17fa3b6402ce7e25291fe3038c80079a04658f5c583336bcf0e127d91e48fab0"
+    },
+    {
+      "nodeid": "tests/test_collection_pipeline_architecture.py::LauncherDatePropagationTests::test_daily_all_passes_target_date_and_reads_structured_result",
+      "reason": "Windows PowerShell",
+      "condition": "non_windows_or_missing_powershell",
+      "baseline_commit": "9089e50",
+      "baseline_file_sha256": "17fa3b6402ce7e25291fe3038c80079a04658f5c583336bcf0e127d91e48fab0"
+    },
+    {
+      "nodeid": "tests/test_collection_pipeline_architecture.py::LauncherDatePropagationTests::test_run_daily_collect_dispatches_month_argument_as_year_month",
+      "reason": "Windows PowerShell",
+      "condition": "non_windows_or_missing_powershell",
+      "baseline_commit": "9089e50",
+      "baseline_file_sha256": "17fa3b6402ce7e25291fe3038c80079a04658f5c583336bcf0e127d91e48fab0"
+    },
+    {
+      "nodeid": "tests/test_collection_pipeline_architecture.py::PowerShellEncodingTests::test_every_non_ascii_script_has_a_bom",
+      "reason": "PowerShell encoding is a Windows-only failure mode",
+      "condition": "non_windows_or_missing_powershell",
+      "baseline_commit": "9089e50",
+      "baseline_file_sha256": "17fa3b6402ce7e25291fe3038c80079a04658f5c583336bcf0e127d91e48fab0"
     }
   ]
 }
