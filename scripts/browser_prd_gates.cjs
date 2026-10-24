@@ -5,6 +5,10 @@ const base = process.env.TMALL_SMOKE_BASE || 'http://127.0.0.1:8770';
 assertBase(base);
 // 与 frontend/ui_demo/assets/pages/products/column-settings.js 保持一致
 const VIEW_COLUMN_LIMIT = 25;
+
+// CI 慢机上交互/渲染明显更慢；这些断言验证的是「有没有」，不是「多快」。
+const ACTION_TIMEOUT = Number(process.env.TMALL_GATE_ACTION_TIMEOUT || 20000);
+
 const states = ['no-data', 'insufficient-data', 'missing-fields', 'calculation-failed', 'source-unavailable', 'partial'];
 const capabilityContract = ['can_drilldown', 'can_edit_stage'];
 const flowModalSelector = '[data-modal-kind="flow"]';
@@ -118,6 +122,7 @@ const flowImpactLabel = '影响';
   let originalSettings = null;
   try {
   const page = await browser.newPage({ viewport: { width: 1366, height: 768 } });
+  page.setDefaultTimeout(ACTION_TIMEOUT);
   const productId = await findProductId(page);
   if (process.env.TMALL_CAPABILITY_ONLY === '1') {
     console.log(JSON.stringify({ ok: true, data: await gateDataCapabilities(page), pages: await gatePageCapabilities(page) }, null, 2));
@@ -322,6 +327,7 @@ const flowImpactLabel = '影响';
   if ((await dateSnapshot(page)).changes !== applyDraft.before.changes + 1) throw new Error('apply did not emit exactly one date-range change');
 
   const mobilePage = await browser.newPage({ viewport: { width: 390, height: 844 } });
+  mobilePage.setDefaultTimeout(ACTION_TIMEOUT);
   await mobilePage.goto(`${base}/products`, { waitUntil: 'domcontentloaded', timeout: 10000 });
   await mobilePage.waitForSelector('[data-products-mobile-summary] article', { state: 'visible', timeout: 5000 });
   await installDateCounter(mobilePage);
@@ -481,6 +487,7 @@ const flowImpactLabel = '影响';
   if (!await page.locator(flowModalSelector).count() || flowImpact.kind !== 'flow' || !flowImpact.hasImpact) throw new Error(`flow modal impact scope missing: ${JSON.stringify(flowImpact)}`);
   await page.locator('[data-close-toolbox]').click();
   const mobilePromotionPage = await browser.newPage({ viewport: { width: 390, height: 844 } });
+  mobilePromotionPage.setDefaultTimeout(ACTION_TIMEOUT);
   await mobilePromotionPage.goto(`${base}/promotion`, { waitUntil: 'domcontentloaded', timeout: 10000 });
   await mobilePromotionPage.locator('[data-promotion-manage-fields]').waitFor({ timeout: 5000 });
   await mobilePromotionPage.locator('[data-promotion-manage-fields]').click();
@@ -584,6 +591,7 @@ const flowImpactLabel = '影响';
   } finally {
     if (originalSettings) {
       const restorePage = await browser.newPage();
+      restorePage.setDefaultTimeout(ACTION_TIMEOUT);
       await restorePage.goto(`${base}/settings`, { waitUntil: 'domcontentloaded', timeout: 10000 });
       const writableSettings = restoreWritableSettings(originalSettings);
       await restorePage.evaluate((settings) => DemoApi.domainRequest('/api/settings', {
