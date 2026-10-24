@@ -3,6 +3,12 @@ from contextlib import closing
 import sqlite3
 
 SHOP_ID = 'legacy-shop'
+
+# 品类标签必须与运行时解析的 category_mode=sock 标签一致，否则 gate 服务上
+# 所有带 category_mode 的请求都会 422（sock 模式解析不到任何商品）。
+def category_label():
+    import os
+    return os.environ.get('TMALL_CATEGORY_LABEL', '默认品类')
 PRODUCT_ID = 'gate-product-001'
 
 
@@ -17,14 +23,14 @@ def seed_database(database, shop_id=None):
             connection.execute(
                 'INSERT OR REPLACE INTO products '
                 '(product_id, title, tier, style, status, shop_label) VALUES (?, ?, ?, ?, ?, ?)',
-                (PRODUCT_ID, '隔离测试商品', '测试层级', '测试款式', 'active', '默认品类'),
+                (PRODUCT_ID, '隔离测试商品', '测试层级', '测试款式', 'active', category_label()),
             )
             # Batch copy needs two distinct catalogue rows; the second product
             # intentionally has no fabricated sales or lifecycle evidence.
             connection.execute(
                 'INSERT OR REPLACE INTO products '
                 '(product_id, title, tier, style, status, shop_label) VALUES (?, ?, ?, ?, ?, ?)',
-                ('gate-product-002', '隔离无销量商品', '测试层级', '测试款式', 'active', '默认品类'),
+                ('gate-product-002', '隔离无销量商品', '测试层级', '测试款式', 'active', category_label()),
             )
             for day in range(10, 18):
                 connection.execute(
