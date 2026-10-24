@@ -17,6 +17,16 @@ def allowed_existing_skip(nodeid, reason):
             continue
         if entry['condition'] == 'non_windows_or_missing_powershell':
             return sys.platform != 'win32' or shutil.which('powershell.exe') is None
+        if entry['condition'] == 'private_importer_missing':
+            # 私有部署脚本不随公开仓库分发：清单由部署私有的
+            # data/private_edition.json 提供，公开 checkout 无清单即视为缺失。
+            root = Path(__file__).resolve().parents[1]
+            try:
+                manifest = json.loads((root / 'data' / 'private_edition.json').read_text(encoding='utf-8'))
+            except (OSError, ValueError):
+                return True
+            required = manifest.get('private_python_modules') or []
+            return not any((root / item).is_file() for item in required)
         if entry['condition'] == 'external_sycm_source_missing':
             return not Path(os.environ.get(
                 'TMALL_SYCM_ITEM_FLOW_COLLECTOR',

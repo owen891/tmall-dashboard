@@ -307,6 +307,13 @@
       "condition": "external_sycm_source_missing",
       "baseline_commit": "ef28bb6d04257cedb76273e4aecb9cfdd2e5c4c6",
       "baseline_file_sha256": "4a71f47967cd3e73c2e830d4aae53ea6549298e74616b7993006d6bb18722b25"
+    },
+    {
+      "nodeid": "tests/test_import_backup_retention_contract.py::ImportBackupRetentionContract::test_daily_monthly_main_backup_failure_does_not_start_import",
+      "reason": "商品总览 importers are private-deployment scripts",
+      "condition": "private_importer_missing",
+      "baseline_commit": "232db2b",
+      "baseline_file_sha256": "206e6a5395b57ca63f3db58c1bd6619aa1c82350e4517f131f97a42ae4de6e68"
     }
   ]
 }
