@@ -6,7 +6,7 @@
   <title>商品详情</title>
   <link rel="stylesheet" href="../assets/tokens.css?v=20261003a">
   <link rel="stylesheet" href="../assets/shell.css?v=20261001j">
-  <link rel="stylesheet" href="../assets/components.css?v=20261001j"><link rel="stylesheet" href="../assets/themes/product-domain.css?v=20261001j"><link rel="stylesheet" href="../assets/themes/promotion-domain.css?v=20261001j"><link rel="stylesheet" href="../assets/themes/overview-domain.css?v=20261001j"><link rel="stylesheet" href="../assets/themes/lifecycle-domain.css?v=20261001j"><link rel="stylesheet" href="../assets/themes/settings-domain.css?v=20261001j">
+  <link rel="stylesheet" href="../assets/components.css?v=20261024-profit"><link rel="stylesheet" href="../assets/themes/product-domain.css?v=20261024-profit"><link rel="stylesheet" href="../assets/themes/promotion-domain.css?v=20261001j"><link rel="stylesheet" href="../assets/themes/overview-domain.css?v=20261001j"><link rel="stylesheet" href="../assets/themes/lifecycle-domain.css?v=20261001j"><link rel="stylesheet" href="../assets/themes/settings-domain.css?v=20261001j">
   <script src="../assets/lucide-custom.min.js?v=20261001j"></script>
   <link rel="stylesheet" href="../assets/themes/macos-content.css?v=20261018-regular-titles">
 </head>
@@ -39,11 +39,12 @@
         </header>
 
         <section class="ui-metric-grid product-workbench__kpis" aria-label="商品核心指标">
-          <article class="ui-metric-card ui-metric-card--drillable" data-drill-metric="net_sales"><div class="metric-card__label">净销售额</div><div class="metric-card__value" data-product-detail-kpi="net_sales">--</div><div class="metric-card__hint">当前日期范围</div></article>
-          <article class="ui-metric-card ui-metric-card--drillable" data-drill-metric="payment_amount"><div class="metric-card__label">支付金额</div><div class="metric-card__value" data-product-detail-kpi="payment_amount">--</div><div class="metric-card__hint">成交规模</div></article>
-          <article class="ui-metric-card ui-metric-card--drillable" data-drill-metric="payment_conversion_rate"><div class="metric-card__label">支付转化率</div><div class="metric-card__value" data-product-detail-kpi="payment_conversion_rate">--</div><div class="metric-card__hint">访客到支付</div></article>
-          <article class="ui-metric-card ui-metric-card--drillable" data-drill-metric="expense_ratio"><div class="metric-card__label">费比</div><div class="metric-card__value" data-product-detail-kpi="expense_ratio">--</div><div class="metric-card__hint">推广花费 / 支付</div></article>
-          <article class="ui-metric-card ui-metric-card--drillable" data-drill-metric="average_order_value"><div class="metric-card__label">客单价</div><div class="metric-card__value" data-product-detail-kpi="average_order_value">--</div><div class="metric-card__hint">支付金额 / 买家</div></article>
+          <article class="ui-metric-card ui-metric-card--drillable" data-drill-metric="net_sales"><div class="metric-card__label">净销售额(支付)</div><div class="metric-card__value" data-product-detail-kpi="net_sales">--</div><div class="metric-card__hint" data-product-detail-target-rate>当前日期范围</div></article>
+          <article class="ui-metric-card ui-metric-card--drillable" data-drill-metric="payment_amount"><div class="metric-card__label">支付金额(支付)</div><div class="metric-card__value" data-product-detail-kpi="payment_amount">--</div><div class="metric-card__hint">成交规模</div></article>
+          <article class="ui-metric-card ui-metric-card--drillable" data-drill-metric="operating_profit"><div class="metric-card__label">利润(支付预估)</div><div class="metric-card__value" data-product-detail-kpi="operating_profit">--</div><div class="metric-card__hint" data-product-detail-profit-rate>支付口径利润链</div></article>
+          <article class="ui-metric-card ui-metric-card--drillable" data-drill-metric="payment_conversion_rate"><div class="metric-card__label">支付转化率(按人数)</div><div class="metric-card__value" data-product-detail-kpi="payment_conversion_rate">--</div><div class="metric-card__hint">支付人数 / 访客数</div></article>
+          <article class="ui-metric-card ui-metric-card--drillable" data-drill-metric="expense_ratio"><div class="metric-card__label">推广费比(按净销售额)</div><div class="metric-card__value" data-product-detail-kpi="expense_ratio">--</div><div class="metric-card__hint">推广花费(账单) / 净销售额</div></article>
+          <article class="ui-metric-card ui-metric-card--drillable" data-drill-metric="average_order_value"><div class="metric-card__label">客单价(按支付)</div><div class="metric-card__value" data-product-detail-kpi="average_order_value">--</div><div class="metric-card__hint">支付金额 / 支付人数</div></article>
         </section>
 
         <section class="ui-panel product-workbench__problem-context" data-product-problem-context hidden aria-labelledby="product-problem-context-title">
@@ -317,6 +318,6 @@
   <script src="../assets/navigation.js?v=20261011a"></script>
   <script src="../assets/labels.js?v=20261001j"></script>
   <script src="../assets/shell.js?v=20261011a"></script>
-  <script src="../assets/format.js?v=20261011a"></script><script src="../assets/ui-components.js?v=20261003a"></script><script src="../assets/product-detail-live.js?v=20261011a"></script>
+  <script src="../assets/format.js?v=20261011a"></script><script src="../assets/ui-components.js?v=20261003a"></script><script src="../assets/product-detail-live.js?v=20261024-profit"></script>
 </body>
 </html>

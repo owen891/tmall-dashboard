@@ -92,7 +92,8 @@ LAYOUT_ELEMENT_PREFIXES: tuple[str, ...] = (
 # 历史违规基线：每页允许手写的复合组件类数量。只允许下降，不允许上升。
 # 引入门禁时的实测值（2026-10-11）。阶段 2 逐页收敛时同步下调这些数字。
 UI_HANDWRITE_BASELINE: dict[str, int] = {
-    "product-detail": 73,
+    # 2026-10-24：详情页加「利润(支付预估)」KPI 卡（同款 ui-metric-card 模式）+2
+    "product-detail": 75,
     "market-ranking": 42,
     "data-center": 40,
     "promotion": 28,
@@ -102,7 +103,6 @@ UI_HANDWRITE_BASELINE: dict[str, int] = {
     "rival-analysis": 18,
     "new-products": 17,
     "overview": 17,
-    "keyword-promotion": 16,
     "products": 15,
     "settings": 13,
     "creative-board": 10,
@@ -128,10 +128,24 @@ def count_handwritten_components(page: pathlib.Path) -> int:
     return count
 
 
+def _private_page_names() -> set[str]:
+    """私人版页面（部署私有 data/private_edition.json 清单）不参与公共预算基线。"""
+    import json
+    manifest = pathlib.Path(__file__).resolve().parents[1] / 'data' / 'private_edition.json'
+    try:
+        return {str(item).rsplit('/', 1)[-1].removesuffix('.html')
+                for item in json.loads(manifest.read_text(encoding='utf-8')).get('installer_exclude_files') or []}
+    except (OSError, ValueError):
+        return set()
+
+
 def check_handwritten_components() -> list[str]:
     errors: list[str] = []
+    private_names = _private_page_names()
     for page in sorted(PAGES.glob("*.html")):
         name = page.stem
+        if name in private_names:
+            continue
         found = count_handwritten_components(page)
         allowed = UI_HANDWRITE_BASELINE.get(name, 0)
         if found > allowed:

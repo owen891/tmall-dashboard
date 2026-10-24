@@ -1,4 +1,4 @@
-/* 商品域样式（.product-* 组件，products/promotion/keyword-promotion/market-ranking/product-detail 跨页共享）
+/* 商品域样式（.product-* 组件，products/promotion/market-ranking/product-detail 跨页共享）
  * 从 components.css 以 postcss AST 切分迁出（功能前缀归属，非页面归属）。
  * 全局加载：混合 @media 已按域拆壳，规则级等价校验 1805/1805 零丢失。 */
 
@@ -19,11 +19,9 @@
 .product-section__heading h3 { margin: 0; font-size: var(--font-size-section); }
 .product-section__heading p { margin: 2px 0 0; color: var(--text-secondary); font-size: var(--font-size-meta); }
 .product-table { min-width: 1080px; }
-/* 5-3：keyword-promotion 复用 .product-table 但没有列宽规则，纯内容定宽 →
+/* 5-3：部分消费页复用 .product-table 但没有列宽规则，纯内容定宽 →
    全局 td{white-space:nowrap} 把「商品标题」顶到 456px，整表 1428px（容器 1082）。
    这一页是纯文本型列表，放行换行即可回到容器内。 */
-body[data-page="keyword-promotion"] .product-table td { white-space: normal; }
-body[data-page="keyword-promotion"] .product-table th { white-space: normal; }
 /* 5-3：新品投放明细「商品 / 上架日」是标题+日期的两行堆叠，被 nowrap 顶到 324px，
    整表 1163px（容器 1082）。同样放行换行。 */
 body[data-page="new-products"] .ui-data-table:has(tbody[data-promotion-new-body]) td { white-space: normal; }
@@ -467,6 +465,10 @@ body[data-page="products"] .product-list__header .product-field-controls { grid-
 .product-row-actions__item:hover:not(:disabled) { background: var(--surface-muted); color: var(--brand-text); }
 .product-row-actions__item:disabled { color: var(--text-tertiary); cursor: not-allowed; opacity: 0.6; }
 .product-row-actions__item .lucide { width: 14px; height: 14px; flex: 0 0 14px; }
+/* 详情页 metrics 网格的利润色块与缺失提示（2026-10-24 详情页参考 BI 重构） */
+.product-detail-metric__value .profit-block { min-width: 72px; line-height: 24px; font-size: 14px; }
+.product-detail-metric__source--hint { color: var(--text-tertiary); cursor: help; }
+.product-workbench__kpis .metric-card__value .profit-block { min-width: 96px; }
 /* 商品目标对话框（product_targets）：月度目标销售额/费比 + 达成率回显。 */
 .product-target-form { display: grid; gap: var(--space-3); min-width: 280px; }
 .product-target-form__field { display: grid; gap: var(--space-1); font-size: var(--font-size-secondary); color: var(--text-secondary); }

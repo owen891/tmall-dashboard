@@ -267,8 +267,20 @@ DETAIL_FIELD_DEFINITIONS = (
     ('repurchase_rate', '复购率', 'ratio', 'avg'),
     ('presale_amount', '预售支付金额', 'currency', 'sum'),
     ('presale_qty', '预售件数', 'number', 'sum'),
-    ('ad_spend', '推广花费', 'currency', 'sum'),
+    ('ad_spend', '推广花费(账单)', 'currency', 'sum'),
     ('ad_roi', '推广 ROI', 'ratio', 'weighted_ad_roi'),
+    # 2026-10-24 商品详情参考 BI 重构：利润链与成本结构进详情契约。
+    # 数据源 daily_data 直列（实测 2026-10-24：operating_profit 近30天 nz=25,806、
+    # platform_fee nz=16,246、sales/custom/logistics/after_sales/other_cost 均有源）。
+    ('operating_profit', '利润(支付预估)', 'currency', 'sum'),
+    ('profit_rate', '利润率(支付预估)', 'ratio', 'derived_profit_rate'),
+    ('product_cost', '货品成本(支付)', 'currency', 'sum'),
+    ('platform_fee', '平台花费(支付)', 'currency', 'sum'),
+    ('sales_cost', '销售成本', 'currency', 'sum'),
+    ('custom_cost', '定制成本', 'currency', 'sum'),
+    ('logistics_cost', '物流成本', 'currency', 'sum'),
+    ('after_sales_loss', '售后损耗', 'currency', 'sum'),
+    ('other_cost', '其他成本', 'currency', 'sum'),
     ('search_click_rate', '搜索点击率', 'ratio', 'avg'),
     ('cross_sell_qty', '关联销售件数', 'number', 'sum'),
     ('cross_sell_rate', '关联销售率', 'ratio', 'avg'),
@@ -302,6 +314,8 @@ def _aggregate_detail_rows(rows):
             spend = summary.get('ad_spend')
             payment = summary.get('payment_amount')
             summary[key] = (payment / spend) if spend not in (None, 0) and payment is not None else None
+        elif aggregation == 'derived_profit_rate':
+            pass  # 利润率在汇总派生区统一计算（先聚合再相除）
     payment = summary.get('payment_amount')
     refund = summary.get('refund_amount')
     visitors = summary.get('product_visitors')
@@ -311,6 +325,23 @@ def _aggregate_detail_rows(rows):
     summary['payment_conversion_rate'] = buyers / visitors if visitors not in (None, 0) and buyers is not None else None
     summary['average_order_value'] = payment / buyers if buyers not in (None, 0) and payment is not None else None
     summary['expense_ratio'] = summary['ad_spend'] / summary['net_sales'] if summary.get('net_sales') not in (None, 0) and summary.get('ad_spend') is not None else None
+    summary['profit_rate'] = (
+        summary.get('operating_profit') / summary['net_sales']
+        if summary.get('net_sales') not in (None, 0) and summary.get('operating_profit') is not None else None
+    )
+    # 成本结构（利润瀑布原料）：支付金额 → 各成本项 → 利润。缺项保持 None，不补 0。
+    summary['cost_structure'] = {
+        'payment_amount': summary.get('payment_amount'),
+        'product_cost': summary.get('product_cost'),
+        'sales_cost': summary.get('sales_cost'),
+        'custom_cost': summary.get('custom_cost'),
+        'logistics_cost': summary.get('logistics_cost'),
+        'platform_fee': summary.get('platform_fee'),
+        'after_sales_loss': summary.get('after_sales_loss'),
+        'other_cost': summary.get('other_cost'),
+        'ad_spend': summary.get('ad_spend'),
+        'operating_profit': summary.get('operating_profit'),
+    }
     summary['search_ratio'] = summary['search_visitors'] / visitors if visitors not in (None, 0) and summary.get('search_visitors') is not None else None
     summary['data_cutoff_date'] = records[-1].get('date') if records else None
     return summary

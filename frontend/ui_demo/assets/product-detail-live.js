@@ -540,6 +540,76 @@
     if (metric.unit === 'number') return Number(metric.value).toLocaleString('zh-CN', { maximumFractionDigits: 0 });
     return String(metric.value);
   }
+  // 利润色块（与商品列表 .profit-block 同语义：红=盈利、绿=亏损、灰=空）
+  function profitBlockNode(value) {
+    const block = document.createElement('span');
+    block.className = 'profit-block';
+    const num = Number(value);
+    if (value === null || value === undefined || value === '' || !Number.isFinite(num)) {
+      block.classList.add('profit-block--empty');
+      block.textContent = '--';
+      return block;
+    }
+    if (num > 0) block.classList.add('profit-block--positive');
+    else if (num < 0) block.classList.add('profit-block--negative');
+    else block.classList.add('profit-block--zero');
+    block.textContent = `${num > 0 ? '+' : ''}${Math.round(num).toLocaleString('zh-CN')}`;
+    return block;
+  }
+
+  // 目标达成率：净销售额卡底部显示「目标达成 xx%」（product_targets，当月口径）
+  async function loadTargetAchievement(summary) {
+    const hint = document.querySelector('[data-product-detail-target-rate]');
+    if (!hint || !id) return;
+    const period = (summary?.data_cutoff_date || '').slice(0, 7) || new Date().toISOString().slice(0, 7);
+    try {
+      const payload = await DemoApi.domainRequest(`/api/products/${encodeURIComponent(id)}/targets`);
+      const current = (payload.data || []).find((row) => row.period === period);
+      if (current && current.achievement_rate != null) {
+        hint.textContent = `月目标达成 ${percent(current.achievement_rate)}（${period}）`;
+      } else if (current) {
+        hint.textContent = `${period} 月已设目标，暂无经实数据`;
+      } else {
+        hint.textContent = `${period} 月未设目标 · 列表页可设置`;
+      }
+    } catch (_) { /* 目标服务不可用时保留原提示 */ }
+  }
+
+  // 成本结构（利润瀑布原料）：文字版一行，缺项跳过
+  function renderCostStructure(structure) {
+    const target = document.querySelector('[data-product-detail-info]');
+    if (!target || !structure) return;
+    const items = [
+      ['货品成本', structure.product_cost], ['销售成本', structure.sales_cost],
+      ['定制成本', structure.custom_cost], ['物流成本', structure.logistics_cost],
+      ['平台花费', structure.platform_fee], ['售后损耗', structure.after_sales_loss],
+      ['其他成本', structure.other_cost], ['推广花费(账单)', structure.ad_spend],
+    ].filter(([, value]) => value != null && Number(value) !== 0);
+    if (!items.length) return;
+    const parts = items.map(([label, value]) => `${label} ${money(value)}`).join(' · ');
+    const line = row('成本结构(支付)', `${parts} ⇒ 利润 ${money(structure.operating_profit)}`);
+    target.appendChild(line);
+  }
+
+  // 真缺失字段的「数据获取路径」提示（对齐 BI：缺数据的地方给入口，不静默 --）。
+  // 依据 2026-10-24 全列 nz 审计：这些列全表无非零值，属「未采集」而非「被屏蔽」。
+  const FIELD_SOURCE_HINTS = {
+    paid_ipv: '未采集 · 源在达摩盘单品洞察（与生意参谋访客口径不一致，未混排）',
+    organic_ipv: '未采集 · 源在达摩盘单品洞察',
+    recommend_ipv: '未采集 · 源在达摩盘单品洞察',
+    repurchase_users: '未采集 · 需 BI 商品总览复购列',
+    repurchase_rate: '未采集 · 需 BI 商品总览复购列',
+    presale_amount: '未采集 · 需 BI 预售报表',
+    presale_qty: '未采集 · 需 BI 预售报表',
+    cross_sell_qty: '未采集 · 需关联销售报表',
+    cross_sell_rate: '未采集 · 需关联销售报表',
+    cross_sell_categories: '未采集 · 需关联销售报表',
+    order_amount: '未采集 · 需订单明细报表',
+    order_conversion: '未采集 · 需订单明细报表',
+    returning_payment_amount: '未采集 · 需订单明细报表',
+    search_click_rate: '未采集 · 源在达摩盘搜索点击',
+  };
+
   function renderDetailMetrics(metrics) {
     const target = $('[data-product-detail-detail-metrics]');
     if (!target) return;
@@ -547,8 +617,16 @@
       const card = document.createElement('article');
       card.className = `product-detail-metric${metric.value == null ? ' is-missing' : ''}`;
       const label = document.createElement('span'); label.className = 'product-detail-metric__label'; label.textContent = metric.label || metric.key;
-      const value = document.createElement('strong'); value.className = 'product-detail-metric__value'; value.textContent = formatDetailMetric(metric);
-      const source = document.createElement('small'); source.className = 'product-detail-metric__source'; source.textContent = metric.value == null ? '字段缺失' : '当前日期范围';
+      const value = document.createElement('strong'); value.className = 'product-detail-metric__value';
+      if (metric.key === 'operating_profit' && metric.value != null) value.appendChild(profitBlockNode(metric.value));
+      else value.textContent = formatDetailMetric(metric);
+      const source = document.createElement('small'); source.className = 'product-detail-metric__source';
+      if (metric.value != null) source.textContent = '当前日期范围';
+      else {
+        const hint = FIELD_SOURCE_HINTS[metric.key];
+        source.textContent = hint || '字段缺失';
+        if (hint) { source.classList.add('product-detail-metric__source--hint'); card.title = hint; }
+      }
       card.append(label, value, source); return card;
     }));
   }
@@ -799,6 +877,15 @@
       $('[data-product-detail-info]').replaceChildren(row('分层 / 风格', `${DemoLabels.classification('tiers', data.product.tier, '--')} / ${DemoLabels.classification('styles', data.product.style, '--')}`), row('类目 / 场景', `${DemoLabels.clean(data.product.category, '--')} / ${DemoLabels.clean(data.product.scene, '--')}`), row('上架日期', DemoLabels.clean(data.product.list_date, '--')), row('商品负责人', DemoLabels.clean(data.product.manager, '--')), row('商品状态', DemoLabels.label('status', data.product.status, '--')), row('数据来源', data.summary.data_source || '--'), row('最后导入', data.summary.imported_at || '--'), row('数据截止', data.summary.data_cutoff_date || '--'));
       renderDetailMetrics(data.detail_metrics);
       [['payment_amount', money], ['net_sales', money], ['payment_conversion_rate', percent], ['expense_ratio', percent], ['average_order_value', money]].forEach(([key, format]) => { setText(`[data-product-detail-kpi="${key}"]`, format(data.summary[key])); });
+      // 利润卡：色块语义（红盈绿亏）与商品列表一致；利润率写进卡底说明
+      const profitNode = document.querySelector('[data-product-detail-kpi="operating_profit"]');
+      if (profitNode) {
+        profitNode.replaceChildren();
+        profitNode.appendChild(profitBlockNode(data.summary.operating_profit));
+      }
+      setText('[data-product-detail-profit-rate]', data.summary.profit_rate != null ? `利润率 ${percent(data.summary.profit_rate)}` : '支付口径利润链');
+      loadTargetAchievement(data.summary);
+      renderCostStructure(data.summary.cost_structure);
       setText('[data-product-detail-stage]', data.lifecycle?.stage_label || data.lifecycle?.stage || '--');
       setText('[data-product-detail-days]', data.lifecycle?.continuous_valid_days ?? '--');
       setText('[data-product-detail-confidence]', `置信度：${DemoLabels.label('confidence', data.lifecycle?.confidence)} · ${data.lifecycle?.locked ? '人工' : '系统'}`);
@@ -813,9 +900,10 @@
       const trendRows = Array.isArray(data.daily_trend) ? data.daily_trend : [];
       const trend = $('[data-product-detail-trend]');
       replaceTableBody(trend, [
-        { key: 'date', label: '日期' }, { key: 'payment_amount', label: '支付金额', numeric: true }, { key: 'net_sales', label: '净销售额', numeric: true },
-        { key: 'product_visitors', label: '商品访客', numeric: true }, { key: 'ad_spend', label: '推广花费', numeric: true },
-      ], trendRows.map((item) => ({ date: item.date, payment_amount: money(item.payment_amount), net_sales: money(item.net_sales), product_visitors: item.product_visitors ?? '--', ad_spend: money(item.ad_spend) })), '暂无日度数据');
+        { key: 'date', label: '日期' }, { key: 'payment_amount', label: '支付金额(支付)', numeric: true }, { key: 'net_sales', label: '净销售额(支付)', numeric: true },
+        { key: 'operating_profit', label: '利润(支付预估)', numeric: true },
+        { key: 'product_visitors', label: '商品访客', numeric: true }, { key: 'ad_spend', label: '推广花费(账单)', numeric: true },
+      ], trendRows.map((item) => ({ date: item.date, payment_amount: money(item.payment_amount), net_sales: money(item.net_sales), operating_profit: item.operating_profit != null ? `${item.operating_profit > 0 ? '+' : ''}${Math.round(item.operating_profit).toLocaleString('zh-CN')}` : '--', product_visitors: item.product_visitors ?? '--', ad_spend: money(item.ad_spend) })), '暂无日度数据');
       const actions = $('[data-product-detail-actions]'); const actionRows = Array.isArray(data.actions) ? data.actions : []; actions.replaceChildren(...actionRows.map(actionCard)); if (!actionRows.length) actions.textContent = '暂无运营动作'; renderHistory(data.lifecycle_history); renderComparison(data.period_comparison, data.contribution_analysis); renderEvidence(data.evidence_summary);
       const exportLink = $('[data-product-detail-export]'); if (exportLink) { const exportQuery = new URLSearchParams({ capability_key: 'product-detail.export' }); if (selectedRange.startDate) exportQuery.set('start', selectedRange.startDate); if (selectedRange.endDate) exportQuery.set('end', selectedRange.endDate); ['rule_key', 'category_mode', 'period'].forEach((key) => { if (sourceParams.get(key)) exportQuery.set(key, sourceParams.get(key)); }); exportLink.href = `/api/products/${encodeURIComponent(id)}/detail/export?${exportQuery}`; }
       loadItemFlowSource(id, selectedRange);
