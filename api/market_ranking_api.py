@@ -12,14 +12,16 @@ market_ranking_bp = Blueprint('market_ranking', __name__, url_prefix='/api/marke
 def get_latest_run_id(analysis_date=None):
     """获取最新分析批次ID"""
     conn = get_connection()
-    c = conn.cursor()
-    if analysis_date:
-        c.execute('''SELECT id FROM market_analysis_runs
-                     WHERE analysis_date <= ? ORDER BY analysis_date DESC LIMIT 1''', (analysis_date,))
-    else:
-        c.execute('SELECT id FROM market_analysis_runs ORDER BY analysis_date DESC LIMIT 1')
-    row = c.fetchone()
-    conn.close()
+    try:
+        c = conn.cursor()
+        if analysis_date:
+            c.execute('''SELECT id FROM market_analysis_runs
+                         WHERE analysis_date <= ? ORDER BY analysis_date DESC LIMIT 1''', (analysis_date,))
+        else:
+            c.execute('SELECT id FROM market_analysis_runs ORDER BY analysis_date DESC LIMIT 1')
+        row = c.fetchone()
+    finally:
+        conn.close()
     return row[0] if row else None
 
 
@@ -31,46 +33,48 @@ def summary():
         return failure('NO_DATA', '暂无市场分析数据')
 
     conn = get_connection()
-    c = conn.cursor()
+    try:
+        c = conn.cursor()
 
-    # 类目统计
-    c.execute('''SELECT category, shop_tmall, shop_taobao, trend_flat, trend_up,
-                 trend_down, trend_out, trend_new, concentration_top10,
-                 concentration_top50, total_buyers
-                 FROM market_category_stats WHERE run_id=?''', (run_id,))
-    categories = []
-    for row in c.fetchall():
-        categories.append({
-            'category': row[0],
-            'shop_tmall': row[1],
-            'shop_taobao': row[2],
-            'trend_flat': row[3],
-            'trend_up': row[4],
-            'trend_down': row[5],
-            'trend_out': row[6],
-            'trend_new': row[7],
-            'concentration_top10': row[8],
-            'concentration_top50': row[9],
-            'total_buyers': row[10],
-        })
+        # 类目统计
+        c.execute('''SELECT category, shop_tmall, shop_taobao, trend_flat, trend_up,
+                     trend_down, trend_out, trend_new, concentration_top10,
+                     concentration_top50, total_buyers
+                     FROM market_category_stats WHERE run_id=?''', (run_id,))
+        categories = []
+        for row in c.fetchall():
+            categories.append({
+                'category': row[0],
+                'shop_tmall': row[1],
+                'shop_taobao': row[2],
+                'trend_flat': row[3],
+                'trend_up': row[4],
+                'trend_down': row[5],
+                'trend_out': row[6],
+                'trend_new': row[7],
+                'concentration_top10': row[8],
+                'concentration_top50': row[9],
+                'total_buyers': row[10],
+            })
 
-    # 商品总数
-    c.execute('SELECT COUNT(DISTINCT category), COUNT(*) FROM market_products WHERE run_id=?', (run_id,))
-    cat_count, product_count = c.fetchone()
+        # 商品总数
+        c.execute('SELECT COUNT(DISTINCT category), COUNT(*) FROM market_products WHERE run_id=?', (run_id,))
+        cat_count, product_count = c.fetchone()
 
-    # 关键词总数
-    c.execute('SELECT COUNT(*) FROM market_keywords WHERE run_id=?', (run_id,))
-    keyword_count = c.fetchone()[0]
+        # 关键词总数
+        c.execute('SELECT COUNT(*) FROM market_keywords WHERE run_id=?', (run_id,))
+        keyword_count = c.fetchone()[0]
 
-    # 重叠店铺
-    c.execute('SELECT COUNT(*) FROM market_overlap_shops WHERE run_id=?', (run_id,))
-    overlap_count = c.fetchone()[0]
+        # 重叠店铺
+        c.execute('SELECT COUNT(*) FROM market_overlap_shops WHERE run_id=?', (run_id,))
+        overlap_count = c.fetchone()[0]
 
-    # 批次信息
-    c.execute('SELECT analysis_date, period_start, period_end, source FROM market_analysis_runs WHERE id=?', (run_id,))
-    run_info = c.fetchone()
+        # 批次信息
+        c.execute('SELECT analysis_date, period_start, period_end, source FROM market_analysis_runs WHERE id=?', (run_id,))
+        run_info = c.fetchone()
 
-    conn.close()
+    finally:
+        conn.close()
 
     return success({
         'run_id': run_id,
@@ -94,13 +98,15 @@ def category_stats():
         return failure('NO_DATA', '暂无市场分析数据')
 
     conn = get_connection()
-    c = conn.cursor()
-    c.execute('''SELECT category, shop_tmall, shop_taobao, trend_flat, trend_up,
-                 trend_down, trend_out, trend_new, concentration_top10,
-                 concentration_top50, total_buyers
-                 FROM market_category_stats WHERE run_id=? ORDER BY total_buyers DESC''', (run_id,))
-    rows = c.fetchall()
-    conn.close()
+    try:
+        c = conn.cursor()
+        c.execute('''SELECT category, shop_tmall, shop_taobao, trend_flat, trend_up,
+                     trend_down, trend_out, trend_new, concentration_top10,
+                     concentration_top50, total_buyers
+                     FROM market_category_stats WHERE run_id=? ORDER BY total_buyers DESC''', (run_id,))
+        rows = c.fetchall()
+    finally:
+        conn.close()
 
     return success([{
         'category': r[0], 'shop_tmall': r[1], 'shop_taobao': r[2],
@@ -122,23 +128,25 @@ def products():
     list_type = request.args.get('list_type', '')
 
     conn = get_connection()
-    c = conn.cursor()
+    try:
+        c = conn.cursor()
 
-    sql = '''SELECT category, list_type, rank, rank_change, title, shop, buyers, visitors
-             FROM market_products WHERE run_id=?'''
-    params = [run_id]
+        sql = '''SELECT category, list_type, rank, rank_change, title, shop, buyers, visitors
+                 FROM market_products WHERE run_id=?'''
+        params = [run_id]
 
-    if category:
-        sql += ' AND category=?'
-        params.append(category)
-    if list_type:
-        sql += ' AND list_type=?'
-        params.append(list_type)
+        if category:
+            sql += ' AND category=?'
+            params.append(category)
+        if list_type:
+            sql += ' AND list_type=?'
+            params.append(list_type)
 
-    sql += ' ORDER BY category, list_type, rank'
-    c.execute(sql, params)
-    rows = c.fetchall()
-    conn.close()
+        sql += ' ORDER BY category, list_type, rank'
+        c.execute(sql, params)
+        rows = c.fetchall()
+    finally:
+        conn.close()
 
     return success([{
         'category': r[0], 'list_type': r[1], 'rank': r[2], 'rank_change': r[3],
@@ -157,22 +165,24 @@ def keywords():
     keyword_type = request.args.get('keyword_type', '')
 
     conn = get_connection()
-    c = conn.cursor()
+    try:
+        c = conn.cursor()
 
-    sql = 'SELECT category, keyword_type, keyword, count, rank FROM market_keywords WHERE run_id=?'
-    params = [run_id]
+        sql = 'SELECT category, keyword_type, keyword, count, rank FROM market_keywords WHERE run_id=?'
+        params = [run_id]
 
-    if category:
-        sql += ' AND category=?'
-        params.append(category)
-    if keyword_type:
-        sql += ' AND keyword_type=?'
-        params.append(keyword_type)
+        if category:
+            sql += ' AND category=?'
+            params.append(category)
+        if keyword_type:
+            sql += ' AND keyword_type=?'
+            params.append(keyword_type)
 
-    sql += ' ORDER BY category, keyword_type, rank'
-    c.execute(sql, params)
-    rows = c.fetchall()
-    conn.close()
+        sql += ' ORDER BY category, keyword_type, rank'
+        c.execute(sql, params)
+        rows = c.fetchall()
+    finally:
+        conn.close()
 
     return success([{
         'category': r[0], 'keyword_type': r[1],
@@ -188,10 +198,12 @@ def overlap_shops():
         return failure('NO_DATA', '暂无市场分析数据')
 
     conn = get_connection()
-    c = conn.cursor()
-    c.execute('SELECT shop_name FROM market_overlap_shops WHERE run_id=? ORDER BY shop_name', (run_id,))
-    rows = c.fetchall()
-    conn.close()
+    try:
+        c = conn.cursor()
+        c.execute('SELECT shop_name FROM market_overlap_shops WHERE run_id=? ORDER BY shop_name', (run_id,))
+        rows = c.fetchall()
+    finally:
+        conn.close()
 
     return success([r[0] for r in rows])
 
@@ -204,18 +216,20 @@ def filters():
         return failure('NO_DATA', '暂无市场分析数据')
 
     conn = get_connection()
-    c = conn.cursor()
+    try:
+        c = conn.cursor()
 
-    c.execute('SELECT DISTINCT category FROM market_products WHERE run_id=? ORDER BY category', (run_id,))
-    categories = [r[0] for r in c.fetchall()]
+        c.execute('SELECT DISTINCT category FROM market_products WHERE run_id=? ORDER BY category', (run_id,))
+        categories = [r[0] for r in c.fetchall()]
 
-    c.execute('SELECT DISTINCT list_type FROM market_products WHERE run_id=? ORDER BY list_type', (run_id,))
-    list_types = [r[0] for r in c.fetchall()]
+        c.execute('SELECT DISTINCT list_type FROM market_products WHERE run_id=? ORDER BY list_type', (run_id,))
+        list_types = [r[0] for r in c.fetchall()]
 
-    c.execute('SELECT DISTINCT keyword_type FROM market_keywords WHERE run_id=? ORDER BY keyword_type', (run_id,))
-    keyword_types = [r[0] for r in c.fetchall()]
+        c.execute('SELECT DISTINCT keyword_type FROM market_keywords WHERE run_id=? ORDER BY keyword_type', (run_id,))
+        keyword_types = [r[0] for r in c.fetchall()]
 
-    conn.close()
+    finally:
+        conn.close()
 
     return success({
         'categories': categories,

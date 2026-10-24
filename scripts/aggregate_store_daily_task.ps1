@@ -173,7 +173,11 @@ $backup = Join-Path $EffectiveBackupDir "aggregate-store-daily-$(Get-Date -Forma
 $dateArgs = @()
 $targets = @($Dates | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Trim() } | Where-Object { $_ })
 if ($targets.Count -gt 0) {
-    $dateArgs = @('--dates') + $targets
+    # 2026-10-24 修复：--dates 在 argparse 里是单值参数（形如 --dates D1,D2），
+    # 原写法 @('--dates') + $targets 会把第 2 个及以后的日期变成多余的位置参数，
+    # 触发 "unrecognized arguments: 2026-10-20 2026-10-21"，多日回填直接失败。
+    # 必须把多个日期 join 成一个逗号分隔的值。
+    $dateArgs = @('--dates', ($targets -join ','))
     Write-Log "执行聚合：aggregate_store_daily.py --apply --dates $($targets -join ',') --skip-if-current"
 } else {
     Write-Log "执行聚合：aggregate_store_daily.py --apply --lookback-days $LookbackDays --skip-if-current"
