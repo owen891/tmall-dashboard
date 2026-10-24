@@ -232,7 +232,7 @@ async function runPage(browser, id, path, viewport) {
             await scanDialog.locator('input[name="cron_expr"]').fill('* * * * *');
             await scanDialog.locator('button[type="submit"]').click();
             const createdRow = page.locator('[data-scan-jobs] tr').filter({ hasText: taskName });
-            await createdRow.waitFor({ state: 'visible' });
+            await createdRow.waitFor({ state: 'visible', timeout: 20000 });
             await createdRow.locator('button[aria-label="立即扫描"]').click();
             await page.locator('[data-scan-status]').waitFor({ state: 'visible' });
             await createdRow.locator('button[aria-label="立即扫描"]').click();
@@ -250,7 +250,7 @@ async function runPage(browser, id, path, viewport) {
             await detailDialog.locator('[data-scan-detail-close][aria-label="关闭"]').click();
             await detailDialog.waitFor({ state: 'hidden' });
             await createdRow.locator('button[aria-label="停用任务"]').click();
-            await page.locator('[data-scan-jobs] tr').filter({ hasText: taskName }).waitFor({ state: 'visible' });
+            await page.locator('[data-scan-jobs] tr').filter({ hasText: taskName }).waitFor({ state: 'visible', timeout: 20000 });
           } catch (error) {
             failures.push(`settings scan flow: ${error.message}`);
           }
