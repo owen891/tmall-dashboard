@@ -37,15 +37,18 @@ def _split_scan_roots(value):
     raw = str(value or '').strip()
     if not raw:
         return []
-    # 优先分号：Windows 盘符路径（D:/inbox）在 POSIX 上会被 os.pathsep（':'）
-    # 拆成 'D' 与 '/inbox'。仅当没有分号且不存在盘符形态时才用 pathsep。
+    # 分隔符判定（顺序很重要）：
+    # 1) 出现分号 → 分号是分隔符（Windows 习惯，且不会与盘符冒号冲突）。
+    # 2) 出现盘符（X:/ 或 X:\）→ 冒号是盘符的一部分，不能当分隔符；
+    #    此时用「冒号+非斜杠」的位置切分，保住 D:/a 里的冒号。
+    # 3) 否则用平台默认 pathsep。
     if ';' in raw:
-        separator = ';'
-    elif re.search(r'(?:^|;)[A-Za-z]:[\/]', raw):
-        separator = ';'
+        parts = raw.split(';')
+    elif re.search(r'[A-Za-z]:[\/]', raw):
+        parts = re.split(r':(?![\/])', raw)
     else:
-        separator = os.pathsep
-    return [item.strip() for item in raw.split(separator) if item.strip()]
+        parts = raw.split(os.pathsep)
+    return [item.strip() for item in parts if item.strip()]
 
 
 def _legacy_watch_folder(config_path=None):

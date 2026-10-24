@@ -255,7 +255,10 @@ class AppFactoryTests(unittest.TestCase):
                 'DATABASE_URL': f"sqlite:///{uri_path.replace(os.sep, '/')}",
             })
 
-            self.assertEqual(app.config['DATABASE_PATH'], os.path.abspath(uri_path))
+            # macOS 的 /var 是指向 /private/var 的符号链接；abspath 不解析它。
+            self.assertEqual(
+                os.path.realpath(app.config['DATABASE_PATH']), os.path.realpath(uri_path)
+            )
             self.assertTrue(os.path.exists(uri_path))
             self.assertFalse(os.path.exists(stale_path))
 
