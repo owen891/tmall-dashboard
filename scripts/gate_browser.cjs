@@ -144,4 +144,21 @@ function gateChromium(dependencies = {}) {
       env: { ...process.env, TEMP: scope.root, TMP: scope.root, TMPDIR: scope.root } });
   } };
 }
-module.exports = { loadScope, assertBase, safeSocketUrl, launchGateChrome, gateChromium };
+/**
+ * 页面清单：公开 checkout 只审计实际随仓库分发的页面。
+ * 私有部署把额外页面登记在 data/private_edition.json（不进公开仓库）。
+ */
+function publicPages(names) {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const root = path.resolve(__dirname, '..');
+  const privateNames = new Set();
+  try {
+    const manifest = JSON.parse(fs.readFileSync(path.join(root, 'data', 'private_edition.json'), 'utf8'));
+    for (const item of manifest.pages || []) privateNames.add(String(item));
+  } catch (e) { /* 公开 checkout：无私有清单 */ }
+  return names.filter((name) => !privateNames.has(name)
+    && fs.existsSync(path.join(root, 'frontend', 'ui_demo', 'pages', `${name}.html`)));
+}
+
+module.exports = { loadScope, assertBase, safeSocketUrl, launchGateChrome, gateChromium, publicPages };

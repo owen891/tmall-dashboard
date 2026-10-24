@@ -66,7 +66,15 @@ jobs:
           set -o pipefail
           mkdir -p audit-logs
           python -W error::ResourceWarning -m unittest discover -s tests -v 2>&1 | tee audit-logs/unittest.log
-          exit ${PIPESTATUS[0]}
+          status=${PIPESTATUS[0]}
+          if [ "$status" -ne 0 ]; then
+            # 以 annotations 形式公开失败测试名（::error:: 会出现在 run 摘要，无需管理员权限）
+            grep -E '^(FAIL|ERROR):' audit-logs/unittest.log | head -20 | while read -r line; do
+              echo "::error::${line}"
+            done
+            tail -40 audit-logs/unittest.log | while read -r line; do echo "::warning::${line}"; done
+          fi
+          exit "$status"
       - name: Upload audit log when tests fail
         if: failure()
         uses: actions/upload-artifact@v4
@@ -137,7 +145,15 @@ jobs:
           set -o pipefail
           mkdir -p audit-logs
           python -W error::ResourceWarning -m unittest discover -s tests -v 2>&1 | tee audit-logs/unittest.log
-          exit ${PIPESTATUS[0]}
+          status=${PIPESTATUS[0]}
+          if [ "$status" -ne 0 ]; then
+            # 以 annotations 形式公开失败测试名（::error:: 会出现在 run 摘要，无需管理员权限）
+            grep -E '^(FAIL|ERROR):' audit-logs/unittest.log | head -20 | while read -r line; do
+              echo "::error::${line}"
+            done
+            tail -40 audit-logs/unittest.log | while read -r line; do echo "::warning::${line}"; done
+          fi
+          exit "$status"
       - name: Upload audit log when tests fail
         if: failure()
         uses: actions/upload-artifact@v4

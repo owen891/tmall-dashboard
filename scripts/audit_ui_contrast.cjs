@@ -42,10 +42,10 @@
  * WCAG 计算核心抽成下面的 WCAG_JS / Node 侧助手，**一处改动三模式同时生效**。
  */
 const path = require('node:path');
-const fs = require('node:fs');
 // 两种加载方式都支持：设了 NODE_PATH 时用 playwright-core（quality-gate 的老用法），
 // 没设时回退到仓库内的 desktop/node_modules —— 不必再记 NODE_PATH=...
 const { gateChromium, assertBase } = require('./gate_browser.cjs');
+const gateBrowser = require('./gate_browser.cjs');
 const chromium = gateChromium();
 
 const args = process.argv.slice(2);
@@ -81,8 +81,9 @@ const MAX_TABS = Number(getArg('--tabs', '45'));
 const PAGES = ['overview', 'products', 'promotion', 'keyword-promotion', 'new-products',
   'market-ranking', 'flow-source', 'rival-analysis', 'lifecycle', 'reviews', 'period-review',
   'data-center', 'analysis', 'category-dashboard', 'component-catalog', 'creative-board',
-  'data-collection', 'goals', 'settings', 'product-detail']
-  .filter((name) => fs.existsSync(path.join(__dirname, '..', 'frontend', 'ui_demo', 'pages', `${name}.html`)));
+  'data-collection', 'goals', 'settings', 'product-detail'];
+// 只审计随本 checkout 分发的页面（私有页清单不在公开仓库）。
+const AUDIT_PAGES = typeof gateBrowser.publicPages === 'function' ? gateBrowser.publicPages(PAGES) : PAGES;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // WCAG 计算核心（注入页面的字符串，三个模式共用一份）。改这里三处同时生效。
@@ -322,7 +323,7 @@ const STATE_PROBES = [
       }, theme);
 
 
-      for (const name of PAGES) {
+      for (const name of AUDIT_PAGES) {
         let page;
         let action = 'new-page';
         let rows = [];
@@ -381,7 +382,7 @@ const STATE_PROBES = [
     await ctx.addInitScript((t) => { try { window.localStorage.setItem('tmall-demo-theme', t); } catch (e) {} }, theme);
     await ctx.addInitScript(STATE_SCAN);
 
-    for (const name of PAGES) {
+    for (const name of AUDIT_PAGES) {
       let page;
       let action = 'new-page';
       try {
@@ -476,7 +477,7 @@ const STATE_PROBES = [
     const unparsed = new Map();   // 色值解析不了（脚本盲区）
     let checked = 0, internalFocus = 0, uaAuto = 0;
 
-    for (const name of PAGES) {
+    for (const name of AUDIT_PAGES) {
       let page;
       let action = 'new-page';
       const seen = new Set();
