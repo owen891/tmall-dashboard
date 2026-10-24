@@ -47,24 +47,23 @@ def assert_release_version_contract() -> str:
     return version
 
 
-# 桌面安装包是公开分发物：私人版页面（数据采集控制台）只随本机 web 部署，
-# 打包时从内置前端树中剔除。
-PUBLIC_EDITION_EXCLUDES = (
-    'pages/data-collection.html',
-    'assets/data-collection-live.js',
-    'pages/core-product-analysis.html',
-    'assets/core-product-analysis-live.js',
-    'assets/themes/core-product-domain.css',
-    'pages/keyword-promotion.html',
-    'assets/keyword-promotion-live.js',
-    'assets/keyword-promotion.css',
-)
+# 桌面安装包是公开分发物：私人版页面只随本机 web 部署，打包时从内置前端树
+# 剔除。清单由部署私有的 data/private_edition.json 提供（公开源码不携带
+# 私人文件名；公开 checkout 无该文件时无需剔除任何内容）。
+def _public_edition_excludes():
+    import json as _json
+    manifest = PROJECT_ROOT / 'data' / 'private_edition.json'
+    try:
+        payload = _json.loads(manifest.read_text(encoding='utf-8'))
+    except (OSError, ValueError):
+        return ()
+    return tuple(str(item) for item in payload.get('installer_exclude_files') or [])
 
 
 def strip_private_edition_pages() -> list:
     removed = []
     for frontend_root in DIST_PATH.glob('backend/**/frontend/ui_demo'):
-        for relative in PUBLIC_EDITION_EXCLUDES:
+        for relative in _public_edition_excludes():
             target = frontend_root / relative
             if target.is_file():
                 target.unlink()

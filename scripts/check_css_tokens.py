@@ -35,7 +35,7 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent / 'frontend' / 'ui_demo'
 # 有意保留的「无定义」：key 是 token 名，value 是理由。
 WHITELIST = {
     '--rule-depth': 'JS 将来按嵌套层级 setProperty；当前 CSS 里写的是 var(--rule-depth, 0) 兜底',
-    '--surface-2': '只在 keyword-promotion.css 的历史注释里出现，不是活引用',
+    '--surface-2': '只在私人版页面 CSS 的历史注释里出现，不是活引用',
     # 以下三项是 2026-10 引入门禁时既存的历史引用，都带 fallback 因而渲染正常。
     # 它们与真实 token（--surface-muted / --border-default / --duration-fast）语义相近但取值不同，
     # 直接替换会改变现有观感，因此先登记豁免；新代码不得再引入这类幽灵引用。

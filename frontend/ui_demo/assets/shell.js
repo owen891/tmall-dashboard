@@ -117,7 +117,7 @@
     });
   loadOptionalScript(`desktop-integration.js`);
 
-  const liveAdapters = { 'core-product-analysis': 'core-product-analysis-live.js', overview: 'overview-live.js', products: 'products-live.js', promotion: 'promotion-live.js', 'keyword-promotion': 'keyword-promotion-live.js', 'market-ranking': 'market-ranking-live.js', 'flow-source': 'flow-source-live.js', 'rival-analysis': 'rival-analysis-live.js' };
+  const liveAdapters = { overview: 'overview-live.js', products: 'products-live.js', promotion: 'promotion-live.js', 'market-ranking': 'market-ranking-live.js', 'flow-source': 'flow-source-live.js', 'rival-analysis': 'rival-analysis-live.js' };
   const liveAdapter = liveAdapters[document.body.dataset.page];
   const apiReady = window.DemoApi
     ? Promise.resolve(window.DemoApi)
@@ -170,8 +170,6 @@
       items: [
         ['products', '商品运营', 'package', 'products'],
         ['lifecycle', '生命周期', 'refresh-cw', 'lifecycle'],
-        ['keyword-promotion', '关键词选品', 'filter', 'keyword-promotion'],
-        ['core-product-analysis', '核心单品九维', 'layers', 'core-product-analysis'],
       ],
     },
     {
@@ -195,7 +193,6 @@
       label: '工具',
       items: [
         ['analysis', '自定义分析', 'bar-chart-3', 'analysis'],
-        ['data-collection', '数据采集', 'download', 'data-collection'],
         ['data-center', '数据中心', 'database', 'data-center'],
         ['settings', '设置', 'settings', 'settings'],
       ],
@@ -210,13 +207,10 @@
     'promotion-matrix': ['推广矩阵', '只看新老品在各渠道的投放效率，判断单品该放大还是该优化'],
     'new-products': ['新品推广', '按上架节奏分析新品投放效率与销售联动'],
     'creative-board': ['素材点击率', '按单品沉淀素材历史点击质量'],
-    'core-product-analysis': ['核心单品九维', '月度复盘沉淀：核心单品在九个经营维度的完整分析'],
-    'keyword-promotion': ['关键词选品', '按属性标签筛选推广效果好的标品商品'],
     'market-ranking': ['市场分析', '生意参谋市场排行，类目对比与热卖趋势洞察'],
     lifecycle: ['生命周期', '按商品查看跨月经营表现与累计贡献'],
     analysis: ['自定义分析', '自由选择指标、维度与时间范围生成分析图表'],
     'category-dashboard': ['品类经营看板', '按日、周、月和自定义周期跟踪品类经营表现'],
-    'data-collection': ['数据采集', '各数据源采集状态管理与手动触发'],
     reviews: ['经营复盘', '查看待复盘动作与经营周期差异'],
     'period-review': ['周期复盘', '系统汇总业绩、目标差距、市场与动作素材，人工补结论与卡点'],
     'data-center': ['数据中心', '导入、校验和管理经营数据'],
@@ -295,7 +289,7 @@
       </div>
     </div>`;
   sidebar.querySelectorAll('.demo-sidebar__meta-actions > a').forEach((link) => link.remove());
-  // 公开版裁剪：能力目录不返回的页面（页面文件未随部署分发，如私人版的数据采集控制台）
+  // 公开版裁剪：能力目录不返回的页面（页面文件未随部署分发）直接隐藏并动态注入私人版条目
   // 直接从导航隐藏。接口失败时保持原样——私人版本地部署的文件齐全，天然全量显示。
   fetch('/api/page-capabilities').then((response) => (response.ok ? response.json() : null)).then((payload) => {
     const pages = payload && payload.data && Array.isArray(payload.data.pages) ? payload.data.pages : null;
@@ -303,6 +297,23 @@
     const available = new Set(pages.map((page) => page.key));
     sidebar.querySelectorAll('[data-page-link]').forEach((item) => {
       if (!available.has(item.getAttribute('data-page-link'))) item.hidden = true;
+    });
+    // 私人版专属页不在静态导航源里，由能力目录动态注入（公开版目录不返回它们）。
+    pages.forEach((page) => {
+      const key = page.key;
+      if (!key || nav.some(([id]) => id === key)) return;
+      const label = page.nav_label || page.label || key;
+      const icon = page.nav_icon || 'circle';
+      meta[key] = page.description || [label, ''];
+      if (!liveAdapters[key]) liveAdapters[key] = `${key}-live.js`;
+      if (page.suppress_date_range) pagesWithoutDateRange.add(key);
+      const item = `<a class="demo-nav__item" data-page-link="${key}" href="${route(page.route || `/${key}`)}" aria-label="${label}" title="${label}"><i data-lucide="${icon}"></i><span>${label}</span></a>`;
+      const groupLabel = page.nav_group || '工具';
+      const section = [...sidebar.querySelectorAll('.demo-nav__section')]
+        .find((sec) => sec.querySelector('.demo-nav__label')?.textContent === groupLabel)
+        || sidebar.querySelector('.demo-nav');
+      const container = section.querySelector('.demo-nav__group') || section;
+      container.insertAdjacentHTML('beforeend', item);
     });
   }).catch(() => {});
   sidebar.insertAdjacentHTML('beforeend', `
@@ -459,10 +470,10 @@
     }).catch(() => {});
   }
 
-  // core-product-analysis 是固定月报（页面正文写死统计周期），头部日期范围对它无效，
+  // 固定月报类页面（页面正文写死统计周期，经能力目录注入）头部日期范围对它无效，
   // 因此归入无日期控件名单：隐藏控件，同时让日期状态仓不再向 URL 写入 start/end/preset/compare/dim，
   // 避免"筛选器能改这份报告"的错误暗示。
-  const pagesWithoutDateRange = new Set(['data-center', 'data-collection', 'settings', 'goals', 'creative-board', 'core-product-analysis']);
+  const pagesWithoutDateRange = new Set(['data-center', 'settings', 'goals', 'creative-board']);
   if (currentPage === 'lifecycle' || pagesWithoutDateRange.has(currentPage)) header.querySelector('.demo-period').hidden = true;
   if (currentPage === 'overview') {
     header.querySelector('.demo-topbar__tools').insertAdjacentHTML('beforeend', `

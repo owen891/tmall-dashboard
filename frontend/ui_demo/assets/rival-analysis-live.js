@@ -492,7 +492,7 @@
       $('[data-dmp-kpi="detected"]').textContent = fmtInt(s.summary.detected_cnt);
       $('[data-dmp-kpi="window"]').textContent = `${s.summary.end_date} vs ${s.summary.peer_end_date}`;
     } else {
-      hint.textContent = '暂无达摩盘竞争分析数据——请在「数据采集」页运行 dmp_competition 源。';
+      hint.textContent = '暂无竞争分析数据——请先运行 dmp_competition 源采集。';
     }
     if (s.summary && s.summary.top_detected) {
       $('[data-dmp-detect-hint]').textContent =

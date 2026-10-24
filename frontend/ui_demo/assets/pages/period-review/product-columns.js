@@ -4,7 +4,7 @@
   /** 周月复盘页「货品表格（列可配置）+ 字段设置对话框」模块。
 
    *  字段设置复用全站公共组件 DemoFieldSelector（field-selector.js：
-   *  分组 / 搜索 / 拖拽排序 / 必锁字段，overview / keyword-promotion 同款），
+   *  分组 / 搜索 / 拖拽排序 / 必锁字段，overview 同款），
    *  不再自建 popover——字段多了之后平铺浮层没有搜索和分组，不可用。
    *
    *  deps 契约（由 period-review-live.js 提供）：
@@ -357,7 +357,7 @@
 
     // ------------------------------------------------ 货品表格字段设置（公共组件）
     // 复用全站 DemoFieldSelector（field-selector.js）：分组 / 搜索 / 拖拽排序 / 必锁列，
-    // 与 overview / keyword-promotion 的字段设置同款体验。
+    // 与 overview 的字段设置同款体验。
     // 对话框挂在 body 上按需创建；一次只编辑一张榜单，切换榜单时重设配置。
     let fieldDialog = null;
     let fieldSelector = null;
@@ -459,7 +459,7 @@
           emptyText: '尚未选择字段',
           searchPlaceholder: '搜索字段名称',
           onChange: () => {
-            // 勾选即保存即重渲染（与 keyword-promotion 的即时反馈一致），
+            // 勾选即保存即重渲染（即时反馈一致），
             // 「应用」按钮只负责关对话框。
             syncFromDialog();
             const status = dialog.querySelector('[data-pr-columns-status]');

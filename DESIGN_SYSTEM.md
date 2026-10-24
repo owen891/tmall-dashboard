@@ -116,7 +116,7 @@ tmall-dashboard/
 
 
 
-* 前端页面：`/{page}`（如 `/products`、`/keyword-promotion`）
+* 前端页面：`/{page}`（如 `/products`、`/goals`）
 
 * API 接口：`/api/{module}/{action}`（如 `/api/products/list`）
 
@@ -1313,9 +1313,9 @@ const DATA\_STATES = \['loading', 'no-data', 'insufficient-data', 'missing-field
 
 | 对象             | 规则                       | 示例                                |
 | -------------- | ------------------------ | --------------------------------- |
-| 页面名            | kebab-case               | `keyword-promotion`               |
-| HTML 文件        | `{page}.html`            | `keyword-promotion.html`          |
-| JS 文件          | `{page}-live.js`         | `keyword-promotion-live.js`       |
+| 页面名            | kebab-case               | `product-detail`                  |
+| HTML 文件        | `{page}.html`            | `product-detail.html`             |
+| JS 文件          | `{page}-live.js`         | `product-detail-live.js`          |
 | CSS 类          | BEM                      | `product-filters__main`           |
 | 数据属性           | `data-{page}-*`          | `data-kp-search`                  |
 | 数据库表           | snake\_case              | `keyword_promotion_products`      |

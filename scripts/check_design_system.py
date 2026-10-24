@@ -97,7 +97,6 @@ UI_HANDWRITE_BASELINE: dict[str, int] = {
     "market-ranking": 42,
     "data-center": 40,
     "promotion": 28,
-    "data-collection": 21,
     "component-catalog": 19,
     "lifecycle": 18,
     "rival-analysis": 18,

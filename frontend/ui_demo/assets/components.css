@@ -544,30 +544,6 @@ body[data-page="data-center"] table.ui-data-table:has(tbody[data-identity-rows])
   body[data-page="market-ranking"] .market-chart-title { margin-bottom: 10px; color: var(--text-primary); text-align: left; }
   body[data-page="market-ranking"] .market-keyword-grid { gap: 12px; }
 
-  body[data-page="data-collection"] .collect-deps {
-    margin-bottom: 14px;
-    padding: 10px 14px;
-    border-color: var(--border-warning-subtle);
-    border-radius: var(--radius-md);
-    background: var(--warning-tint);
-    color: var(--warning-text);
-  }
-  body[data-page="data-collection"] .collect-source-grid { grid-template-columns: repeat(3, minmax(260px, 1fr)); gap: 12px; }
-  body[data-page="data-collection"] .collect-source-card { gap: 10px; padding: 14px; }
-  body[data-page="data-collection"] .collect-source-card { min-height: 198px; border-radius: var(--radius-md); box-shadow: none; }
-  body[data-page="data-collection"] .collect-source-card__header { min-height: 44px; }
-  body[data-page="data-collection"] .collect-source-card__desc { max-width: 34ch; line-height: var(--line-height-meta); }
-  body[data-page="data-collection"] .collect-source-card__metrics { gap: 8px; }
-  body[data-page="data-collection"] .collect-source-card__metric-value { font-size: 17px; }
-  body[data-page="data-collection"] .collect-source-card__actions { gap: 6px; }
-  body[data-page="data-collection"] .collect-source-card__actions .ui-button { min-width: 0; }
-  body[data-page="data-collection"] .collect-health-grid { gap: 10px; }
-  body[data-page="data-collection"] .collect-health-grid .ui-metric-card { min-height: 86px; padding: 12px; box-shadow: none; }
-  body[data-page="data-collection"] main > .ui-page-header { margin-bottom: 14px; }
-  body[data-page="data-collection"] main > .ui-metric-grid { margin-bottom: 14px; }
-  body[data-page="data-collection"] main > .ui-panel { padding: 14px 16px; }
-  body[data-page="data-collection"] .collect-log-content { max-height: 360px; padding: 12px 14px; border-radius: var(--radius-sm); }
-  body[data-page="data-collection"] .collect-log-panel { margin-top: 16px; }
 
   body[data-page="flow-source"] .flow-chart-row { gap: 12px; margin-bottom: 12px; }
   body[data-page="flow-source"] .flow-chart-box { min-height: 280px; padding: 12px; border: 1px solid var(--border-default); border-radius: var(--radius-md); background: var(--surface-base); }
@@ -1683,22 +1659,6 @@ body.has-ui-drawer { overflow: hidden; }
   html body[data-page="data-center"] .data-governance-disclosure > summary { padding: var(--space-3) var(--space-4); font-size: var(--font-size-secondary); border-radius: var(--radius-md); }
 
   /* Collection: a single parent surface, source records separated by hairlines. */
-  html body[data-page="data-collection"] .collect-source-grid { grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr)); gap: 0 var(--space-6); }
-  html body[data-page="data-collection"] .collect-source-grid > .collect-source-card { min-height: 0; gap: var(--space-3); padding: var(--space-4) 0; border: 0; border-bottom: 1px solid var(--border-default); border-radius: 0; background: transparent; box-shadow: none; }
-  html body[data-page="data-collection"] .collect-source-card__header { min-height: 0; }
-  html body[data-page="data-collection"] .collect-source-card__title { font-size: var(--font-size-body); font-weight: 600; }
-  html body[data-page="data-collection"] .collect-source-card__metrics { gap: var(--space-3); }
-  html body[data-page="data-collection"] .collect-source-card__metric-value { font-size: var(--font-size-body); font-weight: 500; font-variant-numeric: tabular-nums; }
-  html body[data-page="data-collection"] .collect-source-card__actions { gap: var(--space-2); flex-wrap: wrap; }
-  html body[data-page="data-collection"] .collect-source-card__actions .ui-button--primary:not(:disabled) { border-color: var(--button-border); background: var(--surface-base); color: var(--brand-text); }
-  html body[data-page="data-collection"] .collect-source-card__actions .ui-button--primary:not(:disabled):hover { border-color: var(--brand); background: var(--brand-tint); }
-  html body[data-page="data-collection"] .ui-panel > .collect-health-grid { border: 0; border-radius: 0; margin-bottom: 0; }
-  html body[data-page="data-collection"] .collect-deps { justify-content: flex-start; flex-wrap: wrap; gap: var(--space-1) var(--space-2); font-size: var(--font-size-meta); line-height: var(--line-height-secondary); }
-  html body[data-page="data-collection"] .integration-grid { gap: 0 var(--space-6); }
-  html body[data-page="data-collection"] .integration-card { padding: var(--space-4) 0; border: 0; border-bottom: 1px solid var(--border-default); border-radius: 0; background: transparent; }
-  html body[data-page="data-collection"] .integration-card__title { font-weight: 600; }
-  html body[data-page="data-collection"] .panel__header .integration-toolbar { border: 0; padding: 0; background: transparent; }
-  html body[data-page="data-collection"] .collect-credentials__grid { gap: var(--space-3); }
 
   /* Catalog: real rendered samples, not a new demonstration subsystem. */
   html body[data-page="catalog"] main > .section-grid { grid-template-columns: minmax(0, 1fr); gap: var(--space-4); }

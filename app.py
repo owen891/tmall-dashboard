@@ -21,7 +21,6 @@ from api.actions_api import actions_bp
 from api.settings_api import settings_bp
 from api.lifecycle_api import lifecycle_bp
 from api.promotion_api import promotion_bp
-from api.keyword_promotion_api import keyword_promotion_bp
 from api.wanxiangtai_api import wanxiangtai_bp
 from api.market_ranking_api import market_ranking_bp
 from api.dmp_api import dmp_bp
@@ -118,6 +117,29 @@ def _database_path_from_uri(uri):
         path = path[1:]
     return os.path.abspath(path)
 
+def _register_private_blueprints(app):
+    """装载部署私有的 API 模块（清单在 data/private_edition.json，公开 checkout 无此文件）。"""
+    import json
+    from importlib import import_module
+    from pathlib import Path
+    manifest = Path(__file__).resolve().parent / 'data' / 'private_edition.json'
+    try:
+        modules = json.loads(manifest.read_text(encoding='utf-8')).get('private_python_modules') or []
+    except (OSError, ValueError):
+        return
+    for dotted in modules:
+        module_path = dotted.replace('/', '.').removesuffix('.py')
+        try:
+            module = import_module(module_path)
+        except ImportError:
+            continue
+        for name in dir(module):
+            obj = getattr(module, name)
+            if name.endswith('_bp') and hasattr(obj, 'register'):
+                app.register_blueprint(obj)
+
+
+
 def create_app(config=None):
     # An environment DATABASE_URL must be treated exactly like an explicit
     # factory URI; otherwise the later DATABASE_PATH normalization silently
@@ -165,9 +187,9 @@ def create_app(config=None):
     app.register_blueprint(settings_bp)
     app.register_blueprint(lifecycle_bp)
     app.register_blueprint(promotion_bp)
-    app.register_blueprint(keyword_promotion_bp)
     app.register_blueprint(wanxiangtai_bp)
     app.register_blueprint(market_ranking_bp)
+    _register_private_blueprints(app)
     app.register_blueprint(dmp_bp)
     app.register_blueprint(period_reviews_bp)
     app.register_blueprint(product_detail_bp)
@@ -265,7 +287,7 @@ def create_app(config=None):
         immutable_asset = request.endpoint == 'release_asset' and 'immutable' in response.headers.get('Cache-Control', '')
         if not immutable_asset and (response.mimetype == 'text/html' or request.path == '/' or request.path == '/api/version' or request.path in {
             '/products', '/promotion', '/lifecycle', '/reviews',
-            '/data-center', '/data-collection', '/settings', '/goals', '/period-review',
+            '/data-center', '/settings', '/goals', '/period-review',
         } or request.path.startswith('/assets/')):
             response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
             response.headers['Pragma'] = 'no-cache'

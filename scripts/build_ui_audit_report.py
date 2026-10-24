@@ -25,7 +25,6 @@ PAGES = [
     ('period-review', '/period-review', '周期复盘'),
     ('products', '/products', '商品运营'),
     ('lifecycle', '/lifecycle', '生命周期'),
-    ('keyword-promotion', '/keyword-promotion', '关键词选品'),
     ('promotion', '/promotion', '推广分析'),
     ('new-products', '/new-products', '新品推广'),
     ('creative-board', '/creative-board', '素材点击率'),
@@ -33,7 +32,6 @@ PAGES = [
     ('rival-analysis', '/rival-analysis', '竞店竞品'),
     ('market-ranking', '/market-ranking', '市场分析'),
     ('analysis', '/analysis', '自定义分析'),
-    ('data-collection', '/data-collection', '数据采集'),
     ('data-center', '/data-center', '数据中心'),
     ('settings', '/settings', '设置'),
     ('component-catalog', '/component-catalog', '组件目录'),
@@ -50,8 +48,8 @@ FINDINGS = [
     ('P0', 'P0-2', '8 个页面 /api/page-capabilities 恒定 422',
      'assets/api.js:195 每页加载都调 loadPageCapabilities()，pageKey 取 body[data-page]。'
      '而 PAGE_DEFINITIONS 只登记 13 个页面，实际多出 8 个：'
-     'analysis / keyword-promotion / new-products / market-ranking / flow-source / '
-     'rival-analysis / data-collection / catalog。后端返回 VALIDATION_ERROR '
+     'analysis / new-products / market-ranking / flow-source / '
+     'rival-analysis / catalog。后端返回 VALIDATION_ERROR '
      '"unknown page capability filter"。api.js 用 .catch(() =&gt; {}) 静默吞掉，'
      '这 8 页的 data-capability-key 门控完全失效。',
      '补齐 PAGE_DEFINITIONS 到实际页面集合；失败不再静默（至少 console.warn 一次 + 数据中心能力地图标红）。'),
@@ -93,8 +91,8 @@ FINDINGS = [
      'products：业务视图收成一个 segmented、周期收成一个 segmented、字段/列设置/重置收进一个下拉菜单，'
      '目标这一行 ≤6 个控件。promotion：页头只留一个主操作。'),
     ('P1', 'P1-6', '长页面无收敛',
-     '桌面：market-ranking 5743px(6.4 屏) / period-review 3661 / data-collection 3547 / new-products 3172。'
-     '移动：market-ranking 11051px(13.1 屏) / data-collection 7874 / period-review 7687 / lifecycle 7055 / products 5652。'
+     '桌面：market-ranking 5743px(6.4 屏) / period-review 3661 / new-products 3172。'
+     '移动：market-ranking 11051px(13.1 屏) / period-review 7687 / lifecycle 7055 / products 5652。'
      'market-ranking 的 main 只有 6 个直接子块，但其中一个 section 就是 4552px（占整页 79%）。',
      '首屏给结论、详情进抽屉或 Tab。market-ranking 首屏只留「类目对比 + Top10 榜单」。'),
     ('P1', 'P1-7', '表格在 1440 宽屏下仍需横向滚动',
@@ -110,19 +108,19 @@ FINDINGS = [
     ('P2', 'P2-1', '控件与 DOM 密度失衡',
      'data-center 24333 个 DOM 节点 / 193 个可交互元素 / 300 个 .ui-button（87 可见）/ 5 个纵向滚动容器；'
      'market-ranking 7927 节点、996 个 .ui-badge（仅 2 可见，930 个藏在隐藏 &lt;tr&gt; 里）；'
-     'period-review 5146 节点 / 224 个 .ui-button（43 可见）；keyword-promotion 157 个可交互元素。',
+     'period-review 5146 节点 / 224 个 .ui-button（43 可见）。',
      '表格真分页（只渲染当前页行）；Tab 内容按需渲染或加 content-visibility:auto；'
      '一页不要出现「整页滚动 + 表格内滚 + 分页」三层。'),
     ('P2', 'P2-2', '组件建了但复用不均',
      'ui-components.js 已导出 20+ 组件。ui-filter-toolbar 在 lifecycle 出现 4 次、products / data-center / '
-     'keyword-promotion 各 3 次；ui-decision-card 只有 promotion 用；ui-sticky-action-bar 只有 2 页用。',
+     'new-products 各 3 次；ui-decision-card 只有 promotion 用；ui-sticky-action-bar 只有 2 页用。',
      '每页只允许一个 ui-table-toolbar（搜索+核心筛选+更多筛选+字段设置+结果数+导出），页面级范围筛选进 context-bar；'
      'ui-decision-card 统一用或删掉。'),
     ('P2', 'P2-3', '内联样式与 CSS 体量',
-     'keyword-promotion 150 处内联样式、market-ranking 45、data-collection 13、rival-analysis 12。'
+     'rival-analysis 12 处内联样式、market-ranking 45。'
      'components.css 120KB/340 类（硬编码颜色 0，var() 1080 —— 纪律很好）；'
      'period-review.css 有 26 处硬编码颜色；themes/ 5 个文件 2054 行（product-domain.css 1262 行）。',
-     'keyword-promotion 的样式迁进 CSS；period-review.css 的硬编码颜色改 token；明确 themes/ 与页面 CSS 的边界。'),
+     'period-review.css 的硬编码颜色改 token；明确 themes/ 与页面 CSS 的边界。'),
     ('P2', 'P2-4', '涨跌配色有一处按方向而非按语义',
      'overview-live.js:232 与 period-review 的 metric-cards.js 已按成本类指标反向（正确）。'
      '但 pages/period-review/product-columns.js:169/187 是 rate &lt; 0 ? is-down : is-up，只看正负。'
@@ -383,7 +381,7 @@ def main():
 <tr><td>批次 1</td><td style="text-align:left">层级收敛：唯一 h1 / 导航分组降级 span / 合并页头+上下文栏 / 删 section-kicker / 删 3 个死页面</td><td style="text-align:left">shell.js · ui-components.js · pages/*.html</td></tr>
 <tr><td>批次 2</td><td style="text-align:left">首屏决策区：overview 合并决策区+KPI / products 页头 16→6 / promotion 单主操作 / market-ranking 拆 4552px section</td><td style="text-align:left">overview-live.js · products-live.js · promotion-live.js · market-ranking-live.js</td></tr>
 <tr><td>批次 3</td><td style="text-align:left">密度与表格：真分页 / Tab 按需渲染 / 列数上限与弹性列 / 商品名两行 / 单工具栏 / 消除三层滚动</td><td style="text-align:left">table-controls.js · table-render.js · components.css · themes/</td></tr>
-<tr><td>批次 4</td><td style="text-align:left">一致性与无障碍：内联样式迁 CSS / period-review.css token 化 / metricPolarity / aria-label / focus-visible / 状态非颜色表达</td><td style="text-align:left">keyword-promotion.css · period-review.css · product-columns.js</td></tr>
+<tr><td>批次 4</td><td style="text-align:left">一致性与无障碍：内联样式迁 CSS / period-review.css token 化 / metricPolarity / aria-label / focus-visible / 状态非颜色表达</td><td style="text-align:left">period-review.css · product-columns.js</td></tr>
 </tbody></table>""")
 
     parts.append("""<h2>七、与现有文档的关系</h2>

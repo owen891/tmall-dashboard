@@ -96,12 +96,6 @@ PAGE_DEFINITIONS = (
         'capability_keys': ('analysis.view', 'analysis.compare'),
     },
     {
-        'key': 'keyword-promotion', 'label': '关键词推广', 'page_type': 'primary', 'route': '/keyword-promotion',
-        'core_question': '哪些关键词值得继续投入',
-        'data_domains': ('promotion_daily', 'product_master'),
-        'capability_keys': ('keyword-promotion.view', 'keyword-promotion.products', 'keyword-promotion.export'),
-    },
-    {
         'key': 'new-products', 'label': '新品投放', 'page_type': 'primary', 'route': '/new-products',
         'core_question': '新品投放是否跑出效果',
         'data_domains': ('promotion_daily', 'product_daily', 'product_master'),
@@ -132,12 +126,6 @@ PAGE_DEFINITIONS = (
         'capability_keys': ('rival-analysis.view', 'rival-analysis.trend', 'rival-analysis.dmp_competition'),
     },
     {
-        'key': 'data-collection', 'label': '数据采集', 'page_type': 'admin', 'route': '/data-collection',
-        'core_question': '采集链路是否正常',
-        'data_domains': ('imports',),
-        'capability_keys': ('data-collection.view', 'data-collection.trigger'),
-    },
-    {
         'key': 'catalog', 'label': '组件目录', 'page_type': 'admin', 'route': '/component-catalog',
         'core_question': '设计系统提供了哪些组件',
         # A static design-system showcase: it renders without any business data
@@ -150,16 +138,6 @@ PAGE_DEFINITIONS = (
         'core_question': '投放创意表现如何',
         'data_domains': (),
         'capability_keys': ('creative-board.view',),
-    },
-    {
-        # 核心单品九维分析：月度复盘沉淀的静态精选页（人工核准内容），
-        # 配色统一走 themes/core-product-domain.css；内容不查库，
-        # data_domains 留空（与 catalog 同理，门禁恒可满足）；
-        # api_endpoints 挂 /api/version 是 catalog 先例：空端点会进 endpoint_missing 阻断 release。
-        'key': 'core-product-analysis', 'label': '核心单品九维分析', 'page_type': 'primary', 'route': '/core-product-analysis',
-        'core_question': '核心单品在九个经营维度上的完整表现与下一步',
-        'data_domains': (),
-        'capability_keys': ('core-product-analysis.view',),
     },
 )
 
@@ -222,9 +200,6 @@ CAPABILITY_DEFINITIONS = (
     # `build_page_catalog()` reports it in `endpoint_missing` and blocks release.
     {'key': 'analysis.view', 'page_key': 'analysis', 'label': '查看经营分析', 'mode': 'observe', 'support_level': 'supported', 'data_domains': ('store_daily',), 'metric_keys': ('net_sales',), 'api_endpoints': ('GET /api/trend',)},
     {'key': 'analysis.compare', 'page_key': 'analysis', 'label': '比较品类周期', 'mode': 'analyze', 'support_level': 'conditional', 'data_domains': ('product_daily', 'product_weekly'), 'metric_keys': ('net_sales',), 'api_endpoints': ('GET /api/category-analysis/compare',)},
-    {'key': 'keyword-promotion.view', 'page_key': 'keyword-promotion', 'label': '查看关键词推广', 'mode': 'observe', 'support_level': 'supported', 'data_domains': ('promotion_daily',), 'metric_keys': ('ad_roi',), 'api_endpoints': ('GET /api/keyword-promotion/summary',)},
-    {'key': 'keyword-promotion.products', 'page_key': 'keyword-promotion', 'label': '下钻关键词商品', 'mode': 'analyze', 'support_level': 'conditional', 'data_domains': ('promotion_daily',), 'metric_keys': ('ad_roi',), 'api_endpoints': ('GET /api/keyword-promotion/products',)},
-    {'key': 'keyword-promotion.export', 'page_key': 'keyword-promotion', 'label': '导出关键词结果', 'mode': 'export', 'support_level': 'conditional', 'data_domains': ('promotion_daily',), 'metric_keys': (), 'api_endpoints': ('GET /api/keyword-promotion/products',)},
     {'key': 'new-products.view', 'page_key': 'new-products', 'label': '查看新品投放', 'mode': 'observe', 'support_level': 'supported', 'data_domains': ('promotion_daily',), 'metric_keys': ('ad_roi',), 'api_endpoints': ('GET /api/promotion/new-products',)},
     {'key': 'new-products.product_detail', 'page_key': 'new-products', 'label': '下钻单品投放', 'mode': 'analyze', 'support_level': 'conditional', 'data_domains': ('product_daily',), 'metric_keys': ('net_sales',), 'api_endpoints': ('GET /api/promotion/product-detail',)},
     {'key': 'promotion-matrix.view', 'page_key': 'promotion-matrix', 'label': '查看推广矩阵', 'mode': 'observe', 'support_level': 'supported', 'data_domains': ('promotion_daily', 'product_daily', 'product_master'), 'metric_keys': ('ad_roi', 'expense_ratio'), 'api_endpoints': ('GET /api/promotion/matrix',)},
@@ -235,14 +210,11 @@ CAPABILITY_DEFINITIONS = (
     {'key': 'rival-analysis.view', 'page_key': 'rival-analysis', 'label': '查看竞品分析', 'mode': 'observe', 'support_level': 'conditional', 'data_domains': ('market',), 'metric_keys': (), 'api_endpoints': ('GET /api/sycm/rival-shops/summary',)},
     {'key': 'rival-analysis.trend', 'page_key': 'rival-analysis', 'label': '竞品趋势对比', 'mode': 'analyze', 'support_level': 'conditional', 'data_domains': ('market',), 'metric_keys': (), 'api_endpoints': ('GET /api/sycm/rival-shops/trend', 'GET /api/sycm/rival-items/trend')},
     {'key': 'rival-analysis.dmp_competition', 'page_key': 'rival-analysis', 'label': '达摩盘竞争视角', 'mode': 'observe', 'support_level': 'supported', 'data_domains': ('dmp_competition', 'dmp_shop'), 'metric_keys': (), 'api_endpoints': ('GET /api/dmp/competition/summary', 'GET /api/dmp/competition/rivals', 'GET /api/dmp/competition/detection', 'GET /api/dmp/competition/ad-strategy', 'GET /api/dmp/shop/summary')},
-    {'key': 'data-collection.view', 'page_key': 'data-collection', 'label': '查看采集状态', 'mode': 'observe', 'support_level': 'supported', 'data_domains': ('imports',), 'metric_keys': (), 'api_endpoints': ('GET /api/collect/status',)},
-    {'key': 'data-collection.trigger', 'page_key': 'data-collection', 'label': '触发采集任务', 'mode': 'workflow', 'support_level': 'conditional', 'data_domains': ('imports',), 'metric_keys': (), 'api_endpoints': ('POST /api/collect/trigger', 'POST /api/collect/prepare')},
     # The catalog page is a static design-system showcase; `/api/version` is the
     # only endpoint its bundle calls, and it keeps the release gate satisfiable
     # without pretending a business data domain exists.
     {'key': 'catalog.view', 'page_key': 'catalog', 'label': '查看组件目录', 'mode': 'observe', 'support_level': 'supported', 'data_domains': (), 'metric_keys': (), 'api_endpoints': ('GET /api/version',)},
     {'key': 'creative-board.view', 'page_key': 'creative-board', 'label': '查看创意看板', 'mode': 'observe', 'support_level': 'supported', 'data_domains': (), 'metric_keys': (), 'api_endpoints': ('GET /api/creative-board',)},
-    {'key': 'core-product-analysis.view', 'page_key': 'core-product-analysis', 'label': '查看核心单品九维分析', 'mode': 'observe', 'support_level': 'supported', 'data_domains': (), 'metric_keys': (), 'api_endpoints': ('GET /api/version',)},
 )
 
 
@@ -277,17 +249,14 @@ _PAGE_TARGET_FILES = {
     'product-detail': ('frontend/ui_demo/pages/product-detail.html', 'frontend/ui_demo/assets/product-detail-live.js'),
     'goals': ('frontend/ui_demo/pages/goals.html', 'frontend/ui_demo/assets/goals-live.js'),
     'analysis': ('frontend/ui_demo/pages/analysis.html', 'frontend/ui_demo/assets/analysis-live.js'),
-    'keyword-promotion': ('frontend/ui_demo/pages/keyword-promotion.html', 'frontend/ui_demo/assets/keyword-promotion-live.js'),
     'new-products': ('frontend/ui_demo/pages/new-products.html', 'frontend/ui_demo/assets/new-products-live.js'),
     'promotion-matrix': ('frontend/ui_demo/pages/promotion-matrix.html', 'frontend/ui_demo/assets/promotion-matrix-live.js'),
     'market-ranking': ('frontend/ui_demo/pages/market-ranking.html', 'frontend/ui_demo/assets/market-ranking-live.js'),
     'flow-source': ('frontend/ui_demo/pages/flow-source.html', 'frontend/ui_demo/assets/flow-source-live.js'),
     'rival-analysis': ('frontend/ui_demo/pages/rival-analysis.html', 'frontend/ui_demo/assets/rival-analysis-live.js'),
-    'data-collection': ('frontend/ui_demo/pages/data-collection.html', 'frontend/ui_demo/assets/data-collection-live.js'),
     # The catalog renders from ui-components.js only — it has no page adapter.
     'catalog': ('frontend/ui_demo/pages/component-catalog.html', 'frontend/ui_demo/assets/ui-components.js'),
     'creative-board': ('frontend/ui_demo/pages/creative-board.html', 'frontend/ui_demo/assets/creative-board-live.js'),
-    'core-product-analysis': ('frontend/ui_demo/pages/core-product-analysis.html', 'frontend/ui_demo/assets/core-product-analysis-live.js'),
 }
 
 
@@ -330,6 +299,14 @@ def _enrich_registry_metadata():
         'reversible': item.get('reversible', item['modal_kind'] in {'detail', 'edit', 'config', 'flow'}),
     } for item in SURFACE_DEFINITIONS)
 
+
+try:
+    from services.private_pages_registry import extend_registry as _extend_private_registry
+except ImportError:  # public checkout: no private pages
+    pass
+else:
+    PAGE_DEFINITIONS, CAPABILITY_DEFINITIONS, _PAGE_TARGET_FILES = _extend_private_registry(
+        PAGE_DEFINITIONS, CAPABILITY_DEFINITIONS, dict(_PAGE_TARGET_FILES))
 
 _enrich_registry_metadata()
 

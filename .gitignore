@@ -187,3 +187,9 @@ pelican-*.html
 /frontend/ui_demo/pages/keyword-promotion.html
 /frontend/ui_demo/assets/keyword-promotion-live.js
 /frontend/ui_demo/assets/keyword-promotion.css
+
+# 关键词选品后端 API 三件套（2026-10-24 深度剥离：私人版专属，公开源码零痕迹）
+/api/keyword_promotion_api.py
+/services/keyword_promotion_service.py
+/repos/keyword_promotion_repo.py
+/services/private_pages_registry.py

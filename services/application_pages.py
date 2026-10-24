@@ -10,15 +10,16 @@ second, unrelated application object.
 from pathlib import Path
 
 
-# Pages served by `/<page>` -> `pages/<page>.html`.
-APPLICATION_PAGES = frozenset({
+# Pages served by `/<page>` -> `pages/<page>.html`. Private-edition pages
+# (collector console etc.) are contributed by services.private_pages_registry,
+# which ships only with private deployments — the public source carries none.
+_PUBLIC_APPLICATION_PAGES = frozenset({
     'overview',
     'analysis',
     'category-dashboard',
     'products',
     'promotion',
     'promotion-matrix',
-    'keyword-promotion',
     'new-products',
     'market-ranking',
     'lifecycle',
@@ -28,12 +29,21 @@ APPLICATION_PAGES = frozenset({
     'goals',
     'flow-source',
     'rival-analysis',
-    'data-collection',
     'component-catalog',
     'creative-board',
     'period-review',
-    'core-product-analysis',
 })
+
+
+def _private_page_keys():
+    try:
+        from services.private_pages_registry import PRIVATE_PAGE_KEYS
+    except ImportError:
+        return frozenset()
+    return frozenset(PRIVATE_PAGE_KEYS)
+
+
+APPLICATION_PAGES = _PUBLIC_APPLICATION_PAGES | _private_page_keys()
 
 
 # The capability registry keys a page by `body[data-page]`, which is not always
