@@ -193,6 +193,8 @@ pelican-*.html
 /services/keyword_promotion_service.py
 /repos/keyword_promotion_repo.py
 /services/private_pages_registry.py
+# 私人版数据源标识（真实 source_type 字面量；公开 checkout 用中性默认值）
+/services/private_source_types.py
 
 /scripts/sync_five_dim_tier.py
 /scripts/sync_tier_dictionary.py
@@ -205,3 +207,4 @@ pelican-*.html
 /scripts/shot_custom_picker.cjs
 
 /scripts/export_bi_wide.py
+/tests/test_standard_reference_sync.py

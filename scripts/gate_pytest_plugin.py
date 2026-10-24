@@ -48,6 +48,28 @@ def pytest_collection_modifyitems(config, items):
     config.hook.pytest_deselected(items=excluded)
 
 
+@pytest.hookimpl(trylast=True)
+def pytest_runtest_teardown(item, nextitem):
+    """Close sqlite handles left behind by a test before the next one runs.
+
+    The gate runs with ``-W error::ResourceWarning``. sqlite3 connections that
+    a test forgets to close are finalized by the GC at an arbitrary later
+    moment — often while an unrelated test is running — and pytest turns that
+    finalizer warning into a failure attributed to the wrong test. Draining
+    them at the teardown boundary keeps the attribution honest and prevents
+    cross-test contamination.
+    """
+    import gc
+    import sqlite3
+    for obj in gc.get_objects():
+        if isinstance(obj, sqlite3.Connection):
+            try:
+                obj.close()
+            except sqlite3.ProgrammingError:
+                pass
+    gc.collect()
+
+
 def pytest_runtest_logreport(report):
     if report.skipped:
         record_skip(report)
