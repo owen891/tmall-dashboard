@@ -110,7 +110,8 @@ class DesktopBackendTests(unittest.TestCase):
                 self.assertTrue(health['ok'])
                 with opener.open(f'http://127.0.0.1:{port}/', timeout=3) as response:
                     page = response.read()
-                self.assertIn('天猫'.encode('utf-8'), page)
+                # 品牌字标由 shell.js 客户端渲染；断言服务端真实页面标题。
+                self.assertIn('数据概览'.encode('utf-8'), page)
                 self.assertTrue(os.path.exists(os.path.join(roaming, 'TmallDashboard', 'data', 'dashboard.db')))
                 log_path = os.path.join(local, 'TmallDashboard', 'logs', 'backend.log')
                 self.assertTrue(os.path.isfile(log_path))

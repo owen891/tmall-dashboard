@@ -33,9 +33,10 @@ def _normalise_workbook(content, filename):
     if not stat_date:
         raise ImportValidationError(f'无法从文件名提取日期：{filename}')
 
-    source = pd.ExcelFile(io.BytesIO(content))
     output = io.BytesIO()
-    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+    # ExcelFile 持有 openpyxl 的 workbook 句柄，必须显式关闭：GC 终结器
+    # 在 CI（3.14 + -W error::ResourceWarning）下会把未关闭句柄判成失败。
+    with pd.ExcelFile(io.BytesIO(content)) as source, pd.ExcelWriter(output, engine='openpyxl') as writer:
         for index, sheet_name in enumerate(source.sheet_names):
             frame = pd.read_excel(source, sheet_name=sheet_name, header=None, dtype=object)
             frame = ImportService._drop_summary_rows(ImportService._promote_header(frame))
