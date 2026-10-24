@@ -28,7 +28,7 @@ DEFAULTS = {
     'lifecycle_thresholds': {'continuous_days': 60, 'seasonal_months': 12},
     'field_mappings': {}, 'mapping_templates': {},
     'classification_dictionaries': default_dictionaries(),
-    'product_view_template': 'operate', 'view_templates': {
+    'product_view_template': 'operate', 'product_personal_view': None, 'view_templates': {
         # 【2026-10-22】内置商品视图已剔除「长期 100% 空值」的列（paid_ipv/organic_ipv/
         # recommend_ipv/style/overall_roi/paid_ratio/lifecycle_stage/seasonality/
         # has_pending_action），与 frontend/ui_demo/assets/products-live.js 中
@@ -329,6 +329,22 @@ class SettingsService:
             templates = values.get('view_templates') or self.get().get('view_templates', {})
             if values['product_view_template'] not in templates:
                 raise SettingsValidationError('当前商品视图必须引用已存在的模板')
+        if 'product_personal_view' in values:
+            personal = values['product_personal_view']
+            if personal is None:
+                # 传 null 即清空个人视窗（恢复默认视窗轨）。
+                values['product_personal_view'] = None
+            else:
+                if not isinstance(personal, dict) or not isinstance(personal.get('columns'), list) or not personal['columns']:
+                    raise SettingsValidationError('个人视窗必须包含显示字段')
+                allowed_personal_fields = VIEW_COLUMNS | {item['key'] for item in get_field_catalog()['products']}
+                if not all(isinstance(column, str) and column in allowed_personal_fields for column in personal['columns']):
+                    raise SettingsValidationError('个人视窗包含不支持的字段')
+                values['product_personal_view'] = {
+                    'label': str(personal.get('label') or '个人视窗'),
+                    'columns': list(dict.fromkeys(personal['columns'])),
+                    'saved_at': str(personal.get('saved_at') or ''),
+                }
         if 'promotion_view_templates' in values:
             current = self.get().get('promotion_view_templates', DEFAULTS['promotion_view_templates'])
             allowed_tabs = set(DEFAULTS['promotion_view_templates'])

@@ -829,9 +829,7 @@
     $('[data-products-batch-star]').addEventListener('click', () => batchOps?.batchStar().catch((error) => toast(error.message || '批量收藏失败')));
     $('[data-products-batch-copy]').addEventListener('click', (event) => batchOps?.copySelectedProductIds(event.currentTarget));
     document.querySelectorAll('[data-products-view]').forEach((button) => button.addEventListener('click', () => {
-      state.view = button.dataset.productsView || 'operate';
-      try { localStorage.setItem(storageKey, state.view); } catch {}
-      columnSettings.applyColumns(columnSettings.templates[state.view] || columnSettings.templates.operate, state.view);
+      columnSettings.switchView(button.dataset.productsView || 'operate');
     }));
   }
 
@@ -889,6 +887,7 @@
 
   function initView(configuredDefault = null) {
     state.serverDefaultView = configuredDefault;
+    let restoredFromPreference = false;
     try {
       const preference = JSON.parse(localStorage.getItem(columnsPreferenceStorageKey) || 'null');
       const preferenceMatchesDefault = preference?.serverDefaultView === configuredDefault;
@@ -897,7 +896,9 @@
         : [];
       if (storedColumns.length) {
         state.visibleColumns = [...new Set(storedColumns)];
-        state.view = columnSettings.templates[preference.view] ? preference.view : 'custom';
+        state.view = preference.view === 'personal' ? 'personal'
+          : (columnSettings.templates[preference.view] ? preference.view : 'custom');
+        restoredFromPreference = true;
       } else {
         if (preference && !preferenceMatchesDefault) {
           localStorage.removeItem(columnsPreferenceStorageKey);
@@ -909,7 +910,23 @@
         state.visibleColumns = [...(columnSettings.templates[state.view] || columnSettings.templates.operate)];
       }
     } catch {}
+    // 视窗直达与个人视窗：URL ?view= > 本机偏好（上次所选持续生效）> 个人视窗（跨浏览器保存槽，
+    // 仅在本机无偏好时兜底）> 服务端默认模板。personal 不是模板键，单独分支；custom 无法用键还原不参与 URL。
+    let urlView = '';
+    try { urlView = new URL(window.location.href).searchParams.get('view') || ''; } catch {}
+    const personal = columnSettings.personalView?.();
+    if (urlView === 'personal' && personal) {
+      state.visibleColumns = [...new Set(personal.columns)];
+      state.view = 'personal';
+    } else if (urlView && columnSettings.templates[urlView]) {
+      state.view = urlView;
+      state.visibleColumns = [...columnSettings.templates[urlView]];
+    } else if (!urlView && !restoredFromPreference && personal) {
+      state.visibleColumns = [...new Set(personal.columns)];
+      state.view = 'personal';
+    }
     tableRender?.applyFieldView();
+    columnSettings.updateViewControls?.();
   }
 
   async function loadServerTemplates() {

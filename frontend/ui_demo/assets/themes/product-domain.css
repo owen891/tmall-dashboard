@@ -944,9 +944,13 @@ body[data-page="products"] .product-title__meta .star-button .lucide {
     text-overflow: ellipsis;
   }
   body[data-page="products"] .product-table th .table-sort-button__label {
+    /* 列宽 96px 下「推广费比(按净销售额)」会折到三行把表头顶高：
+       两行封顶，完整口径靠 button.title 原生提示 */
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
     min-width: 0;
     overflow: hidden;
-    text-overflow: ellipsis;
   }
 }
 @media (min-width: 1001px) {

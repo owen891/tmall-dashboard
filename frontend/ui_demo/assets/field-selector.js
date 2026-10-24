@@ -1,12 +1,29 @@
 (function () {
   function create(options) {
     const root = options.root;
+    // 上限约束（对齐 BI maxNum）：只拦「新增勾选」，不截断已保存的存量选择。
+    const maxSelected = Number.isFinite(options.maxSelected) && options.maxSelected > 0
+      ? Math.floor(options.maxSelected) : 0;
     let groups = [];
     let fieldsByKey = new Map();
     let selected = [];
     let searchQuery = '';
     let draggedPosition = -1;
     let dragOverPosition = -1;
+
+    function atCapacity() {
+      return maxSelected > 0 && selected.length >= maxSelected;
+    }
+
+    function refreshCapacity() {
+      if (!maxSelected) return;
+      const required = requiredKeys();
+      root.querySelectorAll('[data-field-selector-options] input[type="checkbox"]').forEach((input) => {
+        const key = input.getAttribute(options.optionDataAttribute || 'data-field-option-key');
+        if (required.includes(key) || selected.includes(key)) return;
+        input.disabled = atCapacity();
+      });
+    }
 
     function normalizeGroups(nextGroups) {
       return (nextGroups || []).map((group) => ({
@@ -251,8 +268,16 @@
           input.disabled = field.required || field.locked;
           input.addEventListener('change', () => {
             if (field.required || field.locked) return;
-            if (input.checked && !selected.includes(field.key)) selected.push(field.key);
+            if (input.checked && !selected.includes(field.key)) {
+              if (atCapacity()) {
+                input.checked = false;
+                options.onCapacity?.(maxSelected);
+                return;
+              }
+              selected.push(field.key);
+            }
             if (!input.checked) selected = selected.filter((key) => key !== field.key);
+            refreshCapacity();
             renderPreview();
             notify();
             window.lucide?.createIcons();
@@ -333,6 +358,7 @@
       searchQuery = '';
       renderShell();
       renderOptions();
+      refreshCapacity();
       renderPreview();
       window.lucide?.createIcons();
     }
@@ -340,6 +366,7 @@
     function setSelected(nextSelected, settings = {}) {
       selected = normalizeSelected(nextSelected);
       renderOptions();
+      refreshCapacity();
       renderPreview();
       if (settings.notify) notify();
       window.lucide?.createIcons();
@@ -350,7 +377,13 @@
     return {
       clear(settings = { notify: true }) { setSelected([], settings); },
       getSelected() { return [...selected]; },
-      selectAll(settings = { notify: true }) { setSelected([...fieldsByKey.keys()], settings); },
+      selectAll(settings = { notify: true }) {
+        // 全选同样受上限约束：必选字段在前，其余按分组顺序补满。
+        const required = requiredKeys();
+        const fill = [...fieldsByKey.keys()].filter((key) => !required.includes(key));
+        const capped = maxSelected > 0 ? fill.slice(0, Math.max(0, maxSelected - required.length)) : fill;
+        setSelected([...required, ...capped], settings);
+      },
       setConfig,
       setSelected,
     };

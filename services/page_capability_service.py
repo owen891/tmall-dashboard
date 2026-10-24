@@ -127,6 +127,7 @@ PAGE_DEFINITIONS = (
     },
     {
         'key': 'catalog', 'label': '组件目录', 'page_type': 'admin', 'route': '/component-catalog',
+        'nav_group': '工具', 'nav_icon': 'brackets',
         'core_question': '设计系统提供了哪些组件',
         # A static design-system showcase: it renders without any business data
         # domain, so its gate is always satisfiable.

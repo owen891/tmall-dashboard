@@ -205,7 +205,7 @@
   --elevation-lg: var(--shadow-lg-raw);
 
   /* Component tokens: shared component contracts. */
-  --sidebar-width: 260px;
+  --sidebar-width: 224px;
   --topbar-height: 60px;
   --nav-item-height: 42px;
   --control-height: 38px;

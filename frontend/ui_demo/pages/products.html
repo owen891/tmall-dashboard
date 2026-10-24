@@ -52,6 +52,7 @@
                   <button type="button" data-products-view="paid" aria-pressed="false">投放</button>
                   <button type="button" data-products-view="refund" aria-pressed="false">退款</button>
                   <button type="button" data-products-view="lifecycle" aria-pressed="false">生命周期</button>
+                  <button type="button" data-products-view="personal" aria-pressed="false" hidden>个人视窗</button>
                 </div>
               </div>
               <button class="ui-button" type="button" data-products-columns-open><i data-lucide="settings-2"></i>列设置</button>
@@ -254,7 +255,7 @@
     </div>
     <div class="products-columns-dialog__body">
       <div class="field-template-bar">
-        <div class="field-template-bar__current">当前显示 <strong data-products-visible-count>--</strong> 个字段</div>
+        <div class="field-template-bar__current">已选 <strong data-products-visible-count>--</strong> / <span data-products-visible-limit>25</span> 个字段</div>
         <div class="field-template-bar__controls">
           <select class="select" data-products-template-select aria-label="选择字段模板"></select>
           <button class="ui-button" type="button" data-products-template-apply>使用模板</button>
@@ -272,6 +273,8 @@
       <p class="products-columns-dialog__status" data-products-columns-status aria-live="polite"></p>
     </div>
     <div class="modal-form__footer">
+      <button class="ui-button" type="button" data-products-personal-clear hidden><i data-lucide="rotate-ccw"></i>恢复默认视窗</button>
+      <button class="ui-button" type="button" data-products-personal-save><i data-lucide="bookmark"></i>保存为个人视窗</button>
       <button class="ui-button" type="button" data-products-columns-close>取消</button>
       <button class="ui-button ui-button--primary" type="button" data-products-columns-apply><i data-lucide="check"></i>应用字段</button>
     </div>

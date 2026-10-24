@@ -789,6 +789,36 @@ class FrontendPrdContractTests(unittest.TestCase):
         options_block = script[script.index('function renderColumnOptions('):script.index('function openColumnsDialog(')]
         self.assertNotIn("[['arrow-up', -1, '上移'], ['arrow-down', 1, '下移']]", options_block)
 
+    def test_products_view_system_has_personal_track_column_limit_and_url_sync(self):
+        page = self.read('frontend/ui_demo/pages/products.html')
+        script = self.read('frontend/ui_demo/assets/pages/products/column-settings.js')
+        selector = self.read('frontend/ui_demo/assets/field-selector.js')
+        main = self.read('frontend/ui_demo/assets/products-live.js')
+        service = self.read('services/settings_service.py')
+        # 个人视窗轨：工具栏快切 + 弹层保存/恢复
+        self.assertIn('data-products-view="personal"', page)
+        self.assertIn('data-products-personal-save', page)
+        self.assertIn('data-products-personal-clear', page)
+        self.assertIn("PERSONAL_VIEW_KEY = 'personal'", script)
+        self.assertIn('function switchView(', script)
+        self.assertIn('product_personal_view', script)
+        self.assertIn('columnSettings.switchView', main)
+        # 初始化优先级：URL ?view= 直达 + personal 兜底（不压本机偏好）
+        self.assertIn("searchParams.get('view')", main)
+        self.assertIn("preference.view === 'personal'", main)
+        # 上限约束：共享组件只拦新增勾选，不截断存量
+        self.assertIn('data-products-visible-limit', page)
+        self.assertIn('maxSelected', selector)
+        self.assertIn('function atCapacity()', selector)
+        self.assertIn('function refreshCapacity()', selector)
+        self.assertIn('VIEW_COLUMN_LIMIT', script)
+        # 视图进 URL：custom 不写参
+        self.assertIn("url.searchParams.set('view'", script)
+        self.assertIn("url.searchParams.delete('view')", script)
+        # 服务端键与校验
+        self.assertIn("'product_personal_view': None", service)
+        self.assertIn('个人视窗必须包含显示字段', service)
+
     def test_field_settings_use_one_shared_selector_component(self):
         component_path = ROOT / 'frontend/ui_demo/assets/field-selector.js'
         self.assertTrue(component_path.exists(), 'field settings must be implemented by one shared component')

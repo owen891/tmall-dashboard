@@ -184,6 +184,37 @@ class SettingsApiTests(unittest.TestCase):
         self.assertEqual(saved['operate']['label'], '经营总览改版')
         self.assertIn('select', saved)
 
+    def test_product_personal_view_saves_clears_and_rejects_unknown_fields(self):
+        status, saved = self.request('PUT', '/api/settings', json={
+            'product_personal_view': {
+                'label': '个人视窗',
+                'columns': ['title', 'net_sales', 'operating_profit'],
+                'saved_at': '2026-10-24T12:00:00Z',
+            },
+        })
+        self.assertEqual(status, 200)
+        self.assertEqual(saved['data']['product_personal_view']['columns'], ['title', 'net_sales', 'operating_profit'])
+        self.assertEqual(saved['data']['product_personal_view']['saved_at'], '2026-10-24T12:00:00Z')
+
+        status, fetched = self.request('GET', '/api/settings')
+        self.assertEqual(status, 200)
+        self.assertEqual(fetched['data']['product_personal_view']['columns'], ['title', 'net_sales', 'operating_profit'])
+
+        status, cleared = self.request('PUT', '/api/settings', json={'product_personal_view': None})
+        self.assertEqual(status, 200)
+        self.assertIsNone(cleared['data']['product_personal_view'])
+
+        status, rejected = self.request('PUT', '/api/settings', json={
+            'product_personal_view': {'label': '坏视图', 'columns': ['not_a_field']},
+        })
+        self.assertEqual(status, 422)
+        self.assertEqual(rejected['code'], 'VALIDATION_ERROR')
+
+        status, empty_rejected = self.request('PUT', '/api/settings', json={
+            'product_personal_view': {'label': '空视图', 'columns': []},
+        })
+        self.assertEqual(status, 422)
+
     def test_promotion_templates_and_field_catalog_are_server_backed(self):
         status, payload = self.request('GET', '/api/settings')
         self.assertEqual(status, 200)

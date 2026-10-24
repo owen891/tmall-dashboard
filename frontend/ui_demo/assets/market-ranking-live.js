@@ -768,7 +768,7 @@
     const trendKeys = ['trend_up', 'trend_down', 'trend_flat', 'trend_new', 'trend_out'];
     const trendColors = ['#10b981', '#ef4444', '#9ca3af', '#3b82f6', '#f59e0b'];
     let trendHtml = '';
-    categories.forEach(cat => {
+    categories.forEach((cat, catIndex) => {
       trendHtml += `<div style="margin-bottom:8px"><span style="font-weight:600;font-size:12px;color:${catColor(catIndex)}">${escapeHtml(cat.category)}</span></div>`;
       trendLabels.forEach((label, i) => {
         const val = cat[trendKeys[i]] || 0;
@@ -788,10 +788,10 @@
 
     // 集中度
     let concHtml = '';
-    categories.forEach(cat => {
+    categories.forEach((cat, catIndex) => {
       concHtml += `
         <div style="margin-bottom:16px">
-          <div style="font-weight:600;font-size:12px;color:${TEXT_COLORS[cat.category]};margin-bottom:6px">${escapeHtml(cat.category)}</div>
+          <div style="font-weight:600;font-size:12px;color:${catTextColor(catIndex)};margin-bottom:6px">${escapeHtml(cat.category)}</div>
           <div class="market-bar-row">
             <span class="market-bar-label">TOP10</span>
             <div class="market-bar-track"><div class="market-bar-fill" style="width:${cat.concentration_top10 || 0}%;background:#4f46e5"></div></div>
@@ -810,16 +810,16 @@
     // 总买家数
     let totalHtml = '';
     const maxTotal = Math.max(...categories.map(c => c.total_buyers || 0), 1);
-    categories.forEach(cat => {
+    categories.forEach((cat, catIndex) => {
       const pct = (cat.total_buyers / maxTotal * 100);
       totalHtml += `
         <div style="margin-bottom:16px">
           <div style="display:flex;justify-content:space-between;margin-bottom:4px">
-            <span style="font-weight:600;font-size:13px;color:${TEXT_COLORS[cat.category]}">${escapeHtml(cat.category)}</span>
+            <span style="font-weight:600;font-size:13px;color:${catTextColor(catIndex)}">${escapeHtml(cat.category)}</span>
             <span style="font-family:var(--font-display);font-size:18px;font-weight:700">${fmtWan(cat.total_buyers)}</span>
           </div>
           <div style="height:24px;background:var(--surface-base);border-radius:4px;overflow:hidden">
-            <div style="width:${pct}%;height:100%;background:${COLORS[cat.category]};border-radius:4px"></div>
+            <div style="width:${pct}%;height:100%;background:${catColor(catIndex)};border-radius:4px"></div>
           </div>
         </div>`;
     });

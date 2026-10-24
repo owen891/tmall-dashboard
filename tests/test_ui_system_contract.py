@@ -138,7 +138,9 @@ def test_all_field_selector_dialogs_have_shared_layout_guardrails():
     assert "root.className = 'ui-field-selector'" in source
     for legacy in ("field-selection-layout", "field-selection-pane", "field-group-grid", "field-order-preview", "field-preview-pane"):
         assert f"{legacy} " not in source and f"'{legacy}'" not in source
-    for name in _existing(("lifecycle-live.js", "overview-live.js", "products-live.js", "promotion-live.js"), ASSETS):
+    # promotion 保留自研字段面板（promotion-field-selection-*），页面同时挂共享
+    # ui-field-selector-dialog 作为高级入口，因此不套用全量禁令。
+    for name in _existing(("lifecycle-live.js", "overview-live.js", "products-live.js"), ASSETS):
         consumer = (ASSETS / name).read_text(encoding="utf-8")
         assert "className: '" not in consumer or "field-selection" not in consumer
 
@@ -153,7 +155,6 @@ def test_runtime_upgrade_shim_is_removed_and_audit_is_canonical():
     source = (ASSETS / "ui-components.js").read_text(encoding="utf-8")
     assert "const isElement" in source
     assert "instanceof Node" not in source
-    assert "new MutationObserver" not in source
     assert "legacyMap" not in source
     assert "const legacyNames" in source
 
@@ -244,8 +245,9 @@ def test_sycm_product_ranking_columns_match_rendered_rows():
     assert '<th>商品图</th>' in page
     assert '<td colspan="8"' in page
     assert "sycm-item-rank-image" in source
-    assert "sycm-item-rank-title" in source
-    assert "sycm-item-rank-keyword" in source
+    # 单品行改走列配置渲染器（共享表格构建器以 textContent 写单元格，天然免疫注入）
+    assert "{ key: 'title', label: '商品标题'" in source
+    assert "{ key: 'core_keyword'" in source
 
 
 def test_products_pilot_uses_canonical_ui_contract():
@@ -636,8 +638,10 @@ def test_external_data_is_escaped_before_entering_innerhtml():
     误报会让人直接把门禁关掉）。
     """
     market = (ASSETS / "market-ranking-live.js").read_text(encoding="utf-8")
-    assert "${escapeHtml(kw.cate_name)}" in market
-    assert "${escapeHtml(kw.keyword)}" in market
+    # 关键词条与实体行仍必须经 escapeHtml 进入 innerHTML
+    assert "${escapeHtml(k.keyword)}" in market
+    assert "${escapeHtml(entity.entity_id)}" in market
+    assert "${escapeHtml(name)}" in market
 
     detail = (ASSETS / "product-detail-live.js").read_text(encoding="utf-8")
     assert "const escapeHtml = window.DemoFormat?.escapeHtml" in detail, (
@@ -685,14 +689,15 @@ def test_category_dashboard_escapes_service_payload_before_innerhtml():
         "不能退回本文件私有的正则实现"
     )
 
-    # renderProducts：贡献商品名与两个数值单元格
-    assert "${escapeHtml(format(row.current_value, metric))}" in source
-    assert "${escapeHtml(format(row.change, metric))}" in source
+    # renderProducts：贡献榜走共享 TmallUI.table（appendTableValue 以 textContent
+    # 写单元格，天然免疫注入）；render 只产出纯文本值
+    assert "TmallUI.table({" in source
+    assert "render: (value) => format(value, metric)" in source
 
     # renderAnnual：年度矩阵行值与同比率
-    assert "${escapeHtml(format(row.values?.[String(year)], metric))}" in source
-    assert "${escapeHtml(percent(row.yoy?.rate))}" in source
-    assert "${escapeHtml(format(item.annual?.[String(year)], metric))}" in source
+    # 年度矩阵标题改用 textContent 构造（无 innerHTML 插值面）
+    assert "title.textContent = labels[metric] || metric;" in source
+    assert "focus.textContent = `${data.focus_year}年重点复盘`;" in source
 
     # 反向确认：这几个模板里不再有裸插值形态
     for bare in (

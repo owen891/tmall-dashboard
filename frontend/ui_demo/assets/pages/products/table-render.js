@@ -292,8 +292,10 @@
       const pageSums = summarySums(rows);
       const labelCell = row.insertCell();
       labelCell.colSpan = 2;
-      labelCell.className = 'ui-summary-row__label';
+      // __label 是 inline-flex 标签样式，只能落在 span 上：td 脱离 table-cell
+      // 显示会导致 colSpan 失效、整行左移一列
       const label = document.createElement('span');
+      label.className = 'ui-summary-row__label';
       label.textContent = '汇总：';
       labelCell.appendChild(label);
       [['all', '全部'], ['page', '当前页']].forEach(([scope, text]) => {

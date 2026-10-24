@@ -206,6 +206,8 @@
         cell.appendChild(button);
       }
       button.querySelector('.table-sort-button__label').textContent = label;
+      // 标签在窄列里可能被两行截断（如商品页口径后缀），原生 tooltip 兜底完整文案
+      button.title = label;
       const active = state.sortKey === key ? state.sortDirection : '';
       cell.setAttribute('aria-sort', active === 'asc' ? 'ascending' : active === 'desc' ? 'descending' : 'none');
       button.setAttribute('aria-label', `${label}，${active === 'asc' ? '当前升序，点击切换降序' : active === 'desc' ? '当前降序，点击切换升序' : '点击升序排序'}`);

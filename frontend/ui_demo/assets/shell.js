@@ -235,7 +235,9 @@
   document.documentElement.dataset.theme = theme;
   const themeColorMeta = document.head.querySelector('meta[name="theme-color"]') || document.head.appendChild(Object.assign(document.createElement('meta'), { name: 'theme-color' }));
   const route = (page) => {
-    const path = page === 'overview' ? '/' : (page === 'catalog' ? '/component-catalog' : `/${page}`);
+    // 能力目录的 route 已是绝对路径（如 /data-collection）；再补前缀会拼出 //xxx，
+    // DemoNavigation 的 new URL 会把第二段当主机名，href 退化成 '/'。
+    const path = page.startsWith('/') ? page : (page === 'overview' ? '/' : (page === 'catalog' ? '/component-catalog' : `/${page}`));
     return window.DemoNavigation?.fromCurrent ? window.DemoNavigation.fromCurrent(path) : path;
   };
   const sidebar = document.querySelector('[data-shell-sidebar]');
@@ -302,8 +304,14 @@
     pages.forEach((page) => {
       const key = page.key;
       if (!key || nav.some(([id]) => id === key)) return;
+      // 上下文页（商品详情等）路由带资源占位符，离开具体商品没有意义，不进导航。
+      if (page.page_type === 'context') return;
+      // 导航可见性按声明制：只有显式带 nav 元数据（nav_group/nav_label/nav_icon）的
+      // 页面才注入，能力目录里的其余页面不自动漏进侧边栏。
+      if (!page.nav_group && !page.nav_label && !page.nav_icon) return;
       const label = page.nav_label || page.label || key;
-      const icon = page.nav_icon || 'circle';
+      // 裁剪版 lucide-custom.min.js 只有 56 个图标，circle 不在其中。
+      const icon = page.nav_icon || 'package';
       meta[key] = page.description || [label, ''];
       if (!liveAdapters[key]) liveAdapters[key] = `${key}-live.js`;
       if (page.suppress_date_range) pagesWithoutDateRange.add(key);
@@ -315,6 +323,8 @@
       const container = section.querySelector('.demo-nav__group') || section;
       container.insertAdjacentHTML('beforeend', item);
     });
+    // 注入发生在页面首轮 createIcons 之后，补一轮渲染新插入的图标。
+    window.lucide?.createIcons?.();
   }).catch(() => {});
   sidebar.insertAdjacentHTML('beforeend', `
     <dialog class="demo-version-dialog" data-sidebar-version-dialog aria-labelledby="demoVersionDialogTitle">
@@ -1229,7 +1239,11 @@
     finally { addScanButton.disabled = false; }
   });
   document.querySelector('[data-refresh-scans]').addEventListener('click', () => loadScanJobs().catch((error) => { scanResult.textContent = window.TmallScanUi?.errorMessage?.(error) || error.message || '扫描任务加载失败'; }));
-  loadScanJobs().catch((error) => { document.querySelector('[data-scan-list]').replaceChildren(TmallUI.table({ columns: [{ label: '任务与文件夹' }, { label: '计划' }, { label: '状态' }, { label: '最近运行' }, { label: '操作' }], tableClass: 'toolbox-scan-table__table', emptyMessage: '扫描任务加载失败' })); scanResult.textContent = window.TmallScanUi?.errorMessage?.(error) || error.message || '扫描任务加载失败'; });
+  // shell.js 在 ui-components.js 之前执行，而 loadScanJobs 首行就裸引用 TmallUI；
+  // 初始化必须等 DOMContentLoaded（届时全部经典脚本已执行），否则必然 ReferenceError。
+  const kickScanJobs = () => loadScanJobs().catch((error) => { document.querySelector('[data-scan-list]').replaceChildren(TmallUI.table({ columns: [{ label: '任务与文件夹' }, { label: '计划' }, { label: '状态' }, { label: '最近运行' }, { label: '操作' }], tableClass: 'toolbox-scan-table__table', emptyMessage: '扫描任务加载失败' })); scanResult.textContent = window.TmallScanUi?.errorMessage?.(error) || error.message || '扫描任务加载失败'; });
+  if (document.readyState === 'loading') window.addEventListener('DOMContentLoaded', kickScanJobs, { once: true });
+  else kickScanJobs();
   async function syncActionCount() {
     const badge = sidebar.querySelector('[data-nav-action-count]');
     if (!badge) return;

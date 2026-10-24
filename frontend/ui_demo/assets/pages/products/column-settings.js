@@ -27,6 +27,11 @@
       $, number, toast, jsonOptions, renderTable, columnsDialog,
     } = deps;
 
+    // 视窗体系（对齐 BI）：默认视窗轨 = 下列模板；个人视窗 = 单槽快存（settings.product_personal_view）。
+    // 上限只拦新增勾选，不截断存量偏好，避免老用户打开页面列数被静默砍掉。
+    const PERSONAL_VIEW_KEY = 'personal';
+    const VIEW_COLUMN_LIMIT = 25;
+
     let columnsReturnFocus = null;
     let columnSelector = null;
     let templateManager = null;
@@ -66,12 +71,67 @@
       return columnSelector?.getSelected() || [];
     }
 
+    function personalView() {
+      const view = state.settings?.product_personal_view;
+      if (view && Array.isArray(view.columns)) {
+        const valid = view.columns.filter((column) => columnsByKey.has(column));
+        if (valid.length) return { ...view, columns: valid };
+      }
+      return null;
+    }
+
+    function formatSavedAt(savedAt) {
+      const date = new Date(savedAt || '');
+      if (Number.isNaN(date.getTime())) return '个人视窗';
+      return `个人视窗（${date.getMonth() + 1}月${date.getDate()}日保存）`;
+    }
+
+    function updateViewControls() {
+      const personal = personalView();
+      const personalButton = document.querySelector('[data-products-view="personal"]');
+      if (personalButton) {
+        personalButton.hidden = !personal;
+        personalButton.title = personal ? formatSavedAt(personal.saved_at) : '个人视窗';
+      }
+      document.querySelectorAll('[data-products-view]').forEach((button) => {
+        button.setAttribute('aria-pressed', String(button.dataset.productsView === state.view));
+      });
+      const limit = $('[data-products-visible-limit]');
+      if (limit) limit.textContent = String(VIEW_COLUMN_LIMIT);
+      const clearButton = $('[data-products-personal-clear]');
+      if (clearButton) clearButton.hidden = !personal;
+    }
+
+    function syncViewUrl() {
+      try {
+        const url = new URL(window.location.href);
+        if (state.view === 'custom') url.searchParams.delete('view');
+        else url.searchParams.set('view', state.view);
+        history.replaceState(null, '', url);
+      } catch {}
+    }
+
+    function switchView(key) {
+      if (key === PERSONAL_VIEW_KEY) {
+        const personal = personalView();
+        if (!personal) return;
+        applyColumns(personal.columns, PERSONAL_VIEW_KEY);
+        return;
+      }
+      const resolved = templates[key] ? key : 'operate';
+      try { localStorage.setItem(storageKeys.view, resolved); } catch {}
+      applyColumns(templates[resolved] || templates.operate, resolved);
+    }
+
     function updateColumnsDialogStatus() {
       const selected = selectedDialogColumns();
       $('[data-products-visible-count]').textContent = number(selected.length);
+      const limit = $('[data-products-visible-limit]');
+      if (limit && limit.textContent !== String(VIEW_COLUMN_LIMIT)) limit.textContent = String(VIEW_COLUMN_LIMIT);
       $('[data-products-columns-status]').textContent = selected.length ? '' : '至少保留一个可见字段';
       $('[data-products-columns-apply]').disabled = selected.length === 0;
       $('[data-products-template-save]').disabled = selected.length === 0;
+      $('[data-products-personal-save]').disabled = selected.length === 0;
     }
 
     function renderTemplateSelect(selectedKey = state.view) {
@@ -99,11 +159,15 @@
         columnSelector = TmallUI.fieldSelector({
           root: $('[data-products-field-selector]'),
           ...config,
+          maxSelected: VIEW_COLUMN_LIMIT,
           availableTitleId: 'productsAvailableFieldsTitle',
           previewTitleId: 'productsFieldPreviewTitle',
           optionDataAttribute: 'data-products-column-key',
           previewDataAttribute: 'data-products-preview-key',
           onChange: updateColumnsDialogStatus,
+          onCapacity: (limit) => {
+            $('[data-products-columns-status]').textContent = `最多选择 ${limit} 个字段，请先取消部分字段`;
+          },
         });
       } else {
         columnSelector.setConfig(config);
@@ -163,6 +227,8 @@
       state.visibleColumns = valid;
       state.view = view;
       saveColumns();
+      syncViewUrl();
+      updateViewControls();
       renderTable();
     }
 
@@ -183,6 +249,7 @@
         templateLabels[key] = Array.isArray(value) ? key : (value.label || key);
       });
       templateManager?.setTemplates(productTemplateRecords());
+      updateViewControls();
     }
 
     async function updateProductTemplate(key, label) {
@@ -250,12 +317,54 @@
       }
     }
 
+    async function savePersonalView() {
+      const selected = selectedDialogColumns();
+      if (!selected.length) return;
+      const button = $('[data-products-personal-save]');
+      button.disabled = true;
+      $('[data-products-columns-status]').textContent = '正在保存个人视窗';
+      try {
+        const response = await DemoApi.domainRequest('/api/settings', jsonOptions({
+          product_personal_view: { label: '个人视窗', columns: selected, saved_at: new Date().toISOString() },
+        }, 'PUT'));
+        ingestViewTemplates(response.data);
+        applyColumns(selected, PERSONAL_VIEW_KEY);
+        $('[data-products-columns-status]').textContent = '已保存为个人视窗，下次进入商品页默认使用';
+        toast('已保存个人视窗');
+      } catch (error) {
+        $('[data-products-columns-status]').textContent = error.message || '个人视窗保存失败';
+      } finally {
+        button.disabled = false;
+      }
+    }
+
+    async function clearPersonalView() {
+      try {
+        const response = await DemoApi.domainRequest('/api/settings', jsonOptions({ product_personal_view: null }, 'PUT'));
+        ingestViewTemplates(response.data);
+        if (state.view === PERSONAL_VIEW_KEY) {
+          const fallbackKey = state.serverDefaultView && templates[state.serverDefaultView] ? state.serverDefaultView : 'operate';
+          try { localStorage.setItem(storageKeys.view, fallbackKey); } catch {}
+          applyColumns(templates[fallbackKey] || templates.operate, fallbackKey);
+        } else {
+          updateViewControls();
+        }
+        $('[data-products-columns-status]').textContent = '已恢复默认视窗';
+        toast('已恢复默认视窗');
+      } catch (error) {
+        $('[data-products-columns-status]').textContent = error.message || '恢复默认视窗失败';
+      }
+    }
+
     function bindColumnSettings() {
       $('[data-products-columns-open]').addEventListener('click', openColumnsDialog);
       document.querySelectorAll('[data-products-columns-close]').forEach((button) => button.addEventListener('click', closeColumnsDialog));
       $('[data-products-columns-reset]').addEventListener('click', () => renderColumnOptions(templates.operate));
-      $('[data-products-columns-select-all]').addEventListener('click', () => renderColumnOptions(columns.map((column) => column.key)));
+      // 全选走组件 selectAll：受上限约束（必选在前、按分组顺序补满）。
+      $('[data-products-columns-select-all]').addEventListener('click', () => columnSelector?.selectAll({ notify: true }));
       $('[data-products-columns-clear-all]').addEventListener('click', () => renderColumnOptions([]));
+      $('[data-products-personal-save]').addEventListener('click', () => savePersonalView());
+      $('[data-products-personal-clear]').addEventListener('click', () => clearPersonalView());
       $('[data-products-template-apply]').addEventListener('click', () => {
         const key = $('[data-products-template-select]').value;
         renderColumnOptions(templates[key] || templates.operate);
@@ -289,6 +398,9 @@
       ingestViewTemplates,
       openColumnsDialog,
       closeColumnsDialog,
+      personalView,
+      switchView,
+      updateViewControls,
     });
   }
 
