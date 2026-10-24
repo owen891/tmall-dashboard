@@ -6,9 +6,10 @@ SHOP_ID = 'legacy-shop'
 
 # 品类标签必须与运行时解析的 category_mode=sock 标签一致，否则 gate 服务上
 # 所有带 category_mode 的请求都会 422（sock 模式解析不到任何商品）。
+# 直接复用服务模块的常量，避免两处各自读 env 产生漂移。
 def category_label():
-    import os
-    return os.environ.get('TMALL_CATEGORY_LABEL', '默认品类')
+    from services.category_mode_service import SOCK_LABEL
+    return SOCK_LABEL
 PRODUCT_ID = 'gate-product-001'
 
 
