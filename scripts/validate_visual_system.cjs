@@ -11,7 +11,10 @@ const pageStyles = [
   'keyword-promotion.css',
   'promotion-views.css',
   'settings-views.css',
-].map((file) => ({ file, css: fs.readFileSync(path.join(root, file), 'utf8') }));
+]
+  // 部分页面样式只随私人版分发；公开 checkout 缺文件时跳过而非中断。
+  .filter((file) => fs.existsSync(path.join(root, file)))
+  .map((file) => ({ file, css: fs.readFileSync(path.join(root, file), 'utf8') }));
 const styles = [...shared, ...pageStyles];
 const errors = [];
 
