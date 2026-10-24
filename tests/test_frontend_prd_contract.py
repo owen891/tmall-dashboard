@@ -705,9 +705,10 @@ class FrontendPrdContractTests(unittest.TestCase):
     def test_products_do_not_render_empty_image_elements(self):
         # 图像渲染逻辑迁移到 table-render.js（products-live.js 拆分第三步）
         products = self.read('frontend/ui_demo/assets/pages/products/table-render.js')
-        image_block = products[products.index("const identity = document.createElement('div');"):products.index("const title = document.createElement('div');")]
-        self.assertIn('if (item.image_url)', image_block)
-        self.assertIn('product-thumb--placeholder', image_block)
+        # 行内缩略图统一走共享 TmallUI.productIdentity（内部对缺图走占位，不产出空 <img>）
+        self.assertIn('TmallUI.productIdentity({', products)
+        identity = self.read('frontend/ui_demo/assets/ui-components.js')
+        self.assertIn('product-thumb--placeholder', identity)
 
     def test_products_column_dialog_supports_full_selection_and_custom_templates(self):
         page = self.read('frontend/ui_demo/pages/products.html')

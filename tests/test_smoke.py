@@ -139,7 +139,8 @@ class TestPageRender(SmokeTestBase):
         """首页应正常渲染"""
         resp = self.client.get('/')
         self.assertEqual(resp.status_code, 200)
-        self.assertIn(b'\xe5\xa4\xa9\xe7\x8c\xab', resp.data)  # "天猫" in UTF-8
+        # 品牌字标由 shell.js 客户端渲染；服务端断言真实页面标题。
+        self.assertIn('数据概览'.encode('utf-8'), resp.data)
         resp.close()
 
 

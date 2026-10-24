@@ -411,7 +411,7 @@ class AppFactoryTests(unittest.TestCase):
         with create_app({'TESTING': True}).test_client() as client:
             response = client.get('/')
             self.assertEqual(response.status_code, 200)
-            self.assertIn('天猫'.encode('utf-8'), response.data)
+            self.assertIn('数据概览'.encode('utf-8'), response.data)
             response.close()
 
 

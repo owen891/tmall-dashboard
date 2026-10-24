@@ -53,8 +53,16 @@ def main(argv=None):
         where = ['shop_id = ?']
         params: list[object] = [args.shop_id]
         if args.lookback_days is not None:
-            where.append("date >= date('now', ?)")
-            params.append(f'-{args.lookback_days} days')
+            # 窗口锚点取业务数据最新日期，不是墙钟：历史日期一旦滑出
+            # 「今天 - N 天」就永久无法回填，且空窗口会被误读成"已同步"。
+            anchor = connection.execute(
+                'SELECT MAX(date) FROM daily_data WHERE shop_id = ?', (args.shop_id,)
+            ).fetchone()[0]
+            if anchor is None:
+                where.append('0')
+            else:
+                where.append('date >= date(?, ?)')
+                params.extend([anchor, f'-{args.lookback_days} days'])
         rows = connection.execute(
             f'''SELECT date,
                        ROUND(SUM(COALESCE(payment_amount, 0)), 2) AS payment_amount,
