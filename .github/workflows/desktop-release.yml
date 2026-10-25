@@ -227,11 +227,14 @@ jobs:
           python scripts/merge_mac_update_metadata.py release-artifacts/mac-x64/latest-mac.yml release-artifacts/mac-arm64/latest-mac.yml --output mac-release/latest-mac.yml
           find release-artifacts -type f \( -name '*.dmg' -o -name '*.zip' -o -name '*.blockmap' \) -exec cp {} mac-release/ \;
           cp release-artifacts/windows-release/* mac-release/ 2>/dev/null || true
+      - name: Build release notes from CHANGELOG
+        shell: bash
+        run: python scripts/write_release_body.py release-body.md
       - name: Publish one serialized GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
-          generate_release_notes: true
+          body_path: release-body.md
           files: |
             mac-release/*.exe
             mac-release/*.dmg

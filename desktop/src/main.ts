@@ -78,8 +78,29 @@ function rebuildTrayMenu(): void {
   ]))
 }
 
+// 托盘图标解析顺序：打包进 resources 的图标 → exe 自身图标 → 空图。
+// 之前只用 app.getFileIcon(process.execPath)：开发态 exe 是 electron.exe，
+// 取不到自定义图标，托盘位置就是空白。
+function trayIcon(): Electron.NativeImage {
+  // 打包态图标在 resources 下；开发态退到仓库内的 assets。
+  const roots = app.isPackaged
+    ? [process.resourcesPath]
+    : [join(__dirname, '..', 'assets'), join(app.getAppPath(), 'assets')]
+  const names = process.platform === 'win32' ? ['tray.ico', 'tray.png'] : ['tray.png']
+  for (const root of roots) {
+    for (const name of names) {
+      const candidate = nativeImage.createFromPath(join(root, name))
+      if (!candidate.isEmpty()) return candidate
+    }
+  }
+  return nativeImage.createEmpty()
+}
+
 async function createTray(): Promise<void> {
-  const icon = await app.getFileIcon(process.execPath, { size: 'small' })
+  const packaged = trayIcon()
+  const icon = packaged.isEmpty()
+    ? await app.getFileIcon(process.execPath, { size: 'small' })
+    : packaged
   tray = new Tray(icon.isEmpty() ? nativeImage.createFromPath(process.execPath) : icon)
   tray.setToolTip(zhCN.appName)
   tray.on('double-click', showMainWindow)

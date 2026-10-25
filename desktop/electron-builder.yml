@@ -19,6 +19,11 @@ extraResources:
     to: backend
     filter:
       - "**/*"
+  # 托盘图标必须在运行时可读；打包器只把 icon 用于 exe/dmg 外壳，不会复制进包。
+  - from: assets/tmall-dashboard.ico
+    to: tray.ico
+  - from: assets/tmall-dashboard-logo-1024.png
+    to: tray.png
 
 win:
   target:

@@ -25,10 +25,96 @@ def get_latest_run_id(analysis_date=None):
     return row[0] if row else None
 
 
+
+# --- 新采集链路适配 -------------------------------------------------------
+# 店透视 XLSX 导入（market_analysis_*）与生意参谋采集（sycm_market_*）是两条
+# 独立链路。旧链路已停更（最后批次 2026-09-27），新链路仍在每日写入。
+# 这里让接口优先读新链路，并把它折算成旧响应结构，前端无需改动。
+SYCM_ITEM = 'sycm_market_item_rank'
+SYCM_SEARCH = 'sycm_market_search_rank'
+
+
+def _sycm_latest_date(conn, analysis_date=None):
+    """新链路可用的最新 stat_date（不晚于请求日期）。"""
+    sql = f'SELECT MAX(stat_date) FROM {SYCM_ITEM}'
+    params = ()
+    if analysis_date:
+        sql += ' WHERE stat_date <= ?'
+        params = (analysis_date,)
+    try:
+        row = conn.execute(sql, params).fetchone()
+    except Exception:
+        return None
+    return row[0] if row else None
+
+
+def _sycm_summary(conn, stat_date):
+    """按新链路聚合出旧 summary 结构（类目统计 + 总览指标）。"""
+    rows = conn.execute(f"""
+        SELECT cate_name,
+               COUNT(*) AS item_rows,
+               SUM(uv) AS total_uv,
+               SUM(CASE WHEN rank <= 10 THEN uv ELSE 0 END) AS top10_uv,
+               SUM(CASE WHEN rank <= 50 THEN uv ELSE 0 END) AS top50_uv,
+               SUM(pay_buyer_count) AS buyers,
+               COUNT(DISTINCT shop_id) AS shops
+          FROM {SYCM_ITEM}
+         WHERE stat_date = ?
+      GROUP BY cate_name
+      ORDER BY total_uv DESC
+    """, (stat_date,)).fetchall()
+
+    categories = []
+    for name, item_rows, total_uv, top10_uv, top50_uv, buyers, shops in rows:
+        total_uv = total_uv or 0
+        categories.append({
+            'category': name,
+            # 旧字段语义：在榜店铺数。新链路只有排名样本，用去重店铺数近似。
+            'shop_tmall': int(shops or 0),
+            'shop_taobao': 0,
+            'trend_flat': 0, 'trend_up': 0, 'trend_down': 0,
+            'trend_out': 0, 'trend_new': 0,
+            'concentration_top10': round(100.0 * (top10_uv or 0) / total_uv, 2) if total_uv else 0,
+            'concentration_top50': round(100.0 * (top50_uv or 0) / total_uv, 2) if total_uv else 0,
+            'total_buyers': float(buyers or 0),
+        })
+
+    product_count = conn.execute(
+        f'SELECT COUNT(*) FROM {SYCM_ITEM} WHERE stat_date = ?', (stat_date,)).fetchone()[0]
+    keyword_count = conn.execute(
+        f'SELECT COUNT(*) FROM {SYCM_SEARCH} WHERE stat_date = ?', (stat_date,)).fetchone()[0]
+    shop_count = conn.execute(
+        f'SELECT COUNT(DISTINCT shop_id) FROM {SYCM_ITEM} WHERE stat_date = ?', (stat_date,)).fetchone()[0]
+
+    return {
+        'run_id': f'sycm:{stat_date}',
+        'analysis_date': stat_date,
+        'period_start': stat_date,
+        'period_end': stat_date,
+        'source': '店透视市场排行（生意参谋采集）',
+        'category_count': len(categories),
+        'product_count': product_count,
+        'keyword_count': keyword_count,
+        'overlap_shop_count': shop_count,
+        'categories': categories,
+    }
+
+
 @market_ranking_bp.route('/summary', methods=['GET'])
 def summary():
-    """汇总数据：类目统计+总览指标"""
-    run_id = get_latest_run_id(request.args.get('analysis_date'))
+    """汇总数据：类目统计+总览指标（优先新采集链路）"""
+    requested = request.args.get('analysis_date')
+    conn = get_connection()
+    try:
+        stat_date = _sycm_latest_date(conn, requested)
+        if stat_date:
+            return success(_sycm_summary(conn, stat_date))
+    except Exception:
+        pass
+    finally:
+        conn.close()
+
+    run_id = get_latest_run_id(requested)
     if not run_id:
         return failure('NO_DATA', '暂无市场分析数据')
 
@@ -119,15 +205,37 @@ def category_stats():
 
 @market_ranking_bp.route('/products', methods=['GET'])
 def products():
-    """商品榜单，支持category和list_type筛选"""
-    run_id = get_latest_run_id(request.args.get('analysis_date'))
-    if not run_id:
-        return failure('NO_DATA', '暂无市场分析数据')
-
+    """商品榜单，支持category和list_type筛选（优先新采集链路）"""
     category = request.args.get('category', '')
     list_type = request.args.get('list_type', '')
+    requested = request.args.get('analysis_date')
 
     conn = get_connection()
+    try:
+        stat_date = _sycm_latest_date(conn, requested)
+        if stat_date:
+            sql = (f'SELECT cate_name, rank, title, shop_name, pay_buyer_count, uv, pic_url, item_id '
+                   f'FROM {SYCM_ITEM} WHERE stat_date = ?')
+            params = [stat_date]
+            if category:
+                sql += ' AND cate_name = ?'
+                params.append(category)
+            sql += ' ORDER BY cate_name, rank'
+            rows = conn.execute(sql, params).fetchall()
+            return success([{
+                'category': r[0], 'list_type': '支付买家数TOP', 'rank': r[1],
+                'rank_change': None, 'title': r[2], 'shop': r[3],
+                'buyers': r[4], 'visitors': r[5],
+                'image_url': r[6], 'item_id': r[7],
+            } for r in rows])
+    except Exception:
+        pass
+
+    run_id = get_latest_run_id(requested)
+    if not run_id:
+        conn.close()
+        return failure('NO_DATA', '暂无市场分析数据')
+
     try:
         c = conn.cursor()
 
@@ -156,15 +264,35 @@ def products():
 
 @market_ranking_bp.route('/keywords', methods=['GET'])
 def keywords():
-    """关键词，支持category和keyword_type筛选"""
-    run_id = get_latest_run_id(request.args.get('analysis_date'))
-    if not run_id:
-        return failure('NO_DATA', '暂无市场分析数据')
-
+    """关键词，支持category和keyword_type筛选（优先新采集链路）"""
     category = request.args.get('category', '')
     keyword_type = request.args.get('keyword_type', '')
+    requested = request.args.get('analysis_date')
 
     conn = get_connection()
+    try:
+        stat_date = _sycm_latest_date(conn, requested)
+        if stat_date:
+            sql = (f'SELECT cate_name, keyword, search_heat, rank FROM {SYCM_SEARCH} '
+                   f'WHERE stat_date = ?')
+            params = [stat_date]
+            if category:
+                sql += ' AND cate_name = ?'
+                params.append(category)
+            sql += ' ORDER BY cate_name, rank LIMIT 2000'
+            rows = conn.execute(sql, params).fetchall()
+            return success([{
+                'category': r[0], 'keyword_type': '搜索人气', 'keyword': r[1],
+                'count': r[2], 'rank': r[3],
+            } for r in rows])
+    except Exception:
+        pass
+
+    run_id = get_latest_run_id(requested)
+    if not run_id:
+        conn.close()
+        return failure('NO_DATA', '暂无市场分析数据')
+
     try:
         c = conn.cursor()
 

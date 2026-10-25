@@ -31,7 +31,12 @@ describe('desktop main process contract', () => {
     expect(source).toContain("target.hostname === 'github.com'")
   })
 
-  it('loads the packaged executable icon for the tray', () => {
+  it('loads a real tray icon and falls back to the executable icon', () => {
+    // 托盘图标必须来自真实图标文件：开发态 exe 是 electron.exe，
+    // 只用 getFileIcon 会得到空白托盘。
+    expect(source).toContain('function trayIcon()')
+    expect(source).toContain("process.platform === 'win32' ? ['tray.ico', 'tray.png'] : ['tray.png']")
+    expect(source).toContain('app.isPackaged')
     expect(source).toContain("app.getFileIcon(process.execPath, { size: 'small' })")
     expect(source).toContain('await createTray()')
   })
