@@ -1357,8 +1357,8 @@ class FrontendPrdContractTests(unittest.TestCase):
         self.assertIn('latestReleaseApi', adapter)
         self.assertIn('checkRelease', adapter)
         self.assertIn('repository:', version)
-        self.assertIn('https://gitcode.com/owen891/tmall-dashboard/releases', version)
-        self.assertIn('https://gitcode.com/api/v5/repos/owen891/tmall-dashboard/releases/latest', version)
+        self.assertIn('https://github.com/owen891/tmall-dashboard/releases', version)
+        self.assertIn('https://api.github.com/repos/owen891/tmall-dashboard/releases/latest', version)
         self.assertIn('getVersion()', adapter)
         self.assertIn('checkForUpdates()', adapter)
 
