@@ -10,22 +10,37 @@ $desktopRoot = Join-Path $projectRoot 'desktop'
 $releaseRoot = Join-Path $desktopRoot 'release'
 $version = (Get-Content -LiteralPath (Join-Path $projectRoot 'VERSION') -Raw).Trim()
 
+# `py -3` resolves to the newest registered interpreter, which on a CI image is
+# not necessarily the one setup-python provisioned. Prefer $env:TMALL_PYTHON,
+# then the `python` already on PATH, and only fall back to the launcher.
+$pythonExe = $env:TMALL_PYTHON
+$pythonArgs = @()
+if (-not $pythonExe) {
+    $onPath = Get-Command python -ErrorAction SilentlyContinue
+    if ($onPath) {
+        $pythonExe = $onPath.Source
+    } else {
+        $pythonExe = 'py'
+        $pythonArgs = @('-3')
+    }
+}
+
 Push-Location $projectRoot
 try {
-    & py -3 scripts\sync_desktop_version.py
+    & $pythonExe @pythonArgs scripts\sync_desktop_version.py
     if ($LASTEXITCODE -ne 0) { throw "Desktop version synchronization failed with exit code $LASTEXITCODE." }
-    & py -3 -c "from scripts.build_backend import assert_release_version_contract; assert_release_version_contract()"
+    & $pythonExe @pythonArgs -c "from scripts.build_backend import assert_release_version_contract; assert_release_version_contract()"
     if ($LASTEXITCODE -ne 0) { throw "Desktop version contract validation failed with exit code $LASTEXITCODE." }
 
     if (-not $SkipInstall) {
-        & py -3 -m pip install -r requirements-desktop.txt
+        & $pythonExe @pythonArgs -m pip install -r requirements-desktop.txt
         if ($LASTEXITCODE -ne 0) { throw "Python dependency installation failed with exit code $LASTEXITCODE." }
         & npm ci --prefix desktop
         if ($LASTEXITCODE -ne 0) { throw "Desktop dependency installation failed with exit code $LASTEXITCODE." }
     }
 
     if (-not $SkipPythonTests) {
-        & py -3 -m unittest discover -s tests
+        & $pythonExe @pythonArgs -m unittest discover -s tests
         if ($LASTEXITCODE -ne 0) { throw "Python tests failed with exit code $LASTEXITCODE." }
     }
 
