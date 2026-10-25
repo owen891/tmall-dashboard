@@ -454,15 +454,19 @@ class RuntimeResolverTests(unittest.TestCase):
                                          'runtime_root': str(Path(sys.executable).parent)}), encoding='utf-8')
             env = dict(os.environ)
             env.pop('TMALL_COLLECT_PYTHON', None)
-            command = f". '{ROOT / 'scripts/resolve_runtime.ps1'}'; Resolve-CollectorPython -ProjectRoot '{root}'"
+            # PowerShell writes its console encoding (GBK on a Chinese Windows), while
+            # Python decodes pipes as UTF-8 under PYTHONUTF8=1 — the reader thread then
+            # dies on the error text of the bad-config case. Pin PS output to UTF-8.
+            prelude = "[Console]::OutputEncoding=[Text.UTF8Encoding]::new($false); "
+            command = prelude + f". '{ROOT / 'scripts/resolve_runtime.ps1'}'; Resolve-CollectorPython -ProjectRoot '{root}'"
             # Process-local policy matches the existing scheduled action; no machine policy change.
             result = subprocess.run(['powershell.exe', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', command],
-                                    capture_output=True, text=True, env=env)
+                                    capture_output=True, text=True, encoding='utf-8', errors='replace', env=env)
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertEqual(result.stdout.strip(), resolve_python(root, environ={}))
             record.write_text('{bad', encoding='utf-8')
             result = subprocess.run(['powershell.exe', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', command],
-                                    capture_output=True, text=True, env=env)
+                                    capture_output=True, text=True, encoding='utf-8', errors='replace', env=env)
             self.assertNotEqual(result.returncode, 0)
 
 

@@ -9,6 +9,18 @@ const VIEW_COLUMN_LIMIT = 25;
 // CI 慢机上交互/渲染明显更慢；这些断言验证的是「有没有」，不是「多快」。
 const ACTION_TIMEOUT = Number(process.env.TMALL_GATE_ACTION_TIMEOUT || 20000);
 
+// 保存类断言等的是后端 PUT 之后的前端回写文案。固定 5 秒在慢机上会偶发超时，
+// 而超时本身不说明是「没保存」还是「还没渲染完」，所以超时时把实际文案带出来。
+async function waitForStatusText(page, selector, expected, label) {
+  const status = page.locator(selector);
+  try {
+    await status.filter({ hasText: expected }).waitFor({ timeout: ACTION_TIMEOUT });
+  } catch (error) {
+    const actual = await status.allTextContents().catch(() => []);
+    throw new Error(`${label} never showed "${expected}" within ${ACTION_TIMEOUT}ms; saw: ${JSON.stringify(actual)}`);
+  }
+}
+
 const states = ['no-data', 'insufficient-data', 'missing-fields', 'calculation-failed', 'source-unavailable', 'partial'];
 const capabilityContract = ['can_drilldown', 'can_edit_stage'];
 const flowModalSelector = '[data-modal-kind="flow"]';
@@ -43,7 +55,7 @@ async function gateDataCapabilities(page) {
   console.log('[gate] data capability catalog');
   await page.goto(`${base}/data-center`, { waitUntil: 'domcontentloaded', timeout: 10000 });
   await page.locator('[data-governance-disclosure]').evaluate((element) => { element.open = true; });
-  await page.waitForSelector('[data-capability-domain]', { timeout: 5000 });
+  await page.waitForSelector('[data-capability-domain]', { timeout: ACTION_TIMEOUT });
   const capabilityCounts = await page.locator('[data-capability-summary] [data-capability-count]').allTextContents();
   if (capabilityCounts.length !== 4 || capabilityCounts.some((value) => !/^\d+$/.test(value.trim()))) throw new Error(`data capability summary is incomplete: ${capabilityCounts.join(',')}`);
   const allCapabilityRows = await page.locator('[data-capability-domain]').count();
@@ -64,7 +76,7 @@ async function gatePageCapabilities(page) {
   console.log('[gate] page capability catalog');
   await page.goto(`${base}/data-center`, { waitUntil: 'domcontentloaded', timeout: 10000 });
   await page.locator('[data-governance-disclosure]').evaluate((element) => { element.open = true; });
-  await page.waitForSelector('[data-page-capability-table] button', { timeout: 5000 });
+  await page.waitForSelector('[data-page-capability-table] button', { timeout: ACTION_TIMEOUT });
   const counts = await page.locator('[data-page-capability-summary] [data-page-capability-count]').allTextContents();
   if (counts.length !== 4 || counts.some((value) => !/^\d+$/.test(value.trim()))) throw new Error(`page capability summary is incomplete: ${counts.join(',')}`);
   const allRows = await page.locator('[data-page-capability-table] button').count();
@@ -83,15 +95,15 @@ async function gateDetailSurfaces(page) {
   console.log('[gate] unified detail drawers (products / market-ranking)');
   // 共享商品详情：抽屉化 + detail 分类标记 + 焦点归还（products fixtures 是门禁硬前提）。
   await page.goto(`${base}/products`, { waitUntil: 'domcontentloaded', timeout: 10000 });
-  await page.waitForSelector('[data-products-body] tr', { timeout: 5000 });
+  await page.waitForSelector('[data-products-body] tr', { timeout: ACTION_TIMEOUT });
   // 汇总行是 tbody 首行，商品行带 data-product-id；跳过汇总行取首件商品。
   const productTrigger = page.locator('[data-products-body] tr[data-product-id]').first().locator('button[aria-label^="查看商品详情"]');
   await productTrigger.click();
-  await page.locator('.ui-drawer.is-open').waitFor({ state: 'visible', timeout: 5000 });
+  await page.locator('.ui-drawer.is-open').waitFor({ state: 'visible', timeout: ACTION_TIMEOUT });
   if (await page.locator('.ui-drawer.is-open[data-modal-kind="detail"]').count() !== 1) {
     throw new Error('shared product detail drawer is not classified as detail');
   }
-  await page.locator('[data-shared-product-workbench]').waitFor({ state: 'visible', timeout: 5000 });
+  await page.locator('[data-shared-product-workbench]').waitFor({ state: 'visible', timeout: ACTION_TIMEOUT });
   await page.locator('.ui-drawer.is-open .ui-drawer__close').click();
   if (!await productTrigger.evaluate((button) => document.activeElement === button)) throw new Error('product detail drawer did not restore trigger focus');
 
@@ -104,7 +116,7 @@ async function gateDetailSurfaces(page) {
   const trendTrigger = page.locator('[data-market-entity-kind]').first();
   if (await trendTrigger.count()) {
     await trendTrigger.click();
-    await page.locator('.ui-drawer.is-open').waitFor({ state: 'visible', timeout: 5000 });
+    await page.locator('.ui-drawer.is-open').waitFor({ state: 'visible', timeout: ACTION_TIMEOUT });
     if (await page.locator('.ui-drawer.is-open[data-modal-kind="detail"]').count() !== 1) {
       throw new Error('market trend drawer is not the shared detail drawer');
     }
@@ -130,7 +142,7 @@ const flowImpactLabel = '影响';
   }
   console.log('[gate] product field and date controls');
   await page.goto(`${base}/products?start=2026-07-14&end=2026-08-12&product_id=${encodeURIComponent(productId)}`, { waitUntil: 'domcontentloaded', timeout: 10000 });
-  await page.waitForSelector('[data-products-body] tr', { timeout: 5000 });
+  await page.waitForSelector('[data-products-body] tr', { timeout: ACTION_TIMEOUT });
   const catalogMutationControls = await page.locator('[data-capability-key="products.catalog_edit"]').count();
   if (catalogMutationControls < 4) throw new Error(`product mutation controls are not registered: ${catalogMutationControls}`);
   originalSettings = await page.evaluate(() => DemoApi.domainRequest('/api/settings'));
@@ -186,7 +198,7 @@ const flowImpactLabel = '影响';
   page.on('request', countTemplatePut);
   await page.locator('[data-products-template-name]').fill('浏览器字段模板');
   await page.locator('[data-products-template-save]').click();
-  await page.locator('[data-products-columns-status]').filter({ hasText: '已保存' }).waitFor({ timeout: 5000 });
+  await waitForStatusText(page, '[data-products-columns-status]', '已保存', 'product custom template save');
   const appliedProductOrder = await page.locator('[data-products-head] [data-field-key]').evaluateAll((cells, expected) => cells.map((cell) => cell.dataset.fieldKey).filter((key) => expected.includes(key)), productPreviewOrder);
   if (JSON.stringify(appliedProductOrder) !== JSON.stringify(productPreviewOrder)) {
     throw new Error(`product table order does not match preview: ${appliedProductOrder.join(',')} / ${productPreviewOrder.join(',')}`);
@@ -194,7 +206,7 @@ const flowImpactLabel = '影响';
   page.off('request', countTemplatePut);
   if (templatePutCount !== 1) throw new Error(`custom template save issued ${templatePutCount} settings PUT requests`);
   await page.reload({ waitUntil: 'domcontentloaded', timeout: 10000 });
-  await page.waitForSelector('[data-products-head] [data-field-key]', { timeout: 5000 });
+  await page.waitForSelector('[data-products-head] [data-field-key]', { timeout: ACTION_TIMEOUT });
   const reloadedProductOrder = await page.locator('[data-products-head] [data-field-key]').evaluateAll((cells, expected) => cells.map((cell) => cell.dataset.fieldKey).filter((key) => expected.includes(key)), productPreviewOrder);
   if (JSON.stringify(reloadedProductOrder) !== JSON.stringify(productPreviewOrder)) {
     throw new Error(`saved product field order did not survive reload: ${reloadedProductOrder.join(',')} / ${productPreviewOrder.join(',')}`);
@@ -329,7 +341,7 @@ const flowImpactLabel = '影响';
   const mobilePage = await browser.newPage({ viewport: { width: 390, height: 844 } });
   mobilePage.setDefaultTimeout(ACTION_TIMEOUT);
   await mobilePage.goto(`${base}/products`, { waitUntil: 'domcontentloaded', timeout: 10000 });
-  await mobilePage.waitForSelector('[data-products-mobile-summary] article', { state: 'visible', timeout: 5000 });
+  await mobilePage.waitForSelector('[data-products-mobile-summary] article', { state: 'visible', timeout: ACTION_TIMEOUT });
   await installDateCounter(mobilePage);
   const mobileNatural = [
     ['this_week', formatDate(startOfWeek), anchorValue],
@@ -435,8 +447,8 @@ const flowImpactLabel = '影响';
     throw new Error(`promotion table order does not match preview: ${promotionHeaders.join(',')} / ${promotionOrderedLabels.join(',')}`);
   }
   await page.reload({ waitUntil: 'domcontentloaded', timeout: 10000 });
-  await page.locator('[data-promotion-manage-fields]').waitFor({ timeout: 5000 });
-  await page.waitForSelector('[data-promotion-head] th', { timeout: 5000 });
+  await page.locator('[data-promotion-manage-fields]').waitFor({ timeout: ACTION_TIMEOUT });
+  await page.waitForSelector('[data-promotion-head] th', { timeout: ACTION_TIMEOUT });
   const reloadedPromotionHeaders = (await page.locator('[data-promotion-head] th').allTextContents()).map((text) => text.trim());
   if (JSON.stringify(reloadedPromotionHeaders) !== JSON.stringify(promotionOrderedLabels.map((text) => text.trim()))) {
     throw new Error(`applied promotion field order did not survive reload: ${reloadedPromotionHeaders.join(',')} / ${promotionOrderedLabels.join(',')}`);
@@ -445,10 +457,10 @@ const flowImpactLabel = '影响';
   const promotionTemplateName = `浏览器推广模板-${Date.now()}`;
   await page.locator('[data-promotion-template-name]').fill(promotionTemplateName);
   await page.locator('[data-promotion-template-save]').click();
-  await page.locator('[data-promotion-field-status]').filter({ hasText: '已保存' }).waitFor({ timeout: 5000 });
+  await waitForStatusText(page, '[data-promotion-field-status]', '已保存', 'promotion template save');
   await page.reload({ waitUntil: 'domcontentloaded', timeout: 10000 });
-  await page.locator('[data-promotion-manage-fields]').waitFor({ timeout: 5000 });
-  await page.waitForSelector('[data-promotion-head] th', { timeout: 5000 });
+  await page.locator('[data-promotion-manage-fields]').waitFor({ timeout: ACTION_TIMEOUT });
+  await page.waitForSelector('[data-promotion-head] th', { timeout: ACTION_TIMEOUT });
   const savedPromotionTemplate = await page.locator('[data-promotion-template-select] option:checked').innerText();
   if (savedPromotionTemplate !== promotionTemplateName) {
     throw new Error(`saved promotion template was not active after reload: ${savedPromotionTemplate}`);
@@ -456,8 +468,8 @@ const flowImpactLabel = '影响';
   await page.locator('[data-promotion-template-select]').selectOption('products-traffic');
   const trafficTemplateHeaders = (await page.locator('[data-promotion-head] th').allTextContents()).map((text) => text.trim());
   await page.reload({ waitUntil: 'domcontentloaded', timeout: 10000 });
-  await page.locator('[data-promotion-manage-fields]').waitFor({ timeout: 5000 });
-  await page.waitForSelector('[data-promotion-head] th', { timeout: 5000 });
+  await page.locator('[data-promotion-manage-fields]').waitFor({ timeout: ACTION_TIMEOUT });
+  await page.waitForSelector('[data-promotion-head] th', { timeout: ACTION_TIMEOUT });
   const reloadedTrafficTemplate = await page.locator('[data-promotion-template-select]').inputValue();
   const reloadedTrafficHeaders = (await page.locator('[data-promotion-head] th').allTextContents()).map((text) => text.trim());
   if (reloadedTrafficTemplate !== 'products-traffic' || JSON.stringify(reloadedTrafficHeaders) !== JSON.stringify(trafficTemplateHeaders)) {
@@ -465,14 +477,14 @@ const flowImpactLabel = '影响';
   }
   console.log('[gate] capability, lifecycle and flow contracts');
   await page.goto(`${base}/promotion?start=2026-07-14&end=2026-08-12&channel=__release_gate_missing__`, { waitUntil: 'domcontentloaded', timeout: 10000 });
-  await page.locator('[data-promotion-drill-load]').waitFor({ timeout: 5000 });
+  await page.locator('[data-promotion-drill-load]').waitFor({ timeout: ACTION_TIMEOUT });
   await page.waitForFunction(() => {
     const button = document.querySelector('[data-promotion-drill-load]');
     return button && button.disabled;
-  }, null, { timeout: 5000 });
+  }, null, { timeout: ACTION_TIMEOUT });
   if (!await page.locator('[data-promotion-drill-load]').isDisabled()) throw new Error('promotion drilldown remained enabled for no-data response');
   await page.goto(`${base}/lifecycle`, { waitUntil: 'domcontentloaded', timeout: 10000 });
-  await page.locator('[data-lifecycle-assessments] tr button').first().waitFor({ timeout: 5000 });
+  await page.locator('[data-lifecycle-assessments] tr button').first().waitFor({ timeout: ACTION_TIMEOUT });
   const insufficientLifecycleEdit = await page.locator('[data-lifecycle-assessments] tr').evaluateAll((rows) => rows.some((row) => {
     const button = row.querySelector('button');
     return button && button.disabled && /\/60/.test(row.textContent || '');
@@ -489,7 +501,7 @@ const flowImpactLabel = '影响';
   const mobilePromotionPage = await browser.newPage({ viewport: { width: 390, height: 844 } });
   mobilePromotionPage.setDefaultTimeout(ACTION_TIMEOUT);
   await mobilePromotionPage.goto(`${base}/promotion`, { waitUntil: 'domcontentloaded', timeout: 10000 });
-  await mobilePromotionPage.locator('[data-promotion-manage-fields]').waitFor({ timeout: 5000 });
+  await mobilePromotionPage.locator('[data-promotion-manage-fields]').waitFor({ timeout: ACTION_TIMEOUT });
   await mobilePromotionPage.locator('[data-promotion-manage-fields]').click();
   const mobilePromotionLayout = await mobilePromotionPage.locator('[data-promotion-field-dialog]').evaluate((dialog) => {
     const bounds = dialog.getBoundingClientRect();
@@ -521,7 +533,7 @@ const flowImpactLabel = '影响';
   console.log('[gate] data capability catalog');
   await page.goto(`${base}/data-center`, { waitUntil: 'domcontentloaded', timeout: 10000 });
   await page.locator('[data-governance-disclosure]').evaluate((element) => { element.open = true; });
-  await page.waitForSelector('[data-capability-domain]', { timeout: 5000 });
+  await page.waitForSelector('[data-capability-domain]', { timeout: ACTION_TIMEOUT });
   const capabilityCounts = await page.locator('[data-capability-summary] [data-capability-count]').allTextContents();
   if (capabilityCounts.length !== 4 || capabilityCounts.some((value) => !/^\d+$/.test(value.trim()))) {
     throw new Error(`data capability summary is incomplete: ${capabilityCounts.join(',')}`);
@@ -544,7 +556,7 @@ const flowImpactLabel = '影响';
   await gateDetailSurfaces(page);
   console.log('[gate] navigation, availability and template refresh');
   await page.goto(`${base}/`, { waitUntil: 'domcontentloaded', timeout: 10000 });
-  await page.waitForSelector('[data-overview-action-open]', { timeout: 5000 });
+  await page.waitForSelector('[data-overview-action-open]', { timeout: ACTION_TIMEOUT });
   if (await page.locator('[data-overview-action-open]').getAttribute('data-capability-key') !== 'overview.create_action') {
     throw new Error('overview action creator is not gated by its registered capability');
   }
@@ -553,7 +565,7 @@ const flowImpactLabel = '影响';
   await page.goBack({ waitUntil: 'domcontentloaded', timeout: 10000 });
   if (new URL(page.url()).searchParams.get('product_id') !== productId) throw new Error('browser history did not restore shared filters');
   await page.goto(`${base}/goals?promotion_channel=%E4%B8%87%E7%9B%B8%E5%8F%B0`, { waitUntil: 'domcontentloaded', timeout: 10000 });
-  await page.locator('[data-demo-toast].is-visible').waitFor({ timeout: 3000 });
+  await page.locator('[data-demo-toast].is-visible').waitFor({ timeout: ACTION_TIMEOUT });
 
   const rendered = await page.evaluate(async (fixtureStates) => {
     const output = [];
@@ -577,7 +589,7 @@ const flowImpactLabel = '影响';
     method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(settings),
       }), nextSettings);
   await page.goto(`${base}/products`, { waitUntil: 'domcontentloaded', timeout: 10000 });
-  await page.waitForSelector('[data-products-head] [data-field-key]', { timeout: 5000 });
+  await page.waitForSelector('[data-products-head] [data-field-key]', { timeout: ACTION_TIMEOUT });
   const templateHeaders = await page.locator('[data-products-head] th').allTextContents();
   if (!templateHeaders.some((text) => text.includes('生命周期阶段')) ||
       !templateHeaders.some((text) => text.includes('季节属性')) ||

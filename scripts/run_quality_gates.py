@@ -48,10 +48,14 @@ def isolated_environment(directory, inherited=None):
     for key in list(env):
         if key.upper().startswith(('PYTEST_', 'PYTHON')):
             env.pop(key)
-    # Do not inherit a user's service/browser/collector selection.
+    # Do not inherit a user's service/browser/collector selection. The category
+    # label and legacy shop id are deployment-private: leaving them set makes
+    # category-filtered fixtures resolve to a label the seeded rows do not
+    # carry, so local gates fail on data that CI never has.
     for key in ('DATABASE_URL', 'TMALL_PORT', 'TMALL_SMOKE_BASE', 'BASE', 'TMALL_CDP_PORT',
                 'TMALL_CHROME', 'TMALL_CHROME_PATH', 'PW_CHROMIUM', 'NODE_OPTIONS',
-                'TMALL_SHOP_ID', 'TMALL_CAPABILITY_ONLY', 'TMALL_SMOKE_PAGE',
+                'TMALL_SHOP_ID', 'TMALL_LEGACY_SHOP_ID', 'TMALL_CATEGORY_LABEL',
+                'TMALL_CAPABILITY_ONLY', 'TMALL_SMOKE_PAGE',
                 'TMALL_GATE_SERVER_MODE', 'TMALL_GATE_PORT', 'TMALL_GATE_READY',
                 'TMALL_GATE_BROWSER_SCOPE', 'TMALL_GATE_PYTEST_PHASE'):
         env.pop(key, None)

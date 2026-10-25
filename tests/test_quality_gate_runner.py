@@ -25,9 +25,13 @@ class GateRunnerTests(unittest.TestCase):
 
     def test_environment_drops_user_browser_and_production_selection_not_remote_proxy(self):
         inherited = dict(self.env, TMALL_CDP_PORT='9223', TMALL_SMOKE_BASE='http://127.0.0.1:5000',
-                         DATABASE_URL='sqlite:///production.db', TMALL_CHROME='user.exe', BASE='http://remote')
+                         DATABASE_URL='sqlite:///production.db', TMALL_CHROME='user.exe', BASE='http://remote',
+                         # 部署私有的品类标签与店铺 scope：漏进隔离环境会让 fixture
+                         # 与断言各按不同标签解析，本地门禁假失败（CI 无此变量）。
+                         TMALL_CATEGORY_LABEL='部署私有品类', TMALL_LEGACY_SHOP_ID='3828498662')
         env = gates.isolated_environment(self.root, inherited)
-        for key in ('TMALL_CDP_PORT', 'TMALL_SMOKE_BASE', 'DATABASE_URL', 'TMALL_CHROME', 'BASE'):
+        for key in ('TMALL_CDP_PORT', 'TMALL_SMOKE_BASE', 'DATABASE_URL', 'TMALL_CHROME', 'BASE',
+                    'TMALL_CATEGORY_LABEL', 'TMALL_LEGACY_SHOP_ID'):
             self.assertNotIn(key, env)
         self.assertEqual(env['HTTP_PROXY'], inherited['HTTP_PROXY'])
         self.assertIn('internal', env['NO_PROXY'])
