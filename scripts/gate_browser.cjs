@@ -56,6 +56,21 @@ async function launchGateChrome(base, dependencies = {}) {
   const request = dependencies.getJson || getJson;
   const sleep = dependencies.sleep || (ms => new Promise(resolve => setTimeout(resolve, ms)));
   const profile = fs.mkdtempSync(path.join(scope.root, 'cdp-profile-'));
+  // Chrome reports its own exit before its children release the profile
+  // directory. On Windows that keeps the directory locked for a moment, so a
+  // single rmSync raises EPERM/EBUSY and fails a gate whose assertions all
+  // passed. Retry briefly instead of turning cleanup into a verdict.
+  const removeProfile = async () => {
+    for (let attempt = 0; ; attempt++) {
+      try {
+        fs.rmSync(profile, { recursive: true, force: true });
+        return;
+      } catch (error) {
+        if (!['EPERM', 'EBUSY', 'EACCES', 'ENOTEMPTY'].includes(error.code) || attempt >= 20) throw error;
+        await sleep(100);
+      }
+    }
+  };
   const diagnosticRoot = path.join(scope.root, 'browser-diagnostics');
   fs.mkdirSync(diagnosticRoot, { recursive: true });
   const diagnosticDirectory = fs.mkdtempSync(path.join(diagnosticRoot, 'launch-'));
@@ -71,7 +86,7 @@ async function launchGateChrome(base, dependencies = {}) {
     '--disable-background-networking', '--disable-component-update', '--disable-sync', '--metrics-recording-only',
     `--user-data-dir=${profile}`, 'about:blank'], { stdio: ['ignore', stdoutFd, stderrFd], windowsHide: true });
   } catch (error) {
-    fs.rmSync(profile, { recursive: true, force: true });
+    await removeProfile();
     throw error;
   } finally {
     if (stdoutFd !== undefined) fs.closeSync(stdoutFd);
@@ -88,7 +103,7 @@ async function launchGateChrome(base, dependencies = {}) {
     if (launchError && !child.pid) {
       closed = true;
       process.removeListener('exit', emergencyStop);
-      fs.rmSync(profile, { recursive: true, force: true });
+      await removeProfile();
       return;
     }
     if (running()) {
@@ -102,7 +117,7 @@ async function launchGateChrome(base, dependencies = {}) {
     }
     closed = true;
     process.removeListener('exit', emergencyStop);
-    fs.rmSync(profile, { recursive: true, force: true });
+    await removeProfile();
   }
   try {
     for (let n = 0; n < 100; n++) {
