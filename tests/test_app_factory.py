@@ -276,8 +276,11 @@ class AppFactoryTests(unittest.TestCase):
             finally:
                 os.chdir(original_cwd)
 
-            expected = os.path.abspath(os.path.join(temp_dir, 'relative.db'))
-            self.assertEqual(app.config['DATABASE_PATH'], expected)
+            # macOS resolves the temp dir through the /var -> /private/var
+            # symlink; compare both sides after realpath so the assertion
+            # checks the location, not the spelling of the prefix.
+            expected = os.path.realpath(os.path.join(temp_dir, 'relative.db'))
+            self.assertEqual(os.path.realpath(app.config['DATABASE_PATH']), expected)
             self.assertTrue(os.path.exists(expected))
 
     def test_default_database_path_matches_raw_runtime_database(self):

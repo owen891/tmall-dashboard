@@ -32,7 +32,9 @@ class GateRunnerTests(unittest.TestCase):
         self.assertEqual(env['HTTP_PROXY'], inherited['HTTP_PROXY'])
         self.assertIn('internal', env['NO_PROXY'])
         self.assertIn('127.0.0.1', env['NO_PROXY'])
-        self.assertTrue(Path(env['TMALL_DB_PATH']).is_relative_to(self.root))
+        # isolated_environment resolves its root (macOS: /var -> /private/var),
+        # so compare resolved paths instead of the raw temp-dir spelling.
+        self.assertTrue(Path(env['TMALL_DB_PATH']).resolve().is_relative_to(self.root.resolve()))
         self.assertEqual(env['PYTHONWARNINGS'], 'error::ResourceWarning')
 
     def test_inherited_pytest_and_python_controls_cannot_change_the_gate(self):
