@@ -1,0 +1,6 @@
+# 仅用于「没有 Developer ID 证书」的构建：强制 ad-hoc 签名。
+# 不能用 CLI 的 -c.mac.identity=-：yargs 会把它解析成 config 文件路径
+# （报 ENOENT: open '...\.mac.identity=-'），并且顺带覆盖掉 --config 指定的主配置。
+extends: ./electron-builder.yml
+mac:
+  identity: "-"

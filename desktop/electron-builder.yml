@@ -34,6 +34,27 @@ win:
 mac:
   icon: assets/tmall-dashboard-logo-1024.png
   category: public.app-category.business
+  # 无 Developer ID 证书时 electron-builder 会静默跳过签名，产出的 .app 没有
+  # _CodeSignature/CodeResources 封印，经浏览器下载带 quarantine 后门禁直接报
+  # 「文件已损坏，无法打开」。下面把签名前置条件显式钉住：
+  # - 有 CSC_LINK/CSC_NAME 时用 Developer ID Application 正常签名并公证；
+  # - 无证书时退回 ad-hoc（identity: "-"），至少生成 bundle 封印，
+  #   让 `xattr -dr com.apple.quarantine` 能成功放行。
+  # 签名身份不在这里钉死：keychain 里有 Developer ID 就自动用（CI 由
+  # .github/workflows/desktop-release.yml 的 security import 导入）；没有证书时
+  # 由 desktop/scripts/dist-mac.cjs 读 MAC_ADHOC=1 换用 electron-builder.adhoc.yml
+  # 把 identity 钉成 "-"。不要用 CLI 的 dot-notation 覆盖，yargs 会把值当配置
+  # 文件路径并报 ENOENT。
+  type: distribution
+  hardenedRuntime: true
+  # osx-sign 的自身校验在无证书/无公证环境下会误判失败，真实验签交给
+  # scripts/verify_mac_release.py 在产物上做。
+  gatekeeperAssess: false
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.inherit.plist
+  # 未提供 APPLE_ID + APPLE_APP_SPECIFIC_PASSWORD + APPLE_TEAM_ID 时
+  # electron-builder 记录 skipped macOS notarization 并继续，不会中断构建。
+  notarize: true
   target:
     - target: dmg
       arch: [x64, arm64]

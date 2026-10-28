@@ -188,12 +188,56 @@ jobs:
         run: |
           git status --porcelain
           git diff --exit-code
+      - name: Configure macOS signing identity
+        id: signing
+        shell: bash
+        env:
+          MAC_CERT_P12: ${{ secrets.MAC_CERT_P12 }}
+          MAC_CERT_PASSWORD: ${{ secrets.MAC_CERT_PASSWORD }}
+          MAC_KEYCHAIN_PASSWORD: ${{ secrets.MAC_KEYCHAIN_PASSWORD }}
+        run: |
+          if [ -z "$MAC_CERT_P12" ]; then
+            echo "::warning::MAC_CERT_P12 未配置，本次构建退回 ad-hoc 签名（有 bundle 封印、无公证）"
+            echo "has_cert=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          keychain="$RUNNER_TEMP/signing.keychain-db"
+          printf '%s' "$MAC_CERT_P12" | openssl base64 -d -A -out "$RUNNER_TEMP/cert.p12"
+          security create-keychain -p "$MAC_KEYCHAIN_PASSWORD" "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p "$MAC_KEYCHAIN_PASSWORD" "$keychain"
+          security import "$RUNNER_TEMP/cert.p12" -k "$keychain" -P "$MAC_CERT_PASSWORD" \
+            -T /usr/bin/codesign -T /usr/bin/security
+          security set-key-partition-list -S apple-tool:,apple:,codesign: \
+            -s -k "$MAC_KEYCHAIN_PASSWORD" "$keychain" >/dev/null
+          security list-keychains -d user -s "$keychain" $(security list-keychains -d user | tr -d '"')
+          security find-identity -v -p codesigning "$keychain"
+          rm -f "$RUNNER_TEMP/cert.p12"
+          echo "has_cert=true" >> "$GITHUB_OUTPUT"
       - name: Build macOS package
         shell: bash
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          MAC_ADHOC: ${{ steps.signing.outputs.has_cert == 'true' && '0' || '1' }}
         run: |
           python scripts/sync_desktop_version.py
           python scripts/build_backend.py
+          # 无证书时 MAC_ADHOC=1 → desktop/scripts/dist-mac.cjs 换用 overlay 配置
+          # 把 mac.identity 钉成 "-" 做 ad-hoc 签名。不要用 CLI 的 dot-notation
+          # 覆盖（config.mac.identity）：yargs 会把值当 config 路径，报 ENOENT。
           npm run dist:mac --prefix desktop -- --${{ matrix.arch }}
+      - name: Verify macOS signature and notarization
+        shell: bash
+        env:
+          HAS_CERT: ${{ steps.signing.outputs.has_cert }}
+        run: |
+          # electron-builder 对默认架构(x64)写 release/mac，非默认架构写 release/mac-<arch>。
+          # 这里按目录匹配，避免把 -x64 后缀写死导致找不到 bundle。
+          app_dir=$(ls -d desktop/release/mac* | head -n 1)
+          echo "验签目录: $app_dir"
+          python scripts/verify_mac_release.py "$app_dir" --require-developer-id "$HAS_CERT"
       - uses: actions/upload-artifact@v4
         with:
           name: mac-${{ matrix.arch }}

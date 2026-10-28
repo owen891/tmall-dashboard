@@ -1,5 +1,16 @@
 # 更新说明
 
+## V2.1.2（2026-10-28）
+
+修复 macOS 安装包双击报「文件已损坏，无法打开」。这次是发布链路的问题，不是下载坏了。
+
+### macOS 安装包
+
+- **根因**：此前没有配置 Apple Developer 证书时，electron-builder 会静默跳过代码签名却仍返回成功，产出的 `.app` 里没有 `Contents/_CodeSignature/CodeResources`。浏览器下载又会给它打上 `com.apple.quarantine`，Gatekeeper 对没有封印的 bundle 直接报「已损坏，无法打开」。已下载的 x64 包可以手动放行（`xattr -dr com.apple.quarantine`），arm64 包因为内核要求可执行文件至少带签名，必须换新包。
+- **签名前置条件钉死**：`electron-builder.yml` 补上 `type: distribution`、`hardenedRuntime: true`、`gatekeeperAssess: false`、`notarize: true` 和两份 entitlements（`allow-jit`、`disable-library-validation`，缺了 hardened runtime 下 Electron 起不来）。
+- **无证书时显式 ad-hoc**：新增 `desktop/electron-builder.adhoc.yml`（`extends` 主配置 + `mac.identity: "-"`）与 `desktop/scripts/dist-mac.cjs` 启动器，按 `MAC_ADHOC=1` 切换。不用 CLI 的 dot-notation 覆盖，因为 yargs 会把值当成配置文件路径并报 ENOENT。
+- **发布门禁**：新增 `scripts/verify_mac_release.py`，在 macOS runner 上校验 bundle 封印、`codesign --verify --deep --strict`，并区分有无证书分别要求 Developer ID 签名与公证票据。封印缺失直接让构建失败，不会再发布未签名产物。
+
 ## V2.1.1（2026-10-25）
 
 修复市场分析数据停滞与桌面端托盘图标缺失。

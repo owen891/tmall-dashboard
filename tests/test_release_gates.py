@@ -132,6 +132,57 @@ class ReleaseGateTests(unittest.TestCase):
         self.assertIn("PROJECT_ROOT / 'VERSION'", sync)
         self.assertIn("PROJECT_ROOT / 'desktop' / 'package.json'", sync)
 
+    def test_macos_build_keeps_bundle_seal_requirements(self):
+        # 无 Developer ID 证书时 electron-builder 静默跳过签名，产物没有
+        # _CodeSignature/CodeResources，浏览器下载后 macOS 报「文件已损坏」。
+        builder = pathlib.Path(PROJECT_ROOT, 'desktop', 'electron-builder.yml').read_text(encoding='utf-8')
+        for marker in (
+            'type: distribution',
+            'hardenedRuntime: true',
+            'gatekeeperAssess: false',
+            'entitlements: build/entitlements.mac.plist',
+            'entitlementsInherit: build/entitlements.mac.inherit.plist',
+            'notarize: true',
+        ):
+            self.assertIn(marker, builder)
+
+        for name in ('entitlements.mac.plist', 'entitlements.mac.inherit.plist'):
+            path = pathlib.Path(PROJECT_ROOT, 'desktop', 'build', name)
+            self.assertTrue(path.is_file(), name)
+            content = path.read_text(encoding='utf-8')
+            self.assertIn('com.apple.security.cs.allow-jit', content)
+            self.assertIn('com.apple.security.cs.disable-library-validation', content)
+
+    def test_macos_release_imports_certificate_and_verifies_signature(self):
+        workflow = pathlib.Path(PROJECT_ROOT, '.github', 'workflows', 'desktop-release.yml').read_text(encoding='utf-8')
+        self.assertIn('secrets.MAC_CERT_P12', workflow)
+        self.assertIn('security import', workflow)
+        self.assertIn('security set-key-partition-list', workflow)
+        self.assertIn('secrets.APPLE_TEAM_ID', workflow)
+        self.assertIn('scripts/verify_mac_release.py', workflow)
+        self.assertIn('--require-developer-id', workflow)
+        # 证书缺失时必须显式退到 ad-hoc，而不是让 electron-builder 悄悄跳过签名。
+        # 走独立 overlay 配置：CLI 的 `-c.mac.identity=-` 会被 yargs 当成 config
+        # 文件路径（ENOENT: open '...\.mac.identity=-'），不能用在构建命令里。
+        self.assertNotIn('-c.mac.identity=', workflow)
+        self.assertIn('MAC_ADHOC', workflow)
+
+        package = pathlib.Path(PROJECT_ROOT, 'desktop', 'package.json').read_text(encoding='utf-8')
+        self.assertIn('scripts/dist-mac.cjs', package)
+
+        launcher = pathlib.Path(PROJECT_ROOT, 'desktop', 'scripts', 'dist-mac.cjs').read_text(encoding='utf-8')
+        self.assertIn('electron-builder.adhoc.yml', launcher)
+        self.assertIn('MAC_ADHOC', launcher)
+
+        overlay = pathlib.Path(PROJECT_ROOT, 'desktop', 'electron-builder.adhoc.yml').read_text(encoding='utf-8')
+        self.assertIn('extends: ./electron-builder.yml', overlay)
+        self.assertIn('identity: "-"', overlay)
+
+        verifier = pathlib.Path(PROJECT_ROOT, 'scripts', 'verify_mac_release.py').read_text(encoding='utf-8')
+        self.assertIn('_CodeSignature', verifier)
+        self.assertIn('codesign', verifier)
+        self.assertIn('stapler', verifier)
+
 
 if __name__ == '__main__':
     unittest.main()
